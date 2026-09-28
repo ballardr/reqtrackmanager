@@ -218,22 +218,35 @@ function LayoutShell({ children }: { children: ReactNode }) {
               <NavRailLink to={`/projects/${projectId}/history`} label={strings.history.title} icon={<History size={16} />} railCollapsed={railIconOnly} />
               <NavRailLink to={`/projects/${projectId}/admin`} label={strings.nav.admin} icon={<Settings size={16} />} railCollapsed={railIconOnly} />
               {/* Module-contributed nav entries (compliance-module-plan.md
-                  Phase 3) — one per currently-enabled module that declares a
-                  frontend manifest, Tier A or Tier B alike; a module whose
-                  manifest was rejected (e.g. a Tier B frame_url outside the
-                  deployment's allowlist) simply has no entry here, since
-                  `get_frontend_manifest` already omitted it server-side. */}
-              {enabledModules.map((moduleEntry) =>
-                moduleEntry.frontend_manifest ? (
+                  Phase 3, extended to multiple entries per module by Module
+                  1 — Context & Strategy — Phase 7.1, 2026-09-29) — one row
+                  per (module, nav entry) pair, for every currently-enabled
+                  module that declares a frontend manifest, Tier A or Tier B
+                  alike; a module whose manifest was rejected (e.g. a Tier B
+                  frame_url outside the deployment's allowlist) simply has no
+                  entry here, since `get_frontend_manifest` already omitted
+                  it server-side. Every module before Context & Strategy
+                  (Compliance, Decision Management) only ever contributes its
+                  manifest's own primary entry — `additional_nav_entries`
+                  defaults to `[]`, so `.flatMap` here is a no-op change of
+                  shape for them, not of behaviour. */}
+              {enabledModules.flatMap((moduleEntry) => {
+                const manifest = moduleEntry.frontend_manifest;
+                if (!manifest) return [];
+                const entries = [
+                  { nav_label: manifest.nav_label, nav_path: manifest.nav_path },
+                  ...(manifest.additional_nav_entries ?? []),
+                ];
+                return entries.map((entry) => (
                   <NavRailLink
-                    key={moduleEntry.module_key}
-                    to={moduleEntry.frontend_manifest.nav_path}
-                    label={moduleEntry.frontend_manifest.nav_label}
+                    key={`${moduleEntry.module_key}:${entry.nav_path}`}
+                    to={entry.nav_path}
+                    label={entry.nav_label}
                     icon={<Wrench size={16} />}
                     railCollapsed={railIconOnly}
                   />
-                ) : null
-              )}
+                ));
+              })}
             </>
           )}
           {/* A module-contributed "standalone workspace" section (Phase

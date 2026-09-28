@@ -20,7 +20,11 @@ notes" below). Phase 3 (Pain Points) complete (2026-09-28 — see "Phase 3
 notes" below). Phase 4 (Guiding Principles) complete (2026-09-28 — see
 "Phase 4 notes" below). Phase 5 (Open Questions) complete (2026-09-28 —
 see "Phase 5 notes" below). Phase 6 (Cross-artefact relationships) complete
-(2026-09-29 — see "Phase 6 notes" below); Phase 7 (frontend UI) is next.
+(2026-09-29 — see "Phase 6 notes" below); Phase 7 (frontend UI) split into
+five per-artefact sub-phases 2026-09-29 (see that phase's own note) —
+Phase 7.1 (Strategy) complete (2026-09-29 — see "Phase 7.1 notes" below);
+Phase 7.2-7.5 (Future State/Pain Point/Guiding Principle/Open Question
+frontends) are next.
 First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
@@ -46,7 +50,8 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-7 / 9 phases complete.
+8 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
+2026-09-29 — see that phase's own note).
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -57,8 +62,12 @@ pre-2026-09-28 numbering from other plans without checking this note.
 | 4 | Guiding Principles | [x] Complete (2026-09-28) |
 | 5 | Open Questions | [x] Complete (2026-09-28) |
 | 6 | Cross-artefact relationships wired between all of the above (via Module 0) | [x] Complete (2026-09-29) |
-| 7 | Frontend UI for all five artefact types | [ ] Not started |
-| 8 | Docs website coverage | [ ] Not started — depends on Phase 7 shipping |
+| 7.1 | Frontend UI — Strategy | [x] Complete (2026-09-29) |
+| 7.2 | Frontend UI — Future State | [ ] Not started |
+| 7.3 | Frontend UI — Pain Point (+ type admin) | [ ] Not started |
+| 7.4 | Frontend UI — Guiding Principle | [ ] Not started |
+| 7.5 | Frontend UI — Open Question | [ ] Not started |
+| 8 | Docs website coverage | [ ] Not started — depends on Phase 7.1-7.5 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -1447,6 +1456,308 @@ needed for this module), following the UX style guide's settings-hierarchy
 and confirmation-tier patterns otherwise. Enum/status values render
 through label maps from day one. Playwright e2e + Storybook coverage for
 each new page/component, per standing testing requirements.
+
+**2026-09-29 update, split into five sub-phases (Decided by: Agent).** A
+single "Phase 7" covering full list/detail/create/edit/approve UI plus
+Playwright/Storybook coverage for five independent artefact types at once
+is a materially larger unit of work than any frontend phase this repo has
+shipped so far — Decision Management's own Phase 5 (the closest precedent)
+covered one artefact type (plus its Types/Templates admin surface) in one
+phase. Rather than attempt all five in one pass, this mirrors the backend's
+own Phase 1–5 split (one phase per artefact type) so each sub-phase is
+independently scoped, testable, and shippable:
+
+| Sub-phase | Artefact | Status |
+|---|---|---|
+| 7.1 | Strategy (org + project) | [x] Complete (2026-09-29) |
+| 7.2 | Future State (org + project) | [ ] Not started |
+| 7.3 | Pain Point (project) + Pain Point Type admin (org) | [ ] Not started |
+| 7.4 | Guiding Principle (org + project) | [ ] Not started |
+| 7.5 | Open Question (project) | [ ] Not started |
+
+Strategy is first because it is the module's foundational artefact (every
+other artefact's demo content and several relationship types trace back to
+it) and because its backend (Phase 1) was itself built first and is the
+most-exercised of the five. Each sub-phase builds its own nav-rail entry
+(per Phase 0 Q7 — five independent top-level entries, not one shared "Context
+& Strategy" section), list/detail/create/edit pages, approve/lifecycle
+action UI, label maps for every enum rendered, Playwright e2e coverage of
+its own create→propose→approve (or equivalent) flow, and Storybook stories
+for every new component — each following the structure Decision
+Management's Phase 5 (`frontend/src/modules/decisions/`) already
+established, and each updating `seed_e2e_dataset.py` for its own artefact
+type (the first sub-phase to actually need it — Phases 1–6 all deliberately
+left it untouched since there was no frontend to drive yet). Phase 8 (docs
+website coverage) stays gated on all five sub-phases shipping, not just the
+first.
+
+## Phase 7.1 notes (2026-09-29)
+
+Built Strategy's full frontend — the first of the five planned Phase 7
+sub-phases — plus a real, generic core-architecture extension it needed
+first: `app.modules.registry.ModuleFrontendManifest` gave a module exactly
+one nav-rail entry, and Phase 0 Q7 requires five for this module alone.
+See `docs/decisions.md`'s "Module system follow-up: `ModuleFrontendManifest`
+multi-entry nav-rail extension" entry for the full account of that piece;
+this section covers Strategy's own artefact work.
+
+**New files**, all under `frontend/src/modules/context_strategy/` (this
+module's first frontend files — `backend/app/modules/context_strategy/`
+already existed from Phases 1-6): `types.ts` (Strategy's own TypeScript
+shapes plus `STRATEGY_SCOPE_LABEL`/`STRATEGY_PRIORITY_LABEL`/
+`STRATEGY_TIME_HORIZON_LABEL`/`STRATEGY_STATUS_LABEL`/`STRATEGY_STATUS_TONE`/
+`STRATEGY_LINK_KIND_LABEL` label maps — every enum rendered anywhere in this
+phase's UI goes through one of these, per CLAUDE.md's explicit rule), `api.ts`
+(a `buildStrategyApi(base)` factory instantiated twice — `projectStrategyApi`/
+`orgStrategyApi` — see "Scope decisions" below for why), `module.ts` (this
+module's `TierAModuleDefinition` registration), `ProjectStrategiesPage.tsx`
+(project-scoped list, reached via the new "Strategy" nav-rail entry),
+`OrgStrategiesPanel.tsx` (org-scoped list, an `orgOverviewSections`
+contribution), `StrategyDetailPage.tsx` (shared detail page for both
+scopes — full fields, lifecycle actions, version history, relationships,
+attachments, comments), `StrategyFormModal.tsx` (create/edit, shared by both
+scopes and both list pages), `StrategyCommentsSection.tsx` (comment thread),
+`StrategyRelationshipsSection.tsx` (relationships list + add-relationship
+form), and one `.stories.tsx` file per component above (6 files, 35
+Storybook stories total).
+
+**Files changed:** `backend/app/modules/registry.py` (`ModuleNavEntry`
+dataclass, `ModuleFrontendManifest.additional_nav_entries`/`all_nav_entries()`
+— the core extension), `backend/app/schemas/org.py` (`ManifestNavEntryOut`,
+`ModuleFrontendManifestOut.additional_nav_entries`), `backend/app/routers/
+projects/module_roles.py` (interpolates `"{project_id}"` on every additional
+entry, not just the primary one), `backend/app/modules/context_strategy/
+module.py` (registers `frontend_manifest` — this module's first), `backend/
+tests/test_module_frontend_integration.py` (6 new tests + 1 updated
+exact-dict-equality test), `backend/app/modules/context_strategy/tests/
+test_context_strategy_api.py` (1 new test pinning the manifest registration),
+`frontend/src/api/types.ts` (`ManifestNavEntry`, `ModuleFrontendManifest.
+additional_nav_entries`), `frontend/src/components/Layout.tsx` (nav-rail loop
+now renders every nav entry per module, not just one), `frontend/src/modules/
+decisions/ProjectDecisionsPage.stories.tsx` (a bug fix found incidentally —
+see below), `docs/decisions.md` (the nav-manifest-extension entry), `docs/
+solution-architecture.md` (a matching paragraph in the module-system section).
+
+**Scope decisions, each a judgment call this phase had to make that the
+brief didn't fully settle:**
+
+- **`api.ts`'s `buildStrategyApi` factory, not ~25 hand-written functions
+  per scope (Decided by: Agent).** Unlike `modules/decisions/api.ts` (which
+  only needed a project/org split for two small definition-table resources
+  while the Decision artefact itself is project-scoped only), Strategy's
+  backend gives every single endpoint an identical org-scoped and
+  project-scoped twin (`router.py`/`project_router.py` mirror each other
+  exactly). A small factory parameterised by the base-URL builder,
+  instantiated twice (`projectStrategyApi`/`orgStrategyApi`), avoids
+  duplicating the same ~25 functions twice for no benefit; if a future
+  Strategy endpoint's behaviour ever genuinely diverges between scopes, that
+  one function can be pulled out of the factory at that point.
+- **One shared, scope-aware `StrategyDetailPage.tsx`, not two near-identical
+  page components (Decided by: Agent).** Reads whichever of `projectId`/
+  `organizationId` its current route supplies and dispatches to
+  `projectStrategyApi`/`orgStrategyApi` accordingly — mirrors the backend's
+  own single-table-with-a-scope-discriminator design (Phase 0 Q2) on the
+  frontend rather than forking the component.
+- **Org-scoped Strategy detail reached via a `globalRoutes` entry
+  (`/orgs/:organizationId/modules/context_strategy/strategies/:strategyId`),
+  not a new backend/core routing mechanism (Decided by: Agent).** An
+  org-scoped Strategy has no single *project* whose enabled-modules list the
+  existing project-scoped `routes` mechanism could gate a detail route
+  against — the same reason Compliance's own Standards detail route already
+  uses `globalRoutes` rather than `routes` (Phase 18 precedent, `docs/
+  solution-architecture.md`). No change to the generic `globalRoutes`
+  mechanism itself was needed; this is its second real user.
+- **Org-scoped Strategy list surface placed on `orgOverviewSections` (Org
+  Dashboard), not `orgAdminSections` (Org Management) (Decided by: Agent).**
+  Checked this module's own existing precedent first: Compliance puts
+  dashboards on `orgOverviewSections` and management/CRUD surfaces on its
+  own standalone nav tab; Decision Management puts its org-scoped template
+  *library* (an admin-configuration table) on `orgAdminSections`, reasoning
+  explicitly that "an org admin manages the template library on Org
+  Management, not the Org Dashboard." An org-scoped Strategy is org-level
+  *content* a Strategy Owner/Approver works with day to day (closer to
+  Compliance's dashboards than to a configuration table), so it landed on
+  Org Dashboard — see `OrgStrategiesPanel.tsx`'s own docstring for the full
+  reasoning and an explicit note to revisit if a later sub-phase's own
+  org/project-scoped artefact (Guiding Principle) suggests a different,
+  more consistent placement across all of this module's org-scoped surfaces.
+- **No quick-view `SidePanel` tier between the list and the full detail page
+  (Decided by: Agent) — a deliberate simplification from Decision
+  Management's own two-tier `DecisionQuickViewPanel` → `DecisionDetailPage`
+  shape.** Strategy has no equivalent of Decision's `unique_code` identity
+  rendered as a distinct clickable cell driving a separate quick-view panel;
+  a `DirectoryTable` row click navigates straight to `StrategyDetailPage`.
+  Still fully `docs/ux-style-guide.md`-compliant (a real routed page for an
+  entity whose detail carries a comment thread, attachments, a relationships
+  section, and several lifecycle actions each with their own `ConfirmDialog`
+  — the same "too much for a SidePanel" markers that page's own precedent
+  cites) — this only skips building a `StrategyQuickViewPanel` this phase's
+  own brief never asked for, not any part of the style guide's actual
+  criteria.
+- **Confirmation-tier scheme for lifecycle actions (Decided by: Agent),
+  following `docs/ux-style-guide.md`'s confirmation-tier principle rather
+  than copying Decision's exact action set 1:1 (Strategy's own lifecycle has
+  more states — seven vs. Decision's six):** `propose`/`submit-for-review`
+  are plain single-click buttons (low-risk, early-lifecycle, reversible via
+  `send-back`); `approve`/`activate`/`supersede`/`retire` each get a
+  `ConfirmDialog` with an optional comment field (meaningful state changes,
+  but not requiring justification); `send-back` gets a `ConfirmDialog` with
+  a **mandatory** comment (this module's "reject"-equivalent, mirroring
+  every other mandatory-comment-on-rejection rule in this codebase).
+- **Relationship-target pickers for `drives_requirement`/
+  `defines_future_state`/`requires_resolution_of_open_question` only offered
+  when the Strategy itself is project-scoped (Decided by: Agent).** All
+  three target project-scoped artefacts (Requirement always is; Future
+  State/Open Question have no frontend of their own yet, Phase 7.2/7.5) —
+  an org-scoped Strategy has no single project to search within for any of
+  the three. An org-scoped Strategy can still record `contributes_to_strategy`
+  (another Strategy in the same organisation) and a supersession, both
+  org-level concepts with no project to resolve. `Strategy -> informs ->
+  Decision` renders as present-but-reserved text (Phase 6's own reserved
+  relationship, not yet populatable from either side).
+- **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
+  (Decided by: Agent) — an explicit deviation from this phase's own brief,
+  not an oversight.** The brief suggested adding fixed persona/org/project
+  data to that script for the new Playwright spec. Checked the closest real
+  precedent first — `decision-lifecycle.spec.ts` (Decision Management's own
+  Phase 5 spec, a structurally identical "project-scoped artefact with its
+  own opt-in module toggle and a multi-step review lifecycle" case) — and
+  found it never touches that script either: it creates a disposable
+  org/admin/project via the API instead, suffixed with `Date.now()`, and
+  toggles the module on for that org specifically (necessary here too, since
+  Context & Strategy is also `default_enabled=False`). This spec follows
+  that same precedent rather than adding unused fixed fixture data to a
+  script that already has a working, more-idempotent alternative — CLAUDE.md's
+  own "prefer dynamically-named fixtures over mutating shared named seed
+  data" rule favours the disposable-org approach directly. `seed_demo_data.py`
+  needed no change (Phase 1 already seeded org- and project-scoped demo
+  Strategy content; this phase only adds UI to view/act on data that already
+  exists).
+- **`StrategyCommentsSection.tsx` is a near-duplicate of `modules/decisions/
+  DecisionCommentsSection.tsx`, not a shared core extraction (Decided by:
+  Agent).** Both exist because their respective `*Comment` types have no
+  reaction mechanism, unlike the shared `components/CommentThread.tsx`
+  (whose `onToggleReaction` prop is mandatory) — but a module never imports
+  from another module's own directory (CLAUDE.md's "Modular Feature System
+  Boundary": only a module's own files, plus the generic registry
+  infrastructure, may import from `modules/<key>/`), so a second, small,
+  near-identical copy is the correct outcome here, not a shortcut. Flagged
+  as a reasonable future core-extraction candidate (now duplicated exactly
+  twice) rather than done speculatively in this phase.
+- **A pre-existing, unrelated bug found and fixed incidentally: `modules/
+  decisions/ProjectDecisionsPage.stories.tsx`'s `SwitchToDecisionTypesTab`
+  story tested a "Decision Types" tab that no longer exists on that page
+  (Decided by: Agent, per this repo's "fix, don't defer" rule).** Decision
+  Types moved off `ProjectDecisionsPage.tsx`'s own tab bar to `ProjectAdminPage
+  .tsx`'s `projectAdminSections` back in that module's own Phase 9 (2026-09-22)
+  — that page has carried zero tab UI since, but this one story (testing for
+  `role="tab"`/`name: "Decision Types"`) was never updated or removed,
+  and had been silently failing the full Storybook/Vitest suite the whole
+  time (surfaced here only because this phase ran that full suite as part of
+  its own verification — see below). `DecisionTypesPanel.stories.tsx` already
+  covers that panel's own behaviour independently, so the stale story was
+  removed rather than rewritten to test something it was never meant to.
+
+**Omitted this phase, mirroring `modules/decisions/module.ts`'s own
+identical omissions and reasoning:** `globalNavItems`/`standaloneWorkspaces`/
+`projectOverviewTiles`/`orgAdminSections`/`requirementDetailSections`/
+`requirementLinkPickerTabs`/`entityAccentColor` — Strategy has no cross-org
+standalone entity of its own, no project-overview summary tile or
+admin-configuration table this phase's own scope calls for, and nothing yet
+renders a mixed list containing a Strategy row alongside other entity kinds.
+`docs/website/` was not touched — Phase 8 stays explicitly gated on all five
+Phase 7 sub-phases shipping, per this plan's own text above.
+
+**Tests:**
+- `backend/tests/test_module_frontend_integration.py`: 46 tests (6 new —
+  `ModuleNavEntry`/`additional_nav_entries` dataclass validation and
+  `all_nav_entries()` ordering, plus org- and project-scoped endpoint
+  round-trips proving every additional entry's `"{project_id}"` placeholder
+  is interpolated the same way the primary entry's already was).
+- `backend/app/modules/context_strategy/tests/test_context_strategy_api.py`:
+  +1 test (`test_frontend_manifest_registers_the_strategy_nav_entry`).
+- `frontend/src/modules/context_strategy/*.stories.tsx`: 6 files, 35
+  Storybook/Vitest stories (list pages, detail page across every lifecycle
+  status, form modal validation, comments, relationships including the
+  org-scoped "fewer kinds offered" case).
+- `tests/playwright/tests/modules/context_strategy/strategy-lifecycle.spec.ts`:
+  1 spec — disposable org/admin/project via the API, enables Context &
+  Strategy for that org, creates a project-scoped Strategy via the new
+  "Strategy" nav entry, and walks it `Draft -> Proposed -> Under review ->
+  Approved -> Active` on its own detail page, confirming the final status
+  back on the list.
+
+**Verified:**
+- `ruff check` clean on every new/changed backend file.
+- `npx tsc -b` clean across the whole frontend.
+- `npx eslint .` clean across the whole frontend (0 errors; the 5 new
+  `react-hooks/set-state-in-effect` warnings this phase's own `useEffect`
+  calls trigger match an existing, already-accepted repo-wide pattern —
+  `modules/decisions/ProjectDecisionsPage.tsx`/`DecisionTypesPanel.tsx`
+  trigger the identical warning already; 79 such warnings exist repo-wide
+  pre-this-phase, 0 of them errors, `npm run lint` exits 0).
+- `npx vitest run --project=storybook` (the full Storybook/Vitest suite, not
+  just this phase's own new files): **133 test files / 1051 tests, all
+  passing** — this run is what surfaced and confirmed the fix for the
+  pre-existing `ProjectDecisionsPage.stories.tsx` bug noted above (a bare
+  `git stash` of every core-file change this phase made, re-running the
+  exact same failing story, confirmed the failure pre-existed on `main`
+  and was not caused by this phase's own `Layout.tsx`/`api/types.ts` edits).
+- Backend containers rebuilt (`docker compose up -d --build backend
+  frontend`, per this repo's "Compose services don't bind-mount source"
+  convention) before any live-stack verification.
+- Full backend pytest suite run as a single invocation, per this repo's own
+  concurrency rule (host `.venv`, against `reqtrack_pytest_test`) — **1407
+  passed, 14 failed, in 36m02s**. All 14 failures are `test_invites_and_
+  external_users.py`/`test_oidc_provisioning.py`/`test_org_export_import.py`
+  cases hitting `aiosmtplib.errors.SMTPConnectError: ... connecting to
+  mailhog on port 1025` — this repo's own documented, pre-existing "host
+  pytest + mailhog DNS failures" class (host-level pytest resolves `mailhog`
+  differently than a container on the Compose network does; unrelated to
+  this phase and not part of the ~14-shape "DB wedge" family either). Every
+  new/changed test this phase added is among the 1407 passed.
+- `npx playwright test tests/modules/context_strategy/strategy-lifecycle.spec.ts
+  --no-deps` (run standalone, bypassing this suite's own `global-state-
+  mutators` → `default` project dependency — see the methodological note
+  below for why) against the freshly rebuilt live stack — **1 passed**, full
+  create → propose → submit-for-review → approve → activate flow, reached
+  through the new "Strategy" nav-rail entry end to end.
+
+**A methodological note on Playwright verification, and a pre-existing flake
+ruled out twice, not once:** an initial attempt to run the new spec through
+its normal `default` project (which `playwright.config.ts` makes depend on
+the `global-state-mutators` project completing first — see that file's own
+comment) produced widespread failures across *other*, pre-existing specs
+this phase never touched (org branding, org label, project hierarchy), each
+with the same "Sign out button never appears after login" symptom — this
+repo's own documented "tests/container DB wedge"/`playwright.config.ts`'s
+own documented "transient client-side connection stall in the test harness"
+flake family, not a real regression. Two independent checks confirmed this,
+not one: (1) the backend container's own access/error logs showed **no
+errors at all** for the affected requests, consistent with a client-side
+stall rather than a deterministic app bug; (2) re-running the exact same
+failing specs with every one of this phase's own frontend changes (`Layout
+.tsx`, `api/types.ts`) `git stash`-ed out reproduced the **identical**
+failures — ruling out this phase's own nav-rail-manifest work as the cause.
+A second re-run, *after* the full backend pytest suite had finished (so no
+concurrent load on the shared Postgres server at all), reproduced the exact
+same `global-state-mutators` failures a third time — ruling out concurrent
+pytest load as the cause too, and confirming this is a standing
+characteristic of this long-lived `tests/container` stack/environment, not
+something transient this session triggered. Because `default`'s
+`dependencies: ["global-state-mutators"]` means *any* failure in that
+project causes every `default`-project test — including this phase's own
+new spec, unconditionally, regardless of relevance — to be skipped rather
+than run, this phase's own spec was additionally verified standalone via
+`--no-deps` (above), which is the only way to get a real pass/fail signal
+for a new `default`-project spec while this pre-existing, already-documented
+flake stands unfixed. Not fixed as part of this phase: it affects four spec
+files this phase never touched, is already an acknowledged, accepted class
+of flake in this suite's own `playwright.config.ts` comments (`retries`
+there is deliberately CI-only, i.e. a local failure here is expected
+behaviour, not a bug report), and fixing it is well outside Phase 7.1's own
+scope (Strategy's frontend) — flagged here for visibility, not silently
+worked around.
 
 ## Phase 8 — Docs website coverage
 

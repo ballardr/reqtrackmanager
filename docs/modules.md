@@ -229,10 +229,14 @@ default/registry default and whether an override exists at that tier — not
 just a flat boolean — so the frontend can render the UX style guide's
 "platform-default override visibility" pattern ("using org default: X" vs.
 "overridden to: Y") once a consuming module has UI to show it. **Frontend
-deliberately deferred**: Context & Strategy, this mechanism's first real
-consumer, has no artefact UI of its own yet (its own later phase), so no
-settings surface was built speculatively ahead of a feature that needs it —
-see `docs/plans/module-00-platform-foundations-plan.md`'s Phase 4 section.
+still deferred as of Context & Strategy's own Phase 7.1 (Strategy artefact
+UI, 2026-09-29)**: that phase built the Strategy artefact's own list/
+detail/lifecycle UI, but not a settings surface for *this* sub-component-
+enablement mechanism itself (toggling individual artefact types like
+Strategy/Pain Points on or off per project/org) — no such surface was built
+speculatively ahead of a phase that actually needs it, and Phase 7.1's own
+brief didn't call for one either. See `docs/plans/module-00-platform-
+foundations-plan.md`'s Phase 4 section.
 
 ### 2b. Project-level override of whole-module enablement (Module 0 — Platform Foundations — Phase 5)
 

@@ -242,6 +242,20 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     allow_ai_approvals: bool = False
 
 
+class ManifestNavEntryOut(BaseModel):
+    """Wire shape of one `app.modules.registry.ModuleNavEntry` — one of a
+    Tier A module's `additional_nav_entries` (Module 1 — Context & Strategy
+    — Phase 7.1, 2026-09-29). `model_config`'s `from_attributes=True` lets
+    `ModuleFrontendManifestOut(**vars(manifest))` (below) construct this
+    list directly from the dataclass's own tuple of `ModuleNavEntry`
+    instances, without every call site needing to convert them by hand."""
+
+    model_config = {"from_attributes": True}
+
+    nav_label: str
+    nav_path: str
+
+
 class ModuleFrontendManifestOut(BaseModel):
     """Wire shape of `app.modules.registry.ModuleFrontendManifest` (module
     system Phase 3, extended with Tier C/`"federated"` in a same-system
@@ -260,6 +274,7 @@ class ModuleFrontendManifestOut(BaseModel):
     frame_url: str | None = None
     remote_entry_url: str | None = None
     exposed_module: str | None = None
+    additional_nav_entries: list[ManifestNavEntryOut] = []
 
 
 class OrgModuleOut(BaseModel):

@@ -1500,6 +1500,18 @@ export interface OrgAdvancedSettings {
  * `get_frontend_manifest` on the backend guarantees this tier only ever
  * appears for a module discovered through the third-party pipeline, never a
  * first-party one. */
+/** One of a Tier A module's extra nav-rail entries beyond its manifest's own
+ * primary `nav_label`/`nav_path` pair (`ModuleFrontendManifest.
+ * additional_nav_entries` below) — wire shape of the backend's `app.modules.
+ * registry.ModuleNavEntry`. Named `ManifestNavEntry`, not `ModuleNavEntry`,
+ * to avoid colliding with this file's own pre-existing `ModuleNavEntry`
+ * interface below (a different concept: "one currently-enabled module", as
+ * returned by `GET /projects/{id}/enabled-modules`). */
+export interface ManifestNavEntry {
+  nav_label: string;
+  nav_path: string;
+}
+
 export interface ModuleFrontendManifest {
   tier: "installed" | "remote" | "federated";
   nav_label: string;
@@ -1507,6 +1519,17 @@ export interface ModuleFrontendManifest {
   frame_url: string | null;
   remote_entry_url: string | null;
   exposed_module: string | null;
+  /** Zero or more further nav-rail entries beyond this manifest's own
+   * primary `nav_label`/`nav_path` pair (module system follow-up, Module 1
+   * — Context & Strategy — Phase 7.1, 2026-09-29) — see backend `app.
+   * modules.registry.ModuleFrontendManifest.additional_nav_entries`'s own
+   * docstring for the full rationale. Tier A ("installed") only; always
+   * empty for Tier B/C. Optional (rather than required) purely so existing
+   * hand-written fixtures in this codebase's own `.stories.tsx`/test files
+   * that predate this field don't all need updating — the real API always
+   * sends it (defaulted `[]` server-side). `Layout.tsx` reads it as
+   * `manifest.additional_nav_entries ?? []`. */
+  additional_nav_entries?: ManifestNavEntry[];
 }
 
 export interface OrgModule {

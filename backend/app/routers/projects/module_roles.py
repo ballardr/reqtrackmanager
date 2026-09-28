@@ -35,6 +35,7 @@ from app.modules.registry import (
     list_enabled_module_roles,
 )
 from app.schemas.org import (
+    ManifestNavEntryOut,
     ModuleFrameTokenOut,
     ModuleFrontendManifestOut,
     ModuleNavEntryOut,
@@ -160,6 +161,17 @@ def list_project_enabled_modules(
                 # ever contain that placeholder.
                 remote_entry_url=manifest.remote_entry_url,
                 exposed_module=manifest.exposed_module,
+                # additional_nav_entries (Module 1 — Context & Strategy —
+                # Phase 7.1): same "{project_id}" interpolation as nav_path
+                # itself — every one of a Tier A module's own multiple nav
+                # entries follows the same convention as its primary one.
+                additional_nav_entries=[
+                    ManifestNavEntryOut(
+                        nav_label=entry.nav_label,
+                        nav_path=entry.nav_path.replace("{project_id}", str(project_id)),
+                    )
+                    for entry in manifest.additional_nav_entries
+                ],
             )
         result.append(
             ModuleNavEntryOut(module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out)

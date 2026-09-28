@@ -277,6 +277,64 @@ class ModuleSubComponentDefinition:
 
 
 @dataclass(frozen=True)
+class ModuleNavEntry:
+    """One additional nav-rail entry a Tier A ("installed") module
+    contributes, beyond the single `nav_label`/`nav_path` pair every
+    `ModuleFrontendManifest` already carries (Module 0 — Platform
+    Foundations / Module 1 — Context & Strategy, Phase 7.1, 2026-09-29).
+
+    **Why this exists:** every module registered before Context & Strategy
+    (Compliance, Decision Management) only ever needed one project-scoped
+    nav-rail entry, so `ModuleFrontendManifest.nav_label`/`nav_path` was
+    sufficient on its own. Context & Strategy's own Phase 0 Q7 (`docs/
+    plans/module-01-context-and-strategy-plan.md`) requires **five**
+    separate top-level nav-rail entries — one per artefact type (Strategy,
+    Future State, Pain Point, Guiding Principle, Open Question) — not one
+    grouped entry with tabs, per the user's own explicit override of this
+    plan's original recommendation. Per this repo's own "Modular Feature
+    System Boundary" rule, a core mechanism a module needs *multiple*
+    values from must become a generic, registry-driven extension point
+    rather than a module-specific hack hardcoded into `Layout.tsx` — this
+    dataclass, plus `ModuleFrontendManifest.additional_nav_entries` below,
+    is that extension point.
+
+    **Design choice, Decided by: Agent:** rather than replacing `nav_label`/
+    `nav_path` with a single `nav_entries: tuple[ModuleNavEntry, ...]` list
+    (which would be more uniform), this instead *adds* an `additional_nav_
+    entries` field alongside the existing singular pair — so Compliance's
+    and Decision Management's own `module.py` files, which declare
+    `nav_label=`/`nav_path=` directly, need **zero** changes to keep working
+    (per this phase's own explicit backward-compatibility requirement). A
+    module needing more than one entry (Context & Strategy) treats its
+    *first* entry as the manifest's own primary `nav_label`/`nav_path`, and
+    declares the remaining four via `additional_nav_entries`. `all_nav_
+    entries` (below) gives any consumer the full, order-preserving list
+    without needing to know about this split.
+
+    Deliberately **Tier A ("installed") only** — `__post_init__` below
+    rejects a non-empty `additional_nav_entries` on any other tier. Tier B
+    ("remote") mounts exactly one `<ModuleFrame>` iframe at one `frame_url`,
+    and Tier C ("federated") loads exactly one Module Federation remote at
+    one `remote_entry_url`/`exposed_module` pair — supporting multiple nav
+    entries for either would mean re-architecting the iframe/federation
+    loading mechanism itself, which is out of this phase's scope and has no
+    real module asking for it yet. A Tier A module's own routing already
+    supports multiple routes natively (`TierAModuleDefinition.routes` on the
+    frontend, an array from day one), so only the nav-rail-rendering side
+    needed this extension.
+
+    Attributes:
+        nav_label: Display label for this nav-rail entry.
+        nav_path: The frontend route path this entry links to — same
+            `"{project_id}"`-placeholder convention as `ModuleFrontendManifest.
+            nav_path` (interpolated the same way, at the same call sites).
+    """
+
+    nav_label: str
+    nav_path: str
+
+
+@dataclass(frozen=True)
 class ModuleFrontendManifest:
     """Declares a module's frontend integration (compliance-module-plan.md
     Phase 3's two-tier frontend module system, extended with a third tier —
@@ -363,6 +421,17 @@ class ModuleFrontendManifest:
             remote publishes (e.g. `"./Module"`), `import()`-ed from the
             container the host dynamically loads from `remote_entry_url`.
             `None` for every other tier.
+        additional_nav_entries: Zero or more further `ModuleNavEntry` rows,
+            beyond this manifest's own primary `nav_label`/`nav_path` pair
+            (Module 1 — Context & Strategy — Phase 7.1, 2026-09-29) — see
+            `ModuleNavEntry`'s own docstring for the full rationale and the
+            "why add a field instead of replacing the pair" design note.
+            Empty by default, so every module declared before this phase
+            (Compliance, Decision Management) is unaffected. **Tier `
+            "installed"` only** — non-empty on any other tier raises in
+            `__post_init__` below. Use `all_nav_entries()` to read the full,
+            order-preserving list (primary entry first) without needing to
+            know about this split.
     """
 
     tier: Literal["installed", "remote", "federated"]
@@ -371,6 +440,7 @@ class ModuleFrontendManifest:
     frame_url: str | None = None
     remote_entry_url: str | None = None
     exposed_module: str | None = None
+    additional_nav_entries: tuple[ModuleNavEntry, ...] = ()
 
     def __post_init__(self) -> None:
         if self.tier == "remote":
@@ -380,6 +450,11 @@ class ModuleFrontendManifest:
                 raise ValueError(
                     "ModuleFrontendManifest: tier 'remote' must not set remote_entry_url/exposed_module "
                     "(those are Tier C 'federated'-only fields)."
+                )
+            if self.additional_nav_entries:
+                raise ValueError(
+                    "ModuleFrontendManifest: tier 'remote' must not set additional_nav_entries — a Tier B "
+                    "module mounts exactly one <ModuleFrame> iframe at one frame_url."
                 )
         elif self.tier == "installed":
             if self.frame_url or self.remote_entry_url or self.exposed_module:
@@ -397,6 +472,21 @@ class ModuleFrontendManifest:
                 raise ValueError(
                     "ModuleFrontendManifest: tier 'federated' requires both remote_entry_url and exposed_module."
                 )
+            if self.additional_nav_entries:
+                raise ValueError(
+                    "ModuleFrontendManifest: tier 'federated' must not set additional_nav_entries — a Tier C "
+                    "module loads exactly one Module Federation remote at one remote_entry_url/exposed_module."
+                )
+
+    def all_nav_entries(self) -> tuple[ModuleNavEntry, ...]:
+        """This manifest's full, order-preserving list of nav-rail entries —
+        its own primary `nav_label`/`nav_path` pair, followed by every
+        `additional_nav_entries` row (empty for every module declared before
+        Context & Strategy's own Phase 7.1). The one place that combines the
+        two so a consumer never needs to special-case "the first entry comes
+        from different fields than the rest."
+        """
+        return (ModuleNavEntry(nav_label=self.nav_label, nav_path=self.nav_path), *self.additional_nav_entries)
 
 
 @dataclass(frozen=True)
