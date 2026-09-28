@@ -68,6 +68,7 @@ from app.modules.context_strategy._shared import (
     require_future_state_approve_permission,
     require_future_state_manage_role,
     require_manage_role,
+    require_pain_point_type_admin_role,
     strategy_to_out,
 )
 from app.modules.context_strategy.enums import FutureStateScope, StrategyScope
@@ -76,6 +77,7 @@ from app.modules.context_strategy.models import (
     FutureStateComment,
     FutureStateCommentFile,
     FutureStateFile,
+    PainPointTypeDefinition,
     Strategy,
     StrategyComment,
     StrategyCommentFile,
@@ -90,6 +92,9 @@ from app.modules.context_strategy.schemas import (
     FutureStateTransitionRequest,
     FutureStateUpdate,
     FutureStateVersionOut,
+    PainPointTypeCreate,
+    PainPointTypeOut,
+    PainPointTypeUpdate,
     StrategyCommentCreate,
     StrategyCommentOut,
     StrategyCommentUpdate,
@@ -111,7 +116,9 @@ from app.modules.context_strategy.service import (
     archive_future_state,
     archive_strategy,
     create_future_state,
+    create_org_pain_point_type,
     create_strategy,
+    delete_org_pain_point_type,
     get_current_future_state_version,
     get_current_version,
     is_future_state_locked,
@@ -130,8 +137,10 @@ from app.modules.context_strategy.service import (
     unarchive_strategy,
 )
 from app.schemas.file import FileAssetOut
+from app.schemas.project import MoveDirection
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.ordering import move_ordered
 from app.services.rbac import require_org_subcomponent_enabled
 
 router = APIRouter(prefix="/api/v1/orgs/{organization_id}/modules/context_strategy", tags=["context-strategy-org"])
@@ -1006,4 +1015,125 @@ def unlink_org_future_state_file(
         delete_file(db, asset)
     log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state.id, action="file_unlinked",
               actor_id=current_user.id, organization_id=organization_id, detail={"file_id": str(file_id)})
+    db.commit()
+
+
+# =============================================================================
+# --- Pain Point types (Phase 3) ----------------------------------------------
+# =============================================================================
+#
+# Organisation-scoped `PainPointTypeDefinition` CRUD only (Phase 0 Q3's
+# shared base tier) — the Pain Point *artefact* itself is project-scoped
+# only (source overview §6) and lives entirely in `project_router.py`,
+# alongside the project-scoped `ProjectPainPointType` override/local-type
+# endpoints. Reads are gated by `require_org_subcomponent_enabled
+# ("context_strategy", "pain_point")` (any org member with the module and
+# this sub-component enabled may browse); mutations additionally require
+# the `pain_point_type_admin` module role (`_shared.require_pain_point_
+# type_admin_role`) — mirrors `modules.compliance.router.action_types`'
+# `_require_manage`/`_require_view` split, applied inline (per this
+# module's own "Depends for view, inline call for elevated role"
+# convention throughout `router.py`/`project_router.py`) rather than a
+# second `Depends` dependency.
+
+_require_pain_point_type_view = require_org_subcomponent_enabled("context_strategy", "pain_point")
+
+
+@router.post("/pain-point-types", response_model=PainPointTypeOut, status_code=status.HTTP_201_CREATED)
+def create_pain_point_type(
+    organization_id: UUID, payload: PainPointTypeCreate,
+    current_user: User = Depends(_require_pain_point_type_view), db: Session = Depends(get_db),
+):
+    """Creates a new organisation-scoped Pain Point type (§6.2 "Add types")."""
+    require_pain_point_type_admin_role(db, current_user, organization_id=organization_id)
+    try:
+        pain_point_type = create_org_pain_point_type(db, organization_id, payload.name)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id, detail={"name": pain_point_type.name})
+    db.commit()
+    db.refresh(pain_point_type)
+    return pain_point_type
+
+
+@router.get("/pain-point-types", response_model=list[PainPointTypeOut])
+def list_pain_point_types(
+    organization_id: UUID, current_user: User = Depends(_require_pain_point_type_view), db: Session = Depends(get_db),
+):
+    """Lists this organisation's Pain Point types, including inactive ones
+    (an org admin managing the vocabulary needs to see and re-activate a
+    disabled type, not just the active subset a project's effective list
+    resolves to)."""
+    return db.scalars(
+        select(PainPointTypeDefinition)
+        .where(PainPointTypeDefinition.organization_id == organization_id)
+        .order_by(PainPointTypeDefinition.sort_order)
+    ).all()
+
+
+@router.post("/pain-point-types/{pain_point_type_id}/move", response_model=PainPointTypeOut)
+def move_pain_point_type(
+    organization_id: UUID, pain_point_type_id: UUID, payload: MoveDirection,
+    current_user: User = Depends(_require_pain_point_type_view), db: Session = Depends(get_db),
+):
+    """Moves a Pain Point type up/down in display order (§6.2 "Reorder types")."""
+    require_pain_point_type_admin_role(db, current_user, organization_id=organization_id)
+    result = move_ordered(
+        db, PainPointTypeDefinition, [PainPointTypeDefinition.organization_id == organization_id],
+        pain_point_type_id, payload.direction,
+    )
+    log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type_id, action="reordered",
+              actor_id=current_user.id, organization_id=organization_id, detail={"direction": payload.direction})
+    db.commit()
+    return result
+
+
+@router.patch("/pain-point-types/{pain_point_type_id}", response_model=PainPointTypeOut)
+def update_pain_point_type(
+    organization_id: UUID, pain_point_type_id: UUID, payload: PainPointTypeUpdate,
+    current_user: User = Depends(_require_pain_point_type_view), db: Session = Depends(get_db),
+):
+    """Renames and/or activates/deactivates a Pain Point type (§6.2
+    "Rename types"/"Disable types"). Every `ProjectPainPointType.
+    org_type_id` reference points at this row's id, never its name, so
+    renaming has zero effect on existing project overrides."""
+    require_pain_point_type_admin_role(db, current_user, organization_id=organization_id)
+    pain_point_type = db.get(PainPointTypeDefinition, pain_point_type_id)
+    if pain_point_type is None or pain_point_type.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pain Point type not found.")
+    if payload.name is not None:
+        existing = db.scalar(
+            select(PainPointTypeDefinition.id).where(
+                PainPointTypeDefinition.organization_id == organization_id,
+                PainPointTypeDefinition.name == payload.name, PainPointTypeDefinition.id != pain_point_type_id,
+            )
+        )
+        if existing is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "A Pain Point type with this name already exists.")
+        pain_point_type.name = payload.name
+    if payload.is_active is not None:
+        pain_point_type.is_active = payload.is_active
+    log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type.id, action="updated",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    db.refresh(pain_point_type)
+    return pain_point_type
+
+
+@router.delete("/pain-point-types/{pain_point_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_pain_point_type(
+    organization_id: UUID, pain_point_type_id: UUID,
+    current_user: User = Depends(_require_pain_point_type_view), db: Session = Depends(get_db),
+):
+    """Deletes an organisation-scoped Pain Point type (§6.2 "Remove types
+    where no longer used") — 409s if any project still references it
+    (`service.delete_org_pain_point_type`'s own docstring)."""
+    require_pain_point_type_admin_role(db, current_user, organization_id=organization_id)
+    pain_point_type = db.get(PainPointTypeDefinition, pain_point_type_id)
+    if pain_point_type is None or pain_point_type.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pain Point type not found.")
+    apply_value_error_as_conflict(delete_org_pain_point_type, db, pain_point_type)
+    log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type_id, action="deleted",
+              actor_id=current_user.id, organization_id=organization_id)
     db.commit()

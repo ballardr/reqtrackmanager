@@ -18,6 +18,16 @@ independent artefact types owning two textually-identical vocabularies
 avoids one artefact's future divergence (e.g. Strategy someday gaining a
 scope Future State never needs) silently reaching into the other's
 column values.
+
+Phase 3 (Pain Points) adds `PainPointStatus` (a genuinely different,
+**branching** lifecycle shape — not a mirror of `StrategyStatus`'s linear
+chain, so there was no "reuse or not" question to answer the way Phase 2
+had for Future State) and `PainPointPriority`, kept as its own enum rather
+than a reuse of `StrategyPriority` (**Decided by: Agent**, by the same
+"two independent artefact types, two owned vocabularies" reasoning already
+applied to `FutureStateScope`/`FutureStateStatus` above — a future
+divergence in either artefact's own priority vocabulary should not require
+touching the other's).
 """
 
 from __future__ import annotations
@@ -106,6 +116,52 @@ class StrategyStatus(str, enum.Enum):
     ACTIVE = "active"
     SUPERSEDED = "superseded"
     RETIRED = "retired"
+
+
+class PainPointPriority(str, enum.Enum):
+    """A Pain Point's relative priority/significance (source overview §6.3
+    "Priority / significance") — its own enum, not a reuse of
+    `StrategyPriority` (see this module's own docstring for why). Same
+    three-value shape as `StrategyPriority` since nothing in either
+    artefact's own scope asks for a different granularity."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class PainPointStatus(str, enum.Enum):
+    """Lifecycle states for a `PainPoint` (source overview §6.4) —
+    deliberately a **branching**, not linear, lifecycle: `Submitted ->
+    Triaged -> {Rejected | Duplicate | Accepted -> Addressed -> Closed}`.
+    `TRIAGED` has three legal next states, not one (`service.
+    _PP_ALLOWED_TRANSITIONS`) — the only lifecycle in this module (so far)
+    where a single status column's legal-next-set has more than two
+    members, unlike `StrategyStatus`/`FutureStateStatus`'s linear-chain-
+    plus-terminal-branch shape (each state there has at most two legal
+    next states).
+
+    No version-history table backs this status (Phase 3's own scope, per
+    `docs/plans/module-01-context-and-strategy-plan.md`'s Phase 0 sign-off
+    text: "No version-history table is required for Pain Point") — a
+    `PainPoint` row is mutated in place, with every transition recorded via
+    `services.audit.log_event` (a plain audit trail), not a `PainPointVersion`
+    snapshot table. **Decided by: Agent** — the plan's own Phase 3 scope
+    text says no version-history table is required but doesn't explicitly
+    rule one in either; a full temporal version table exists in this module
+    only where Phase 0 Q4 explicitly asked for one (Strategy, Future State,
+    and — per that same resolution — Guiding Principle), and Pain Point was
+    not named there, so this follows the absence of that instruction rather
+    than adding an unrequested version table by analogy to its siblings.
+    """
+
+    SUBMITTED = "submitted"
+    TRIAGED = "triaged"
+    REJECTED = "rejected"
+    DUPLICATE = "duplicate"
+    ACCEPTED = "accepted"
+    ADDRESSED = "addressed"
+    CLOSED = "closed"
 
 
 class FutureStateScope(str, enum.Enum):

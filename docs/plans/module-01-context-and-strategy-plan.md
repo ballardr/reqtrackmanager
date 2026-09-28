@@ -16,7 +16,8 @@ Open Questions).
 **Status:** Phase 0 complete (2026-09-28, user sign-off obtained — see
 "Phase 0 resolutions" below). Phase 1 complete (2026-09-28 — see "Phase 1
 notes" below). Phase 2 (Future State) complete (2026-09-28 — see "Phase 2
-notes" below); Phase 3 (Pain Points) is next. First *content* module in
+notes" below). Phase 3 (Pain Points) complete (2026-09-28 — see "Phase 3
+notes" below); Phase 4 (Guiding Principles) is next. First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
 Access Control (core) to be picked up first in practice — both now shipped;
@@ -37,14 +38,14 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-3 / 9 phases complete.
+4 / 9 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: scope & open questions | [x] Complete (2026-09-28) |
 | 1 | Organisation & Project Strategy | [x] Complete (2026-09-28) |
 | 2 | Future State | [x] Complete (2026-09-28) |
-| 3 | Pain Points | [ ] Not started |
+| 3 | Pain Points | [x] Complete (2026-09-28) |
 | 4 | Guiding Principles | [ ] Not started |
 | 5 | Open Questions | [ ] Not started |
 | 6 | Cross-artefact relationships wired between all of the above (via Module 0) | [ ] Not started |
@@ -544,6 +545,242 @@ submit — §6.5) — this is explicit in the overview and should not be
 narrowed to a manager role, since "restricting creation to administrators
 would prevent the system from capturing problems discovered by ordinary
 users and operators" (§6.5's own stated reasoning).
+
+## Phase 3 notes (2026-09-28)
+
+Built the Pain Point artefact's full backend into the same
+`backend/app/modules/context_strategy/` package Phases 1-2 already
+established — data model, the branching lifecycle, RBAC, module-local
+comments/attachments, the Phase 0 Q3 two-tier type vocabulary (org-scoped
+`PainPointTypeDefinition` + project-scoped `ProjectPainPointType`) with its
+own CRUD on both tiers, and a working CRUD/lifecycle API. Unlike Strategy/
+Future State, Pain Point is **project-scoped only** — the plan's own scope
+text is explicit that only the *type vocabulary* has an org-level
+component (source overview §6), so `router.py` (org-scoped) gained only
+the `PainPointTypeDefinition` CRUD, not a Pain Point resource itself.
+
+**Files changed** (all existing Phase 1/2 files extended, plus one new
+migration and one new sibling test file, matching Phase 2's own "keep
+adding to the existing single large module-wide files" convention):
+`__init__.py`/`enums.py`/`models.py`/`service.py`/`_shared.py`/`schemas.py`
+(module docstrings updated, new `PainPoint*` symbols under distinct names
+from their `Strategy*`/`FutureState*` counterparts), `router.py` (new
+org-scoped `/pain-point-types` CRUD surface — `PainPointTypeDefinition`
+only, not Pain Point itself), `project_router.py` (new `/pain-points` and
+project-scoped `/pain-point-types` surfaces), `module.py`
+(`PAIN_POINT_ARTEFACT_TYPE` added to `artefact_types`, a new `"pain_point"`
+sub-component, a new `pain_point_manager` project-scoped role and a new
+`pain_point_type_admin` org-scoped role, `resolve_file_owner_project_id`
+now tries Strategy's resolution, then Future State's, then Pain Point's,
+and a new `on_org_created=_seed_org_defaults` hook seeding Market/User/
+Operator per organisation), `migrations/0052_pain_point_data_model.py`
+(six tables: `pain_point_type_definitions`, `project_pain_point_types`,
+`pain_points`, `pain_point_comments`, `pain_point_comment_files`,
+`pain_point_files`), and a new sibling test file,
+`tests/test_context_strategy_pain_point_api.py` (26 tests — see below).
+
+**Scope decisions, each a judgment call this phase had to make that the
+plan text didn't fully settle:**
+
+- **No `PainPointVersion` table (Decided by: Agent).** Unlike Strategy/
+  Future State (Phase 0 Q4's full version-history requirement) and the
+  plan's own forward reference for Guiding Principle, Phase 3's own scope
+  text names no version table for Pain Point, and the source overview
+  gives no reason to add one unrequested. `PainPoint` is a single mutable
+  row; every content change (including a lifecycle transition) is a plain
+  in-place `UPDATE` recorded via `services.audit.log_event` only — an
+  audit trail, not a content snapshot. See `enums.PainPointStatus`'s own
+  docstring for the full reasoning and `models.py`'s docstring for the
+  structural consequence (no identity/version split at all).
+- **`PainPointPriority` as its own enum, not a reuse of `StrategyPriority`
+  (Decided by: Agent).** Same "two independent artefact types, two owned
+  vocabularies" reasoning Phase 2 already applied to
+  `FutureStateScope`/`FutureStateStatus` — see `enums.py`'s own module
+  docstring.
+- **`PainPointStatus`'s branching state machine, same dict-of-frozensets
+  mechanism as `_ALLOWED_TRANSITIONS`/`_FS_ALLOWED_TRANSITIONS`, not a new
+  one (Decided by: Agent, following the brief's own instruction).**
+  `_PP_ALLOWED_TRANSITIONS[TRIAGED]` simply has three members instead of
+  one or two — the mechanism itself didn't need to change to express a
+  branch, only its data.
+- **Pain Point's type reference always resolves through
+  `ProjectPainPointType`, never directly to `PainPointTypeDefinition`
+  (Decided by: Agent).** `PainPoint.pain_point_type_id` is a NOT NULL FK to
+  `ProjectPainPointType.id` only. Considered a dual-nullable-FK design
+  mirroring the `scope`/`organization_id`/`project_id` discriminator
+  pattern Strategy/Future State already use twice in this module, but
+  rejected it: an org type referenced by *both* a `ProjectPainPointType`
+  override row *and* directly by a `PainPoint` row would need two
+  independent reference sets tracked and reconciled on org-type deletion,
+  materially more complex than a single FK target. Instead, selecting an
+  org type with no existing project override lazily materializes a
+  "no override yet" passthrough `ProjectPainPointType` row the first time
+  it is actually used (`service.get_or_create_project_pain_point_type`) —
+  `resolve_effective_pain_point_types` itself (the read path a type picker
+  calls) never writes, only creation/update (the two write paths that
+  actually need a concrete row to point at) do.
+- **Org type deletion blocks outright rather than reassigning (Decided by:
+  Agent), unlike `RequirementLinkTypeDefinition`/`ActionTypeDefinition`'s
+  `services.definitions.delete_definition_with_reassignment`.** An org
+  type may be referenced (via `ProjectPainPointType.org_type_id`) by
+  override rows across many projects at once, with no single
+  obviously-correct cross-project reassignment target the way a
+  same-scope reassignment has. `service.delete_org_pain_point_type` 409s
+  while any project still references the type; disabling it
+  (`is_active=False`) is the recommended path for "retire this type
+  without breaking existing references." Project-scoped type deletion
+  (`service.delete_project_pain_point_type`) also has no reassignment —
+  blocked outright if any `PainPoint` still references it, since a Pain
+  Point's own `pain_point_type_id` is NOT NULL and this phase's scope
+  doesn't call for building single-project reassignment machinery
+  `RequirementLinkTypeDefinition`/`ActionTypeDefinition` already have
+  elsewhere for a first pass.
+- **`PainPointTypeDefinition.sort_order`, not `display_order` (Decided by:
+  Agent, found and fixed during this phase's own verification pass, not
+  shipped as a known bug).** First written as `display_order` for
+  readability, then caught by the org-scoped reorder endpoint's own test
+  (`services.ordering.move_ordered` reads a fixed `model.sort_order`
+  attribute name, matching `ProjectStatusDefinition`/
+  `RequirementLinkTypeDefinition`/`ActionTypeDefinition`'s own column name)
+  — renamed to `sort_order` to reuse that existing helper rather than
+  forking it or renaming its parameter, per CLAUDE.md's "reuse existing
+  helpers" instruction. `ProjectPainPointType.display_order_override` (a
+  different column, never passed to `move_ordered`) keeps its own name.
+- **RBAC: one elevated role, not an owner/approver pair (Decided by:
+  Agent, following directly from source overview §6.5's own wording).**
+  §6.5 names one "Pain Point Manager / Project Manager" role, not two
+  tiers the way Strategy/Future State's Owner+Approver split already
+  covers — so `pain_point_manager` (project-scoped only; Pain Point has no
+  org scope) gates both type-vocabulary CRUD/content edits
+  (`_shared.require_pain_point_manage_role`, flat-role-only, mirroring
+  `require_manage_role`) and the "decide"-tier lifecycle transitions
+  (`_shared.require_pain_point_decide_permission`, which additionally
+  accepts a Fine-Grained Access Control custom-role grant of the unscoped
+  `(pain_point, approve_baseline)` atom, mirroring `require_approve_
+  permission`).
+- **A second, org-scoped `pain_point_type_admin` module role for
+  `PainPointTypeDefinition` CRUD, not core `OrgRole.ORG_ADMIN` directly
+  (Decided by: Agent).** Checked precedent first, per this phase's own
+  brief: `RequirementLinkTypeDefinition` (a *core*-owned table) is
+  org-admin-gated directly via `require_org_role(OrgRole.ORG_ADMIN)`
+  (`routers.orgs.taxonomies`), but `PainPointTypeDefinition` is
+  module-owned — gating it with a module-contributed role
+  (`require_module_role("context_strategy", "pain_point_type_admin")`,
+  composing with `OrgRole.ORG_ADMIN` automatically via `user_satisfies_
+  module_role`, same as `modules.compliance`'s `compliance_manager`) keeps
+  the RBAC-declaration boundary aligned with the data-ownership boundary,
+  rather than reaching into a core role directly from a module's own
+  admin surface.
+- **Direct content edit (`PUT`) is manager-only, not creator-or-manager
+  (Decided by: Agent) — a deliberate divergence from Strategy's own
+  `_require_creator_or_manage` pattern for its propose-tier action.**
+  Source overview §6.5 enumerates the broad-creation-model capabilities
+  explicitly (create/submit, comment, add evidence, suggest links) and
+  does not include "edit submitted content" — so a Pain Point's creator
+  gets exactly those, not a standing edit right, and `update_pain_point`/
+  the `PUT` endpoint stay `pain_point_manager`-gated like every other
+  manage-tier action in this module.
+- **Direct file upload ("evidence") is deliberately open to any project
+  member, not manager-gated (Decided by: Agent) — the one endpoint in
+  this phase that is *broader* than its Strategy/Future State
+  counterpart, not narrower.** §6.5 explicitly lists "Add evidence" among
+  the broad-creation-model capabilities, unlike Strategy's/Future State's
+  owner-gated `upload_project_strategy_file`/`upload_project_future_
+  state_file`. Removing an attached file stays manager-gated (asymmetric
+  add-broad/remove-restricted, a defensible common pattern — broad
+  *adding* of evidence does not imply broad *removal* of evidence someone
+  else added).
+- **Content lock covers only the three true terminal states (`REJECTED`/
+  `DUPLICATE`/`CLOSED`), not `ACCEPTED`/`ADDRESSED` too (Decided by:
+  Agent) — deliberately narrower than Strategy's `LOCKED_STATUSES` (which
+  locks at `APPROVED` and everything after).** A `pain_point_manager` may
+  legitimately need to reassign `owner_id` or adjust `priority` while work
+  is genuinely in progress (`ACCEPTED`/`ADDRESSED`), not only before
+  triage — see `service.PAIN_POINT_LOCKED_STATUSES`'s own docstring.
+- **"Merge duplicates" (§6.5) implemented as a plain status transition
+  only, per the brief's own instruction — no dedicated merge endpoint and
+  no `ArtefactLink` to the canonical Pain Point yet (Decided by: Agent,
+  following the brief directly, not a new judgment call).** The mandatory
+  comment on `mark-duplicate` is where the canonical Pain Point is noted
+  in free text until Phase 6 wires the real relationship — `seed_demo_
+  data.py`'s own duplicate Pain Point does exactly this (see below).
+- **`date_identified` defaults to today server-side when omitted (Decided
+  by: Agent).** The only field on this artefact this module defaults
+  server-side rather than requiring explicitly, to lower the friction of
+  a quick problem report from an ordinary member consistent with §6.5's
+  broad-creation intent — every other field is required at creation, same
+  as Strategy/Future State's own required fields.
+- **Nested-projects fallback check (per `CLAUDE.md`'s "Nested (Hierarchical)
+  Projects" rule), Decided by: Agent — no new fallback logic needed,
+  confirming Phase 0 Q3's own note rather than re-deciding it.** Phase 0's
+  own Q3 resolution already reasoned through this: an empty
+  `ProjectPainPointType` table means "use org defaults as-is," a
+  self-contained empty-state reading that needs no
+  `resolve_effective_action_types`-style parent/child project walk, since
+  the org table (not a parent project's table) is already the always-
+  present base every project sees identically regardless of nesting.
+  Re-confirmed against the actual implementation: `resolve_effective_
+  pain_point_types` reads only `project_id`'s own `ProjectPainPointType`
+  rows plus the org's `PainPointTypeDefinition` rows, no project-hierarchy
+  walk anywhere in it.
+- **`seed_e2e_dataset.py` deliberately left untouched (Decided by:
+  Agent), matching Phase 1/2's own precedent exactly** — this module still
+  has no frontend (Phase 7). `seed_demo_data.py` **was** updated (below).
+
+**`seed_demo_data.py` changes:** added `list_effective_pain_point_types`/
+`create_pain_point`/`triage_pain_point`/`accept_pain_point`/`address_
+pain_point`/`reject_pain_point`/`mark_pain_point_duplicate` helpers and
+three seeded Pain Points on the existing Falcon-3 demo project, one per
+branch outcome: an Operator-type report-delay problem walked
+`Submitted -> Triaged -> Accepted -> Addressed`, a Market-type competitive-
+pricing problem walked to `Rejected` (with a reasoned rejection comment
+tracing back to the Falcon-3 Strategy seeded in Phase 1), and a second,
+independently-reported Operator-type problem walked to `Duplicate` (its
+mandatory comment names the canonical accepted Pain Point by title and id,
+standing in for the real `ArtefactLink` Phase 6 will add) — ran the full
+script end-to-end against the live dev/test stack to confirm it actually
+works.
+
+**Tests:** `backend/app/modules/context_strategy/tests/
+test_context_strategy_pain_point_api.py`, 26 tests — org default type
+seeding on org creation (Market/User/Operator), org type admin CRUD
+(create/rename/move/delete) and its RBAC (plain org member 403s), org type
+delete blocked while referenced by a project (409), project-level type
+override (rename/disable an org type, verified in the effective list) and
+project-local type creation, a disabled type rejected at Pain Point
+creation (400), plain-project-member-cannot-manage-project-types (403),
+project-local type delete blocked while in use (409) and successful once
+unused, create/get, any-project-member-may-create (§6.5's broad-creation
+model), plain-member-cannot-update (403) vs. manager-can-update, the full
+`Accepted -> Addressed -> Closed` branch, `Rejected`/`Duplicate` both
+requiring a mandatory comment (400 without one), an illegal-transition 409,
+plain-member-cannot-triage (403) vs. `pain_point_manager`-role-can-triage,
+a custom-role `(pain_point, approve_baseline)` grant satisfying the decide
+gate, disabled-module-404 and disabled-`pain_point`-subcomponent-404,
+cross-project 404 isolation, comment add/list/author-only-edit, and the
+deliberately-broad any-member evidence-file upload plus its lock check
+once a Pain Point reaches a terminal outcome.
+
+**Verified:** `ruff check` clean on every new/changed file. Full backend
+pytest suite green (single invocation, per this repo's own concurrency
+rule) — **1355 passed, 0 failed**, run against the already-running
+`tests/container` stack (`mailhog`/`keycloak` both up, so none of the
+previously-known mailhog-DNS failures either). `test_schema_migrations_match_
+models.py` (the model/migration drift guard) green — migration 0052
+replays cleanly alongside 0001-0051. Rebuilt the backend container before
+testing against the live stack (Compose services don't bind-mount source —
+this caught a bug: a first pytest run inside the *stale* container passed
+all 36 pre-existing tests but silently skipped collecting the new Pain
+Point test file entirely, since the file didn't exist inside that image
+yet; rebuilding surfaced it, at which point it also caught the real
+`sort_order`/`display_order` bug above). `seed_demo_data.py` run
+end-to-end against a freshly reset dev/test stack (`docker compose down -v
+&& up -d --build`, needed since the pre-existing "Solstice Robotics" demo
+org would otherwise short-circuit the idempotent-skip guard, the same
+reset Phase 2's own verification needed) — the three new Pain Point rows
+independently confirmed via direct SQL (all three walked to their intended
+terminal-or-in-progress status, `pain_point_type_id` resolving through
+`project_pain_point_types` to the correct org type name in each case).
 
 ## Phase 4 — Guiding Principles
 

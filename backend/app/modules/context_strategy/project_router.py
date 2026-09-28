@@ -15,6 +15,29 @@ project-scoped Future State's file attachments resolve through this
 module's own `resolve_file_owner_project_id` hook (`module.py` ->
 `service.resolve_future_state_file_project_id`), the same as Strategy's.
 
+Phase 3 adds Pain Points, at `/pain-points`, plus their own two-tier type
+vocabulary's project-scoped half at `/pain-point-types` (Phase 0 Q3 —
+the org-scoped half, `PainPointTypeDefinition` CRUD, lives in `router.py`
+instead, since Pain Point's *type vocabulary* has an org-level component
+even though the Pain Point *artefact* does not). Gated by `require_
+project_subcomponent_enabled("context_strategy", "pain_point")`
+(`_require_pain_point_view`) for reads/creation — deliberately **broader**
+than Strategy/Future State's own gate for one specific action: source
+overview §6.5 explicitly grants "Add evidence" to any project member, so
+(unlike `upload_project_strategy_file`, owner-gated) `upload_project_pain_
+point_file` uses `_require_pain_point_view` alone, no `pain_point_manager`
+role required — see that endpoint's own docstring. Direct content edits
+(`PUT`), archive, type-vocabulary CRUD, and the "decide"-tier lifecycle
+transitions (triage/reject/mark-duplicate/accept/address/close) are gated
+by `_shared.require_pain_point_manage_role`/`require_pain_point_decide_
+permission` — see those functions' own docstrings for the manage-vs-decide
+split (Pain Point has only one elevated role, unlike Strategy/Future
+State's owner+approver pair). A project-scoped Pain Point's file
+attachments resolve through this module's own `resolve_file_owner_
+project_id` hook (`module.py` -> `service.resolve_pain_point_file_
+project_id`) — there is no org-scoped Pain Point file branch to contrast
+with, since Pain Point itself has no org scope at all.
+
 RBAC: reads/creation are gated by `require_project_subcomponent_enabled
 ("context_strategy", "strategy")` (`_require_view`) — any project member
 with the module *and* this sub-component enabled may browse and propose a
@@ -60,11 +83,15 @@ from app.modules.context_strategy._shared import (
     apply_value_error_as_conflict,
     future_state_to_out,
     get_future_state_in_scope,
+    get_pain_point_in_scope,
     get_strategy_in_scope,
+    pain_point_to_out,
     require_approve_permission,
     require_future_state_approve_permission,
     require_future_state_manage_role,
     require_manage_role,
+    require_pain_point_decide_permission,
+    require_pain_point_manage_role,
     strategy_to_out,
 )
 from app.modules.context_strategy.enums import FutureStateScope, StrategyScope
@@ -73,12 +100,18 @@ from app.modules.context_strategy.models import (
     FutureStateComment,
     FutureStateCommentFile,
     FutureStateFile,
+    PainPoint,
+    PainPointComment,
+    PainPointCommentFile,
+    PainPointFile,
+    ProjectPainPointType,
     Strategy,
     StrategyComment,
     StrategyCommentFile,
     StrategyFile,
 )
 from app.modules.context_strategy.schemas import (
+    EffectivePainPointTypeOut,
     FutureStateCommentCreate,
     FutureStateCommentOut,
     FutureStateCommentUpdate,
@@ -87,6 +120,16 @@ from app.modules.context_strategy.schemas import (
     FutureStateTransitionRequest,
     FutureStateUpdate,
     FutureStateVersionOut,
+    PainPointCommentCreate,
+    PainPointCommentOut,
+    PainPointCommentUpdate,
+    PainPointCreate,
+    PainPointOut,
+    PainPointTransitionRequest,
+    PainPointUpdate,
+    ProjectPainPointTypeCreate,
+    ProjectPainPointTypeOut,
+    ProjectPainPointTypeOverrideUpdate,
     StrategyCommentCreate,
     StrategyCommentOut,
     StrategyCommentUpdate,
@@ -98,33 +141,50 @@ from app.modules.context_strategy.schemas import (
 )
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
+    PAIN_POINT_ARTEFACT_TYPE,
     STRATEGY_ARTEFACT_TYPE,
+    accept_pain_point,
     activate_future_state,
     activate_strategy,
+    address_pain_point,
     apply_future_state_new_version,
     apply_new_version,
     approve_future_state,
     approve_strategy,
     archive_future_state,
+    archive_pain_point,
     archive_strategy,
+    close_pain_point,
     create_future_state,
+    create_pain_point,
+    create_project_local_pain_point_type,
     create_strategy,
+    delete_project_pain_point_type,
     get_current_future_state_version,
     get_current_version,
+    get_or_create_project_pain_point_type,
     is_future_state_locked,
     is_locked,
+    is_pain_point_locked,
+    mark_pain_point_duplicate,
     propose_future_state,
     propose_strategy,
+    reject_pain_point,
+    resolve_effective_pain_point_types,
     retire_future_state,
     retire_strategy,
     send_future_state_back_to_draft,
     send_strategy_back_to_draft,
+    set_project_pain_point_type_override,
     submit_future_state_for_review,
     submit_strategy_for_review,
     supersede_future_state,
     supersede_strategy,
+    triage_pain_point,
     unarchive_future_state,
+    unarchive_pain_point,
     unarchive_strategy,
+    update_pain_point,
 )
 from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
@@ -138,6 +198,8 @@ _require_view = require_project_subcomponent_enabled("context_strategy", "strate
 
 _FS_SCOPE = FutureStateScope.PROJECT
 _require_future_state_view = require_project_subcomponent_enabled("context_strategy", "future_state")
+
+_require_pain_point_view = require_project_subcomponent_enabled("context_strategy", "pain_point")
 
 
 def _get_strategy(db: Session, project_id: UUID, strategy_id: UUID) -> Strategy:
@@ -1048,5 +1110,534 @@ def unlink_project_future_state_file(
     if asset is not None:
         delete_file(db, asset)
     log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state.id, action="file_unlinked",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
+    db.commit()
+
+
+# =============================================================================
+# --- Pain Points (Phase 3) ---------------------------------------------------
+# =============================================================================
+
+
+def _get_pain_point(db: Session, project_id: UUID, pain_point_id: UUID) -> PainPoint:
+    return get_pain_point_in_scope(db, project_id=project_id, pain_point_id=pain_point_id)
+
+
+def _get_project_pain_point_type(db: Session, project_id: UUID, project_pain_point_type_id: UUID) -> ProjectPainPointType:
+    row = db.get(ProjectPainPointType, project_pain_point_type_id)
+    if row is None or row.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pain Point type not found.")
+    return row
+
+
+# --- Pain Point type vocabulary (project-scoped half, Phase 0 Q3) -----------
+
+
+@router.get("/pain-point-types", response_model=list[EffectivePainPointTypeOut])
+def list_project_pain_point_types(
+    project_id: UUID, current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Lists this project's *effective* Pain Point type list — every active
+    org type (its own project override's name/order/enabled state, if any)
+    plus every project-local type (`service.resolve_effective_pain_point_types`).
+    Open to any project member with the module+sub-component enabled — a
+    plain member submitting a Pain Point needs this to populate a type
+    picker, same reasoning as `list_action_types`' own "not manage-only"
+    read."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return resolve_effective_pain_point_types(db, project_id, project.organization_id)
+
+
+@router.post("/pain-point-types", response_model=ProjectPainPointTypeOut, status_code=status.HTTP_201_CREATED)
+def create_project_local_pain_point_type_endpoint(
+    project_id: UUID, payload: ProjectPainPointTypeCreate,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Creates a fully project-local Pain Point type (§6.2 "Add types") —
+    manager-gated, matching "project administrators should be able to
+    add/rename/reorder/disable/remove types."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    try:
+        local_type = create_project_local_pain_point_type(
+            db, project_id, payload.name, display_order=payload.display_order,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    log_event(db, entity_type="project_pain_point_type", entity_id=local_type.id, action="created",
+              actor_id=current_user.id, project_id=project_id, detail={"name": payload.name})
+    db.commit()
+    db.refresh(local_type)
+    return local_type
+
+
+@router.put("/pain-point-types/{type_ref_id}", response_model=ProjectPainPointTypeOut)
+def override_project_pain_point_type(
+    project_id: UUID, type_ref_id: UUID, payload: ProjectPainPointTypeOverrideUpdate,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Applies a partial override to a Pain Point type in this project —
+    `type_ref_id` is an `EffectivePainPointTypeOut.id` (see that schema's
+    own docstring): an org type with no override yet gets one created the
+    first time this is called (`get_or_create_project_pain_point_type`);
+    an existing override row or project-local row is updated in place.
+    Manager-gated — §6.2 "Rename types"/"Reorder types"/"Disable types"."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    try:
+        row = get_or_create_project_pain_point_type(db, project_id, project.organization_id, type_ref_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    set_project_pain_point_type_override(
+        db, row, name=payload.name, display_order=payload.display_order, is_enabled=payload.is_enabled,
+    )
+    log_event(db, entity_type="project_pain_point_type", entity_id=row.id, action="updated",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/pain-point-types/{project_pain_point_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project_pain_point_type_endpoint(
+    project_id: UUID, project_pain_point_type_id: UUID,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Deletes a `ProjectPainPointType` row (§6.2 "Remove types where no
+    longer used") — for an org-backed override, this simply reverts to the
+    plain org default; for a project-local type, this genuinely removes it.
+    409s if any Pain Point still references it (`service.delete_project_
+    pain_point_type`'s own docstring)."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    row = _get_project_pain_point_type(db, project_id, project_pain_point_type_id)
+    apply_value_error_as_conflict(delete_project_pain_point_type, db, row)
+    log_event(db, entity_type="project_pain_point_type", entity_id=project_pain_point_type_id, action="deleted",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+
+
+# --- Pain Point CRUD -----------------------------------------------------------
+
+
+@router.post("/pain-points", response_model=PainPointOut, status_code=status.HTTP_201_CREATED)
+def create_project_pain_point(
+    project_id: UUID, payload: PainPointCreate,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Creates a Pain Point in `SUBMITTED` status. Any project member with
+    the module enabled may create one — no `pain_point_manager` grant
+    required (§6.5's broad-creation model: "restricting creation to
+    administrators would prevent the system from capturing problems
+    discovered by ordinary users and operators")."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    try:
+        pain_point_type = get_or_create_project_pain_point_type(
+            db, project_id, project.organization_id, payload.pain_point_type_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    if not pain_point_type.is_enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This Pain Point type is disabled for this project.")
+    pain_point = create_pain_point(
+        db, project_id=project_id, pain_point_type=pain_point_type, creator=current_user, title=payload.title,
+        description=payload.description, source=payload.source, impact=payload.impact, evidence=payload.evidence,
+        priority=payload.priority, date_identified=payload.date_identified,
+    )
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="created",
+              actor_id=current_user.id, project_id=project_id, detail={"title": payload.title})
+    db.commit()
+    db.refresh(pain_point)
+    return pain_point_to_out(db, pain_point)
+
+
+@router.get("/pain-points", response_model=list[PainPointOut])
+def list_project_pain_points(
+    project_id: UUID, include_archived: bool = False,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    query = select(PainPoint).where(PainPoint.project_id == project_id)
+    if not include_archived:
+        query = query.where(PainPoint.is_archived.is_(False))
+    pain_points = db.scalars(query.order_by(PainPoint.created_at)).all()
+    return [pain_point_to_out(db, p) for p in pain_points]
+
+
+@router.get("/pain-points/{pain_point_id}", response_model=PainPointOut)
+def get_project_pain_point(
+    project_id: UUID, pain_point_id: UUID,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    return pain_point_to_out(db, pain_point)
+
+
+@router.put("/pain-points/{pain_point_id}", response_model=PainPointOut)
+def update_project_pain_point(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointUpdate,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Direct edit of a Pain Point's content, including classification/
+    priority/owner (§6.5's manager-tier "Change classification"/"Set
+    priority"/"Assign owner"). Manager-only (`_shared.require_pain_point_
+    manage_role`) — see this module's own docstring for why Pain Point's
+    broad-creation model does not extend to a standing creator edit right.
+    409s once the Pain Point has reached a terminal outcome (`service.
+    PAIN_POINT_LOCKED_STATUSES`)."""
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    if is_pain_point_locked(pain_point):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This Pain Point has reached a terminal outcome; its content can no longer be edited.",
+        )
+    try:
+        pain_point_type = get_or_create_project_pain_point_type(
+            db, project_id, project.organization_id, payload.pain_point_type_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    update_pain_point(
+        db, pain_point, pain_point_type=pain_point_type, title=payload.title, description=payload.description,
+        source=payload.source, impact=payload.impact, evidence=payload.evidence, priority=payload.priority,
+        owner_id=payload.owner_id, owner_id_explicitly_set=True, date_identified=payload.date_identified,
+    )
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="updated",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+@router.post("/pain-points/{pain_point_id}/archive", response_model=PainPointOut)
+def archive_project_pain_point(
+    project_id: UUID, pain_point_id: UUID,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    if pain_point.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This Pain Point is already archived.")
+    archive_pain_point(db, pain_point, current_user)
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="archived",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+@router.post("/pain-points/{pain_point_id}/unarchive", response_model=PainPointOut)
+def unarchive_project_pain_point(
+    project_id: UUID, pain_point_id: UUID,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    if not pain_point.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This Pain Point is not archived.")
+    unarchive_pain_point(db, pain_point)
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="unarchived",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+# --- Pain Point lifecycle (branching) -----------------------------------------
+
+
+@router.post("/pain-points/{pain_point_id}/triage", response_model=PainPointOut)
+def triage_project_pain_point(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    apply_value_error_as_conflict(triage_pain_point, db, pain_point, current_user, comment=payload.comment)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+@router.post("/pain-points/{pain_point_id}/reject", response_model=PainPointOut)
+def reject_project_pain_point(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """`TRIAGED` -> `REJECTED`. A comment is required."""
+    if not (payload.comment or "").strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to reject a Pain Point.")
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    apply_value_error_as_conflict(reject_pain_point, db, pain_point, current_user, comment=payload.comment)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+@router.post("/pain-points/{pain_point_id}/mark-duplicate", response_model=PainPointOut)
+def mark_project_pain_point_duplicate(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """`TRIAGED` -> `DUPLICATE`. A comment is required (`service.mark_
+    pain_point_duplicate`'s own docstring — this is also where the
+    canonical Pain Point is noted, pending Phase 6's real link)."""
+    if not (payload.comment or "").strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to mark a Pain Point as a duplicate.")
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    apply_value_error_as_conflict(mark_pain_point_duplicate, db, pain_point, current_user, comment=payload.comment)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+@router.post("/pain-points/{pain_point_id}/accept", response_model=PainPointOut)
+def accept_project_pain_point(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    apply_value_error_as_conflict(accept_pain_point, db, pain_point, current_user, comment=payload.comment)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+@router.post("/pain-points/{pain_point_id}/address", response_model=PainPointOut)
+def address_project_pain_point(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    apply_value_error_as_conflict(address_pain_point, db, pain_point, current_user, comment=payload.comment)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+@router.post("/pain-points/{pain_point_id}/close", response_model=PainPointOut)
+def close_project_pain_point(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    apply_value_error_as_conflict(close_pain_point, db, pain_point, current_user, comment=payload.comment)
+    db.commit()
+    return pain_point_to_out(db, pain_point)
+
+
+# --- Pain Point comments -------------------------------------------------------
+
+
+def _pp_comment_to_out(db: Session, comment: PainPointComment) -> PainPointCommentOut:
+    author = db.get(User, comment.author_id)
+    attachments = db.scalars(
+        select(FileAsset)
+        .join(PainPointCommentFile, PainPointCommentFile.file_id == FileAsset.id)
+        .where(PainPointCommentFile.comment_id == comment.id)
+    ).all()
+    return PainPointCommentOut(
+        id=comment.id, pain_point_id=comment.pain_point_id, author_id=comment.author_id,
+        author_display_name=author.display_name if author is not None else "Unknown user",
+        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
+        attachments=[FileAssetOut.model_validate(a) for a in attachments],
+    )
+
+
+@router.post(
+    "/pain-points/{pain_point_id}/comments", response_model=PainPointCommentOut, status_code=status.HTTP_201_CREATED,
+)
+def add_project_pain_point_comment(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointCommentCreate,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Any project member with the module enabled may comment (§6.5)."""
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    comment = PainPointComment(pain_point_id=pain_point.id, author_id=current_user.id, body=payload.body)
+    db.add(comment)
+    db.flush()
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="comment_added",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
+    db.commit()
+    db.refresh(comment)
+    return _pp_comment_to_out(db, comment)
+
+
+@router.get("/pain-points/{pain_point_id}/comments", response_model=list[PainPointCommentOut])
+def list_project_pain_point_comments(
+    project_id: UUID, pain_point_id: UUID,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    comments = db.scalars(
+        select(PainPointComment).where(PainPointComment.pain_point_id == pain_point.id)
+        .order_by(PainPointComment.created_at)
+    ).all()
+    return [_pp_comment_to_out(db, c) for c in comments]
+
+
+@router.patch("/pain-points/{pain_point_id}/comments/{comment_id}", response_model=PainPointCommentOut)
+def edit_project_pain_point_comment(
+    project_id: UUID, pain_point_id: UUID, comment_id: UUID, payload: PainPointCommentUpdate,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Author-only — not even a Pain Point Manager may edit someone else's words."""
+    _get_pain_point(db, project_id, pain_point_id)
+    comment = db.get(PainPointComment, comment_id)
+    if comment is None or comment.pain_point_id != pain_point_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
+    comment.body = payload.body
+    comment.edited_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(comment)
+    return _pp_comment_to_out(db, comment)
+
+
+@router.post(
+    "/pain-points/{pain_point_id}/comments/{comment_id}/files", response_model=FileAssetOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_project_pain_point_comment_attachment(
+    project_id: UUID, pain_point_id: UUID, comment_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Author-only, mirrors Strategy's identical comment-attachment pattern."""
+    project = db.get(Project, project_id)
+    _get_pain_point(db, project_id, pain_point_id)
+    comment = db.get(PainPointComment, comment_id)
+    if comment is None or comment.pain_point_id != pain_point_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may attach a file to it.")
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=project.organization_id, uploaded_by=current_user.id,
+        filename=file.filename or "file", content_type=file.content_type or "application/octet-stream", data=data,
+    )
+    db.flush()
+    db.add(PainPointCommentFile(comment_id=comment.id, file_id=asset.id, uploaded_by=current_user.id))
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point_id, action="comment_file_attached",
+              actor_id=current_user.id, project_id=project_id, detail={"filename": asset.filename})
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.delete(
+    "/pain-points/{pain_point_id}/comments/{comment_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_project_pain_point_comment_attachment(
+    project_id: UUID, pain_point_id: UUID, comment_id: UUID, file_id: UUID,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    _get_pain_point(db, project_id, pain_point_id)
+    comment = db.get(PainPointComment, comment_id)
+    if comment is None or comment.pain_point_id != pain_point_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may remove its attachments.")
+    link = db.scalar(
+        select(PainPointCommentFile).where(
+            PainPointCommentFile.comment_id == comment.id, PainPointCommentFile.file_id == file_id
+        )
+    )
+    if link is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not attached to this comment.")
+    asset = db.get(FileAsset, file_id)
+    db.delete(link)
+    db.flush()
+    if asset is not None:
+        delete_file(db, asset)
+    db.commit()
+
+
+# --- Pain Point direct file attachments ("evidence") --------------------------
+
+
+@router.post("/pain-points/{pain_point_id}/files", response_model=FileAssetOut, status_code=status.HTTP_201_CREATED)
+async def upload_project_pain_point_file(
+    project_id: UUID, pain_point_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """**Deliberately open to any project member**, not manager-gated —
+    unlike `upload_project_strategy_file`/`upload_project_future_state_
+    file` (both owner-gated), source overview §6.5 explicitly lists "Add
+    evidence" among the broad-creation-model capabilities every project
+    member gets for a Pain Point. Still 409s once the Pain Point has
+    reached a terminal outcome."""
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    if is_pain_point_locked(pain_point):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This Pain Point has reached a terminal outcome; new evidence can no longer be added.",
+        )
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=project.organization_id, uploaded_by=current_user.id,
+        filename=file.filename or "file", content_type=file.content_type or "application/octet-stream", data=data,
+    )
+    db.flush()
+    db.add(
+        PainPointFile(pain_point_id=pain_point.id, file_id=asset.id, linked_by=current_user.id, created_at=asset.created_at)
+    )
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="file_attached",
+              actor_id=current_user.id, project_id=project_id, detail={"filename": asset.filename})
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.get("/pain-points/{pain_point_id}/files", response_model=list[FileAssetOut])
+def list_project_pain_point_files(
+    project_id: UUID, pain_point_id: UUID,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    return db.scalars(
+        select(FileAsset).join(PainPointFile, PainPointFile.file_id == FileAsset.id).where(
+            PainPointFile.pain_point_id == pain_point.id
+        )
+    ).all()
+
+
+@router.delete("/pain-points/{pain_point_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_project_pain_point_file(
+    project_id: UUID, pain_point_id: UUID, file_id: UUID,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Manager-gated to remove — asymmetric with the open-to-all upload
+    above (§6.5 grants broad *adding* of evidence, not broad removal of
+    evidence someone else added)."""
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    link = db.scalar(
+        select(PainPointFile).where(PainPointFile.pain_point_id == pain_point.id, PainPointFile.file_id == file_id)
+    )
+    if link is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not attached to this Pain Point.")
+    asset = db.get(FileAsset, file_id)
+    db.delete(link)
+    db.flush()
+    if asset is not None:
+        delete_file(db, asset)
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="file_unlinked",
               actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()

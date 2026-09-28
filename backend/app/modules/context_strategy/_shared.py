@@ -27,6 +27,17 @@ Future State artefact, under distinct names (`future_state_to_out`,
 `require_future_state_approve_permission`) since both artefact types'
 helpers now live in this one file — see each function's own docstring for
 anything that isn't a pure rename of its Strategy counterpart.
+
+Phase 3 (Pain Points) adds `pain_point_to_out`, `get_pain_point_in_scope`,
+`require_pain_point_manage_role`, and `require_pain_point_decide_
+permission` — Pain Point has only **one** module role (`pain_point_manager`,
+project-scoped only; Pain Point itself has no org scope), unlike Strategy/
+Future State's owner+approver pair, so both helpers gate on the same role,
+differing only in whether a Fine-Grained Access Control permission-atom
+grant is also accepted (`require_pain_point_decide_permission` accepts one,
+for the "decide"-tier triage/reject/duplicate/accept/address/close actions,
+mirroring `require_approve_permission`; `require_pain_point_manage_role`
+does not, for type-vocabulary CRUD, mirroring `require_manage_role`).
 """
 
 from __future__ import annotations
@@ -39,13 +50,23 @@ from sqlalchemy.orm import Session
 from app.models.enums import PermissionLevel
 from app.models.user import User
 from app.modules.context_strategy.enums import FutureStateScope, StrategyScope
-from app.modules.context_strategy.models import FutureState, FutureStateVersion, Strategy, StrategyVersion
-from app.modules.context_strategy.schemas import FutureStateOut, StrategyOut
+from app.modules.context_strategy.models import (
+    FutureState,
+    FutureStateVersion,
+    PainPoint,
+    PainPointTypeDefinition,
+    ProjectPainPointType,
+    Strategy,
+    StrategyVersion,
+)
+from app.modules.context_strategy.schemas import FutureStateOut, PainPointOut, StrategyOut
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
+    PAIN_POINT_ARTEFACT_TYPE,
     STRATEGY_ARTEFACT_TYPE,
     is_future_state_locked,
     is_locked,
+    is_pain_point_locked,
 )
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
@@ -65,6 +86,15 @@ STRATEGY_APPROVE_PERMISSION = encode_permission(STRATEGY_ARTEFACT_TYPE, Permissi
 # only scope dimension is structural org/project, not a permission
 # sub-type).
 FUTURE_STATE_APPROVE_PERMISSION = encode_permission(FUTURE_STATE_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
+
+# Pain Point's own unscoped `(pain_point, approve_baseline)` permission
+# atom, used for the "decide"-tier triage/reject/duplicate/accept/address/
+# close actions only (`require_pain_point_decide_permission`) — reuses the
+# `APPROVE_BASELINE` tier name for consistency with Strategy/Future State's
+# atoms even though Pain Point has no separate "approve" action of its own;
+# these are this artefact's own equivalent "finalise/decide the outcome"
+# actions.
+PAIN_POINT_DECIDE_PERMISSION = encode_permission(PAIN_POINT_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 _OWNER_ROLE_KEY: dict[StrategyScope, str] = {
     StrategyScope.ORGANIZATION: "org_strategy_owner",
@@ -291,5 +321,98 @@ def require_future_state_approve_permission(
         return
     held = get_effective_permissions(db, current_user.id, organization_id=organization_id, project_id=project_id)
     if permission_satisfied(held, FUTURE_STATE_APPROVE_PERMISSION):
+        return
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+
+
+# --- Pain Points (Phase 3) ---------------------------------------------------
+
+
+def _effective_pain_point_type_name(db: Session, project_pain_point_type: ProjectPainPointType) -> str:
+    """Resolves a `ProjectPainPointType` row's effective display name —
+    its own `name_override` if set, else its underlying org type's `name`
+    (`org_type_id` is always set when `name_override` is `None`, enforced
+    by that table's own CHECK constraint) — for `pain_point_to_out`."""
+    if project_pain_point_type.name_override is not None:
+        return project_pain_point_type.name_override
+    org_type = db.get(PainPointTypeDefinition, project_pain_point_type.org_type_id)
+    return org_type.name if org_type is not None else "Unknown type"
+
+
+def pain_point_to_out(db: Session, pain_point: PainPoint) -> PainPointOut:
+    """Builds the API-facing shape for a `PainPoint` — no separate version
+    row to merge in (see `models.py`'s own docstring), so this reads
+    `pain_point`'s own columns directly plus its effective type name
+    (`_effective_pain_point_type_name`)."""
+    project_pain_point_type = db.get(ProjectPainPointType, pain_point.pain_point_type_id)
+    type_name = (
+        _effective_pain_point_type_name(db, project_pain_point_type) if project_pain_point_type is not None else ""
+    )
+    return PainPointOut(
+        id=pain_point.id, project_id=pain_point.project_id, pain_point_type_id=pain_point.pain_point_type_id,
+        pain_point_type_name=type_name, creator_id=pain_point.creator_id, is_archived=pain_point.is_archived,
+        archived_at=pain_point.archived_at, archived_by=pain_point.archived_by,
+        title=pain_point.title, description=pain_point.description, source=pain_point.source,
+        impact=pain_point.impact, evidence=pain_point.evidence, priority=pain_point.priority,
+        status=pain_point.status, owner_id=pain_point.owner_id, date_identified=pain_point.date_identified,
+        is_locked=is_pain_point_locked(pain_point), created_at=pain_point.created_at, updated_at=pain_point.updated_at,
+    )
+
+
+def get_pain_point_in_scope(db: Session, *, project_id: uuid.UUID, pain_point_id: uuid.UUID) -> PainPoint:
+    """Loads `pain_point_id`, 404ing unless it exists and belongs to
+    `project_id` — same "doesn't exist" 404 convention as
+    `get_strategy_in_scope` (Pain Point is project-scoped only, so there is
+    no `scope` discriminator to also check)."""
+    pain_point = db.get(PainPoint, pain_point_id)
+    if pain_point is None or pain_point.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pain Point not found.")
+    return pain_point
+
+
+def require_pain_point_type_admin_role(db: Session, current_user: User, *, organization_id: uuid.UUID) -> None:
+    """Gate for organisation-scoped `PainPointTypeDefinition` CRUD —
+    satisfied by the `pain_point_type_admin` module role alone (which
+    itself composes with server admin and `OrgRole.ORG_ADMIN` via `user_
+    satisfies_module_role`), mirroring `require_manage_role`'s flat-role-
+    only shape."""
+    if not user_satisfies_module_role(
+        db, current_user, MODULE_KEY, "pain_point_type_admin", organization_id=organization_id, project_id=None,
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Pain Point Type Admin (or org admin) may do this.")
+
+
+def require_pain_point_manage_role(db: Session, current_user: User, *, organization_id: uuid.UUID, project_id: uuid.UUID) -> None:
+    """Gate for Pain Point type-vocabulary CRUD (`ProjectPainPointType`
+    create/override/delete) and direct content updates (`PUT`) — satisfied
+    by the `pain_point_manager` module role alone (which itself composes
+    with server admin and `ProjectRole.PROJECT_MANAGER` via `user_
+    satisfies_module_role`), no Fine-Grained Access Control fallback —
+    mirrors `require_manage_role`. Pain Point's broad-creation model
+    (§6.5) grants create/comment/evidence to any project member, not a
+    standing right to edit submitted content afterwards — see
+    `project_router.py`'s own docstring."""
+    if not user_satisfies_module_role(
+        db, current_user, MODULE_KEY, "pain_point_manager", organization_id=organization_id, project_id=project_id,
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Pain Point Manager (or admin/manager) may do this.")
+
+
+def require_pain_point_decide_permission(
+    db: Session, current_user: User, *, organization_id: uuid.UUID, project_id: uuid.UUID
+) -> None:
+    """Gate for the "decide"-tier triage/reject/mark-duplicate/accept/
+    address/close actions — satisfied by (in order): server admin; the
+    `pain_point_manager` module role; or a Fine-Grained Access Control
+    custom-role grant of the unscoped `(pain_point, approve_baseline)`
+    permission atom — mirrors `require_approve_permission`."""
+    if current_user.is_server_admin:
+        return
+    if user_satisfies_module_role(
+        db, current_user, MODULE_KEY, "pain_point_manager", organization_id=organization_id, project_id=project_id,
+    ):
+        return
+    held = get_effective_permissions(db, current_user.id, organization_id=organization_id, project_id=project_id)
+    if permission_satisfied(held, PAIN_POINT_DECIDE_PERMISSION):
         return
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")

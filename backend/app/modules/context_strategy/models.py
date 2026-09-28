@@ -51,6 +51,47 @@ but every structural decision — identity/version split, module-local
 comments/files, the CHECK-constraint scope pattern — repeats identically,
 so see the `Strategy`/`StrategyVersion` docstrings above rather than
 duplicating the reasoning here.
+
+Phase 3 (Pain Points, docs/plans/module-01-context-and-strategy-plan.md
+Phase 3) adds six classes with a genuinely different shape from Strategy/
+Future State's identity+version split, not a further structural mirror:
+
+- `PainPointTypeDefinition` — org-scoped base type vocabulary (Phase 0 Q3's
+  two-tier design), same shape as `RequirementLinkTypeDefinition`/
+  `models.action_type.ActionTypeDefinition` (name, `sort_order`-equivalent
+  `display_order`, org admin managed).
+- `ProjectPainPointType` — project-scoped, either an override of one org
+  type (`org_type_id` set, `name_override`/`display_order_override`
+  nullable — `NULL` means "unchanged from the org default") or a fully
+  project-local type (`org_type_id` NULL, in which case `name_override`
+  is the type's only name and is therefore required — see the table's own
+  CHECK constraint). A project's *effective* type list is every active org
+  type (its own row's override, if any, taking precedence) plus every
+  project-local row — resolved by `service.resolve_effective_pain_point_types`,
+  never a stored/materialized view.
+- `PainPoint` — the artefact itself. **No identity+version split** and
+  **no `PainPointVersion` table** — Phase 3's own scope explicitly does not
+  require one (see `enums.PainPointStatus`'s own docstring for the full
+  reasoning), so every mutable field lives directly on this one row,
+  updated in place (`service.update_pain_point`), with every change
+  recorded only via `services.audit.log_event` (a plain audit trail, not a
+  content snapshot). `pain_point_type_id` is a NOT NULL FK to
+  `ProjectPainPointType.id`, never directly to `PainPointTypeDefinition`
+  — every Pain Point's type is resolved through the project-scoped table
+  so a single FK target always resolves the type regardless of whether it
+  is org-backed-with-no-override, org-backed-with-an-override, or fully
+  project-local (see `service.get_or_create_project_pain_point_type`).
+  Pain Point is **project-scoped only** — no `scope`/`organization_id`
+  discriminator the way Strategy/Future State have one (source overview
+  §6 describes no organisation-level Pain Point; only its *type*
+  vocabulary has an org-level component, via `PainPointTypeDefinition`
+  above).
+- `PainPointComment` / `PainPointCommentFile` / `PainPointFile` — this
+  module's own module-local comment-thread and attachment tables, exact
+  structural mirror of `StrategyComment`/`StrategyCommentFile`/
+  `StrategyFile` (Phase 0 Q6: module-local tables, not a `ReviewTargetType`
+  member — see this module's own `__init__.py` docstring for the full
+  reasoning, repeated identically for Pain Point).
 """
 
 from __future__ import annotations
@@ -79,6 +120,8 @@ from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.modules.context_strategy.enums import (
     FutureStateScope,
     FutureStateStatus,
+    PainPointPriority,
+    PainPointStatus,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
@@ -403,6 +446,204 @@ class FutureStateFile(UUIDPKMixin, Base):
 
     future_state_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("future_states.id", ondelete="CASCADE")
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Pain Points (Phase 3) ---------------------------------------------------
+
+
+class PainPointTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
+    """Organisation-scoped base Pain Point type vocabulary (Phase 0 Q3) —
+    same shape as `RequirementLinkTypeDefinition`/`ActionTypeDefinition`.
+    Seeded with Market/User/Operator defaults for every organisation
+    (source overview §6.2) at organisation-creation time, mirroring
+    `services.definitions.seed_link_types`'s own seeding convention (see
+    `service.seed_default_pain_point_types`).
+
+    Attributes:
+        organization_id: The owning organisation.
+        name: Display name (e.g. "Market", "User", "Operator", or an
+            org-added type).
+        sort_order: Display/picker order among the organisation's types —
+            named `sort_order`, not `display_order`, specifically so this
+            table can reuse `services.ordering.move_ordered` verbatim
+            (that helper reads `model.sort_order` by that exact attribute
+            name, the same convention `ProjectStatusDefinition`/
+            `RequirementLinkTypeDefinition`/`ActionTypeDefinition` already
+            follow) rather than needing a bespoke reorder implementation.
+        is_active: Soft-disable — an inactive org type is excluded from
+            every project's effective type list (`service.
+            resolve_effective_pain_point_types`) without deleting it
+            outright (org history/audit references remain intact).
+    """
+
+    __tablename__ = "pain_point_type_definitions"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_pain_point_type_definitions_org_name"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ProjectPainPointType(UUIDPKMixin, TimestampMixin, Base):
+    """A project's own view onto the Pain Point type vocabulary (Phase 0
+    Q3) — either a local override of one org type, or a fully project-local
+    type not backed by any org row.
+
+    Attributes:
+        project_id: The owning project.
+        org_type_id: The org type this row overrides, or `NULL` for a
+            fully project-local type. `ON DELETE SET NULL` — if the
+            underlying org type is ever deleted, an *unreferenced* override
+            row (checked by `service.delete_org_pain_point_type` before
+            allowing the delete) would never reach this state; kept as a
+            defensive default rather than the stricter `RESTRICT` a fresh
+            Postgres FK already applies with no explicit `ondelete`, since
+            application logic — not the database — is this design's
+            primary enforcement point (see that function's own docstring).
+        name_override: Overrides the org type's `name` for this project
+            alone when `org_type_id` is set; the type's own (only) name
+            when `org_type_id` is `NULL` (enforced NOT NULL in that case
+            by this table's own CHECK constraint — a project-local type has
+            no org row to fall back on for a name).
+        display_order_override: Overrides the org type's `sort_order`
+            for this project alone when set and `org_type_id` is not
+            `NULL`; the type's own display order when `org_type_id` is
+            `NULL` (falls back to `0` if left `NULL` in that case too —
+            see `service.resolve_effective_pain_point_types`).
+        is_enabled: Whether this type is offered when creating a Pain
+            Point in this project. Defaults `True` — an org type is
+            included in a project's effective list until a project admin
+            explicitly disables it (§6.2's "Disable types").
+    """
+
+    __tablename__ = "project_pain_point_types"
+    __table_args__ = (
+        UniqueConstraint("project_id", "org_type_id", name="uq_project_pain_point_types_project_org_type"),
+        CheckConstraint(
+            "org_type_id IS NOT NULL OR name_override IS NOT NULL",
+            name="ck_project_pain_point_types_local_has_name",
+        ),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    org_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pain_point_type_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    name_override: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    display_order_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PainPoint(UUIDPKMixin, TimestampMixin, Base):
+    """A Pain Point (source overview §6) — project-scoped only, no
+    identity+version split (see this module's own docstring for why),
+    every mutable field on this one row.
+
+    Attributes:
+        project_id: The owning project.
+        pain_point_type_id: FK to `ProjectPainPointType.id` — never
+            directly to `PainPointTypeDefinition` (see module docstring).
+        title / description: Core identifying content.
+        source: Free-text provenance (e.g. "Support ticket #481",
+            "Customer interview", "Ops incident report") — distinct from
+            `pain_point_type_id`'s fixed Market/User/Operator-style
+            vocabulary.
+        impact: Free-text description of the problem's effect.
+        evidence: Free-text supporting evidence (in addition to any
+            `PainPointFile`/`PainPointCommentFile` attachments).
+        priority: `enums.PainPointPriority`.
+        status: `enums.PainPointStatus` — the branching lifecycle.
+        owner_id: The user responsible for resolving this Pain Point,
+            assigned by a `pain_point_manager` during/after triage
+            (§6.5) — `NULL` until assigned.
+        date_identified: When the problem was first identified — defaults
+            to the creation date if not supplied (`service.create_pain_point`).
+        creator_id: Who submitted this Pain Point (§6.5's broad-creation
+            model — any project member).
+        is_archived / archived_at / archived_by: Soft-delete, matching
+            `Strategy`/`FutureState`'s own convention.
+    """
+
+    __tablename__ = "pain_points"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    pain_point_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_pain_point_types.id")
+    )
+
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(Text, default="")
+    impact: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    priority: Mapped[PainPointPriority] = mapped_column(
+        str_enum(PainPointPriority, 20), default=PainPointPriority.MEDIUM
+    )
+    status: Mapped[PainPointStatus] = mapped_column(str_enum(PainPointStatus, 20), default=PainPointStatus.SUBMITTED)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    date_identified: Mapped[date] = mapped_column(Date)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class PainPointComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion-thread comment on a `PainPoint` — module-local
+    analogue of `StrategyComment` (see module docstring).
+
+    Attributes:
+        pain_point_id: The commented-on Pain Point.
+        author_id: Who wrote the comment.
+        body: Comment text.
+        edited_at: Set only when the body is actually changed after
+            creation; `None` for a never-edited comment.
+    """
+
+    __tablename__ = "pain_point_comments"
+
+    pain_point_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pain_points.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PainPointCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to a `PainPointComment` — module-local analogue of
+    `StrategyCommentFile`."""
+
+    __tablename__ = "pain_point_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pain_point_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class PainPointFile(UUIDPKMixin, Base):
+    """Links a directly-uploaded file to a `PainPoint` — module-local
+    analogue of `StrategyFile`. Pain Point is project-scoped only, so
+    (unlike Strategy/Future State) there is no org-resource upload branch —
+    every `PainPointFile` upload is an ordinary project-authorized upload,
+    resolved via `service.resolve_pain_point_file_project_id`."""
+
+    __tablename__ = "pain_point_files"
+    __table_args__ = (UniqueConstraint("pain_point_id", "file_id"),)
+
+    pain_point_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pain_points.id", ondelete="CASCADE")
     )
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

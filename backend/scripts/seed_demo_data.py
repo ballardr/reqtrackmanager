@@ -1101,6 +1101,71 @@ def propose_and_approve_project_future_state(
     return r.json()
 
 
+# --- Context & Strategy module helpers, Phase 3 (docs/plans/module-01-
+# context-and-strategy-plan.md Phase 3 — Pain Points) -----------------------
+
+
+def list_effective_pain_point_types(headers: dict, project_id: str) -> dict[str, dict]:
+    """Returns this project's effective Pain Point type list (Phase 0 Q3)
+    keyed by name — mirrors `list_decision_types`'s identical shape."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/modules/context_strategy/pain-point-types", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {t["name"]: t for t in r.json()}
+
+
+def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points", json=fields, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def triage_pain_point(headers: dict, project_id: str, pain_point_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/triage",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def accept_pain_point(headers: dict, project_id: str, pain_point_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/accept",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def address_pain_point(headers: dict, project_id: str, pain_point_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/address",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def reject_pain_point(headers: dict, project_id: str, pain_point_id: str, *, comment: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/reject",
+        json={"comment": comment}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def mark_pain_point_duplicate(headers: dict, project_id: str, pain_point_id: str, *, comment: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/mark-duplicate",
+        json={"comment": comment}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -1825,6 +1890,60 @@ def main() -> None:
         approval_comment="Approved — this is the future state the dual-redundant flight controller Decision and"
         " the Falcon-3 Strategy above are both driving toward.",
     )
+
+    print("Seeding Pain Points (Module 1 Phase 3) — one per branch outcome (Accepted->Addressed, Rejected,"
+          " Duplicate) on the Falcon-3 project, using the org's default Market/User/Operator types...")
+    # `default_enabled` sub-components (Phase 3's own `module.py`) mean no
+    # separate enable-subcomponent call is needed beyond the whole-module
+    # `enable_module` call already made above for Strategy/Future State.
+    drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])
+    pp_accepted = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Operator"]["id"],
+        title="Field inspectors re-key paper reports days after each flight",
+        description="Inspection reports are recorded on paper in the field, then manually re-keyed into the"
+        " reporting system by an office administrator, often 2-3 days after the flight itself.",
+        source="Ops incident report — Q3 field review", impact="SLA-breach risk on every populated-corridor"
+        " contract; re-keying also introduces transcription errors into the compliance record.",
+        evidence="14 SLA-breach support tickets in the last quarter, all citing report delay as root cause.",
+        priority="high", date_identified="2026-08-15",
+    )
+    triage_pain_point(h_pm, drone["id"], pp_accepted["id"])
+    accept_pain_point(h_pm, drone["id"], pp_accepted["id"])
+    address_pain_point(h_pm, drone["id"], pp_accepted["id"])
+    print(f"  Accepted -> Addressed: {pp_accepted['title']!r}")
+
+    pp_rejected = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Market"]["id"],
+        title="Competitor offers a lower-cost single-controller platform for unpopulated-corridor routes",
+        description="A competitor's cheaper, single-controller platform has started winning unpopulated-corridor"
+        " inspection contracts on price alone.",
+        source="Customer interview — lost-deal debrief", impact="Some unpopulated-corridor deals lost on price.",
+        evidence="Two lost-deal debriefs citing price as the deciding factor.",
+        priority="low", date_identified="2026-07-20",
+    )
+    triage_pain_point(h_pm, drone["id"], pp_rejected["id"])
+    reject_pain_point(
+        h_pm, drone["id"], pp_rejected["id"],
+        comment="Out of scope — Falcon-3's own strategy explicitly targets populated-corridor contracts, where"
+        " dual-redundancy is a certification requirement competitors can't easily match on price alone.",
+    )
+    print(f"  Rejected: {pp_rejected['title']!r}")
+
+    pp_duplicate = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Operator"]["id"],
+        title="Field reports are delayed reaching the compliance record",
+        description="Same underlying delay as the paper re-keying Pain Point above, reported separately by a"
+        " different operator team before the two reports were compared.",
+        source="Support ticket #492", impact="Duplicate of the accepted paper-re-keying Pain Point above.",
+        evidence="Support ticket #492.", priority="medium", date_identified="2026-08-18",
+    )
+    triage_pain_point(h_pm, drone["id"], pp_duplicate["id"])
+    mark_pain_point_duplicate(
+        h_pm, drone["id"], pp_duplicate["id"],
+        comment=f"Duplicate of {pp_accepted['title']!r} (id {pp_accepted['id']}) — same root cause, reported"
+        " independently by a different operator team.",
+    )
+    print(f"  Duplicate: {pp_duplicate['title']!r}")
 
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")

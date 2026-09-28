@@ -2,15 +2,19 @@
 Module: modules.context_strategy
 
 The Context & Strategy Module (docs/plans/module-01-context-and-strategy-
-plan.md) — Phases 1–2 (Organisation & Project Strategy; Future State).
-Phase 1 records a formal Strategy artefact, either organisation- or
-project-scoped, with a `Draft -> Proposed -> Under Review -> Approved ->
+plan.md) — Phases 1–3 (Organisation & Project Strategy; Future State; Pain
+Points). Phase 1 records a formal Strategy artefact, either organisation-
+or project-scoped, with a `Draft -> Proposed -> Under Review -> Approved ->
 Active -> Superseded/Retired` review lifecycle and a full version-history
 table. Phase 2 adds a standalone Future State artefact (Phase 0 Q1: kept
 separate from Strategy rather than folded into it) with an identical
-lifecycle shape and its own version-history table. Self-contained,
-mirroring `app.modules.decisions`'s own "as a module" design principle:
-this package owns its enums, models, and `ModuleDefinition` registration
+lifecycle shape and its own version-history table. Phase 3 adds Pain
+Points — project-scoped only, no version-history table, a **branching**
+`Submitted -> Triaged -> {Rejected | Duplicate | Accepted -> Addressed ->
+Closed}` lifecycle, and a two-tier (org-shared-base, project-override)
+configurable type vocabulary (Phase 0 Q3). Self-contained, mirroring
+`app.modules.decisions`'s own "as a module" design principle: this
+package owns its enums, models, and `ModuleDefinition` registration
 rather than adding any of it to `app.models`/`app.models.enums`.
 
 Responsibilities:
@@ -71,7 +75,11 @@ with no way to reach either scope would leave "is this the org table or
 the project table" untested until a later phase, contrary to this
 codebase's own "never land a model with no way to reach it" convention
 (see `docs/modules.md`'s worked checklist). Phase 2 follows the same
-posture for Future State.
+posture for Future State. Phase 3 (Pain Point, project-scoped only) ships
+its full CRUD/lifecycle/type-vocabulary surface in `project_router.py`
+alone; `router.py` (org-scoped) gains only the org-level
+`PainPointTypeDefinition` CRUD Pain Point's own type vocabulary needs
+(Phase 0 Q3), not a Pain Point resource itself.
 
 External dependencies/integrations: none of its own. No cross-artefact
 relationship wiring, MCP tools, or frontend UI — all explicitly Phase 6/7

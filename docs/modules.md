@@ -479,7 +479,17 @@ type — `future_state_owner`/`future_state_approver` (project) and
 `org_future_state_owner`/`org_future_state_approver` (org) — bringing that
 one module to eight roles total, confirming the mechanism scales to more
 than one org/project-dual-scoped artefact per module without any further
-change.
+change. Phase 3 (Pain Points) then adds two more roles that deliberately
+*don't* follow this dual-scope pairing at all — `pain_point_manager` is
+project-scoped only (Pain Point itself has no organisation-level record,
+unlike Strategy/Future State, so there is no `org_pain_point_manager`
+counterpart to pair it with), and `pain_point_type_admin` is org-scoped
+only, gating a different table (`PainPointTypeDefinition`) than the one
+`pain_point_manager` gates. Confirms `scope` was never actually a
+per-artefact-type constraint — a module is free to mix single-scope roles
+alongside dual-scope pairs in the same `roles` tuple as its own artefacts'
+shapes actually require, not obligated to always declare both halves of a
+pair.
 
 At every process startup, `sync_module_role_definitions` mirrors the live
 registry's roles into a `module_role_definitions` table — deliberately
