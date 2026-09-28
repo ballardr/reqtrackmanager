@@ -38,16 +38,30 @@ strategy-plan.md Phase 1 — Organisation & Project Strategy):
   module's own package docstring (`__init__.py`) for the full reasoning,
   and `docs/decisions.md`'s dated entry for this phase for the account
   flagged back to the user.
+
+Phase 2 (Future State, docs/plans/module-01-context-and-strategy-plan.md
+Phase 2) adds `FutureState`/`FutureStateVersion`/`FutureStateComment`/
+`FutureStateCommentFile`/`FutureStateFile` — an exact structural mirror of
+the five classes above, for the standalone Future State artefact (Phase 0
+Q1: a separate, first-class artefact, not fields folded onto `Strategy`).
+`FutureStateVersion`'s own field set differs from `StrategyVersion`'s (no
+`priority`/`time_horizon`; adds `target_date`, `outcomes`,
+`success_measures`, `constraints`, `assumptions` per source overview §7),
+but every structural decision — identity/version split, module-local
+comments/files, the CHECK-constraint scope pattern — repeats identically,
+so see the `Strategy`/`StrategyVersion` docstrings above rather than
+duplicating the reasoning here.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -63,6 +77,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.modules.context_strategy.enums import (
+    FutureStateScope,
+    FutureStateStatus,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
@@ -224,6 +240,170 @@ class StrategyFile(UUIDPKMixin, Base):
     __table_args__ = (UniqueConstraint("strategy_id", "file_id"),)
 
     strategy_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("strategies.id", ondelete="CASCADE"))
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Future State (Phase 2) -------------------------------------------------
+
+
+class FutureState(UUIDPKMixin, TimestampMixin, Base):
+    """A Future State's stable identity (organisation- or project-scoped) —
+    exact structural mirror of `Strategy` (see module docstring).
+
+    Attributes:
+        scope: `FutureStateScope.ORGANIZATION` or `FutureStateScope.PROJECT`
+            — which of `organization_id`/`project_id` is populated.
+        organization_id: Set (and `project_id` null) for an org-scoped
+            Future State.
+        project_id: Set (and `organization_id` null) for a project-scoped
+            Future State.
+        creator_id: Who created this record.
+        is_archived / archived_at / archived_by: Soft-delete, matching
+            `Strategy`'s own convention.
+    """
+
+    __tablename__ = "future_states"
+    __table_args__ = (
+        CheckConstraint(
+            "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
+            "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
+            name="ck_future_states_scope_matches_owner",
+        ),
+    )
+
+    scope: Mapped[FutureStateScope] = mapped_column(str_enum(FutureStateScope, 20))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    versions: Mapped[list[FutureStateVersion]] = relationship(
+        back_populates="future_state", order_by="FutureStateVersion.version_number"
+    )
+
+
+class FutureStateVersion(UUIDPKMixin, Base):
+    """A single point-in-time snapshot of a Future State's content — exact
+    temporal shape of `StrategyVersion` (see module docstring), with the
+    Phase 2 field set from source overview §7 in place of Strategy's own.
+
+    Attributes:
+        valid_from / valid_to: Effective time interval; `valid_to` is null
+            for the current version.
+        title: Short display title — not named in §7's own field list, added
+            for list/display purposes, the same judgment call `Strategy`
+            made for its own title (Decided by: Agent, following that
+            precedent exactly).
+        current_state: The present situation this Future State is measured
+            from.
+        desired_state: The end state being described.
+        target_date: When the desired state is targeted to be reached — a
+            plain `Date`, not a timestamp; there is no time-of-day
+            component to a target date.
+        outcomes: What reaching this Future State is expected to achieve.
+        success_measures: How reaching it will be measured.
+        constraints: Known constraints bounding this Future State.
+        assumptions: Assumptions this Future State depends on holding true.
+        status: Lifecycle state — see `enums.FutureStateStatus`. Lives
+            here, not on `FutureState`, for the same reason `StrategyVersion.
+            status` does (see module docstring).
+        change_note: Free-text reason for the change.
+        created_by / created_at: Who created this version snapshot, and
+            when.
+    """
+
+    __tablename__ = "future_state_versions"
+    __table_args__ = (
+        UniqueConstraint("future_state_id", "version_number"),
+        Index(
+            "ix_future_state_versions_current", "future_state_id", unique=False,
+            postgresql_where=sa_text("valid_to IS NULL"),
+        ),
+    )
+
+    future_state_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("future_states.id", ondelete="CASCADE")
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    title: Mapped[str] = mapped_column(String(300))
+    current_state: Mapped[str] = mapped_column(Text, default="")
+    desired_state: Mapped[str] = mapped_column(Text, default="")
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    outcomes: Mapped[str] = mapped_column(Text, default="")
+    success_measures: Mapped[str] = mapped_column(Text, default="")
+    constraints: Mapped[str] = mapped_column(Text, default="")
+    assumptions: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[FutureStateStatus] = mapped_column(str_enum(FutureStateStatus, 20), default=FutureStateStatus.DRAFT)
+    change_note: Mapped[str] = mapped_column(Text, default="")
+
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    future_state: Mapped[FutureState] = relationship(back_populates="versions")
+
+
+class FutureStateComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion-thread comment on a `FutureState` — module-local
+    analogue of `StrategyComment` (see module docstring).
+
+    Attributes:
+        future_state_id: The commented-on Future State.
+        author_id: Who wrote the comment.
+        body: Comment text.
+        edited_at: Set only when the body is actually changed after
+            creation; `None` for a never-edited comment.
+    """
+
+    __tablename__ = "future_state_comments"
+
+    future_state_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("future_states.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class FutureStateCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to a `FutureStateComment` — module-local analogue of
+    `StrategyCommentFile`."""
+
+    __tablename__ = "future_state_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("future_state_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class FutureStateFile(UUIDPKMixin, Base):
+    """Links a directly-uploaded file to a `FutureState` — module-local
+    analogue of `StrategyFile`. A project-scoped Future State's files are
+    ordinary, project-authorized uploads (resolved via `service.
+    resolve_future_state_file_project_id`); an org-scoped Future State's
+    files are uploaded as organisation shared resources
+    (`FileAsset.is_org_resource=True`) instead, authorized by org
+    membership alone — see `project_router.files`/`router.files`'s own
+    upload endpoints for the split."""
+
+    __tablename__ = "future_state_files"
+    __table_args__ = (UniqueConstraint("future_state_id", "file_id"),)
+
+    future_state_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("future_states.id", ondelete="CASCADE")
+    )
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

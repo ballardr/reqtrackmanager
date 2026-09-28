@@ -2,10 +2,22 @@
 Module: modules.context_strategy.enums
 
 Context & Strategy-owned vocabulary (docs/plans/module-01-context-and-
-strategy-plan.md Phase 1). Kept in this package rather than
+strategy-plan.md Phases 1–2). Kept in this package rather than
 `app.models.enums`, mirroring `app.modules.decisions.enums`'s own
 reasoning — these are domain concepts this module owns, not core
 ReqTrackManager concepts.
+
+Phase 2 (Future State) adds `FutureStateScope`/`FutureStateStatus` as
+their own enums rather than reusing `StrategyScope`/`StrategyStatus`,
+**Decided by: Agent**, by direct analogy to how this module already keeps
+`DecisionStatus` and `StrategyStatus` separate despite both being
+lifecycle enums with an identical shape (see `StrategyStatus`'s own
+docstring, which the plan's Phase 0 Q1 follow-on explicitly cites when
+requiring Future State's lifecycle to "mirror Strategy's in full"). Two
+independent artefact types owning two textually-identical vocabularies
+avoids one artefact's future divergence (e.g. Strategy someday gaining a
+scope Future State never needs) silently reaching into the other's
+column values.
 """
 
 from __future__ import annotations
@@ -85,6 +97,46 @@ class StrategyStatus(str, enum.Enum):
     Transition enforcement (`service._ALLOWED_TRANSITIONS`) is this
     enum's sibling, not this docstring's — declared here for completeness
     of the "what values exist" question only.
+    """
+
+    DRAFT = "draft"
+    PROPOSED = "proposed"
+    UNDER_REVIEW = "under_review"
+    APPROVED = "approved"
+    ACTIVE = "active"
+    SUPERSEDED = "superseded"
+    RETIRED = "retired"
+
+
+class FutureStateScope(str, enum.Enum):
+    """Which level a `FutureState` row belongs to (Phase 0 Q1's follow-on,
+    Decided by: Agent) — exactly one of `FutureState.organization_id`/
+    `project_id` is set, matching this value. Identical shape and
+    reasoning to `StrategyScope` (single table with a discriminator, so a
+    future Portfolio/Programme scope can be added without a redesign), but
+    its own enum rather than a reuse of `StrategyScope` — see this
+    module's own docstring above for why.
+    """
+
+    ORGANIZATION = "organization"
+    PROJECT = "project"
+
+
+class FutureStateStatus(str, enum.Enum):
+    """Lifecycle states for a `FutureState` — mirrors `StrategyStatus` in
+    full, per Phase 0 Q1's follow-on ("Future State's lifecycle and
+    permissions mirror Strategy's in full"): `Draft -> Proposed -> Under
+    Review -> Approved -> Active -> Superseded/Retired`, seven enum members
+    for the same reason `StrategyStatus` has seven (`SUPERSEDED` and
+    `RETIRED` are two distinct terminal values, not one combined slot), and
+    no `REJECTED` state — a Future State sent back for rework from
+    `PROPOSED`/`UNDER_REVIEW` returns to `DRAFT` instead (see
+    `service._FS_ALLOWED_TRANSITIONS`). See `StrategyStatus`'s own
+    docstring for the full reasoning this repeats; kept as its own enum
+    rather than a reuse of `StrategyStatus`, by direct analogy to
+    `DecisionStatus`/`StrategyStatus` already being separate despite
+    identical shape (Decided by: Agent — see this module's own docstring
+    above).
     """
 
     DRAFT = "draft"

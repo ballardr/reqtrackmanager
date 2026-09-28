@@ -1052,6 +1052,55 @@ def propose_and_approve_project_strategy(
     return r.json()
 
 
+# --- Context & Strategy module helpers, Phase 2 (docs/plans/module-01-
+# context-and-strategy-plan.md Phase 2 — Future State) -----------------------
+
+
+def create_org_future_state(headers: dict, org_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/context_strategy/future-states", json=fields, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_future_state(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/future-states", json=fields, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_org_future_state(
+    headers: dict, org_id: str, future_state_id: str, *, approval_comment: str = ""
+) -> dict:
+    """Walks an org-scoped Future State through `Draft -> Proposed -> Under
+    Review -> Approved -> Active` in one call — sibling of `propose_and_
+    approve_org_strategy`."""
+    base = f"{BASE}/orgs/{org_id}/modules/context_strategy/future-states/{future_state_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/submit-for-review", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_project_future_state(
+    headers: dict, project_id: str, future_state_id: str, *, approval_comment: str = ""
+) -> dict:
+    """Project-scoped sibling of `propose_and_approve_org_future_state`."""
+    base = f"{BASE}/projects/{project_id}/modules/context_strategy/future-states/{future_state_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/submit-for-review", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -1736,6 +1785,47 @@ def main() -> None:
         approval_comment="Approved — directly traces to the dual-redundant flight controller Decision above.",
     )
 
+    print("Seeding Future State (Module 1 Phase 2) — an org Future State and a project Future State, reading as"
+          " the future state the Strategies above are aiming at (no ArtefactLink relationship yet — that's Phase 6)...")
+    org_future_state = create_org_future_state(
+        h_pm, org["id"], title="Default choice for utility-scale autonomous inspection",
+        current_state="A capable but early-stage entrant with two live product lines and a small install base.",
+        desired_state="The default choice for utility/infrastructure operators evaluating autonomous inspection,"
+        " with the majority of contracted inspection routes under management across the sector.",
+        target_date="2029-06-30",
+        outcomes="Majority market share among utility-scale inspection contracts; the organisation's autonomous"
+        " inspection data/training-set advantage compounds faster than any single competitor can close it.",
+        success_measures="Contracted inspection routes under management; win rate on competitive RFPs; unaided"
+        " brand recall among utility-scale procurement teams.",
+        constraints="Regulatory approval timelines for BVLOS operations vary significantly by jurisdiction and"
+        " cannot be accelerated unilaterally.",
+        assumptions="Utility/infrastructure operators continue migrating from manual to autonomous inspection at"
+        " roughly the current pace, rather than stalling on regulatory uncertainty.",
+    )
+    propose_and_approve_org_future_state(
+        h_pm, org["id"], org_future_state["id"],
+        approval_comment="Approved at the organisation's strategy review, alongside the Strategy it elaborates.",
+    )
+    drone_future_state = create_project_future_state(
+        h_pm, drone["id"], title="Falcon-3 certified and contracted for populated-corridor routes",
+        current_state="Single-controller platform flying test routes over unpopulated terrain only.",
+        desired_state="Dual-redundant Falcon-3 platform certified for flight over populated infrastructure"
+        " corridors, with a signed populated-corridor inspection contract in place.",
+        target_date="2027-09-30",
+        outcomes="Signed populated-corridor inspection contract; certification sign-off enabling further"
+        " populated-corridor contracts without re-certifying the airframe.",
+        success_measures="Certification sign-off date; contract value signed; number of populated-corridor routes"
+        " flown without incident in the first two quarters post-certification.",
+        constraints="Airframe payload budget limits redundancy to dual, not triple, modular redundancy.",
+        assumptions="The dual-redundant flight controller Decision above is not itself superseded again before"
+        " certification testing completes.",
+    )
+    propose_and_approve_project_future_state(
+        h_pm, drone["id"], drone_future_state["id"],
+        approval_comment="Approved — this is the future state the dual-redundant flight controller Decision and"
+        " the Falcon-3 Strategy above are both driving toward.",
+    )
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -1761,7 +1851,9 @@ def main() -> None:
           " decision (Approved, then Superseded), the dual-redundant decision that supersedes it (Approved),"
           " and an OTA-signing decision left in Draft")
     print("  Context & Strategy (enabled org-wide): 1 organisation Strategy (Active) and 1 project Strategy on"
-          " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win")
+          " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win;"
+          " plus 1 organisation Future State and 1 project Future State on Falcon-3 (both Active), reading as the"
+          " future state those Strategies are aiming at (no ArtefactLink relationship yet — that's Phase 6)")
 
 
 if __name__ == "__main__":

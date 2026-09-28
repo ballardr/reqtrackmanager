@@ -15,7 +15,8 @@ Open Questions).
 
 **Status:** Phase 0 complete (2026-09-28, user sign-off obtained — see
 "Phase 0 resolutions" below). Phase 1 complete (2026-09-28 — see "Phase 1
-notes" below); Phase 2 (Future State) is next. First *content* module in
+notes" below). Phase 2 (Future State) complete (2026-09-28 — see "Phase 2
+notes" below); Phase 3 (Pain Points) is next. First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
 Access Control (core) to be picked up first in practice — both now shipped;
@@ -36,13 +37,13 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-2 / 9 phases complete.
+3 / 9 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: scope & open questions | [x] Complete (2026-09-28) |
 | 1 | Organisation & Project Strategy | [x] Complete (2026-09-28) |
-| 2 | Future State | [ ] Not started |
+| 2 | Future State | [x] Complete (2026-09-28) |
 | 3 | Pain Points | [ ] Not started |
 | 4 | Guiding Principles | [ ] Not started |
 | 5 | Open Questions | [ ] Not started |
@@ -381,6 +382,148 @@ Strategy Approver-equivalent (Approve), project members (View + Propose).
 Pain Points, Requirements, Decisions (reserved target), and Guiding
 Principles per §7 — wired in Phase 6 alongside every other artefact's
 relationships.
+
+## Phase 2 notes (2026-09-28)
+
+Built the Future State artefact's full backend, into the same
+`backend/app/modules/context_strategy/` package Phase 1 already
+established (per this phase's own brief — not a new top-level module):
+data model, temporal versioning, a seven-state lifecycle, module-
+contributed RBAC for both org- and project-scoped Future States,
+module-local comments/attachments, and a working CRUD/lifecycle API for
+both scopes — an exact structural mirror of Phase 1's Strategy
+implementation throughout, per this phase's own instruction to replicate
+it "extremely closely." Everything but cross-artefact relationship wiring
+(Phase 6), MCP tools (Phase 6), and frontend UI (Phase 7) is in scope and
+built.
+
+**Files changed** (all existing Phase 1 files extended, no new module
+files besides the migration and this phase's own test file, per this
+phase's own instruction to keep adding to the existing single large
+module-wide files rather than splitting by artefact type):
+`__init__.py`/`enums.py`/`models.py`/`service.py`/`_shared.py`/`schemas.py`
+(module docstrings updated, new `FutureState*` symbols added under
+distinct names from their `Strategy*` counterparts), `router.py`/
+`project_router.py` (new `/future-states` CRUD/lifecycle/comments/files
+surface appended after the existing `/strategies` surface in each file),
+`module.py` (`FUTURE_STATE_ARTEFACT_TYPE` added to `artefact_types`, a
+new `"future_state"` sub-component, four new `ModuleRoleDefinition`
+entries, `resolve_file_owner_project_id` now tries Strategy's resolution
+then Future State's), `migrations/0051_future_state_data_model.py` (five
+tables: `future_states`, `future_state_versions`,
+`future_state_comments`, `future_state_comment_files`,
+`future_state_files`), and a new sibling test file,
+`tests/test_context_strategy_future_state_api.py` (16 tests — see below
+for why a sibling file rather than appending to Phase 1's own).
+
+**Scope decisions, each a judgment call this phase had to make that the
+plan text didn't fully settle:**
+
+- **`FutureStateScope`/`FutureStateStatus` as their own enums, not a reuse
+  of `StrategyScope`/`StrategyStatus` (Decided by: Agent).** Phase 0 Q1's
+  follow-on says Future State's scope and lifecycle "mirror Strategy's in
+  full," which settles the *shape* but not whether the two artefacts
+  should share one Python enum or each own an identical one. Resolved by
+  direct analogy to this module's own existing precedent one level up:
+  `DecisionStatus` and `StrategyStatus` are already separate enums
+  despite an identical linear-chain-plus-terminal-branches shape (see
+  `enums.StrategyStatus`'s own docstring). Two independent artefact types
+  sharing one vocabulary object would also mean a future divergence in
+  either artefact's own lifecycle (e.g. Strategy someday gaining an
+  `ARCHIVED`-distinct-from-`RETIRED` state Future State never needs)
+  could only be expressed by breaking the shared enum for both, rather
+  than extending one in isolation.
+- **A `title` field, again (Decided by: Agent), following Strategy's own
+  precedent exactly.** Source overview §7's field list doesn't name a
+  title for Future State either, the same omission Phase 1 hit for
+  Strategy — resolved the same way, for the same reason (every other
+  artefact in this codebase has one for list/display purposes).
+- **`target_date` gets its own `target_date_explicitly_set` flag on
+  `apply_future_state_new_version`, not the plain `None`-means-"unchanged"
+  convention every other field here uses (Decided by: Agent).**
+  `target_date` is itself nullable (a Future State may have no target
+  date at all), so a caller explicitly clearing it must be distinguishable
+  from a caller not mentioning it. Rather than invent a new pattern, this
+  reuses `services.requirements.apply_new_version`'s own existing
+  `review_date`/`review_date_explicitly_set` pair verbatim — the same
+  "nullable field on an otherwise carry-forward-by-`None` version-apply
+  function" shape already has a precedent in this codebase, so this
+  phase followed it instead of a novel sentinel.
+- **Comments/attachments: module-local tables again, not a `ReviewTargetType.
+  FUTURE_STATE` member (Decided by: Agent, by direct extension of Phase
+  1's own flagged deviation, not a re-litigation of it).** Same reasoning
+  as `StrategyComment`/`StrategyCommentFile`/`StrategyFile` — see Phase 1
+  notes above and `models.py`'s own docstring.
+- **No automatic supersession-link side effect on `supersede_future_state`
+  (Decided by: Agent), for the same reason `supersede_strategy` has
+  none** — building the actual `ArtefactLink` recording which Future
+  State supersedes which is Phase 6's job, not this phase's.
+- **`resolve_file_owner_project_id` tries both artefact types in sequence
+  (Decided by: Agent) — Strategy's resolution first, then Future State's,
+  returning whichever resolves non-`None`.** The two resolution functions
+  are mutually exclusive by construction (a given `file_id` can only ever
+  be attached to one Strategy or one Future State, never both), so trying
+  them in sequence rather than merging their internal logic into one
+  function keeps each resolver's own docstring/precedent
+  (`resolve_strategy_file_project_id`, unchanged from Phase 1) intact and
+  independently testable.
+- **A new sibling test file, `test_context_strategy_future_state_api.py`,
+  rather than appending to Phase 1's `test_context_strategy_api.py`
+  (Decided by: Agent — the plan explicitly left this as the implementing
+  session's own call).** Future State's own test suite is already
+  comparable in size to Strategy's; one file per artefact type reads more
+  cleanly than a single, ever-growing combined file as this module adds
+  four more artefact types over Phases 3–5, while both files still share
+  the same `tests/` package and API-helper conventions (each file defines
+  its own copies of the small per-file helpers, matching this codebase's
+  existing precedent of not sharing test helpers across module test files
+  via a common fixture module).
+- **`seed_e2e_dataset.py` deliberately left untouched (Decided by: Agent),
+  matching Phase 1's own precedent exactly** — same reasoning: this
+  module still has no frontend (Phase 7), and that script backs the
+  Playwright suite, which drives the frontend. `seed_demo_data.py` **was**
+  updated (see below).
+
+**`seed_demo_data.py` changes:** added `create_org_future_state`/
+`create_project_future_state`/`propose_and_approve_org_future_state`/
+`propose_and_approve_project_future_state` helpers (mirroring the
+existing Strategy helpers exactly) and one seeded Future State of each
+scope on the existing demo org/project, both walked to `Active`, written
+to read as the future state the existing demo Strategies are aiming at
+(no actual `ArtefactLink` relationship — that's Phase 6's job; just
+demo content that traces in spirit) — ran the full script end-to-end
+against the live dev/test stack to confirm it actually works.
+
+**Tests:** `backend/app/modules/context_strategy/tests/
+test_context_strategy_future_state_api.py`, 16 tests — create/get for both
+scopes, any-member-may-create, update creates a new version, an explicit
+`target_date`-clearing update (the one behaviour Future State's own field
+set adds over Strategy's), plain-member-cannot-edit (403), the full
+lifecycle to `Active` via `future_state_approver`,
+mandatory-comment-on-send-back, illegal-transition 409,
+owner-role-cannot-approve (403), a custom-role `approve_baseline` grant
+satisfying the approve gate, the org-scoped lifecycle via
+`org_future_state_approver`, disabled-module-404-not-403,
+disabled-sub-component-404 (both scopes), cross-project 404 isolation,
+comment add/list/author-only-edit, and direct file attachment
+upload/list/unlink plus the lock check on upload.
+
+**Verified:** full backend pytest suite green — **1329 passed, 0 failed**,
+single invocation, run against a fully reset `tests/container` stack
+(`docker compose down -v && up -d --build`, needed to actually exercise
+`seed_demo_data.py`'s new code rather than short-circuit on the
+pre-existing demo org's idempotent-skip guard; this also brought
+`mailhog`/`keycloak` into the running service set, resolving 14
+previously-known mailhog-DNS failures as a side effect, not a regression
+— see `docs/decisions.md`'s dated entry for the full account).
+Migrations replayed cleanly from `0001` through this phase's own `0051`
+on that fresh boot. `ruff check` clean across the whole backend.
+`test_schema_migrations_match_models.py` (the model/migration drift
+guard) green. `seed_demo_data.py` run end-to-end against the live
+dev/test stack (rebuilt the backend container first, per this repo's own
+convention that Compose services don't bind-mount source) — the new
+Future State rows were independently confirmed via direct SQL (both
+scopes, `active` status, `target_date` round-tripping as a real `date`).
 
 ## Phase 3 — Pain Points
 

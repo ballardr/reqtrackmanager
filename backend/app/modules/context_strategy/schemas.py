@@ -14,16 +14,23 @@ shape for this codebase's module schemas:
   field, not a column, mirroring `DecisionOut`'s identical pattern.
 - `StrategyCommentOut` mirrors `DecisionCommentOut`'s shape (no reaction
   fields — `StrategyComment` has no reaction mechanism, same reasoning).
+
+Phase 2 (Future State) adds the same shapes (`FutureStateCreate`/`Update`/
+`Out`/`VersionOut`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/
+`CommentOut`) for the standalone Future State artefact, following every
+one of the conventions above identically.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from app.modules.context_strategy.enums import (
+    FutureStateScope,
+    FutureStateStatus,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
@@ -154,6 +161,118 @@ class StrategyCommentOut(BaseModel):
 
     id: UUID
     strategy_id: UUID
+    author_id: UUID
+    author_display_name: str
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+    attachments: list[FileAssetOut] = []
+
+
+# --- Future State (Phase 2) -------------------------------------------------
+
+
+class FutureStateCreate(BaseModel):
+    title: str
+    current_state: str = ""
+    desired_state: str = ""
+    target_date: date | None = None
+    outcomes: str = ""
+    success_measures: str = ""
+    constraints: str = ""
+    assumptions: str = ""
+
+
+class FutureStateUpdate(BaseModel):
+    """Full replace of every content field — rejected outright (409) by the
+    router once the Future State's own current version is locked, exact
+    mirror of `StrategyUpdate`."""
+
+    title: str
+    current_state: str = ""
+    desired_state: str = ""
+    target_date: date | None = None
+    outcomes: str = ""
+    success_measures: str = ""
+    constraints: str = ""
+    assumptions: str = ""
+    change_note: str = ""
+
+
+class FutureStateOut(BaseModel):
+    """Always built explicitly by the router (`future_state_to_out`) — exact
+    mirror of `StrategyOut`."""
+
+    id: UUID
+    scope: FutureStateScope
+    organization_id: UUID | None
+    project_id: UUID | None
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    archived_by: UUID | None
+
+    title: str
+    current_state: str
+    desired_state: str
+    target_date: date | None
+    outcomes: str
+    success_measures: str
+    constraints: str
+    assumptions: str
+    status: FutureStateStatus
+    version_number: int
+    is_locked: bool
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class FutureStateVersionOut(BaseModel):
+    """One historical `FutureStateVersion` snapshot — exact mirror of
+    `StrategyVersionOut`."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    future_state_id: UUID
+    version_number: int
+    valid_from: datetime
+    valid_to: datetime | None
+    title: str
+    current_state: str
+    desired_state: str
+    target_date: date | None
+    outcomes: str
+    success_measures: str
+    constraints: str
+    assumptions: str
+    status: FutureStateStatus
+    change_note: str
+    created_by: UUID
+    created_at: datetime
+
+
+class FutureStateTransitionRequest(BaseModel):
+    """Payload for every Future State lifecycle-transition endpoint — exact
+    mirror of `StrategyTransitionRequest`."""
+
+    comment: str | None = None
+
+
+class FutureStateCommentCreate(BaseModel):
+    body: str
+
+
+class FutureStateCommentUpdate(BaseModel):
+    body: str
+
+
+class FutureStateCommentOut(BaseModel):
+    """Built explicitly by the router — exact mirror of `StrategyCommentOut`."""
+
+    id: UUID
+    future_state_id: UUID
     author_id: UUID
     author_display_name: str
     body: str

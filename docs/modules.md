@@ -473,7 +473,13 @@ scoped at either level, so it registers `strategy_owner`/`strategy_approver`
 side, picking whichever pair applies per-row from the artefact's own
 `scope` column. No mechanism change was needed for this — `scope` was
 already a plain per-role string, not a fixed choice a module makes once for
-its whole role set.
+its whole role set. Context & Strategy's own Phase 2 (Future State) repeats
+this exact pattern a second time in the same module, for a second artefact
+type — `future_state_owner`/`future_state_approver` (project) and
+`org_future_state_owner`/`org_future_state_approver` (org) — bringing that
+one module to eight roles total, confirming the mechanism scales to more
+than one org/project-dual-scoped artefact per module without any further
+change.
 
 At every process startup, `sync_module_role_definitions` mirrors the live
 registry's roles into a `module_role_definitions` table — deliberately

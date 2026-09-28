@@ -2,8 +2,8 @@
 Module: modules.context_strategy.module
 
 Registers the Context & Strategy module into the modular feature system's
-registry (docs/plans/module-01-context-and-strategy-plan.md Phase 1) via
-`MODULE_DEFINITION`, mirroring `app.modules.decisions.module`'s own
+registry (docs/plans/module-01-context-and-strategy-plan.md Phases 1–2)
+via `MODULE_DEFINITION`, mirroring `app.modules.decisions.module`'s own
 registration shape.
 
 Four module-contributed roles are declared, not additions to `OrgRole`/
@@ -14,6 +14,11 @@ this codebase whose own artefact is scoped at *either* level (Phase 0 Q2),
 so it is also the first to need both an org- and a project-scoped flavour
 of the same conceptual "owner"/"approver" role pair, rather than one or the
 other the way every other module-with-roles so far has picked exactly one.
+Phase 2 (Future State) adds the same four-role shape a second time —
+`future_state_owner`/`future_state_approver` (project) and
+`org_future_state_owner`/`org_future_state_approver` (org) — for the
+standalone Future State artefact, per Phase 0 Q1's follow-on that Future
+State's roles mirror Strategy's in full.
 
 `get_router()` returns the org-scoped `router.py` (Decision Template-style
 CRUD for organisation-scoped Strategies); `get_project_router()` returns
@@ -21,15 +26,19 @@ CRUD for organisation-scoped Strategies); `get_project_router()` returns
 HTTP surfaces from day one, since this phase (unlike Decision Management's
 own Phase 1) combines what that module's plan split across its Phase 1
 (data model) and Phase 4 (backend API) into one phase's scope.
-`resolve_file_owner_project_id` is wired for the project-scoped half of
-this module's file attachments only — see `service.
-resolve_strategy_file_project_id`'s own docstring for why the org-scoped
-half doesn't need it (`is_org_resource=True` uploads instead).
+`resolve_file_owner_project_id` tries Strategy's own resolution first, then
+Future State's, returning whichever resolves non-`None` first — this
+module now has two project-scoped artefact types whose files need owning-
+project resolution through this one shared hook. See `service.
+resolve_strategy_file_project_id`/`resolve_future_state_file_project_id`'s
+own docstrings for why the org-scoped half of either artefact doesn't need
+it (`is_org_resource=True` uploads instead).
 
-`artefact_types=(STRATEGY_ARTEFACT_TYPE,)` is registered now even though
-Phase 6 (cross-artefact relationship wiring) is out of this phase's scope
-— so Phase 6 doesn't also need a core-file edit later, following Decision
-Management's own precedent (`DECISION_ARTEFACT_TYPE`) exactly.
+`artefact_types=(STRATEGY_ARTEFACT_TYPE, FUTURE_STATE_ARTEFACT_TYPE)` is
+registered now even though Phase 6 (cross-artefact relationship wiring) is
+out of this phase's scope — so Phase 6 doesn't also need a core-file edit
+later, following Decision Management's own precedent (`DECISION_ARTEFACT_
+TYPE`) exactly.
 
 `implemented=True` — Phase 1's own testing bar (full backend suite green,
 `ruff check` clean, endpoint coverage) is met, and a real, working API
@@ -51,8 +60,9 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.context_strategy._shared import FUTURE_STATE_APPROVE_PERMISSION as _FUTURE_STATE_APPROVE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
-from app.modules.context_strategy.service import STRATEGY_ARTEFACT_TYPE
+from app.modules.context_strategy.service import FUTURE_STATE_ARTEFACT_TYPE, STRATEGY_ARTEFACT_TYPE
 from app.modules.registry import ModuleDefinition, ModuleRoleDefinition, ModuleSubComponentDefinition
 
 CONTEXT_STRATEGY_MODULE_KEY = "context_strategy"
@@ -78,13 +88,24 @@ def get_project_router() -> APIRouter | None:
 
 
 def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
-    """This module's `ModuleDefinition.resolve_file_owner_project_id` hook
-    — only ever resolves a project-scoped Strategy's attachments (see
-    `service.resolve_strategy_file_project_id`'s own docstring). Imported
-    lazily for the same import-cycle reason as `get_router()`."""
-    from app.modules.context_strategy.service import resolve_strategy_file_project_id
+    """This module's `ModuleDefinition.resolve_file_owner_project_id` hook.
+    Tries Strategy's own project-scoped resolution first, then Future
+    State's, returning whichever resolves non-`None` first — this module
+    now has two project-scoped artefact types whose files need owning-
+    project resolution through this one hook (see `service.
+    resolve_strategy_file_project_id`/`resolve_future_state_file_project_id`'s
+    own docstrings for why the org-scoped half of either artefact is never
+    resolved here). Imported lazily for the same import-cycle reason as
+    `get_router()`."""
+    from app.modules.context_strategy.service import (
+        resolve_future_state_file_project_id,
+        resolve_strategy_file_project_id,
+    )
 
-    return resolve_strategy_file_project_id(db, file_id)
+    project_id = resolve_strategy_file_project_id(db, file_id)
+    if project_id is not None:
+        return project_id
+    return resolve_future_state_file_project_id(db, file_id)
 
 
 MODULE_DEFINITION = ModuleDefinition(
@@ -92,7 +113,9 @@ MODULE_DEFINITION = ModuleDefinition(
     name="Context & Strategy",
     description=(
         "Record organisation and project Strategy — objective, current/desired future state, rationale, "
-        "expected outcomes, constraints, and measures of success — with a formal review/approval lifecycle."
+        "expected outcomes, constraints, and measures of success — plus a standalone Future State artefact "
+        "(current state, desired state, target date, outcomes, success measures, constraints, assumptions) — "
+        "both with a formal review/approval lifecycle."
     ),
     version="0.1.0",
     default_enabled=False,
@@ -102,14 +125,17 @@ MODULE_DEFINITION = ModuleDefinition(
     resolve_file_owner_project_id=resolve_file_owner_project_id,
     models_import_path="app.modules.context_strategy.models",
     migrations_dir="app/modules/context_strategy/migrations",
-    artefact_types=(STRATEGY_ARTEFACT_TYPE,),
-    # Module 0 (Platform Foundations) Phase 4: registers now, using the
-    # first sub-component this module actually ships — the other four
-    # Context & Strategy artefacts (Future State, Pain Point, Guiding
-    # Principle, Open Question) don't exist yet, so each declares its own
-    # key here only once its own phase lands, the same way this one does
-    # now, rather than all five being declared speculatively up front.
-    sub_components=(ModuleSubComponentDefinition(key="strategy", name="Strategy", default_enabled=True),),
+    artefact_types=(STRATEGY_ARTEFACT_TYPE, FUTURE_STATE_ARTEFACT_TYPE),
+    # Module 0 (Platform Foundations) Phase 4: each of Context & Strategy's
+    # eventual six artefacts declares its own sub-component key only once
+    # its own phase lands (Phase 1 registered "strategy"; this is Phase 2's
+    # own "future_state") — the remaining three (Pain Point, Guiding
+    # Principle, Open Question) still don't exist yet, so aren't declared
+    # speculatively up front.
+    sub_components=(
+        ModuleSubComponentDefinition(key="strategy", name="Strategy", default_enabled=True),
+        ModuleSubComponentDefinition(key="future_state", name="Future State", default_enabled=True),
+    ),
     roles=(
         ModuleRoleDefinition(
             role_key="strategy_owner",
@@ -142,6 +168,38 @@ MODULE_DEFINITION = ModuleDefinition(
             description="May approve, activate, supersede, and retire organisation-scoped Strategy records.",
             scope="org",
             permissions=(_STRATEGY_APPROVE_PERMISSION,),
+        ),
+        ModuleRoleDefinition(
+            role_key="future_state_owner",
+            name="Future State Owner",
+            description=(
+                "Creates and manages project-scoped Future State records — the module's management-level role "
+                "for a project Future State (docs/plans/module-01-context-and-strategy-plan.md Phase 2)."
+            ),
+            scope="project",
+        ),
+        ModuleRoleDefinition(
+            role_key="future_state_approver",
+            name="Future State Approver",
+            description="May approve, activate, supersede, and retire project-scoped Future State records.",
+            scope="project",
+            permissions=(_FUTURE_STATE_APPROVE_PERMISSION,),
+        ),
+        ModuleRoleDefinition(
+            role_key="org_future_state_owner",
+            name="Organisation Future State Owner",
+            description=(
+                "Creates and manages organisation-scoped Future State records — the org-scoped equivalent "
+                "of Future State Owner."
+            ),
+            scope="org",
+        ),
+        ModuleRoleDefinition(
+            role_key="org_future_state_approver",
+            name="Organisation Future State Approver",
+            description="May approve, activate, supersede, and retire organisation-scoped Future State records.",
+            scope="org",
+            permissions=(_FUTURE_STATE_APPROVE_PERMISSION,),
         ),
     ),
 )

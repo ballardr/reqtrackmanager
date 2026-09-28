@@ -20,6 +20,13 @@ precedent for every other module with both an org- and a project-scoped
 router (e.g. `modules.compliance.router`/`project_router`), rather than
 inventing a new dynamic-route-building mechanism this codebase has no
 other example of.
+
+Phase 2 (Future State) adds the same shape of helpers for the standalone
+Future State artefact, under distinct names (`future_state_to_out`,
+`get_future_state_in_scope`, `require_future_state_manage_role`,
+`require_future_state_approve_permission`) since both artefact types'
+helpers now live in this one file — see each function's own docstring for
+anything that isn't a pure rename of its Strategy counterpart.
 """
 
 from __future__ import annotations
@@ -31,10 +38,15 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import PermissionLevel
 from app.models.user import User
-from app.modules.context_strategy.enums import StrategyScope
-from app.modules.context_strategy.models import Strategy, StrategyVersion
-from app.modules.context_strategy.schemas import StrategyOut
-from app.modules.context_strategy.service import STRATEGY_ARTEFACT_TYPE, is_locked
+from app.modules.context_strategy.enums import FutureStateScope, StrategyScope
+from app.modules.context_strategy.models import FutureState, FutureStateVersion, Strategy, StrategyVersion
+from app.modules.context_strategy.schemas import FutureStateOut, StrategyOut
+from app.modules.context_strategy.service import (
+    FUTURE_STATE_ARTEFACT_TYPE,
+    STRATEGY_ARTEFACT_TYPE,
+    is_future_state_locked,
+    is_locked,
+)
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
 
@@ -48,6 +60,12 @@ MODULE_KEY = "context_strategy"
 # directly, with no per-instance sub-type resolution needed.
 STRATEGY_APPROVE_PERMISSION = encode_permission(STRATEGY_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
+# Future State's own unscoped `(future_state, approve_baseline)` permission
+# atom — same reasoning as `STRATEGY_APPROVE_PERMISSION` (Future State's
+# only scope dimension is structural org/project, not a permission
+# sub-type).
+FUTURE_STATE_APPROVE_PERMISSION = encode_permission(FUTURE_STATE_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
+
 _OWNER_ROLE_KEY: dict[StrategyScope, str] = {
     StrategyScope.ORGANIZATION: "org_strategy_owner",
     StrategyScope.PROJECT: "strategy_owner",
@@ -55,6 +73,15 @@ _OWNER_ROLE_KEY: dict[StrategyScope, str] = {
 _APPROVER_ROLE_KEY: dict[StrategyScope, str] = {
     StrategyScope.ORGANIZATION: "org_strategy_approver",
     StrategyScope.PROJECT: "strategy_approver",
+}
+
+_FS_OWNER_ROLE_KEY: dict[FutureStateScope, str] = {
+    FutureStateScope.ORGANIZATION: "org_future_state_owner",
+    FutureStateScope.PROJECT: "future_state_owner",
+}
+_FS_APPROVER_ROLE_KEY: dict[FutureStateScope, str] = {
+    FutureStateScope.ORGANIZATION: "org_future_state_approver",
+    FutureStateScope.PROJECT: "future_state_approver",
 }
 
 
@@ -164,8 +191,105 @@ def require_approve_permission(
 def apply_value_error_as_conflict(fn, *args, **kwargs):
     """Calls a `service.py` lifecycle function, translating its `ValueError`
     (an illegal transition) into an HTTP 409 — mirrors `modules.decisions.
-    project_router.workflow._apply_value_error_as_conflict`."""
+    project_router.workflow._apply_value_error_as_conflict`. Shared as-is
+    by both Strategy's and Future State's routers — this helper is already
+    generic over the callable, so Phase 2 needed no Future-State-specific
+    variant."""
     try:
         return fn(*args, **kwargs)
     except ValueError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+# --- Future State (Phase 2) -------------------------------------------------
+
+
+def future_state_to_out(future_state: FutureState, version: FutureStateVersion) -> FutureStateOut:
+    """Merges a `FutureState` identity row with its current
+    `FutureStateVersion`'s content into the API-facing shape — exact
+    mirror of `strategy_to_out`."""
+    return FutureStateOut(
+        id=future_state.id, scope=future_state.scope, organization_id=future_state.organization_id,
+        project_id=future_state.project_id, creator_id=future_state.creator_id,
+        is_archived=future_state.is_archived, archived_at=future_state.archived_at,
+        archived_by=future_state.archived_by,
+        title=version.title, current_state=version.current_state, desired_state=version.desired_state,
+        target_date=version.target_date, outcomes=version.outcomes, success_measures=version.success_measures,
+        constraints=version.constraints, assumptions=version.assumptions, status=version.status,
+        version_number=version.version_number, is_locked=is_future_state_locked(version),
+        created_at=future_state.created_at, updated_at=future_state.updated_at,
+    )
+
+
+def get_future_state_in_scope(
+    db: Session,
+    scope: FutureStateScope,
+    *,
+    organization_id: uuid.UUID | None = None,
+    project_id: uuid.UUID | None = None,
+    future_state_id: uuid.UUID,
+) -> FutureState:
+    """Loads `future_state_id`, 404ing unless it exists, matches `scope`,
+    and belongs to the given `organization_id`/`project_id` — exact mirror
+    of `get_strategy_in_scope`."""
+    future_state = db.get(FutureState, future_state_id)
+    if future_state is None or future_state.scope != scope:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Future State not found.")
+    if scope == FutureStateScope.ORGANIZATION and future_state.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Future State not found.")
+    if scope == FutureStateScope.PROJECT and future_state.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Future State not found.")
+    return future_state
+
+
+def user_satisfies_future_state_owner_role(
+    db: Session,
+    current_user: User,
+    scope: FutureStateScope,
+    *,
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+) -> bool:
+    return user_satisfies_module_role(
+        db, current_user, MODULE_KEY, _FS_OWNER_ROLE_KEY[scope], organization_id=organization_id, project_id=project_id,
+    )
+
+
+def require_future_state_manage_role(
+    db: Session,
+    current_user: User,
+    scope: FutureStateScope,
+    *,
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+) -> None:
+    """Gate for create/edit/archive-type actions on a Future State — exact
+    mirror of `require_manage_role`, satisfied by the scope's own
+    `..._owner` module role."""
+    if not user_satisfies_future_state_owner_role(
+        db, current_user, scope, organization_id=organization_id, project_id=project_id
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Future State Owner (or admin/manager) may do this.")
+
+
+def require_future_state_approve_permission(
+    db: Session,
+    current_user: User,
+    scope: FutureStateScope,
+    *,
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+) -> None:
+    """Gate for approve/activate/supersede/retire on a Future State — exact
+    mirror of `require_approve_permission`."""
+    if current_user.is_server_admin:
+        return
+    if user_satisfies_module_role(
+        db, current_user, MODULE_KEY, _FS_APPROVER_ROLE_KEY[scope],
+        organization_id=organization_id, project_id=project_id,
+    ):
+        return
+    held = get_effective_permissions(db, current_user.id, organization_id=organization_id, project_id=project_id)
+    if permission_satisfied(held, FUTURE_STATE_APPROVE_PERMISSION):
+        return
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
