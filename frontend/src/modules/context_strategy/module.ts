@@ -3,6 +3,7 @@ import { createElement } from "react";
 import type { TierAModuleDefinition } from "../types";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
 import { GuidingPrincipleDetailPage } from "./GuidingPrincipleDetailPage";
+import { OpenQuestionDetailPage } from "./OpenQuestionDetailPage";
 import { OrgFutureStatesPanel } from "./OrgFutureStatesPanel";
 import { OrgGuidingPrinciplesPanel } from "./OrgGuidingPrinciplesPanel";
 import { OrgPainPointTypesPanel } from "./OrgPainPointTypesPanel";
@@ -10,6 +11,7 @@ import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
 import { PainPointDetailPage } from "./PainPointDetailPage";
 import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
 import { ProjectGuidingPrinciplesPage } from "./ProjectGuidingPrinciplesPage";
+import { ProjectOpenQuestionsPage } from "./ProjectOpenQuestionsPage";
 import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
 import { ProjectPainPointTypesPanel } from "./ProjectPainPointTypesPanel";
 import { ProjectStrategiesPage } from "./ProjectStrategiesPage";
@@ -108,6 +110,17 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * "revisit" note). No `orgAdminSections`/`projectAdminSections` entries this
  * phase — Guiding Principle has no configurable type vocabulary (Phase 4's
  * own scope decision), unlike Pain Point.
+ *
+ * **Phase 7.5 (2026-09-29) adds Open Question** — the fifth and last of the
+ * five planned sub-phases. Structurally closest to Pain Point's own shape
+ * (Phase 7.3): **project-scoped only** (source overview §9) — `routes`
+ * gains `ProjectOpenQuestionsPage`/`OpenQuestionDetailPage`, but there is no
+ * `globalRoutes` entry and no `orgOverviewSections`/`orgAdminSections`/
+ * `projectAdminSections` contribution for it — no org-scoped artefact to
+ * reach via either mechanism, and (unlike Pain Point) no configurable type
+ * vocabulary either, so this phase needs none of the admin-section wiring
+ * Phase 7.3 added. With this phase, all five of Phase 0 Q7's planned
+ * top-level nav-rail entries now exist.
  */
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
@@ -134,6 +147,14 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       path: "/projects/:projectId/modules/context_strategy/guiding-principles/:guidingPrincipleId",
       element: createElement(GuidingPrincipleDetailPage),
+    },
+    {
+      path: "/projects/:projectId/modules/context_strategy/open-questions",
+      element: createElement(ProjectOpenQuestionsPage),
+    },
+    {
+      path: "/projects/:projectId/modules/context_strategy/open-questions/:openQuestionId",
+      element: createElement(OpenQuestionDetailPage),
     },
   ],
   globalRoutes: [

@@ -25,8 +25,10 @@ five per-artefact sub-phases 2026-09-29 (see that phase's own note) —
 Phase 7.1 (Strategy) complete (2026-09-29 — see "Phase 7.1 notes" below);
 Phase 7.2 (Future State) complete (2026-09-29 — see "Phase 7.2 notes"
 below); Phase 7.3 (Pain Point + Pain Point Type admin) complete
-(2026-09-29 — see "Phase 7.3 notes" below); Phase 7.4-7.5 (Guiding
-Principle/Open Question frontends) are next.
+(2026-09-29 — see "Phase 7.3 notes" below); Phase 7.4 (Guiding Principle)
+complete (2026-09-29 — see "Phase 7.4 notes" below); Phase 7.5 (Open
+Question) complete (2026-09-29 — see "Phase 7.5 notes" below), the fifth
+and last Phase 7 sub-phase — Phase 8 (docs website coverage) is next.
 First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
@@ -52,9 +54,9 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-11 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
-2026-09-29 — see that phase's own note). **Phase 7.5 (Open Question
-frontend) is next.**
+12 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
+2026-09-29 — see that phase's own note; all five now shipped). **Phase 8
+(docs website coverage) is next.**
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -69,8 +71,8 @@ frontend) is next.**
 | 7.2 | Frontend UI — Future State | [x] Complete (2026-09-29) |
 | 7.3 | Frontend UI — Pain Point (+ type admin) | [x] Complete (2026-09-29) |
 | 7.4 | Frontend UI — Guiding Principle | [x] Complete (2026-09-29) |
-| 7.5 | Frontend UI — Open Question | [ ] Not started |
-| 8 | Docs website coverage | [ ] Not started — depends on Phase 7.1-7.5 shipping |
+| 7.5 | Frontend UI — Open Question | [x] Complete (2026-09-29) |
+| 8 | Docs website coverage | [ ] Not started — now unblocked, all five Phase 7 sub-phases shipped |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -1476,7 +1478,7 @@ independently scoped, testable, and shippable:
 | 7.2 | Future State (org + project) | [x] Complete (2026-09-29) |
 | 7.3 | Pain Point (project) + Pain Point Type admin (org) | [x] Complete (2026-09-29) |
 | 7.4 | Guiding Principle (org + project) | [x] Complete (2026-09-29) |
-| 7.5 | Open Question (project) | [ ] Not started |
+| 7.5 | Open Question (project) | [x] Complete (2026-09-29) |
 
 Strategy is first because it is the module's foundational artefact (every
 other artefact's demo content and several relationship types trace back to
@@ -2468,6 +2470,220 @@ performed this phase).
   65-test run of `test_context_strategy_api.py` + `test_module_frontend_
   integration.py` above, both before this full run).
 
+## Phase 7.5 notes (2026-09-29)
+
+Built Open Question's full frontend — the fifth and last of the five
+planned Phase 7 sub-phases — into the same `frontend/src/modules/
+context_strategy/` directory Phase 7.1-7.4 already established.
+Structurally closest to Pain Point (Phase 7.3): **project-scoped only**
+(source overview §9 — no org twin, no `buildOpenQuestionApi` factory), a
+**branching** lifecycle (not a linear chain), and no version table. Two
+genuine differences from Pain Point's own shape: (1) **two branch points**,
+not one (`WITHDRAWN` reachable from both `INVESTIGATING` and `READY_FOR_
+DECISION`, not only from a single middle state); (2) **no `title` field at
+all** — `question` itself doubles as this artefact's display title, the
+same precedent `GuidingPrinciple.name` already established.
+
+**New files**, all under `frontend/src/modules/context_strategy/`:
+`OpenQuestionFormModal.tsx` (create/edit, mirrors `PainPointFormModal.tsx`
+but with no type picker — Open Question has no type vocabulary — and a
+`due_date` field instead), `ProjectOpenQuestionsPage.tsx` (project-scoped
+list, reached via this phase's new "Open Question" nav-rail entry — the
+fifth and last of Phase 0 Q7's five planned top-level entries),
+`OpenQuestionDetailPage.tsx` (full fields, the two-branch-point lifecycle's
+action buttons, a dedicated `AssigneePicker` for `owner_id`, relationships,
+evidence attachments, comments), `OpenQuestionRelationshipsSection.tsx`
+(Open Question's own two untyped link kinds), and one `.stories.tsx` file
+per component above (4 files, 25 Storybook stories total).
+
+**Files changed:** `backend/app/modules/context_strategy/module.py`
+(`frontend_manifest.additional_nav_entries` gains Open Question's own
+`ModuleNavEntry`, the fifth and last), `backend/app/modules/context_strategy/
+tests/test_context_strategy_api.py` (updated `test_frontend_manifest_
+registers_the_strategy_nav_entry`'s exact-equality assertion to expect the
+new entry), `frontend/src/modules/context_strategy/types.ts` (Open
+Question's own TypeScript shapes plus `OPEN_QUESTION_PRIORITY_LABEL`/
+`OPEN_QUESTION_STATUS_LABEL`/`OPEN_QUESTION_STATUS_TONE`/`OPEN_QUESTION_
+LINK_KIND_LABEL` label maps), `frontend/src/modules/context_strategy/api.ts`
+(`projectOpenQuestionApi`, a single flat exported object), `frontend/src/
+modules/context_strategy/module.ts` (Open Question's `routes` entries
+appended alongside the other four artefacts', not replacing them). No
+Open Question backend business logic (Phase 5, already shipped) was
+touched.
+
+**Scope decisions, each a judgment call this phase had to make that the
+brief didn't fully settle:**
+
+- **No `buildOpenQuestionApi` factory (Decided by: Agent)** — the same
+  "nothing to instantiate twice" reasoning `projectPainPointApi`'s own
+  docstring gives (Open Question has no organisation scope at all, source
+  overview §9). `projectOpenQuestionApi` is a single flat, hand-written
+  object, mirroring Pain Point's own project-scoped-only exception a
+  second time rather than reverting to the factory shape a third time.
+- **Two-branch-point lifecycle UI: `Investigate` is a plain click;
+  `Mark ready for decision`/`Resolve` get an optional-comment
+  `ConfirmDialog`; `Withdraw` gets a mandatory-comment `ConfirmDialog`
+  (Decided by: Agent, following the brief's own instruction to apply this
+  module's standing confirmation-tier convention to a second branching
+  lifecycle).** `Withdraw` renders alongside either `Mark ready for
+  decision` (from `INVESTIGATING`) or `Resolve` (from `READY_FOR_
+  DECISION`) — the same button, the same mandatory-comment dialog, at both
+  branch points, since `withdraw_project_open_question`'s own backend
+  enforcement (400 without a comment) and copy don't vary by which state
+  the transition started from.
+- **Both roles' actions render unconditionally, the same "every mutating
+  control always renders, gated only by content-lock state" convention
+  `StrategyDetailPage.tsx` established (Decided by: Agent, confirming
+  rather than re-deciding this precedent for the module's first
+  two-separate-lifecycle-role artefact).** `open_question_owner` and
+  `open_question_resolver` gate different transitions server-side
+  (§9.4's three-tier split), but `OpenQuestionDetailPage.tsx` needs no
+  role-aware conditional rendering to reflect that — a `open_question_
+  owner`-only caller simply gets a 403 toast if they click `Resolve`,
+  exactly the same as every other artefact's own manager/approver split
+  in this module.
+- **Evidence upload needed no special "open to any member" frontend wiring,
+  the same finding Pain Point's own Phase 7.3 already made (Decided by:
+  Agent — a finding, not a build).** Checked `upload_project_open_
+  question_file`'s own RBAC first: it depends only on `_require_open_
+  question_view`, matching §9.4's "Add evidence" broad-creation capability;
+  `OPEN_QUESTION_LOCKED_STATUSES` already excludes `INVESTIGATING`/`READY_
+  FOR_DECISION`, so `FileAttachmentList`'s existing `disabled={openQuestion.
+  is_locked}` wiring is already exactly as open as the backend allows.
+- **`due_date` is a plain field on `OpenQuestionFormModal.tsx`, not
+  assigned separately the way `owner_id` is (Decided by: Agent).** Unlike
+  owner assignment (§9.4's manager-tier "Assign"), source overview §9.2
+  lists "Due/Review Date" as a plain content field alongside question/
+  context/evidence with no separate capability naming it — this follows
+  `FutureStateFormModal`'s `target_date`-shaped plain-nullable-date-field
+  precedent instead of Pain Point's/Guiding Principle's `AssigneePicker`
+  pattern.
+- **`OpenQuestionRelationshipsSection.tsx` is a sibling component, not a
+  generalisation of any of the other four (Decided by: Agent)** — checked
+  all four existing sections first, per this module's own established
+  practice: Open Question's own two kinds (`related_to_strategy`/
+  `related_to_requirement`) and target pickers diverge from every
+  sibling's, the same "per-source-artefact-type" reasoning `PainPoint
+  RelationshipsSection.tsx`'s own docstring already established a third
+  time.
+- **The Strategy target picker lists this project's own Strategies only
+  (`projectStrategyApi.list`), not this project's organisation's org-scoped
+  Strategies too (Decided by: Agent) — matching `PainPointRelationships
+  Section.tsx`'s own `drives_strategy` picker precedent exactly, not a new
+  limitation invented here.** Flagged explicitly in the component's own
+  docstring as a shared, revisit-together limitation rather than a
+  silently narrower choice unique to this section.
+- **No "reserved for future use" note rendered, unlike Strategy's/Future
+  State's/Guiding Principle's own relationship sections (Decided by:
+  Agent, confirming rather than a new judgment call).** `Open Question ->
+  resolved by -> Decision` (§9.5, Phase 0 Q5) is the reserved relationship,
+  but Module 4's own Phase 7 builds the real "Create Decision from Open
+  Question" workflow and relationship, not this module — `resolve_open_
+  question` (the plain status transition, already shipped) is this
+  artefact's own stand-in until that workflow exists, the same posture
+  Phase 5's/Phase 6's own notes already established.
+- **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
+  (Decided by: Agent), matching Phase 7.1-7.4's own precedent exactly** —
+  the new Playwright spec creates its own disposable org/admin/project via
+  the API. `seed_demo_data.py` needed no change — Phase 5 already seeds two
+  Open Questions on the existing demo project; this phase only adds UI to
+  view/act on data that already exists.
+- **No backend change needed (confirmed, not assumed).** Checked every
+  endpoint this phase's frontend calls against `project_router.py` directly
+  before writing `api.ts` — `investigate`/`mark-ready-for-decision`/
+  `withdraw`/`resolve`, archive/unarchive, comments, direct file
+  attachments, and `/relationships` all already exist exactly as Phase 5/6
+  shipped them.
+
+**Omitted this phase, mirroring Pain Point's (Phase 7.3) own identical
+omissions and reasoning where they still apply:** `globalRoutes`/
+`orgOverviewSections`/`orgAdminSections`/`projectAdminSections`/
+`globalNavItems`/`standaloneWorkspaces`/`projectOverviewTiles`/
+`requirementDetailSections`/`requirementLinkPickerTabs`/`entityAccentColor`
+— Open Question has no organisation-scoped artefact to reach via either
+mechanism, no configurable type vocabulary (unlike Pain Point), no
+cross-org standalone entity of its own, no project-overview summary tile,
+and nothing yet renders a mixed list containing an Open Question row
+alongside other entity kinds. `docs/website/` was not touched this phase
+either — see Phase 8's own updated status above; with this phase, all five
+Phase 7 sub-phases have shipped, so Phase 8 is no longer gated.
+
+**Tests:**
+- `backend/app/modules/context_strategy/tests/test_context_strategy_api.py`:
+  1 test updated (`test_frontend_manifest_registers_the_strategy_nav_entry`),
+  now asserting the manifest's `additional_nav_entries` contains Open
+  Question's own `ModuleNavEntry` as the fifth and last entry.
+- `frontend/src/modules/context_strategy/*.stories.tsx`: 4 new files, 25
+  Storybook/Vitest stories — the form modal (create/validation/edit), the
+  project list page (including empty state and create-modal open), the
+  detail page across every lifecycle status (`Open`/`Investigating`/`Ready
+  for Decision`/`Resolved`, the mandatory-comment-on-withdraw case, a
+  `mark-ready-for-decision` action, and owner assignment via
+  `AssigneePicker`), and relationships (the `related_to_strategy` kind).
+- `tests/playwright/tests/modules/context_strategy/open-question-lifecycle.spec.ts`:
+  1 new spec — disposable org/admin/project via the API, enables Context &
+  Strategy for that org, creates a project-scoped Open Question via the new
+  "Open Question" nav entry, walks the happy path `Open -> Investigating ->
+  Ready for Decision -> Resolved`, confirms the final status back on the
+  list, then creates a second Open Question and confirms `Investigating ->
+  Withdraw` is blocked until a comment is entered (the lifecycle's other
+  branch point) — mirroring `pain-point-lifecycle.spec.ts`'s own "cover a
+  branch and the happy path together" precedent.
+
+**Verified:**
+- `ruff check` clean on both changed backend files (`module.py`, `test_
+  context_strategy_api.py`) and across the whole backend.
+- `npx tsc -b` clean across the whole frontend.
+- `npx eslint .` exits 0 (0 errors across the whole frontend; 104 total
+  warnings, up from Phase 7.4's 98 — the 6 new warnings break down as 4
+  `react-hooks/set-state-in-effect` warnings (`OpenQuestionDetailPage.tsx`
+  x1, `OpenQuestionRelationshipsSection.tsx` x2, `ProjectOpenQuestionsPage.
+  tsx` x1 — the same pre-existing, already-accepted pattern present at 98
+  other call sites repo-wide before this phase) plus 2 "unused eslint-
+  disable directive" warnings (`OpenQuestionDetailPage.tsx` x1,
+  `OpenQuestionRelationshipsSection.tsx` x1) matching `PainPointDetailPage.
+  tsx`'s/`PainPointRelationshipsSection.tsx`'s own identical pre-existing
+  pattern exactly (the `// eslint-disable-next-line react-hooks/exhaustive-
+  deps` comment those two files' own `useEffect` calls already carry is
+  itself unused once `react-hooks/set-state-in-effect` is the only rule
+  actually firing on that line) — no new warning *class* introduced.
+- `npx vitest run --project=storybook` (the full suite, not just this
+  phase's own new files): **153 test files / 1183 tests, all passing** — up
+  from Phase 7.4's 149/1158 (net: +4 files/+25 tests, exactly this phase's
+  own new story files, no regressions found).
+- Backend/frontend containers rebuilt (`docker compose up -d --build backend
+  frontend`, per this repo's "Compose services don't bind-mount source"
+  convention) before any live-stack verification.
+- `test_context_strategy_api.py` (19 passed) and `test_module_frontend_
+  integration.py` (46 passed, unchanged count — no regression) both run
+  against the rebuilt `tests/container` backend.
+- `npx playwright test tests/modules/context_strategy/open-question-lifecycle.spec.ts
+  --no-deps` against the freshly rebuilt live stack — **1 passed**, covering
+  both branch points (the happy path to `Resolved` and the mandatory-
+  comment-on-`Withdraw` gate from `Investigating`) through the new "Open
+  Question" nav-rail entry end to end. `strategy-lifecycle.spec.ts`/
+  `future-state-lifecycle.spec.ts`/`pain-point-lifecycle.spec.ts`/
+  `guiding-principle-lifecycle.spec.ts` were also re-run standalone the
+  same way to confirm this phase's `module.ts`/`module.py` changes (the
+  fifth and last nav entry) introduced no regression — **4 passed**.
+- Full backend pytest suite run as a single invocation, per this repo's own
+  concurrency rule (host `.venv`) — **1407 passed, 14 failed, in 34m40s**.
+  All 14 failures are the exact same `test_invites_and_external_users.py`/
+  `test_oidc_provisioning.py`/`test_org_export_import.py` cases hitting
+  `aiosmtplib.errors.SMTPConnectError: ... connecting to mailhog on port
+  1025` that Phase 7.3's/Phase 7.4's own verification hit (identical test
+  names, identical count) — this repo's own documented, pre-existing "host
+  pytest + mailhog DNS failures" class, unrelated to this phase (only
+  `module.py` and its own test file changed on the backend this phase — no
+  shared test infra touched). Every new/changed test this phase touched is
+  among the 1407 passed, independently re-confirmed by the standalone
+  19+46-test runs above, both before this full run. Not recorded as a
+  separate `docs/decisions.md` entry, matching Phase 7.2/7.3's own identical
+  precedent — this phase made no core-architecture change of its own
+  (`additional_nav_entries` was extended with one more row using the
+  mechanism Phase 7.1 already built; no new mechanism, no core file touched
+  beyond that same list).
+
 ## Phase 8 — Docs website coverage
 
 Added 2026-09-21 at the user's explicit instruction, applied across every
@@ -2532,10 +2748,9 @@ or miss amid everything else Phase 7 ships.
   and the Org → Project → Requirement chain, a Future State detail view,
   and the Open Question → Decision conversion form.
 
-**Status:** not started — depends on Phase 7 (frontend) actually shipping;
-there is no real user-facing workflow to document accurately before then,
-the same reasoning Decision Management's own docs phase and Compliance's
-docs-site page both used. Not a blocker for any other phase.
+**Status:** not started, now unblocked — all five Phase 7 sub-phases shipped
+2026-09-29 (Phase 7.5, Open Question, was the last). Not a blocker for any
+other phase.
 
 ## Acceptance criteria (from overview §48, Context & Strategy subset)
 

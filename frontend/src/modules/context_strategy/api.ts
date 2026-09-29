@@ -2,15 +2,17 @@
  * Module: modules/context_strategy/api
  *
  * Thin wrapper functions over `api` (frontend/src/api/client.ts) for every
- * Strategy (Phase 7.1), Future State (Phase 7.2), Pain Point (Phase 7.3) and
- * Guiding Principle (Phase 7.4) endpoint `backend/app/modules/
- * context_strategy/{router,project_router}.py` exposes — mirrors
- * `modules/decisions/api.ts`'s own dedicated-per-module-file precedent. See
- * `buildFutureStateApi`'s own docstring below for why Future State gets a
- * sibling factory rather than reusing `buildStrategyApi`, and
+ * Strategy (Phase 7.1), Future State (Phase 7.2), Pain Point (Phase 7.3),
+ * Guiding Principle (Phase 7.4), and Open Question (Phase 7.5) endpoint
+ * `backend/app/modules/context_strategy/{router,project_router}.py` exposes
+ * — mirrors `modules/decisions/api.ts`'s own dedicated-per-module-file
+ * precedent. See `buildFutureStateApi`'s own docstring below for why Future
+ * State gets a sibling factory rather than reusing `buildStrategyApi`,
  * `buildGuidingPrincipleApi`'s own docstring for why Guiding Principle goes
  * back to the factory shape after Pain Point's own project-scoped-only
- * exception.
+ * exception, and `projectOpenQuestionApi`'s own docstring for why Open
+ * Question stays with Pain Point's flat-object shape rather than reverting
+ * to a factory a third time.
  *
  * **Design choice, Decided by: Agent:** unlike `modules/decisions/api.ts`
  * (which only needed a project/org split for two small definition-table
@@ -43,6 +45,10 @@ import type {
   GuidingPrincipleFieldValues,
   GuidingPrincipleLinkKind,
   GuidingPrincipleVersion,
+  OpenQuestion,
+  OpenQuestionComment,
+  OpenQuestionFieldValues,
+  OpenQuestionLinkKind,
   PainPoint,
   PainPointComment,
   PainPointFieldValues,
@@ -563,3 +569,95 @@ export const projectGuidingPrincipleApi = buildGuidingPrincipleApi(projectBase);
 /** Every Guiding Principle endpoint, org-scoped — `id` parameters below are
  * an `organization_id`. */
 export const orgGuidingPrincipleApi = buildGuidingPrincipleApi(orgBase);
+
+// --- Open Question (Phase 7.5) ------------------------------------------------
+//
+// No `buildOpenQuestionApi` factory (Decided by: Agent) — the same
+// "nothing to instantiate twice" reasoning `projectPainPointApi`'s own
+// docstring gives. Open Question has no organisation scope at all (source
+// overview §9), so a single flat, hand-written object is used instead, the
+// same shape Pain Point's own project-scoped-only exception already
+// established. `id` parameters below are a `project_id`.
+
+export interface OpenQuestionListFilters {
+  include_archived?: boolean;
+}
+
+/** Every Open Question endpoint (Phase 5's CRUD/lifecycle/comments/files,
+ * Phase 6's relationships) — `id` parameters below are a `project_id`. */
+export const projectOpenQuestionApi = {
+  // --- CRUD -----------------------------------------------------------------
+  list(projectId: string, filters: OpenQuestionListFilters = {}) {
+    const query = filters.include_archived ? "?include_archived=true" : "";
+    return api.get<OpenQuestion[]>(`${projectBase(projectId)}/open-questions${query}`);
+  },
+  create(projectId: string, values: OpenQuestionFieldValues) {
+    return api.post<OpenQuestion>(`${projectBase(projectId)}/open-questions`, values);
+  },
+  get(projectId: string, openQuestionId: string) {
+    return api.get<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}`);
+  },
+  update(projectId: string, openQuestionId: string, values: OpenQuestionFieldValues & { owner_id: string | null }) {
+    return api.put<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}`, values);
+  },
+  archive(projectId: string, openQuestionId: string) {
+    return api.post<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}/archive`);
+  },
+  unarchive(projectId: string, openQuestionId: string) {
+    return api.post<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}/unarchive`);
+  },
+
+  // --- Lifecycle (branching, two branch points) -------------------------------
+  investigate(projectId: string, openQuestionId: string, comment?: string) {
+    return api.post<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}/investigate`, { comment: comment || null });
+  },
+  markReadyForDecision(projectId: string, openQuestionId: string, comment?: string) {
+    return api.post<OpenQuestion>(
+      `${projectBase(projectId)}/open-questions/${openQuestionId}/mark-ready-for-decision`, { comment: comment || null }
+    );
+  },
+  withdraw(projectId: string, openQuestionId: string, comment: string) {
+    return api.post<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}/withdraw`, { comment });
+  },
+  resolve(projectId: string, openQuestionId: string, comment?: string) {
+    return api.post<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}/resolve`, { comment: comment || null });
+  },
+
+  // --- Comments ---------------------------------------------------------
+  listComments(projectId: string, openQuestionId: string) {
+    return api.get<OpenQuestionComment[]>(`${projectBase(projectId)}/open-questions/${openQuestionId}/comments`);
+  },
+  addComment(projectId: string, openQuestionId: string, body: string) {
+    return api.post<OpenQuestionComment>(`${projectBase(projectId)}/open-questions/${openQuestionId}/comments`, { body });
+  },
+  editComment(projectId: string, openQuestionId: string, commentId: string, body: string) {
+    return api.patch<OpenQuestionComment>(`${projectBase(projectId)}/open-questions/${openQuestionId}/comments/${commentId}`, { body });
+  },
+  uploadCommentAttachment(projectId: string, openQuestionId: string, commentId: string, file: File) {
+    return api.postFile<FileAsset>(`${projectBase(projectId)}/open-questions/${openQuestionId}/comments/${commentId}/files`, file);
+  },
+  removeCommentAttachment(projectId: string, openQuestionId: string, commentId: string, fileId: string) {
+    return api.delete<void>(`${projectBase(projectId)}/open-questions/${openQuestionId}/comments/${commentId}/files/${fileId}`);
+  },
+
+  // --- Direct file attachments ("evidence") ----------------------------------
+  listFiles(projectId: string, openQuestionId: string) {
+    return api.get<FileAsset[]>(`${projectBase(projectId)}/open-questions/${openQuestionId}/files`);
+  },
+  uploadFile(projectId: string, openQuestionId: string, file: File) {
+    return api.postFile<FileAsset>(`${projectBase(projectId)}/open-questions/${openQuestionId}/files`, file);
+  },
+  unlinkFile(projectId: string, openQuestionId: string, fileId: string) {
+    return api.delete<void>(`${projectBase(projectId)}/open-questions/${openQuestionId}/files/${fileId}`);
+  },
+
+  // --- Relationships (Phase 6) -------------------------------------------
+  listRelationships(projectId: string, openQuestionId: string) {
+    return api.get<ContextStrategyLink[]>(`${projectBase(projectId)}/open-questions/${openQuestionId}/relationships`);
+  },
+  createRelationship(projectId: string, openQuestionId: string, kind: OpenQuestionLinkKind, targetId: string) {
+    return api.post<ContextStrategyLink>(`${projectBase(projectId)}/open-questions/${openQuestionId}/relationships`, {
+      kind, target_id: targetId,
+    });
+  },
+};

@@ -722,8 +722,8 @@ MODULE_DEFINITION = ModuleDefinition(
     # their own artefact type's entry as its own frontend ships. Phase 7.2
     # (Future State, 2026-09-29) added the second entry below; Phase 7.3
     # (Pain Point, 2026-09-29) added the third; Phase 7.4 (Guiding Principle,
-    # 2026-09-29) adds the fourth; Phase 7.5 (Open Question) will append the
-    # fifth and last. `nav_path` uses each artefact's own sub-route naming
+    # 2026-09-29) added the fourth; Phase 7.5 (Open Question, 2026-09-29)
+    # appends the fifth and last. `nav_path` uses each artefact's own sub-route naming
     # (matching `router.py`/`project_router.py`), not the bare module mount
     # point, since each entry needs its own distinct sub-path alongside the
     # others. Pain Point's own type-vocabulary admin surfaces (Phase 0 Q3)
@@ -747,6 +747,10 @@ MODULE_DEFINITION = ModuleDefinition(
             ModuleNavEntry(
                 nav_label="Guiding Principle",
                 nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/guiding-principles",
+            ),
+            ModuleNavEntry(
+                nav_label="Open Question",
+                nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/open-questions",
             ),
         ),
     ),

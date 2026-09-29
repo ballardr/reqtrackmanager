@@ -44,6 +44,18 @@
  * Agent** — see that page's own docstring for the full reasoning), so
  * `owner_id` is deliberately **excluded** from `GuidingPrincipleFieldValues`
  * the same way `PainPointFieldValues` excludes it.
+ *
+ * Phase 7.5 (2026-09-29) adds Open Question's own shapes below — the fifth
+ * and last artefact type. Structurally closest to Pain Point: **project-
+ * scoped only** (source overview §9 — no org twin, no `scope`/
+ * `organization_id` discriminator) and no version table (Phase 5's own
+ * scope decision — `OpenQuestion` is a single mutable row). Two differences
+ * from Pain Point's own shape: (1) its own **branching lifecycle has two
+ * branch points**, not one (`OpenQuestionStatus`'s own comment below); (2)
+ * no `title` field at all — `question` itself doubles as this artefact's
+ * display title, the same precedent `GuidingPrinciple.name` already
+ * established, rather than Strategy/Future State/Pain Point's
+ * added-by-convention `title`.
  */
 
 // --- Strategy lifecycle --------------------------------------------------
@@ -628,6 +640,113 @@ export interface GuidingPrincipleVersion {
 export interface GuidingPrincipleComment {
   id: string;
   guiding_principle_id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: import("../../api/types").FileAsset[];
+}
+
+// --- Open Question (Phase 7.5) ------------------------------------------------
+//
+// Project-scoped only (source overview §9 — like Pain Point, no
+// organisation-scoped Open Question exists; see `enums.py`'s own "Decision
+// is itself project-scoped only" reasoning for why). No `OpenQuestionVersion`
+// (Phase 5's own scope decision, same reasoning as Pain Point's missing
+// version table) — `OpenQuestion` below is a single mutable row.
+
+export type OpenQuestionPriority = "low" | "medium" | "high";
+
+export const OPEN_QUESTION_PRIORITY_LABEL: Record<OpenQuestionPriority, string> = STRATEGY_PRIORITY_LABEL;
+
+// A **branching** lifecycle with two branch points, not Pain Point's one —
+// `WITHDRAWN` is reachable directly from both `INVESTIGATING` and
+// `READY_FOR_DECISION` (a question can turn out moot while still under
+// active investigation, not only once ready for a decision); `OPEN` itself
+// only ever advances to `INVESTIGATING` (mirrors Pain Point's own precedent
+// that a lifecycle's very first state doesn't skip straight to a terminal
+// outcome). See `service.OpenQuestionStatus`'s own docstring for the full
+// backend account.
+export type OpenQuestionStatus = "open" | "investigating" | "ready_for_decision" | "resolved" | "withdrawn";
+
+export const OPEN_QUESTION_STATUS_LABEL: Record<OpenQuestionStatus, string> = {
+  open: "Open",
+  investigating: "Investigating",
+  ready_for_decision: "Ready for Decision",
+  resolved: "Resolved",
+  withdrawn: "Withdrawn",
+};
+
+// Same tone convention as `PAIN_POINT_STATUS_TONE` — `WITHDRAWN` is `muted`
+// (a bookkeeping outcome for a question that turned out moot or already
+// answered elsewhere, not a negative judgement), `RESOLVED` is the positive
+// terminal outcome.
+export const OPEN_QUESTION_STATUS_TONE: Record<OpenQuestionStatus, import("../../api/types").BadgeTone> = {
+  open: "muted",
+  investigating: "info",
+  ready_for_decision: "info",
+  resolved: "accent",
+  withdrawn: "muted",
+};
+
+// --- Open Question relationship kinds (Phase 6) -----------------------------
+//
+// Both untyped "related to" associations (§9.2's own plain field naming, no
+// causal verb, the same as Future State's own links). `RESOLVED_BY_DECISION`
+// (§9.5, the reserved Decision-target relationship, Phase 0 Q5) is
+// deliberately absent here — see `OpenQuestionRelationshipsSection.tsx`'s
+// own docstring for why this section renders no "reserved" note either.
+
+export type OpenQuestionLinkKind = "related_to_strategy" | "related_to_requirement";
+
+export const OPEN_QUESTION_LINK_KIND_LABEL: Record<OpenQuestionLinkKind, string> = {
+  related_to_strategy: "Related to a Strategy",
+  related_to_requirement: "Related to a Requirement",
+};
+
+// --- Open Questions ------------------------------------------------------------
+
+export interface OpenQuestion {
+  id: string;
+  project_id: string;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+
+  question: string;
+  context: string;
+  evidence: string;
+  priority: OpenQuestionPriority;
+  status: OpenQuestionStatus;
+  owner_id: string | null;
+  due_date: string | null;
+  is_locked: boolean;
+
+  created_at: string;
+  updated_at: string;
+}
+
+/** The editable content fields shared by create (`OpenQuestionCreate`) and
+ * full replace (`OpenQuestionUpdate`) — `owner_id` is deliberately **not**
+ * included, the same exclusion `PainPointFieldValues` makes and for the same
+ * reason (§9.4 places "Assign" on the manager tier, not the create/edit
+ * content form); `OpenQuestionDetailPage.tsx`'s own dedicated
+ * `AssigneePicker` assigns it directly instead. */
+export interface OpenQuestionFieldValues {
+  question: string;
+  context: string;
+  evidence: string;
+  priority: OpenQuestionPriority;
+  due_date: string | null;
+}
+
+// --- Comments (no reaction mechanism — same shape as every other artefact's own comment type) ---
+
+export interface OpenQuestionComment {
+  id: string;
+  open_question_id: string;
   author_id: string;
   author_display_name: string;
   body: string;

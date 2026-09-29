@@ -532,10 +532,11 @@ def test_frontend_manifest_registers_the_strategy_nav_entry():
     """Phase 7.1 (2026-09-29): this module's first `frontend_manifest` —
     Strategy's own primary nav entry. Phase 7.2 (2026-09-29) appended Future
     State's own entry via `additional_nav_entries`; Phase 7.3 (2026-09-29)
-    appended Pain Point's; Phase 7.4 (2026-09-29) appends Guiding
-    Principle's; Phase 7.5 will append the fifth and last once its own
-    frontend ships (see `module.py`'s own docstring and `docs/
-    decisions.md`'s nav-manifest-extension entry)."""
+    appended Pain Point's; Phase 7.4 (2026-09-29) appended Guiding
+    Principle's; Phase 7.5 (2026-09-29) appends Open Question's — the fifth
+    and last of the five planned top-level nav-rail entries (Phase 0 Q7,
+    see `module.py`'s own docstring and `docs/decisions.md`'s nav-manifest-
+    extension entry)."""
     manifest = get_frontend_manifest(MODULE_KEY)
     assert manifest is not None
     assert manifest.tier == "installed"
@@ -553,5 +554,9 @@ def test_frontend_manifest_registers_the_strategy_nav_entry():
         ModuleNavEntry(
             nav_label="Guiding Principle",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/guiding-principles",
+        ),
+        ModuleNavEntry(
+            nav_label="Open Question",
+            nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/open-questions",
         ),
     )
