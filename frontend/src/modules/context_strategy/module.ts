@@ -1,7 +1,10 @@
 import { createElement } from "react";
 
 import type { TierAModuleDefinition } from "../types";
+import { FutureStateDetailPage } from "./FutureStateDetailPage";
+import { OrgFutureStatesPanel } from "./OrgFutureStatesPanel";
 import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
+import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
 import { ProjectStrategiesPage } from "./ProjectStrategiesPage";
 import { StrategyDetailPage } from "./StrategyDetailPage";
 
@@ -17,52 +20,51 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * to that file is needed (confirmed by reading `registry.ts`'s own
  * docstring before adding this file).
  *
- * **This is the first of five planned sub-phases (7.1-7.5), one per
+ * **This is the second of five planned sub-phases (7.1-7.5), one per
  * artefact type** (Strategy, Future State, Pain Point, Guiding Principle,
  * Open Question — Phase 0 Q7's explicit "five separate top-level nav-rail
  * entries, not one grouped entry with tabs," diverging from `docs/ux-style-
  * guide.md`'s usual grouping preference per the user's own deliberate call,
- * see that phase's own resolution text). Only Strategy's own routes/panel
- * exist so far — Phase 7.2-7.5 will each add their own artefact type's
- * `routes`/`globalRoutes` entries here and their own `additional_nav_
- * entries` row on the backend's `MODULE_DEFINITION.frontend_manifest`
- * (`app.modules.registry.ModuleFrontendManifest`, extended with this exact
- * multi-entry capability as part of this same phase — see `docs/
- * decisions.md`).
+ * see that phase's own resolution text). Strategy (7.1) and Future State
+ * (7.2) routes/panels exist so far — Phase 7.3-7.5 will each add their own
+ * artefact type's `routes`/`globalRoutes` entries here and their own
+ * `additional_nav_entries` row on the backend's `MODULE_DEFINITION.
+ * frontend_manifest` (`app.modules.registry.ModuleFrontendManifest`,
+ * extended with this exact multi-entry capability in Phase 7.1 — see
+ * `docs/decisions.md`).
  *
  * `routes` (project-scoped, gated on this project's own enabled-modules
- * list, `buildModuleRoutes.tsx`): the Strategy list
- * (`ProjectStrategiesPage`) and its detail page (`StrategyDetailPage`) —
- * `path` matches the primary `nav_path` `module.py`'s own `frontend_
- * manifest` declares.
+ * list, `buildModuleRoutes.tsx`): the Strategy list/detail pages (7.1) and,
+ * added this phase, the Future State list (`ProjectFutureStatesPage`) and
+ * detail page (`FutureStateDetailPage`) — `path` matches the corresponding
+ * `nav_path` `module.py`'s own `frontend_manifest`/`additional_nav_entries`
+ * declares.
  *
  * `globalRoutes` (always-mounted, Phase 18's precedent — see that phase's
  * own reasoning in `modules/compliance/module.ts`): `StrategyDetailPage`
- * again, this time at an **org**-scoped path
- * (`/orgs/:organizationId/modules/context_strategy/strategies/:strategyId`).
- * **Decided by: Agent** — an org-scoped Strategy (Phase 0 Q2) has no single
- * *project* whose enabled-modules list `routes` above could gate a detail
- * route against, the same reason Compliance's own Standards detail route
- * uses `globalRoutes` rather than `routes`; `StrategyDetailPage` itself is
+ * and, added this phase, `FutureStateDetailPage`, each at an **org**-scoped
+ * path (`/orgs/:organizationId/modules/context_strategy/{strategies,
+ * future-states}/:id`). **Decided by: Agent, following `StrategyDetailPage`'s
+ * own precedent exactly** — an org-scoped Future State (Phase 0 Q1's
+ * follow-on) has no single *project* whose enabled-modules list `routes`
+ * above could gate a detail route against; `FutureStateDetailPage` itself is
  * one shared, scope-aware component reading whichever of `projectId`/
- * `organizationId` its current route supplies (see that component's own
- * docstring), not two near-identical page components.
+ * `organizationId` its current route supplies, not two near-identical page
+ * components.
  *
- * `orgOverviewSections`: `OrgStrategiesPanel`, the org-scoped Strategy list
- * — see that component's own docstring for the full reasoning on why
- * `orgOverviewSections` (Org Dashboard) rather than `orgAdminSections` (Org
- * Management) was chosen.
+ * `orgOverviewSections`: `OrgStrategiesPanel` (7.1) and, added this phase,
+ * `OrgFutureStatesPanel` — see that component's own docstring for the full
+ * reasoning on why `orgOverviewSections` (Org Dashboard) rather than
+ * `orgAdminSections` (Org Management) was chosen, following Strategy's own
+ * placement for consistency.
  *
  * No `globalNavItems`/`standaloneWorkspaces`/`projectOverviewTiles`/
  * `orgAdminSections`/`requirementDetailSections`/`requirementLinkPickerTabs`/
- * `entityAccentColor` this phase — Strategy has no cross-org standalone
- * entity of its own (unlike Compliance's Standards), no project-overview
- * summary tile or admin-configuration table this phase's own scope calls
- * for, and (mirroring `modules/decisions/module.ts`'s own identical
- * omission and reasoning) no `requirementDetailSections`/
- * `requirementLinkPickerTabs`/`entityAccentColor` contribution yet, since
- * nothing renders a mixed list containing a Strategy row alongside other
- * entity kinds.
+ * `entityAccentColor` this phase either — Future State has no cross-org
+ * standalone entity of its own, no project-overview summary tile or
+ * admin-configuration table this phase's own scope calls for, and (mirroring
+ * Phase 7.1's own identical omission and reasoning) nothing yet renders a
+ * mixed list containing a Future State row alongside other entity kinds.
  */
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
@@ -72,11 +74,20 @@ export const moduleDefinition: TierAModuleDefinition = {
       path: "/projects/:projectId/modules/context_strategy/strategies/:strategyId",
       element: createElement(StrategyDetailPage),
     },
+    { path: "/projects/:projectId/modules/context_strategy/future-states", element: createElement(ProjectFutureStatesPage) },
+    {
+      path: "/projects/:projectId/modules/context_strategy/future-states/:futureStateId",
+      element: createElement(FutureStateDetailPage),
+    },
   ],
   globalRoutes: [
     {
       path: "/orgs/:organizationId/modules/context_strategy/strategies/:strategyId",
       element: createElement(StrategyDetailPage),
+    },
+    {
+      path: "/orgs/:organizationId/modules/context_strategy/future-states/:futureStateId",
+      element: createElement(FutureStateDetailPage),
     },
   ],
   orgOverviewSections: [
@@ -84,6 +95,11 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "context-strategy-org-strategies",
       label: "Strategy",
       render: ({ orgId }) => createElement(OrgStrategiesPanel, { orgId }),
+    },
+    {
+      key: "context-strategy-org-future-states",
+      label: "Future State",
+      render: ({ orgId }) => createElement(OrgFutureStatesPanel, { orgId }),
     },
   ],
 };

@@ -23,7 +23,8 @@ see "Phase 5 notes" below). Phase 6 (Cross-artefact relationships) complete
 (2026-09-29 — see "Phase 6 notes" below); Phase 7 (frontend UI) split into
 five per-artefact sub-phases 2026-09-29 (see that phase's own note) —
 Phase 7.1 (Strategy) complete (2026-09-29 — see "Phase 7.1 notes" below);
-Phase 7.2-7.5 (Future State/Pain Point/Guiding Principle/Open Question
+Phase 7.2 (Future State) complete (2026-09-29 — see "Phase 7.2 notes"
+below); Phase 7.3-7.5 (Pain Point/Guiding Principle/Open Question
 frontends) are next.
 First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
@@ -50,7 +51,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-8 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
+9 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
 2026-09-29 — see that phase's own note).
 
 | # | Phase | Status |
@@ -63,7 +64,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 | 5 | Open Questions | [x] Complete (2026-09-28) |
 | 6 | Cross-artefact relationships wired between all of the above (via Module 0) | [x] Complete (2026-09-29) |
 | 7.1 | Frontend UI — Strategy | [x] Complete (2026-09-29) |
-| 7.2 | Frontend UI — Future State | [ ] Not started |
+| 7.2 | Frontend UI — Future State | [x] Complete (2026-09-29) |
 | 7.3 | Frontend UI — Pain Point (+ type admin) | [ ] Not started |
 | 7.4 | Frontend UI — Guiding Principle | [ ] Not started |
 | 7.5 | Frontend UI — Open Question | [ ] Not started |
@@ -1470,7 +1471,7 @@ independently scoped, testable, and shippable:
 | Sub-phase | Artefact | Status |
 |---|---|---|
 | 7.1 | Strategy (org + project) | [x] Complete (2026-09-29) |
-| 7.2 | Future State (org + project) | [ ] Not started |
+| 7.2 | Future State (org + project) | [x] Complete (2026-09-29) |
 | 7.3 | Pain Point (project) + Pain Point Type admin (org) | [ ] Not started |
 | 7.4 | Guiding Principle (org + project) | [ ] Not started |
 | 7.5 | Open Question (project) | [ ] Not started |
@@ -1758,6 +1759,208 @@ there is deliberately CI-only, i.e. a local failure here is expected
 behaviour, not a bug report), and fixing it is well outside Phase 7.1's own
 scope (Strategy's frontend) — flagged here for visibility, not silently
 worked around.
+
+## Phase 7.2 notes (2026-09-29)
+
+Built Future State's full frontend — the second of the five planned Phase 7
+sub-phases — into the same `frontend/src/modules/context_strategy/`
+directory Phase 7.1 already established, per this phase's own brief ("add
+`FutureState*` siblings to the existing `Strategy*` files"). Future State's
+backend is itself "an exact structural mirror" of Strategy's (Phase 2's own
+scope text), so this phase mirrors Phase 7.1's frontend shape field-for-field
+except where Future State's own field list genuinely diverges (no
+`priority`/`time_horizon`; adds `target_date`).
+
+**New files**, all under `frontend/src/modules/context_strategy/`:
+`FutureStateFormModal.tsx` (create/edit, mirrors `StrategyFormModal.tsx`),
+`ProjectFutureStatesPage.tsx` (project-scoped list, reached via this phase's
+new "Future State" nav-rail entry), `OrgFutureStatesPanel.tsx` (org-scoped
+list, an `orgOverviewSections` contribution), `FutureStateDetailPage.tsx`
+(shared detail page for both scopes — full fields including `target_date`,
+lifecycle actions, version history, relationships, attachments, comments),
+`FutureStateRelationshipsSection.tsx` (relationships list + add-relationship
+form, Future State's own link kinds), `ArtefactCommentsSection.tsx` (see
+"Scope decisions" below — a rename+generalisation of Phase 7.1's
+`StrategyCommentsSection.tsx`, not a new file in the usual sense), and one
+`.stories.tsx` file per new component above (6 files, 38 Storybook stories
+total — 32 wholly new plus `ArtefactCommentsSection.stories.tsx`'s 6, which
+replaces Phase 7.1's own `StrategyCommentsSection.stories.tsx` 1:1 under the
+new name).
+
+**Files changed:** `backend/app/modules/context_strategy/module.py`
+(`frontend_manifest.additional_nav_entries` gains Future State's own
+`ModuleNavEntry` — the first sub-phase to actually exercise the multi-entry
+extension point Phase 7.1 built for exactly this), `backend/app/modules/
+context_strategy/tests/test_context_strategy_api.py` (updated `test_
+frontend_manifest_registers_the_strategy_nav_entry`'s exact-equality
+assertion to expect the new entry), `frontend/src/modules/context_strategy/
+types.ts` (Future State's own TypeScript shapes plus `FUTURE_STATE_SCOPE_
+LABEL`/`FUTURE_STATE_STATUS_LABEL`/`FUTURE_STATE_STATUS_TONE`/`FUTURE_STATE_
+LINK_KIND_LABEL` label maps, plus the new generic `ArtefactComment`
+structural interface), `frontend/src/modules/context_strategy/api.ts`
+(`buildFutureStateApi(base)` factory, instantiated twice — `projectFutureStateApi`/
+`orgFutureStateApi` — see "Scope decisions" below), `frontend/src/modules/
+context_strategy/module.ts` (Future State's `routes`/`globalRoutes`/
+`orgOverviewSections` entries appended alongside Strategy's, not replacing
+them), `frontend/src/modules/context_strategy/StrategyDetailPage.tsx` (now
+imports `ArtefactCommentsSection` instead of the removed `StrategyComments
+Section`).
+
+**Scope decisions, each a judgment call this phase had to make that the
+brief didn't fully settle:**
+
+- **`buildFutureStateApi` is a sibling factory, not a reuse of
+  `buildStrategyApi` (Decided by: Agent).** Future State's endpoint *shapes*
+  are identical to Strategy's (org/project twin routers, same CRUD/
+  lifecycle/comments/files/relationships surface), the same condition that
+  justified `buildStrategyApi` as one factory instantiated twice — but
+  Future State's own *field list* genuinely diverges (no `priority`/
+  `time_horizon`; adds `target_date`), so forcing both through one
+  generic-over-field-shape factory would need real TypeScript generics
+  threaded through every method's payload type, for a one-time saving of a
+  ~130-line function. Not worth the added indirection; see `api.ts`'s own
+  docstring on `buildFutureStateApi` for the full reasoning, including why
+  `target_date` needs no client-side "explicitly set" flag distinct from
+  "leave unchanged" (the `PUT` endpoint is already a full-replace payload).
+- **`StrategyCommentsSection.tsx` renamed to `ArtefactCommentsSection.tsx`
+  and generalised, rather than a new `FutureStateCommentsSection.tsx`
+  sibling (Decided by: Agent) — a deliberate divergence from the brief's own
+  binary framing ("reuse ... directly ... or make a sibling").** Checked the
+  component's actual body first, per the brief's own instruction: it was
+  already fully generic behaviourally (every user-facing string is generic —
+  "Comments", "Add a comment" — with zero Strategy-specific literal text);
+  the only Strategy-specific thing about it was its prop type being pinned
+  to `StrategyComment` rather than a structural shape. `FutureStateComment`
+  already satisfies that shape field-for-field (same fields minus the
+  identity foreign key, which the component never reads). Per CLAUDE.md's
+  UX style guide reuse rule — "if [a shared equivalent] does [exist] but
+  isn't set up as a shared component yet, extract it into one *and update
+  the existing call site(s) to use it too*" — this generalised the existing
+  component (renamed, typed against a new structural `ArtefactComment`
+  interface in `types.ts`, made generic via `<T extends ArtefactComment>`)
+  and updated `StrategyDetailPage.tsx`'s own call site, rather than landing
+  Future State on a second near-identical copy while leaving Strategy on the
+  original — the exact "second inconsistent implementation" failure mode
+  CLAUDE.md's reuse rule calls out. This stays entirely inside `modules/
+  context_strategy/` throughout, so it does not touch the Modular Feature
+  System Boundary rule at all (that rule governs cross-module imports, not
+  reuse within one module's own files) — see `ArtefactCommentsSection.tsx`'s
+  own docstring for the full account. `FutureStateRelationshipsSection.tsx`
+  was **not** generalised the same way — its substance (link kinds, target
+  pickers, the reserved-relationship note's wording) genuinely diverges per
+  artefact type, so it stayed a sibling of `StrategyRelationshipsSection.tsx`,
+  matching the backend's own "one component per source artefact type" shape.
+- **`FutureStateScope`/`FutureStateStatus` are TypeScript *type aliases* of
+  `StrategyScope`/`StrategyStatus` (and their label/tone maps directly reuse
+  `STRATEGY_SCOPE_LABEL`/`STRATEGY_STATUS_LABEL`/`STRATEGY_STATUS_TONE`),
+  not re-declared with identical content (Decided by: Agent) — a frontend-
+  only simplification, not a reversal of the backend's own design.** The
+  backend keeps `FutureStateStatus`/`FutureStateScope` as their own Python
+  `enum.Enum` classes, separate from `StrategyStatus`/`StrategyScope`,
+  reasoning that two independent artefact types should own two independent
+  vocabularies in case either diverges later (`enums.py`'s own docstring).
+  That reasoning is about *nominal* typing (Python enums are distinct
+  classes even with identical members) — TypeScript's string-literal unions
+  are structural, so `type FutureStateStatus = StrategyStatus` and a fresh
+  `type FutureStateStatus = "draft" | "proposed" | ...` declaration are
+  already the *same type* to the compiler; writing the values out a second
+  time would be pure duplication with no type-safety benefit. If the two
+  lifecycles ever do diverge (per the backend docstring's own "revisit if"
+  note), the alias breaks immediately and loudly at every call site — it
+  does not silently paper over a future divergence.
+- **`related_to_guiding_principle` restricted to the project-scoped case
+  only, even though Guiding Principle itself can be org-scoped (Decided by:
+  Agent), mirroring `StrategyRelationshipsSection.tsx`'s own restraint for
+  `defines_future_state`/`requires_resolution_of_open_question`.** Building a
+  combined org+project Guiding Principle picker (and Guiding Principle has
+  no frontend of its own yet, Phase 7.4) is the same "don't build a
+  cross-scope picker a real need hasn't asked for yet" restraint Phase 7.1
+  already applied twice. Revisit once Phase 7.4 ships if a real need for the
+  org-scoped case surfaces.
+- **No quick-view `SidePanel` tier, and the same confirmation-tier scheme as
+  Strategy's lifecycle actions (Decided by: Agent) — both simply inherited
+  from Phase 7.1's own reasoning, not independently re-derived**, since
+  Future State's lifecycle is a literal structural mirror of Strategy's
+  (same seven states, same lock rule past `UNDER_REVIEW`).
+- **`backend/scripts/seed_e2e_dataset.py` and `seed_demo_data.py` both
+  deliberately left untouched (Decided by: Agent), matching Phase 7.1's own
+  precedent exactly.** The new Playwright spec creates its own disposable
+  org/project via the API rather than touching the fixed e2e dataset (same
+  reasoning as `strategy-lifecycle.spec.ts`); `seed_demo_data.py` already
+  seeds Future State content (Phase 2), so this phase only adds UI to view/
+  act on data that already exists, needing no further seeding.
+
+**Omitted this phase, mirroring Phase 7.1's own identical omissions and
+reasoning:** `globalNavItems`/`standaloneWorkspaces`/`projectOverviewTiles`/
+`orgAdminSections`/`requirementDetailSections`/`requirementLinkPickerTabs`/
+`entityAccentColor` — Future State has no cross-org standalone entity of its
+own, no project-overview summary tile or admin-configuration table this
+phase's own scope calls for, and nothing yet renders a mixed list containing
+a Future State row alongside other entity kinds. `docs/website/` was not
+touched — Phase 8 stays explicitly gated on all five Phase 7 sub-phases.
+
+**Tests:**
+- `backend/app/modules/context_strategy/tests/test_context_strategy_api.py`:
+  1 test updated (`test_frontend_manifest_registers_the_strategy_nav_entry`),
+  now asserting the manifest's `additional_nav_entries` contains Future
+  State's own `ModuleNavEntry`.
+- `frontend/src/modules/context_strategy/*.stories.tsx`: 6 new/renamed files
+  covering Future State — list pages (including the target-date column and
+  its `null` "—" fallback), the form modal (including submitting/clearing
+  `target_date`), the detail page across every lifecycle status plus the
+  no-target-date case, and relationships (including the org-scoped "fewer
+  kinds offered" case) — plus `ArtefactCommentsSection.stories.tsx`
+  (renamed 1:1 from `StrategyCommentsSection.stories.tsx`, same coverage).
+- `tests/playwright/tests/modules/context_strategy/future-state-lifecycle.spec.ts`:
+  1 new spec — disposable org/admin/project via the API, enables Context &
+  Strategy for that org, creates a project-scoped Future State via the new
+  "Future State" nav entry, and walks it `Draft -> Proposed -> Under review
+  -> Approved -> Active` on its own detail page, confirming the final status
+  back on the list — mirrors `strategy-lifecycle.spec.ts`'s own structure
+  and its own "disposable org via the API, `seed_e2e_dataset.py` left
+  untouched" reasoning directly.
+
+**Verified:**
+- `ruff check` clean on both changed backend files (`module.py`, `test_
+  context_strategy_api.py`).
+- `npx tsc -b` clean across the whole frontend.
+- `npx eslint .` exits 0 (0 errors). Warning count rose from Phase 7.1's 79
+  to 84 — the 5 new warnings are the same pre-existing, already-accepted
+  `react-hooks/set-state-in-effect` pattern this phase's own five new
+  `useEffect` call sites trigger (`ProjectFutureStatesPage.tsx`,
+  `OrgFutureStatesPanel.tsx`, `FutureStateDetailPage.tsx`, and two in
+  `FutureStateRelationshipsSection.tsx`), matching the exact pattern already
+  present at 79 other call sites repo-wide before this phase.
+- `npx vitest run --project=storybook` (the full suite, not just this
+  phase's own new files): **138 test files / 1083 tests, all passing** — up
+  from Phase 7.1's 133/1051 (net: +5 files/+32 tests after accounting for
+  the `StrategyCommentsSection.stories.tsx` -> `ArtefactCommentsSection.
+  stories.tsx` rename, same 6 tests, plus 5 wholly new Future State story
+  files contributing 32 new tests).
+- Backend/frontend containers rebuilt (`docker compose up -d --build backend
+  frontend`, per this repo's "Compose services don't bind-mount source"
+  convention) before any live-stack verification.
+- Full backend pytest suite run as a single invocation, per this repo's own
+  concurrency rule (host `.venv`, against `reqtrack_pytest_test`) — **1407
+  passed, 14 failed, in 35m28s**. All 14 failures are the exact same `test_
+  invites_and_external_users.py`/`test_oidc_provisioning.py`/`test_org_
+  export_import.py` cases hitting `aiosmtplib.errors.SMTPConnectError:
+  ... connecting to mailhog on port 1025` that Phase 7.1's own verification
+  hit (identical test names, identical count) — this repo's own documented,
+  pre-existing "host pytest + mailhog DNS failures" class, unrelated to this
+  phase. Every new/changed test this phase touched is among the 1407 passed
+  (independently re-confirmed via a standalone re-run of the updated
+  manifest test after the full suite finished: `1 passed`).
+- `npx playwright test tests/modules/context_strategy/future-state-lifecycle.spec.ts
+  --no-deps` (run standalone, same methodological reasoning as Phase 7.1's
+  own verification — see that phase's note on the `global-state-mutators`
+  dependency/flake) against the freshly rebuilt live stack — **1 passed**,
+  full create -> propose -> submit-for-review -> approve -> activate flow,
+  reached through the new "Future State" nav-rail entry end to end.
+  `strategy-lifecycle.spec.ts` was also re-run standalone the same way to
+  confirm this phase's `module.ts`/`StrategyDetailPage.tsx` changes (the
+  second nav entry, the `ArtefactCommentsSection` rename) introduced no
+  regression — **1 passed**.
 
 ## Phase 8 — Docs website coverage
 

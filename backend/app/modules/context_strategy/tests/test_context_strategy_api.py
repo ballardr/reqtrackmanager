@@ -21,7 +21,7 @@ from __future__ import annotations
 import uuid
 
 from app.models.custom_role import CustomRoleDefinition, CustomRolePermission, UserCustomRoleGrant
-from app.modules.registry import get_frontend_manifest
+from app.modules.registry import ModuleNavEntry, get_frontend_manifest
 from app.services.permissions import encode_permission
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
@@ -530,13 +530,18 @@ def test_direct_file_attachment_upload_list_unlink_and_lock(client, admin_token)
 
 def test_frontend_manifest_registers_the_strategy_nav_entry():
     """Phase 7.1 (2026-09-29): this module's first `frontend_manifest` —
-    only Strategy's own nav entry exists so far, with `additional_nav_
-    entries` left empty for Phase 7.2-7.5 to each append their own artefact
-    type's entry once its own frontend ships (see `module.py`'s own
+    Strategy's own primary nav entry. Phase 7.2 (2026-09-29) appended Future
+    State's own entry via `additional_nav_entries`; Phase 7.3-7.5 will each
+    append one more once their own frontend ships (see `module.py`'s own
     docstring and `docs/decisions.md`'s nav-manifest-extension entry)."""
     manifest = get_frontend_manifest(MODULE_KEY)
     assert manifest is not None
     assert manifest.tier == "installed"
     assert manifest.nav_label == "Strategy"
     assert manifest.nav_path == f"/projects/{{project_id}}/modules/{MODULE_KEY}/strategies"
-    assert manifest.additional_nav_entries == ()
+    assert manifest.additional_nav_entries == (
+        ModuleNavEntry(
+            nav_label="Future State",
+            nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/future-states",
+        ),
+    )

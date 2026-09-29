@@ -1,35 +1,29 @@
 /**
- * Module: modules/context_strategy/StrategyDetailPage
+ * Module: modules/context_strategy/FutureStateDetailPage
  *
- * A single Strategy's full detail (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.1) — full field display, current lifecycle
- * status, version history, comments, attachments, and relationships, plus
- * every lifecycle action. Mirrors `modules/decisions/DecisionDetailPage.tsx`'s
- * exact structure and its `docs/ux-style-guide.md` "Pattern: entity detail
- * panel" reasoning for being a real routed page rather than a `SidePanel`:
- * a comment thread, file attachments, a relationships section, and several
- * lifecycle actions each with their own `ConfirmDialog` are all present
- * here too.
+ * A single Future State's full detail (docs/plans/module-01-context-and-
+ * strategy-plan.md Phase 7.2) — full field display (including `target_date`),
+ * current lifecycle status, version history, comments, attachments, and
+ * relationships, plus every lifecycle action. Mirrors
+ * `StrategyDetailPage.tsx`'s exact structure field-for-field, since Future
+ * State's backend is itself "an exact structural mirror" of Strategy's
+ * (Phase 2's own scope text) — same seven-state lifecycle, same lock rule
+ * (past `UNDER_REVIEW`), same owner/approver RBAC shape, same comments/
+ * attachments/relationships sections.
  *
- * **Scope-aware, Decided by: Agent:** unlike Decision (project-scoped
- * only), a Strategy is org- **or** project-scoped (Phase 0 Q2), so this one
- * component serves both `ProjectStrategiesPage.tsx`'s row-click navigation
- * (`/projects/:projectId/modules/context_strategy/strategies/:strategyId`,
- * registered via `module.ts`'s `routes`) and `OrgStrategiesPanel.tsx`'s own
- * (`/orgs/:organizationId/modules/context_strategy/strategies/:strategyId`,
- * registered via `module.ts`'s `globalRoutes` — org-scoped, not gated by
- * any one project's own enabled-modules list, the same reasoning Compliance's
- * Standards detail route already established for a cross-cutting entity)
- * — exactly one of `projectId`/`organizationId` route params is present at
- * a time, mirroring the backend's own scope discriminator exactly, rather
- * than building two near-identical page components.
+ * **Scope-aware, Decided by: Agent**, for the exact same reason
+ * `StrategyDetailPage.tsx` is: a Future State is org- **or** project-scoped
+ * (Phase 0 Q1's follow-on), so this one component serves both
+ * `ProjectFutureStatesPage.tsx`'s row-click navigation and
+ * `OrgFutureStatesPanel.tsx`'s own (`module.ts`'s `globalRoutes`, org-scoped,
+ * not gated by any one project's own enabled-modules list).
  *
  * Every mutating control always renders regardless of the caller's actual
- * role (same posture `DecisionDetailPage.tsx` establishes) — the backend
- * enforces `strategy_owner`/`strategy_approver` (or their org-scoped
+ * role (same posture `StrategyDetailPage.tsx` establishes) — the backend
+ * enforces `future_state_owner`/`future_state_approver` (or their org-scoped
  * equivalents) and a 403 surfaces as a toast. Edit/archive/file-attach
  * controls specifically for *content* are hidden (not just toast-blocked)
- * once `strategy.is_locked`.
+ * once `futureState.is_locked`.
  */
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -41,60 +35,61 @@ import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { orgStrategyApi, projectStrategyApi } from "./api";
+import { orgFutureStateApi, projectFutureStateApi } from "./api";
 import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
-import { StrategyFormModal } from "./StrategyFormModal";
-import { StrategyRelationshipsSection } from "./StrategyRelationshipsSection";
-import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL } from "./types";
-import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
+import { FutureStateFormModal } from "./FutureStateFormModal";
+import { FutureStateRelationshipsSection } from "./FutureStateRelationshipsSection";
+import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
+import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
- * per call site. */
+ * per call site. Exact mirror of `StrategyDetailPage.tsx`'s own
+ * `TransitionAction`/`TRANSITION_COPY`. */
 type TransitionAction = "approve" | "activate" | "supersede" | "retire";
 
 const TRANSITION_COPY: Record<TransitionAction, { title: string; body: string; confirmLabel: string }> = {
   approve: {
-    title: "Approve this Strategy?",
+    title: "Approve this Future State?",
     body: "This records a formal approval in the audit trail. A comment is optional.",
     confirmLabel: "Approve",
   },
   activate: {
-    title: "Activate this Strategy?",
-    body: "This marks the Strategy as currently in force. A comment is optional.",
+    title: "Activate this Future State?",
+    body: "This marks the Future State as currently in force. A comment is optional.",
     confirmLabel: "Activate",
   },
   supersede: {
-    title: "Supersede this Strategy?",
-    body: "This Strategy will be marked Superseded. A comment is optional. To record which Strategy replaces it, use the Relationships section's \"Supersedes another Strategy\" option instead.",
+    title: "Supersede this Future State?",
+    body: "This Future State will be marked Superseded. A comment is optional. To record which Future State replaces it, use the Relationships section's \"Supersedes another Future State\" option instead.",
     confirmLabel: "Supersede",
   },
   retire: {
-    title: "Retire this Strategy?",
-    body: "This marks the Strategy's lifecycle as ended. A comment is optional.",
+    title: "Retire this Future State?",
+    body: "This marks the Future State's lifecycle as ended. A comment is optional.",
     confirmLabel: "Retire",
   },
 };
 
-export function StrategyDetailPage() {
-  const { projectId, organizationId, strategyId } = useParams<{
+export function FutureStateDetailPage() {
+  const { projectId, organizationId, futureStateId } = useParams<{
     projectId?: string;
     organizationId?: string;
-    strategyId: string;
+    futureStateId: string;
   }>();
   const { user } = useAuth();
   const { showToast } = useToast();
-  const scopedApi = projectId ? projectStrategyApi : orgStrategyApi;
+  const scopedApi = projectId ? projectFutureStateApi : orgFutureStateApi;
   const scopeId = projectId ?? organizationId;
   const backLink = projectId
-    ? `/projects/${projectId}/modules/context_strategy/strategies`
+    ? `/projects/${projectId}/modules/context_strategy/future-states`
     : `/org-overview`;
-  const backLabel = projectId ? "← Strategy" : "← Organisation overview";
+  const backLabel = projectId ? "← Future State" : "← Organisation overview";
 
-  const [strategy, setStrategy] = useState<Strategy | null>(null);
+  const [futureState, setFutureState] = useState<FutureState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [versions, setVersions] = useState<StrategyVersion[] | null>(null);
-  const [comments, setComments] = useState<StrategyComment[] | null>(null);
+  const [versions, setVersions] = useState<FutureStateVersion[] | null>(null);
+  const [comments, setComments] = useState<FutureStateComment[] | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
 
   const [editing, setEditing] = useState(false);
@@ -106,131 +101,130 @@ export function StrategyDetailPage() {
   const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
-    if (!scopeId || !strategyId) return;
-    scopedApi.get(scopeId, strategyId).then(setStrategy).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Strategy could not be found, or you don't have access to it."));
+    if (!scopeId || !futureStateId) return;
+    scopedApi.get(scopeId, futureStateId).then(setFutureState).catch((err) => {
+      setLoadError(toErrorMessage(err, "This Future State could not be found, or you don't have access to it."));
     });
-    scopedApi.listVersions(scopeId, strategyId).then(setVersions).catch(() => setVersions([]));
+    scopedApi.listVersions(scopeId, futureStateId).then(setVersions).catch(() => setVersions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeId, strategyId]);
+  }, [scopeId, futureStateId]);
 
   async function reloadCommentsAndFiles() {
-    if (!scopeId || !strategyId) return;
+    if (!scopeId || !futureStateId) return;
     try {
       const [c, f] = await Promise.all([
-        scopedApi.listComments(scopeId, strategyId),
-        scopedApi.listFiles(scopeId, strategyId),
+        scopedApi.listComments(scopeId, futureStateId),
+        scopedApi.listFiles(scopeId, futureStateId),
       ]);
       setComments(c);
       setFiles(f);
     } catch (err) {
-      showToast(toErrorMessage(err, "Could not load this Strategy's comments/files."), "error");
+      showToast(toErrorMessage(err, "Could not load this Future State's comments/files."), "error");
     }
   }
 
   useEffect(() => {
     void reloadCommentsAndFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeId, strategyId]);
+  }, [scopeId, futureStateId]);
 
-  async function runTransition(action: () => Promise<Strategy>, successMessage: string) {
+  async function runTransition(action: () => Promise<FutureState>, successMessage: string) {
     try {
       const updated = await action();
       showToast(successMessage);
-      setStrategy(updated);
+      setFutureState(updated);
     } catch (err) {
-      showToast(toErrorMessage(err, "Could not update this Strategy."), "error");
+      showToast(toErrorMessage(err, "Could not update this Future State."), "error");
     }
   }
 
-  async function saveEdit(values: StrategyFieldValues) {
-    if (!scopeId || !strategy) return;
+  async function saveEdit(values: FutureStateFieldValues) {
+    if (!scopeId || !futureState) return;
     setFormError(null);
     try {
-      const updated = await scopedApi.update(scopeId, strategy.id, values);
-      showToast("Strategy updated.");
+      const updated = await scopedApi.update(scopeId, futureState.id, values);
+      showToast("Future State updated.");
       setEditing(false);
-      setStrategy(updated);
+      setFutureState(updated);
     } catch (err) {
-      setFormError(toErrorMessage(err, "Could not update this Strategy."));
+      setFormError(toErrorMessage(err, "Could not update this Future State."));
     }
   }
 
-  if (!scopeId || !strategyId) return null;
+  if (!scopeId || !futureStateId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
-  if (strategy === null) return <Spinner />;
+  if (futureState === null) return <Spinner />;
 
   return (
     <div className="container stack">
       <Link to={backLink}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{strategy.title}</h1>
-        <span className={`badge badge--${STRATEGY_STATUS_TONE[strategy.status]}`}>
-          {STRATEGY_STATUS_LABEL[strategy.status]}
+        <h1 style={{ margin: 0 }}>{futureState.title}</h1>
+        <span className={`badge badge--${FUTURE_STATE_STATUS_TONE[futureState.status]}`}>
+          {FUTURE_STATE_STATUS_LABEL[futureState.status]}
         </span>
       </div>
       <div className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <p className="text-muted" style={{ margin: 0 }}>
-            {STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · {STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]} · v{strategy.version_number}
+            {futureState.target_date ? `Target date ${futureState.target_date} · ` : ""}v{futureState.version_number}
           </p>
-          {!strategy.is_locked && (
+          {!futureState.is_locked && (
             <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}
         </div>
 
-        <Field label="Objective / strategic theme" value={strategy.objective} />
-        {strategy.current_state && <Field label="Current state" value={strategy.current_state} />}
-        {strategy.desired_future_state && <Field label="Desired future state" value={strategy.desired_future_state} />}
-        {strategy.rationale && <Field label="Rationale" value={strategy.rationale} />}
-        {strategy.expected_outcomes && <Field label="Expected outcomes" value={strategy.expected_outcomes} />}
-        {strategy.constraints && <Field label="Constraints" value={strategy.constraints} />}
-        {strategy.measures_of_success && <Field label="Measures of success" value={strategy.measures_of_success} />}
+        {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
+        <Field label="Desired state" value={futureState.desired_state} />
+        {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
+        {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
+        {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
+        {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
 
         <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-          {strategy.status === "draft" && (
-            <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, strategy.id), "Strategy proposed.")}>
+          {futureState.status === "draft" && (
+            <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, futureState.id), "Future State proposed.")}>
               Propose
             </button>
           )}
-          {strategy.status === "proposed" && (
+          {futureState.status === "proposed" && (
             <>
               <button
                 className="btn btn-primary"
-                onClick={() => runTransition(() => scopedApi.submitForReview(scopeId, strategy.id), "Strategy submitted for review.")}
+                onClick={() => runTransition(() => scopedApi.submitForReview(scopeId, futureState.id), "Future State submitted for review.")}
               >
                 Submit for review
               </button>
               <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
             </>
           )}
-          {strategy.status === "under_review" && (
+          {futureState.status === "under_review" && (
             <>
               <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
               <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
             </>
           )}
-          {strategy.status === "approved" && (
+          {futureState.status === "approved" && (
             <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
           )}
-          {strategy.status === "active" && (
+          {futureState.status === "active" && (
             <>
               <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
               <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
             </>
           )}
           <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {strategy.is_archived ? "Unarchive" : "Archive"}
+            {futureState.is_archived ? "Unarchive" : "Archive"}
           </button>
         </div>
 
-        <StrategyRelationshipsSection
-          strategy={strategy}
+        <FutureStateRelationshipsSection
+          futureState={futureState}
           projectId={projectId}
           organizationId={organizationId}
-          onChanged={() => scopedApi.get(scopeId, strategy.id).then(setStrategy)}
+          onChanged={() => scopedApi.get(scopeId, futureState.id).then(setFutureState)}
         />
 
         {versions && versions.length > 1 && (
@@ -244,7 +238,7 @@ export function StrategyDetailPage() {
                 {[...versions].reverse().map((v) => (
                   <tr key={v.id}>
                     <td>{v.version_number}</td>
-                    <td>{STRATEGY_STATUS_LABEL[v.status]}</td>
+                    <td>{FUTURE_STATE_STATUS_LABEL[v.status]}</td>
                     <td>{new Date(v.valid_from).toLocaleString()}</td>
                     <td>{v.change_note || "—"}</td>
                   </tr>
@@ -258,14 +252,14 @@ export function StrategyDetailPage() {
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
           <FileAttachmentList
             files={files}
-            disabled={strategy.is_locked}
-            emptyHint={strategy.is_locked ? "This Strategy is past review; new attachments can no longer be added." : undefined}
+            disabled={futureState.is_locked}
+            emptyHint={futureState.is_locked ? "This Future State is past review; new attachments can no longer be added." : undefined}
             onUpload={async (file) => {
-              const asset = await scopedApi.uploadFile(scopeId, strategy.id, file);
+              const asset = await scopedApi.uploadFile(scopeId, futureState.id, file);
               setFiles((prev) => [...prev, asset]);
             }}
             onRemove={async (fileId) => {
-              await scopedApi.unlinkFile(scopeId, strategy.id, fileId);
+              await scopedApi.unlinkFile(scopeId, futureState.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
@@ -276,20 +270,20 @@ export function StrategyDetailPage() {
             comments={comments ?? []}
             currentUserId={user?.id}
             onPost={async (body) => {
-              const comment = await scopedApi.addComment(scopeId, strategy.id, body);
+              const comment = await scopedApi.addComment(scopeId, futureState.id, body);
               setComments((prev) => [...(prev ?? []), comment]);
               return comment;
             }}
             onEdit={async (commentId, body) => {
-              const updated = await scopedApi.editComment(scopeId, strategy.id, commentId, body);
+              const updated = await scopedApi.editComment(scopeId, futureState.id, commentId, body);
               setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
             }}
             onUploadAttachment={async (commentId, file) => {
-              const asset = await scopedApi.uploadCommentAttachment(scopeId, strategy.id, commentId, file);
+              const asset = await scopedApi.uploadCommentAttachment(scopeId, futureState.id, commentId, file);
               setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
             }}
             onRemoveAttachment={async (commentId, fileId) => {
-              await scopedApi.removeCommentAttachment(scopeId, strategy.id, commentId, fileId);
+              await scopedApi.removeCommentAttachment(scopeId, futureState.id, commentId, fileId);
               setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
             }}
           />
@@ -297,8 +291,8 @@ export function StrategyDetailPage() {
       </div>
 
       {editing && (
-        <StrategyFormModal
-          initial={strategy}
+        <FutureStateFormModal
+          initial={futureState}
           scopeLabel={projectId ? "project" : "organisation"}
           error={formError}
           onCancel={() => { setEditing(false); setFormError(null); }}
@@ -308,7 +302,7 @@ export function StrategyDetailPage() {
 
       {sendingBack && (
         <ConfirmDialog
-          title="Send this Strategy back to Draft?"
+          title="Send this Future State back to Draft?"
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining what needs rework is required.</span>
@@ -327,7 +321,7 @@ export function StrategyDetailPage() {
             setSendingBack(false);
             const comment = sendBackComment;
             setSendBackComment("");
-            await runTransition(() => scopedApi.sendBack(scopeId, strategy.id, comment), "Strategy sent back to draft.");
+            await runTransition(() => scopedApi.sendBack(scopeId, futureState.id, comment), "Future State sent back to draft.");
           }}
           onCancel={() => { setSendingBack(false); setSendBackComment(""); }}
         />
@@ -354,7 +348,7 @@ export function StrategyDetailPage() {
             const comment = transitionComment;
             setTransitionAction(null);
             setTransitionComment("");
-            await runTransition(() => scopedApi[action](scopeId, strategy.id, comment), `Strategy ${TRANSITION_COPY[action].confirmLabel.toLowerCase()}d.`);
+            await runTransition(() => scopedApi[action](scopeId, futureState.id, comment), `Future State ${TRANSITION_COPY[action].confirmLabel.toLowerCase()}d.`);
           }}
           onCancel={() => { setTransitionAction(null); setTransitionComment(""); }}
         />
@@ -362,18 +356,18 @@ export function StrategyDetailPage() {
 
       {archiveConfirm && (
         <ConfirmDialog
-          title={strategy.is_archived ? "Unarchive this Strategy?" : "Archive this Strategy?"}
+          title={futureState.is_archived ? "Unarchive this Future State?" : "Archive this Future State?"}
           message={
-            strategy.is_archived
-              ? "This Strategy will count as active again."
-              : "This Strategy will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
+            futureState.is_archived
+              ? "This Future State will count as active again."
+              : "This Future State will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
           }
-          confirmLabel={strategy.is_archived ? "Unarchive" : "Archive"}
+          confirmLabel={futureState.is_archived ? "Unarchive" : "Archive"}
           onConfirm={async () => {
             setArchiveConfirm(false);
             await runTransition(
-              () => (strategy.is_archived ? scopedApi.unarchive(scopeId, strategy.id) : scopedApi.archive(scopeId, strategy.id)),
-              strategy.is_archived ? "Strategy unarchived." : "Strategy archived."
+              () => (futureState.is_archived ? scopedApi.unarchive(scopeId, futureState.id) : scopedApi.archive(scopeId, futureState.id)),
+              futureState.is_archived ? "Future State unarchived." : "Future State archived."
             );
           }}
           onCancel={() => setArchiveConfirm(false)}

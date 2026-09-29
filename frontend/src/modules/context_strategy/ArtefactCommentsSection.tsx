@@ -1,30 +1,39 @@
 /**
- * Module: modules/context_strategy/StrategyCommentsSection
+ * Module: modules/context_strategy/ArtefactCommentsSection
  *
- * A Strategy's own comment thread (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.1) — mirrors `modules/decisions/
- * DecisionCommentsSection.tsx` field-for-field and reasoning-for-reasoning:
- * not the shared `components/CommentThread.tsx`, since `StrategyComment`
- * has no reaction mechanism either (module-local table, see `models.py`'s
- * own docstring), and that shared component's `onToggleReaction` prop is
- * mandatory. Kept as its own small component here (rather than trying to
- * reuse Decision Management's copy directly) because that component lives
- * inside `modules/decisions/` — a core-boundary-respecting module never
- * imports another module's own internals (CLAUDE.md's "Modular Feature
- * System Boundary": the only files allowed to import from `modules/<key>/`
- * are that module's own files) — so a second, small, near-identical copy is
- * the correct outcome here, not a shortcut. A future core extraction of
- * this shape (it is now duplicated exactly twice) would be a reasonable
- * follow-up but is out of this phase's own scope.
+ * A shared comment thread for any of this module's artefact types whose own
+ * `*Comment` shape has no reaction mechanism (`StrategyComment`/
+ * `FutureStateComment` so far — see `models.py`'s own docstring for why this
+ * module's comments are module-local tables, not the shared
+ * `components/CommentThread.tsx`, whose `onToggleReaction` prop is
+ * mandatory).
+ *
+ * **Renamed from `StrategyCommentsSection.tsx` and generalised, Decided by:
+ * Agent (Phase 7.2, 2026-09-29).** Phase 7.1 built this component typed
+ * directly to `StrategyComment`, flagging in its own docstring that "a
+ * future core extraction of this shape (it is now duplicated exactly twice
+ * [vs. `modules/decisions/DecisionCommentsSection.tsx`]) would be a
+ * reasonable future core-extraction candidate." Phase 7.2 needed the exact
+ * same behaviour for `FutureStateComment`, which already satisfies
+ * `ArtefactComment` (`types.ts`) structurally field-for-field — rather than
+ * add a *third* near-identical copy (this module's own second, this time),
+ * this generalises the existing one and updates its one call site
+ * (`StrategyDetailPage.tsx`) to use the renamed export, per CLAUDE.md's UX
+ * style guide reuse rule: "if [a shared equivalent] does but isn't set up as
+ * a shared component yet, extract it into one *and update the existing call
+ * site(s) to use it too*." This stays inside `modules/context_strategy/`
+ * throughout (never imported by another module's own directory), so it does
+ * not touch the Modular Feature System Boundary rule at all — that rule
+ * governs *cross-module* imports, not reuse within one module's own files.
  */
 import { Paperclip, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { fileUrl } from "../../api/client";
 import { FileUploadTrigger } from "../../components/FileUploadTrigger";
-import type { StrategyComment } from "./types";
+import type { ArtefactComment } from "./types";
 
-export function StrategyCommentsSection({
+export function ArtefactCommentsSection<T extends ArtefactComment>({
   comments,
   onPost,
   onUploadAttachment,
@@ -32,8 +41,8 @@ export function StrategyCommentsSection({
   onEdit,
   currentUserId,
 }: {
-  comments: StrategyComment[];
-  onPost: (body: string) => Promise<StrategyComment>;
+  comments: T[];
+  onPost: (body: string) => Promise<T>;
   onUploadAttachment?: (commentId: string, file: File) => Promise<void>;
   onRemoveAttachment?: (commentId: string, fileId: string) => Promise<void>;
   onEdit?: (commentId: string, body: string) => Promise<void>;
@@ -61,7 +70,7 @@ export function StrategyCommentsSection({
     }
   }
 
-  function startEdit(comment: StrategyComment) {
+  function startEdit(comment: T) {
     setEditingId(comment.id);
     setEditBody(comment.body);
   }

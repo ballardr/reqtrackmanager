@@ -161,6 +161,7 @@ from app.modules.registry import (
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
+    ModuleNavEntry,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
 )
@@ -712,22 +713,28 @@ MODULE_DEFINITION = ModuleDefinition(
     models_import_path="app.modules.context_strategy.models",
     migrations_dir="app/modules/context_strategy/migrations",
     # Phase 7.1 (Strategy frontend, 2026-09-29): this module's first
-    # frontend_manifest — only the Strategy nav entry exists so far. Phase
+    # frontend_manifest — only the Strategy nav entry existed at first. Phase
     # 0 Q7 (docs/plans/module-01-context-and-strategy-plan.md) requires five
     # separate top-level nav-rail entries, one per artefact type, not one
     # grouped entry with tabs — `ModuleFrontendManifest.additional_nav_
     # entries` (the generic multi-entry extension point built as part of
-    # this same phase, see docs/decisions.md) is where Phase 7.2-7.5 will
-    # each append their own artefact type's entry as its own frontend ships,
-    # rather than all five being declared now pointing at routes that don't
-    # exist yet. `nav_path` uses this module's own `/strategies` sub-route
-    # naming (matching `router.py`/`project_router.py`), not the bare module
-    # mount point, precisely because further entries will need their own
-    # distinct sub-paths alongside it.
+    # Phase 7.1, see docs/decisions.md) is where Phase 7.2-7.5 each append
+    # their own artefact type's entry as its own frontend ships. Phase 7.2
+    # (Future State, 2026-09-29) adds the second entry below; Phase
+    # 7.3-7.5 will each append one more. `nav_path` uses each artefact's own
+    # sub-route naming (matching `router.py`/`project_router.py`), not the
+    # bare module mount point, since each entry needs its own distinct
+    # sub-path alongside the others.
     frontend_manifest=ModuleFrontendManifest(
         tier="installed",
         nav_label="Strategy",
         nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/strategies",
+        additional_nav_entries=(
+            ModuleNavEntry(
+                nav_label="Future State",
+                nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/future-states",
+            ),
+        ),
     ),
     artefact_types=(
         STRATEGY_ARTEFACT_TYPE, FUTURE_STATE_ARTEFACT_TYPE, PAIN_POINT_ARTEFACT_TYPE, GUIDING_PRINCIPLE_ARTEFACT_TYPE,

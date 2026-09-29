@@ -1,9 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
-import { StrategyCommentsSection } from "./StrategyCommentsSection";
+import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
 import type { StrategyComment } from "./types";
 
+/**
+ * Exercised here with `StrategyComment` fixtures (the shape it was first
+ * built against, Phase 7.1) — `FutureStateComment` satisfies the same
+ * `ArtefactComment` structural shape (see `types.ts`'s own docstring) and is
+ * covered indirectly by `FutureStateDetailPage.stories.tsx`'s own comment
+ * assertions rather than duplicated here.
+ */
 function comment(overrides: Partial<StrategyComment> = {}): StrategyComment {
   return {
     id: "comment-1", strategy_id: "strategy-1", author_id: "user-1", author_display_name: "Alex Morgan",
@@ -13,14 +20,14 @@ function comment(overrides: Partial<StrategyComment> = {}): StrategyComment {
   };
 }
 
-const meta: Meta<typeof StrategyCommentsSection> = {
-  title: "Modules/ContextStrategy/StrategyCommentsSection",
-  component: StrategyCommentsSection,
+const meta: Meta<typeof ArtefactCommentsSection> = {
+  title: "Modules/ContextStrategy/ArtefactCommentsSection",
+  component: ArtefactCommentsSection,
   args: { onPost: fn(async (body: string) => comment({ id: "comment-new", body })) },
 };
 export default meta;
 
-type Story = StoryObj<typeof StrategyCommentsSection>;
+type Story = StoryObj<typeof ArtefactCommentsSection>;
 
 export const EmptyThread: Story = {
   args: { comments: [] },

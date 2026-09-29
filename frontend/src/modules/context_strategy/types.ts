@@ -10,11 +10,15 @@
  * CLAUDE.md's enum-label-map rule: every enum/status value rendered
  * anywhere must go through one of these maps, never a raw backend string).
  *
- * Only Strategy's own shapes are here (Phase 7.1's scope) — Future State/
- * Pain Point/Guiding Principle/Open Question's shapes are added by their
- * own Phase 7.2-7.5 sub-phases, into this same file, mirroring how
+ * Only Strategy's own shapes were here at first (Phase 7.1's scope) — Pain
+ * Point/Guiding Principle/Open Question's shapes are added by their own
+ * Phase 7.3-7.5 sub-phases, into this same file, mirroring how
  * `context_strategy/schemas.py`/`enums.py` themselves grow one artefact's
  * worth of symbols per backend phase rather than being split per artefact.
+ * Phase 7.2 (2026-09-29) adds Future State's own shapes below, following
+ * every one of Strategy's own conventions identically (backend `FutureState*`
+ * is itself an exact structural mirror of `Strategy*` — see `schemas.py`'s
+ * own docstring).
  */
 
 // --- Strategy lifecycle --------------------------------------------------
@@ -193,4 +197,134 @@ export interface ContextStrategyLink {
   other_display_name: string | null;
   created_by: string;
   created_at: string;
+}
+
+// --- Future State (Phase 7.2) -----------------------------------------------
+//
+// `FutureState*` mirrors `Strategy*` field-for-field except for its own
+// content fields (no `priority`/`time_horizon` — Future State's own field
+// list, per `schemas.FutureStateCreate`/`FutureStateOut`, has neither) and
+// `target_date` (nullable — a plain HTML date input left empty sends `null`,
+// which the backend's `PUT` treats as an explicit clear; see `api.ts`'s own
+// docstring on why no separate "explicitly set" flag is needed client-side).
+
+export type FutureStateScope = StrategyScope;
+
+export const FUTURE_STATE_SCOPE_LABEL: Record<FutureStateScope, string> = STRATEGY_SCOPE_LABEL;
+
+export type FutureStateStatus = StrategyStatus;
+
+// Same seven-state lifecycle as `StrategyStatus` (Phase 0 Q1's follow-on:
+// "Future State's lifecycle... mirror Strategy's in full") — the backend
+// keeps `FutureStateStatus` as its own Python enum (two independent
+// artefact types, two owned vocabularies, per `enums.py`'s own docstring),
+// but its *values* are textually identical, so the frontend label/tone maps
+// are reused directly rather than re-declared with the same content.
+export const FUTURE_STATE_STATUS_LABEL: Record<FutureStateStatus, string> = STRATEGY_STATUS_LABEL;
+export const FUTURE_STATE_STATUS_TONE: Record<FutureStateStatus, import("../../api/types").BadgeTone> = STRATEGY_STATUS_TONE;
+
+// --- Future State relationship kinds (Phase 6) ------------------------------
+
+export type FutureStateLinkKind = "related_to_pain_point" | "related_to_requirement" | "related_to_guiding_principle";
+
+export const FUTURE_STATE_LINK_KIND_LABEL: Record<FutureStateLinkKind, string> = {
+  related_to_pain_point: "Related to a Pain Point",
+  related_to_requirement: "Related to a Requirement",
+  related_to_guiding_principle: "Related to a Guiding Principle",
+};
+
+// --- Future States -----------------------------------------------------------
+
+export interface FutureState {
+  id: string;
+  scope: FutureStateScope;
+  organization_id: string | null;
+  project_id: string | null;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+
+  title: string;
+  current_state: string;
+  desired_state: string;
+  target_date: string | null;
+  outcomes: string;
+  success_measures: string;
+  constraints: string;
+  assumptions: string;
+  status: FutureStateStatus;
+  version_number: number;
+  is_locked: boolean;
+
+  created_at: string;
+  updated_at: string;
+}
+
+/** The editable content fields shared by create (`FutureStateCreate`) and
+ * full replace (`FutureStateUpdate`) — same `change_note`-is-update-only
+ * convention as `StrategyFieldValues`. */
+export interface FutureStateFieldValues {
+  title: string;
+  current_state: string;
+  desired_state: string;
+  target_date: string | null;
+  outcomes: string;
+  success_measures: string;
+  constraints: string;
+  assumptions: string;
+  change_note: string;
+}
+
+export interface FutureStateVersion {
+  id: string;
+  future_state_id: string;
+  version_number: number;
+  valid_from: string;
+  valid_to: string | null;
+  title: string;
+  current_state: string;
+  desired_state: string;
+  target_date: string | null;
+  outcomes: string;
+  success_measures: string;
+  constraints: string;
+  assumptions: string;
+  status: FutureStateStatus;
+  change_note: string;
+  created_by: string;
+  created_at: string;
+}
+
+// --- Comments (no reaction mechanism — mirrors StrategyComment's own docstring) ---
+
+export interface FutureStateComment {
+  id: string;
+  future_state_id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: import("../../api/types").FileAsset[];
+}
+
+// --- Generic artefact comment shape (Phase 7.2) -----------------------------
+//
+// `ArtefactCommentsSection.tsx` (renamed from Phase 7.1's `StrategyComments
+// Section.tsx`, **Decided by: Agent** — see that component's own docstring)
+// is typed against this structural shape rather than `StrategyComment`/
+// `FutureStateComment` specifically, since both already satisfy it exactly
+// (every field but the identity foreign key, which the shared component
+// never reads) and CLAUDE.md's UX-style-guide reuse rule asks for the
+// existing implementation to be generalised and have its call site updated,
+// not duplicated a second time now that a second artefact type needs it.
+export interface ArtefactComment {
+  id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: import("../../api/types").FileAsset[];
 }
