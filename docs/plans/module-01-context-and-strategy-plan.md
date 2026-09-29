@@ -52,8 +52,8 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-10 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
-2026-09-29 — see that phase's own note). **Phase 7.4 (Guiding Principle
+11 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
+2026-09-29 — see that phase's own note). **Phase 7.5 (Open Question
 frontend) is next.**
 
 | # | Phase | Status |
@@ -68,7 +68,7 @@ frontend) is next.**
 | 7.1 | Frontend UI — Strategy | [x] Complete (2026-09-29) |
 | 7.2 | Frontend UI — Future State | [x] Complete (2026-09-29) |
 | 7.3 | Frontend UI — Pain Point (+ type admin) | [x] Complete (2026-09-29) |
-| 7.4 | Frontend UI — Guiding Principle | [ ] Not started |
+| 7.4 | Frontend UI — Guiding Principle | [x] Complete (2026-09-29) |
 | 7.5 | Frontend UI — Open Question | [ ] Not started |
 | 8 | Docs website coverage | [ ] Not started — depends on Phase 7.1-7.5 shipping |
 
@@ -1475,7 +1475,7 @@ independently scoped, testable, and shippable:
 | 7.1 | Strategy (org + project) | [x] Complete (2026-09-29) |
 | 7.2 | Future State (org + project) | [x] Complete (2026-09-29) |
 | 7.3 | Pain Point (project) + Pain Point Type admin (org) | [x] Complete (2026-09-29) |
-| 7.4 | Guiding Principle (org + project) | [ ] Not started |
+| 7.4 | Guiding Principle (org + project) | [x] Complete (2026-09-29) |
 | 7.5 | Open Question (project) | [ ] Not started |
 
 Strategy is first because it is the module's foundational artefact (every
@@ -2242,6 +2242,231 @@ touched — Phase 8 stays explicitly gated on all five Phase 7 sub-phases.
   `PainPointRelationshipsSection.tsx` stayed a sibling, not a
   generalisation), matching Phase 7.2's own identical "no decisions.md entry
   needed" precedent.
+
+## Phase 7.4 notes (2026-09-29)
+
+Built Guiding Principle's full frontend — the fourth of the five planned
+Phase 7 sub-phases — into the same `frontend/src/modules/context_strategy/`
+directory Phase 7.1-7.3 already established. Structurally closest to
+Strategy/Future State (org-**or**-project scope, Phase 0 Q2's discriminator,
+`buildStrategyApi`-shaped factory), but with a genuinely **shorter**,
+six-state lifecycle with no `under_review` step (`Draft -> Proposed ->
+Approved -> Active -> Superseded/Retired`, Phase 4's own scope decision) and
+its own versioned `owner_id` field.
+
+**New files**, all under `frontend/src/modules/context_strategy/`:
+`GuidingPrincipleFormModal.tsx` (create/edit, mirrors `StrategyFormModal.tsx`),
+`ProjectGuidingPrinciplesPage.tsx` (project-scoped list, reached via this
+phase's new "Guiding Principle" nav-rail entry — the fourth of Phase 0 Q7's
+five planned top-level entries), `OrgGuidingPrinciplesPanel.tsx` (org-scoped
+list, an `orgOverviewSections` contribution), `GuidingPrincipleDetailPage.tsx`
+(shared detail page for both scopes — full fields, the six-state lifecycle's
+actions, a dedicated `AssigneePicker` for `owner_id`, version history,
+relationships, attachments, comments), `GuidingPrincipleRelationshipsSection.tsx`
+(relationships list + add-relationship form, Guiding Principle's own two link
+kinds), and one `.stories.tsx` file per component above (5 files, 33
+Storybook stories total).
+
+**Files changed:** `backend/app/modules/context_strategy/module.py`
+(`frontend_manifest.additional_nav_entries` gains Guiding Principle's own
+`ModuleNavEntry`, the fourth of five), `backend/app/modules/context_strategy/
+tests/test_context_strategy_api.py` (updated `test_frontend_manifest_
+registers_the_strategy_nav_entry`'s exact-equality assertion to expect the
+new entry), `frontend/src/modules/context_strategy/types.ts` (Guiding
+Principle's own TypeScript shapes plus `GUIDING_PRINCIPLE_SCOPE_LABEL`/
+`GUIDING_PRINCIPLE_PRIORITY_LABEL`/`GUIDING_PRINCIPLE_STATUS_LABEL`/
+`GUIDING_PRINCIPLE_STATUS_TONE`/`GUIDING_PRINCIPLE_LINK_KIND_LABEL` label
+maps), `frontend/src/modules/context_strategy/api.ts` (`buildGuidingPrincipleApi(base)`
+factory, instantiated twice — `projectGuidingPrincipleApi`/
+`orgGuidingPrincipleApi`), `frontend/src/modules/context_strategy/module.ts`
+(Guiding Principle's `routes`/`globalRoutes`/`orgOverviewSections` entries
+appended alongside Strategy's/Future State's/Pain Point's, not replacing
+them).
+
+**Scope decisions, each a judgment call this phase had to make that the
+brief didn't fully settle:**
+
+- **`buildGuidingPrincipleApi` goes back to a `buildStrategyApi`-shaped
+  factory, not Pain Point's two-plain-objects shape (Decided by: Agent).**
+  Guiding Principle's backend gives every endpoint an identical org-scoped
+  and project-scoped twin router (Phase 4's own "exact structural mirror" of
+  Strategy/Future State), the same condition that justified the factory
+  shape for those two and does not hold for Pain Point (project-scoped
+  only). One genuine deviation from `buildStrategyApi`'s own shape: `update()`
+  takes `values: GuidingPrincipleFieldValues & { owner_id: string | null }`,
+  not just `GuidingPrincipleFieldValues` — see the next point for why.
+- **`owner_id` excluded from `GuidingPrincipleFieldValues` and assigned via a
+  dedicated `AssigneePicker` on `GuidingPrincipleDetailPage.tsx`, not a
+  `GuidingPrincipleFormModal` field (Decided by: Agent) — the harder call
+  this phase had to make, since the backend schema shape argues either way.**
+  Phase 4's own backend notes place `owner_id` on `GuidingPrincipleVersion`
+  as a plain versioned content field, sent on every full-replace `PUT` —
+  structurally closer to `FutureStateFieldValues.target_date` (a plain field
+  on the same payload) than to Pain Point's genuinely separate "assign
+  owner" surface (no `owner_id` on `PainPointCreate` at all). A literal
+  reading of that shape would put `owner_id` in the form modal, as another
+  content field. Weighed against that: assigning a person is a distinct,
+  higher-frequency action with its own search-first UX need (find a user by
+  name, not pick a UUID from a giant dropdown buried in a multi-field
+  content-edit modal), and `components/AssigneePicker.tsx` already exists as
+  exactly the shared component for that shape, already reused directly by
+  `PainPointDetailPage.tsx`. Per CLAUDE.md's UX style-guide reuse rule and
+  its "reuse existing role-display components for any new role type"
+  precedent, this phase reuses `AssigneePicker` on the detail page rather
+  than reinventing an inline owner picker inside the form modal, accepting
+  the resulting asymmetry from Pain Point's own reasoning (there, exclusion
+  followed directly from the backend having no create-time owner field at
+  all; here, exclusion is a frontend UX choice made *despite* the backend
+  schema allowing it inline) — the underlying mechanism (`api.update` called
+  with the current content fields plus a newly-chosen `owner_id`) is
+  identical to `PainPointDetailPage.tsx`'s own `assignOwner`, so nothing new
+  was built, only the existing pattern reused a second time. This directly
+  exercises Phase 4's own "explicit owner-assign-then-clear" backend test
+  behaviour from the frontend for the first time.
+- **`GuidingPrincipleDetailPage.tsx`'s org-user lookup branches on
+  `organizationId` vs. `projectId` (Decided by: Agent), extending
+  `PainPointDetailPage.tsx`'s single-branch project-only lookup to cover the
+  org-scoped case `AssigneePicker` needs an organisation id for either way.**
+  An org-scoped Guiding Principle already has an `organizationId` route
+  param directly; a project-scoped one still needs the one extra `GET
+  /api/v1/projects/:id` hop `PainPointDetailPage.tsx` already makes to
+  resolve its owning organisation, since Pain Point has no org-scoped case
+  to compare against.
+- **No quick-view `SidePanel` tier, and the same lifecycle confirmation-tier
+  scheme as Strategy's (Decided by: Agent) — inherited from Phase 7.1's own
+  reasoning, adjusted only for the missing `under_review` step:** `propose`
+  is a plain single-click button (low-risk, early-lifecycle); `approve`/
+  `activate`/`supersede`/`retire` each get a `ConfirmDialog` with an optional
+  comment; `send-back` (this module's "reject"-equivalent, `Proposed ->
+  Draft`) gets a `ConfirmDialog` with a **mandatory** comment, matching
+  backend enforcement (`send_project_guiding_principle_back` 400s without
+  one). Unlike Strategy, there is no `Submit for review` step between
+  `Propose` and `Approve`/`Send back` — `Proposed` offers both directly.
+- **`GuidingPrincipleRelationshipsSection.tsx` is a sibling component, not a
+  generalisation of any of the other three (Decided by: Agent)** — checked
+  all three first, per this module's own established practice
+  (`FutureStateRelationshipsSection.tsx`'s/`PainPointRelationshipsSection.tsx`'s
+  own docstrings already made this exact call for their own artefact types):
+  Guiding Principle's own two kinds (`supports_strategy`/
+  `informs_requirement`) and target pickers genuinely diverge from every
+  sibling's.
+- **`informs_requirement` restricted to the project-scoped case only, even
+  though `supports_strategy` is offered at both scopes (Decided by: Agent),
+  mirroring `StrategyRelationshipsSection.tsx`'s own restraint for
+  `defines_future_state`/`requires_resolution_of_open_question`.** A
+  Requirement is always project-scoped, so an org-scoped Guiding Principle
+  has no single project to search one within; `supports_strategy` targets a
+  Strategy, which exists at both scopes (Phase 0 Q2), so its own picker
+  lists Strategies at this Guiding Principle's own matching scope
+  (`projectStrategyApi`/`orgStrategyApi`, the same "search within the same
+  scope as the source" convention `contributes_to_strategy`'s own picker
+  already uses). Confirmed by checking `create_guiding_principle_link`/
+  `_GUIDING_PRINCIPLE_LINK_SPECS` (`service.py`) directly rather than
+  assuming from the label alone.
+- **Org-scoped Guiding Principle list surface placed on `orgOverviewSections`
+  (Org Dashboard), not `orgAdminSections` (Decided by: Agent) — resolves
+  `OrgStrategiesPanel.tsx`'s own explicitly-flagged "revisit if a later
+  org/project-scoped artefact suggests a different placement" note by
+  confirming rather than overturning it.** Guiding Principle's org/project
+  dual scope is exactly the case that note anticipated; an org-scoped
+  Guiding Principle is org-level *content* an Owner/Approver works with day
+  to day, the same reasoning already placing Strategy's/Future State's own
+  org-scoped panels there. Pain Point Type (Phase 7.3, `orgAdminSections`)
+  is not a competing precedent — it is a configuration table with no
+  org-scoped artefact behind it at all, a different case entirely.
+- **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
+  (Decided by: Agent), matching Phase 7.1/7.2/7.3's own precedent exactly**
+  — the new Playwright spec creates its own disposable org/admin/project via
+  the API. `seed_demo_data.py` needed no change — Phase 4 already seeds an
+  org- and a project-scoped Guiding Principle on the existing demo org/
+  project, both walked to `Active`; this phase only adds UI to view/act on
+  data that already exists.
+- **No backend change needed (confirmed, not assumed).** Checked every
+  endpoint this phase's frontend calls against `router.py`/`project_router.py`
+  directly before writing `api.ts` — `propose`/`send-back`/`approve`/
+  `activate`/`supersede`/`retire`, comments, direct file attachments, and
+  `/relationships`/`/supersessions` all already exist exactly as Phase 4/6
+  shipped them, including the `GuidingPrincipleSupersessionCreate.
+  old_guiding_principle_id` field name and the `GuidingPrincipleLinkKind.
+  SUPPORTS_STRATEGY`/`INFORMS_REQUIREMENT` enum values used verbatim in
+  `GuidingPrincipleRelationshipsSection.tsx`.
+
+**Omitted this phase, mirroring Phase 7.1/7.2's own identical omissions and
+reasoning:** `globalNavItems`/`standaloneWorkspaces`/`projectOverviewTiles`/
+`orgAdminSections`/`projectAdminSections`/`requirementDetailSections`/
+`requirementLinkPickerTabs`/`entityAccentColor` — Guiding Principle has no
+cross-org standalone entity of its own, no project-overview summary tile,
+and (unlike Pain Point) no configurable type vocabulary needing an admin
+surface, and nothing yet renders a mixed list containing a Guiding Principle
+row alongside other entity kinds. `docs/website/` was not touched — Phase 8
+stays explicitly gated on all five Phase 7 sub-phases shipping, per this
+plan's own text above (see that phase's own "not yet" note for the check
+performed this phase).
+
+**Tests:**
+- `backend/app/modules/context_strategy/tests/test_context_strategy_api.py`:
+  1 test updated (`test_frontend_manifest_registers_the_strategy_nav_entry`),
+  now asserting the manifest's `additional_nav_entries` contains Guiding
+  Principle's own `ModuleNavEntry`.
+- `frontend/src/modules/context_strategy/*.stories.tsx`: 5 new files, 33
+  Storybook/Vitest stories — the form modal (create/validation/edit), the
+  project and org list pages (including empty state and create-modal open),
+  the detail page across every lifecycle status (`Draft`/`Proposed`/
+  `Approved`/`Active`/`Retired`, the missing-`Submit for review`-button
+  assertion, send-back's mandatory comment, an approve action, and owner
+  assignment via `AssigneePicker`), and relationships (both link kinds plus
+  the org-scoped "fewer kinds offered" case).
+- `tests/playwright/tests/modules/context_strategy/guiding-principle-lifecycle.spec.ts`:
+  1 new spec — disposable org/admin/project via the API, enables Context &
+  Strategy for that org, creates a project-scoped Guiding Principle via the
+  new "Guiding Principle" nav entry, walks it `Draft -> Proposed -> (Send
+  back) -> Draft -> Proposed -> Approved -> Active` (covering both the
+  mandatory-comment rework path and the happy path in one spec, mirroring
+  `pain-point-lifecycle.spec.ts`'s own "cover a branch and the happy path
+  together" precedent), and confirms the final status back on the list.
+
+**Verified:**
+- `ruff check` clean on both changed backend files (`module.py`, `test_
+  context_strategy_api.py`) and across the whole backend.
+- `npx tsc -b` clean across the whole frontend.
+- `npx eslint .` exits 0 (0 errors across the whole frontend; 98 total
+  warnings, up from Phase 7.3's 92 — the 6 new warnings are the same
+  pre-existing, already-accepted `react-hooks/set-state-in-effect` pattern
+  this phase's own new `useEffect` call sites trigger
+  (`GuidingPrincipleDetailPage.tsx` x2, `GuidingPrincipleRelationshipsSection.tsx`
+  x2, `ProjectGuidingPrinciplesPage.tsx`, `OrgGuidingPrinciplesPanel.tsx`),
+  matching the exact pattern already present at 92 other call sites
+  repo-wide before this phase).
+- `npx vitest run --project=storybook` (the full suite, not just this
+  phase's own new files): **149 test files / 1158 tests, all passing** — up
+  from Phase 7.3's 144/1125 (net: +5 files/+33 tests, exactly this phase's
+  own new story files, no regressions found).
+- Backend/frontend containers rebuilt (`docker compose up -d --build backend
+  frontend`, per this repo's "Compose services don't bind-mount source"
+  convention) before any live-stack verification.
+- `test_context_strategy_api.py` + `test_module_frontend_integration.py`
+  (65 passed combined) run against the rebuilt `tests/container` backend.
+- `npx playwright test tests/modules/context_strategy/guiding-principle-lifecycle.spec.ts
+  --no-deps` against the freshly rebuilt live stack — **1 passed**, covering
+  create -> propose -> send back (mandatory comment) -> re-propose ->
+  approve -> activate, reached through the new "Guiding Principle" nav-rail
+  entry end to end. `strategy-lifecycle.spec.ts`/`future-state-lifecycle.spec.ts`/
+  `pain-point-lifecycle.spec.ts` were also re-run standalone the same way to
+  confirm this phase's `module.ts`/`module.py` changes (the fourth nav
+  entry, the third `orgOverviewSections` contribution) introduced no
+  regression — **3 passed**.
+- Full backend pytest suite run as a single invocation, per this repo's own
+  concurrency rule (host `.venv`, against `reqtrack_pytest_test`) — **1407
+  passed, 14 failed, in 40m50s**. All 14 failures are the exact same `test_
+  invites_and_external_users.py`/`test_oidc_provisioning.py`/`test_org_
+  export_import.py` cases hitting `aiosmtplib.errors.SMTPConnectError: ...
+  connecting to mailhog on port 1025` that Phase 7.1/7.2/7.3's own
+  verification hit (identical test names, identical count) — this repo's
+  own documented, pre-existing "host pytest + mailhog DNS failures" class,
+  unrelated to this phase. Every new/changed test this phase touched is
+  among the 1407 passed (independently re-confirmed by the standalone
+  65-test run of `test_context_strategy_api.py` + `test_module_frontend_
+  integration.py` above, both before this full run).
 
 ## Phase 8 — Docs website coverage
 

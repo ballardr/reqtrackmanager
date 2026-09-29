@@ -2,11 +2,14 @@ import { createElement } from "react";
 
 import type { TierAModuleDefinition } from "../types";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
+import { GuidingPrincipleDetailPage } from "./GuidingPrincipleDetailPage";
 import { OrgFutureStatesPanel } from "./OrgFutureStatesPanel";
+import { OrgGuidingPrinciplesPanel } from "./OrgGuidingPrinciplesPanel";
 import { OrgPainPointTypesPanel } from "./OrgPainPointTypesPanel";
 import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
 import { PainPointDetailPage } from "./PainPointDetailPage";
 import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
+import { ProjectGuidingPrinciplesPage } from "./ProjectGuidingPrinciplesPage";
 import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
 import { ProjectPainPointTypesPanel } from "./ProjectPainPointTypesPanel";
 import { ProjectStrategiesPage } from "./ProjectStrategiesPage";
@@ -89,6 +92,22 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  *    reasoning, including why the type vocabulary lands on the admin
  *    sections while the artefact's own org-scoped siblings landed on
  *    `orgOverviewSections`).
+ *
+ * **Phase 7.4 (2026-09-29) adds Guiding Principle** — the fourth of five
+ * planned sub-phases, back to Strategy/Future State's own org-**or**-project
+ * scope shape (Phase 0 Q2): `routes` gains `ProjectGuidingPrinciplesPage`/
+ * `GuidingPrincipleDetailPage`, `globalRoutes` gains an org-scoped
+ * `GuidingPrincipleDetailPage` entry (same reasoning as Strategy's/Future
+ * State's own — an org-scoped Guiding Principle has no single project whose
+ * enabled-modules list `routes` could gate a detail route against), and
+ * `orgOverviewSections` gains `OrgGuidingPrinciplesPanel` — landed there
+ * rather than `orgAdminSections`, following `OrgStrategiesPanel.tsx`/
+ * `OrgFutureStatesPanel.tsx`'s own precedent directly (see
+ * `OrgGuidingPrinciplesPanel.tsx`'s own docstring for the full reasoning,
+ * including why this confirms rather than overturns that precedent's own
+ * "revisit" note). No `orgAdminSections`/`projectAdminSections` entries this
+ * phase — Guiding Principle has no configurable type vocabulary (Phase 4's
+ * own scope decision), unlike Pain Point.
  */
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
@@ -108,6 +127,14 @@ export const moduleDefinition: TierAModuleDefinition = {
       path: "/projects/:projectId/modules/context_strategy/pain-points/:painPointId",
       element: createElement(PainPointDetailPage),
     },
+    {
+      path: "/projects/:projectId/modules/context_strategy/guiding-principles",
+      element: createElement(ProjectGuidingPrinciplesPage),
+    },
+    {
+      path: "/projects/:projectId/modules/context_strategy/guiding-principles/:guidingPrincipleId",
+      element: createElement(GuidingPrincipleDetailPage),
+    },
   ],
   globalRoutes: [
     {
@@ -117,6 +144,10 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       path: "/orgs/:organizationId/modules/context_strategy/future-states/:futureStateId",
       element: createElement(FutureStateDetailPage),
+    },
+    {
+      path: "/orgs/:organizationId/modules/context_strategy/guiding-principles/:guidingPrincipleId",
+      element: createElement(GuidingPrincipleDetailPage),
     },
   ],
   orgOverviewSections: [
@@ -129,6 +160,11 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "context-strategy-org-future-states",
       label: "Future State",
       render: ({ orgId }) => createElement(OrgFutureStatesPanel, { orgId }),
+    },
+    {
+      key: "context-strategy-org-guiding-principles",
+      label: "Guiding Principle",
+      render: ({ orgId }) => createElement(OrgGuidingPrinciplesPanel, { orgId }),
     },
   ],
   orgAdminSections: [

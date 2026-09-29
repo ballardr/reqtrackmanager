@@ -2,11 +2,15 @@
  * Module: modules/context_strategy/api
  *
  * Thin wrapper functions over `api` (frontend/src/api/client.ts) for every
- * Strategy (Phase 7.1) and Future State (Phase 7.2) endpoint
- * `backend/app/modules/context_strategy/{router,project_router}.py` exposes
- * — mirrors `modules/decisions/api.ts`'s own dedicated-per-module-file
- * precedent. See `buildFutureStateApi`'s own docstring below for why Future
- * State gets a sibling factory rather than reusing `buildStrategyApi`.
+ * Strategy (Phase 7.1), Future State (Phase 7.2), Pain Point (Phase 7.3) and
+ * Guiding Principle (Phase 7.4) endpoint `backend/app/modules/
+ * context_strategy/{router,project_router}.py` exposes — mirrors
+ * `modules/decisions/api.ts`'s own dedicated-per-module-file precedent. See
+ * `buildFutureStateApi`'s own docstring below for why Future State gets a
+ * sibling factory rather than reusing `buildStrategyApi`, and
+ * `buildGuidingPrincipleApi`'s own docstring for why Guiding Principle goes
+ * back to the factory shape after Pain Point's own project-scoped-only
+ * exception.
  *
  * **Design choice, Decided by: Agent:** unlike `modules/decisions/api.ts`
  * (which only needed a project/org split for two small definition-table
@@ -34,6 +38,11 @@ import type {
   FutureStateFieldValues,
   FutureStateLinkKind,
   FutureStateVersion,
+  GuidingPrinciple,
+  GuidingPrincipleComment,
+  GuidingPrincipleFieldValues,
+  GuidingPrincipleLinkKind,
+  GuidingPrincipleVersion,
   PainPoint,
   PainPointComment,
   PainPointFieldValues,
@@ -432,3 +441,125 @@ export const projectPainPointApi = {
     });
   },
 };
+
+// --- Guiding Principle (Phase 7.4) -------------------------------------------
+//
+// Back to a `buildStrategyApi`-shaped factory (Decided by: Agent) — Guiding
+// Principle's backend gives every endpoint an identical org-scoped/
+// project-scoped twin, the same condition that justified Strategy's/Future
+// State's own factory shape and does not apply to Pain Point (project-scoped
+// only). `update()` below deliberately takes `values: GuidingPrincipleFieldValues
+// & { owner_id: string | null }`, not just `GuidingPrincipleFieldValues`
+// (unlike `buildStrategyApi.update`/`buildFutureStateApi.update`, whose own
+// field-value types already include every field the backend's full-replace
+// `PUT` expects) — `owner_id` is deliberately excluded from
+// `GuidingPrincipleFieldValues` itself (`types.ts`'s own docstring), but the
+// backend's `GuidingPrincipleUpdate` schema still requires it on every `PUT`
+// (defaulting to `None` if omitted, which would silently clear an existing
+// owner on every plain content edit) — every call site must pass the
+// Guiding Principle's own current `owner_id` through explicitly, the same
+// discipline `projectPainPointApi.update`'s identical `& { owner_id: string
+// | null }` extension already establishes for Pain Point.
+
+export interface GuidingPrincipleListFilters {
+  include_archived?: boolean;
+}
+
+function buildGuidingPrincipleApi(base: (id: string) => string) {
+  return {
+    // --- CRUD ---------------------------------------------------------------
+    list(id: string, filters: GuidingPrincipleListFilters = {}) {
+      const query = filters.include_archived ? "?include_archived=true" : "";
+      return api.get<GuidingPrinciple[]>(`${base(id)}/guiding-principles${query}`);
+    },
+    create(id: string, values: Omit<GuidingPrincipleFieldValues, "change_note"> & { owner_id?: string | null }) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles`, values);
+    },
+    get(id: string, guidingPrincipleId: string) {
+      return api.get<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}`);
+    },
+    update(id: string, guidingPrincipleId: string, values: GuidingPrincipleFieldValues & { owner_id: string | null }) {
+      return api.put<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}`, values);
+    },
+    listVersions(id: string, guidingPrincipleId: string) {
+      return api.get<GuidingPrincipleVersion[]>(`${base(id)}/guiding-principles/${guidingPrincipleId}/versions`);
+    },
+    archive(id: string, guidingPrincipleId: string) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}/archive`);
+    },
+    unarchive(id: string, guidingPrincipleId: string) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}/unarchive`);
+    },
+
+    // --- Lifecycle transitions (no `submit-for-review` — Guiding Principle's
+    // own shorter lifecycle has no `under_review` step) ------------------------
+    propose(id: string, guidingPrincipleId: string) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}/propose`);
+    },
+    sendBack(id: string, guidingPrincipleId: string, comment: string) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}/send-back`, { comment });
+    },
+    approve(id: string, guidingPrincipleId: string, comment?: string) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}/approve`, { comment: comment || null });
+    },
+    activate(id: string, guidingPrincipleId: string, comment?: string) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}/activate`, { comment: comment || null });
+    },
+    supersede(id: string, guidingPrincipleId: string, comment?: string) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}/supersede`, { comment: comment || null });
+    },
+    retire(id: string, guidingPrincipleId: string, comment?: string) {
+      return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}/retire`, { comment: comment || null });
+    },
+
+    // --- Comments ---------------------------------------------------------
+    listComments(id: string, guidingPrincipleId: string) {
+      return api.get<GuidingPrincipleComment[]>(`${base(id)}/guiding-principles/${guidingPrincipleId}/comments`);
+    },
+    addComment(id: string, guidingPrincipleId: string, body: string) {
+      return api.post<GuidingPrincipleComment>(`${base(id)}/guiding-principles/${guidingPrincipleId}/comments`, { body });
+    },
+    editComment(id: string, guidingPrincipleId: string, commentId: string, body: string) {
+      return api.patch<GuidingPrincipleComment>(`${base(id)}/guiding-principles/${guidingPrincipleId}/comments/${commentId}`, { body });
+    },
+    uploadCommentAttachment(id: string, guidingPrincipleId: string, commentId: string, file: File) {
+      return api.postFile<FileAsset>(`${base(id)}/guiding-principles/${guidingPrincipleId}/comments/${commentId}/files`, file);
+    },
+    removeCommentAttachment(id: string, guidingPrincipleId: string, commentId: string, fileId: string) {
+      return api.delete<void>(`${base(id)}/guiding-principles/${guidingPrincipleId}/comments/${commentId}/files/${fileId}`);
+    },
+
+    // --- Direct file attachments -------------------------------------------
+    listFiles(id: string, guidingPrincipleId: string) {
+      return api.get<FileAsset[]>(`${base(id)}/guiding-principles/${guidingPrincipleId}/files`);
+    },
+    uploadFile(id: string, guidingPrincipleId: string, file: File) {
+      return api.postFile<FileAsset>(`${base(id)}/guiding-principles/${guidingPrincipleId}/files`, file);
+    },
+    unlinkFile(id: string, guidingPrincipleId: string, fileId: string) {
+      return api.delete<void>(`${base(id)}/guiding-principles/${guidingPrincipleId}/files/${fileId}`);
+    },
+
+    // --- Relationships (Phase 6) -------------------------------------------
+    listRelationships(id: string, guidingPrincipleId: string) {
+      return api.get<ContextStrategyLink[]>(`${base(id)}/guiding-principles/${guidingPrincipleId}/relationships`);
+    },
+    createRelationship(id: string, guidingPrincipleId: string, kind: GuidingPrincipleLinkKind, targetId: string) {
+      return api.post<ContextStrategyLink>(`${base(id)}/guiding-principles/${guidingPrincipleId}/relationships`, {
+        kind, target_id: targetId,
+      });
+    },
+    createSupersessionLink(id: string, guidingPrincipleId: string, oldGuidingPrincipleId: string, comment?: string) {
+      return api.post<ContextStrategyLink>(`${base(id)}/guiding-principles/${guidingPrincipleId}/supersessions`, {
+        old_guiding_principle_id: oldGuidingPrincipleId, comment: comment || null,
+      });
+    },
+  };
+}
+
+/** Every Guiding Principle endpoint, project-scoped — `id` parameters below
+ * are a `project_id`. */
+export const projectGuidingPrincipleApi = buildGuidingPrincipleApi(projectBase);
+/** Every Guiding Principle endpoint, org-scoped — `id` parameters below are
+ * an `organization_id`. */
+export const orgGuidingPrincipleApi = buildGuidingPrincipleApi(orgBase);

@@ -30,6 +30,20 @@
  * field-shape account and `api.ts`'s docstring on `projectPainPointApi`/
  * `orgPainPointTypeApi` for why this phase uses two plain exported objects
  * rather than `buildStrategyApi`'s factory-instantiated-twice shape.
+ *
+ * Phase 7.4 (2026-09-29) adds Guiding Principle's own shapes below — back to
+ * Strategy/Future State's own org-**or**-project scope shape (Phase 0 Q2),
+ * but with a genuinely **shorter** lifecycle (`GuidingPrincipleStatus`: six
+ * states, no `under_review` — see `GUIDING_PRINCIPLE_STATUS_LABEL`'s own
+ * comment) and its own `owner_id` field. The backend versions `owner_id` as
+ * a plain content field (`schemas.GuidingPrincipleUpdate`'s full-replace
+ * payload includes it, closer to `FutureStateFieldValues.target_date`'s
+ * shape than to Pain Point's genuinely separate update surface) — but this
+ * phase's own frontend still gives it a dedicated `AssigneePicker` on
+ * `GuidingPrincipleDetailPage.tsx` rather than a form field (**Decided by:
+ * Agent** — see that page's own docstring for the full reasoning), so
+ * `owner_id` is deliberately **excluded** from `GuidingPrincipleFieldValues`
+ * the same way `PainPointFieldValues` excludes it.
  */
 
 // --- Strategy lifecycle --------------------------------------------------
@@ -486,6 +500,134 @@ export interface PainPointFieldValues {
 export interface PainPointComment {
   id: string;
   pain_point_id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: import("../../api/types").FileAsset[];
+}
+
+// --- Guiding Principle (Phase 7.4) -------------------------------------------
+//
+// Org- **or** project-scoped (Phase 0 Q2's discriminator, same shape as
+// Strategy/Future State), with its own three-value priority enum (its own
+// backend `enum.Enum`, per `enums.py`'s "two independent artefact types, two
+// owned vocabularies" reasoning — see `STRATEGY_PRIORITY_LABEL`'s own
+// docstring for why the frontend nonetheless reuses that map's *content*
+// directly rather than re-declaring it) and a **shorter**, six-state
+// lifecycle: `Draft -> Proposed -> Approved -> Active -> Superseded/Retired`
+// — no `under_review` step (`PROPOSED` moves straight to `APPROVED`), but
+// `PROPOSED` can still send back to `DRAFT` with a mandatory comment (this
+// module's "reject"-equivalent, same as Strategy's `send-back`).
+
+export type GuidingPrincipleScope = StrategyScope;
+
+export const GUIDING_PRINCIPLE_SCOPE_LABEL: Record<GuidingPrincipleScope, string> = STRATEGY_SCOPE_LABEL;
+
+export type GuidingPrinciplePriority = "low" | "medium" | "high";
+
+export const GUIDING_PRINCIPLE_PRIORITY_LABEL: Record<GuidingPrinciplePriority, string> = STRATEGY_PRIORITY_LABEL;
+
+export type GuidingPrincipleStatus = "draft" | "proposed" | "approved" | "active" | "superseded" | "retired";
+
+export const GUIDING_PRINCIPLE_STATUS_LABEL: Record<GuidingPrincipleStatus, string> = {
+  draft: "Draft",
+  proposed: "Proposed",
+  approved: "Approved",
+  active: "Active",
+  superseded: "Superseded",
+  retired: "Retired",
+};
+
+// Same tone convention as `STRATEGY_STATUS_TONE` — `RETIRED` is `muted`
+// (end-of-life, not a negative outcome), `SUPERSEDED` is also `muted` (no
+// longer current, but not a rejection).
+export const GUIDING_PRINCIPLE_STATUS_TONE: Record<GuidingPrincipleStatus, import("../../api/types").BadgeTone> = {
+  draft: "muted",
+  proposed: "info",
+  approved: "accent",
+  active: "accent",
+  superseded: "muted",
+  retired: "muted",
+};
+
+// --- Guiding Principle relationship kinds (Phase 6) -------------------------
+//
+// `GuidingPrincipleLinkKind.GUIDES_DECISION` (§8.5's "Decision -> guided by
+// -> Guiding Principle") is the reserved Decision-target relationship
+// (module docstring) and is deliberately absent here — see
+// `GuidingPrincipleRelationshipsSection.tsx`'s own present-but-reserved text.
+
+export type GuidingPrincipleLinkKind = "supports_strategy" | "informs_requirement";
+
+export const GUIDING_PRINCIPLE_LINK_KIND_LABEL: Record<GuidingPrincipleLinkKind, string> = {
+  supports_strategy: "Supports a Strategy",
+  informs_requirement: "Informs a Requirement",
+};
+
+// --- Guiding Principles ------------------------------------------------------
+
+export interface GuidingPrinciple {
+  id: string;
+  scope: GuidingPrincipleScope;
+  organization_id: string | null;
+  project_id: string | null;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+
+  name: string;
+  principle_statement: string;
+  rationale: string;
+  priority: GuidingPrinciplePriority;
+  status: GuidingPrincipleStatus;
+  owner_id: string | null;
+  version_number: number;
+  is_locked: boolean;
+
+  created_at: string;
+  updated_at: string;
+}
+
+/** The editable content fields shared by create (`GuidingPrincipleCreate`)
+ * and full replace (`GuidingPrincipleUpdate`) — same `change_note`-is-
+ * update-only convention as `StrategyFieldValues`. `owner_id` is
+ * deliberately **not** included here — see this file's own module docstring
+ * above for why `GuidingPrincipleDetailPage.tsx`'s dedicated `AssigneePicker`
+ * assigns it directly instead (**Decided by: Agent**, mirroring
+ * `PainPointFieldValues`'s identical exclusion). */
+export interface GuidingPrincipleFieldValues {
+  name: string;
+  principle_statement: string;
+  rationale: string;
+  priority: GuidingPrinciplePriority;
+  change_note: string;
+}
+
+export interface GuidingPrincipleVersion {
+  id: string;
+  guiding_principle_id: string;
+  version_number: number;
+  valid_from: string;
+  valid_to: string | null;
+  name: string;
+  principle_statement: string;
+  rationale: string;
+  priority: GuidingPrinciplePriority;
+  status: GuidingPrincipleStatus;
+  owner_id: string | null;
+  change_note: string;
+  created_by: string;
+  created_at: string;
+}
+
+// --- Comments (no reaction mechanism — same shape as StrategyComment/FutureStateComment/PainPointComment) ---
+
+export interface GuidingPrincipleComment {
+  id: string;
+  guiding_principle_id: string;
   author_id: string;
   author_display_name: string;
   body: string;
