@@ -237,6 +237,7 @@ MODULE_DEFINITION = ModuleDefinition(
         tier="installed",
         nav_label="Decisions",
         nav_path=f"/projects/{{project_id}}/modules/{DECISIONS_MODULE_KEY}",
+        nav_icon="scale",
     ),
     artefact_types=(DECISION_ARTEFACT_TYPE,),
     roles=(

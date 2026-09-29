@@ -727,7 +727,7 @@ def test_org_modules_endpoint_includes_frontend_manifest(client, admin_token, or
     manifest = by_key[installed_tier_module]["frontend_manifest"]
     assert manifest == {
         "tier": "installed", "nav_label": "Fake Frontend", "nav_path": "/fake-frontend", "frame_url": None,
-        "remote_entry_url": None, "exposed_module": None, "additional_nav_entries": [],
+        "remote_entry_url": None, "exposed_module": None, "additional_nav_entries": [], "nav_icon": "puzzle",
     }
 
 
@@ -837,8 +837,16 @@ def test_org_modules_endpoint_carries_additional_nav_entries_uninterpolated(
     manifest = by_key[multi_nav_entry_installed_module]["frontend_manifest"]
     assert manifest["nav_label"] == "Fake Primary"
     assert manifest["additional_nav_entries"] == [
-        {"nav_label": "Fake Secondary", "nav_path": "/projects/{project_id}/modules/fake-multi-nav/secondary"},
-        {"nav_label": "Fake Tertiary", "nav_path": "/projects/{project_id}/modules/fake-multi-nav/tertiary"},
+        {
+            "nav_label": "Fake Secondary",
+            "nav_path": "/projects/{project_id}/modules/fake-multi-nav/secondary",
+            "nav_icon": "puzzle",
+        },
+        {
+            "nav_label": "Fake Tertiary",
+            "nav_path": "/projects/{project_id}/modules/fake-multi-nav/tertiary",
+            "nav_icon": "puzzle",
+        },
     ]
 
 
@@ -858,8 +866,16 @@ def test_project_enabled_modules_endpoint_interpolates_every_additional_nav_entr
     manifest = by_key[multi_nav_entry_installed_module]["frontend_manifest"]
     assert manifest["nav_path"] == f"/projects/{project['id']}/modules/fake-multi-nav/primary"
     assert manifest["additional_nav_entries"] == [
-        {"nav_label": "Fake Secondary", "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/secondary"},
-        {"nav_label": "Fake Tertiary", "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/tertiary"},
+        {
+            "nav_label": "Fake Secondary",
+            "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/secondary",
+            "nav_icon": "puzzle",
+        },
+        {
+            "nav_label": "Fake Tertiary",
+            "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/tertiary",
+            "nav_icon": "puzzle",
+        },
     ]
 
 

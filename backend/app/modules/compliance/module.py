@@ -529,6 +529,7 @@ MODULE_DEFINITION = ModuleDefinition(
         tier="installed",
         nav_label="Compliance",
         nav_path=f"/projects/{{project_id}}/modules/{COMPLIANCE_MODULE_KEY}",
+        nav_icon="shield-check",
     ),
     scheduled_jobs=(
         ModuleScheduledJob(

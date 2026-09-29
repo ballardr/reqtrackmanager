@@ -169,9 +169,11 @@ def list_project_enabled_modules(
                     ManifestNavEntryOut(
                         nav_label=entry.nav_label,
                         nav_path=entry.nav_path.replace("{project_id}", str(project_id)),
+                        nav_icon=entry.nav_icon,
                     )
                     for entry in manifest.additional_nav_entries
                 ],
+                nav_icon=manifest.nav_icon,
             )
         result.append(
             ModuleNavEntryOut(module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out)

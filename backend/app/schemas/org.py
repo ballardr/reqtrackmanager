@@ -254,6 +254,7 @@ class ManifestNavEntryOut(BaseModel):
 
     nav_label: str
     nav_path: str
+    nav_icon: str = "puzzle"
 
 
 class ModuleFrontendManifestOut(BaseModel):
@@ -275,6 +276,7 @@ class ModuleFrontendManifestOut(BaseModel):
     remote_entry_url: str | None = None
     exposed_module: str | None = None
     additional_nav_entries: list[ManifestNavEntryOut] = []
+    nav_icon: str = "puzzle"
 
 
 class OrgModuleOut(BaseModel):

@@ -1510,6 +1510,11 @@ export interface OrgAdvancedSettings {
 export interface ManifestNavEntry {
   nav_label: string;
   nav_path: string;
+  /** Icon name resolved by `modules/navIcons.ts`'s `resolveNavIcon` — see
+   * that file's own docstring. Optional for the same "old fixtures predate
+   * the field" reason as `additional_nav_entries` below; `resolveNavIcon`
+   * falls back to a generic icon when absent. */
+  nav_icon?: string;
 }
 
 export interface ModuleFrontendManifest {
@@ -1530,6 +1535,9 @@ export interface ModuleFrontendManifest {
    * sends it (defaulted `[]` server-side). `Layout.tsx` reads it as
    * `manifest.additional_nav_entries ?? []`. */
   additional_nav_entries?: ManifestNavEntry[];
+  /** This manifest's own primary nav-rail entry's icon — see `ManifestNavEntry.
+   * nav_icon`'s own docstring. */
+  nav_icon?: string;
 }
 
 export interface OrgModule {

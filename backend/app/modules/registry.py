@@ -328,10 +328,18 @@ class ModuleNavEntry:
         nav_path: The frontend route path this entry links to — same
             `"{project_id}"`-placeholder convention as `ModuleFrontendManifest.
             nav_path` (interpolated the same way, at the same call sites).
+        nav_icon: Icon name for this nav-rail entry, resolved client-side by
+            `frontend/src/modules/navIcons.ts`'s lucide-react lookup (same
+            "module supplies its own data, core file resolves it generically"
+            shape as `entityAccentColor` — see that module's own docstring).
+            Defaults to `"puzzle"` (a generic module icon) so every entry
+            declared before this field existed keeps rendering something
+            sensible rather than failing validation.
     """
 
     nav_label: str
     nav_path: str
+    nav_icon: str = "puzzle"
 
 
 @dataclass(frozen=True)
@@ -432,6 +440,11 @@ class ModuleFrontendManifest:
             `__post_init__` below. Use `all_nav_entries()` to read the full,
             order-preserving list (primary entry first) without needing to
             know about this split.
+        nav_icon: Icon name for this manifest's own primary nav-rail entry —
+            same field/meaning as `ModuleNavEntry.nav_icon` (see that
+            dataclass's docstring); this manifest doesn't reuse `ModuleNavEntry`
+            for its primary pair, so it needs its own copy of the field.
+            Defaults to `"puzzle"` for the same backward-compatibility reason.
     """
 
     tier: Literal["installed", "remote", "federated"]
@@ -441,6 +454,7 @@ class ModuleFrontendManifest:
     remote_entry_url: str | None = None
     exposed_module: str | None = None
     additional_nav_entries: tuple[ModuleNavEntry, ...] = ()
+    nav_icon: str = "puzzle"
 
     def __post_init__(self) -> None:
         if self.tier == "remote":
@@ -486,7 +500,10 @@ class ModuleFrontendManifest:
         two so a consumer never needs to special-case "the first entry comes
         from different fields than the rest."
         """
-        return (ModuleNavEntry(nav_label=self.nav_label, nav_path=self.nav_path), *self.additional_nav_entries)
+        return (
+            ModuleNavEntry(nav_label=self.nav_label, nav_path=self.nav_path, nav_icon=self.nav_icon),
+            *self.additional_nav_entries,
+        )
 
 
 @dataclass(frozen=True)

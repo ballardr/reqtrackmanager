@@ -32,6 +32,8 @@ Requirements can be linked to each other with a typed, bidirectional relationshi
 
 If the [Decision Management module](../modules/decision-management-module/overview.md) is enabled, a requirement can also be linked to a Decision ("Implements"/"Affects") — see [Decision Management → Relationships and templates](../modules/decision-management-module/relationships-and-templates.md) — recording which formal decision produced or affects a given requirement, separately from requirement-to-requirement traceability above.
 
+If the [Context & Strategy module](../modules/context-strategy-module/overview.md) is enabled, a requirement can similarly be linked back to the Strategy that drives it, the Pain Point that motivated it, or the Guiding Principle it's informed by — see [Context & Strategy → Relationships and types](../modules/context-strategy-module/relationships-and-types.md) — giving a requirement's own reasoning an upstream trail beyond its own `reasoning` field.
+
 ## Review scheduling and completion
 
 A requirement can carry a review date and an assigned reviewer. Once the date passes, it appears on the assigned reviewer's **My reviews due** page and the project's own reviews-due page until someone records an outcome — met, or failed with a required comment explaining why — from the requirement's detail page.

@@ -12,6 +12,7 @@ import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
+import { resolveNavIcon } from "../modules/navIcons";
 import { installedModules } from "../modules/registry";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
 import { NotificationBell } from "./NotificationBell";
@@ -234,18 +235,21 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 const manifest = moduleEntry.frontend_manifest;
                 if (!manifest) return [];
                 const entries = [
-                  { nav_label: manifest.nav_label, nav_path: manifest.nav_path },
+                  { nav_label: manifest.nav_label, nav_path: manifest.nav_path, nav_icon: manifest.nav_icon },
                   ...(manifest.additional_nav_entries ?? []),
                 ];
-                return entries.map((entry) => (
-                  <NavRailLink
-                    key={`${moduleEntry.module_key}:${entry.nav_path}`}
-                    to={entry.nav_path}
-                    label={entry.nav_label}
-                    icon={<Wrench size={16} />}
-                    railCollapsed={railIconOnly}
-                  />
-                ));
+                return entries.map((entry) => {
+                  const EntryIcon = resolveNavIcon(entry.nav_icon);
+                  return (
+                    <NavRailLink
+                      key={`${moduleEntry.module_key}:${entry.nav_path}`}
+                      to={entry.nav_path}
+                      label={entry.nav_label}
+                      icon={<EntryIcon size={16} />}
+                      railCollapsed={railIconOnly}
+                    />
+                  );
+                });
               })}
             </>
           )}

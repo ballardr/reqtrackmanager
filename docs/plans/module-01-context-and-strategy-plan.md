@@ -28,7 +28,9 @@ below); Phase 7.3 (Pain Point + Pain Point Type admin) complete
 (2026-09-29 — see "Phase 7.3 notes" below); Phase 7.4 (Guiding Principle)
 complete (2026-09-29 — see "Phase 7.4 notes" below); Phase 7.5 (Open
 Question) complete (2026-09-29 — see "Phase 7.5 notes" below), the fifth
-and last Phase 7 sub-phase — Phase 8 (docs website coverage) is next.
+and last Phase 7 sub-phase. Phase 8 (docs website coverage) complete
+(2026-09-29 — see "Phase 8 notes" below) — **this closes the module: 13/13
+phases complete.**
 First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
@@ -54,9 +56,10 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-12 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
-2026-09-29 — see that phase's own note; all five now shipped). **Phase 8
-(docs website coverage) is next.**
+**13 / 13 phases complete (2026-09-29) — this module is done.** Phase 7
+split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
+note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
+module's last phase, shipped the same day — see "Phase 8 notes" below.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -72,7 +75,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 | 7.3 | Frontend UI — Pain Point (+ type admin) | [x] Complete (2026-09-29) |
 | 7.4 | Frontend UI — Guiding Principle | [x] Complete (2026-09-29) |
 | 7.5 | Frontend UI — Open Question | [x] Complete (2026-09-29) |
-| 8 | Docs website coverage | [ ] Not started — now unblocked, all five Phase 7 sub-phases shipped |
+| 8 | Docs website coverage | [x] Complete (2026-09-29) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -2748,9 +2751,204 @@ or miss amid everything else Phase 7 ships.
   and the Org → Project → Requirement chain, a Future State detail view,
   and the Open Question → Decision conversion form.
 
-**Status:** not started, now unblocked — all five Phase 7 sub-phases shipped
-2026-09-29 (Phase 7.5, Open Question, was the last). Not a blocker for any
-other phase.
+**Status:** [x] Complete (2026-09-29) — see "Phase 8 notes" below. This was
+the module's last phase; Context & Strategy is now 13/13 complete.
+
+## Phase 8 notes (2026-09-29)
+
+Landed in two passes the same day: an initial combined-page structure
+(mirroring Decision Management's docs shape directly), then a **structural
+revision** after user review — see "Revision" below. The notes below
+describe the final, shipped shape; the initial pass's `data-model-and-
+lifecycle.md` and the original wider `relationships-and-types.md` no
+longer exist as first written.
+
+**Final page structure**, one dedicated page per sub-component (artefact
+type) plus three cross-cutting pages, under
+`docs/website/docs/modules/context-strategy-module/`:
+
+- `overview.md` — what each of the five artefact types is and when to use
+  it (each name links to its own page), the enabling/entitlement note
+  (including the Pain Point type seeding this phase confirmed live — see
+  below), the Organisation Strategy → Project Strategy → Requirements →
+  Implementation chain as a Mermaid flowchart, the five nav entries, a
+  combined Roles table across all five artefact types, a "Data model at a
+  glance" cross-artefact comparison table (version history vs. audit-log-
+  only, and each artefact's own actual locked-status set), and a real
+  screenshot each of the Pain Point list and an Active Strategy detail.
+- `strategy.md` / `future-state.md` / `pain-point.md` /
+  `guiding-principle.md` / `open-question.md` (new this revision) — one
+  self-contained page per artefact type, each with: its own field table,
+  its own validated `stateDiagram-v2` (Guiding Principle's six states read
+  directly from `enums.py`, not guessed), its own actual locked-status set
+  (confirmed by reading `LOCKED_STATUSES`/`FUTURE_STATE_LOCKED_STATUSES`/
+  `PAIN_POINT_LOCKED_STATUSES`/`GUIDING_PRINCIPLE_LOCKED_STATUSES`/
+  `OPEN_QUESTION_LOCKED_STATUSES` in `service.py` directly), its own Roles
+  table, its own Relationships section (sourced from `StrategyLinkKind`/
+  `PainPointLinkKind`/`GuidingPrincipleLinkKind`/`FutureStateLinkKind`/
+  `OpenQuestionLinkKind` and their `_*_LINK_SPECS` dicts in `service.py`,
+  not paraphrased), and at least one real screenshot of that artefact's own
+  detail view. `pain-point.md` additionally carries the full two-tier Pain
+  Point type vocabulary subsection (Mermaid flowchart, the org admin panel
+  screenshot, Market/User/Operator defaults) — the only sub-component with
+  a configurable type.
+- `relationships-and-types.md` (trimmed this revision) — now the
+  cross-cutting "bird's-eye view" page only: the full cross-artefact
+  relationship table/flowchart across all five artefact types at once
+  (each artefact's own page repeats only its own rows, not the whole
+  table), the reserved Decision-target relationships (worded to match
+  `decision-management-module/relationships-and-templates.md`'s own
+  "reserved, not yet available" framing — that file needed no edit), and a
+  one-line pointer to `pain-point.md` for the type vocabulary (no longer
+  duplicated here).
+- `mcp-integration.md` — unchanged in shape from the first pass: the real
+  62-tool count and category breakdown read from `module.py`'s
+  `_build_mcp_tools()` (listed and counted by hand, not estimated), and the
+  `require_ai_approvals_enabled` gate on the five approve/decide-tier
+  tools, including why Guiding Principle's gated pair is
+  `activate`/`retire` rather than `approve`. Left as a cross-cutting page
+  per the user's own explicit instruction — MCP tools don't cleanly split
+  one-per-artefact.
+- `known-limitations.md` — unchanged in shape: no Decision-target
+  relationships yet, no Guiding Principle type vocabulary, no
+  per-artefact-type approval-scoping admin surface, no supersession concept
+  for Pain Point/Open Question. Left cross-cutting per the same instruction
+  as `mcp-integration.md`.
+
+**Other files changed:**
+
+- `docs/website/sidebars.ts` — "Context & Strategy module" category lists
+  `overview`, then the five per-artefact pages in nav order (Strategy,
+  Future State, Pain Point, Guiding Principle, Open Question), then
+  `relationships-and-types`, `mcp-integration`, `known-limitations` —
+  inserted between "Decision Management module" and
+  `modules/building-your-own-module`, matching this module's actual ship
+  order.
+- `docs/website/docs/modules/overview.md` — "Compliance and Decision
+  Management" → "Compliance, Decision Management, and Context & Strategy"
+  in both the intro sentence and the Roadmap section; added a "Where this
+  fits" link.
+- `docs/website/docs/modules/roadmap.md` — removed the Context & Strategy
+  row (shipped, not a proposal) and updated the intro sentence and "Where
+  this fits" link, wording matched against `git show`'s record of the
+  identical edit made when Decision Management shipped (commit `fa8ee23`,
+  2026-09-22) for consistency.
+- `docs/website/docs/core-features/requirements-management.md` — one new
+  sentence in "Traceability links", immediately after the existing
+  Decision Management sentence there, since that section already discusses
+  how a Requirement links to upstream artefacts of exactly this kind.
+  `docs/website/docs/concepts/requirements-versions-and-lifecycle.md` was
+  checked and has no comparable discussion to hang a link on — left
+  unchanged.
+- `docs/website/static/img/screenshots/` — seven screenshots total:
+  `pain-point-list.png`, `pain-point-types-org.png`, `strategy-detail.png`
+  (first pass) plus `future-state-detail.png`, `pain-point-detail.png`,
+  `guiding-principle-detail.png`, `open-question-detail.png` (this
+  revision, one detail-view screenshot per remaining artefact type). All
+  captured live via the Playwright MCP browser tools at 1440×900 against
+  the already-running `tests/container` dev stack (already seeded with
+  `seed_demo_data.py`'s dataset), logged in as `demo.admin@example.com`
+  against the "Solstice Robotics" organisation / "Falcon-3 Inspection
+  Drone" project.
+- `docs/plans/module-01-context-and-strategy-plan.md` (this file) — Status
+  table, top summary line, "Status / Resume Here", this phase's own
+  `**Status:**` line, and this notes section (rewritten in place to
+  describe the final structure rather than left describing the
+  since-superseded first pass, since none of this had been committed yet).
+- `docs/decisions.md` — the Phase 8 entry, likewise rewritten in place to
+  describe the final structure.
+
+**Revision (same day, after user review):** the user's own words: "I feel
+there should be a sub-page for each of the sub-components of the module.
+there should also be screenshots of each" — explicitly citing the
+Compliance module's own docs (`docs/website/docs/modules/compliance-
+module/`, separate pages per capability) as the existing sibling-module
+convention this phase's first pass hadn't followed. **Decided by: User**
+(the requirement to split, and the "own screenshots" requirement).
+
+**What happened to the combined pages, and how that was decided** — **the
+judgment calls below are all Decided by: Agent**, since the user's own
+instruction explicitly left the mechanics to judgment ("Decide and use your
+own judgment"):
+
+- `data-model-and-lifecycle.md` was **deleted outright**, not trimmed —
+  every one of its five per-artefact sections (fields, lifecycle diagram,
+  content lock) moved to that artefact's own new page with nothing left
+  behind to maintain in two places. The one thing from it worth keeping
+  cross-cutting — the version-history-vs-audit-log-only and
+  content-lock-summary comparison — was folded into a new short "Data
+  model at a glance" section on `overview.md` instead of a standalone page,
+  since it's a two-column comparison table, not enough content on its own
+  to justify a dedicated page, and it functions as a navigational aid
+  (each row links to the full page) rather than a second copy of the
+  detail.
+- `relationships-and-types.md` was **kept, but trimmed**, not deleted —
+  unlike the lifecycle content, the full cross-artefact relationship table
+  and flowchart showing all five artefact types' relationships to each
+  other *at once* is a genuinely different, useful view that no single
+  per-artefact page can show (each one only lists its own outgoing rows) —
+  the same reasoning that keeps a single combined ER diagram useful
+  alongside per-table documentation elsewhere. The Pain Point type
+  vocabulary subsection, by contrast, *was* fully moved out to
+  `pain-point.md` (not kept in both places) — it's substantial enough (two
+  tables plus its own flowchart) that duplicating it would create a real
+  maintenance burden, and it is unambiguously that one sub-component's own
+  concern, unlike the relationship table which is inherently cross-cutting
+  by nature.
+- **Four new screenshots captured, not five** — Strategy already had one
+  from the first pass (`strategy-detail.png`, reused on `strategy.md`
+  unchanged) and Pain Point already had a list view; this revision added
+  one detail-view screenshot each for Future State, Pain Point, Guiding
+  Principle, and Open Question, giving Pain Point two screenshots (list +
+  detail, since both add distinct information) and every other artefact
+  exactly one. Picked live demo-data records that showcase something
+  informative beyond just "here are the fields": the Future State capture
+  shows its "Is defined by" reverse relationship back to Strategy; the Pain
+  Point detail capture shows a real "Is duplicated by" relationship (the
+  same duplicate-Pain-Point pair seeded in Module 1 Phase 6's own demo-data
+  retrofit); the Open Question capture was deliberately chosen at
+  **Ready for Decision** (a non-terminal, mid-lifecycle status) rather than
+  a terminal one, to show the Resolve/Withdraw actions still available.
+- **No fifth Roles table added per-page in place of the overview's combined
+  one** — the combined table on `overview.md` was kept as-is (a
+  first-pass judgment call, re-confirmed here rather than revisited), and
+  each new per-artefact page additionally carries its own small Roles
+  table repeating just its own rows in more detail. This is deliberate,
+  low-risk duplication (a handful of rows that rarely change, sourced from
+  the one `module.py` registry either way) rather than the kind of
+  free-text duplication this repo's documentation rules warn against —
+  the overview's table is the quick cross-artefact comparison, each page's
+  own table is the authoritative detail for that one artefact.
+
+**Verified (re-run after the revision):**
+
+- `cd docs/website && npm run typecheck` — clean.
+- `cd docs/website && npm run build` — clean, including all nine pages in
+  their final form and all seven screenshot files.
+- Mermaid rendering re-validated by serving the actual rebuilt site
+  (`npm run serve`, port 3050) and loading all seven content pages
+  (`overview`, `strategy`, `future-state`, `pain-point`,
+  `guiding-principle`, `open-question`, `relationships-and-types`) through
+  the Playwright MCP browser tools — every diagram (the chain flowchart,
+  all five lifecycle `stateDiagram-v2`s now living on their own pages, the
+  cross-artefact relationships flowchart, and the Pain Point
+  type-vocabulary flowchart) renders correctly with no broken fences or
+  dangling nodes.
+- All seven screenshot files (three from the first pass, four new)
+  independently confirmed to resolve via direct `curl` against the served
+  build (200, correct byte sizes).
+- Sidebar navigation and prev/next pagination re-confirmed via the served
+  site's own accessibility snapshot across the full new page order:
+  Overview → Strategy → Future State → Pain Point → Guiding Principle →
+  Open Question → Relationships and types → AI assistant (MCP) integration
+  → Known limitations, correctly bounded by Decision Management's "Known
+  limitations" (previous) and "Building your own module" (next) on either
+  end of the category.
+
+**Screenshots (final, seven total):** `pain-point-list.png`,
+`pain-point-types-org.png`, `strategy-detail.png` (first pass, unchanged),
+`future-state-detail.png`, `pain-point-detail.png`,
+`guiding-principle-detail.png`, `open-question-detail.png` (this revision).
 
 ## Acceptance criteria (from overview §48, Context & Strategy subset)
 
