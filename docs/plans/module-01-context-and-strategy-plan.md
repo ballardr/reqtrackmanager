@@ -24,8 +24,9 @@ see "Phase 5 notes" below). Phase 6 (Cross-artefact relationships) complete
 five per-artefact sub-phases 2026-09-29 (see that phase's own note) —
 Phase 7.1 (Strategy) complete (2026-09-29 — see "Phase 7.1 notes" below);
 Phase 7.2 (Future State) complete (2026-09-29 — see "Phase 7.2 notes"
-below); Phase 7.3-7.5 (Pain Point/Guiding Principle/Open Question
-frontends) are next.
+below); Phase 7.3 (Pain Point + Pain Point Type admin) complete
+(2026-09-29 — see "Phase 7.3 notes" below); Phase 7.4-7.5 (Guiding
+Principle/Open Question frontends) are next.
 First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
@@ -51,8 +52,9 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-9 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
-2026-09-29 — see that phase's own note).
+10 / 13 phases complete (Phase 7 split into five per-artefact sub-phases,
+2026-09-29 — see that phase's own note). **Phase 7.4 (Guiding Principle
+frontend) is next.**
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -65,7 +67,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 | 6 | Cross-artefact relationships wired between all of the above (via Module 0) | [x] Complete (2026-09-29) |
 | 7.1 | Frontend UI — Strategy | [x] Complete (2026-09-29) |
 | 7.2 | Frontend UI — Future State | [x] Complete (2026-09-29) |
-| 7.3 | Frontend UI — Pain Point (+ type admin) | [ ] Not started |
+| 7.3 | Frontend UI — Pain Point (+ type admin) | [x] Complete (2026-09-29) |
 | 7.4 | Frontend UI — Guiding Principle | [ ] Not started |
 | 7.5 | Frontend UI — Open Question | [ ] Not started |
 | 8 | Docs website coverage | [ ] Not started — depends on Phase 7.1-7.5 shipping |
@@ -1472,7 +1474,7 @@ independently scoped, testable, and shippable:
 |---|---|---|
 | 7.1 | Strategy (org + project) | [x] Complete (2026-09-29) |
 | 7.2 | Future State (org + project) | [x] Complete (2026-09-29) |
-| 7.3 | Pain Point (project) + Pain Point Type admin (org) | [ ] Not started |
+| 7.3 | Pain Point (project) + Pain Point Type admin (org) | [x] Complete (2026-09-29) |
 | 7.4 | Guiding Principle (org + project) | [ ] Not started |
 | 7.5 | Open Question (project) | [ ] Not started |
 
@@ -1961,6 +1963,285 @@ touched — Phase 8 stays explicitly gated on all five Phase 7 sub-phases.
   confirm this phase's `module.ts`/`StrategyDetailPage.tsx` changes (the
   second nav entry, the `ArtefactCommentsSection` rename) introduced no
   regression — **1 passed**.
+
+## Phase 7.3 notes (2026-09-29)
+
+Built Pain Point's full frontend — the third of the five planned Phase 7
+sub-phases — into the same `frontend/src/modules/context_strategy/`
+directory Phase 7.1/7.2 already established. Structurally closer to "half of
+Strategy" than to a field-for-field mirror, per this phase's own brief: Pain
+Point is **project-scoped only** (source overview §6 — no org twin, no
+`buildPainPointApi`-style factory), has a **branching** lifecycle (`Triaged`
+-> three distinct next states, not a linear chain), and — the one genuinely
+new surface this phase adds beyond "another artefact's worth of `Strategy*`-
+shaped files" — a **two-tier type vocabulary** (Phase 0 Q3) with its own org-
+and project-scoped admin panels.
+
+**New files**, all under `frontend/src/modules/context_strategy/`:
+`PainPointFormModal.tsx` (create/edit, mirrors `StrategyFormModal.tsx`),
+`ProjectPainPointsPage.tsx` (project-scoped list, reached via this phase's
+new "Pain Point" nav-rail entry — the third of Phase 0 Q7's five planned
+top-level entries), `PainPointDetailPage.tsx` (full fields, the branching
+lifecycle's Accept/Reject/Mark-duplicate three-way split from `Triaged`,
+owner assignment via `AssigneePicker`, relationships, evidence attachments,
+comments), `PainPointRelationshipsSection.tsx` (Pain Point's own five link
+kinds), `OrgPainPointTypesPanel.tsx` (org-scoped `PainPointTypeDefinition`
+CRUD, an `orgAdminSections` contribution), `ProjectPainPointTypesPanel.tsx`
+(project-scoped override/local-type tier, a `projectAdminSections`
+contribution), and one `.stories.tsx` file per component above (6 files, 42
+Storybook stories total).
+
+**Files changed:** `frontend/src/modules/context_strategy/types.ts` (Pain
+Point's own TypeScript shapes plus `PAIN_POINT_PRIORITY_LABEL`/`PAIN_POINT_
+STATUS_LABEL`/`PAIN_POINT_STATUS_TONE`/`PAIN_POINT_LINK_KIND_LABEL` label
+maps, plus `PainPointTypeDefinition`/`EffectivePainPointType`/
+`ProjectPainPointType`), `frontend/src/modules/context_strategy/api.ts`
+(`orgPainPointTypeApi` and `projectPainPointApi` — two plain exported
+objects, not a factory; see "Scope decisions" below), `frontend/src/modules/
+context_strategy/module.ts` (Pain Point's `routes` entries, `orgAdminSections`/
+`projectAdminSections` contributions — this module's first use of either
+section), `backend/app/modules/context_strategy/module.py`
+(`frontend_manifest.additional_nav_entries` gains Pain Point's own
+`ModuleNavEntry`), `backend/app/modules/context_strategy/tests/
+test_context_strategy_api.py` (updated `test_frontend_manifest_registers_
+the_strategy_nav_entry`'s exact-equality assertion to expect the new entry).
+No Pain Point backend business logic (Phase 3, already shipped) was
+touched.
+
+**Scope decisions, each a judgment call this phase had to make that the
+brief didn't fully settle:**
+
+- **No `buildPainPointApi` factory (Decided by: Agent).** The factory shape
+  Strategy/Future State use exists specifically for an artefact with an
+  identical org-scoped and project-scoped twin endpoint set (Phase 0 Q2);
+  Pain Point has no organisation scope at all, so there is nothing to
+  instantiate twice. `orgPainPointTypeApi` (org-scoped `PainPointTypeDefinition`
+  CRUD) and `projectPainPointApi` (everything else) are two plain,
+  hand-written objects, mirroring `modules/decisions/api.ts`'s own
+  flat-function shape for a project-scoped-only artefact.
+- **Owner assignment via a dedicated `AssigneePicker` on the detail page, not
+  a `PainPointFormModal` field (Decided by: Agent).** Source overview §6.5
+  places "Assign owner" on the manager tier as its own distinct capability,
+  separate from the create/edit content form (unlike, say, Guiding
+  Principle's own `owner_id`, which Phase 4 folded into its version-apply
+  function as a plain content field). `PainPointFieldValues` therefore has
+  no `owner_id`; `PainPointDetailPage.tsx` assigns it directly by calling
+  `projectPainPointApi.update` with the pain point's current content fields
+  plus the newly-picked owner id.
+- **Branching lifecycle UI: three buttons from `Triaged`, not a single
+  "next" button (Decided by: Agent, following the brief's own instruction
+  directly).** Confirmation tiers follow `docs/ux-style-guide.md`'s
+  confirmation-tier principle the same way Phase 7.1 applied it to Strategy:
+  `triage` is a plain click (low-risk, mirrors Strategy's `propose`);
+  `reject`/`mark-duplicate` (the two negative/terminal branches) get a
+  `ConfirmDialog` with a **mandatory** comment, matching backend enforcement
+  exactly (`reject_project_pain_point`/`mark_project_pain_point_duplicate`
+  both 400 without one); `accept`/`address`/`close` get a `ConfirmDialog`
+  with an optional comment (positive/neutral progression, same tier as
+  Strategy's `approve`/`activate`/`retire`).
+- **Evidence upload needed no special "open to any member" frontend wiring
+  at all, despite the brief's own explicit flag to check this (Decided by:
+  Agent — a finding, not a build).** Checked `upload_project_pain_point_
+  file`'s own docstring first, per the brief: unlike Strategy's/Future
+  State's owner-gated upload, source overview §6.5 lists "Add evidence"
+  among the broad-creation capabilities. But this codebase's own established
+  convention (`StrategyDetailPage.tsx`'s own docstring) is that every
+  mutating control always renders regardless of the caller's actual role,
+  gated only by content-lock state — the backend's RBAC surfaces as a toast
+  on a 403, never a hidden button. `FileAttachmentList`'s `disabled` prop is
+  bound to `painPoint.is_locked` exactly the way `StrategyDetailPage.tsx`
+  binds it to `strategy.is_locked` — since `PAIN_POINT_LOCKED_STATUSES`
+  (Phase 3) already excludes `ACCEPTED`/`ADDRESSED`, the same "who the
+  backend actually accepts" difference (any member vs. manager-only) that
+  makes upload broader than removal was already the resulting behaviour with
+  zero Pain-Point-specific frontend code — see `PainPointDetailPage.tsx`'s
+  own docstring point 3 for the full account.
+- **`archive`/`unarchive` given the same plain `ConfirmDialog` (no comment)
+  treatment as Strategy's, after checking what they actually do server-side
+  per the brief's own instruction (Decided by: Agent).** `archive_project_
+  pain_point`/`unarchive_project_pain_point` (`project_router.py`) are plain
+  `is_archived` flag flips with no lifecycle-status side effect — the exact
+  same shape `archive_project_strategy`/`unarchive_project_strategy` already
+  have, so no new UI pattern was needed.
+- **`PainPointRelationshipsSection.tsx` is a sibling component, not a
+  generalisation of `StrategyRelationshipsSection.tsx`/`FutureStateRelationships
+  Section.tsx` (Decided by: Agent) — checked both fully first, per the
+  brief's own instruction.** Their substance (which link kinds exist, which
+  target pickers they need) genuinely diverges per source artefact type —
+  Pain Point's own five kinds (`drives_strategy`/`motivates_requirement`/
+  `raises_open_question`/`related_to_future_state`/`duplicate_of`) share no
+  structure with Strategy's or Future State's own kind sets beyond the
+  generic "pick a kind, pick a target, POST" shape those two sections
+  already independently established is *not* enough alone to justify
+  merging (`FutureStateRelationshipsSection.tsx`'s own docstring already
+  made this exact call once). Unlike the two prior sections, this one has no
+  scope-conditional target-picker restriction at all — Pain Point has no
+  organisation scope, so there is no org-scoped case to withhold pickers
+  for — and no supersession mechanism (no version table, no `/supersessions`
+  endpoint); `duplicate_of` is a plain `PainPointLinkKind` created through
+  the same endpoint as every other kind.
+- **Pain Point Type admin, org tier: `OrgPainPointTypesPanel.tsx` reuses
+  `DefinitionList` with a `renderExtra` `is_active` `ToggleSwitch` (Decided
+  by: Agent), following the brief's own instruction to check precedent
+  first.** `ActionTypesPanel.tsx` has no enable/disable toggle to check
+  against (Action Types have no such concept); `modules/compliance/
+  MappingTypesPanel.tsx`'s own `implies_equivalence` toggle via `renderExtra`
+  is the real precedent, reused directly rather than adding a new prop to
+  the shared `DefinitionList` component.
+- **Org-tier delete re-throws a plain `Error` on a 409, bypassing
+  `DefinitionList`'s built-in reassign-on-409 flow (Decided by: Agent) — a
+  genuine deviation from the brief's own "reuse `DefinitionList` the same
+  way `DecisionTypesPanel.tsx` does" framing, found necessary during
+  implementation, not assumed up front.** `DefinitionList.handleAttemptDelete`
+  treats *any* `ApiError` with `status === 409` as "in use, offer to
+  reassign" — correct for `DecisionTypesPanel.tsx`/`ActionTypesPanel.tsx`,
+  whose backends really do support reassignment. `DELETE .../pain-point-
+  types/{id}` has **no reassignment parameter at all** (Phase 3's own
+  design, `service.delete_org_pain_point_type`'s docstring — blocked
+  outright while any project still references the type, since one org type
+  can be referenced by override rows across many projects with no single
+  correct cross-project reassignment target). Letting `DefinitionList`'s
+  reassign picker open here would let an admin pick a target, confirm, and
+  watch it 409 again for the same reason, indefinitely. `onDelete` catches
+  the 409 here and re-throws a plain `Error` whose message tells the admin
+  to disable the type instead, routing `DefinitionList` into its plain-error
+  path (a red banner) rather than its non-functional reassign-picker path.
+  `ProjectPainPointTypesPanel.tsx`'s own project-tier delete does the
+  identical thing for the identical reason (`service.delete_project_pain_
+  point_type` also has no reassignment parameter).
+- **Project tier: `onMove` is hand-rolled (two `PUT` calls swapping
+  `display_order`), not a `move_ordered`-backed endpoint (Decided by:
+  Agent).** There is no project-tier `/move` endpoint — the project-scoped
+  `PUT .../pain-point-types/{type_ref_id}` only ever sets a row's own
+  `display_order_override` to whatever integer it's given, no atomic
+  "swap with neighbour" primitive. `ProjectPainPointTypesPanel.tsx`'s own
+  `onMove` finds the adjacent row in the already-sorted effective list and
+  issues two `overrideType` calls swapping the two rows' current
+  `display_order` values — functionally equivalent to `move_ordered`'s own
+  up/down swap, implemented client-side against a `PUT`-only API. This also
+  means moving a fully-untouched org-tier row (`source === "org"`) lazily
+  materialises this project's own override the first time it's touched
+  (`get_or_create_project_pain_point_type`), the same as renaming or
+  disabling one.
+- **Project tier: deleting an unmaterialised org-tier row (`source ===
+  "org"`) refuses locally before calling the API (Decided by: Agent).**
+  There is no `ProjectPainPointType` row behind it yet to delete — calling
+  `DELETE` would just 404. Caught client-side with a message explaining
+  there is nothing to delete yet and to disable the type instead.
+- **Placement: org tier on `orgAdminSections`, project tier on
+  `projectAdminSections` — a deliberate divergence from where Strategy's/
+  Future State's own org-scoped panels landed on `orgOverviewSections`
+  (Decided by: Agent, resolving Phase 7.1's own explicitly-flagged "revisit"
+  note).** `OrgStrategiesPanel.tsx`/`OrgFutureStatesPanel.tsx` reasoned that
+  an org-scoped Strategy/Future State is org-level *content* an Owner/
+  Approver works with day to day, closer to Compliance's dashboards than to
+  a configuration table — and explicitly flagged "revisit if a later
+  sub-phase's own org/project-scoped artefact suggests a different, more
+  consistent placement." Pain Point Type is not that case (it has no
+  org-scoped *artefact* at all), but it is this module's first genuine
+  configuration-table surface — a type vocabulary an org/project admin
+  manages, not day-to-day artefact content — the same distinction
+  `DecisionTemplatesPanel.tsx`/`DecisionTypesPanel.tsx` already draw between
+  Org/Project Management and a module's own day-to-day working page. Landed
+  there directly, matching that precedent rather than Strategy's own.
+- **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
+  (Decided by: Agent), matching Phase 7.1/7.2's own precedent exactly** —
+  the new Playwright spec creates its own disposable org/admin/project via
+  the API. `seed_demo_data.py` needed no change — Phase 3 already seeds
+  three Pain Points (one of each terminal-or-in-progress outcome) on the
+  existing demo project; this phase only adds UI to view/act on data that
+  already exists.
+
+**Omitted this phase, mirroring Phase 7.1/7.2's own identical omissions and
+reasoning where they still apply:** `globalNavItems`/`standaloneWorkspaces`/
+`projectOverviewTiles`/`requirementDetailSections`/`requirementLinkPickerTabs`/
+`entityAccentColor` — Pain Point has no cross-org standalone entity of its
+own, no project-overview summary tile this phase's own scope calls for, and
+nothing yet renders a mixed list containing a Pain Point row alongside other
+entity kinds. `globalRoutes`/`orgOverviewSections` are also correctly absent
+this phase (unlike Strategy/Future State) — Pain Point has no organisation-
+scoped artefact to reach through either mechanism. `docs/website/` was not
+touched — Phase 8 stays explicitly gated on all five Phase 7 sub-phases.
+
+**Tests:**
+- `backend/app/modules/context_strategy/tests/test_context_strategy_api.py`:
+  1 test updated (`test_frontend_manifest_registers_the_strategy_nav_entry`),
+  now asserting the manifest's `additional_nav_entries` contains Pain
+  Point's own `ModuleNavEntry`.
+- `frontend/src/modules/context_strategy/*.stories.tsx`: 6 new files, 42
+  Storybook/Vitest stories — list page, form modal (including the "current
+  type still selectable even once disabled" case), detail page across every
+  lifecycle status including both branch outcomes (Rejected via mandatory
+  comment, Mark duplicate via mandatory comment) and owner assignment,
+  relationships, and both type-admin panels (add/rename/reorder/toggle/
+  delete-blocked-with-plain-error for each tier).
+- `tests/playwright/tests/modules/context_strategy/pain-point-lifecycle.spec.ts`:
+  1 new spec — disposable org/admin/project via the API, enables Context &
+  Strategy for that org, confirms Market/User/Operator are seeded
+  automatically, adds a new org-tier Pain Point type and confirms it appears
+  in the project's effective list, overrides it locally, creates a
+  project-scoped Pain Point via the new "Pain Point" nav entry using the
+  overridden type, walks it `Submitted -> Triaged -> Accepted -> Addressed
+  -> Closed` on its own detail page, confirms the final status back on the
+  list, then creates a second Pain Point and confirms `Triaged -> Reject`
+  is blocked until a comment is entered.
+
+**Verified:**
+- `ruff check` clean on both changed backend files (`module.py`, `test_
+  context_strategy_api.py`).
+- `npx tsc -b` clean across the whole frontend.
+- `npx eslint .` exits 0 (0 errants across the whole frontend; 92 total
+  warnings, up from Phase 7.2's 84 — the 8 new warnings are the same
+  pre-existing, already-accepted `react-hooks/set-state-in-effect` pattern
+  this phase's own new `useEffect` call sites trigger, matching the exact
+  pattern already present at 84 other call sites repo-wide before this
+  phase). One real lint finding was fixed, not suppressed: `preserve-caught-
+  error` flagged both type-admin panels' 409-to-plain-`Error` re-throws for
+  missing a `cause` — this frontend's own `tsconfig.json` `lib`/`target`
+  (ES2020) predates the `Error` constructor's `{ cause }` second-argument
+  overload, so `cause` is set via a property assignment on a typed-cast
+  `Error` instance instead of the constructor argument, preserving the
+  causal chain without bumping the whole frontend's TypeScript lib target
+  for two call sites (see both panels' own inline comments).
+- `npx vitest run --project=storybook` (the full suite, not just this
+  phase's own new files): **144 test files / 1125 tests, all passing** — up
+  from Phase 7.2's 138/1083 (net: +6 files/+42 tests, exactly this phase's
+  own new story files, no regressions found).
+- Backend/frontend containers rebuilt (`docker compose up -d --build backend
+  frontend`, per this repo's "Compose services don't bind-mount source"
+  convention) before any live-stack verification.
+- `test_context_strategy_api.py` (19 passed) and `test_module_frontend_
+  integration.py` (46 passed, unchanged count — no regression) both run
+  against the rebuilt `tests/container` backend.
+- `npx playwright test tests/modules/context_strategy/pain-point-lifecycle.spec.ts
+  --no-deps` against the freshly rebuilt live stack — **1 passed**, covering
+  both type-admin tiers and the full branching lifecycle including the
+  mandatory-comment-on-reject case. `strategy-lifecycle.spec.ts`/`future-
+  state-lifecycle.spec.ts` were also re-run standalone the same way to
+  confirm this phase's `module.ts`/`module.py` changes (the third nav
+  entry, the two new admin-section contributions) introduced no regression
+  — **2 passed**.
+- Full backend pytest suite run as a single invocation, per this repo's own
+  concurrency rule (host `.venv`, against `reqtrack_pytest_test`) — **1407
+  passed, 14 failed, in 35m42s**. All 14 failures are the exact same `test_
+  invites_and_external_users.py`/`test_oidc_provisioning.py`/`test_org_
+  export_import.py` cases hitting `aiosmtplib.errors.SMTPConnectError: ...
+  connecting to mailhog on port 1025` that Phase 7.1's and Phase 7.2's own
+  verification hit (identical test names, identical count) — this repo's
+  own documented, pre-existing "host pytest + mailhog DNS failures" class,
+  unrelated to this phase (only `module.py` and its own test file changed on
+  the backend this phase — no shared test infra touched, so this run's sole
+  purpose was confirming no incidental regression, matching Phase 7.1/7.2's
+  own standing practice of running the full suite even when the brief's own
+  minimum bar would have been satisfied by the two changed files alone).
+  Every new/changed test this phase touched is among the 1407 passed. Not
+  recorded as a separate `docs/decisions.md` entry — unlike Phase 7.1's own
+  `ModuleFrontendManifest` multi-entry extension (a genuine
+  core-architecture change), this phase made no structural/architectural
+  call of its own (`DefinitionList` was reused as-is, no new prop added;
+  `PainPointRelationshipsSection.tsx` stayed a sibling, not a
+  generalisation), matching Phase 7.2's own identical "no decisions.md entry
+  needed" precedent.
 
 ## Phase 8 — Docs website coverage
 

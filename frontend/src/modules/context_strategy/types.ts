@@ -19,6 +19,17 @@
  * every one of Strategy's own conventions identically (backend `FutureState*`
  * is itself an exact structural mirror of `Strategy*` — see `schemas.py`'s
  * own docstring).
+ *
+ * Phase 7.3 (2026-09-29) adds Pain Point's own shapes below — structurally
+ * different from Strategy/Future State in two ways: (1) Pain Point is
+ * **project-scoped only** (no `scope`/`organization_id` discriminator, no
+ * "org twin" shapes), and (2) it has a project-scoped, two-tier **type**
+ * vocabulary (`PainPointTypeDefinition` org-scoped, `ProjectPainPointType`/
+ * `EffectivePainPointType` project-scoped) that Strategy/Future State have
+ * no equivalent of. See `PainPoint`'s own docstring below for the full
+ * field-shape account and `api.ts`'s docstring on `projectPainPointApi`/
+ * `orgPainPointTypeApi` for why this phase uses two plain exported objects
+ * rather than `buildStrategyApi`'s factory-instantiated-twice shape.
  */
 
 // --- Strategy lifecycle --------------------------------------------------
@@ -321,6 +332,160 @@ export interface FutureStateComment {
 // not duplicated a second time now that a second artefact type needs it.
 export interface ArtefactComment {
   id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: import("../../api/types").FileAsset[];
+}
+
+// --- Pain Point (Phase 7.3) --------------------------------------------------
+//
+// Project-scoped only (source overview §6 — unlike Strategy/Future State/
+// Guiding Principle, there is no organisation-scoped Pain Point, so none of
+// these shapes carry a `scope`/`organization_id` discriminator). No
+// `PainPointVersion` (Phase 3's own scope decision — see `models.py`'s
+// docstring), so `PainPoint` below is a single mutable row, not an
+// identity+version split the way `Strategy`/`FutureState` are.
+
+export type PainPointPriority = "low" | "medium" | "high";
+
+export const PAIN_POINT_PRIORITY_LABEL: Record<PainPointPriority, string> = STRATEGY_PRIORITY_LABEL;
+
+export type PainPointStatus = "submitted" | "triaged" | "rejected" | "duplicate" | "accepted" | "addressed" | "closed";
+
+export const PAIN_POINT_STATUS_LABEL: Record<PainPointStatus, string> = {
+  submitted: "Submitted",
+  triaged: "Triaged",
+  rejected: "Rejected",
+  duplicate: "Duplicate",
+  accepted: "Accepted",
+  addressed: "Addressed",
+  closed: "Closed",
+};
+
+// muted = not yet actionable/terminal-but-neutral, info = awaiting a
+// decision/in progress, accent = a positive in-progress-to-done outcome,
+// danger = a negative terminal outcome — same convention as `STRATEGY_
+// STATUS_TONE`/`DECISION_STATUS_TONE`. `DUPLICATE` is `muted` rather than
+// `danger` — it isn't a negative judgement on the Pain Point itself, just a
+// bookkeeping outcome (see `PainPointLinkKind.DUPLICATE_OF`).
+export const PAIN_POINT_STATUS_TONE: Record<PainPointStatus, import("../../api/types").BadgeTone> = {
+  submitted: "muted",
+  triaged: "info",
+  rejected: "danger",
+  duplicate: "muted",
+  accepted: "info",
+  addressed: "info",
+  closed: "accent",
+};
+
+// --- Pain Point relationship kinds (Phase 6) --------------------------------
+
+export type PainPointLinkKind =
+  | "drives_strategy"
+  | "motivates_requirement"
+  | "raises_open_question"
+  | "related_to_future_state"
+  | "duplicate_of";
+
+export const PAIN_POINT_LINK_KIND_LABEL: Record<PainPointLinkKind, string> = {
+  drives_strategy: "Drives a Strategy",
+  motivates_requirement: "Motivates a Requirement",
+  raises_open_question: "Raises an Open Question",
+  related_to_future_state: "Related to a Future State",
+  duplicate_of: "Duplicate of another Pain Point",
+};
+
+// --- Pain Point type vocabulary (Phase 0 Q3's two-tier model) ---------------
+
+/** A plain, org-scoped `PainPointTypeDefinition` row — the shared base tier
+ * an org admin (`pain_point_type_admin` module role) manages. */
+export interface PainPointTypeDefinition {
+  id: string;
+  organization_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+/** One row of a project's *effective* Pain Point type list — every active
+ * org type (its own project override's name/order/enabled state, if any)
+ * plus every project-local type, per `service.resolve_effective_pain_point_
+ * types`. `source` is `"org"` (no override), `"project_override"`, or
+ * `"project_local"` — used to decide whether this row's own override can be
+ * *created* (org/project_override) or only edited in place (project_local). */
+export interface EffectivePainPointType {
+  id: string;
+  name: string;
+  display_order: number;
+  is_enabled: boolean;
+  source: "org" | "project_override" | "project_local";
+}
+
+/** A raw `ProjectPainPointType` row (override or project-local) — returned
+ * by the project-scoped create/override endpoints. */
+export interface ProjectPainPointType {
+  id: string;
+  project_id: string;
+  org_type_id: string | null;
+  name_override: string | null;
+  display_order_override: number | null;
+  is_enabled: boolean;
+}
+
+// --- Pain Points -------------------------------------------------------------
+
+export interface PainPoint {
+  id: string;
+  project_id: string;
+  pain_point_type_id: string;
+  pain_point_type_name: string;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+
+  title: string;
+  description: string;
+  source: string;
+  impact: string;
+  evidence: string;
+  priority: PainPointPriority;
+  status: PainPointStatus;
+  owner_id: string | null;
+  date_identified: string;
+  is_locked: boolean;
+
+  created_at: string;
+  updated_at: string;
+}
+
+/** The editable content fields shared by create (`PainPointCreate`) and full
+ * replace (`PainPointUpdate`) — unlike `StrategyFieldValues`, there is no
+ * create/edit field-set asymmetry here (no `change_note` — no version
+ * table), so both call sites use this same shape. `owner_id` is deliberately
+ * **not** included — §6.5 places "Assign owner" on the manager tier, not the
+ * create/edit content form, and `PainPointDetailPage.tsx`'s own dedicated
+ * `AssigneePicker` control assigns it directly (**Decided by: Agent** — see
+ * that page's own docstring). */
+export interface PainPointFieldValues {
+  pain_point_type_id: string;
+  title: string;
+  description: string;
+  source: string;
+  impact: string;
+  evidence: string;
+  priority: PainPointPriority;
+  date_identified: string | null;
+}
+
+// --- Comments (no reaction mechanism — same shape as StrategyComment/FutureStateComment) -
+
+export interface PainPointComment {
+  id: string;
+  pain_point_id: string;
   author_id: string;
   author_display_name: string;
   body: string;

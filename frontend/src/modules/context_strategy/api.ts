@@ -28,11 +28,18 @@ import { api } from "../../api/client";
 import type { FileAsset } from "../../api/types";
 import type {
   ContextStrategyLink,
+  EffectivePainPointType,
   FutureState,
   FutureStateComment,
   FutureStateFieldValues,
   FutureStateLinkKind,
   FutureStateVersion,
+  PainPoint,
+  PainPointComment,
+  PainPointFieldValues,
+  PainPointLinkKind,
+  PainPointTypeDefinition,
+  ProjectPainPointType,
   Strategy,
   StrategyComment,
   StrategyFieldValues,
@@ -283,3 +290,145 @@ export const projectFutureStateApi = buildFutureStateApi(projectBase);
 /** Every Future State endpoint, org-scoped — `id` parameters below are an
  * `organization_id`. */
 export const orgFutureStateApi = buildFutureStateApi(orgBase);
+
+// --- Pain Point (Phase 7.3) --------------------------------------------------
+//
+// **No `buildPainPointApi` factory, unlike Strategy/Future State (Decided by:
+// Agent).** The factory shape exists specifically for an artefact with an
+// *identical* org-scoped and project-scoped twin endpoint set (Phase 0 Q2's
+// scope discriminator) — Pain Point has no organisation scope at all (source
+// overview §6), so there is nothing to instantiate twice. `orgPainPointTypeApi`
+// (the org-scoped `PainPointTypeDefinition` CRUD tier, Phase 0 Q3) and
+// `projectPainPointApi` (everything else — the project-scoped type-override
+// tier plus the Pain Point artefact itself) are two plain, hand-written
+// objects instead, mirroring `modules/decisions/api.ts`'s own flat-function
+// shape for a project-scoped-only artefact.
+
+export interface PainPointListFilters {
+  include_archived?: boolean;
+}
+
+/** Org-scoped `PainPointTypeDefinition` CRUD (Phase 0 Q3's shared base
+ * tier) — `id` parameters below are an `organization_id`. */
+export const orgPainPointTypeApi = {
+  list(organizationId: string) {
+    return api.get<PainPointTypeDefinition[]>(`${orgBase(organizationId)}/pain-point-types`);
+  },
+  create(organizationId: string, name: string) {
+    return api.post<PainPointTypeDefinition>(`${orgBase(organizationId)}/pain-point-types`, { name });
+  },
+  move(organizationId: string, painPointTypeId: string, direction: "up" | "down") {
+    return api.post<PainPointTypeDefinition>(
+      `${orgBase(organizationId)}/pain-point-types/${painPointTypeId}/move`, { direction }
+    );
+  },
+  update(organizationId: string, painPointTypeId: string, values: { name?: string; is_active?: boolean }) {
+    return api.patch<PainPointTypeDefinition>(`${orgBase(organizationId)}/pain-point-types/${painPointTypeId}`, values);
+  },
+  delete(organizationId: string, painPointTypeId: string) {
+    return api.delete<void>(`${orgBase(organizationId)}/pain-point-types/${painPointTypeId}`);
+  },
+};
+
+/** Every project-scoped Pain Point endpoint — both tiers of the type
+ * vocabulary (Phase 0 Q3) and the Pain Point artefact itself (Phase 3) —
+ * `id` parameters below are a `project_id`. */
+export const projectPainPointApi = {
+  // --- Pain Point type vocabulary, project tier ---------------------------
+  listTypes(projectId: string) {
+    return api.get<EffectivePainPointType[]>(`${projectBase(projectId)}/pain-point-types`);
+  },
+  createLocalType(projectId: string, name: string, displayOrder?: number) {
+    return api.post<ProjectPainPointType>(`${projectBase(projectId)}/pain-point-types`, {
+      name, display_order: displayOrder ?? null,
+    });
+  },
+  overrideType(
+    projectId: string, typeRefId: string,
+    values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null },
+  ) {
+    return api.put<ProjectPainPointType>(`${projectBase(projectId)}/pain-point-types/${typeRefId}`, values);
+  },
+  deleteType(projectId: string, projectPainPointTypeId: string) {
+    return api.delete<void>(`${projectBase(projectId)}/pain-point-types/${projectPainPointTypeId}`);
+  },
+
+  // --- CRUD -----------------------------------------------------------------
+  list(projectId: string, filters: PainPointListFilters = {}) {
+    const query = filters.include_archived ? "?include_archived=true" : "";
+    return api.get<PainPoint[]>(`${projectBase(projectId)}/pain-points${query}`);
+  },
+  create(projectId: string, values: PainPointFieldValues) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points`, values);
+  },
+  get(projectId: string, painPointId: string) {
+    return api.get<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}`);
+  },
+  update(projectId: string, painPointId: string, values: PainPointFieldValues & { owner_id: string | null }) {
+    return api.put<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}`, values);
+  },
+  archive(projectId: string, painPointId: string) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/archive`);
+  },
+  unarchive(projectId: string, painPointId: string) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/unarchive`);
+  },
+
+  // --- Lifecycle (branching) -------------------------------------------------
+  triage(projectId: string, painPointId: string, comment?: string) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/triage`, { comment: comment || null });
+  },
+  reject(projectId: string, painPointId: string, comment: string) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/reject`, { comment });
+  },
+  markDuplicate(projectId: string, painPointId: string, comment: string) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/mark-duplicate`, { comment });
+  },
+  accept(projectId: string, painPointId: string, comment?: string) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/accept`, { comment: comment || null });
+  },
+  address(projectId: string, painPointId: string, comment?: string) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/address`, { comment: comment || null });
+  },
+  close(projectId: string, painPointId: string, comment?: string) {
+    return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/close`, { comment: comment || null });
+  },
+
+  // --- Comments ---------------------------------------------------------
+  listComments(projectId: string, painPointId: string) {
+    return api.get<PainPointComment[]>(`${projectBase(projectId)}/pain-points/${painPointId}/comments`);
+  },
+  addComment(projectId: string, painPointId: string, body: string) {
+    return api.post<PainPointComment>(`${projectBase(projectId)}/pain-points/${painPointId}/comments`, { body });
+  },
+  editComment(projectId: string, painPointId: string, commentId: string, body: string) {
+    return api.patch<PainPointComment>(`${projectBase(projectId)}/pain-points/${painPointId}/comments/${commentId}`, { body });
+  },
+  uploadCommentAttachment(projectId: string, painPointId: string, commentId: string, file: File) {
+    return api.postFile<FileAsset>(`${projectBase(projectId)}/pain-points/${painPointId}/comments/${commentId}/files`, file);
+  },
+  removeCommentAttachment(projectId: string, painPointId: string, commentId: string, fileId: string) {
+    return api.delete<void>(`${projectBase(projectId)}/pain-points/${painPointId}/comments/${commentId}/files/${fileId}`);
+  },
+
+  // --- Direct file attachments ("evidence") ----------------------------------
+  listFiles(projectId: string, painPointId: string) {
+    return api.get<FileAsset[]>(`${projectBase(projectId)}/pain-points/${painPointId}/files`);
+  },
+  uploadFile(projectId: string, painPointId: string, file: File) {
+    return api.postFile<FileAsset>(`${projectBase(projectId)}/pain-points/${painPointId}/files`, file);
+  },
+  unlinkFile(projectId: string, painPointId: string, fileId: string) {
+    return api.delete<void>(`${projectBase(projectId)}/pain-points/${painPointId}/files/${fileId}`);
+  },
+
+  // --- Relationships (Phase 6) -------------------------------------------
+  listRelationships(projectId: string, painPointId: string) {
+    return api.get<ContextStrategyLink[]>(`${projectBase(projectId)}/pain-points/${painPointId}/relationships`);
+  },
+  createRelationship(projectId: string, painPointId: string, kind: PainPointLinkKind, targetId: string) {
+    return api.post<ContextStrategyLink>(`${projectBase(projectId)}/pain-points/${painPointId}/relationships`, {
+      kind, target_id: targetId,
+    });
+  },
+};

@@ -720,11 +720,16 @@ MODULE_DEFINITION = ModuleDefinition(
     # entries` (the generic multi-entry extension point built as part of
     # Phase 7.1, see docs/decisions.md) is where Phase 7.2-7.5 each append
     # their own artefact type's entry as its own frontend ships. Phase 7.2
-    # (Future State, 2026-09-29) adds the second entry below; Phase
-    # 7.3-7.5 will each append one more. `nav_path` uses each artefact's own
-    # sub-route naming (matching `router.py`/`project_router.py`), not the
-    # bare module mount point, since each entry needs its own distinct
-    # sub-path alongside the others.
+    # (Future State, 2026-09-29) added the second entry below; Phase 7.3
+    # (Pain Point, 2026-09-29) adds the third; Phase 7.4-7.5 will each append
+    # one more. `nav_path` uses each artefact's own sub-route naming
+    # (matching `router.py`/`project_router.py`), not the bare module mount
+    # point, since each entry needs its own distinct sub-path alongside the
+    # others. Pain Point's own type-vocabulary admin surfaces (Phase 0 Q3)
+    # are not nav-rail entries at all — they render on Org/Project Admin via
+    # `orgAdminSections`/`projectAdminSections` (`frontend/src/modules/
+    # context_strategy/module.ts`), which this manifest mechanism doesn't
+    # cover.
     frontend_manifest=ModuleFrontendManifest(
         tier="installed",
         nav_label="Strategy",
@@ -733,6 +738,10 @@ MODULE_DEFINITION = ModuleDefinition(
             ModuleNavEntry(
                 nav_label="Future State",
                 nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/future-states",
+            ),
+            ModuleNavEntry(
+                nav_label="Pain Point",
+                nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/pain-points",
             ),
         ),
     ),

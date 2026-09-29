@@ -3,8 +3,12 @@ import { createElement } from "react";
 import type { TierAModuleDefinition } from "../types";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
 import { OrgFutureStatesPanel } from "./OrgFutureStatesPanel";
+import { OrgPainPointTypesPanel } from "./OrgPainPointTypesPanel";
 import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
+import { PainPointDetailPage } from "./PainPointDetailPage";
 import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
+import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
+import { ProjectPainPointTypesPanel } from "./ProjectPainPointTypesPanel";
 import { ProjectStrategiesPage } from "./ProjectStrategiesPage";
 import { StrategyDetailPage } from "./StrategyDetailPage";
 
@@ -65,6 +69,26 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * admin-configuration table this phase's own scope calls for, and (mirroring
  * Phase 7.1's own identical omission and reasoning) nothing yet renders a
  * mixed list containing a Future State row alongside other entity kinds.
+ *
+ * **Phase 7.3 (2026-09-29) adds Pain Point** — the third of five planned
+ * sub-phases, and structurally different from Strategy/Future State in two
+ * ways this file reflects directly:
+ *
+ * 1. **Project-scoped only** (source overview §6) — `routes` gains
+ *    `ProjectPainPointsPage`/`PainPointDetailPage`, but there is **no**
+ *    `globalRoutes` entry and **no** `orgOverviewSections` contribution for
+ *    the Pain Point artefact itself, unlike Strategy/Future State's org-
+ *    scoped twins — there is no org-scoped Pain Point to reach via either
+ *    mechanism.
+ * 2. **A two-tier type vocabulary** (Phase 0 Q3) with its own admin surfaces,
+ *    not just the artefact's own CRUD: `orgAdminSections` gains
+ *    `OrgPainPointTypesPanel` (the org-scoped shared base tier) and
+ *    `projectAdminSections` gains `ProjectPainPointTypesPanel` (the
+ *    project-scoped override/local-type tier) — this module's first use of
+ *    either section (see each panel's own docstring for the full placement
+ *    reasoning, including why the type vocabulary lands on the admin
+ *    sections while the artefact's own org-scoped siblings landed on
+ *    `orgOverviewSections`).
  */
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
@@ -78,6 +102,11 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       path: "/projects/:projectId/modules/context_strategy/future-states/:futureStateId",
       element: createElement(FutureStateDetailPage),
+    },
+    { path: "/projects/:projectId/modules/context_strategy/pain-points", element: createElement(ProjectPainPointsPage) },
+    {
+      path: "/projects/:projectId/modules/context_strategy/pain-points/:painPointId",
+      element: createElement(PainPointDetailPage),
     },
   ],
   globalRoutes: [
@@ -100,6 +129,20 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "context-strategy-org-future-states",
       label: "Future State",
       render: ({ orgId }) => createElement(OrgFutureStatesPanel, { orgId }),
+    },
+  ],
+  orgAdminSections: [
+    {
+      key: "context-strategy-pain-point-types",
+      label: "Pain Point Types",
+      render: ({ orgId }) => createElement(OrgPainPointTypesPanel, { orgId }),
+    },
+  ],
+  projectAdminSections: [
+    {
+      key: "context-strategy-pain-point-types",
+      label: "Pain Point Types",
+      render: ({ projectId }) => createElement(ProjectPainPointTypesPanel, { projectId }),
     },
   ],
 };
