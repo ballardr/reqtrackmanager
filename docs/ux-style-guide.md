@@ -13,7 +13,7 @@ The audit found the app had quietly grown three different answers to "many setti
 Thirteen rules. Each names the pattern and the specific failure in the existing UI it was written against — the failure is the "why," useful for judging edge cases the rule doesn't spell out.
 
 1. **One depth model, chosen by scale — not habit.** Resource-menu sub-pages for more than five setting groups opened rarely as a whole; tabs for five or fewer views of the same object, all relevant together; accordions for one optional block inside a single view — never as the whole page. *Why:* Org Admin's 15-way flat accordion and Project Admin's 8-tab bar independently invented two different answers to the same question, and Preferences uses both at once on one page. *(Revised 2026-08-27 — see the "Pattern: settings hierarchy" addendum below.)* Cross-page **consistency** with an already-converted admin-tier sibling is itself a valid reason to choose Resource menu even when a page's own group count sits at or under five — a page that's part of a recognisable set (the app's admin-tier pages: Org Admin, Server Admin, Preferences, Project Admin) shouldn't diverge from its siblings' navigation shape just because its own count happens to clear the threshold the others exceeded.
-2. **Every override says so, out loud.** Any value with a platform default shows its current state — Platform default or Custom — and a one-click way back, every time, not sometimes. *Why:* accent colour has a working revert control; header text reverts only if you know to blank the field; org logo and login background can't be reverted at all, in the UI or the API.
+2. **Every override says so, out loud.** Any value with a platform default shows its current state — Platform default or Custom — and a one-click way back, every time, not sometimes. *Why:* accent colour has a working revert control; header text reverts only if you know to blank the field; org logo and login background can't be reverted at all, in the UI or the API. *(Extended 2026-10-04 — Module 1 Phase 10: where the fallback is a chain rather than the platform — project → parent project → organisation → module default — the pill names the tier the value actually comes from, e.g. "Inherited from parent project", and the way back reads "Use inherited value". See [Pattern: scoring and inherited settings](#pattern-scoring-and-inherited-settings).)*
 3. **Create is a layer, not a page reflow — and for a full entity create/rename form, that layer is a Modal.** *(Revised 2026-08-24 — see the seventh pass's roadmap in [docs/ux-audit-2026-08.md](ux-audit-2026-08.md); this supersedes the original SidePanel-for-entities call by direct product decision, flagged here rather than changed silently.)* A brand-new entity (a project, an organisation, a user, a group, a requirement) or a rename of an existing one opens in a `Modal`, centred and blocking the page behind it. The reasoning is about the app's own spatial reading order, not any one form's internal field layout: the app reads left to right as nav rail → resource menu (where present) → core content pane → side panel, each column showing something derived from the one to its left — the side panel's specific job in that order is "further detail about, or an action on, whatever the content pane is currently showing" (open a row, see its detail; select a record, edit it). `FilterPanel` (the shared list+filter sidebar behind Principle 10's `FilterBadge` rule, above) is the same slot used the same way and predates this decision: its narrowing controls (which statuses, which stages) are themselves derived from — scoped to — whatever entity type the content pane is currently listing, not an independent, freestanding form. (See [Pattern: `FilterPanel`](#pattern-filterpanel), below, for the dedicated write-up this side-note originally flagged as missing.) Creating a brand-new entity isn't detail about anything already on screen — it's a fresh, disconnected action with no "what came before it" in that reading order — so putting it in the side panel's slot borrows a position whose meaning is specifically "more about what's already showing" for something that isn't that. A `Modal` sits outside and on top of the whole nav → resource-menu → content → panel flow rather than occupying a position within it, which is the correct home for an action that doesn't belong anywhere in that order. `SidePanel` is retained for exactly the job that reading order actually assigns it: viewing an existing entity's full detail without navigating away, list still visible underneath (`Pattern: entity detail panel`, below) — not for creating anything new. `Popover` is unchanged, for a one- or two-field quick action anchored to whatever triggered it. *Why (original):* every one of the app's 14+ create flows was an inline form that pushed the surrounding list down; the app's Modal component had never been used for a create flow. *Why (revision):* a create flow was occupying the side panel's spatially-meaningful "detail about the current view" slot for something that isn't detail about the current view at all. See the new `Pattern: modal dialog for entity create/rename`, below, including a known dependency (`Modal.tsx` itself likely needs a size variant before it's a drop-in fit for every flow this affects).
 4. **One component per pattern, not one per page.** A single shared `Tabs`, `SidePanel`, and `Popover`, used everywhere that pattern applies. *Why:* three pages independently hand-rolled the same tab-bar markup; consistency should be a side effect of reuse, not a rule enforced by memory across separate authors and dates.
 5. **One door for "add one" and "add many."** Bulk operations live behind the same entry point as the single-item create, offered as a second option — not a separate block the user has to already know exists. *Why:* the CSV import wizard already does the job well but sits permanently on-screen, unlabelled, beside the single-add form it duplicates.
@@ -185,6 +185,36 @@ One control, applied uniformly to every overridable setting (today: accent colou
 
 Implementing the logo/login-background half of this needs a small, genuinely new backend capability (a `DELETE` reset endpoint alongside the existing upload `POST`) — treat that as its own reviewed change per [docs/soc2/policies/change-management-and-secure-development-policy.md](soc2/policies/change-management-and-secure-development-policy.md), not folded silently into a UI-only pass.
 
+## Pattern: scoring and inherited settings
+
+*(New 2026-10-04 — Module 1 Phase 10, the generic scoring-matrix core. Applies to any layered setting or rating, not only scoring.)*
+
+**Inherited values name their source.** A setting that falls back through several tiers uses `OverridePill` with `defaultLabel` set to the resolved source (`SCORING_SOURCE_LABEL` in `frontend/src/api/scoring.ts`: "Set on this project", "Inherited from parent project", "Inherited from organisation", "Module default") and `resetLabel` "Use inherited value". Never show a bare "Platform default" for a value that actually came from an organisation or parent project.
+
+```mermaid
+flowchart LR
+  P["Project override"] -->|none| A["Nearest ancestor's override"]
+  A -->|none| O["Organisation setting"]
+  O -->|none| M["Module / platform default"]
+```
+
+**A select that always has a value has no blank option.** Pickers for a value that can't be empty (a scoring model, a default model) use `LabeledSelect` with `placeholder={null}`. Keep the blank option only where "nothing chosen" is a valid state.
+
+**"Not set" is never zero.** An optional rating input offers an explicit "Not scored" option (`ScoringLevelPicker`), and a result missing an input reads "not scored under this model" — never 0, and never silently dropped from a ranking.
+
+**Derived order hides reorder controls.** When a list's order is computed (scoring levels are ordered by weight), omit `DefinitionList`'s `onMove` so no up/down buttons appear; when a list has a floor (an axis keeps two levels), set `minItems` so delete is disabled with a reason.
+
+**Thresholds are percentages of a maximum.** Rating-band boundaries are entered as a percentage of the model's maximum score (`ScoringBandsEditor`), never as raw scores, so they survive re-weighting and read the same across models.
+
+**Charts and matrices:**
+- Render a grid chart as a real `<table>` (`ScoringMatrixChart`): header cells for both axes, and every data cell named in full, e.g. "Severity Blocker, Frequency Constant: Critical, 2 items". A clickable cell is a `<button>` with that same name.
+- Colour is never the only signal: the band label is printed in the cell, and a chart legend is text.
+- Colours come only from the `BadgeTone` tokens (`.scoring-cell--<tone>`, tinted into the surface so text stays readable in both themes) — never a per-chart palette.
+- On narrow screens the chart scrolls horizontally inside its own wrapper; the page never does.
+- A size-encoded mark (a bubble) is sized from a normalised 0–1 value, with a minimum size so it stays visible.
+
+*Known divergence:* `StatusPieChart` colours slices by position from a fixed cycle rather than by each status's own `*_TONE`, so the same status can change colour between charts. Bring it into line before reusing it for a new chart.
+
 ## Pattern: create panels, popovers, and one door for bulk
 
 *(The side-panel-for-entities half of this section is historical — see the revised Principle 3 and the new `Pattern: modal dialog for entity create/rename`, below, for the current rule. Left as-is here rather than rewritten, since it documents the reasoning and mockups from when it was current; the "one door for bulk" and Popover-for-small-forms parts are unaffected by the revision.)*
@@ -225,7 +255,7 @@ What doesn't change: `SidePanel` keeps its one remaining job — the one the rea
 
 *(New 2026-09-13 — Platform review 2026-09, Phase 4.)*
 
-A status/outcome badge's colour comes from a `BadgeTone` (`"muted" | "info" | "accent" | "danger"`, `frontend/src/api/types.ts`), applied as a `.badge--<tone>` CSS modifier (`theme.css`) on top of the plain `.badge` shape — never an inline colour at the call site, and never a fifth ad hoc tone. Every status/outcome enum rendered as a badge has a `*_TONE` map living next to its existing `*_LABEL` map — `REQUIREMENT_STATUS_TONE`, `CHANGE_REQUEST_STATUS_TONE`, `REQUIREMENT_ACTION_OUTCOME_TONE` today — so a new enum value added later is required to pick a tone at the same time it picks a label, the same discipline Principle 12 already established for labels themselves.
+A status/outcome badge's colour comes from a `BadgeTone` (`"muted" | "info" | "accent" | "warning" | "danger"`, `frontend/src/api/types.ts`), applied as a `.badge--<tone>` CSS modifier (`theme.css`) on top of the plain `.badge` shape — never an inline colour at the call site, and never an ad hoc extra tone. *(Revised 2026-10-04 — Module 1 Phase 10: `warning` added as a fifth tone for scoring rating bands, e.g. a "High" Pain Point, the same tones also tinting `ScoringMatrixChart` cells. It keeps `--color-warning`'s existing meaning — "needs attention" — so it is still never used for a routine in-progress status.)* Every status/outcome enum rendered as a badge has a `*_TONE` map living next to its existing `*_LABEL` map — `REQUIREMENT_STATUS_TONE`, `CHANGE_REQUEST_STATUS_TONE`, `REQUIREMENT_ACTION_OUTCOME_TONE` today — so a new enum value added later is required to pick a tone at the same time it picks a label, the same discipline Principle 12 already established for labels themselves.
 
 ```mermaid
 flowchart LR
@@ -233,6 +263,7 @@ flowchart LR
   B["reviewed / submitted / in_review / pending"] --> I["info — --color-info (aqua)"]
   C["approved / completed"] --> G["accent — --color-accent (moss green)"]
   D["rejected / failed"] --> R["danger — --color-danger"]
+  E["scoring band needing attention (e.g. High)"] --> W["warning — --color-warning"]
 ```
 
 *Why `info` is its own token, not `--color-warning`:* `--color-warning` is reserved for things that actually need attention (an applicability override, an overdue review) — routine "awaiting a decision" states are not a warning, and overloading the same colour for both would make the genuine warnings harder to spot. `FilterBadge` (used for every clickable status filter chip) takes an optional `tone` prop for this; a plain `<span className="badge">` applies `badge--<tone>` directly. Badges that aren't a status/outcome at all (a target-stage filter, a role) stay untoned.
@@ -366,8 +397,8 @@ Below the mobile breakpoint, `layout="top"` collapses its filter fields behind t
 ```mermaid
 flowchart TD
   Start{"How many columns does this directory's table have?"}
-  Start -->|"~4 or fewer — e.g. Groups (Name, role, Members)"| Side["layout=\"side\" (default): .side-grid sidebar, fields stacked"]
-  Start -->|"5+, or a column needs real width (multi-select, provenance text) — e.g. Users, Access Review, Members"| Top["layout=\"top\": full-width bar above the table, fields in a wrapping row"]
+  Start -->|"~4 or fewer — e.g. Groups (Name, role, Members)"| Side["layout=#quot;side#quot; (default): .side-grid sidebar, fields stacked"]
+  Start -->|"5+, or a column needs real width (multi-select, provenance text) — e.g. Users, Access Review, Members"| Top["layout=#quot;top#quot;: full-width bar above the table, fields in a wrapping row"]
 ```
 
 Leave an existing `layout="side"` consumer alone unless it actually has this problem — don't move a narrow directory to `layout="top"` just because the option now exists; the default side placement remains correct for most of this app's filter/list pages (`RequirementsPage.tsx`, `ChangeRequestsPage.tsx`, `ProjectListPage.tsx`, and the rest listed in "Pattern: `FilterPanel`" above are not directories at all in "Pattern: directories at scale"'s sense, and stay on `layout="side"` unchanged).
@@ -544,7 +575,7 @@ flowchart TD
   B -->|"Clear selection"| A
   B -->|"Archive selected"| C["ConfirmDialog (Tier 1): 'Archive N requirements?'"]
   B -->|"Move to stage"| D["Popover: pick a stage"]
-  D -->|"Move"| E["ConfirmDialog (Tier 1): 'Move N requirements to \"Stage\"?'"]
+  D -->|"Move"| E["ConfirmDialog (Tier 1): 'Move N requirements to #quot;Stage#quot;?'"]
   C -->|"Confirm"| F["Sequential loop over the existing single-row endpoint, once per selected row"]
   E -->|"Confirm"| F
   F --> G["Toast: 'N updated', or 'N updated, M failed' if any row errored"]

@@ -49,6 +49,7 @@ import importlib.metadata
 import importlib.util
 import logging
 import os
+import re
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -929,6 +930,208 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
     return resolved
 
 
+# --- Scoring schemes (Module 1 Phase 10 — generic scoring-matrix core) -----
+
+# The fixed design-system palette a rating band may be coloured with — the
+# same tone vocabulary as the frontend's `.badge--*` modifiers, not a
+# per-module list, so no module ever needs an entry added here.
+SCORING_BAND_TONES: frozenset[str] = frozenset({"muted", "info", "accent", "warning", "danger"})
+_SCORING_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+MAX_SCORING_BANDS = 10
+
+
+def validate_scoring_bands(bands: list[tuple[str, float, str]]) -> None:
+    """Validates one rating-band set (shared by registry defaults and the
+    org/project band-override endpoints, so both obey the same rules).
+
+    Args:
+        bands: `(label, min_score, tone)` triples in ascending order.
+            `min_score` is a *normalised* threshold (score ÷ the model's
+            maximum possible score), so bands survive an org re-weighting
+            its levels.
+
+    Raises:
+        ValueError: If the set is empty or longer than `MAX_SCORING_BANDS`,
+            the first threshold isn't 0, thresholds aren't strictly
+            increasing within [0, 1), a label is blank/duplicated, or a
+            tone isn't in `SCORING_BAND_TONES`.
+    """
+    if not bands or len(bands) > MAX_SCORING_BANDS:
+        raise ValueError(f"A band set needs between 1 and {MAX_SCORING_BANDS} bands.")
+    if bands[0][1] != 0:
+        raise ValueError("The first band must start at 0.")
+    labels: set[str] = set()
+    previous = -1.0
+    for label, min_score, tone in bands:
+        if not label.strip():
+            raise ValueError("Band labels must not be blank.")
+        if label.strip().lower() in labels:
+            raise ValueError(f"Duplicate band label '{label}'.")
+        labels.add(label.strip().lower())
+        if not 0 <= min_score < 1 or min_score <= previous:
+            raise ValueError("Band thresholds must be strictly increasing and within [0, 1).")
+        previous = min_score
+        if tone not in SCORING_BAND_TONES:
+            raise ValueError(f"Unknown band tone '{tone}'.")
+
+
+@dataclass(frozen=True)
+class ScoringLevelDefault:
+    """One seeded level of a scoring axis (e.g. Severity "Blocker", weight 5).
+
+    Attributes:
+        name: Display name, unique within the axis.
+        weight: Positive numeric weight, unique within the axis; levels are
+            always ordered by weight, so the highest weight is the axis's
+            top level.
+        description: Optional guidance shown beside the level when scoring.
+    """
+
+    name: str
+    weight: float
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class ScoringAxisDefinition:
+    """One scoring input (e.g. Severity) a module registers.
+
+    Attributes:
+        key: Stable machine key, unique within its scheme.
+        label: Display label.
+        description: Optional guidance for scorers.
+        default_levels: Levels seeded into every organisation (at least 2).
+    """
+
+    key: str
+    label: str
+    default_levels: tuple[ScoringLevelDefault, ...]
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class ScoringBandDefault:
+    """One default rating band (e.g. "High" from normalised score 0.5).
+
+    Attributes:
+        label: Display label.
+        min_score: Normalised lower bound in [0, 1).
+        tone: One of `SCORING_BAND_TONES`.
+    """
+
+    label: str
+    min_score: float
+    tone: str
+
+
+@dataclass(frozen=True)
+class ScoringModelDefinition:
+    """A named combination of axes (e.g. S×F) whose score is the product of
+    the chosen levels' weights.
+
+    Attributes:
+        key: Stable machine key, unique within its scheme.
+        label: Display label.
+        axis_keys: The axes combined (≥1); the first two are the matrix
+            chart's rows (Y) and columns (X).
+        default_bands: Optional default rating bands (empty = no banding
+            until an org/project defines some).
+    """
+
+    key: str
+    label: str
+    axis_keys: tuple[str, ...]
+    default_bands: tuple[ScoringBandDefault, ...] = ()
+
+
+@dataclass(frozen=True)
+class ScoringSchemeDefinition:
+    """A module's scoring scheme: its axes, models and defaults, resolved
+    generically by `app.services.scoring` (core) so no module-specific code
+    lives in core and no core enum is hand-edited per module.
+
+    Attributes:
+        key: Globally unique scheme key (also its URL segment).
+        label: Display label.
+        axes: The scheme's scoring axes.
+        models: Named axis combinations.
+        default_model_key: The system default model (bottom of the
+            project → ancestor → org → system resolution chain).
+        admin_role_key: Optional key of one of the registering module's
+            own roles whose holders (plus org admins) may edit the org-level
+            configuration. `None` = org admins only.
+        count_level_usage: Optional `(db, level_id) -> int` returning how
+            many module rows reference a level, so core can block or
+            reassign a delete. `None` = levels are never referenced.
+        reassign_level_usage: Optional `(db, from_level_id, to_level_id)`
+            moving those references. Required whenever `count_level_usage`
+            is set.
+
+    Raises:
+        ValueError: On construction, if keys are malformed or duplicated,
+            an axis has fewer than 2 levels or duplicate names/weights, a
+            model references an unknown axis, the default model is unknown,
+            default bands are invalid, or only one usage hook is supplied.
+    """
+
+    key: str
+    label: str
+    axes: tuple[ScoringAxisDefinition, ...]
+    models: tuple[ScoringModelDefinition, ...]
+    default_model_key: str
+    admin_role_key: str | None = None
+    count_level_usage: Callable[[Session, uuid.UUID], int] | None = None
+    reassign_level_usage: Callable[[Session, uuid.UUID, uuid.UUID], None] | None = None
+
+    def __post_init__(self) -> None:
+        """Validates the scheme's internal consistency (see class docstring)."""
+        if not _SCORING_KEY_PATTERN.match(self.key):
+            raise ValueError(f"Invalid scoring scheme key '{self.key}'.")
+        axis_keys = [a.key for a in self.axes]
+        if not axis_keys or len(set(axis_keys)) != len(axis_keys):
+            raise ValueError(f"Scheme '{self.key}' needs at least one axis and unique axis keys.")
+        for axis in self.axes:
+            if not _SCORING_KEY_PATTERN.match(axis.key):
+                raise ValueError(f"Invalid scoring axis key '{axis.key}'.")
+            names = {lvl.name.strip().lower() for lvl in axis.default_levels}
+            weights = {lvl.weight for lvl in axis.default_levels}
+            count = len(axis.default_levels)
+            if count < 2 or len(names) != count or len(weights) != count or min(weights) <= 0:
+                raise ValueError(f"Axis '{axis.key}' needs ≥2 levels with unique names and unique positive weights.")
+        model_keys = [m.key for m in self.models]
+        if not model_keys or len(set(model_keys)) != len(model_keys):
+            raise ValueError(f"Scheme '{self.key}' needs at least one model and unique model keys.")
+        for model in self.models:
+            if not _SCORING_KEY_PATTERN.match(model.key):
+                raise ValueError(f"Invalid scoring model key '{model.key}'.")
+            if not model.axis_keys or not set(model.axis_keys) <= set(axis_keys) or len(set(model.axis_keys)) != len(model.axis_keys):
+                raise ValueError(f"Model '{model.key}' must combine distinct axes of scheme '{self.key}'.")
+            if model.default_bands:
+                validate_scoring_bands([(b.label, b.min_score, b.tone) for b in model.default_bands])
+        if self.default_model_key not in model_keys:
+            raise ValueError(f"Default model '{self.default_model_key}' is not one of scheme '{self.key}'s models.")
+        if (self.count_level_usage is None) != (self.reassign_level_usage is None):
+            raise ValueError("count_level_usage and reassign_level_usage must be supplied together.")
+
+    def axis(self, axis_key: str) -> ScoringAxisDefinition | None:
+        """Returns the axis with `axis_key`, or `None`."""
+        return next((a for a in self.axes if a.key == axis_key), None)
+
+    def model(self, model_key: str) -> ScoringModelDefinition | None:
+        """Returns the model with `model_key`, or `None`."""
+        return next((m for m in self.models if m.key == model_key), None)
+
+
+@dataclass(frozen=True)
+class RegisteredScoringScheme:
+    """A scoring scheme paired with the key of the module that registered
+    it — the module key drives enablement gating and `admin_role_key`
+    resolution."""
+
+    module_key: str
+    scheme: ScoringSchemeDefinition
+
+
 @dataclass(frozen=True)
 class ModuleDefinition:
     """Declares a single module — first-party or third-party — to the
@@ -1317,6 +1520,12 @@ class ModuleDefinition:
             Empty tuple (the default) for a module with no sub-component-
             level toggling of its own — every module before Context &
             Strategy's own `"strategy"` entry needs no change.
+        scoring_schemes: Module 1 (Context & Strategy) Phase 10 — scoring
+            schemes (axes with ordered, weighted levels; named models;
+            default rating bands) this module registers into core's generic
+            scoring-matrix mechanism (`app.services.scoring`). Merged by
+            `get_all_registered_scoring_schemes` (below). Empty for a module
+            that scores nothing.
     """
 
     key: str
@@ -1348,6 +1557,7 @@ class ModuleDefinition:
     subtype_providers: dict[str, Callable[[Session, uuid.UUID], list[str]]] = field(default_factory=dict)
     entity_scopes: dict[str, EntityScopeDefinition] = field(default_factory=dict)
     sub_components: tuple[ModuleSubComponentDefinition, ...] = field(default=())
+    scoring_schemes: tuple[ScoringSchemeDefinition, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -2503,6 +2713,10 @@ def run_on_org_created_hooks(
     caller passed one explicitly (even an empty set, an explicit "seed none
     of these"), otherwise `default_org_creation_choice_keys()`.
 
+    Also seeds the organisation's default levels for every registered
+    scoring scheme (`services.scoring.seed_missing_scoring_levels`, Module
+    1 Phase 10) — generic core behaviour, not a per-module hook.
+
     A module with neither hook (the default `None` for both) is simply
     skipped. Does not commit — each hook only adds rows, the same
     convention `seed_project_statuses`/`seed_link_types` already follow;
@@ -2519,9 +2733,12 @@ def run_on_org_created_hooks(
             keys`'s own docstring for why `None`, not an empty set, is the
             "caller didn't specify" sentinel).
     """
+    from app.services.scoring import seed_missing_scoring_levels
+
     resolved_keys = (
         default_org_creation_choice_keys() if selected_choice_keys is None else selected_choice_keys
     )
+    seed_missing_scoring_levels(db, organization_id)
     for definition in get_module_registry().values():
         if definition.on_org_created is not None:
             definition.on_org_created(db, organization_id)
@@ -2613,6 +2830,30 @@ def get_all_registered_artefact_types() -> set[str]:
     for definition in get_module_registry().values():
         types.update(definition.artefact_types)
     return types
+
+
+def get_all_registered_scoring_schemes() -> dict[str, RegisteredScoringScheme]:
+    """Merges every registered module's `scoring_schemes` into one
+    `{scheme_key: RegisteredScoringScheme}` mapping (Module 1 Phase 10).
+
+    A scheme key claimed by two modules keeps the first registration (in
+    registry order) and logs the rejection, the same "earlier wins" rule
+    `build_registry` applies to module keys.
+
+    Returns:
+        Every currently registered scoring scheme, keyed by scheme key.
+    """
+    schemes: dict[str, RegisteredScoringScheme] = {}
+    for definition in get_module_registry().values():
+        for scheme in definition.scoring_schemes:
+            if scheme.key in schemes:
+                logger.error(
+                    "Scoring scheme '%s' from module '%s' collides with module '%s'; ignoring it.",
+                    scheme.key, definition.key, schemes[scheme.key].module_key,
+                )
+                continue
+            schemes[scheme.key] = RegisteredScoringScheme(module_key=definition.key, scheme=scheme)
+    return schemes
 
 
 def get_subtype_providers() -> dict[str, Callable[[Session, uuid.UUID], list[str]]]:

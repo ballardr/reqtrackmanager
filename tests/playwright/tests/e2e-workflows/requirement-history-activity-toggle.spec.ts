@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS } from "./helpers";
+import { loginAs, openRequirementByName, PERSONAS } from "./helpers";
 
 /**
  * Job to be done: `RequirementDetailPage`'s previously-separate "Change
@@ -29,7 +29,7 @@ test.describe("requirement detail: merged History/Activity card and its view tog
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(name);
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.getByText(name).click();
+    await openRequirementByName(page, name);
 
     await test.step("editing the requirement produces a version-history row and an activity entry", async () => {
       await page.getByLabel("Reasoning", { exact: true }).fill("Updated reasoning for the toggle test.");

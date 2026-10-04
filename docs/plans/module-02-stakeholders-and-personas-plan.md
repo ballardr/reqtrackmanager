@@ -88,6 +88,16 @@ list, and scope model before Phase 1.
    should remain valid for simple projects, with the Need record available
    but not forced, matching the module's own "independently of formal
    Traceability" framing (§10.5's closing line).
+5. **Persona importance/weight (added 2026-10-04, required by Module 1's
+   Reporting extension).** Module 1 Phase 11 scores Pain Points per
+   persona and defaults to a *weighted average* roll-up, so a Persona needs
+   a numeric importance/weight. If none is set, every persona gets equal
+   weight. **Decided by: User** (weighted-average default, Module 1 Phase
+   9 Q5). Personas must also be referenceable through the generic
+   `ArtefactLink`/registry target mechanism, because Module 1 refers to
+   them by `target_type`/`target_id` and never by FK. Build order: this
+   module's Phases 0–1 come before Module 1 Phase 11 (**Decided by:
+   User**).
 4. **Comments/attachments reuse.** Same pattern question as other modules —
    confirm reuse of `ReviewComment`/`CommentFile` via a new `ReviewTargetType`
    member rather than a bespoke table.

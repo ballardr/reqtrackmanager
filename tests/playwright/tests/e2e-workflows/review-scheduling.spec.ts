@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: a requirement can be given a scheduled review (C-R-06),
@@ -33,8 +33,7 @@ test.describe("requirement review scheduling", () => {
       await expect(panel.getByRole("combobox").first()).toContainText("Hardware");
       await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
       await page.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(page.getByText(reqName)).toBeVisible();
-      await page.getByText(reqName).click();
+      await openRequirementByName(page, reqName);
 
       projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
       requirementId = page.url().match(/requirements\/([0-9a-f-]+)/)![1];

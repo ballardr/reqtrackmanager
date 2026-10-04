@@ -75,16 +75,18 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
 };
 
 // Platform review 2026-09, Phase 4 (status colour). A `BadgeTone` is one of
-// only 4 values, each backed by a `.badge--<tone>` CSS modifier
+// only 5 values, each backed by a `.badge--<tone>` CSS modifier
 // (styles/theme.css) — muted = not yet actionable (draft/withdrawn/
 // archived), info = awaiting a decision (in review/pending — deliberately
 // NOT --color-warning, which stays reserved for things that need
 // attention, not routine in-progress states), accent = a positive
 // terminal outcome (approved/completed), danger = a negative terminal
-// outcome (rejected/failed). Every status/outcome enum rendered as a
+// outcome (rejected/failed), warning = needs attention (used by scoring
+// rating bands, e.g. a "High" pain point — Module 1 Phase 10; the backend's
+// `SCORING_BAND_TONES` mirrors this set). Every status/outcome enum rendered as a
 // badge should have a *_TONE map here alongside its *_LABEL map, never an
 // inline colour at the call site.
-export type BadgeTone = "muted" | "info" | "accent" | "danger";
+export type BadgeTone = "muted" | "info" | "accent" | "warning" | "danger";
 export const REQUIREMENT_STATUS_TONE: Record<RequirementStatus, BadgeTone> = {
   draft: "muted",
   reviewed: "info",

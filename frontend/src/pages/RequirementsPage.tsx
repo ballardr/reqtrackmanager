@@ -168,7 +168,31 @@ export function RequirementsPage() {
   const bulkMoveTriggerRef = useRef<HTMLButtonElement>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
+  // The latest filter/sort state, read by `listParams` instead of the
+  // calling render's closure. A reload started from an older render — the
+  // post-create/post-bulk-op `reload()`, which runs after an `await` —
+  // otherwise lists with the filters as they were *before* that await,
+  // and, being the newest request, wins over (and silently discards) a
+  // search/filter the user changed meanwhile (found 2026-10-04 via the e2e
+  // suite: create a requirement, search for it, and the create's own reload
+  // wiped the search). Declared before the reload effect below so it is
+  // always current by the time that effect runs in the same commit.
+  const filterStateRef = useRef({
+    search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
+    hasCommentsOnly, onlyWatched, includeArchived, sort,
+  });
+  useEffect(() => {
+    filterStateRef.current = {
+      search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
+      hasCommentsOnly, onlyWatched, includeArchived, sort,
+    };
+  });
+
   function listParams(offset: number): URLSearchParams {
+    const {
+      search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
+      hasCommentsOnly, onlyWatched, includeArchived, sort,
+    } = filterStateRef.current;
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);

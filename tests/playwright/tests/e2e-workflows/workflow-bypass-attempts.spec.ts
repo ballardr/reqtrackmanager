@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { loginAs, logout, openRequirementByName, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -212,8 +212,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
         await expect(panel.getByRole("combobox").first()).toContainText("Hardware");
         await page.getByPlaceholder("Name", { exact: true }).fill(newReqName);
         await page.getByRole("button", { name: "Create", exact: true }).click();
-        await expect(page.getByText(newReqName)).toBeVisible();
-        await page.getByText(newReqName).click();
+        await openRequirementByName(page, newReqName);
         // Same route-transition race as above.
         await expect(page.locator("h1")).toContainText("—");
         newCode = (await page.locator("h1").textContent())!.split(" — ")[0].trim();

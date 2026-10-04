@@ -63,20 +63,32 @@ test.describe("requirement actions", () => {
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.getByText(PROJECT_NAMES.alpha1).click();
-    await page.getByRole("link", { name: "Requirements", exact: true }).click();
+    const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
+    const reqUrl: Record<string, string> = {};
 
+    // Created via the API and opened by URL (2026-10-04): creating them
+    // through the UI and then finding them by text in Alpha-1's list — which
+    // grows by two every run — pushed this test to ~25s of its 30s budget,
+    // and it timed out under load. Requirement creation itself is covered
+    // by other specs; this one is about actions.
     await test.step("create two throwaway target requirements", async () => {
+      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const headers = { Authorization: `Bearer ${token}` };
+      const api = `http://localhost:8000/api/v1/projects/${projectId}`;
+      const categories: { id: string; component_id: string }[] = await (
+        await page.request.get(`${api}/categories`, { headers })
+      ).json();
       for (const name of [req1Name, req2Name]) {
-        await page.getByRole("button", { name: "New Requirement" }).click();
-        const createPanel = page.getByRole("dialog", { name: "New Requirement" });
-        await createPanel.getByPlaceholder("Name", { exact: true }).fill(name);
-        await createPanel.getByRole("button", { name: "Create", exact: true }).click();
-        await expect(createPanel).not.toBeVisible();
+        const resp = await page.request.post(`${api}/requirements`, {
+          headers, data: { name, component_id: categories[0].component_id, category_id: categories[0].id },
+        });
+        expect(resp.ok()).toBeTruthy();
+        reqUrl[name] = `/projects/${projectId}/requirements/${(await resp.json()).id}`;
       }
     });
 
     await test.step("create and link a new action from the first requirement's Actions card", async () => {
-      await page.getByText(req1Name).click();
+      await page.goto(reqUrl[req1Name]);
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const panel = page.getByRole("dialog", { name: "Create and link a new action" });
       await panel.getByPlaceholder("Title").fill(actionTitle);
@@ -113,15 +125,13 @@ test.describe("requirement actions", () => {
     });
 
     await test.step("the first requirement shows the action with its Failed outcome", async () => {
-      await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(req1Name).click();
+      await page.goto(reqUrl[req1Name]);
       await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
       await expect(page.getByText("Failed", { exact: true })).toBeVisible();
     });
 
     await test.step("link the same action to the second requirement via 'link existing action'", async () => {
-      await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(req2Name).click();
+      await page.goto(reqUrl[req2Name]);
       // The trigger button, the popover's own dialog aria-label, its
       // `<select>`, and its confirm button all carry the same accessible
       // text ("Link existing action") — the trigger click is unambiguous
@@ -138,8 +148,7 @@ test.describe("requirement actions", () => {
     });
 
     await test.step("unlinking from the first requirement (confirming the ConfirmDialog) does not remove it from the second", async () => {
-      await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(req1Name).click();
+      await page.goto(reqUrl[req1Name]);
       const actionRow = page.locator(".row", { hasText: actionTitle }).last();
       await actionRow.getByTitle("Unlink").click();
       const dialog = page.getByRole("dialog", { name: "Unlink this action?" });
@@ -152,8 +161,7 @@ test.describe("requirement actions", () => {
       // role only matches its actual rendered `<a>`.
       await expect(page.getByRole("link", { name: actionTitle })).toHaveCount(0);
 
-      await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(req2Name).click();
+      await page.goto(reqUrl[req2Name]);
       await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
     });
 

@@ -669,6 +669,7 @@ const en = {
     deleteComponent: "Delete this {component}",
     deleteCategory: "Delete this {category}",
     deleteLastOneHint: "This is the only one — create another first so there's something to reassign to.",
+    deleteMinItemsHint: (n: number) => `At least ${n} are required — add another before deleting this one.`,
     deleteComponentHasCategoriesHint: "Delete or reassign this {component}'s {categories} first.",
     reassignExistingTo: "Reassign existing items to",
     confirmDelete: "Confirm delete",

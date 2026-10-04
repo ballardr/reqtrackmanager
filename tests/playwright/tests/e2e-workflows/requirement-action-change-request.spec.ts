@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * 2026-08 UX audit roadmap item 514: once a requirement is locked
@@ -33,7 +33,7 @@ test.describe("requirement action change requests", () => {
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.getByText(reqName).click();
+    await openRequirementByName(page, reqName);
 
     await test.step("approve the requirement, locking it", async () => {
       await page.getByRole("button", { name: "Approve", exact: true }).click();
@@ -79,7 +79,7 @@ test.describe("requirement action change requests", () => {
 
     await test.step("the action now appears on the requirement", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(reqName).click();
+      await openRequirementByName(page, reqName);
       await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
     });
   });

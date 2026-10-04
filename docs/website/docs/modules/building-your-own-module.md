@@ -95,6 +95,10 @@ A handful of further optional hooks let a module react to core lifecycle events,
 
 All default to `None`/no-op; declare only the ones your module's own lifecycle actually needs.
 
+## Scoring schemes
+
+If your module scores something (likelihood × consequence, severity × frequency, …), declare a **`ScoringSchemeDefinition`** on `scoring_schemes` instead of building your own matrix tables: its axes (each with default levels — a name, a positive weight and optional guidance), the models that combine them, a default model, optional default rating bands per model, and optionally one of your own roles (`admin_role_key`) that may edit the organisation's configuration alongside org admins. Core seeds each organisation's levels, stores the org default and per-project overrides (inherited down the project hierarchy), computes scores, and serves the API. On the frontend, render the shared `ScoringSchemeEditor` in one of your `orgAdminSections` and `ProjectScoringSettings` in one of your `projectAdminSections`, passing your scheme key. Once your own rows reference levels, also set `count_level_usage`/`reassign_level_usage` so a level can't be deleted out from under them. Context & Strategy's `pain_point` scheme is the reference example.
+
 ## Frontend integration (Tier A)
 
 A first-party module ships its own route components and registers them in its own `frontend/src/modules/<key>/module.ts` file — auto-discovered at build time, with no hand-edit to any shared registry file:

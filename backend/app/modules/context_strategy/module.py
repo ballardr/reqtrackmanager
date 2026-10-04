@@ -134,6 +134,11 @@ that gate; rather than special-case an org-only variant of the gate this
 phase's own scope never asked for, this phase's MCP surface stays
 project-scoped only throughout, matching Decision Management's own
 project-only MCP tool set (Decision itself has no org scope either).
+
+Phase 10 (Reporting extension) adds `scoring_schemes` — the `pain_point`
+scheme (`scoring.py`) registered into core's generic scoring-matrix
+mechanism, and widens `pain_point_type_admin` to cover its org-level
+configuration.
 """
 
 from __future__ import annotations
@@ -150,6 +155,7 @@ from app.modules.context_strategy._shared import (
 from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSION as _OPEN_QUESTION_RESOLVE_PERMISSION
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
+from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
     GUIDING_PRINCIPLE_ARTEFACT_TYPE,
@@ -862,8 +868,9 @@ MODULE_DEFINITION = ModuleDefinition(
             name="Pain Point Type Admin",
             description=(
                 "Manages this organisation's shared Pain Point type vocabulary (Market/User/Operator by default, "
-                "plus any org-added types) — add/rename/disable/remove, per source overview §6.2. Organisation-"
-                "scoped; does not by itself grant any project-level Pain Point Manager capability."
+                "plus any org-added types) — add/rename/disable/remove, per source overview §6.2 — and its Pain "
+                "Point scoring configuration (Severity/Frequency/Confidence levels, default model, rating bands). "
+                "Organisation-scoped; does not by itself grant any project-level Pain Point Manager capability."
             ),
             scope="org",
         ),
@@ -930,4 +937,5 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
     ),
     mcp_tools=_build_mcp_tools(),
+    scoring_schemes=(PAIN_POINT_SCORING_SCHEME,),
 )

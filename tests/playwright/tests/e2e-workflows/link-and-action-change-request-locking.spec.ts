@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: Platform review 2026-09, Phase 8. Once a requirement is
@@ -73,7 +73,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
     });
 
     await test.step("link an action and a requirement to reqA directly (still draft, ungated), then approve it", async () => {
-      await page.getByText(reqAName).click();
+      await openRequirementByName(page, reqAName);
 
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const actionPanel = page.getByRole("dialog", { name: "Create and link a new action" });
@@ -126,7 +126,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(reqAName).click();
+      await openRequirementByName(page, reqAName);
       await expect(page.getByRole("link", { name: actionTitle })).toHaveCount(0);
     });
 
@@ -155,7 +155,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(reqAName).click();
+      await openRequirementByName(page, reqAName);
       await expect(page.getByRole("link", { name: reqBName })).toHaveCount(0);
     });
 
@@ -188,7 +188,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(reqAName).click();
+      await openRequirementByName(page, reqAName);
       await expect(page.getByRole("link", { name: reqCName })).toBeVisible();
     });
   });

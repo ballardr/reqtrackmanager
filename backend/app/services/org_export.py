@@ -130,6 +130,7 @@ from app.services.project_export import (
     new_project_from_bundle_data,
 )
 from app.services.rbac import would_create_org_group_cycle
+from app.services.scoring import seed_missing_scoring_levels
 
 ORG_BUNDLE_KIND = "org-export"
 ORG_BUNDLE_FORMAT_VERSION = 1
@@ -628,6 +629,8 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     # exist before it creates this org's first imported project.
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    # Scoring levels likewise start at registry defaults (Module 1 Phase 10).
+    seed_missing_scoring_levels(db, org.id)
     if data.get("source_sso_only"):
         warnings.add(
             "The source organisation had sso_only enabled; this was not carried over (no working OIDC secret is "

@@ -8617,3 +8617,118 @@ User review of Org Admin → Modules: sub-component switches sat in the unlabell
 **Also fixed:** six module lifecycle Playwright specs used a bare `getByRole("switch")` in a row that had two switches since 0055 (strict-mode ambiguous) — moved to a shared `setOrgModuleAvailability` helper; a pre-existing `react-hooks/set-state-in-effect` warning on `ProjectAdminPage.tsx`'s `reload()` effect, documented as a false positive (every setState runs after an `await`). **Not fixed:** the same rule's warning on the `openGroup` URL-param effect — moving the adoption into render broke `project-admin-groups-and-fields.spec.ts` (nested org-group removal stopped updating the panel), so the original effect was kept pending a proper fix.
 
 **Verification:** full backend pytest 1415 passed / 16 failed — 14 the known host-only mailhog DNS failures (invites/OIDC/import), 2 module tests that added a project row copy-on-create now writes (fixed, 37/37 on rerun). Storybook 144/144 on affected files. Playwright: module/overview/lifecycle specs 29/29 (overrides spec split in two to stay within the default timeout; `org-overview.spec.ts` made idempotent by restoring Compliance's starting state instead of assuming one). Screenshots recaptured.
+
+## Module 1 (Context & Strategy) Reporting extension — scoring & report design (2026-10-04)
+
+Planning only; nothing implemented yet. Full per-question record, with
+`Decided by:` tags, is in [module-01-context-and-strategy-plan.md](plans/module-01-context-and-strategy-plan.md)'s
+Phase 9.
+
+- **ICE replaced for Pain Points by per-persona scoring** on Severity
+  (= Impact), Frequency and Confidence. Models S×F, S×C and S×F×C, chosen
+  when viewing, with org/project defaults. (Decided by: User.) *Why:*
+  "Ease" describes a solution, not a problem, and impact differs by
+  persona.
+- **Roll-up chosen when viewing, defaulting to a weighted average over
+  scored personas only**, plus a Blocker badge that shows whichever
+  roll-up is chosen. (Roll-up: Decided by: User. Badge: Decided by: Agent,
+  accepted by the user.)
+- **Scoring matrices become generic core infrastructure** that Module 3
+  (Risk) will reuse. (Decided by: User.) *Why:* avoids two matrix
+  implementations and per-module core edits.
+- **Module 2 (Personas) is built before Module 1 Phase 11.** No persona
+  link means the Pain Point applies to all personas, and missing links are
+  warnings only until Modules 7/8. (Decided by: User.)
+- **New Module 13 (Product Tiers)**: project-scoped with nested fallback.
+  Intentional pain points are flagged, linked to tiers, and kept out of
+  the fix ranking. (Decided by: User.)
+- **Reports R1–R9 are built in the module**, behind a generic report hook
+  designed as Module 10's registration API. Org-wide variants need a
+  dedicated permission. (Decided by: User.)
+
+## Module 1 (Context & Strategy) Phase 10 — generic scoring-matrix core (2026-10-04)
+
+Core, module-agnostic scoring: a module registers a `ScoringSchemeDefinition`
+(axes with weighted levels, models, default bands) on `ModuleDefinition.
+scoring_schemes`; core stores it in `scoring_levels` (org-only),
+`scoring_model_defaults` and `scoring_bands` (org default + project
+override, migration 0057), resolves it, computes scores, and serves
+`/orgs/{id}/scoring-schemes/...` and `/projects/{id}/scoring-schemes/...`.
+Shared UI (`ScoringSchemeEditor`, `ProjectScoringSettings`,
+`ScoringMatrixChart`, `ScoringLevelPicker`, `ScoringModelSwitcher`) is
+embedded by Context & Strategy under "Pain Point Scoring" admin sections.
+Full decision list with tags: [module-01-context-and-strategy-plan.md](plans/module-01-context-and-strategy-plan.md)'s
+"Phase 10 notes"; extension-point reference: [modules.md](modules.md) §4d.
+
+- **Bands org-editable with project override; editor in the module's own
+  admin section; project UI in this phase.** (Decided by: User.)
+- **Levels org-only, ordered by unique weight; bands per model on the
+  normalised score; product-only models; seeding by org create/import plus
+  a startup sync instead of a migration backfill; override-only project rows
+  resolved project → ancestor → org → module default.** (Decided by: Agent.)
+  *Why:* scores reference levels by id, so one vocabulary per org; the sync
+  also covers modules installed after an org exists; the hierarchy fallback
+  follows `CLAUDE.md`'s nested-projects rule.
+- **`warning` added as a fifth `BadgeTone`** for "needs attention" rating
+  bands; `docs/ux-style-guide.md` updated. (Decided by: Agent — a deliberate
+  style-guide change, flagged to the user.)
+- **Shared components extended, not forked:** `DefinitionList` (optional
+  `onMove`, `minItems`, optional/numeric fields), `LabeledSelect`
+  (`placeholder={null}`), `OverridePill` (`defaultLabel`/`resetLabel`).
+  (Decided by: Agent.)
+- **Also fixed:** two pre-existing `docs/ux-style-guide.md` Mermaid diagrams
+  that didn't parse (escaped `\"` in labels → `#quot;`).
+
+**Security review (identify → verify → remediate, per the change-management
+policy — this adds authorization-gated endpoints, audit logging and
+org/project-scoped data):**
+- *Identified:* (1) the org list endpoint skipped the org-active/2FA checks
+  the other routes get; (2) weights/thresholds were validated before being
+  rounded to the 4-decimal column scale, so a value could silently become 0
+  or collide with an existing weight (500 from the unique constraint);
+  (3) concurrent level deletes could both pass the two-level floor;
+  (4) concurrent saves of the same name/weight/default raised 500s.
+- *Remediated:* (1) the list route now uses `require_org_role` (PAT scope,
+  org active, 2FA, membership); (2) values are quantised before validation
+  (≤0 or duplicate → 400); (3) `delete_level` takes the org row lock first;
+  (4) unique-constraint races return 409.
+- *Verified:* reads need membership/project view; org writes need org admin
+  or the scheme's `admin_role_key` role (`pain_point_type_admin` for Pain
+  Points); project writes need `require_project_manage`; everything 404s
+  with the module disabled; levels/reassign targets are checked against
+  org + scheme (+ axis); every write is audit-logged via `log_event`; no
+  Restricted data involved. Covered by `tests/test_scoring_matrix.py`
+  (gating, cross-org isolation, precision, floor, reassignment, resolution)
+  and `test_context_strategy_scoring.py`.
+- *Known gap (unchanged, consistent with statuses/link types):* org bundle
+  export doesn't carry scoring customisations; imports start at defaults.
+
+**Pre-existing e2e failures fixed during this phase's verification**
+(Decided by: User — "you must fix them"; none were caused by Phase 10, which
+was confirmed by re-running them against a frontend built from `HEAD`):
+- **Leaked shared state:**
+  - `project-admin-groups-and-fields`: a terminology override leaked onto
+    Beta-2.
+  - `requirement-links`: a `HW-FN-005 → SW-PERF-006` link leaked on Alpha-1.
+  - Gamma Compliance was left "enabled but not default for projects" by a
+    2026-09-29 spec run.
+  - Cause in every case: a test that times out closes its page before its
+    `finally` cleanup can call the API. Each affected spec now sweeps its
+    own leftovers before starting. Gamma's data was repaired once via the
+    API; its leaking spec had already been fixed.
+- **Save-then-reload races:**
+  - `ai-approval-via-mcp` and the terminology test clicked Save and reloaded
+    straight away, which could cancel the save before it reached the server.
+  - Fix: a new `clickAndAwaitSave` helper waits for the save's response
+    before reloading.
+- **Tests at the edge of their time budget** (25–28s against 30s, timing
+  out under load):
+  - `project-admin-structural` and `project-admin-groups-and-fields` are
+    each split into three independent tests.
+  - `requirement-actions`, `role-display-collapsing` and
+    `stage-review-and-completion` now do their setup through the API and
+    open pages by URL. Only the behaviour each spec actually tests stays in
+    the UI.
+  - Stage-review keeps its earlier root-caused 45s budget, but now runs in
+    ~25s instead of ~32s.
+  - No other timeouts were raised.

@@ -346,6 +346,7 @@ class ModuleDefinition:
     get_router: Callable[[], APIRouter | None]   # called once; None if no HTTP endpoints
     roles: tuple[ModuleRoleDefinition, ...] = ()  # module-contributed RBAC roles
     sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
+    scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     models_import_path: str | None = None       # dotted path to your ORM models module
@@ -771,6 +772,47 @@ Full design and phase-by-phase detail lives in that plan, not here — this
 entry exists only so a module author extending either the core `Module
 RoleDefinition`/`ModuleDefinition` contract or their own module's roles
 knows these fields exist.
+
+### 4d. Scoring schemes: configurable scoring matrices (Module 1 Phase 10)
+
+A module that scores something (Pain Points today; Risk, Module 3, next)
+registers a `ScoringSchemeDefinition` on `ModuleDefinition.scoring_schemes`
+instead of building its own matrix tables. Core owns storage, resolution,
+maths, API and UI; the module only declares keys and defaults.
+
+```mermaid
+flowchart LR
+    MOD["Module: ScoringSchemeDefinition<br/>axes · models · default bands"] --> REG["registry.get_all_registered_scoring_schemes()"]
+    REG --> SVC["services/scoring.py<br/>seed · resolve · compute"]
+    SVC --> T1[("scoring_levels<br/>org only")]
+    SVC --> T2[("scoring_model_defaults<br/>org + project")]
+    SVC --> T3[("scoring_bands<br/>org + project")]
+    SVC --> API["/orgs/{id}/scoring-schemes/{key}<br/>/projects/{id}/scoring-schemes/{key}"]
+    API --> UI["ScoringSchemeEditor · ProjectScoringSettings<br/>embedded in the module's admin sections"]
+```
+
+- **Axes** have ordered, weighted levels (≥2, unique names and weights,
+  ordered by weight; the highest is the top level). Seeded per org on
+  creation/import and at every startup (`sync_scoring_levels`), so a module
+  installed later still gets levels. Org-only: module rows reference levels
+  by id.
+- **Models** combine axes; score = product of the chosen levels' weights,
+  "not scored" if any input is missing. **Bands** use the normalised score
+  (score ÷ maximum), so they survive re-weighting.
+- **Default model and bands** resolve project → nearest ancestor → org →
+  module default (the nested-projects fallback rule). No rows = inherit.
+- **Gating:** reads need org membership (org endpoints) or project
+  view-or-manage (project endpoints); org writes need org admin or the
+  scheme's `admin_role_key` module role; project writes need
+  `require_project_manage`. All 404 when the module is disabled. Writes are
+  audit-logged.
+- **Level references:** set `count_level_usage`/`reassign_level_usage`
+  once your own rows reference levels, so core can block a delete or
+  reassign references to another level on the same axis.
+- **UI:** embed `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
+  (project) in your own `orgAdminSections`/`projectAdminSections`, passing
+  your scheme key. `ScoringLevelPicker`, `ScoringModelSwitcher` and
+  `ScoringMatrixChart` are the shared scoring/viewing components.
 
 ---
 

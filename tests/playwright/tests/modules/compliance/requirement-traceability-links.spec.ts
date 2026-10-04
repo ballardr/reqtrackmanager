@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { loginAs, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
@@ -60,7 +60,7 @@ test.describe("Compliance Module: core requirement <-> compliance requirement tr
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(coreRequirementName);
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.getByText(coreRequirementName).click();
+    await openRequirementByName(page, coreRequirementName);
     await expect(page.getByRole("heading", { name: coreRequirementName })).toBeVisible();
 
     await test.step("add a compliance link via the shared 'Add link' modal's Compliance tab", async () => {

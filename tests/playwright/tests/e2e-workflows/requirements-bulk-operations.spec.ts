@@ -60,6 +60,12 @@ test.describe("requirements list: bulk operations", () => {
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "List view" }).click();
+    // Narrow the list to this run's own rows *before* creating them: the
+    // list is paginated and shared Alpha-1 grows every run, so a new row
+    // isn't guaranteed to be on page one. Setting the search once, up
+    // front, also avoids the search-vs-reload race described below — the
+    // search never changes again while archive/move reloads are in flight.
+    await page.getByPlaceholder("Search by name or ID").fill(String(stamp));
 
     await test.step("create four throwaway requirements", async () => {
       for (const name of names) {

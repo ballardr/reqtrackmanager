@@ -1,13 +1,52 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+
+/**
+ * Logs in as the Alpha/Beta org admin, opens Beta-2's Project Admin, and
+ * self-heals shared Beta-2 state an earlier timed-out run may have leaked.
+ * Each test below calls this, so every test runs standalone and in any
+ * order (CLAUDE.md test-independence rule).
+ *
+ * Returns the project id and the session token, captured up front because
+ * a `finally` backstop can't call `page.evaluate` once a timeout has closed
+ * the page.
+ */
+async function openBeta2Admin(page: Page): Promise<{ projectId: string; sessionToken: string | null }> {
+  await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+  await page.getByText(PROJECT_NAMES.beta2).click();
+  await page.getByRole("link", { name: "Project admin", exact: true }).click();
+  const projectId = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
+  const sessionToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+  const sessionHeaders = { Authorization: `Bearer ${sessionToken}` };
+
+  // Self-heal shared Beta-2 state an earlier *timed-out* run may have
+  // leaked (a timeout closes the page before `finally` can revert via the
+  // API — found 2026-10-04 when a run under heavy load left
+  // `{"requirement": "Spec"}` behind, failing every later run at the
+  // first "Requirements" nav click): reset terminology, and drop any
+  // required "Priority <timestamp>" field from an earlier run.
+  await page.request.put(`http://localhost:8000/api/v1/projects/${projectId}/terminology`, {
+    headers: sessionHeaders, data: { terminology: {} },
+  });
+  const leftoverFields: { id: string; name: string }[] = await page.request
+    .get(`http://localhost:8000/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`, { headers: sessionHeaders })
+    .then((r) => r.json());
+  for (const field of leftoverFields.filter((f) => /^(Priority|Safety critical) \d+$/.test(f.name))) {
+    await page.request.delete(`http://localhost:8000/api/v1/projects/${projectId}/custom-fields/${field.id}`, {
+      headers: sessionHeaders,
+    });
+  }
+  await page.reload();
+  return { projectId, sessionToken };
+}
 
 /**
  * Job to be done: per-project custom fields of all four types (C-C-01,
  * C-C-02), project group membership management (C-U-11), and per-project
  * terminology overrides (C-C-03).
  *
- * Uses Beta-2. The terminology change is reverted at the end of the test
+ * Uses Beta-2. The terminology change is reverted at the end of its test
  * since it's a shared, persistent project setting other specs' nav-label
  * assertions could otherwise be surprised by. The four custom fields are
  * each given a per-run timestamp suffix rather than a fixed name — Custom
@@ -17,20 +56,20 @@ import { loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectProjectA
  * behind, which upstream steps and other specs sharing this project can
  * then trip over. A unique name per run avoids that regardless of how many
  * times, or in what order, this spec has run against the current database.
+ *
+ * Split into three independent tests (2026-10-04) — as one test its steps
+ * alone took ~28s of the 30s default budget, so it timed out under load;
+ * each test now sets up and self-heals via `openBeta2Admin`. The
+ * `global-state-mutators` project runs them one at a time (`workers: 1`).
  */
 test.describe("project admin: custom fields, groups, and terminology", () => {
-  test("all four custom field types, group membership, and a terminology override", async ({ page }) => {
+  test("custom fields: each of the four types appears on the requirement form and can be deleted", async ({ page }) => {
     const suffix = Date.now();
     const verificationMethodField = `Verification method ${suffix}`;
     const detailedRationaleField = `Detailed rationale ${suffix}`;
     const safetyCriticalField = `Safety critical ${suffix}`;
     const priorityField = `Priority ${suffix}`;
-    let projectId = "";
-
-    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.beta2).click();
-    await page.getByRole("link", { name: "Project admin", exact: true }).click();
-    projectId = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
+    const { projectId, sessionToken } = await openBeta2Admin(page);
 
     try {
       await test.step("create a custom field of each type", async () => {
@@ -110,7 +149,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // and can't block anything, but it's cheap to sweep up alongside
       // `priorityField` here rather than leave it as one more never-used
       // row on an already heavily-accumulated shared project.
-      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token")).catch(() => null);
+      const token = sessionToken;
       if (token && projectId) {
         const authHeaders = { Authorization: `Bearer ${token}` };
         const fields: { id: string; name: string }[] = await page
@@ -130,6 +169,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         );
       }
     }
+  });
+
+  test("project groups: member add/remove, nesting, new group, and org-group role grants", async ({ page }) => {
+    const { projectId, sessionToken } = await openBeta2Admin(page);
 
     // No group is auto-created on project creation any more (follow-up UX
     // batch Phase C, 2026-08-31) — this spec creates its own throwaway
@@ -469,6 +512,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         );
       }
     });
+  });
+
+  test("terminology: override and revert a term", async ({ page }) => {
+    const { projectId, sessionToken } = await openBeta2Admin(page);
 
     await test.step("override and then revert a terminology term", async () => {
       // The revert at the end is wrapped in try/finally, with a direct API
@@ -497,7 +544,12 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         // sit on the same screen.
         await selectProjectAdminGroup(page, "Project settings");
         await page.getByPlaceholder("requirement").fill("Spec");
-        await page.getByRole("button", { name: "Save terminology" }).click();
+        // Wait for the save itself before reloading — reloading straight
+        // after the click can cancel the in-flight PUT.
+        await Promise.all([
+          page.waitForResponse((r) => r.url().endsWith(`/projects/${projectId}/terminology`) && r.request().method() === "PUT"),
+          page.getByRole("button", { name: "Save terminology" }).click(),
+        ]);
         await page.reload();
         await expect(page.getByPlaceholder("requirement")).toHaveValue("Spec");
 
@@ -508,7 +560,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         await page.getByPlaceholder("requirement").fill("");
         await page.getByRole("button", { name: "Save terminology" }).click();
       } finally {
-        const token = await page.evaluate(() => localStorage.getItem("reqtrack_token")).catch(() => null);
+        const token = sessionToken;
         if (token) {
           await page.request
             .put(`http://localhost:8000/api/v1/projects/${projectId}/terminology`, {

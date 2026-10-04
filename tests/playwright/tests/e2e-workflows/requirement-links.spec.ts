@@ -41,11 +41,39 @@ function linkBadge(page: import("@playwright/test").Page, text: string) {
   return page.locator("span.badge", { hasText: text });
 }
 
+/**
+ * Self-heals Alpha-1 before the run: deletes any HW-FN-005 -> SW-PERF-006 or
+ * HW-FN-007 -> SW-PERF-008 link an earlier run left behind (a run that
+ * times out before its own removal step leaks the link, and the picker
+ * then no longer offers the already-linked target — found 2026-10-04).
+ * Never touches the seeded SW-PERF-002 -> HW-FN-001 fixture.
+ */
+async function removeLeftoverLinks(page: import("@playwright/test").Page) {
+  const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
+  const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+  const headers = { Authorization: `Bearer ${token}` };
+  const base = `http://localhost:8000/api/v1/projects/${projectId}/requirements`;
+  for (const [source, target] of [["HW-FN-005", "SW-PERF-006"], ["HW-FN-007", "SW-PERF-008"]]) {
+    const matches: { id: string; unique_code: string }[] = await (
+      await page.request.get(`${base}?search=${source}`, { headers })
+    ).json();
+    const requirement = matches.find((r) => r.unique_code === source);
+    if (!requirement) continue;
+    const links: { id: string; other_requirement_unique_code: string }[] = await (
+      await page.request.get(`${base}/${requirement.id}/links`, { headers })
+    ).json();
+    for (const link of links.filter((l) => l.other_requirement_unique_code === target)) {
+      await page.request.delete(`${base}/${requirement.id}/links/${link.id}`, { headers });
+    }
+  }
+}
+
 test.describe("requirement traceability links", () => {
   test("the seeded custom link type reads correctly from both ends; a new link can be added and removed", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.getByText(PROJECT_NAMES.alpha1).click();
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
+    await removeLeftoverLinks(page);
 
     await test.step("the seeded fixed link shows the forward name on its source requirement", async () => {
       await openRequirementByCode(page, "SW-PERF-002");

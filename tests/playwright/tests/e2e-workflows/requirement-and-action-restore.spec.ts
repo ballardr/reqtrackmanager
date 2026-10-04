@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * The `/unarchive` counterpart to `requirement-archive-confirm.spec.ts`
@@ -37,7 +37,7 @@ test.describe("requirement and action restore", () => {
     });
 
     await test.step("archive it (Tier 1 ConfirmDialog) — it drops off the default list", async () => {
-      await page.getByText(name).click();
+      await openRequirementByName(page, name);
       await page.getByRole("button", { name: "Archive", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Archive this requirement?" });
       await dialog.getByRole("button", { name: "Archive", exact: true }).click();

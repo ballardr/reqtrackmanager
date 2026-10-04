@@ -50,6 +50,7 @@ from app.services.bootstrap import run_bootstrap
 from app.services.disk_monitor import run_disk_monitor_loop
 from app.services.notifications import run_digest_loop
 from app.services.scheduler import start_scheduler, stop_scheduler
+from app.services.scoring import sync_scoring_levels
 from app.version import APP_VERSION
 
 settings = get_settings()
@@ -74,6 +75,10 @@ async def lifespan(_: FastAPI):
         # why this never deletes a row for a module/role no longer
         # registered.
         sync_module_role_definitions(db)
+        # Module 1 Phase 10: seeds every org's missing scoring-axis levels
+        # from the registry, so a module installed after orgs exist still
+        # gets its levels (see `sync_scoring_levels`).
+        sync_scoring_levels(db)
     finally:
         db.close()
     disk_monitor_task = asyncio.create_task(run_disk_monitor_loop())

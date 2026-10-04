@@ -1166,6 +1166,17 @@ def mark_pain_point_duplicate(headers: dict, project_id: str, pain_point_id: str
     return r.json()
 
 
+def set_project_scoring_default_model(headers: dict, project_id: str, scheme: str, model: str) -> dict:
+    """Overrides a project's default scoring model (generic scoring-matrix
+    core, Module 1 Phase 10)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/scoring-schemes/{scheme}/default-model", json={"model": model},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # --- Context & Strategy module helpers, Phase 4 (docs/plans/module-01-
 # context-and-strategy-plan.md Phase 4 — Guiding Principles) -----------------
 
@@ -2127,6 +2138,10 @@ def main() -> None:
     )
     print(f"  Duplicate: {pp_duplicate['title']!r} (real 'Duplicate of' relationship to the canonical Pain Point,"
           " not just the mandatory comment's own prose)")
+
+    print("Seeding Pain Point scoring config (Module 1 Phase 10) — org keeps the seeded Severity/Frequency/"
+          "Confidence levels and module-default model; Falcon-3 overrides its default model to S×F...")
+    set_project_scoring_default_model(h_pm, drone["id"], "pain_point", "sxf")
 
     print("Seeding Guiding Principles (Module 1 Phase 4) — an org Guiding Principle and a project Guiding"
           " Principle, both walked to Active and linked to the Strategy they support (Module 1 Phase 6)...")

@@ -1,5 +1,7 @@
 import { createElement } from "react";
 
+import { ProjectScoringSettings } from "../../components/ProjectScoringSettings";
+import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
 import { GuidingPrincipleDetailPage } from "./GuidingPrincipleDetailPage";
@@ -121,7 +123,17 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * vocabulary either, so this phase needs none of the admin-section wiring
  * Phase 7.3 added. With this phase, all five of Phase 0 Q7's planned
  * top-level nav-rail entries now exist.
+ *
+ * **Phase 10 (2026-10-04, Reporting extension) adds Pain Point scoring
+ * configuration** — the backend's `pain_point` scoring scheme, edited
+ * through core's shared `ScoringSchemeEditor` (org) and
+ * `ProjectScoringSettings` (project) under a "Pain Point Scoring" admin
+ * section beside Pain Point Types (Decided by: User — scoring config sits
+ * with the feature it scores, core stays generic).
  */
+/** Backend scoring-scheme key registered by `modules/context_strategy/scoring.py`. */
+const PAIN_POINT_SCORING_SCHEME = "pain_point";
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
   routes: [
@@ -194,12 +206,23 @@ export const moduleDefinition: TierAModuleDefinition = {
       label: "Pain Point Types",
       render: ({ orgId }) => createElement(OrgPainPointTypesPanel, { orgId }),
     },
+    {
+      key: "context-strategy-pain-point-scoring",
+      label: "Pain Point Scoring",
+      render: ({ orgId }) => createElement(ScoringSchemeEditor, { orgId, schemeKey: PAIN_POINT_SCORING_SCHEME }),
+    },
   ],
   projectAdminSections: [
     {
       key: "context-strategy-pain-point-types",
       label: "Pain Point Types",
       render: ({ projectId }) => createElement(ProjectPainPointTypesPanel, { projectId }),
+    },
+    {
+      key: "context-strategy-pain-point-scoring",
+      label: "Pain Point Scoring",
+      render: ({ projectId }) =>
+        createElement(ProjectScoringSettings, { projectId, schemeKey: PAIN_POINT_SCORING_SCHEME }),
     },
   ],
 };

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { type Page, expect } from "@playwright/test";
+import { type Locator, type Page, expect } from "@playwright/test";
 
 /**
  * Personas seeded by backend/scripts/seed_e2e_dataset.py (see
@@ -289,6 +289,10 @@ export async function selectProjectAdminGroup(page: Page, groupLabel: string): P
  * contain more than one link).
  */
 export async function openRequirementByCode(page: Page, code: string): Promise<void> {
+  // Search first: the list is paginated (30 per page) and the shared e2e
+  // projects grow every run, so a row isn't guaranteed to be on page one —
+  // same fix role-display-collapsing.spec.ts got for the groups table.
+  await page.getByPlaceholder("Search by name or ID").fill(code);
   await page
     .getByText(code, { exact: true })
     .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
@@ -367,4 +371,33 @@ export function generateTotpCode(base32Secret: string, forTimeMs: number = Date.
   const binCode =
     ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | (hmac[offset + 3] & 0xff);
   return String(binCode % 1_000_000).padStart(6, "0");
+}
+
+/**
+ * Clicks a save control and waits for the mutating request it triggers to
+ * finish, so a following `page.reload()` can't cancel it mid-flight (the
+ * cause of intermittent "value didn't persist" failures). Matches the first
+ * non-GET response whose URL contains `urlPart`.
+ */
+export async function clickAndAwaitSave(page: Page, control: Locator, urlPart: string): Promise<void> {
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes(urlPart) && r.request().method() !== "GET"),
+    control.click(),
+  ]);
+}
+
+/**
+ * Opens a requirement from the project's requirements list by its name,
+ * searching first: the list is paginated (30 per page), and shared e2e
+ * projects accumulate throwaway requirements across runs, so a freshly
+ * created row is not guaranteed to land on the first page (found
+ * 2026-10-04 when Alpha-1 passed 30 active requirements and ~10 specs
+ * started timing out). Must be called from the requirements list page.
+ * Waits for the detail page's `<h1>` ("<code> — <name>") before returning.
+ */
+export async function openRequirementByName(page: Page, name: string): Promise<void> {
+  await page.getByPlaceholder("Search by name or ID").fill(name);
+  await page.getByText(name).click();
+  await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
+  await expect(page.locator("h1")).toContainText("—");
 }

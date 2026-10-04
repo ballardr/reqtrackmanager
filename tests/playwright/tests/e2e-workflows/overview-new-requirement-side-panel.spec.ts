@@ -39,6 +39,9 @@ test.describe("Project Overview '+ New Requirement' opens the same create-form m
     await dialog.getByPlaceholder("Name", { exact: true }).fill(name);
     await dialog.getByRole("button", { name: "Create", exact: true }).click();
     await expect(dialog).not.toBeVisible();
+    // Search rather than assume the new row is on the paginated list's
+    // first page (shared Alpha-1 grows every run).
+    await page.getByPlaceholder("Search by name or ID").fill(name);
     await expect(page.getByText(name)).toBeVisible();
   });
 });

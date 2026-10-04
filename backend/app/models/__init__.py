@@ -62,6 +62,7 @@ from app.models.requirement import (
 )
 from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.models.scoring import ScoringBand, ScoringLevel, ScoringModelDefault
 from app.models.sequence import ProjectSequenceCounter
 from app.models.server_role import UserServerRole
 from app.models.user import User
@@ -119,6 +120,9 @@ __all__ = [
     "RequirementReview",
     "RequirementVersion",
     "ProjectSequenceCounter",
+    "ScoringBand",
+    "ScoringLevel",
+    "ScoringModelDefault",
     "UserServerRole",
     "OrganizationModuleEntitlement",
     "OrganizationModuleEnablement",

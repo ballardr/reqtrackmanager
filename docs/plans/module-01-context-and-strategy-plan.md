@@ -29,8 +29,10 @@ below); Phase 7.3 (Pain Point + Pain Point Type admin) complete
 complete (2026-09-29 — see "Phase 7.4 notes" below); Phase 7.5 (Open
 Question) complete (2026-09-29 — see "Phase 7.5 notes" below), the fifth
 and last Phase 7 sub-phase. Phase 8 (docs website coverage) complete
-(2026-09-29 — see "Phase 8 notes" below) — **this closes the module: 13/13
-phases complete.**
+(2026-09-29 — see "Phase 8 notes" below), closing the original 13 phases.
+Reopened 2026-10-04 for the Reporting extension (Phases 9–14: per-persona
+Pain Point scoring plus reports R1–R9); Phase 9 sign-off and Phase 10
+(generic scoring-matrix core) complete 2026-10-04 — see "Phase 10 notes".
 First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
@@ -56,7 +58,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-**13 / 13 phases complete (2026-09-29) — this module is done.** Phase 7
+**15 / 19 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–10 are done; Phase 11 is blocked on Module 2 Phases 0–1, so build Module 2 next.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
 split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
 note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
 module's last phase, shipped the same day — see "Phase 8 notes" below.
@@ -76,6 +78,12 @@ module's last phase, shipped the same day — see "Phase 8 notes" below.
 | 7.4 | Frontend UI — Guiding Principle | [x] Complete (2026-09-29) |
 | 7.5 | Frontend UI — Open Question | [x] Complete (2026-09-29) |
 | 8 | Docs website coverage | [x] Complete (2026-09-29) |
+| 9 | Exploratory: reporting scope & scoring design sign-off | [x] Resolved (2026-10-04) |
+| 10 | Generic scoring-matrix infrastructure (core) | [x] Complete (2026-10-04) |
+| 11 | Per-persona Pain Point scoring + intentional flag — needs Module 2 Phase 1 | [ ] Not started |
+| 12 | Report generation backend (R1–R9) | [ ] Not started |
+| 13 | Reports UI + generic report-registration hook | [ ] Not started |
+| 14 | Docs website + seeds verification | [ ] Not started |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -2950,6 +2958,369 @@ own judgment"):
 `future-state-detail.png`, `pain-point-detail.png`,
 `guiding-principle-detail.png`, `open-question-detail.png` (this revision).
 
+## Reporting extension (Phases 9–14) — added 2026-10-04
+
+Added 2026-10-04 at the user's request ("new reports... like ICE reports and
+any other reports you can generate from the raw content within the features
+the module enabled", **Decided by: User**). The scoring design was settled
+in Phase 9's interactive sign-off with the user the same day; see Phase 9
+for each decision and who made it.
+
+**Design summary:**
+- **ICE was dropped for Pain Points.** "Ease" describes a solution, not a
+  problem, and impact differs by persona.
+- **Pain Points are scored per persona** on three inputs: Severity
+  (= Impact/consequence, top level "Blocker: unusable for this persona"),
+  Frequency, and Confidence.
+- **The scoring model is chosen when viewing:** S×F, S×C (IC) or S×F×C.
+  The org sets a default, which a project can override.
+- **Scales come from a generic scoring-matrix definition in core.** Risk
+  Management (Module 3) reuses it later instead of building its own.
+- **Intentional pain points** (deliberate limitations in a lower product
+  tier that drive upgrades) are flagged and linked to Product Tiers, a new
+  Module 13.
+
+```mermaid
+flowchart LR
+    M2[Module 2<br/>Personas + weights] --> SC
+    SM[Core scoring matrix<br/>levels per axis] --> SC[Per-persona<br/>Pain Point scores]
+    M13[Module 13<br/>Product Tiers] -. intentional .-> PP[Pain Point]
+    PP --> SC
+    SC --> R1[R1 Pain Point prioritisation]
+    PP --> R9[R9 Upgrade drivers]
+    M13 --> R9
+    PP --> R3[R3 Pain Point coverage]
+    ST[Strategy + Future State] --> R2[R2 Strategy cascade]
+    ST --> R5[R5 Future State roadmap]
+    OQ[Open Questions] --> R4[R4 Open Question ageing]
+    GP[Guiding Principles] --> R6[R6 Principle usage]
+    VER[Version tables] --> R7[R7 Change history]
+    R1 & R2 & R3 & R4 & R5 & R6 & R9 --> R8[R8 Summary pack]
+```
+
+### Dependencies (build order)
+
+1. **Module 2 (Stakeholders & Personas) Phases 0–1 first** (**Decided by:
+   User**). Per-persona scoring needs real Persona records. Module 2 must
+   also add a **persona importance/weight** field for the weighted-average
+   roll-up; this is noted in that plan's Phase 0.
+2. **Module 13 (Product Tiers)**, a new module
+   ([module-13-product-tiers-plan.md](module-13-product-tiers-plan.md)).
+   Only the *tier link* on intentional pain points needs it. The
+   `is_intentional` flag ships without it, and the link target stays
+   reserved until Module 13 lands, the same way Decision targets were
+   handled in Phase 6.
+3. **Modules 7/8 (Traceability/Governance)** provide required-link
+   *enforcement* later. Until then, missing links produce warnings only
+   (Phase 9 Q8).
+
+### Report catalogue
+
+| # | Report | Content |
+|---|--------|---------|
+| R1 | **Pain Point prioritisation** | Open Pain Points ranked by the chosen model and roll-up; a Severity-vs-Frequency matrix (bubble = Confidence); a Blocker badge always shown; unscored items and intentional items in separate sections; a per-persona breakdown view. |
+| R2 | **Strategy cascade / alignment** | Org Strategy → Project Strategy → Future State → Requirement tree; gap lists (no org parent, Active with no Requirement, Future State with no Strategy). |
+| R3 | **Pain Point coverage & ageing** | Type × status matrix; Accepted Pain Points with no motivated Requirement; linked Requirement statuses; age since `date_identified`. |
+| R4 | **Open Question register & ageing** | Open items by priority/owner; overdue; days open; unowned. |
+| R5 | **Future State roadmap** | Timeline by `target_date`; target dates passed while not Active/Retired; no `success_measures`. |
+| R6 | **Guiding Principle register & usage** | Active principles with linked-Decision counts; principles never applied. |
+| R7 | **Strategy change history** | Versions, status transitions, `change_note`, author; Active items not revised in N months. |
+| R8 | **Context & Strategy summary pack** | Headline counts plus every report's gap lists, in one PDF. |
+| R9 | **Upgrade drivers** | Intentional pain points by tier and the tier that removes them, with per-persona severity. A high-severity intentional item is flagged as a churn risk, not an upsell. |
+
+**Reasoning per report (why / risk addressed / expected outcome):**
+
+- **R1** — *Why:* Low/Medium/High priority can't rank many High items, and
+  impact differs by persona. *Risk:* effort spent on loud, low-value
+  problems; a persona-blocking problem lost in an average. *Outcome:* a
+  defensible ordering, with blockers always visible.
+- **R2** — *Why:* §5.2's chain only has value if it is connected. *Risk:*
+  strategy nothing implements, and work no strategy justifies. *Outcome:*
+  visible alignment gaps.
+- **R3** — *Why:* an Accepted Pain Point is a commitment. *Risk:* accepted
+  problems are never addressed. *Outcome:* each one shows a Requirement
+  trail or appears as a gap.
+- **R4** — *Why:* open questions block decisions. *Risk:* stalled delivery.
+  *Outcome:* overdue and unowned questions get triaged.
+- **R5** — *Why:* Future States carry target dates. *Risk:* unnoticed
+  slippage, or outcomes nobody can measure. *Outcome:* a time-ordered view
+  of targets.
+- **R6** — *Why:* principles exist to guide decisions. *Risk:* shelfware
+  principles. *Outcome:* principles are either used or retired.
+- **R7** — *Why:* version history was a user choice (Phase 0 Q4). *Risk:*
+  unreviewed strategy drift. It also supports SOC 2 change evidence.
+  *Outcome:* a change log and a review cadence.
+- **R8** — *Why:* stakeholders read one pack. *Risk:* reports nobody opens.
+  *Outcome:* one artefact for periodic review.
+- **R9** — *Why:* some pain points are deliberate tier differentiators.
+  *Risk:* they get "fixed" by mistake, or an upsell lever becomes a churn
+  driver. *Outcome:* intentional friction is visible and measured
+  separately.
+
+R6's Decision counts are meaningful only once Module 4 Phase 7 lands. R2,
+R3 and R6 gap lists are interim until Module 7's coverage reporting.
+Excluded (**Decided by: Agent**): time-in-status metrics, because there are
+no status-change timestamps and deriving them from the audit log would
+couple reports to log format.
+
+## Phase 9 — Exploratory: Reporting scope & scoring design sign-off
+
+**Status:** resolved 2026-10-04 through interactive Q&A.
+
+1. **Scoring model:** per persona, offering S×F, S×C (IC) and S×F×C. ICE
+   is not used for Pain Points. **Decided by: User** (Agent recommendation:
+   S×F only; the user chose to offer all three).
+2. **Inputs:** Impact and Severity are the same input, so there are three
+   inputs per persona: Severity, Frequency and Confidence. A model whose
+   input is missing shows the item as "not scored under this model".
+   **Decided by: User.**
+3. **Model selection:** chosen when viewing, with a project default and an
+   org default (project → nearest ancestor project → org → system default
+   S×F×C). **Decided by: User**; the ancestor fallback and system default
+   are **Decided by: Agent**, following `CLAUDE.md`'s nested-projects rule.
+   Org-wide reports group results by the model actually applied, and never
+   mix models in one ranking.
+4. **Personas dependency:** build Module 2 Phases 0–1 first. **Decided by:
+   User.**
+5. **Roll-up across personas:** chosen when viewing, defaulting to a
+   **weighted average over scored personas only**. Unscored personas are
+   excluded, not counted as zero, so one scored persona out of five shows
+   that persona's value. Worst case and plain average are also available.
+   Weights come from Module 2's persona importance, with equal weights if
+   none are set. **Decided by: User.** A **Blocker badge** shows whichever
+   roll-up is chosen, so a blocker for one low-weight persona can't be
+   averaged away. **Decided by: Agent**, accepted by the user.
+6. **Matrix infrastructure:** a shared, generic, configurable scoring
+   matrix in core/Module 0, reused by Risk (Module 3). **Decided by:
+   User.** Modules can't import each other, so shared infrastructure has to
+   be core.
+7. **Module 10 relationship:** build reports here, and expose them through
+   a generic report-registration hook designed as Module 10's future
+   registration API. **Decided by: User.**
+8. **Required links:** warnings only until Modules 7/8. A Pain Point with
+   no persona link **applies to all personas**. **Decided by: User.** The
+   "no persona linked" warning stays, so a forgotten link isn't mistaken
+   for a deliberately universal problem. **Decided by: Agent.**
+9. **Product tiers:** a separate concept and a new module (Module 13).
+   Products are sold in tiers (e.g. Standard/Pro), and some pain points are
+   intentional upgrade drivers. **Decided by: User.** Name it "tiers", not
+   "versions", because "version" implies a release over time. **Decided
+   by: Agent.**
+10. **Intentional pain points:** an `is_intentional` flag plus a tier link.
+    They are excluded from R1's fix ranking by default, still scored, and
+    reported in R9. **Decided by: User.** Tier is a link, not a scoring
+    dimension, to avoid persona × tier scoring explosion. **Decided by:
+    Agent.**
+11. **Tier scope:** project-scoped. A child project with no tiers of its
+    own uses its nearest ancestor's, and tiers are seeded only on root
+    projects. **Decided by: User.**
+12. **Org-wide roll-ups** (R1, R3, R4, R8, R9): gated by a dedicated,
+    module-registered FGAC permission, granted to org admins by default,
+    and still filtered to projects the caller can read. **Decided by:
+    User** (restrict who can run them); the permission mechanism is
+    **Decided by: Agent**.
+13. **Nested projects:** project reports cover this project only by
+    default, with an "include child projects" option. **Decided by: User.**
+14. **Formats:** PDF + CSV for every report (CSV = main table), plus
+    on-screen views for R1 and R4. **Decided by: User.**
+
+## Phase 10 — Generic scoring-matrix infrastructure (core)
+
+**Status:** [x] Complete (2026-10-04) — see "Phase 10 notes" below.
+
+**Goal:** a reusable, configurable scoring-axis definition that any module
+can use. Pain Points use it first; Risk uses it later.
+
+**Scope:**
+- **Scoring axes and levels.** A module registers scoring axes through
+  `ModuleDefinition`, e.g. Context & Strategy registers
+  `severity`/`frequency`/`confidence`. Each axis has ordered, named levels
+  with a numeric weight. The org sets the levels, seeded from module
+  defaults.
+- **Scoring models.** Named combinations of axes (S×F, S×C, S×F×C) with
+  optional rating bands, registered by the module and resolved generically
+  in core. No module-specific code goes in core.
+- **Defaults.** Org default model plus project override, resolved with the
+  ancestor fallback (Phase 9 Q3). Seed only on org creation and root
+  projects.
+- **Shared frontend components:** a matrix chart, a level picker, and a
+  model/roll-up switcher.
+- **Tests:** level ordering/weights, model resolution through the
+  project → ancestor → org → system chain, cross-org isolation, and
+  Storybook for each component.
+
+**Reasoning:** *Why:* Pain Points and Risk both need configurable
+two- and three-axis scoring. *Risk addressed:* two diverging matrix
+implementations, and a core enum hand-edited per module (the module-boundary
+failure mode). *Outcome:* one mechanism that modules register into.
+
+## Phase 10 notes (2026-10-04)
+
+**Shipped:** core `ScoringSchemeDefinition` on `ModuleDefinition.
+scoring_schemes`; tables `scoring_levels`/`scoring_model_defaults`/
+`scoring_bands` (migration 0057); `services/scoring.py` (seeding, level
+CRUD, resolution, score maths); org and project routers
+(`/orgs/{id}/scoring-schemes/...`, `/projects/{id}/scoring-schemes/...`);
+shared frontend `ScoringSchemeEditor`, `ProjectScoringSettings`,
+`ScoringModelBands`, `ScoringBandsEditor`, `ScoringMatrixChart`,
+`ScoringLevelPicker`, `ScoringModelSwitcher`; Context & Strategy's
+`pain_point` scheme and "Pain Point Scoring" org/project admin sections.
+See `docs/modules.md` §4d for the extension-point reference.
+
+**Decisions:**
+- **Bands are org-editable, with project overrides** (ancestor fallback, like
+  the default model). **Decided by: User** (Phase 10 sign-off; the Agent had
+  offered org-only).
+- **The editor is embedded in the module's own admin section**, not a core
+  "Scoring" group. **Decided by: User.**
+- **Project override UI ships in this phase.** **Decided by: User.**
+- **Levels are org-only and ordered by weight** (unique weights, no separate
+  sort order), so the order shown and the maths can't disagree; the top
+  level is the highest weight. **Decided by: Agent.**
+- **Bands are per model and use normalised thresholds** (score ÷ model
+  maximum), because a three-axis product sits lower on the scale than a
+  two-axis one, and normalisation survives re-weighting. **Decided by:
+  Agent.**
+- **Models combine by product only.** No additive combination until a
+  module needs one. **Decided by: Agent.**
+- **Levels are seeded on org creation/import and by a startup sync**
+  (`sync_scoring_levels`), not a migration backfill: the registry can't be
+  read stably from a migration, and the sync also covers modules installed
+  after an org exists. An axis never drops below two levels, so "no rows"
+  always means "never seeded". **Decided by: Agent.**
+- **Nested projects:** model defaults and bands are override-only rows
+  (none = inherit), resolved project → nearest ancestor → org → module
+  default; nothing is seeded on projects, so the root-only seeding rule has
+  nothing to apply to. Levels are org-scoped, so they don't nest. **Decided
+  by: Agent**, per `CLAUDE.md`'s nested-projects checklist.
+- **`pain_point_type_admin` also gates Pain Point scoring config** (plus org
+  admins), via the scheme's generic `admin_role_key`. **Decided by: Agent.**
+- **Default Pain Point levels:** Severity Cosmetic→Blocker (1–5), Frequency
+  Rare→Constant (1–4), Confidence Low/Medium/High (0.5/0.8/1.0, discounting
+  rather than inflating a score). Per-model default bands Low/Medium/High/
+  Critical. **Decided by: Agent**; all org-editable.
+- **A fifth badge tone, `warning`,** for "needs attention" bands;
+  `docs/ux-style-guide.md`'s status-colour pattern updated to match.
+  **Decided by: Agent** (flagged to the user as a style-guide change).
+- **Matrix orientation:** a model's first axis is the rows, the second the
+  columns. **Decided by: Agent.**
+- **Generic extensions to shared components** rather than one-offs:
+  `DefinitionList` (optional `onMove`, `minItems`, optional/numeric fields),
+  `LabeledSelect` (`placeholder={null}`), `OverridePill` (`defaultLabel`/
+  `resetLabel` for inherited values). **Decided by: Agent.**
+
+**For Phase 11:** set the scheme's `count_level_usage`/
+`reassign_level_usage` when `PainPointScore` lands. Org bundle export does
+not carry scoring customisations (same as project statuses/link types), so
+Phase 11's Pain Point score export must map level ids by axis + name.
+
+**Verification:** see `docs/decisions.md`'s "Module 1 (Context & Strategy)
+Phase 10" entry.
+
+## Phase 11 — Per-persona Pain Point scoring + intentional flag
+
+**Hard dependency:** Module 2 Phase 1 and Phase 10.
+
+**Scope:**
+- **`PainPointScore` table** (module-owned): `pain_point_id`, a persona
+  reference (generic `target_type`/`target_id` validated against the
+  registry, never an FK into Module 2's table), and nullable
+  `severity`/`frequency`/`confidence` level IDs. A null persona means "all
+  personas".
+  - A Pain Point has either one all-personas row or per-persona rows, never
+    both. **Decided by: Agent.** *Why:* mixing them makes "applies to all"
+    ambiguous in the weighted average.
+- **Persona deletion or Module 2 being disabled** degrades to all-personas
+  display: rows stay, and reports say so. The UI never crashes on a missing
+  target.
+- **`PainPoint.is_intentional`** (bool), plus a reserved
+  `intentional_in → Tier` / `removed_by → Tier` relationship that becomes
+  populatable when Module 13 lands.
+- **Roll-up service:** weighted average, worst case and plain average,
+  with the Blocker badge computed from any persona at the top Severity
+  level.
+- **Changes are audit-logged** via `services/audit.py`. MCP Pain Point
+  tools gain the score fields.
+- **UI:** a per-persona score grid on the Pain Point detail page (shared
+  Phase 10 components); list columns for score and Blocker; a model and
+  roll-up switcher.
+- **Seeds:** both seed scripts get scored Pain Points across several
+  personas, some unscored, one all-personas, and one intentional.
+- **Tests:** pytest for the either/or rule, roll-up maths (incl. 1 of 5
+  scored), Blocker badge, missing persona and model-input gaps.
+  Playwright for scoring and re-ranking. Storybook.
+
+**Reasoning:** *Why:* impact is persona-specific (user). *Risk addressed:*
+a single score hides "unusable for persona X", and deliberate tier
+limitations get treated as bugs. *Outcome:* persona-aware ranking with
+blockers always surfaced.
+
+## Phase 12 — Report generation backend (R1–R9)
+
+Implement this in `backend/app/modules/context_strategy/reports.py`,
+following `modules/compliance/reports.py`'s pattern.
+
+**Scope:**
+- **One `collect_*` function per report** returning dataclasses, reused by
+  PDF, CSV, on-screen JSON and MCP, so figures are computed once.
+  - The model and roll-up are parameters, defaulting to the resolved
+    project/org default.
+  - Relationship traversal goes through `app.services.relationships`.
+- **Access control.** Project endpoints are gated by module enablement and
+  FGAC read permission. Org endpoints (R1, R3, R4, R8, R9) need the new
+  org-reports permission and silently exclude unreadable projects.
+  - An "include child projects" parameter applies the same per-project
+    read check.
+- **Labels and logging.** Enum values go through the module's label maps.
+  Report reads follow the existing precedent of not being audit-logged;
+  flag it in `docs/decisions.md` if the SOC 2 data-classification policy
+  says an export must be logged.
+- **MCP:** read-only `get_*_report` tools returning JSON.
+- **Tests:** one pytest per report covering content, gap detection, model
+  and roll-up switching, intentional-item segregation, RBAC exclusion,
+  org-permission gating, cross-org isolation, and child-project inclusion.
+
+**Reasoning:** *Why:* one data layer behind every output form. *Risk
+addressed:* figures that disagree between outputs, and cross-project or
+cross-tenant leakage through aggregated exports. *Outcome:* consistent,
+permission-correct report data.
+
+## Phase 13 — Reports UI + generic report-registration hook
+
+**Scope:**
+- **Registration hook.** Add generic `projectReports`/`orgReports` to
+  `TierAModuleDefinition`, with matching `ModuleDefinition` metadata.
+  - The shape is designed as Module 10's future report-type registration
+    API; record it in Module 10's plan too.
+  - Core `ReportsPage` renders every enabled module's entries through the
+    registry, with no import from `modules/context_strategy/`.
+  - Compliance can migrate onto the hook later.
+- **Report entries.** Context & Strategy registers R1–R9, each with
+  filters, model/roll-up switchers where relevant, PDF/CSV downloads, and a
+  Toast on success or failure.
+- **On-screen views:** the R1 matrix and per-persona view, and the R4
+  ageing table, built from shared components.
+- **Tests:** Playwright for each download, the R1 view and switchers, the
+  org reports being hidden without the permission, and a module-disabled
+  project showing no entries. Storybook.
+
+**Reasoning:** *Why:* reports behind an API go unused. *Risk addressed:* a
+bespoke nav pattern, a core-imports-module violation, or a structure that
+Module 10 has to throw away. *Outcome:* one extensible Reports
+destination.
+
+## Phase 14 — Docs website + seeds verification
+
+Document per-persona scoring (inputs, models, roll-ups, Blocker badge,
+"no persona = all personas"), intentional pain points, and R1–R9 on the
+module's docs-site pages. Include a Mermaid data-flow diagram and
+screenshots of the R1 matrix and the Reports page. Re-run both seed
+scripts and confirm every report has realistic, non-empty content.
+
+**Reasoning:** *Why:* the docs site is a separate published artifact.
+*Risk addressed:* inconsistent scoring because the levels aren't
+explained. *Outcome:* users score consistently and read reports correctly.
+
 ## Acceptance criteria (from overview §48, Context & Strategy subset)
 
 - Users can record Pain Points.
@@ -2965,3 +3336,10 @@ own judgment"):
 - Open Questions can become Decisions. *(completed jointly with Module 4's
   own Phase 7)*
 - All artefacts support appropriate typed relationships.
+- *(Reporting extension)* Pain Points can be scored per persona (Severity,
+  Frequency, Confidence) and ranked under a model and roll-up chosen when
+  viewing, with Blockers always visible (R1).
+- *(Reporting extension)* Intentional pain points are flagged and reported
+  separately (R9).
+- *(Reporting extension)* Reports R1–R9 are downloadable as PDF/CSV from
+  the Reports page; org-wide variants need the org-reports permission.

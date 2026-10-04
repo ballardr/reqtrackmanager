@@ -257,5 +257,49 @@ export const WithRenderExtra: Story = {
   },
 };
 
+/** Derived order (no `onMove`), a numeric field, an optional field, and a
+ * two-item floor — the shape scoring levels use (Module 1 Phase 10). */
+export const DerivedOrderWithFloorAndOptionalField: Story = {
+  render: () => {
+    function Harness() {
+      const [items, setItems] = useState([
+        { id: "a", name: "Low", weight: "1", note: "" },
+        { id: "b", name: "High", weight: "3", note: "Strong evidence" },
+      ]);
+      return (
+        <DefinitionList<{ id: string; name: string; weight: string; note: string }>
+          items={items}
+          minItems={2}
+          fields={[
+            { key: "name", getValue: (i) => i.name, placeholder: "Name", ariaLabel: "Level name" },
+            { key: "weight", getValue: (i) => i.weight, placeholder: "Weight", ariaLabel: "Level weight", inputType: "number" },
+            { key: "note", getValue: (i) => i.note, placeholder: "Guidance (optional)", ariaLabel: "Level guidance", optional: true },
+          ]}
+          getReassignLabel={(i) => i.name}
+          onRename={async () => {}}
+          onAdd={async (values) => {
+            setItems((prev) => [...prev, { id: `n${prev.length}`, name: values.name, weight: values.weight, note: values.note }]);
+          }}
+          onDelete={async (id) => setItems((prev) => prev.filter((i) => i.id !== id))}
+          deleteLabel="Delete level"
+          addLabel="Add level"
+        />
+      );
+    }
+    return <Harness />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
+    await expect(canvas.getAllByRole("button", { name: /At least 2 are required/ })).toHaveLength(2);
+    // The optional guidance field may stay blank; weight is a number input.
+    await userEvent.type(canvas.getByPlaceholderText("Name"), "Mid");
+    await userEvent.type(canvas.getByPlaceholderText("Weight"), "2");
+    await expect(canvas.getByPlaceholderText("Weight")).toHaveAttribute("type", "number");
+    await userEvent.click(canvas.getByRole("button", { name: "Add level" }));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Delete level" })).toHaveLength(3));
+  },
+};
+
 export const LightTheme: Story = { ...RenameReorderAndDelete };
 export const DarkTheme: Story = { ...RenameReorderAndDelete, globals: { theme: "dark" } };

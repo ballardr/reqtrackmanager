@@ -53,5 +53,21 @@ export const CustomWithResetDisabledWhileSaving: Story = {
   },
 };
 
+/** A project setting inherited from a parent tier rather than the platform. */
+export const InheritedWithCustomLabels: Story = {
+  args: { custom: false, defaultLabel: "Inherited from organisation", resetLabel: "Use inherited value" },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Inherited from organisation")).toBeInTheDocument();
+  },
+};
+
+export const OverriddenWithCustomResetLabel: Story = {
+  args: { custom: true, onReset: fn(), defaultLabel: "Inherited from organisation", resetLabel: "Use inherited value" },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Use inherited value" }));
+    await expect(args.onReset).toHaveBeenCalledOnce();
+  },
+};
+
 export const LightTheme: Story = { args: { custom: true, onReset: fn() }, globals: { theme: "light" } };
 export const DarkTheme: Story = { args: { custom: true, onReset: fn() }, globals: { theme: "dark" } };

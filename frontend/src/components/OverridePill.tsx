@@ -14,19 +14,24 @@ const strings = t();
  * (not this component) that persists the revert, matching how every other
  * field in these forms already batches edits behind one Save button rather
  * than saving per-field.
+ *
+ * `defaultLabel`/`resetLabel` replace "Platform default"/"Reset to platform
+ * default" where the fallback isn't the platform — e.g. a project setting
+ * inherited from its parent project or organisation ("Inherited from
+ * organisation" / "Use inherited value").
  */
 export function OverridePill({
-  custom, onReset, disabled,
-}: { custom: boolean; onReset?: () => void; disabled?: boolean }) {
+  custom, onReset, disabled, defaultLabel, resetLabel,
+}: { custom: boolean; onReset?: () => void; disabled?: boolean; defaultLabel?: string; resetLabel?: string }) {
   if (!custom) {
-    return <span className="badge">{strings.common.platformDefault}</span>;
+    return <span className="badge">{defaultLabel ?? strings.common.platformDefault}</span>;
   }
   return (
     <span className="row" style={{ gap: "0.5rem", display: "inline-flex" }}>
       <span className="badge">{strings.common.customValue}</span>
       {onReset && (
         <button type="button" className="btn" onClick={onReset} disabled={disabled}>
-          {strings.common.resetToPlatformDefault}
+          {resetLabel ?? strings.common.resetToPlatformDefault}
         </button>
       )}
     </span>

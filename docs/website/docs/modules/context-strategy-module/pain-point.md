@@ -55,7 +55,7 @@ A genuinely **branching** lifecycle, unlike Strategy/Future State/Guiding Princi
 | Role | Scope | Grants |
 | --- | --- | --- |
 | **Pain Point Manager** | Project | Triages, classifies, and decides Pain Points (reject/accept/address/close), and manages the project's own Pain Point type overrides. A single elevated role, not an owner/approver pair — this artefact names one "Pain Point Manager / Project Manager" tier rather than a two-tier split. |
-| **Pain Point Type Admin** | Organisation | Manages the organisation's shared Pain Point type vocabulary (below). |
+| **Pain Point Type Admin** | Organisation | Manages the organisation's shared Pain Point type vocabulary and its [scoring configuration](#scoring-configuration) (below). |
 
 ## Relationships
 
@@ -94,6 +94,35 @@ flowchart TD
 | ![Organisation Pain Point Types panel showing Market, User, and Operator types with reorder and disable controls](../../../static/img/screenshots/pain-point-types-org.png) |
 
 Guiding Principle, by contrast, has no type field or configurable vocabulary at all — see [Known limitations](./known-limitations.md).
+
+## Scoring configuration
+
+Pain Points are prioritised on three inputs rather than a single Low/Medium/High priority — **Severity** (how badly the problem affects a persona; its top level, **Blocker**, means "unusable for this persona"), **Frequency** (how often they hit it) and **Confidence** (how sure you are of the other two). A **scoring model** combines them by multiplying the chosen levels' weights:
+
+| Model | Inputs |
+| --- | --- |
+| Severity × Frequency | Severity, Frequency |
+| Severity × Confidence | Severity, Confidence |
+| Severity × Frequency × Confidence | all three (the module default) |
+
+**Rating bands** (Low/Medium/High/Critical by default) label a score by where it sits as a percentage of the model's maximum, so they keep working if you change level weights.
+
+| Setting | Organisation (**Org Management → Pain Point Scoring**) | Project (**Project Admin → Pain Point Scoring**) |
+| --- | --- | --- |
+| Levels per input (name, weight, guidance) | Edit, add, delete (at least two per input; deleting an in-use level asks where to move its scores) | Read-only |
+| Default model | Set, or reset to the module default | Override, or use the inherited value |
+| Rating bands per model | Set, or reset to the module defaults | Override, or use the inherited value |
+
+A project that hasn't overridden a setting inherits it, and the page says where from:
+
+```mermaid
+flowchart LR
+    P["This project"] -->|not set| A["Nearest parent project<br/>that set it"]
+    A -->|none| O["Organisation"]
+    O -->|not set| M["Module default"]
+```
+
+Organisation changes need the **Pain Point Type Admin** role or org admin; project overrides need project manager/administrator (or org admin). Anyone viewing scores can still switch model. Scoring individual Pain Points per persona isn't available yet — see [Known limitations](./known-limitations.md).
 
 ## Where this fits
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: a stakeholder who spots a problem with an approved
@@ -141,7 +141,7 @@ test("a project manager sees and can use 'Approve and clear completion' on a CR 
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.getByText(reqName).click();
+    await openRequirementByName(page, reqName);
 
     await page.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(page.getByText("Locked (approved)")).toBeVisible();
