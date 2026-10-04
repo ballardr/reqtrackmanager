@@ -31,6 +31,17 @@ sidebar_position: 12
 
 The picker used to add someone (or an organisation-level group) directly to the project normally only searches your organisation's own members. Typing a full email address that isn't already a member can also surface a result — **Add** for an existing account elsewhere in the system, or **Invite** for a brand-new one — if the organisation's admin has enabled it (**Advanced settings → External users on projects**, see [Administering an organisation](./administering-an-organisation.md)). Picking a person, group, or email match stages it in a list rather than granting anything immediately — set (or change) each staged entry's own role, add as many more as you need, then commit them all with one button press. An existing account is added right away once committed; a brand-new one gets an email to finish signing up — either way, the project role you picked is waiting for them as soon as they can sign in.
 
+## Modules
+
+**Project Admin → Modules** has one on/off switch per module (sub-components behind a collapsed summary). A new project starts with the organisation's defaults; later changes to those defaults don't affect it. A hint shows when this project differs from the organisation's default for new projects. A module or sub-component the organisation has turned **Off** is greyed out with an explanation — only an org admin can make it available again.
+
+| Project admin: Modules |
+| --- |
+| One switch per module; sub-components collapsed behind a summary |
+| ![Project admin Modules tab: Compliance, Decision Management and Context & Strategy each with one switch, Context & Strategy's sub-components collapsed](../../static/img/screenshots/project-admin-modules.png) |
+
+See [Administering an organisation → Modules](./administering-an-organisation.md#modules) for the organisation's availability settings, and [Modules → Overview](../modules/overview.md) for the full gating mechanics.
+
 ## Settings
 
 **Project Admin → Settings** holds project-wide flags: whether ordinary members (not just stakeholders/administrators/managers) can submit [change requests](./change-requests.md), whether the project is **usable as a project template** for new projects, and the **Export project bundle** action for backing up or migrating a project. See [Core Features → Project templates](../core-features/project-templates.md) and [Core Features → Zip export/import](../core-features/zip-export-import.md).

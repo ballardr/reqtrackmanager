@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { PASSWORD, loginAs, selectOrgAdminGroup, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { PASSWORD, loginAs, selectOrgAdminGroup, setOrgModuleAvailability, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -92,12 +92,8 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
     await selectOrgAdminGroup(page, "Modules");
-    const moduleRow = page.locator("tr", { hasText: "Context & Strategy" });
-    await expect(moduleRow).toBeVisible();
-    const moduleToggle = moduleRow.getByRole("switch");
-    await expect(moduleToggle).toHaveAttribute("aria-checked", "false");
-    await moduleToggle.click();
-    await expect(moduleToggle).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("combobox", { name: "Context & Strategy availability", exact: true })).toHaveValue("off");
+    await setOrgModuleAvailability(page, "Context & Strategy", "default_on");
 
     await test.step("org tier: Market/User/Operator are seeded, and a new org type can be added", async () => {
       await selectOrgAdminGroup(page, "Pain Point Types");

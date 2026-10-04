@@ -31,6 +31,23 @@ Set the organisation's logo and, under **Templates & reports**, define **report 
 
 Configure an identity provider for the organisation under **SSO** — see [API & Integrations → Single sign-on](../api-integrations/single-sign-on.md) for the full setup.
 
+## Modules
+
+**Modules** lists every optional feature module this deployment offers, each with one availability dropdown (a module your plan doesn't include shows greyed out with a note):
+
+- **Off** — no project in the organisation can use it; takes effect in every project immediately.
+- **Available, off for new projects** — projects start without it but a project admin can turn it on.
+- **On for new projects** — projects start with it; a project admin can turn it off.
+
+A default only applies to projects created afterwards — changing it never switches a module on or off in an existing project. Sub-components (as of this writing, only [Context & Strategy](../modules/context-strategy-module/overview.md)'s, one per artefact type) sit behind a collapsed summary under their module, each with the same dropdown.
+
+| Organisation admin: Modules |
+| --- |
+| One availability dropdown per module; Context & Strategy's sub-components collapsed behind a summary |
+| ![Organisation admin Modules page: each module row has a name, version, short description and one availability dropdown; Context & Strategy shows a collapsed "5 components" summary](../../static/img/screenshots/org-admin-modules.png) |
+
+See [Administering a project → Modules](./administering-a-project.md#modules) for the per-project switch, and [Modules → Overview](../modules/overview.md) for the full gating mechanics.
+
 ## Role management
 
 Under **Role management**, define custom roles and grant fixed, module, or custom roles to users and groups — see [Core Features → Role Management](../core-features/role-management.md).

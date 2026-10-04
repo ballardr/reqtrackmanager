@@ -25,7 +25,9 @@ For example, an organisation records a Strategy ("lead the market in autonomous 
 
 ## Enabling the module
 
-Context & Strategy is **not** enabled by default — an org admin opts in per organisation from the organisation's Modules settings, the same entitlement/enablement mechanism every module uses (see [Modules → Overview](../overview.md#gating-entitlement--enablement)). Enabling it seeds that organisation's default Pain Point types — **Market**, **User**, and **Operator** — available to every project in the organisation from that point on (see [Pain Point → Pain Point type vocabulary](./pain-point.md#pain-point-type-vocabulary)). Disabling the module hides its navigation and endpoints, but deletes no data.
+Context & Strategy is **not** enabled by default — an org admin opts in per organisation from the organisation's Modules settings, the same entitlement/enablement mechanism every module uses (see [Modules → Overview](../overview.md#gating-entitlement--enablement--overrides)). Enabling it seeds that organisation's default Pain Point types — **Market**, **User**, and **Operator** — available to every project in the organisation from that point on (see [Pain Point → Pain Point type vocabulary](./pain-point.md#pain-point-type-vocabulary)). Disabling the module hides its navigation and endpoints, but deletes no data.
+
+This module is also the first (and, as of this writing, only) one to use [sub-component enablement](../overview.md#sub-component-enablement-finer-grained-than-a-whole-module): its five artefact types (Strategy, Future State, Pain Points, Guiding Principles, Open Questions) are each independently toggleable — an organisation sets each one's availability (Off, or on/off for new projects), and a project admin can switch it for their own project — on top of, not instead of, the whole-module enablement above. Set from Organisation admin → Modules and Project admin → Modules — see [Modules → Overview → Where to set this](../overview.md#where-to-set-this) for both, with screenshots.
 
 ## The Organisation Strategy → Project Strategy → Requirements → Implementation chain
 

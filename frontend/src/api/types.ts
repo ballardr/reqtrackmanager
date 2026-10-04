@@ -1540,6 +1540,13 @@ export interface ModuleFrontendManifest {
   nav_icon?: string;
 }
 
+/** `enabled` is the hard floor (Module 0 Phase 5 correction, 2026-09-29):
+ * `false` means no project of this organisation may use this module at
+ * all, no project override possible in either direction.
+ * `default_project_enabled` is a separate, independent tier, only
+ * meaningful when `enabled` is `true` — whether a project gets this module
+ * on or off *by default*, absent an override of its own; a project's own
+ * override may still diverge from this in either direction. */
 export interface OrgModule {
   module_key: string;
   name: string;
@@ -1548,8 +1555,84 @@ export interface OrgModule {
   implemented: boolean;
   entitled: boolean;
   enabled: boolean;
+  default_project_enabled: boolean;
   default_enabled: boolean;
   frontend_manifest: ModuleFrontendManifest | null;
+}
+
+/** One sub-component a module declares, with this organisation's own
+ * levers for it — `GET/PUT /orgs/{id}/modules/{module_key}/subcomponents
+ * [/{subcomponent_key}]`. Same two levers as `OrgModule`: `enabled` (hard
+ * floor) and `default_project_enabled` (copied into new projects);
+ * `default_enabled` is the registry's own default. */
+export interface OrgModuleSubComponent {
+  module_key: string;
+  subcomponent_key: string;
+  name: string;
+  default_enabled: boolean;
+  enabled: boolean;
+  default_project_enabled: boolean;
+  has_org_override: boolean;
+}
+
+/** An org's availability choice for a module or sub-component — the two
+ * backend levers (`enabled`, `default_project_enabled`) collapsed into the
+ * three states that are actually meaningful (the default does nothing
+ * while `enabled` is false). */
+export type ModuleAvailability = "off" | "opt_in" | "default_on";
+
+export const MODULE_AVAILABILITY_LABEL: Record<ModuleAvailability, string> = {
+  off: "Off",
+  opt_in: "Available, off for new projects",
+  default_on: "On for new projects",
+};
+
+/** Maps the two backend levers to a `ModuleAvailability`. */
+export function toModuleAvailability(enabled: boolean, defaultProjectEnabled: boolean): ModuleAvailability {
+  if (!enabled) return "off";
+  return defaultProjectEnabled ? "default_on" : "opt_in";
+}
+
+/** Maps a `ModuleAvailability` back to the PUT payload's two levers. */
+export function fromModuleAvailability(availability: ModuleAvailability): {
+  enabled: boolean;
+  default_project_enabled: boolean;
+} {
+  return { enabled: availability !== "off", default_project_enabled: availability === "default_on" };
+}
+
+/** One module's state as seen by one project — `GET/PUT /projects/{id}/
+ * modules/{module_key}/enablement`, and `GET /projects/{id}/modules` for
+ * the Project Admin Modules list. `effective_enabled` is the resolved
+ * state; `org_default_enabled` is the org's default for new projects (a
+ * project copies it at creation, so later changes don't affect it);
+ * `org_hard_enabled` is the org's floor — when `false` nothing the project
+ * sets can turn the module on. */
+export interface ProjectModuleEnablement {
+  module_key: string;
+  name: string;
+  effective_enabled: boolean;
+  org_default_enabled: boolean;
+  org_hard_enabled: boolean;
+  has_project_override: boolean;
+  project_override_enabled: boolean | null;
+}
+
+/** One sub-component a module declares, as seen from one project (Module 0
+ * — Platform Foundations — Phase 4) — `GET/PUT /projects/{id}/
+ * modules/{module_key}/subcomponents[/{subcomponent_key}]`. Same
+ * "effective state alongside org default and this project's own override,
+ * not just a flat boolean" shape as `ProjectModuleEnablement`, one level
+ * down (a whole module can have several of these). */
+export interface ProjectModuleSubComponent {
+  module_key: string;
+  subcomponent_key: string;
+  name: string;
+  effective_enabled: boolean;
+  org_default_enabled: boolean;
+  org_hard_enabled: boolean;
+  has_project_override: boolean;
+  project_override_enabled: boolean | null;
 }
 
 /** One currently-enabled module, as returned by `GET /projects/{id}/enabled-

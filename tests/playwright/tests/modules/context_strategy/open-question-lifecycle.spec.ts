@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { PASSWORD, loginAs, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { PASSWORD, loginAs, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -91,12 +91,8 @@ test.describe("Context & Strategy: create -> investigate -> mark ready -> resolv
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
     await selectOrgAdminGroup(page, "Modules");
-    const moduleRow = page.locator("tr", { hasText: "Context & Strategy" });
-    await expect(moduleRow).toBeVisible();
-    const moduleToggle = moduleRow.getByRole("switch");
-    await expect(moduleToggle).toHaveAttribute("aria-checked", "false");
-    await moduleToggle.click();
-    await expect(moduleToggle).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("combobox", { name: "Context & Strategy availability", exact: true })).toHaveValue("off");
+    await setOrgModuleAvailability(page, "Context & Strategy", "default_on");
 
     // --- Navigate into the project's own new "Open Question" nav entry
     // (`exact: true` disambiguates from the header's own user-menu link,

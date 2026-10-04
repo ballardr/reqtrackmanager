@@ -85,27 +85,33 @@ def _get_admin_user(db) -> User:
 # --- is_module_subcomponent_enabled (project-scoped): all four resolution paths --------
 
 
-def test_project_subcomponent_resolution_all_four_paths(client, admin_token, org_id, fake_module):
+def test_project_subcomponent_resolution_all_paths(client, admin_token, org_id, fake_module):
     project = create_project(client, admin_token, org_id, "Sub-Component Resolution Project")
     db = SessionLocal()
     try:
         org_uuid = uuid_lib.UUID(org_id)
         project_uuid = uuid_lib.UUID(project["id"])
+        # Drop the rows copied in at creation, modelling a project created
+        # before the module was registered (the only case with no row).
+        db.query(ProjectModuleSubComponentEnablement).filter(
+            ProjectModuleSubComponentEnablement.project_id == project_uuid,
+        ).delete()
+        db.commit()
 
         # (a) registry default — no org row, no project row.
         assert is_module_subcomponent_enabled(db, project_uuid, fake_module, SUBCOMPONENT_KEY) is True
         assert is_module_subcomponent_enabled(db, project_uuid, fake_module, OTHER_SUBCOMPONENT_KEY) is False
 
-        # (b) org default overrides the registry default.
-        db.add(
-            OrganizationModuleSubComponentDefault(
-                organization_id=org_uuid, module_key=fake_module, subcomponent_key=SUBCOMPONENT_KEY, enabled=False,
-            )
+        # (b) org `default_project_enabled` overrides the registry default.
+        org_row = OrganizationModuleSubComponentDefault(
+            organization_id=org_uuid, module_key=fake_module, subcomponent_key=SUBCOMPONENT_KEY,
+            enabled=True, default_project_enabled=False,
         )
+        db.add(org_row)
         db.commit()
         assert is_module_subcomponent_enabled(db, project_uuid, fake_module, SUBCOMPONENT_KEY) is False
 
-        # (c) project override overrides the org default.
+        # (c) project row overrides the org default (within the floor).
         db.add(
             ProjectModuleSubComponentEnablement(
                 project_id=project_uuid, module_key=fake_module, subcomponent_key=SUBCOMPONENT_KEY, enabled=True,
@@ -114,11 +120,16 @@ def test_project_subcomponent_resolution_all_four_paths(client, admin_token, org
         db.commit()
         assert is_module_subcomponent_enabled(db, project_uuid, fake_module, SUBCOMPONENT_KEY) is True
 
-        # (d) whole-module-disabled overrides everything, even a project
-        # override explicitly set to enabled=True.
+        # (d) org sub-component hard floor beats the project row.
+        org_row.enabled = False
+        db.commit()
+        assert is_module_subcomponent_enabled(db, project_uuid, fake_module, SUBCOMPONENT_KEY) is False
+
+        # (e) whole-module-disabled beats everything.
+        org_row.enabled = True
         from app.models.module import OrganizationModuleEnablement
 
-        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False))
+        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False, default_project_enabled=False))
         db.commit()
         assert is_module_subcomponent_enabled(db, project_uuid, fake_module, SUBCOMPONENT_KEY) is False
     finally:
@@ -153,9 +164,11 @@ def test_org_subcomponent_resolution_no_project_tier(client, admin_token, org_id
 
         # Org default overrides the registry default directly (no project
         # tier exists above it for an org-scoped artefact).
+        # `default_project_enabled` is irrelevant here — only `enabled` counts.
         db.add(
             OrganizationModuleSubComponentDefault(
-                organization_id=org_uuid, module_key=fake_module, subcomponent_key=SUBCOMPONENT_KEY, enabled=False,
+                organization_id=org_uuid, module_key=fake_module, subcomponent_key=SUBCOMPONENT_KEY,
+                enabled=False, default_project_enabled=True,
             )
         )
         db.commit()
@@ -164,7 +177,7 @@ def test_org_subcomponent_resolution_no_project_tier(client, admin_token, org_id
         # Whole-module-disabled still overrides the org default.
         from app.models.module import OrganizationModuleEnablement
 
-        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False))
+        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False, default_project_enabled=False))
         db.commit()
         assert is_org_module_subcomponent_enabled(db, org_uuid, fake_module, SUBCOMPONENT_KEY) is False
     finally:
@@ -236,7 +249,8 @@ def test_org_subcomponents_endpoint_lists_and_updates(client, admin_token, org_i
     assert resp.status_code == 200, resp.text
     by_key = {row["subcomponent_key"]: row for row in resp.json()}
     assert by_key[SUBCOMPONENT_KEY]["default_enabled"] is True
-    assert by_key[SUBCOMPONENT_KEY]["org_default_enabled"] is True
+    assert by_key[SUBCOMPONENT_KEY]["enabled"] is True
+    assert by_key[SUBCOMPONENT_KEY]["default_project_enabled"] is True
     assert by_key[SUBCOMPONENT_KEY]["has_org_override"] is False
     assert by_key[OTHER_SUBCOMPONENT_KEY]["default_enabled"] is False
 
@@ -246,13 +260,28 @@ def test_org_subcomponents_endpoint_lists_and_updates(client, admin_token, org_i
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["org_default_enabled"] is False
+    assert body["enabled"] is False
+    # Omitted on a new row -> matches `enabled`.
+    assert body["default_project_enabled"] is False
     assert body["has_org_override"] is True
     assert body["default_enabled"] is True  # registry default is unaffected by the org's own choice
 
+    # Omitted on an existing row -> left untouched; explicit value updates it.
+    resp = client.put(
+        f"/api/v1/orgs/{org_id}/modules/{fake_module}/subcomponents/{SUBCOMPONENT_KEY}",
+        json={"enabled": True}, headers=auth_headers(admin_token),
+    )
+    assert resp.json()["default_project_enabled"] is False
+    resp = client.put(
+        f"/api/v1/orgs/{org_id}/modules/{fake_module}/subcomponents/{SUBCOMPONENT_KEY}",
+        json={"enabled": True, "default_project_enabled": True}, headers=auth_headers(admin_token),
+    )
+    assert resp.json()["default_project_enabled"] is True
+
     resp = client.get(f"/api/v1/orgs/{org_id}/modules/{fake_module}/subcomponents", headers=auth_headers(admin_token))
     by_key = {row["subcomponent_key"]: row for row in resp.json()}
-    assert by_key[SUBCOMPONENT_KEY]["org_default_enabled"] is False
+    assert by_key[SUBCOMPONENT_KEY]["enabled"] is True
+    assert by_key[SUBCOMPONENT_KEY]["default_project_enabled"] is True
     assert by_key[SUBCOMPONENT_KEY]["has_org_override"] is True
 
 
@@ -273,36 +302,25 @@ def test_org_subcomponents_endpoint_404_for_unregistered_module_or_key(client, a
 
 
 def test_project_subcomponents_endpoint_lists_and_updates(client, admin_token, org_id, fake_module):
-    project = create_project(client, admin_token, org_id, "Project Sub-Component Endpoint Project")
-    project_id = project["id"]
-
-    resp = client.get(
-        f"/api/v1/projects/{project_id}/modules/{fake_module}/subcomponents", headers=auth_headers(admin_token)
-    )
-    assert resp.status_code == 200, resp.text
-    by_key = {row["subcomponent_key"]: row for row in resp.json()}
-    assert by_key[SUBCOMPONENT_KEY]["effective_enabled"] is True
-    assert by_key[SUBCOMPONENT_KEY]["org_default_enabled"] is True
-    assert by_key[SUBCOMPONENT_KEY]["has_project_override"] is False
-    assert by_key[SUBCOMPONENT_KEY]["project_override_enabled"] is None
-
-    # Set an org default of False, then confirm the project view reflects
-    # it (still no project override of its own).
+    """A project starts with the org's default copied in, and may opt in
+    past an org default of off while the org's hard floor is on."""
     resp = client.put(
         f"/api/v1/orgs/{org_id}/modules/{fake_module}/subcomponents/{SUBCOMPONENT_KEY}",
-        json={"enabled": False}, headers=auth_headers(admin_token),
+        json={"enabled": True, "default_project_enabled": False}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200, resp.text
+    project_id = create_project(client, admin_token, org_id, "Project Sub-Component Endpoint Project")["id"]
 
     resp = client.get(
         f"/api/v1/projects/{project_id}/modules/{fake_module}/subcomponents", headers=auth_headers(admin_token)
     )
+    assert resp.status_code == 200, resp.text
     by_key = {row["subcomponent_key"]: row for row in resp.json()}
     assert by_key[SUBCOMPONENT_KEY]["effective_enabled"] is False
     assert by_key[SUBCOMPONENT_KEY]["org_default_enabled"] is False
-    assert by_key[SUBCOMPONENT_KEY]["has_project_override"] is False
+    assert by_key[SUBCOMPONENT_KEY]["org_hard_enabled"] is True
+    assert by_key[SUBCOMPONENT_KEY]["project_override_enabled"] is False
 
-    # A project-level override of True wins over the org default of False.
     resp = client.put(
         f"/api/v1/projects/{project_id}/modules/{fake_module}/subcomponents/{SUBCOMPONENT_KEY}",
         json={"enabled": True}, headers=auth_headers(admin_token),
@@ -311,15 +329,7 @@ def test_project_subcomponents_endpoint_lists_and_updates(client, admin_token, o
     body = resp.json()
     assert body["effective_enabled"] is True
     assert body["org_default_enabled"] is False
-    assert body["has_project_override"] is True
     assert body["project_override_enabled"] is True
-
-    resp = client.get(
-        f"/api/v1/projects/{project_id}/modules/{fake_module}/subcomponents", headers=auth_headers(admin_token)
-    )
-    by_key = {row["subcomponent_key"]: row for row in resp.json()}
-    assert by_key[SUBCOMPONENT_KEY]["effective_enabled"] is True
-    assert by_key[SUBCOMPONENT_KEY]["has_project_override"] is True
 
 
 def test_project_subcomponents_endpoint_404_for_unregistered_module_or_key(client, admin_token, org_id, fake_module):

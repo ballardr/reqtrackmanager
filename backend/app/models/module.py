@@ -119,6 +119,21 @@ class OrganizationModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
     deliberately not cleaned up: the AND already makes it inert (see the
     comment at the entitlement-revoking endpoint in `routers/system.py`).
 
+    `default_project_enabled` (added migration 0055, Module 0 Phase 5
+    correction, **Decided by: User, 2026-09-29** — see `docs/decisions.md`'s
+    dated entry) is a third, independent tier, only meaningful when
+    `enabled` is `True`: does a project get this module on or off *by
+    default*, absent an override of its own? This is deliberately separate
+    from `enabled` itself — `enabled=False` remains an absolute floor no
+    project can cross regardless of `default_project_enabled` or any
+    `ProjectModuleEnablement` row (`is_module_enabled_for_project`'s own
+    "hard floor" check never even looks at this column when `enabled` is
+    `False`) — while `default_project_enabled` lets an org admin ship a
+    module "available, but opt-in per project" (e.g. a specialist module
+    most projects don't need, but any project manager may still turn on
+    for their own project) without that opt-in being indistinguishable
+    from the module being unavailable outright.
+
     Attributes:
         organization_id: The organisation this enablement override applies
             to.
@@ -127,7 +142,15 @@ class OrganizationModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
         enabled: Whether the organisation's admin has explicitly enabled
             (`True`) or disabled (`False`) the module — both are meaningful
             explicit states, distinct from "no row" (falls back to the
-            registry's `default_enabled`).
+            registry's `default_enabled`). An absolute floor: `False` means
+            no project of this organisation may use this module at all, no
+            override possible in either direction.
+        default_project_enabled: Whether a project of this organisation
+            gets this module on or off *by default*, absent a
+            `ProjectModuleEnablement` override of its own — only consulted
+            when `enabled` is `True`. A project's own override is
+            symmetric against this value (either direction), matching
+            `ProjectModuleEnablement`'s own docstring.
         updated_by: The org admin who last set this override, for audit
             attribution independent of `AuditEvent.actor_id`.
     """
@@ -140,6 +163,7 @@ class OrganizationModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
     )
     module_key: Mapped[str] = mapped_column(String(100))
     enabled: Mapped[bool] = mapped_column(Boolean)
+    default_project_enabled: Mapped[bool] = mapped_column(Boolean)
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
@@ -154,22 +178,32 @@ class ProjectModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
     shape one tier down, the same way `ProjectModuleSubComponentEnablement`
     already does for sub-components: the absence of a row for a given
     `(project_id, module_key)` pair means "use the organisation's own
-    `OrganizationModuleEnablement` row, or the registry's `default_enabled`
-    if the organisation has none either" — not "disabled." Effective
-    enablement still additionally requires entitlement (`app.modules.
-    registry.is_module_entitled`), an absolute ceiling this project-level
-    tier cannot cross regardless of what it sets — an org not entitled to
-    a module stays disabled for every one of its projects no matter what
-    any override says, the same "entitled AND (...)" formula `is_module_
-    enabled` already applies one tier up.
+    `OrganizationModuleEnablement.default_project_enabled` value, or the
+    registry's `default_enabled` if the organisation has no row at all" —
+    not "disabled." Effective enablement still additionally requires
+    entitlement *and* the organisation's own `enabled` flag both being
+    `True` (`app.modules.registry.is_module_enabled`) — both are an
+    absolute floor this project-level tier cannot cross upward regardless
+    of what it sets: an org not entitled to a module, or one that has hard-
+    disabled it outright, stays disabled for every one of its projects no
+    matter what any override says.
 
-    The override is **symmetric** (Decided by: User, 2026-09-28): a
-    project admin's own choice always wins over the org default in either
-    direction — enabling a module the org default has off, or disabling
-    one the org default has on — matching the rule Phase 4 already
-    established for `ProjectModuleSubComponentEnablement`, chosen for
-    consistency over a one-directional "project can only narrow"
-    alternative that was explicitly raised and rejected.
+    The override is **symmetric against the organisation's
+    `default_project_enabled` value specifically** (Decided by: User,
+    2026-09-28, reaffirmed with this corrected scope 2026-09-29 — see
+    `docs/decisions.md`'s dated entry for the full reasoning): a project
+    admin's own choice always wins over that *default* in either direction
+    — enabling a module the organisation defaults off for new projects
+    (e.g. a specialist module most projects don't need, but any project
+    manager may still opt in for their own), or disabling one the
+    organisation defaults on — but this symmetry only ever operates
+    *within* the organisation's own `enabled=True` floor, never past it.
+    An initial, broader "symmetric against `enabled` itself, in either
+    direction, no floor at all" design shipped 2026-09-28 and was reversed
+    the next day once a real need surfaced for the org to hard-block a
+    module with no project-level exception possible — see
+    `docs/plans/module-00-platform-foundations-plan.md`'s Phase 5
+    correction note.
 
     Attributes:
         project_id: The project this override applies to.
@@ -218,10 +252,13 @@ class OrganizationModuleSubComponentDefault(UUIDPKMixin, TimestampMixin, Base):
             as `OrganizationModuleEnablement.module_key`.
         subcomponent_key: The sub-component's key, as declared in that
             module's own `ModuleDefinition.sub_components`.
-        enabled: Whether the organisation's admin has explicitly set this
-            sub-component's default to enabled (`True`) or disabled
-            (`False`) — both meaningful explicit states, distinct from "no
-            row" (falls back to the registry's `default_enabled`).
+        enabled: Hard floor, same meaning as `OrganizationModuleEnablement.
+            enabled`: `False` turns this sub-component off for the org-level
+            artefact and every project, no project override possible.
+        default_project_enabled: The value copied into a project when it is
+            created (`app.modules.registry.snapshot_project_module_state`).
+            Changing it does not alter existing projects (added migration
+            0056, Decided by: User, 2026-10-04).
         updated_by: The org admin who last set this default, for audit
             attribution independent of `AuditEvent.actor_id`.
     """
@@ -235,6 +272,7 @@ class OrganizationModuleSubComponentDefault(UUIDPKMixin, TimestampMixin, Base):
     module_key: Mapped[str] = mapped_column(String(100))
     subcomponent_key: Mapped[str] = mapped_column(String(100))
     enabled: Mapped[bool] = mapped_column(Boolean)
+    default_project_enabled: Mapped[bool] = mapped_column(Boolean)
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
@@ -244,21 +282,39 @@ class ProjectModuleSubComponentEnablement(UUIDPKMixin, TimestampMixin, Base):
     their project only, taking precedence over the organisation's own
     `OrganizationModuleSubComponentDefault` above it
     (`app.modules.registry.is_module_subcomponent_enabled`'s resolution
-    order). This is a genuinely new capability at the project level: unlike
-    this pair's org tier (which mirrors the existing whole-module
-    `OrganizationModuleEntitlement`/`OrganizationModuleEnablement` split),
-    whole-module enablement itself has no project-level override at all —
-    only this finer-grained sub-component layer gets one.
+    order). This mirrors the org tier's own split
+    (`OrganizationModuleEntitlement`/`OrganizationModuleEnablement`) one
+    level down; whole-module enablement gained an equivalent project-level
+    override of its own in Phase 5 (`ProjectModuleEnablement`, added
+    immediately after this table), so this is no longer the *only*
+    project-level override in this module — it remains, however, the only
+    one with no separate hard-floor tier of its own (see below).
 
     Same **explicit-override-only** shape as its siblings: the absence of
     a row for a given `(project_id, module_key, subcomponent_key)` triple
     means "use the organisation's own default (or the registry default if
     the organisation has none either)," not "disabled." Effective
-    enablement additionally requires the *whole module* to be enabled for
-    the project's owning organisation — a project admin cannot re-enable a
-    sub-component of a module their organisation has disabled entirely
-    (`is_module_subcomponent_enabled`'s "whole-module disabled always wins
-    first" rule).
+    enablement additionally requires the *whole module* to be effectively
+    enabled for this project (`app.modules.registry.
+    is_module_enabled_for_project`) — a project admin cannot re-enable a
+    sub-component of a module their organisation has hard-disabled
+    entirely, or that this project's own whole-module override has turned
+    off (`is_module_subcomponent_enabled`'s "whole-module disabled always
+    wins first" rule).
+
+    **Deliberately kept simple — plain org default + symmetric project
+    override, with no separate hard-floor tier of its own, unlike
+    `OrganizationModuleEnablement`'s `enabled` vs. `default_project_enabled`
+    split above it (Decided by: Agent, 2026-09-29, flagged for the user to
+    reconsider if a real need surfaces).** The whole-module tier's own hard
+    floor already fully covers "the org needs to shut this off entirely,
+    no exceptions" for every one of its sub-components too, since a
+    hard-disabled module already blocks all of them regardless of their
+    own org-default/override state. Adding a second, independent hard-floor
+    concept one tier down — "hard-block just this one sub-component, no
+    per-project exception possible, even though the rest of the module
+    stays on" — would be speculative complexity for a capability nobody
+    has asked for at this granularity yet.
 
     Attributes:
         project_id: The project this override applies to.

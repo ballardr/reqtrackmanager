@@ -17,6 +17,8 @@ A project marked **"Usable as a project template"** (**Project Admin → Project
 
 Creating a new project **from a template** copies its components, categories, custom field definitions, groups and group memberships, and requirements (reset to draft status) into the new project — so a team's established structure doesn't need rebuilding by hand every time a new project starts.
 
+**Module and sub-component settings are not copied from the template.** A new project — blank or from a template — starts with the organisation's current defaults instead; see [Workflows → Organisations and projects → Creating a project](../workflows/organisations-and-projects.md#creating-a-project).
+
 ## Organisation default template
 
 An organisation can also set a **default template** (**Organisation admin → Projects & workflow**), which is offered by default whenever someone in that organisation creates a new project — while any other project marked as usable-as-template remains available as an alternative starting point.

@@ -506,7 +506,8 @@ def test_org_frame_token_endpoint_404_for_disabled_module(client, admin_token, o
     try:
         db.add(
             OrganizationModuleEnablement(
-                organization_id=uuid_lib.UUID(org_id), module_key=installed_tier_module, enabled=False
+                organization_id=uuid_lib.UUID(org_id), module_key=installed_tier_module, enabled=False,
+                default_project_enabled=False,
             )
         )
         db.commit()
@@ -762,7 +763,8 @@ def test_project_enabled_modules_endpoint_lists_only_enabled_modules(
     try:
         db.add(
             OrganizationModuleEnablement(
-                organization_id=uuid_lib.UUID(org_id), module_key=installed_tier_module, enabled=False
+                organization_id=uuid_lib.UUID(org_id), module_key=installed_tier_module, enabled=False,
+                default_project_enabled=False,
             )
         )
         db.commit()

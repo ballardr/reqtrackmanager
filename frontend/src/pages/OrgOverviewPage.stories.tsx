@@ -80,8 +80,8 @@ function fixtureOrgModule(overrides: Partial<OrgModule> = {}): OrgModule {
   return {
     module_key: FIXTURE_ORG_MODULE_KEY, name: "Fixture Org Module",
     description: "A fixture module used only by this story file's own org-overview-section assertions.",
-    version: "0.1.0", implemented: true, entitled: true, enabled: true, default_enabled: true,
-    frontend_manifest: null, ...overrides,
+    version: "0.1.0", implemented: true, entitled: true, enabled: true, default_project_enabled: true,
+    default_enabled: true, frontend_manifest: null, ...overrides,
   };
 }
 

@@ -524,6 +524,27 @@ const en = {
     // queries targeting the field itself, a real ambiguity, not just an
     // accessible-naming nicety.
     defaultTemplateSection: "Default template",
+    // Module 0 (Platform Foundations) Phases 4/5 — Project Admin's own
+    // "Modules" tab: a project's whole-module enablement override and,
+    // for a module with sub-components, its own per-sub-component
+    // override — one level below Org Admin's `orgAdmin.modules*` (which
+    // sets the organisation's own default rather than one project's
+    // override of it).
+    modulesNav: "Modules",
+    modulesDescription:
+      "Turn modules on or off for this {project}. New {project}s start with the organisation's defaults; later changes to those defaults don't affect existing {project}s.",
+    modulesEmpty: "No modules are registered on this deployment yet.",
+    moduleToggleLabel: (name: string) => `Enable ${name} for this {project}`,
+    moduleEnabledToast: (name: string) => `${name} enabled for this {project}`,
+    moduleDisabledToast: (name: string) => `${name} disabled for this {project}`,
+    moduleDisabledForOrgHint: "Turned off for your organisation — ask an organisation admin to turn it on.",
+    moduleOrgDefaultHint: (on: boolean) => `Organisation default for new {project}s: ${on ? "on" : "off"}`,
+    moduleSubComponentToggleLabel: (moduleName: string, subComponentName: string) =>
+      `Enable ${subComponentName} (${moduleName}) for this {project}`,
+    moduleSubComponentEnabledToast: (name: string) => `${name} enabled for this {project}`,
+    moduleSubComponentDisabledToast: (name: string) => `${name} disabled for this {project}`,
+    moduleSubComponentsSummary: (count: number, onCount: number) =>
+      `${count} component${count === 1 ? "" : "s"} · ${onCount === count ? "all on" : `${onCount} on`}`,
     structure: "Structure",
     fieldsAndActions: "Fields & actions",
     stages: "{Project} stages",
@@ -1139,13 +1160,17 @@ const en = {
     // Module system Phase 1: the org admin's "Modules" section (enable/
     // disable a feature module among those the org is entitled to).
     modulesTitle: "Modules",
-    modulesDescription: "Enable or disable optional feature modules for this organisation. A module greyed out below isn't available on your current plan.",
+    modulesDescription:
+      "Choose which modules this organisation uses. A default only applies to projects created after you change it; Off removes the module from every project.",
     modulesEmpty: "No modules are registered on this deployment yet.",
     moduleNotEntitledHint: "Not available on this organisation's current plan. Contact your server administrator to request access.",
     moduleNotImplementedHint: "Not yet available in this version of the application.",
-    moduleEnabledToast: (name: string) => `${name} enabled`,
-    moduleDisabledToast: (name: string) => `${name} disabled`,
-    moduleToggleLabel: (name: string) => `Enable ${name}`,
+    moduleAvailabilityLabel: (name: string) => `${name} availability`,
+    moduleAvailabilityToast: (name: string, availability: string) => `${name}: ${availability}`,
+    moduleSubComponentAvailabilityLabel: (moduleName: string, subComponentName: string) =>
+      `${subComponentName} (${moduleName}) availability`,
+    moduleSubComponentsSummary: (count: number, offCount: number) =>
+      `${count} component${count === 1 ? "" : "s"} · ${offCount === 0 ? "all on" : `${offCount} off`}`,
     smtpHost: "SMTP host",
     smtpPort: "SMTP port",
     smtpUsername: "SMTP username",
@@ -1633,6 +1658,10 @@ const en = {
     // `FilterPanel`'s collapsible filter body (2026-08 UX audit roadmap) —
     // below the mobile breakpoint it's a `CollapsibleSection` titled this.
     filters: "Filters",
+    showMore: "More",
+    showLess: "Less",
+    // `ModuleSettingsList`'s collapsed sub-component disclosure.
+    moduleComponentsSummary: (count: number) => `${count} component${count === 1 ? "" : "s"}`,
   },
 };
 

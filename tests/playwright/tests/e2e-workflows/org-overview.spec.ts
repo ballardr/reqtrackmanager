@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, ORG_NAMES, PERSONAS, selectOrgAdminGroup } from "./helpers";
+import { loginAs, logout, ORG_NAMES, PERSONAS, selectOrgAdminGroup, setOrgModuleAvailability } from "./helpers";
 
 /**
  * Job to be done: compliance-module-plan.md Phase 19 — the new
@@ -79,11 +79,12 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
-    const toggle = page.locator("tr", { hasText: "Compliance" }).getByRole("switch");
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
-
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    // Record the starting availability (either "on" state) to restore it
+    // exactly afterwards — shared seed org, so don't assume which one.
+    const select = page.getByRole("combobox", { name: "Compliance availability", exact: true });
+    const initial = (await select.inputValue()) as "opt_in" | "default_on";
+    expect(["opt_in", "default_on"]).toContain(initial);
+    await setOrgModuleAvailability(page, "Compliance", "off");
 
     await page.goto("/org-overview");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview$/);
@@ -99,9 +100,7 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     // mutation survives the test.
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
-    await expect(toggle).toHaveAttribute("aria-checked", "false");
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await setOrgModuleAvailability(page, "Compliance", initial);
 
     await page.goto("/org-overview");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview$/);

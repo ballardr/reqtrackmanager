@@ -23,6 +23,8 @@ import type {
   ProjectGroup,
   ProjectListItem,
   ProjectMemberSource,
+  ProjectModuleEnablement,
+  ProjectModuleSubComponent,
   ProjectReportConfig,
   ProjectRole,
   ProjectRoleInheritanceMode,
@@ -36,6 +38,7 @@ import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
@@ -112,7 +115,8 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * (`direct_role` vs. group/nested-org-group/project-ref/org-wide) that
  * makes its inline role-toggle safe.
  */
-type CoreProjectAdminGroupKey = "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup";
+type CoreProjectAdminGroupKey =
+  | "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup" | "modules";
 
 /** Widened to admit a module-contributed section's own key (Module 4 Phase
  * 9, 2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
@@ -126,6 +130,7 @@ const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
   "members",
   "groups",
   "reportSetup",
+  "modules",
 ];
 
 /**
@@ -164,6 +169,15 @@ export function ProjectAdminPage() {
       return true;
     });
   const [project, setProject] = useState<Project | null>(null);
+  // Module 0 (Platform Foundations) Phases 4/5 — this project's own
+  // Modules tab: every registered module's effective whole-module state
+  // (`projectModules`) plus, for a module with sub-components, this
+  // project's own per-sub-component state (`projectModuleSubComponents`,
+  // keyed by `module_key` — empty for every module except Context &
+  // Strategy today, see `reload()`'s own "fetch for every module
+  // unconditionally" comment).
+  const [projectModules, setProjectModules] = useState<ProjectModuleEnablement[]>([]);
+  const [projectModuleSubComponents, setProjectModuleSubComponents] = useState<Record<string, ProjectModuleSubComponent[]>>({});
   const [stages, setStages] = useState<ProjectStage[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -468,7 +482,7 @@ export function ProjectAdminPage() {
     const [
       orgUsers, orgGroups, orgForOrgSettings, reportTemplates, orgProjectStatuses,
       orgProjects, memberSources, memberTableGroups, effectiveMembers, groupRoles,
-      pendingInvites, availableModuleRoles,
+      pendingInvites, availableModuleRoles, projectModulesLoaded,
     ] = await Promise.all([
       // Group membership (above) only stores user ids — resolving those to
       // an email/display name needs the org's member directory. Any org
@@ -509,6 +523,10 @@ export function ProjectAdminPage() {
       // page's own reload()" treatment every other Members-section data
       // source above gets.
       api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${projectId}/module-roles`),
+      // Module 0 (Platform Foundations) Phase 5 follow-up — the Modules
+      // tab's own bulk discovery endpoint (every registered module, this
+      // project's own effective/override state for each).
+      api.get<ProjectModuleEnablement[]>(`/api/v1/projects/${projectId}/modules`),
     ]);
     setOrgUsers(orgUsers);
     setOrgGroups(orgGroups);
@@ -520,8 +538,73 @@ export function ProjectAdminPage() {
     setMemberTableGroups(memberTableGroups);
     setEffectiveMembers(effectiveMembers);
     setGroupRoles(groupRoles);
+    setProjectModules(projectModulesLoaded);
+    // Sub-components (Phase 4), one level below the whole-module list just
+    // fetched — `GET .../subcomponents` safely returns `[]` for a module
+    // with none declared (every module except Context & Strategy today),
+    // so this is called for every module unconditionally, mirroring Org
+    // Admin's own identical "fetch subcomponents for every module" shape.
+    const subComponentEntries = await Promise.all(
+      projectModulesLoaded.map(async (m) => [
+        m.module_key,
+        await api.get<ProjectModuleSubComponent[]>(
+          `/api/v1/projects/${projectId}/modules/${m.module_key}/subcomponents`,
+        ),
+      ] as const),
+    );
+    setProjectModuleSubComponents(Object.fromEntries(subComponentEntries));
     setPendingInvites(pendingInvites);
     setAvailableModuleRoles(availableModuleRoles);
+  }
+
+  // A whole-module enablement change cascades into every one of that
+  // module's own sub-components' *effective* state (`is_module_
+  // subcomponent_enabled`'s own "whole-module-disabled always wins" rule
+  // — see that function's docstring) — re-fetched here after either
+  // mutation below so the sub-component rows' toggles/pills don't go
+  // stale showing their pre-change effective state until the next full
+  // `reload()`.
+  async function refreshProjectModuleSubComponents(moduleKey: string) {
+    const subs = await api.get<ProjectModuleSubComponent[]>(
+      `/api/v1/projects/${projectId}/modules/${moduleKey}/subcomponents`,
+    );
+    setProjectModuleSubComponents((prev) => ({ ...prev, [moduleKey]: subs }));
+  }
+
+  // Module 0 (Platform Foundations) Phase 5 — this project's own
+  // whole-module enablement override. Immediate PUT + local-state patch,
+  // the same shape `toggleModuleEnabled` uses on `OrgAdminPage.tsx` one
+  // tier up: a single toggle only ever changes this one module's own row.
+  async function toggleProjectModuleEnabled(moduleKey: string, enabled: boolean) {
+    try {
+      const updated = await api.put<ProjectModuleEnablement>(
+        `/api/v1/projects/${projectId}/modules/${moduleKey}/enablement`, { enabled },
+      );
+      setProjectModules((prev) => prev.map((m) => (m.module_key === moduleKey ? updated : m)));
+      await refreshProjectModuleSubComponents(moduleKey);
+      showToast(enabled ? strings.admin.moduleEnabledToast(updated.name) : strings.admin.moduleDisabledToast(updated.name));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function toggleProjectSubComponentEnabled(moduleKey: string, subcomponentKey: string, enabled: boolean) {
+    try {
+      const updated = await api.put<ProjectModuleSubComponent>(
+        `/api/v1/projects/${projectId}/modules/${moduleKey}/subcomponents/${subcomponentKey}`, { enabled },
+      );
+      setProjectModuleSubComponents((prev) => ({
+        ...prev,
+        [moduleKey]: (prev[moduleKey] ?? []).map((s) => (s.subcomponent_key === subcomponentKey ? updated : s)),
+      }));
+      showToast(
+        enabled
+          ? strings.admin.moduleSubComponentEnabledToast(updated.name)
+          : strings.admin.moduleSubComponentDisabledToast(updated.name),
+      );
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function reloadEffectiveMembers() {
@@ -705,6 +788,9 @@ export function ProjectAdminPage() {
   }
 
   useEffect(() => {
+    // Documented false positive: every setState in `reload()` runs after
+    // its first `await`, so none is synchronous within this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
@@ -1361,6 +1447,7 @@ export function ProjectAdminPage() {
     { key: "members", label: strings.admin.membersNav, href: `/projects/${projectId}/admin/members` },
     { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
     { key: "reportSetup", label: strings.admin.reportSetup, href: `/projects/${projectId}/admin/reportSetup` },
+    { key: "modules", label: strings.admin.modulesNav, href: `/projects/${projectId}/admin/modules` },
     ...moduleAdminSections.map((section) => ({
       key: section.key, label: section.label, href: `/projects/${projectId}/admin/${section.key}`,
     })),
@@ -2728,6 +2815,69 @@ export function ProjectAdminPage() {
           {strings.admin.saveSettings}
         </button>
       </div>
+      )}
+
+      {/* Module 0 (Platform Foundations) Phases 4/5 — this project's own
+          Modules tab: override this project's effective enablement of a
+          whole module, or one of its sub-components, against the
+          organisation's own current default. Not to be confused with
+          `moduleAdminSections` below (a different, existing mechanism for
+          a module's own contributed admin panel, e.g. Pain Point Types) —
+          this is the core, module-agnostic "is this module/sub-component
+          on for this project" surface, the project-tier sibling of Org
+          Admin's own "Modules" section (`OrgAdminPage.tsx`). */}
+      {activeGroup === "modules" && (
+        <div className="stack">
+          <CollapsibleSection sectionKey="projectAdmin.modules" title={strings.admin.modulesNav}>
+            <p className="text-muted">{strings.admin.modulesDescription}</p>
+            {projectModules.length === 0 ? (
+              <p className="text-muted">{strings.admin.modulesEmpty}</p>
+            ) : (
+              <ModuleSettingsList
+                items={projectModules.map((m) => {
+                  // `org_hard_enabled` false = the org has turned the
+                  // module off; nothing a project sets can turn it on, so
+                  // the control is disabled (greyed, with a hint).
+                  const orgOff = !m.org_hard_enabled;
+                  const subComponents = projectModuleSubComponents[m.module_key] ?? [];
+                  return {
+                    key: m.module_key,
+                    name: m.name,
+                    hint: orgOff
+                      ? strings.admin.moduleDisabledForOrgHint
+                      : m.effective_enabled !== m.org_default_enabled
+                        ? strings.admin.moduleOrgDefaultHint(m.org_default_enabled)
+                        : null,
+                    muted: orgOff,
+                    control: (
+                      <ToggleSwitch
+                        checked={m.effective_enabled}
+                        disabled={orgOff}
+                        label={strings.admin.moduleToggleLabel(m.name)}
+                        onChange={(next) => toggleProjectModuleEnabled(m.module_key, next)}
+                      />
+                    ),
+                    subSummary: strings.admin.moduleSubComponentsSummary(
+                      subComponents.length, subComponents.filter((sub) => sub.effective_enabled).length,
+                    ),
+                    subItems: subComponents.map((sub) => ({
+                      key: sub.subcomponent_key,
+                      name: sub.name,
+                      control: (
+                        <ToggleSwitch
+                          checked={sub.effective_enabled}
+                          disabled={!m.effective_enabled || !sub.org_hard_enabled}
+                          label={strings.admin.moduleSubComponentToggleLabel(m.name, sub.name)}
+                          onChange={(next) => toggleProjectSubComponentEnabled(m.module_key, sub.subcomponent_key, next)}
+                        />
+                      ),
+                    })),
+                  };
+                })}
+              />
+            )}
+          </CollapsibleSection>
+        </div>
       )}
 
       {/* Module 4 Phase 9 (2026-09-22): one generic lookup for every

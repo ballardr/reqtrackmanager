@@ -387,16 +387,16 @@ def test_disabled_strategy_subcomponent_is_404_project_scoped(client, admin_toke
 
 
 def test_project_override_re_enables_strategy_subcomponent_over_org_default(client, admin_token):
-    """A project admin's own override wins over the organisation's
-    default — the project-level half of Phase 4's two-tier resolution,
-    exercised against the real Strategy endpoints."""
-    org, project, org_admin_token = _setup(client, admin_token, "CtxStrategy Subcomponent Override Co")
+    """With Strategy available but off by default for new projects, a
+    project created afterwards starts without it (404) and its admin can
+    opt in — exercised against the real Strategy endpoints."""
+    org, _, org_admin_token = _setup(client, admin_token, "CtxStrategy Subcomponent Override Co")
     resp = client.put(
         f"/api/v1/orgs/{org['id']}/modules/{MODULE_KEY}/subcomponents/strategy",
-        json={"enabled": False}, headers=auth_headers(org_admin_token),
+        json={"enabled": True, "default_project_enabled": False}, headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 200, resp.text
-    # Confirm the org default alone does 404 the project first.
+    project = create_project(client, org_admin_token, org["id"], "CtxStrategy Opt In Project")
     resp = client.get(_project_base(project["id"]) + "/strategies", headers=auth_headers(org_admin_token))
     assert resp.status_code == 404, resp.text
 
@@ -408,7 +408,6 @@ def test_project_override_re_enables_strategy_subcomponent_over_org_default(clie
     body = resp.json()
     assert body["effective_enabled"] is True
     assert body["org_default_enabled"] is False
-    assert body["has_project_override"] is True
 
     resp = client.get(_project_base(project["id"]) + "/strategies", headers=auth_headers(org_admin_token))
     assert resp.status_code == 200, resp.text

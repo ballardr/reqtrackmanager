@@ -351,7 +351,7 @@ def test_module_role_permissions_field_absent_when_module_disabled(client, admin
                 organization_id=org["id"], project_id=project["id"],
             )
         )
-        db.add(OrganizationModuleEnablement(organization_id=org["id"], module_key=fake_module, enabled=False))
+        db.add(OrganizationModuleEnablement(organization_id=org["id"], module_key=fake_module, enabled=False, default_project_enabled=False))
         db.commit()
 
         held = get_effective_permissions(db, uuid_lib.UUID(grantee_id), project_id=uuid_lib.UUID(project["id"]))
@@ -387,6 +387,8 @@ def test_module_role_permissions_field_absent_when_project_level_override_disabl
                 organization_id=org["id"], project_id=project["id"],
             )
         )
+        # Replace the row copied in at project creation (snapshot_project_module_state).
+        db.query(ProjectModuleEnablement).filter_by(project_id=project["id"], module_key=fake_module).delete()
         db.add(ProjectModuleEnablement(project_id=project["id"], module_key=fake_module, enabled=False))
         db.commit()
 

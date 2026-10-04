@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { PASSWORD, loginAs, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { PASSWORD, loginAs, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
 import { selectLabeledOption } from "./helpers";
 
 const API_BASE_URL = "http://localhost:8000";
@@ -86,12 +86,8 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
     await selectOrgAdminGroup(page, "Modules");
-    const decisionsRow = page.locator("tr", { hasText: "Decision Management" });
-    await expect(decisionsRow).toBeVisible();
-    const moduleToggle = decisionsRow.getByRole("switch");
-    await expect(moduleToggle).toHaveAttribute("aria-checked", "false");
-    await moduleToggle.click();
-    await expect(moduleToggle).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("combobox", { name: "Decision Management availability", exact: true })).toHaveValue("off");
+    await setOrgModuleAvailability(page, "Decision Management", "default_on");
 
     // --- Navigate into the project's own new "Decisions" nav entry.
     await page.goto(`/projects/${project.id}`);

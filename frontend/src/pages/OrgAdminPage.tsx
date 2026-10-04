@@ -22,6 +22,7 @@ import type {
   OrgGroup,
   OrgGroupProjectRoleSummary,
   OrgModule,
+  OrgModuleSubComponent,
   OrgMergePreviewResult,
   OrgMergeResult,
   OrgPendingInvite,
@@ -44,7 +45,16 @@ import type {
   ScimTokenStatus,
   UserAccess,
 } from "../api/types";
-import { collapseProjectRoles, ORG_ROLE_LABEL, PENDING_INVITE_STATUS_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import type { ModuleAvailability } from "../api/types";
+import {
+  collapseProjectRoles,
+  fromModuleAvailability,
+  MODULE_AVAILABILITY_LABEL,
+  ORG_ROLE_LABEL,
+  PENDING_INVITE_STATUS_LABEL,
+  PROJECT_ROLE_LABEL,
+  toModuleAvailability,
+} from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
@@ -59,6 +69,7 @@ import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { Modal } from "../components/Modal";
+import { ModuleAvailabilitySelect, ModuleSettingsList } from "../components/ModuleSettingsList";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { PermissionPicker } from "../components/PermissionPicker";
@@ -297,6 +308,13 @@ export function OrgAdminPage() {
   // which also correctly renders as "no modules" for a deployment with
   // none registered yet (there are zero implemented modules until Phase 5).
   const [modules, setModules] = useState<OrgModule[]>([]);
+  // Module 0 (Platform Foundations) Phase 4 — each module's own declared
+  // sub-components (empty for every module except Context & Strategy
+  // today), keyed by `module_key`, fetched alongside `modules` itself once
+  // the module list is known. `GET .../subcomponents` safely returns `[]`
+  // for a module with none declared, so this is called for every module
+  // unconditionally rather than checking first.
+  const [orgModuleSubComponents, setOrgModuleSubComponents] = useState<Record<string, OrgModuleSubComponent[]>>({});
   // Module system follow-up, 2026-09-07 (Tier C / Module Federation): a
   // module effectively enabled for this org whose manifest is `"federated"`
   // has no build-time `installedModules` entry to fall back on — its own
@@ -673,7 +691,15 @@ export function OrgAdminPage() {
       }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
-      setModules(await api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`));
+      const loadedModules = await api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`);
+      setModules(loadedModules);
+      const subComponentEntries = await Promise.all(
+        loadedModules.map(async (m) => [
+          m.module_key,
+          await api.get<OrgModuleSubComponent[]>(`/api/v1/orgs/${orgId}/modules/${m.module_key}/subcomponents`),
+        ] as const),
+      );
+      setOrgModuleSubComponents(Object.fromEntries(subComponentEntries));
       setAvailableOrgModuleRoles(await api.get<ModuleRoleDefinition[]>(`/api/v1/orgs/${orgId}/module-roles`));
     } catch (err) {
       // Non-admins can't read advanced settings (403) — the section is simply hidden for them.
@@ -1600,16 +1626,33 @@ export function OrgAdminPage() {
     }
   }
 
-  // Module system Phase 1: immediate PUT + local-state patch, same shape
-  // as `grantOrgRole`/`revokeOrgRole` above — a single toggle only ever
-  // changes this one module's own row, so there's nothing else on the page
-  // a full `reload()` would need to refresh, and a toast gives the
-  // feedback-on-every-mutation the style guide requires.
-  async function toggleModuleEnabled(moduleKey: string, enabled: boolean) {
+  // One availability choice = one PUT of both levers (`enabled` +
+  // `default_project_enabled`), patched into local state, with a toast for
+  // the style guide's feedback-on-every-mutation rule.
+  async function setModuleAvailability(moduleKey: string, availability: ModuleAvailability) {
     try {
-      const updated = await api.put<OrgModule>(`/api/v1/orgs/${orgId}/modules/${moduleKey}`, { enabled });
+      const updated = await api.put<OrgModule>(
+        `/api/v1/orgs/${orgId}/modules/${moduleKey}`, fromModuleAvailability(availability),
+      );
       setModules((prev) => prev.map((m) => (m.module_key === moduleKey ? updated : m)));
-      showToast(enabled ? strings.orgAdmin.moduleEnabledToast(updated.name) : strings.orgAdmin.moduleDisabledToast(updated.name));
+      showToast(strings.orgAdmin.moduleAvailabilityToast(updated.name, MODULE_AVAILABILITY_LABEL[availability]));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** Sub-component sibling of `setModuleAvailability`. */
+  async function setSubComponentAvailability(moduleKey: string, subcomponentKey: string, availability: ModuleAvailability) {
+    try {
+      const updated = await api.put<OrgModuleSubComponent>(
+        `/api/v1/orgs/${orgId}/modules/${moduleKey}/subcomponents/${subcomponentKey}`,
+        fromModuleAvailability(availability),
+      );
+      setOrgModuleSubComponents((prev) => ({
+        ...prev,
+        [moduleKey]: (prev[moduleKey] ?? []).map((s) => (s.subcomponent_key === subcomponentKey ? updated : s)),
+      }));
+      showToast(strings.orgAdmin.moduleAvailabilityToast(updated.name, MODULE_AVAILABILITY_LABEL[availability]));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -3859,50 +3902,50 @@ export function OrgAdminPage() {
               {modules.length === 0 ? (
                 <p className="text-muted">{strings.orgAdmin.modulesEmpty}</p>
               ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{strings.orgAdmin.name}</th>
-                      <th></th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {modules.map((m) => {
-                      // Non-entitled (or not-yet-implemented) modules are
-                      // shown greyed out with an explanatory note rather
-                      // than hidden entirely (plan requirement — visibility
-                      // helps future upsell); the toggle itself stays
-                      // disabled either way.
-                      const disabled = !m.entitled || !m.implemented;
-                      const hint = !m.entitled
+                <ModuleSettingsList
+                  items={modules.map((m) => {
+                    // Non-entitled/not-yet-implemented modules stay listed
+                    // (greyed, with a hint) rather than hidden — visibility
+                    // helps future upsell.
+                    const disabled = !m.entitled || !m.implemented;
+                    const subComponents = orgModuleSubComponents[m.module_key] ?? [];
+                    return {
+                      key: m.module_key,
+                      name: m.name,
+                      version: m.version,
+                      description: m.description,
+                      hint: !m.entitled
                         ? strings.orgAdmin.moduleNotEntitledHint
                         : !m.implemented
                           ? strings.orgAdmin.moduleNotImplementedHint
-                          : null;
-                      return (
-                        <tr key={m.module_key} style={!m.entitled ? { opacity: 0.55 } : undefined}>
-                          <td>
-                            <div className="stack" style={{ gap: 0 }}>
-                              <strong>{m.name}</strong>
-                              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{m.description}</span>
-                              {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
-                            </div>
-                          </td>
-                          <td className="text-muted" style={{ fontSize: "0.8rem" }}>{m.version}</td>
-                          <td>
-                            <ToggleSwitch
-                              checked={m.enabled}
-                              disabled={disabled}
-                              label={strings.orgAdmin.moduleToggleLabel(m.name)}
-                              onChange={(next) => toggleModuleEnabled(m.module_key, next)}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          : null,
+                      muted: !m.entitled,
+                      control: (
+                        <ModuleAvailabilitySelect
+                          value={toModuleAvailability(m.enabled, m.default_project_enabled)}
+                          disabled={disabled}
+                          label={strings.orgAdmin.moduleAvailabilityLabel(m.name)}
+                          onChange={(next) => setModuleAvailability(m.module_key, next)}
+                        />
+                      ),
+                      subSummary: strings.orgAdmin.moduleSubComponentsSummary(
+                        subComponents.length, subComponents.filter((sub) => !sub.enabled).length,
+                      ),
+                      subItems: subComponents.map((sub) => ({
+                        key: sub.subcomponent_key,
+                        name: sub.name,
+                        control: (
+                          <ModuleAvailabilitySelect
+                            value={toModuleAvailability(sub.enabled, sub.default_project_enabled)}
+                            disabled={disabled || !m.enabled}
+                            label={strings.orgAdmin.moduleSubComponentAvailabilityLabel(m.name, sub.name)}
+                            onChange={(next) => setSubComponentAvailability(m.module_key, sub.subcomponent_key, next)}
+                          />
+                        ),
+                      })),
+                    };
+                  })}
+                />
               )}
             </CollapsibleSection>
           </div>

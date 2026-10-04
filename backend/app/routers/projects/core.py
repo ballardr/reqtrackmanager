@@ -50,7 +50,7 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
-from app.modules.registry import run_on_project_created_hooks
+from app.modules.registry import run_on_project_created_hooks, snapshot_project_module_state
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, ProjectFileOut
 from app.schemas.project import (
@@ -471,6 +471,11 @@ def create_project(
         # always on regardless of the RBAC inheritance settings above.
         if payload.parent_project_id is None:
             seed_action_types(db, project.id)
+
+    # Copy the org's current module/sub-component defaults into the new
+    # project (blank or template-cloned alike), so a later change to an org
+    # default never flips this project (Decided by: User, 2026-10-04).
+    snapshot_project_module_state(db, project.id, project.organization_id)
 
     if payload.terminology:
         project.terminology = payload.terminology

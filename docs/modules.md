@@ -228,41 +228,86 @@ Both endpoint families return the effective state alongside the org
 default/registry default and whether an override exists at that tier — not
 just a flat boolean — so the frontend can render the UX style guide's
 "platform-default override visibility" pattern ("using org default: X" vs.
-"overridden to: Y") once a consuming module has UI to show it. **Frontend
-still deferred as of Context & Strategy's own Phase 7.1 (Strategy artefact
-UI, 2026-09-29)**: that phase built the Strategy artefact's own list/
-detail/lifecycle UI, but not a settings surface for *this* sub-component-
-enablement mechanism itself (toggling individual artefact types like
-Strategy/Pain Points on or off per project/org) — no such surface was built
-speculatively ahead of a phase that actually needs it, and Phase 7.1's own
-brief didn't call for one either. See `docs/plans/module-00-platform-
-foundations-plan.md`'s Phase 4 section.
+"overridden to: Y"). **Frontend built** (2026-09-29, a later pass than
+Context & Strategy's own Phase 7 artefact UI, once a real "toggle a
+sub-component" need existed to build it against): the org admin's
+**Modules** page (`OrgAdminPage.tsx`) renders one extra, indented row per
+sub-component underneath its own module's row, each with a `ToggleSwitch`
+bound to that sub-component's org default — entirely generic over
+`ModuleSubComponentDefinition.name`/`default_enabled`, so a future module
+declaring `sub_components` needs no frontend edit of its own to get this.
+`GET .../subcomponents` is called for every registered module
+unconditionally (it safely returns `[]` for one with none declared, e.g.
+every module before Context & Strategy) rather than checked first. See
+`docs/plans/module-00-platform-foundations-plan.md`'s Phase 4 section.
 
 ### 2b. Project-level override of whole-module enablement (Module 0 — Platform Foundations — Phase 5)
 
 Added immediately after Phase 4, at the user's request: whole-module
 enablement itself (§2's `OrganizationModuleEnablement`) had no project-
 level override at all — the org's own row was the one and only effective
-value for every project in that org. This phase gives a project the same
-override lever over *that* default that Phase 4 already gave it over each
-sub-component's own default — one more level of the identical `registry
-default → org default → project override` stack, resolved by a new
-`is_module_enabled_for_project(db, project_id, module_key)` (`app.modules.
-registry`): entitlement first (still an absolute ceiling no override tier
-can cross), then `ProjectModuleEnablement` (project override, highest
-precedence, unique on `(project_id, module_key)`), then `OrganizationModuleEnablement`
-(org default), then the registry's own `default_enabled`. **Symmetric**,
-same as Phase 4's sub-component rule: a project admin's own choice always
-wins over the org default in either direction. `require_project_module_
+value for every project in that org. This phase gives a project an
+override lever over the organisation's own setting for that module —
+**corrected 2026-09-29** (Decided by: User — see `docs/decisions.md`'s
+dated entry) once the original design's first real consuming UI exposed a
+gap: the original single `enabled` boolean conflated "is this module
+available to the organisation at all" with "what does a project get by
+default," which meant a project override could re-enable a module the
+organisation had deliberately disabled outright — not what "disabled"
+should mean.
+
+The corrected model is four tiers, not two: `OrganizationModuleEnablement`
+gains a second, independent column, `default_project_enabled` (migration
+`0055`). `enabled` is now a genuine **hard floor** — `False` means no
+project of this organisation may use the module at all, and no
+`ProjectModuleEnablement` override can cross it in either direction (a
+`PUT` attempting `enabled=True` from the project side is rejected 400 while
+the organisation's own `enabled` is `False`). `default_project_enabled`,
+only consulted once `enabled` is `True`, is the actual default a project
+inherits absent its own override — and a project's own override remains
+**symmetric** against *this* value, either direction (a specialist module
+the organisation makes available but defaults off for most projects can
+still be opted into by an individual project manager). `is_module_enabled_
+for_project(db, project_id, module_key)` (`app.modules.registry`) resolves
+it: entitlement and `enabled` first (both an absolute ceiling), then
+`ProjectModuleEnablement` (project override, if any), then
+`default_project_enabled`, then the registry's own `default_enabled` (for
+an organisation with no explicit row at all). `require_project_module_
 enabled`/`require_project_module_enabled_dynamic` (`app.services.rbac`)
 resolve through this function now instead of calling the org-only
 `is_module_enabled` directly — every existing module-gated project
 endpoint keeps working unchanged, since day one has zero `ProjectModuleEnablement`
 rows and the fallback is exactly the pre-Phase-5 org-only behaviour.
-`GET`/`PUT /projects/{id}/modules/{module_key}` (`app.routers.projects.
-module_roles`) is the admin surface, same effective/org-default/override-
-exists response shape as Phase 4's sub-component endpoints in the same
-file.
+
+**Copy-on-create (2026-10-04, Decided by: User).** An org default only
+affects projects that get the module afterwards; an org hard Off still
+reaches every project. `snapshot_project_module_state` (called from
+`routers.projects.create_project`, blank and template-cloned alike) writes
+a `ProjectModuleEnablement`/`ProjectModuleSubComponentEnablement` row per
+module/sub-component the org has hard-on; `freeze_projects_module_default`/
+`freeze_projects_subcomponent_default` write the *old* default into any
+row-less project just before an org default changes. Both skip anything
+hard-off, so a project created while a module was Off picks up whatever
+default applies when it's turned on (Decided by: Agent). The live-default
+tier in the resolvers is therefore only reached by such projects or by a
+module registered after the project was created.
+
+**Sub-components have the same two org levers** (migration `0056`):
+`OrganizationModuleSubComponentDefault.enabled` is a hard floor (also the
+effective value for org-scoped artefacts) and `default_project_enabled` is
+what gets copied. `resolve_org_subcomponent_state` returns both.
+
+`GET`/`PUT /projects/{id}/modules/{module_key}/enablement` and
+`GET`/`PUT .../subcomponents[/{subcomponent_key}]`
+(`app.routers.projects.module_roles`) are the project surface; the former
+`DELETE` "reset to org default" endpoints were removed — with copied
+values there is no live default to reset to, so a reset is just a `PUT`.
+`GET /projects/{id}/modules` (no `module_key`) lists every registered
+module with this project's own effective state in one call — the bulk
+discovery endpoint a Project Admin "Modules" tab needs to know which
+modules exist to list at all, since `GET /orgs/{id}/modules` is org-admin-
+gated and the per-module endpoint above requires already knowing every
+`module_key` to iterate.
 
 **Not purely additive — Phase 4's own resolution had to be repointed.**
 `is_module_subcomponent_enabled`'s first (whole-module) check used to call
@@ -274,7 +319,13 @@ could see. Org-scoped artefacts are unaffected by this phase either way:
 `require_org_module_enabled`/`is_org_module_subcomponent_enabled` remain
 untouched, the same "no project to hold an override against" reasoning
 Phase 4 already applied to org-scoped sub-component gating. **Frontend
-deferred**, same reasoning as Phase 4.
+built** (2026-09-29, same later pass as Phase 4's own): the Project Admin
+**Modules** tab (`ProjectAdminPage.tsx`, a new core nav entry — not a
+`moduleAdminSections` module-contributed panel) renders every registered
+module with an `OverridePill` (`custom={has_project_override}`) alongside
+its `ToggleSwitch`, and the same shape one level down for each module's own
+sub-components — generic over the registry, so no per-module frontend
+work is needed here either.
 
 ---
 
@@ -294,6 +345,7 @@ class ModuleDefinition:
     implemented: bool                           # False for a registered-but-not-yet-live placeholder
     get_router: Callable[[], APIRouter | None]   # called once; None if no HTTP endpoints
     roles: tuple[ModuleRoleDefinition, ...] = ()  # module-contributed RBAC roles
+    sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     models_import_path: str | None = None       # dotted path to your ORM models module

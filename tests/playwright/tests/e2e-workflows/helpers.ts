@@ -211,6 +211,29 @@ export async function selectOrgAdminGroup(page: Page, groupLabel: string): Promi
   await selectResourceMenuGroup(page, groupLabel);
 }
 
+/** Sets a module's (or, with `moduleName`, a sub-component's) org-level
+ * availability on Org Admin's Modules group, which must already be open,
+ * via its labelled `<select>` ("<name> availability"), and waits for the
+ * confirming toast. Expands the module's collapsed sub-component list
+ * first when setting a sub-component. */
+export async function setOrgModuleAvailability(
+  page: Page,
+  name: string,
+  availability: "off" | "opt_in" | "default_on",
+  moduleName?: string,
+): Promise<void> {
+  if (moduleName) {
+    const disclosure = page
+      .locator(".module-settings-row", { has: page.getByText(moduleName, { exact: true }) })
+      .getByRole("button", { name: /component/ });
+    if ((await disclosure.getAttribute("aria-expanded")) !== "true") await disclosure.click();
+  }
+  const label = moduleName ? `${name} (${moduleName}) availability` : `${name} availability`;
+  const select = page.getByRole("combobox", { name: label, exact: true });
+  await select.selectOption(availability);
+  await expect(select).toHaveValue(availability);
+}
+
 /** `selectResourceMenuGroup` for `ServerManagementPage`
  * (`/server/management/:group?`, converted from `Tabs` — see
  * `docs/decisions.md`). */

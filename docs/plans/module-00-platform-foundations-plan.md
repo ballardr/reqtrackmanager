@@ -699,6 +699,17 @@ pass count.
 **Frontend:** deliberately not built this phase, per the "Frontend:
 deferred" design note above — no change to `frontend/` at all.
 
+**Frontend follow-up (2026-09-29, later session, prompted by a user
+question about documenting "module enablement templating" that turned
+into a request to build the real UI first):** the org admin's **Modules**
+page (`OrgAdminPage.tsx`) now renders one indented `ToggleSwitch` row per
+sub-component underneath its own module's row, generic over
+`ModuleSubComponentDefinition.name`/`default_enabled` — no per-module
+frontend edit needed for a future module that declares `sub_components`.
+See `docs/decisions.md`'s dated entry for this pass for the full account,
+including the new `GET /projects/{id}/modules` bulk endpoint and `DELETE`
+reset endpoints built alongside it (Phase 5's own follow-up note below).
+
 ## Phase 5 — Project-level override of whole-module enablement
 
 **Added 2026-09-28, at the user's explicit request**, immediately after
@@ -918,6 +929,46 @@ first); `ruff check .` clean. See this plan's own "Files changed" note in
 **Frontend:** deliberately not built this phase, same reasoning as Phase
 4 — no change to `frontend/` at all.
 
+**Frontend follow-up (2026-09-29, later session):** the Project Admin
+**Modules** tab (new core nav entry on `ProjectAdminPage.tsx`, not a
+module-contributed `moduleAdminSections` panel) now renders every
+registered module with an `OverridePill` (`custom={has_project_override}`)
+next to its `ToggleSwitch`, plus the same shape one level down for each
+module's own sub-components — again fully generic over the registry.
+Needed one small backend gap closed first: `GET /projects/{id}/modules`
+(bulk list, `list_project_modules`) — a Project Admin's own Modules tab had
+no way to discover which modules exist to list at all, since `GET
+/orgs/{id}/modules` is org-admin-gated and the per-module `GET
+.../enablement` endpoint requires already knowing every `module_key` to
+iterate. Also added `DELETE .../modules/{module_key}/enablement` and
+`DELETE .../modules/{module_key}/subcomponents/{subcomponent_key}` — a
+real "reset to platform default" needs to remove the override row
+outright, not re-`PUT` today's org default value back as a new, frozen
+override (which would stop tracking the org default if it changes again
+later) — **Decided by: Agent**, the specific scope call this session's own
+brief flagged explicitly. See `docs/decisions.md`'s dated entry for this
+pass for the full account, judgment calls, and verification.
+
+**Corrected the same day, before this pass finished (Decided by: User).**
+The scope decision immediately above this phase's own heading — "the
+project override is symmetric... in either direction" — turned out to be
+wrong once this follow-up UI made it visible: a project could re-enable a
+module the organisation had deliberately disabled outright, which isn't
+what "disabled" should mean. The organisation's own `enabled` flag is now
+a genuine hard floor no project override can cross in either direction; a
+second, independent column, `OrganizationModuleEnablement.
+default_project_enabled` (migration `0055`), carries the actual "what does
+a project get by default" lever the original design conflated into
+`enabled` itself — a project's own override stays symmetric against
+*this* value specifically, which is what makes "available, but off by
+default for most projects, opt-in per project manager" expressible. Not a
+reversal of this phase's original goal (a project-level override lever
+one tier above sub-components' own), only of which organisation-level
+value that override is measured against. Sub-component overrides (Phase
+4) are unaffected — see `docs/decisions.md`'s dated entry for the full
+account and `docs/modules.md`'s own Phase 5 section for the current-state
+resolution formula.
+
 **Addendum (Decided by: Agent — the coordinating/reviewing session, not
 the implementing one):** while independently re-verifying this phase, the
 coordinating session found and fixed one more issue, narrower than the
@@ -936,6 +987,14 @@ the pre-existing endpoint — no real, currently-registered module key
 control`) comes anywhere near the ~27-character budget that column
 actually allows once a UUID and a colon are accounted for, so this was a
 test-fixture-only fix, not a product defect.
+
+**Copy-on-create follow-up (2026-10-04, Decided by: User):** org module
+and sub-component defaults now only affect projects created afterwards;
+an org Off still reaches every project. Sub-components gained the same
+hard floor + project default as modules (migration `0056`), the project
+`DELETE` reset endpoints were removed, and both admin pages moved to a
+shared `ModuleSettingsList` (one availability dropdown per module at org
+level). See `docs/decisions.md`'s 2026-10-04 entry.
 
 ## Related, non-blocking: patterns worth a shared convention but not shared infrastructure
 

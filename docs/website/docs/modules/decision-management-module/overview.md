@@ -19,7 +19,7 @@ Use a Decision Record for a choice worth being able to answer for later — one 
 
 ## Enabling the module
 
-Decision Management is **not** enabled by default — an org admin opts in per organisation from the organisation's Modules settings, the same entitlement/enablement mechanism every module uses (see [Modules → Overview](../overview.md#gating-entitlement--enablement)). Enabling it seeds each of that organisation's *root* projects with a default set of Decision Types (see below); a project with a parent starts with none of its own and inherits its nearest ancestor's instead. Disabling the module hides its navigation and endpoints, but deletes no data.
+Decision Management is **not** enabled by default — an org admin opts in per organisation from the organisation's Modules settings, the same entitlement/enablement mechanism every module uses (see [Modules → Overview](../overview.md#gating-entitlement--enablement--overrides)). Enabling it seeds each of that organisation's *root* projects with a default set of Decision Types (see below); a project with a parent starts with none of its own and inherits its nearest ancestor's instead. Disabling the module hides its navigation and endpoints, but deletes no data.
 
 ## The lifecycle
 

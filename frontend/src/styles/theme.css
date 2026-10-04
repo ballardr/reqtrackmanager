@@ -1115,3 +1115,74 @@ td:has(> .disclosure-toggle) {
 .popover-bubble {
   max-width: calc(100vw - 1rem);
 }
+
+/* Clamp text to two lines (e.g. `ModuleSettingsList`'s descriptions). */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* A borderless inline text action ("More"/"Less") — reads as a link, not a
+   `.btn` chip, for a toggle that sits inside running text. */
+.text-button {
+  background: none;
+  border: none;
+  padding: 0 0 0 0.35rem;
+  font: inherit;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.text-button:hover {
+  text-decoration: underline;
+}
+
+/* `ModuleSettingsList` — Org/Project Admin's Modules list. */
+.module-settings-list,
+.module-settings-sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.module-settings-row {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.module-settings-row:last-child {
+  border-bottom: none;
+}
+.module-settings-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.module-settings-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.module-settings-control {
+  flex-shrink: 0;
+}
+.module-settings-version {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+}
+.module-settings-small {
+  font-size: 0.8rem;
+}
+.module-settings-row > .disclosure-toggle {
+  width: auto;
+  margin-top: 0.35rem;
+  padding: 0.25rem 0.4rem;
+}
+.module-settings-sublist {
+  margin-top: 0.25rem;
+  padding-left: 1.5rem;
+}
+.module-settings-sublist > li {
+  padding: 0.35rem 0;
+}
