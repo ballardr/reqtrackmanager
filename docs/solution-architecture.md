@@ -654,6 +654,8 @@ These capabilities improve reliability, incident response, and support for servi
 ### Scalability
 The architecture is designed to support increasing user counts and project complexity without requiring a full rewrite. The initial deployment is simple, but the design leaves room for future decomposition into more services.
 
+The backend scales vertically and horizontally without new infrastructure: each container runs `BACKEND_WORKERS` uvicorn processes, and processes (including those in other replicas) coordinate through PostgreSQL — an advisory lock serialises startup, a leader-election lock ensures scheduled jobs, digests and the disk monitor run once, and `LISTEN`/`NOTIFY` fans WebSocket events out to every process (`app/services/process_coordination.py`, `app/services/pubsub.py`). Prometheus metrics use multi-process mode per container. See `docs/deployment.md`'s scaling section for sizing.
+
 ### Maintainability
 The modular domain structure, containerization, and documented deployment model keep the solution maintainable for future contributors.
 

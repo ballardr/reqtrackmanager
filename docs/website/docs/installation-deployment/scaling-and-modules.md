@@ -55,9 +55,23 @@ A Tier C module runs with **no sandbox at all** — same origin, same DOM, same 
 4. `docker compose up -d backend frontend` (or restart both containers) — no rebuild of either image.
 5. Enable the module for an organisation via the Modules admin UI, exactly like any other module.
 
-## Scaling beyond a single backend replica
+## Scaling the backend
 
-The current architecture assumes a single backend process: the WebSocket pub/sub hub, the notification digest job, and the disk-usage monitor all run in-process. Running multiple backend replicas behind a load balancer works fine for the stateless request/response API, but those three background mechanisms would need to move to a shared broker or a dedicated worker service first — this is a deliberate future step, not something the current deployment model supports today.
+Each backend container runs several worker processes — set `BACKEND_WORKERS` (default `4`) to the number of CPU cores the API should use. You can also run more backend replicas behind a load balancer. Workers and replicas share the database and coordinate through it, so nothing else is needed:
+
+```mermaid
+flowchart LR
+    LB[Load balancer] --> W1[Worker 1] & W2[Worker 2] & W3[Worker N]
+    W1 & W2 & W3 --> PG[(PostgreSQL)]
+    PG -. "leader lock: one worker runs<br/>scheduled jobs and digests" .-> W1
+    PG -. "NOTIFY: WebSocket events<br/>reach every worker" .-> W2 & W3
+```
+
+- Scheduled jobs, notification digests and the disk-usage monitor run on exactly one elected worker; if it stops, another takes over within about 30 seconds.
+- Live-update WebSocket events reach clients whichever worker they're connected to.
+- `/metrics` combines all workers in a container; scrape each replica separately.
+
+Keep `BACKEND_WORKERS × replicas × 17` below PostgreSQL's `max_connections` (100 by default), and allow roughly 150–250 MB of memory per worker. Set `BACKEND_WORKERS=1` to run a single process.
 
 ## Next steps
 

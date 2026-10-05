@@ -347,6 +347,8 @@ const en = {
   },
   changeRequests: {
     title: "{ChangeRequests}",
+    // Matches proposed name, reason, and the target requirement's name/ID.
+    search: "Search by name, reason or {requirement} ID",
     newChangeRequest: "New {changeRequest}",
     kindNew: "New {requirement}",
     kindModify: "Modify {requirement}",
@@ -1075,6 +1077,11 @@ const en = {
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Engineering",
     groupCreated: "Group created",
+    // Org group delete (2026-10-05). Title/button/toast reuse the Project
+    // Groups' own `admin.deleteGroup*`/`groupDeleted`; only the consequence
+    // differs, since an org group can carry roles across many projects.
+    deleteGroupMessage:
+      "Members lose every role and project access this group gave them, and it is removed from any group it's nested in. Access they hold some other way is unaffected. This cannot be undone.",
     // `DirectoryTable`'s row-detail panel (Phase B, follow-up UX batch,
     // 2026-08-31) — same "{name} details" shape `admin.groupDetails` already
     // established for Project Groups.
@@ -1137,6 +1144,7 @@ const en = {
     addToGroupSelectPlaceholder: "Choose a group…",
     lockDisplayName: "Lock display name",
     unlockDisplayName: "Unlock display name",
+    displayNameLockSaved: (name: string, locked: boolean) => `${name}'s display name ${locked ? "locked" : "unlocked"}.`,
     viewAccess: (name: string) => `View ${name}'s access`,
     userAccessTitle: (name: string) => `${name}'s access`,
     userAccessOrgGroups: (orgCap: string) => `${orgCap} groups`,

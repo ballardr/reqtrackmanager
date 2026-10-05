@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * The `/unarchive` counterpart to `requirement-archive-confirm.spec.ts`
@@ -26,13 +26,16 @@ test.describe("requirement and action restore", () => {
     const name = `E2E Restore Requirement ${Date.now()}`;
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
     await test.step("create a throwaway requirement", async () => {
       await page.getByRole("button", { name: "New requirement" }).click();
       await page.getByPlaceholder("Name", { exact: true }).fill(name);
       await page.getByRole("button", { name: "Create", exact: true }).click();
+      // Search rather than assume page one of the paginated list (shared
+      // Alpha-1 grows every run).
+      await page.getByPlaceholder("Search by name or ID").fill(name);
       await expect(page.getByText(name)).toBeVisible();
     });
 
@@ -42,6 +45,8 @@ test.describe("requirement and action restore", () => {
       const dialog = page.getByRole("dialog", { name: "Archive this requirement?" });
       await dialog.getByRole("button", { name: "Archive", exact: true }).click();
       await page.waitForURL(/\/requirements$/);
+      // Searched, so "not visible" means archived, not merely off page one.
+      await page.getByPlaceholder("Search by name or ID").fill(name);
       await expect(page.getByText(name)).not.toBeVisible();
     });
 
@@ -80,6 +85,7 @@ test.describe("requirement and action restore", () => {
     await test.step("it's back in the default (active) requirements list", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await expect(page.getByLabel("Include archived")).not.toBeChecked();
+      await page.getByPlaceholder("Search by name or ID").fill(name);
       await expect(page.getByText(name)).toBeVisible();
     });
   });
@@ -88,7 +94,7 @@ test.describe("requirement and action restore", () => {
     const title = `E2E Restore Action ${Date.now()}`;
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Actions", exact: true }).click();
 
     await test.step("create a throwaway action", async () => {

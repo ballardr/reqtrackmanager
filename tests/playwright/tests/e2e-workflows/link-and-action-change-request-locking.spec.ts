@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: Platform review 2026-09, Phase 8. Once a requirement is
@@ -33,7 +33,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
     const actionTitle = `E2E Link Lock Action ${ts}`;
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.epsilon1).click();
+    await openProject(page, PROJECT_NAMES.epsilon1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     // The "Change requests" list (below) is shared, cumulative state for
     // this whole project — every change request any run of this spec has
@@ -120,7 +120,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
 
     await test.step("approving that change request actually unlinks the action", async () => {
       await page.goto(`/projects/${projectId}/change-requests/${unlinkActionCrId}`);
-      await page.getByRole("button", { name: "Submit" }).click();
+      await page.getByRole("button", { name: "Submit", exact: true }).click();
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Approve", exact: true }).click();
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
@@ -149,7 +149,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
 
     await test.step("approving that change request actually removes the link", async () => {
       await page.goto(`/projects/${projectId}/change-requests/${removeLinkCrId}`);
-      await page.getByRole("button", { name: "Submit" }).click();
+      await page.getByRole("button", { name: "Submit", exact: true }).click();
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Approve", exact: true }).click();
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
@@ -182,7 +182,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
 
     await test.step("approving that change request actually creates the link", async () => {
       await page.goto(`/projects/${projectId}/change-requests/${addLinkCrId}`);
-      await page.getByRole("button", { name: "Submit" }).click();
+      await page.getByRole("button", { name: "Submit", exact: true }).click();
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Approve", exact: true }).click();
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();

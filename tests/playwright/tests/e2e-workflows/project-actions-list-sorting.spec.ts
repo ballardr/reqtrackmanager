@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: ProjectActionsPage's table headers (2026-08 UX audit
@@ -25,7 +25,7 @@ test.describe("project actions list sorting", () => {
     const secondTitle = `ZZZ Sort Test Action ${suffix}`;
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Actions", exact: true }).click();
 
     async function createAction(title: string) {

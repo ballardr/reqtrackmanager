@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, openOrgGroupPanel, PERSONAS, selectOrgAdminGroup } from "./helpers";
+import { apiHeaders, ensureExpanded, installCleanupHook, loginAs, onCleanup, openOrgGroupPanel, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can nest one organisation group inside
@@ -20,8 +20,14 @@ import { ensureExpanded, loginAs, openOrgGroupPanel, PERSONAS, selectOrgAdminGro
  * navigates straight to its admin page) — same choice org-security-
  * controls.spec.ts makes, to avoid interfering with Alpha/Beta specs
  * sharing this suite's single-worker run.
+ *
+ * Ends by deleting both groups through the panel's own "Delete group"
+ * (org groups became deletable 2026-10-05), with an API cleanup as a
+ * backstop if the test stops early, so groups no longer pile up in Gamma.
  */
 test.describe("org group nesting", () => {
+  installCleanupHook();
+
   test("nest a group, see it listed, remove it, and get a clear error on a cycle attempt", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/orgs");
@@ -41,8 +47,24 @@ test.describe("org group nesting", () => {
     const suffix = Date.now();
     const parentName = `Nesting Parent ${suffix}`;
     const childName = `Nesting Child ${suffix}`;
+    onCleanup(async (request) => {
+      const api = "http://localhost:8000/api/v1";
+      const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
+      const orgs: { id: string }[] = await (await request.get(`${api}/orgs`, { headers })).json();
+      const groups: { id: string; name: string }[] = await (
+        await request.get(`${api}/orgs/${orgs[0].id}/groups?search=${suffix}`, { headers })
+      ).json();
+      for (const g of groups.filter((x) => x.name.endsWith(String(suffix)))) {
+        await request.delete(`${api}/orgs/${orgs[0].id}/groups/${g.id}`, { headers });
+      }
+    });
 
     await test.step("create two groups", async () => {
+      // Narrow the (server-paginated, 20 per page) groups table to this
+      // run's pair first: there is no endpoint to delete an org group, so
+      // each run's groups accumulate in Gamma and new ones can land past the
+      // first page. The search survives the table's post-create reload.
+      await page.getByPlaceholder("Search by name", { exact: true }).fill(String(suffix));
       for (const name of [parentName, childName]) {
         // "New group" opens a Modal (style guide "Pattern: modal dialog for
         // entity create/rename") rather than exposing an always-visible
@@ -80,6 +102,17 @@ test.describe("org group nesting", () => {
       const parentPanel = await openOrgGroupPanel(page, parentName);
       await parentPanel.getByText(`${childName} (nested group)`).locator("xpath=ancestor::li[1]").getByRole("button").click();
       await expect(parentPanel.getByText(`${childName} (nested group)`)).toHaveCount(0);
+      await parentPanel.getByRole("button", { name: "Close" }).click();
+    });
+
+    await test.step("delete both groups (Tier 1 confirmation, toast)", async () => {
+      for (const name of [childName, parentName]) {
+        const panel = await openOrgGroupPanel(page, name);
+        await panel.getByRole("button", { name: "Delete group" }).click();
+        await page.getByRole("dialog", { name: `Delete "${name}"?` }).getByRole("button", { name: "Delete group" }).click();
+        await expect(page.getByText("Group deleted").last()).toBeVisible();
+        await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+      }
     });
   });
 });

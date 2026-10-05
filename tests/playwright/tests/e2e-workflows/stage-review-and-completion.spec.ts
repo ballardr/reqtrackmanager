@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { type APIRequestContext, expect, test } from "@playwright/test";
 
-import { loginAs, logout, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { installCleanupHook, loginAs, logout, onCleanup, openProject, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: a project stage's full lifecycle — scoping, a review
@@ -30,7 +30,7 @@ import { loginAs, logout, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
  * rather than laziness: once approved it carries a `Baseline` record, and
  * `DELETE /projects/{id}/stages/{id}` refuses to delete any stage with
  * baseline history (C-G-10 — baselines are immutable). The two requirements
- * it creates *are* archived in a `finally` cleanup step below, though —
+ * it creates *are* archived by an onCleanup (afterEach) below, though —
  * archiving (unlike stage deletion) has no such restriction, and bounding
  * the requirements list matters: an unrelated spec, role-display-collapsing
  * .spec.ts, was found flaking not from timing but from an analogous
@@ -52,6 +52,8 @@ import { loginAs, logout, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
 const API = "http://localhost:8000/api/v1";
 
 test.describe("stage review deadlines and completion", () => {
+  installCleanupHook();
+
   test("scoping -> review (with a deadline and a stakeholder response) -> approved -> completed, cascaded", async ({
     page,
   }) => {
@@ -80,7 +82,7 @@ test.describe("stage review deadlines and completion", () => {
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     const pmHeaders = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem("reqtrack_token"))}` };
-    await page.getByText(PROJECT_NAMES.alpha2).click();
+    await openProject(page, PROJECT_NAMES.alpha2);
     const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
     structureUrl = `/projects/${projectId}/admin/structure`;
     const { organization_id: orgId } = await (await page.request.get(`${API}/projects/${projectId}`, { headers: pmHeaders })).json();
@@ -91,120 +93,116 @@ test.describe("stage review deadlines and completion", () => {
 
     /** Revokes the stakeholder grant on Alpha-2 and archives every "E2E
      * Stage Cycle Req" requirement — this run's and any leftovers. */
-    async function sweep() {
-      await page.request.delete(`${API}/projects/${projectId}/roles/${stakeholderId}/stakeholder`, { headers: pmHeaders });
+    async function sweep(api: APIRequestContext) {
+      await api.delete(`${API}/projects/${projectId}/roles/${stakeholderId}/stakeholder`, { headers: pmHeaders });
       const reqs: { id: string; name: string }[] = await (
-        await page.request.get(`${API}/projects/${projectId}/requirements?search=${encodeURIComponent("E2E Stage Cycle Req")}`, {
+        await api.get(`${API}/projects/${projectId}/requirements?search=${encodeURIComponent("E2E Stage Cycle Req")}`, {
           headers: pmHeaders,
         })
       ).json();
       for (const req of reqs.filter((r) => r.name.startsWith("E2E Stage Cycle Req"))) {
-        await page.request.delete(`${API}/projects/${projectId}/requirements/${req.id}`, { headers: pmHeaders });
+        await api.delete(`${API}/projects/${projectId}/requirements/${req.id}`, { headers: pmHeaders });
       }
     }
 
     // `stakeholderAlpha` is a shared persona other specs assert an exact
     // project count for, so the Alpha-2 grant below must never outlive this
-    // test — swept up front (an interrupted earlier run) and in `finally`.
-    await sweep();
-    try {
-      await test.step("set up a fresh stage with two requirements targeting it", async () => {
-        const stage = await (await page.request.post(`${API}/projects/${projectId}/stages`, {
-          headers: pmHeaders, data: { name: stageName },
-        })).json();
-        const categories: { id: string; component_id: string }[] = await (
-          await page.request.get(`${API}/projects/${projectId}/categories`, { headers: pmHeaders })
-        ).json();
-        for (const name of [reqNameA, reqNameB]) {
-          const resp = await page.request.post(`${API}/projects/${projectId}/requirements`, {
-            headers: pmHeaders,
-            data: { name, component_id: categories[0].component_id, category_id: categories[0].id, target_stage_id: stage.id },
-          });
-          expect(resp.ok()).toBeTruthy();
-          reqUrl[name] = `/projects/${projectId}/requirements/${(await resp.json()).id}`;
-        }
-      });
-
-      await test.step("PM starts the stage's review and sets a deadline", async () => {
-        await page.goto(structureUrl);
-        await stageContainer().getByRole("button", { name: "Start review" }).click();
-        await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
-
-        const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        await stageContainer().locator('input[type="datetime-local"]').fill(future.toISOString().slice(0, 16));
-        await stageContainer().getByRole("button", { name: "Set review deadline" }).click();
-        await expect(stageContainer().getByText("Review deadline:")).toBeVisible();
-      });
-
-      await test.step("a plain member cannot approve the stage via a direct API call, even while it's in review", async () => {
-        const stages: { id: string; name: string }[] = await (
-          await page.request.get(`${API}/projects/${projectId}/stages`, { headers: pmHeaders })
-        ).json();
-        const stageId = stages.find((s) => s.name === stageName)!.id;
-        // memberAlphaBeta has no role at all on Alpha-2 — proves the check
-        // is a real project-manager gate, not merely UI absence.
-        const login = await page.request.post(`${API}/auth/login`, {
-          data: { email: PERSONAS.memberAlphaBeta.email, password: PASSWORD },
+    // test — swept up front (an interrupted earlier run) and in afterEach.
+    await sweep(page.request);
+    // Runs again after the test even if it fails or times out (afterEach).
+    onCleanup((request) => sweep(request));
+    await test.step("set up a fresh stage with two requirements targeting it", async () => {
+      const stage = await (await page.request.post(`${API}/projects/${projectId}/stages`, {
+        headers: pmHeaders, data: { name: stageName },
+      })).json();
+      const categories: { id: string; component_id: string }[] = await (
+        await page.request.get(`${API}/projects/${projectId}/categories`, { headers: pmHeaders })
+      ).json();
+      for (const name of [reqNameA, reqNameB]) {
+        const resp = await page.request.post(`${API}/projects/${projectId}/requirements`, {
+          headers: pmHeaders,
+          data: { name, component_id: categories[0].component_id, category_id: categories[0].id, target_stage_id: stage.id },
         });
-        const memberToken = (await login.json()).access_token;
-        const resp = await page.request.post(
-          `${API}/projects/${projectId}/stages/${stageId}/transition?new_status=approved`,
-          { headers: { Authorization: `Bearer ${memberToken}` } },
-        );
-        expect(resp.status()).toBe(403);
+        expect(resp.ok()).toBeTruthy();
+        reqUrl[name] = `/projects/${projectId}/requirements/${(await resp.json()).id}`;
+      }
+    });
+
+    await test.step("PM starts the stage's review and sets a deadline", async () => {
+      await page.goto(structureUrl);
+      await stageContainer().getByRole("button", { name: "Start review" }).click();
+      await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
+
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await stageContainer().locator('input[type="datetime-local"]').fill(future.toISOString().slice(0, 16));
+      await stageContainer().getByRole("button", { name: "Set review deadline" }).click();
+      await expect(stageContainer().getByText("Review deadline:")).toBeVisible();
+    });
+
+    await test.step("a plain member cannot approve the stage via a direct API call, even while it's in review", async () => {
+      const stages: { id: string; name: string }[] = await (
+        await page.request.get(`${API}/projects/${projectId}/stages`, { headers: pmHeaders })
+      ).json();
+      const stageId = stages.find((s) => s.name === stageName)!.id;
+      // memberAlphaBeta has no role at all on Alpha-2 — proves the check
+      // is a real project-manager gate, not merely UI absence.
+      const login = await page.request.post(`${API}/auth/login`, {
+        data: { email: PERSONAS.memberAlphaBeta.email, password: PASSWORD },
       });
+      const memberToken = (await login.json()).access_token;
+      const resp = await page.request.post(
+        `${API}/projects/${projectId}/stages/${stageId}/transition?new_status=approved`,
+        { headers: { Authorization: `Bearer ${memberToken}` } },
+      );
+      expect(resp.status()).toBe(403);
+    });
 
-      await test.step("a stakeholder responds to the review through the real UI", async () => {
-        await page.request.post(`${API}/projects/${projectId}/roles`, {
-          headers: pmHeaders, data: { user_id: stakeholderId, role: "stakeholder" },
-        });
-        await logout(page);
-        await loginAs(page, PERSONAS.stakeholderAlpha.email);
-        await page.goto(structureUrl);
-        await stageContainer().getByRole("button", { name: "Approve", exact: true }).click();
-        await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
+    await test.step("a stakeholder responds to the review through the real UI", async () => {
+      await page.request.post(`${API}/projects/${projectId}/roles`, {
+        headers: pmHeaders, data: { user_id: stakeholderId, role: "stakeholder" },
       });
+      await logout(page);
+      await loginAs(page, PERSONAS.stakeholderAlpha.email);
+      await page.goto(structureUrl);
+      await stageContainer().getByRole("button", { name: "Approve", exact: true }).click();
+      await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
+    });
 
-      await test.step("PM approves the stage, which locks its requirements and writes a baseline", async () => {
-        await logout(page);
-        await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-        await page.goto(structureUrl);
-        await stageContainer().getByRole("button", { name: "Approve stage" }).click();
-        await expect(stageContainer().getByRole("button", { name: "Approve stage" })).toHaveCount(0);
+    await test.step("PM approves the stage, which locks its requirements and writes a baseline", async () => {
+      await logout(page);
+      await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+      await page.goto(structureUrl);
+      await stageContainer().getByRole("button", { name: "Approve stage" }).click();
+      await expect(stageContainer().getByRole("button", { name: "Approve stage" })).toHaveCount(0);
 
-        await page.goto(reqUrl[reqNameA]);
-        await expect(page.getByText("Status: Approved")).toBeVisible();
-      });
+      await page.goto(reqUrl[reqNameA]);
+      await expect(page.getByText("Status: Approved")).toBeVisible();
+    });
 
-      await test.step("a locked requirement can be marked completed directly by the PM (no change request needed)", async () => {
-        // C-G-11: completion is an overlay marker independent of lifecycle
-        // status (`Requirement.is_completed`) — the status badge stays
-        // "Approved" throughout; a separate "Completed" badge toggles.
-        await page.getByRole("button", { name: "Mark completed" }).click();
-        await expect(page.getByText("Status: Approved")).toBeVisible();
-        await expect(page.getByText("Completed", { exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Revert completion" }).click();
-        await expect(page.getByText("Status: Approved")).toBeVisible();
-        await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
-        await page.getByRole("button", { name: "Mark completed" }).click();
-        await expect(page.getByText("Completed", { exact: true })).toBeVisible();
-      });
+    await test.step("a locked requirement can be marked completed directly by the PM (no change request needed)", async () => {
+      // C-G-11: completion is an overlay marker independent of lifecycle
+      // status (`Requirement.is_completed`) — the status badge stays
+      // "Approved" throughout; a separate "Completed" badge toggles.
+      await page.getByRole("button", { name: "Mark completed" }).click();
+      await expect(page.getByText("Status: Approved")).toBeVisible();
+      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Revert completion" }).click();
+      await expect(page.getByText("Status: Approved")).toBeVisible();
+      await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Mark completed" }).click();
+      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    });
 
-      await test.step("PM completes the stage with cascade, which also completes its still-approved requirements", async () => {
-        await page.goto(structureUrl);
-        await stageContainer().getByLabel("Also mark this stage's approved requirements as completed").check();
-        await stageContainer().getByRole("button", { name: "Mark stage completed" }).click();
-        await expect(stageContainer().getByText("Implemented", { exact: true })).toBeVisible();
+    await test.step("PM completes the stage with cascade, which also completes its still-approved requirements", async () => {
+      await page.goto(structureUrl);
+      await stageContainer().getByLabel("Also mark this stage's approved requirements as completed").check();
+      await stageContainer().getByRole("button", { name: "Mark stage completed" }).click();
+      await expect(stageContainer().getByText("Implemented", { exact: true })).toBeVisible();
 
-        // reqNameB was never manually completed — only the cascade marked it.
-        await page.goto(reqUrl[reqNameB]);
-        await expect(page.getByText("Status: Approved")).toBeVisible();
-        await expect(page.getByText("Completed", { exact: true })).toBeVisible();
-      });
-    } finally {
-      // Best-effort, with headers captured up front so it doesn't depend on
-      // a live page session; must not mask the real failure.
-      await sweep().catch(() => {});
-    }
+      // reqNameB was never manually completed — only the cascade marked it.
+      await page.goto(reqUrl[reqNameB]);
+      await expect(page.getByText("Status: Approved")).toBeVisible();
+      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    });
   });
 });

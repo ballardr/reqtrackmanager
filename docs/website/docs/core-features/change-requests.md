@@ -31,7 +31,7 @@ Like a requirement, every change request also carries its own threaded **discuss
 
 ## Filtering the list
 
-As with requirements, clicking a status or target-stage badge in the Change Requests list filters to it, and clicking again clears the filter.
+Search the Change Requests list by the change's proposed name, its reason, or the target requirement's name or ID. The search runs on the server, so it finds a change request whichever page of the list it's on. As with requirements, clicking a status or target-stage badge filters to it, and clicking again clears the filter.
 
 ## Where this fits
 

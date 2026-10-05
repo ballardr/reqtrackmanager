@@ -214,6 +214,19 @@ _ORG_CREATION_CHOICES = tuple(
 )
 
 
+def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUID]:
+    """`ModuleDefinition.artefact_ids_in_organization`: every Decision in the
+    organisation's projects, for org deletion's polymorphic cleanup."""
+    from sqlalchemy import select
+
+    from app.modules.decisions.models import Decision
+
+    return set(db.scalars(
+        select(Decision.id).join(Project, Project.id == Decision.project_id)
+        .where(Project.organization_id == organization_id)
+    ).all())
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=DECISIONS_MODULE_KEY,
     name="Decision Management",
@@ -240,6 +253,7 @@ MODULE_DEFINITION = ModuleDefinition(
         nav_icon="scale",
     ),
     artefact_types=(DECISION_ARTEFACT_TYPE,),
+    artefact_ids_in_organization=_artefact_ids_in_organization,
     roles=(
         ModuleRoleDefinition(
             role_key="decision_owner",

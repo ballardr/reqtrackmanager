@@ -1466,6 +1466,23 @@ class ModuleDefinition:
             endpoint 400s with it) or `None` to allow the removal. `None`
             for a module with no group-based floor concept of its own
             (every module before Compliance's Phase 22).
+        validate_org_group_deletion: The whole-group counterpart of
+            `validate_org_group_member_removal` (2026-10-05, when org
+            groups became deletable). `routers.orgs.groups.delete_org_group`
+            calls every module's copy via `run_org_group_deletion_hooks`
+            before deleting, so a module that relies on a group (e.g.
+            Compliance's fallback compliance-managers group) can block it.
+            Takes `(db, org_group_id)`; returns a block message (the
+            endpoint 400s with it) or `None` to allow the delete.
+        artefact_ids_in_organization: Returns the ids of every artefact of
+            this module's own `artefact_types` that belongs to an
+            organisation (org-scoped or in one of its projects). Org
+            deletion (`services.org_deletion`) uses it to remove the
+            polymorphic rows core can't reach by foreign key: `ArtefactLink`
+            rows, comments and subscriptions on those artefacts. Takes
+            `(db, organization_id)`; `None` for a module with no artefact
+            types. Added 2026-10-05: deleting an org whose module artefacts
+            were linked failed with a 500.
         artefact_types: Module-contributed values for the shared
             `ArtefactType` vocabulary (Module 0 — Platform Foundations,
             Phase 3) that `app.models.relationship.ArtefactLink.source_
@@ -1553,7 +1570,9 @@ class ModuleDefinition:
     project_nav_visible: Callable[[Session, Project], bool] | None = None
     on_project_created: Callable[[Session, Project, uuid.UUID], None] | None = None
     validate_org_group_member_removal: Callable[[Session, uuid.UUID, uuid.UUID], str | None] | None = None
+    validate_org_group_deletion: Callable[[Session, uuid.UUID], str | None] | None = None
     artefact_types: tuple[str, ...] = field(default=())
+    artefact_ids_in_organization: Callable[[Session, uuid.UUID], set[uuid.UUID]] | None = None
     subtype_providers: dict[str, Callable[[Session, uuid.UUID], list[str]]] = field(default_factory=dict)
     entity_scopes: dict[str, EntityScopeDefinition] = field(default_factory=dict)
     sub_components: tuple[ModuleSubComponentDefinition, ...] = field(default=())
@@ -2808,6 +2827,45 @@ def run_org_group_member_removal_hooks(db: Session, org_group_id: uuid.UUID, mem
         if message is not None:
             return message
     return None
+
+
+def run_org_group_deletion_hooks(db: Session, org_group_id: uuid.UUID) -> str | None:
+    """Calls every registered module's `validate_org_group_deletion` hook,
+    stopping at the first block message — so `delete_org_group` can respect
+    module-owned invariants without importing any module.
+
+    Args:
+        db: An active database session (read-only use).
+        org_group_id: The group about to be deleted.
+
+    Returns:
+        The first module's block message, or `None` if every module allows it.
+    """
+    for definition in get_module_registry().values():
+        if definition.validate_org_group_deletion is None:
+            continue
+        message = definition.validate_org_group_deletion(db, org_group_id)
+        if message is not None:
+            return message
+    return None
+
+
+def get_module_artefact_ids_in_organization(db: Session, organization_id: uuid.UUID) -> set[uuid.UUID]:
+    """Every module's `artefact_ids_in_organization` for one organisation,
+    unioned — for org deletion's polymorphic cleanup.
+
+    Args:
+        db: An active database session (read-only use).
+        organization_id: The organisation.
+
+    Returns:
+        Ids of every module-owned artefact belonging to it.
+    """
+    ids: set[uuid.UUID] = set()
+    for definition in get_module_registry().values():
+        if definition.artefact_ids_in_organization is not None:
+            ids |= definition.artefact_ids_in_organization(db, organization_id)
+    return ids
 
 
 def get_all_registered_artefact_types() -> set[str]:

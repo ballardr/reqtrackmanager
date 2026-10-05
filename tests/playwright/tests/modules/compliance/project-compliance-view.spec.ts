@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
@@ -89,7 +89,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
 
     // --- Switch to the project's own Compliance nav entry (Phase 3 Tier A routing).
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     // exact: true — the project overview page's own compliance summary
     // tiles (Phase 17d) render as cards whose accessible name contains
     // "Compliance" too (e.g. a standard's name), which would otherwise
@@ -270,7 +270,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await expect(page.getByText("Published", { exact: true })).toBeVisible();
 
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await page.getByRole("button", { name: "Assign standard" }).click();
     const assignDialog = page.getByRole("dialog", { name: "Assign compliance standard" });

@@ -4,7 +4,9 @@ requirements, change-request, and org-users list endpoints.
 
 Each endpoint's default (no `sort` given) ordering is asserted unchanged
 from before this feature existed, so this is purely additive — see
-`test_pagination.py` for the equivalent contract around `limit`/`offset`."""
+`test_pagination.py` for the equivalent contract around `limit`/`offset`.
+Exception: change requests now default to newest first; their old default
+was unspecified (see that test)."""
 
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project
 
@@ -56,8 +58,11 @@ def test_change_requests_list_sorts_by_proposed_name(client, admin_token, org_id
             headers=auth_headers(admin_token),
         )
 
+    # Default is newest first (2026-10-05). It used to be unspecified —
+    # whatever order Postgres returned, which happened to be insertion
+    # order — so this no longer pins "unchanged" for change requests.
     default = client.get(f"/api/v1/projects/{project['id']}/change-requests", headers=auth_headers(admin_token))
-    assert [c["proposed_name"] for c in default.json()] == ["Zebra change", "Alpha change"]
+    assert [c["proposed_name"] for c in default.json()] == ["Alpha change", "Zebra change"]
 
     asc = client.get(
         f"/api/v1/projects/{project['id']}/change-requests?sort=proposed_name", headers=auth_headers(admin_token)

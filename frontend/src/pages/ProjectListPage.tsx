@@ -1,5 +1,5 @@
 import { Plus, Star } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -28,6 +28,8 @@ import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../conte
 import { useFavourites } from "../context/FavouritesContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { useLatest } from "../hooks/useLatest";
+import { useRequestSequence } from "../hooks/useRequestSequence";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
 // MEMBER_ONLY, which caps at baseline MEMBER — parity with
@@ -149,16 +151,23 @@ export function ProjectListPage() {
     return params;
   }
 
+  // Read through a ref so a reload started from an older render (a
+  // post-mutation `reload()` resuming after an `await`) still lists with the
+  // filters the user has set since — otherwise, as the newest request, it
+  // would overwrite their filtered results (found 2026-10-04 via the e2e
+  // suite). Declared before the reload effect so it's current there.
+  const listParamsRef = useLatest(listParams);
+
   // Belt-and-suspenders request-sequencing guard, same reasoning/shape as
   // `RequirementsPage.tsx`/`ChangeRequestsPage.tsx`'s identical guards
   // (2026-08 UX audit roadmap) — discards a response if a newer request
   // has since been kicked off (e.g. rapid filter changes).
-  const loadProjectsRequestIdRef = useRef(0);
+  const beginLoad = useRequestSequence();
 
   async function loadProjects(offset: number, append: boolean) {
-    const requestId = ++loadProjectsRequestIdRef.current;
-    const page = await api.getPage<ProjectListItem>(`/api/v1/projects?${listParams(offset).toString()}`);
-    if (requestId !== loadProjectsRequestIdRef.current) return;
+    const isLatest = beginLoad();
+    const page = await api.getPage<ProjectListItem>(`/api/v1/projects?${listParamsRef.current(offset).toString()}`);
+    if (!isLatest()) return;
     setProjects((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
     setTotalUnfiltered(page.totalUnfiltered ?? page.total);

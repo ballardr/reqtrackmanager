@@ -139,6 +139,10 @@ plan's Design Principle 5.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Collection, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import TypeVar
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -294,14 +298,66 @@ def _require_org_2fa(db: Session, organization_id: UUID, user: User) -> None:
         )
 
 
+_T = TypeVar("_T")
+
+# Request-scoped memo for role-resolution lookups a bulk read repeats: the
+# user's org-group ids and org roles (identical for every project), and
+# per-(user, project) role results (re-read across inheritance walks and
+# repeated passes).
+# Off by default: only enabled by `memoize_user_lookups()` around read-only
+# bulk resolution (e.g. `list_projects`, which resolves roles for every
+# accessible project), so a mutating endpoint that changes membership and
+# then re-checks roles can never read a stale cached value. Added
+# 2026-10-04: `list_projects` was the hottest backend path in the e2e suite,
+# re-running these same queries once per project.
+_user_lookup_memo: ContextVar[dict | None] = ContextVar("_user_lookup_memo", default=None)
+
+
+@contextmanager
+def memoize_user_lookups() -> Iterator[None]:
+    """Caches user-level role-resolution lookups for the duration of the
+    block. Use only around read-only code: nothing inside may change org
+    roles or org-group membership and then rely on re-reading them."""
+    token = _user_lookup_memo.set({})
+    try:
+        yield
+    finally:
+        _user_lookup_memo.reset(token)
+
+
+def _memoized(key: tuple, compute: Callable[[], _T]) -> _T:
+    """Returns `compute()`, cached under `key` while `memoize_user_lookups`
+    is active (otherwise always computed)."""
+    memo = _user_lookup_memo.get()
+    if memo is None:
+        return compute()
+    if key not in memo:
+        memo[key] = compute()
+    return memo[key]
+
+
 def get_effective_org_roles(db: Session, user_id: UUID, organization_id: UUID) -> set[OrgRole]:
-    """Returns the set of organisation roles a user holds in an organisation."""
-    rows = db.scalars(
-        select(UserOrgRole.role).where(
-            UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id
-        )
-    ).all()
-    return {OrgRole(r) for r in rows}
+    """Returns the set of organisation roles a user holds in an organisation
+    (memoized inside `memoize_user_lookups`; returns a copy either way)."""
+    def compute() -> frozenset[OrgRole]:
+        rows = db.scalars(
+            select(UserOrgRole.role).where(
+                UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id
+            )
+        ).all()
+        return frozenset(OrgRole(r) for r in rows)
+
+    return set(_memoized(("org_roles", user_id, organization_id), compute))
+
+
+def _all_user_org_group_ids(db: Session, user_id: UUID) -> frozenset[UUID]:
+    """The user's direct org-group ids plus every ancestor group of those
+    (across all organisations) — memoized inside `memoize_user_lookups`."""
+    def compute() -> frozenset[UUID]:
+        direct = set(db.scalars(select(OrgGroupMember.org_group_id).where(OrgGroupMember.user_id == user_id)).all())
+        return frozenset(direct | _ancestor_org_group_ids(db, direct))
+
+    return _memoized(("org_group_ids", user_id), compute)
 
 
 def is_org_admin(db: Session, user_id: UUID, organization_id: UUID) -> bool:
@@ -512,16 +568,39 @@ def _direct_effective_project_roles_by_kind(
     Returns a dict with all of `DIRECT_ROLE_KINDS` always present as keys
     (value possibly an empty set).
     """
-    by_kind: dict[str, set[ProjectRole] | set[tuple[ProjectRole, UUID, str]]] = {
-        kind: set() for kind in DIRECT_ROLE_KINDS
-    }
+    return _direct_effective_project_roles_by_kind_for_projects(db, user_id, [project_id])[project_id]
 
-    direct = db.scalars(
-        select(UserProjectRole.role).where(
-            UserProjectRole.user_id == user_id, UserProjectRole.project_id == project_id
+
+_ByKind = dict[str, set[ProjectRole] | set[tuple[ProjectRole, UUID, str]]]
+
+
+def _direct_effective_project_roles_by_kind_for_projects(
+    db: Session, user_id: UUID, project_ids: Collection[UUID]
+) -> dict[UUID, _ByKind]:
+    """`_direct_effective_project_roles_by_kind` for several projects at
+    once: one query per source, not one per source per project. The single-
+    project function delegates here, so both resolve through the same code.
+
+    Args:
+        db: Database session.
+        user_id: The user whose roles are resolved.
+        project_ids: Projects to resolve.
+
+    Returns:
+        `{project_id: by_kind}` for every id in `project_ids`, each with all
+        of `DIRECT_ROLE_KINDS` present as keys (value possibly empty).
+    """
+    ids = set(project_ids)
+    result: dict[UUID, _ByKind] = {pid: {kind: set() for kind in DIRECT_ROLE_KINDS} for pid in ids}
+    if not ids:
+        return result
+
+    for project_id, role in db.execute(
+        select(UserProjectRole.project_id, UserProjectRole.role).where(
+            UserProjectRole.user_id == user_id, UserProjectRole.project_id.in_(ids)
         )
-    ).all()
-    by_kind["direct_role"].update(ProjectRole(r) for r in direct)
+    ).all():
+        result[project_id]["direct_role"].add(ProjectRole(role))
 
     # Source 2: same-project group membership, for each role the group
     # holds (`ProjectGroupRole` — PR7 of the members/groups directory
@@ -532,41 +611,34 @@ def _direct_effective_project_roles_by_kind(
     # per (group, granted role) pair the membership matches — a group
     # holding two roles yields two entries here, same principle PR1 already
     # established for two *different* groups granting the same role.
-    direct_group_rows = db.execute(
-        select(ProjectGroupRole.role, ProjectGroup.id, ProjectGroup.name)
+    for project_id, role, group_id, group_name in db.execute(
+        select(ProjectGroup.project_id, ProjectGroupRole.role, ProjectGroup.id, ProjectGroup.name)
         .join(ProjectGroup, ProjectGroup.id == ProjectGroupRole.project_group_id)
         .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
-        .where(ProjectGroup.project_id == project_id, ProjectGroupMember.user_id == user_id)
-    ).all()
-    by_kind["direct_group"].update(
-        (ProjectRole(role), group_id, group_name) for role, group_id, group_name in direct_group_rows
-    )
+        .where(ProjectGroup.project_id.in_(ids), ProjectGroupMember.user_id == user_id)
+    ).all():
+        result[project_id]["direct_group"].add((ProjectRole(role), group_id, group_name))
 
-    direct_org_group_ids = set(
-        db.scalars(select(OrgGroupMember.org_group_id).where(OrgGroupMember.user_id == user_id)).all()
-    )
-    user_org_group_ids = direct_org_group_ids | _ancestor_org_group_ids(db, direct_org_group_ids)
+    user_org_group_ids = set(_all_user_org_group_ids(db, user_id))
     if user_org_group_ids:
         # Defense in depth: even though endpoints reject nesting an org
         # group from a different organisation into a project group at
         # write time, also constrain the read-side resolution to org
         # groups belonging to the project's own organisation, so a
         # cross-tenant row (however it got there) can never grant a role.
-        nested_group_rows = db.execute(
-            select(ProjectGroupRole.role, OrgGroup.id, OrgGroup.name)
+        for project_id, role, group_id, group_name in db.execute(
+            select(ProjectGroup.project_id, ProjectGroupRole.role, OrgGroup.id, OrgGroup.name)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupRole.project_group_id)
             .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
             .join(Project, Project.id == ProjectGroup.project_id)
             .join(OrgGroup, OrgGroup.id == ProjectGroupMember.org_group_id)
             .where(
-                ProjectGroup.project_id == project_id,
+                ProjectGroup.project_id.in_(ids),
                 ProjectGroupMember.org_group_id.in_(user_org_group_ids),
                 OrgGroup.organization_id == Project.organization_id,
             )
-        ).all()
-        by_kind["direct_org_group"].update(
-            (ProjectRole(role), group_id, group_name) for role, group_id, group_name in nested_group_rows
-        )
+        ).all():
+            result[project_id]["direct_org_group"].add((ProjectRole(role), group_id, group_name))
 
         # Source 8: org groups holding a role on this project *directly*
         # (`OrgGroupProjectRole`) rather than nested inside a `ProjectGroup`
@@ -574,19 +646,17 @@ def _direct_effective_project_roles_by_kind(
         # Reuses `user_org_group_ids` (direct + transitively-nested org
         # groups) computed just above, and the same cross-tenant defense in
         # depth.
-        direct_group_role_rows = db.execute(
-            select(OrgGroupProjectRole.role, OrgGroup.id, OrgGroup.name)
+        for project_id, role, group_id, group_name in db.execute(
+            select(OrgGroupProjectRole.project_id, OrgGroupProjectRole.role, OrgGroup.id, OrgGroup.name)
             .join(OrgGroup, OrgGroup.id == OrgGroupProjectRole.org_group_id)
             .join(Project, Project.id == OrgGroupProjectRole.project_id)
             .where(
-                OrgGroupProjectRole.project_id == project_id,
+                OrgGroupProjectRole.project_id.in_(ids),
                 OrgGroupProjectRole.org_group_id.in_(user_org_group_ids),
                 OrgGroup.organization_id == Project.organization_id,
             )
-        ).all()
-        by_kind["direct_org_group_role"].update(
-            (ProjectRole(role), group_id, group_name) for role, group_id, group_name in direct_group_role_rows
-        )
+        ).all():
+            result[project_id]["direct_org_group_role"].add((ProjectRole(role), group_id, group_name))
 
     # Source 7: project-referencing group members ("this group = that other
     # project's direct members") — one hop only, via `_direct_project_
@@ -594,34 +664,31 @@ def _direct_effective_project_roles_by_kind(
     # docstring and the module docstring's source-7 entry).
     SourceProject = aliased(Project)
     project_ref_rows = db.execute(
-        select(ProjectGroupRole.role, ProjectGroupMember.source_project_id)
+        select(ProjectGroup.project_id, ProjectGroupRole.role, ProjectGroupMember.source_project_id)
         .join(ProjectGroup, ProjectGroup.id == ProjectGroupRole.project_group_id)
         .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
         .join(Project, Project.id == ProjectGroup.project_id)
         .join(SourceProject, SourceProject.id == ProjectGroupMember.source_project_id)
         .where(
-            ProjectGroup.project_id == project_id,
+            ProjectGroup.project_id.in_(ids),
             ProjectGroupMember.source_project_id.is_not(None),
             SourceProject.organization_id == Project.organization_id,
         )
     ).all()
-    if project_ref_rows:
-        member_cache: dict[UUID, set[UUID]] = {}
-        for role, source_id in project_ref_rows:
-            if source_id not in member_cache:
-                member_cache[source_id] = _direct_project_member_ids_base(db, source_id)
-            if user_id in member_cache[source_id]:
-                by_kind["direct_project_ref"].add(ProjectRole(role))
+    member_cache: dict[UUID, set[UUID]] = {}
+    for project_id, role, source_id in project_ref_rows:
+        if source_id not in member_cache:
+            member_cache[source_id] = _direct_project_member_ids_base(db, source_id)
+        if user_id in member_cache[source_id]:
+            result[project_id]["direct_project_ref"].add(ProjectRole(role))
 
-    project_row = db.execute(
-        select(Project.visibility, Project.organization_id).where(Project.id == project_id)
-    ).first()
-    if project_row is not None:
-        visibility, organization_id = project_row
+    for project_id, visibility, organization_id in db.execute(
+        select(Project.id, Project.visibility, Project.organization_id).where(Project.id.in_(ids))
+    ).all():
         if visibility == ProjectVisibility.ORG_WIDE and get_effective_org_roles(db, user_id, organization_id):
-            by_kind["direct_org_wide"].add(ProjectRole.MEMBER)
+            result[project_id]["direct_org_wide"].add(ProjectRole.MEMBER)
 
-    return by_kind
+    return result
 
 
 def _direct_effective_project_roles(db: Session, user_id: UUID, project_id: UUID) -> set[ProjectRole]:
@@ -648,11 +715,71 @@ def _direct_effective_project_roles(db: Session, user_id: UUID, project_id: UUID
     entry is normalized down to just its role before being folded into the
     flat set this function returns.
     """
-    roles: set[ProjectRole] = set()
-    for kind_roles in _direct_effective_project_roles_by_kind(db, user_id, project_id).values():
-        for entry in kind_roles:
-            roles.add(entry[0] if isinstance(entry, tuple) else entry)
-    return roles
+    def compute() -> frozenset[ProjectRole]:
+        return _flatten_by_kind(_direct_effective_project_roles_by_kind(db, user_id, project_id))
+
+    # Memoized inside `memoize_user_lookups`: inheritance walks re-read an
+    # ancestor's direct roles once per descendant.
+    return set(_memoized(("direct_project_roles", user_id, project_id), compute))
+
+
+def _flatten_by_kind(by_kind: _ByKind) -> frozenset[ProjectRole]:
+    """Collapses a by-kind result to its bare roles (group-sourced entries
+    are `(role, group_id, group_name)` tuples)."""
+    return frozenset(entry[0] if isinstance(entry, tuple) else entry for kind_roles in by_kind.values() for entry in kind_roles)
+
+
+def _project_inheritance_row(db: Session, project_id: UUID):
+    """`(parent_project_id, role_inheritance_mode, role_inheritance_filter_role)`
+    for one project, or None — memoized inside `memoize_user_lookups` and
+    preloaded in bulk by `prefetch_project_roles`."""
+    return _memoized(("inheritance_row", project_id), lambda: db.execute(
+        select(Project.parent_project_id, Project.role_inheritance_mode, Project.role_inheritance_filter_role)
+        .where(Project.id == project_id)
+    ).first())
+
+
+def prefetch_project_roles(db: Session, user_id: UUID, project_ids: Collection[UUID]) -> None:
+    """Preloads, in a handful of bulk queries, the per-project lookups
+    `get_effective_project_roles` makes for each of `project_ids`: the
+    user's direct roles there, each project's inheritance settings, and its
+    member-source rows. A no-op outside `memoize_user_lookups` (the only
+    place the preloaded values are read), so it can never feed a stale
+    value to a mutating request. Resolution itself is unchanged — the same
+    functions run, finding their inputs already cached.
+
+    Added 2026-10-04: `list_projects` made ~8 queries per accessible
+    project (547 for a 65-project user, ~1s per call).
+
+    Args:
+        db: Database session.
+        user_id: The user whose roles will be resolved.
+        project_ids: The projects about to be resolved.
+    """
+    memo = _user_lookup_memo.get()
+    ids = set(project_ids)
+    if memo is None or not ids:
+        return
+    for project_id, by_kind in _direct_effective_project_roles_by_kind_for_projects(db, user_id, ids).items():
+        memo.setdefault(("direct_project_roles", user_id, project_id), _flatten_by_kind(by_kind))
+    rows = {
+        row.id: row
+        for row in db.execute(
+            select(Project.id, Project.parent_project_id, Project.role_inheritance_mode, Project.role_inheritance_filter_role)
+            .where(Project.id.in_(ids))
+        ).all()
+    }
+    for project_id in ids:
+        row = rows.get(project_id)
+        memo.setdefault(
+            ("inheritance_row", project_id),
+            None if row is None else (row.parent_project_id, row.role_inheritance_mode, row.role_inheritance_filter_role),
+        )
+    sources: dict[UUID, list] = {project_id: [] for project_id in ids}
+    for row in _member_source_rows(db, ids):
+        sources[row[0]].append(tuple(row))
+    for project_id, project_rows in sources.items():
+        memo.setdefault(("member_source_rows", project_id), tuple(project_rows))
 
 
 def _normalize(roles: set[ProjectRole]) -> set[ProjectRole]:
@@ -961,23 +1088,22 @@ def _forward_inherited_roles(db: Session, user_id: UUID, project_id: UUID) -> se
     iterations = 0
     while iterations < _PROJECT_INHERITANCE_ITERATION_CAP:
         iterations += 1
-        row = db.execute(
-            select(Project.parent_project_id, Project.role_inheritance_mode, Project.role_inheritance_filter_role)
-            .where(Project.id == current_id)
-        ).first()
-        if row is None or row.role_inheritance_mode == ProjectRoleInheritanceMode.NONE or row.parent_project_id is None:
+        row = _project_inheritance_row(db, current_id)
+        if row is None:
             break
-        parent_id = row.parent_project_id
+        parent_id, mode, filter_role = row
+        if mode == ProjectRoleInheritanceMode.NONE or parent_id is None:
+            break
         if parent_id in visited:
             break
         visited.add(parent_id)
         parent_roles = _direct_effective_project_roles(db, user_id, parent_id)
-        if row.role_inheritance_mode == ProjectRoleInheritanceMode.MIRROR_ALL:
+        if mode == ProjectRoleInheritanceMode.MIRROR_ALL:
             inherited |= parent_roles
-        elif row.role_inheritance_mode == ProjectRoleInheritanceMode.MIRROR_ROLE:
-            if row.role_inheritance_filter_role is not None and row.role_inheritance_filter_role in parent_roles:
-                inherited.add(row.role_inheritance_filter_role)
-        elif row.role_inheritance_mode == ProjectRoleInheritanceMode.MEMBER_ONLY:
+        elif mode == ProjectRoleInheritanceMode.MIRROR_ROLE:
+            if filter_role is not None and filter_role in parent_roles:
+                inherited.add(filter_role)
+        elif mode == ProjectRoleInheritanceMode.MEMBER_ONLY:
             if parent_roles:
                 inherited.add(ProjectRole.MEMBER)
         current_id = parent_id
@@ -1020,6 +1146,26 @@ def _member_source_rows(
     )
 
 
+def _member_source_rows_cached(
+    db: Session, frontier: set[UUID]
+) -> list[tuple[UUID, UUID, ProjectRoleInheritanceMode, ProjectRole | None]]:
+    """`_member_source_rows`, serving any project `prefetch_project_roles`
+    already preloaded from the request memo and querying only the rest."""
+    memo = _user_lookup_memo.get()
+    if memo is None:
+        return _member_source_rows(db, frontier)
+    rows: list = []
+    missing: set[UUID] = set()
+    for project_id in frontier:
+        cached = memo.get(("member_source_rows", project_id))
+        if cached is None:
+            missing.add(project_id)
+        else:
+            rows.extend(cached)
+    rows.extend(_member_source_rows(db, missing))
+    return rows
+
+
 def _direct_project_roles_excluding_org_wide(db: Session, user_id: UUID, project_id: UUID) -> set[ProjectRole]:
     """Like `_direct_effective_project_roles` but omitting the
     `ProjectVisibility.ORG_WIDE` baseline grant — the full-role-granularity
@@ -1050,10 +1196,7 @@ def _direct_project_roles_excluding_org_wide(db: Session, user_id: UUID, project
             .where(ProjectGroup.project_id == project_id, ProjectGroupMember.user_id == user_id)
         ).all()
     )
-    direct_org_group_ids = set(
-        db.scalars(select(OrgGroupMember.org_group_id).where(OrgGroupMember.user_id == user_id)).all()
-    )
-    user_org_group_ids = direct_org_group_ids | _ancestor_org_group_ids(db, direct_org_group_ids)
+    user_org_group_ids = set(_all_user_org_group_ids(db, user_id))
     if user_org_group_ids:
         roles.update(
             ProjectRole(r)
@@ -1120,7 +1263,7 @@ def _member_source_derived_roles(db: Session, user_id: UUID, project_id: UUID) -
     iterations = 0
     while frontier and iterations < _PROJECT_INHERITANCE_ITERATION_CAP:
         iterations += 1
-        rows = _member_source_rows(db, frontier)
+        rows = _member_source_rows_cached(db, frontier)
         next_frontier: set[UUID] = set()
         for _owner_id, source_id, mode, filter_role in rows:
             if mode == ProjectRoleInheritanceMode.MIRROR_ALL:
@@ -1322,11 +1465,18 @@ def get_effective_project_roles(db: Session, user_id: UUID, project_id: UUID) ->
     direct, direct group, nested-org-group, project-referencing group,
     org-wide visibility, forward inheritance, member-source inheritance,
     direct org-group role).
+
+    Memoized per (user, project) inside `memoize_user_lookups` — a bulk
+    read-only caller such as `list_projects` otherwise resolves the same
+    project more than once. Always returns a fresh set.
     """
-    roles = _direct_effective_project_roles(db, user_id, project_id)
-    roles |= _forward_inherited_roles(db, user_id, project_id)
-    roles |= _member_source_derived_roles(db, user_id, project_id)
-    return _normalize(roles)
+    def compute() -> frozenset[ProjectRole]:
+        roles = _direct_effective_project_roles(db, user_id, project_id)
+        roles |= _forward_inherited_roles(db, user_id, project_id)
+        roles |= _member_source_derived_roles(db, user_id, project_id)
+        return frozenset(_normalize(roles))
+
+    return set(_memoized(("project_roles", user_id, project_id), compute))
 
 
 def _direct_project_managers(db: Session, project_id: UUID) -> set[UUID]:

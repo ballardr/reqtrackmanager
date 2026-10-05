@@ -33,6 +33,14 @@ def create_component(
     payload: ComponentCreate, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
+    # Same duplicate-prefix check `rename_component` already makes (and
+    # `create_category` makes per component); without it a repeated prefix
+    # hit the unique constraint and surfaced as a 500 (found 2026-10-04).
+    existing = db.scalar(
+        select(ProjectComponent.id).where(ProjectComponent.project_id == project.id, ProjectComponent.prefix == payload.prefix)
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A component with this prefix already exists.")
     count = len(db.scalars(select(ProjectComponent.id).where(ProjectComponent.project_id == project.id)).all())
     component = ProjectComponent(project_id=project.id, name=payload.name, prefix=payload.prefix, sort_order=count)
     db.add(component)

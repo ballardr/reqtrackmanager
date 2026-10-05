@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { installCleanupHook, loginAs, onCleanup, openProject, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Logs in as the Alpha/Beta org admin, opens Beta-2's Project Admin, and
@@ -9,19 +9,19 @@ import { loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectProjectA
  * order (CLAUDE.md test-independence rule).
  *
  * Returns the project id and the session token, captured up front because
- * a `finally` backstop can't call `page.evaluate` once a timeout has closed
+ * an API cleanup can't call `page.evaluate` once a timeout has closed
  * the page.
  */
 async function openBeta2Admin(page: Page): Promise<{ projectId: string; sessionToken: string | null }> {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-  await page.getByText(PROJECT_NAMES.beta2).click();
+  await openProject(page, PROJECT_NAMES.beta2);
   await page.getByRole("link", { name: "Project admin", exact: true }).click();
   const projectId = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
   const sessionToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
   const sessionHeaders = { Authorization: `Bearer ${sessionToken}` };
 
   // Self-heal shared Beta-2 state an earlier *timed-out* run may have
-  // leaked (a timeout closes the page before `finally` can revert via the
+  // leaked before cleanup moved to afterEach (a timeout closed the page before an in-body `finally` could revert via the
   // API — found 2026-10-04 when a run under heavy load left
   // `{"requirement": "Spec"}` behind, failing every later run at the
   // first "Requirements" nav click): reset terminology, and drop any
@@ -63,6 +63,8 @@ async function openBeta2Admin(page: Page): Promise<{ projectId: string; sessionT
  * `global-state-mutators` project runs them one at a time (`workers: 1`).
  */
 test.describe("project admin: custom fields, groups, and terminology", () => {
+  installCleanupHook();
+
   test("custom fields: each of the four types appears on the requirement form and can be deleted", async ({ page }) => {
     const suffix = Date.now();
     const verificationMethodField = `Verification method ${suffix}`;
@@ -71,72 +73,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     const priorityField = `Priority ${suffix}`;
     const { projectId, sessionToken } = await openBeta2Admin(page);
 
-    try {
-      await test.step("create a custom field of each type", async () => {
-        // Custom fields now lives inside the merged "Fields & actions" tab
-        // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
-        await selectProjectAdminGroup(page, "Fields & actions");
-
-        const fieldNameInput = page.getByPlaceholder("Field name");
-
-        await fieldNameInput.fill(verificationMethodField);
-        await expect(fieldNameInput).toHaveValue(verificationMethodField);
-        await page.getByRole("combobox").nth(1).selectOption("short_text");
-        await page.getByRole("button", { name: "New field" }).click();
-        await expect(page.getByText(verificationMethodField)).toBeVisible();
-
-        await fieldNameInput.fill(detailedRationaleField);
-        await expect(fieldNameInput).toHaveValue(detailedRationaleField);
-        await page.getByRole("combobox").nth(1).selectOption("long_text");
-        await page.getByRole("button", { name: "New field" }).click();
-        await expect(page.getByText(detailedRationaleField)).toBeVisible();
-
-        await fieldNameInput.fill(safetyCriticalField);
-        await expect(fieldNameInput).toHaveValue(safetyCriticalField);
-        await page.getByRole("combobox").nth(1).selectOption("checkbox");
-        await page.getByRole("button", { name: "New field" }).click();
-        await expect(page.getByText(safetyCriticalField)).toBeVisible();
-
-        await fieldNameInput.fill(priorityField);
-        await expect(fieldNameInput).toHaveValue(priorityField);
-        await page.getByRole("combobox").nth(1).selectOption("list");
-        await page.getByPlaceholder("Options (comma separated)").fill("Low, Medium, High");
-        await page.getByLabel("Required").check();
-        await page.getByRole("button", { name: "New field" }).click();
-        await expect(page.getByText(priorityField)).toBeVisible();
-        await expect(page.getByText("Required").first()).toBeVisible();
-      });
-
-      await test.step("a new custom field shows up on the requirement create form", async () => {
-        await page.getByRole("link", { name: "Requirements", exact: true }).click();
-        await page.getByRole("button", { name: "New Requirement" }).click();
-        await expect(page.getByText(verificationMethodField)).toBeVisible();
-        await expect(page.getByText(priorityField)).toBeVisible();
-        await page.keyboard.press("Escape").catch(() => {});
-        await page.goto(page.url());
-      });
-
-      await test.step("delete a custom field", async () => {
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        await selectProjectAdminGroup(page, "Fields & actions");
-        const row = page.locator(".row", { hasText: safetyCriticalField });
-        await row.getByRole("button").click();
-        await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-        await expect(page.getByText(safetyCriticalField)).toHaveCount(0);
-
-        // `priorityField` is `required: true` on a shared, persistent project
-        // (Beta-2) — left behind, it blocks every *other* spec's requirement
-        // creation on this project (UI or API) that doesn't happen to supply
-        // a value for it. Delete it too so this spec's own required-field
-        // exercise doesn't leak into unrelated specs sharing Beta-2.
-        const priorityRow = page.locator(".row", { hasText: priorityField });
-        await priorityRow.getByRole("button").click();
-        await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-        await expect(page.getByText(priorityField)).toHaveCount(0);
-      });
-    } finally {
+    // Runs in afterEach (also on failure/timeout) — see installCleanupHook.
+    onCleanup(async (request) => {
       // Defensive backstop, same reasoning as the terminology and
-      // group-roles `finally` blocks below — a direct API call, not the UI
+      // group-roles onCleanup blocks below — a direct API call, not the UI
       // steps above, so cleanup still runs even if an assertion throws
       // mid-way through creating/deleting these fields. This one matters
       // more than most: `priorityField` is a *required* field, and this
@@ -152,8 +92,8 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       const token = sessionToken;
       if (token && projectId) {
         const authHeaders = { Authorization: `Bearer ${token}` };
-        const fields: { id: string; name: string }[] = await page
-          .request.get(`http://localhost:8000/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`, {
+        const fields: { id: string; name: string }[] = await request
+          .get(`http://localhost:8000/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`, {
             headers: authHeaders,
           })
           .then((r) => r.json())
@@ -162,13 +102,75 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
           fields
             .filter((f) => f.name === safetyCriticalField || f.name === priorityField)
             .map((f) =>
-              page.request
+              request
                 .delete(`http://localhost:8000/api/v1/projects/${projectId}/custom-fields/${f.id}`, { headers: authHeaders })
                 .catch(() => {})
             )
         );
       }
-    }
+    });
+    await test.step("create a custom field of each type", async () => {
+      // Custom fields now lives inside the merged "Fields & actions" tab
+      // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
+      await selectProjectAdminGroup(page, "Fields & actions");
+
+      const fieldNameInput = page.getByPlaceholder("Field name");
+
+      await fieldNameInput.fill(verificationMethodField);
+      await expect(fieldNameInput).toHaveValue(verificationMethodField);
+      await page.getByRole("combobox").nth(1).selectOption("short_text");
+      await page.getByRole("button", { name: "New field" }).click();
+      await expect(page.getByText(verificationMethodField)).toBeVisible();
+
+      await fieldNameInput.fill(detailedRationaleField);
+      await expect(fieldNameInput).toHaveValue(detailedRationaleField);
+      await page.getByRole("combobox").nth(1).selectOption("long_text");
+      await page.getByRole("button", { name: "New field" }).click();
+      await expect(page.getByText(detailedRationaleField)).toBeVisible();
+
+      await fieldNameInput.fill(safetyCriticalField);
+      await expect(fieldNameInput).toHaveValue(safetyCriticalField);
+      await page.getByRole("combobox").nth(1).selectOption("checkbox");
+      await page.getByRole("button", { name: "New field" }).click();
+      await expect(page.getByText(safetyCriticalField)).toBeVisible();
+
+      await fieldNameInput.fill(priorityField);
+      await expect(fieldNameInput).toHaveValue(priorityField);
+      await page.getByRole("combobox").nth(1).selectOption("list");
+      await page.getByPlaceholder("Options (comma separated)").fill("Low, Medium, High");
+      await page.getByLabel("Required").check();
+      await page.getByRole("button", { name: "New field" }).click();
+      await expect(page.getByText(priorityField)).toBeVisible();
+      await expect(page.getByText("Required").first()).toBeVisible();
+    });
+
+    await test.step("a new custom field shows up on the requirement create form", async () => {
+      await page.getByRole("link", { name: "Requirements", exact: true }).click();
+      await page.getByRole("button", { name: "New Requirement" }).click();
+      await expect(page.getByText(verificationMethodField)).toBeVisible();
+      await expect(page.getByText(priorityField)).toBeVisible();
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.goto(page.url());
+    });
+
+    await test.step("delete a custom field", async () => {
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      await selectProjectAdminGroup(page, "Fields & actions");
+      const row = page.locator(".row", { hasText: safetyCriticalField });
+      await row.getByRole("button").click();
+      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+      await expect(page.getByText(safetyCriticalField)).toHaveCount(0);
+
+      // `priorityField` is `required: true` on a shared, persistent project
+      // (Beta-2) — left behind, it blocks every *other* spec's requirement
+      // creation on this project (UI or API) that doesn't happen to supply
+      // a value for it. Delete it too so this spec's own required-field
+      // exercise doesn't leak into unrelated specs sharing Beta-2.
+      const priorityRow = page.locator(".row", { hasText: priorityField });
+      await priorityRow.getByRole("button").click();
+      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+      await expect(page.getByText(priorityField)).toHaveCount(0);
+    });
   });
 
   test("project groups: member add/remove, nesting, new group, and org-group role grants", async ({ page }) => {
@@ -409,89 +411,8 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         { headers: authHeaders, data: { user_id: member.user_id } },
       );
 
-      try {
-        await selectProjectAdminGroup(page, "Members");
-        // orgGroups is fetched once on mount — the group just created via a
-        // direct API call isn't in that state until reloaded (same reason
-        // the "nest an org group" step above reloads too).
-        await page.reload();
-
-        await page.getByRole("button", { name: "Add member" }).click();
-        const dialog = page.getByRole("dialog", { name: "Add member" });
-        await dialog.getByPlaceholder("Type a name to add, or an email to invite…").fill(directGroupName);
-        const groupOption = dialog.getByRole("option", { name: new RegExp(`^${directGroupName}`) });
-        await expect(groupOption).toContainText("Org group");
-        await groupOption.click();
-
-        // Staged, not yet granted — set this row's own role, then commit.
-        await dialog.getByRole("combobox", { name: `Role for ${directGroupName}` }).selectOption("stakeholder");
-        await dialog.getByRole("button", { name: "Add 1 member" }).click();
-        await expect(dialog).not.toBeVisible();
-
-        // Visible on the group's member's own row, naming the granting
-        // group directly (PR1's per-group provenance) and distinguishing
-        // this direct grant from the nesting mechanism's own wording. The
-        // Source column now shows a plain-language summary per row
-        // (platform review 2026-09 follow-up) rather than this line being
-        // always-visible in the cell — memberAlphaBeta holds no other role
-        // on Beta-2 at this point, so the summary reads "Group" (not
-        // "Direct and group"), and the actual named-group line lives
-        // behind that summary's own click-to-open popover.
-        const memberRow = page.locator("tr", { hasText: PERSONAS.memberAlphaBeta.name });
-        await memberRow.getByRole("button", { name: "Group" }).click();
-        await expect(
-          page
-            .getByRole("dialog", { name: `${PERSONAS.memberAlphaBeta.name}'s access sources` })
-            .getByText(`Via group '${directGroupName}' (direct)`)
-        ).toBeVisible();
-        await page.keyboard.press("Escape");
-
-        // Phase 6 (docs/platform-review-2026-09-plan.md): the grant just
-        // made above is now also visible and manageable as the group's own
-        // row — previously there was no way to see, edit, or remove it
-        // except by reaching into a member's Source line above, or calling
-        // the DELETE endpoint by hand (as this test's own `finally` cleanup
-        // below used to be the only way to do).
-        await test.step("the granting group gets its own row, editable and removable", async () => {
-          const groupRow = page.getByRole("button", { name: `${directGroupName}'s roles` }).locator("xpath=ancestor::tr[1]");
-          await expect(groupRow.getByText("Group", { exact: true })).toBeVisible();
-          // A group row's Source cell just states "Direct" plainly, no
-          // popover (platform review 2026-09 follow-up) — there's nothing
-          // upstream of the group's own grant to disclose, and the Role
-          // column (checked below via the trigger's own summary) already
-          // names which roles it holds. `exact: true` matters here
-          // specifically: this fixture's own group name contains the
-          // literal word "Direct" ("E2E Direct Grant Group ..."), which a
-          // substring match against the Name cell's combined "Group" badge
-          // + name text would also satisfy.
-          await expect(groupRow.getByText("Direct", { exact: true })).toBeVisible();
-          const rolesButton = groupRow.getByRole("button", { name: `${directGroupName}'s roles` });
-          await expect(rolesButton).toHaveAttribute("title", "Stakeholder");
-
-          // The role dropdown is directly editable from this row — grant a
-          // second role the same way `MembersTabGroupRowRoleToggleAndRemove`
-          // (ProjectMembersTable.stories.tsx) covers in isolation.
-          await rolesButton.click();
-          const roleGroup = page.getByRole("group", { name: `${directGroupName}'s roles` });
-          await roleGroup.getByRole("checkbox", { name: `Grant Member to ${directGroupName}` }).click();
-          await page.keyboard.press("Escape");
-          await expect(rolesButton).toHaveAttribute("title", "Stakeholder, Member");
-
-          // "Remove group" (Actions column) revokes every role at once,
-          // behind the same Tier-1 ConfirmDialog every other destructive
-          // action in this table uses.
-          await groupRow.getByRole("button", { name: `${directGroupName}'s actions` }).click();
-          await page.getByRole("menuitem", { name: "Remove group" }).click();
-          await page.getByRole("dialog", { name: `Remove ${directGroupName} from this project?` })
-            .getByRole("button", { name: "Remove group" }).click();
-          await expect(page.getByText(`Removed ${directGroupName}'s access.`)).toBeVisible();
-          await expect(page.getByRole("button", { name: `${directGroupName}'s roles` })).toHaveCount(0);
-          // That direct grant was memberAlphaBeta's only source of access
-          // on this project, so their whole row disappears from the
-          // effective-members list too, not just the one Source line.
-          await expect(memberRow).toHaveCount(0);
-        });
-      } finally {
+      // Runs in afterEach (also on failure/timeout) — see installCleanupHook.
+      onCleanup(async (request) => {
         // Defensive backstop, not the primary cleanup any more — the step
         // above already removes both roles it grants (stakeholder, then
         // member) through the real "Remove group" UI. Revoking an
@@ -504,13 +425,94 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         // grant on memberAlphaBeta into other specs sharing Beta-2.
         await Promise.all(
           ["stakeholder", "member"].map((role) =>
-            page.request.delete(
+            request.delete(
               `http://localhost:8000/api/v1/projects/${projectId}/group-roles/${orgGroup.id}/${role}`,
               { headers: authHeaders },
             )
           )
         );
-      }
+      });
+      await selectProjectAdminGroup(page, "Members");
+      // orgGroups is fetched once on mount — the group just created via a
+      // direct API call isn't in that state until reloaded (same reason
+      // the "nest an org group" step above reloads too).
+      await page.reload();
+
+      await page.getByRole("button", { name: "Add member" }).click();
+      const dialog = page.getByRole("dialog", { name: "Add member" });
+      await dialog.getByPlaceholder("Type a name to add, or an email to invite…").fill(directGroupName);
+      const groupOption = dialog.getByRole("option", { name: new RegExp(`^${directGroupName}`) });
+      await expect(groupOption).toContainText("Org group");
+      await groupOption.click();
+
+      // Staged, not yet granted — set this row's own role, then commit.
+      await dialog.getByRole("combobox", { name: `Role for ${directGroupName}` }).selectOption("stakeholder");
+      await dialog.getByRole("button", { name: "Add 1 member" }).click();
+      await expect(dialog).not.toBeVisible();
+
+      // Visible on the group's member's own row, naming the granting
+      // group directly (PR1's per-group provenance) and distinguishing
+      // this direct grant from the nesting mechanism's own wording. The
+      // Source column now shows a plain-language summary per row
+      // (platform review 2026-09 follow-up) rather than this line being
+      // always-visible in the cell — memberAlphaBeta holds no other role
+      // on Beta-2 at this point, so the summary reads "Group" (not
+      // "Direct and group"), and the actual named-group line lives
+      // behind that summary's own click-to-open popover.
+      const memberRow = page.locator("tr", { hasText: PERSONAS.memberAlphaBeta.name });
+      await memberRow.getByRole("button", { name: "Group" }).click();
+      await expect(
+        page
+          .getByRole("dialog", { name: `${PERSONAS.memberAlphaBeta.name}'s access sources` })
+          .getByText(`Via group '${directGroupName}' (direct)`)
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
+
+      // Phase 6 (docs/platform-review-2026-09-plan.md): the grant just
+      // made above is now also visible and manageable as the group's own
+      // row — previously there was no way to see, edit, or remove it
+      // except by reaching into a member's Source line above, or calling
+      // the DELETE endpoint by hand (as this test's own onCleanup
+      // below used to be the only way to do).
+      await test.step("the granting group gets its own row, editable and removable", async () => {
+        const groupRow = page.getByRole("button", { name: `${directGroupName}'s roles` }).locator("xpath=ancestor::tr[1]");
+        await expect(groupRow.getByText("Group", { exact: true })).toBeVisible();
+        // A group row's Source cell just states "Direct" plainly, no
+        // popover (platform review 2026-09 follow-up) — there's nothing
+        // upstream of the group's own grant to disclose, and the Role
+        // column (checked below via the trigger's own summary) already
+        // names which roles it holds. `exact: true` matters here
+        // specifically: this fixture's own group name contains the
+        // literal word "Direct" ("E2E Direct Grant Group ..."), which a
+        // substring match against the Name cell's combined "Group" badge
+        // + name text would also satisfy.
+        await expect(groupRow.getByText("Direct", { exact: true })).toBeVisible();
+        const rolesButton = groupRow.getByRole("button", { name: `${directGroupName}'s roles` });
+        await expect(rolesButton).toHaveAttribute("title", "Stakeholder");
+
+        // The role dropdown is directly editable from this row — grant a
+        // second role the same way `MembersTabGroupRowRoleToggleAndRemove`
+        // (ProjectMembersTable.stories.tsx) covers in isolation.
+        await rolesButton.click();
+        const roleGroup = page.getByRole("group", { name: `${directGroupName}'s roles` });
+        await roleGroup.getByRole("checkbox", { name: `Grant Member to ${directGroupName}` }).click();
+        await page.keyboard.press("Escape");
+        await expect(rolesButton).toHaveAttribute("title", "Stakeholder, Member");
+
+        // "Remove group" (Actions column) revokes every role at once,
+        // behind the same Tier-1 ConfirmDialog every other destructive
+        // action in this table uses.
+        await groupRow.getByRole("button", { name: `${directGroupName}'s actions` }).click();
+        await page.getByRole("menuitem", { name: "Remove group" }).click();
+        await page.getByRole("dialog", { name: `Remove ${directGroupName} from this project?` })
+          .getByRole("button", { name: "Remove group" }).click();
+        await expect(page.getByText(`Removed ${directGroupName}'s access.`)).toBeVisible();
+        await expect(page.getByRole("button", { name: `${directGroupName}'s roles` })).toHaveCount(0);
+        // That direct grant was memberAlphaBeta's only source of access
+        // on this project, so their whole row disappears from the
+        // effective-members list too, not just the one Source line.
+        await expect(memberRow).toHaveCount(0);
+      });
     });
   });
 
@@ -518,9 +520,9 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     const { projectId, sessionToken } = await openBeta2Admin(page);
 
     await test.step("override and then revert a terminology term", async () => {
-      // The revert at the end is wrapped in try/finally, with a direct API
+      // The revert at the end is backed by an onCleanup (afterEach), with a direct API
       // call as the actual backstop (not just the UI steps below) — same
-      // reasoning as the group-roles `finally` above. Beta-2 is shared and
+      // reasoning as the group-roles onCleanup above. Beta-2 is shared and
       // persistent (this file's own docstring), so if any assertion in
       // this step throws before the UI-driven revert runs, this override
       // would otherwise stick around and break every *other* spec's
@@ -533,43 +535,43 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // "Requirements" })` in this same file's own first test.step — to
       // fail immediately, with a symptom that looked unrelated to
       // terminology at all).
-      try {
-        // Terminology now lives inside Overview ("Project settings") rather
-        // than its own tab (2026-08 UX audit roadmap: Project Admin's 8
-        // tabs -> 5) — still needs a tab click since we're currently on
-        // "Project groups" from the step above (Overview is only the
-        // *default* tab on a fresh mount, not the currently-active one
-        // here). Its own Save button is labelled "Save terminology",
-        // distinct from Overview's own "Save settings" button now that both
-        // sit on the same screen.
-        await selectProjectAdminGroup(page, "Project settings");
-        await page.getByPlaceholder("requirement").fill("Spec");
-        // Wait for the save itself before reloading — reloading straight
-        // after the click can cancel the in-flight PUT.
-        await Promise.all([
-          page.waitForResponse((r) => r.url().endsWith(`/projects/${projectId}/terminology`) && r.request().method() === "PUT"),
-          page.getByRole("button", { name: "Save terminology" }).click(),
-        ]);
-        await page.reload();
-        await expect(page.getByPlaceholder("requirement")).toHaveValue("Spec");
-
-        await page.getByRole("link", { name: "Specs", exact: true }).click();
-        await expect(page.url()).toContain("/requirements");
-
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        await page.getByPlaceholder("requirement").fill("");
-        await page.getByRole("button", { name: "Save terminology" }).click();
-      } finally {
+      // Runs in afterEach (also on failure/timeout) — see installCleanupHook.
+      onCleanup(async (request) => {
         const token = sessionToken;
         if (token) {
-          await page.request
+          await request
             .put(`http://localhost:8000/api/v1/projects/${projectId}/terminology`, {
               headers: { Authorization: `Bearer ${token}` },
               data: { terminology: {} },
             })
             .catch(() => {});
         }
-      }
+      });
+      // Terminology now lives inside Overview ("Project settings") rather
+      // than its own tab (2026-08 UX audit roadmap: Project Admin's 8
+      // tabs -> 5) — still needs a tab click since we're currently on
+      // "Project groups" from the step above (Overview is only the
+      // *default* tab on a fresh mount, not the currently-active one
+      // here). Its own Save button is labelled "Save terminology",
+      // distinct from Overview's own "Save settings" button now that both
+      // sit on the same screen.
+      await selectProjectAdminGroup(page, "Project settings");
+      await page.getByPlaceholder("requirement").fill("Spec");
+      // Wait for the save itself before reloading — reloading straight
+      // after the click can cancel the in-flight PUT.
+      await Promise.all([
+        page.waitForResponse((r) => r.url().endsWith(`/projects/${projectId}/terminology`) && r.request().method() === "PUT"),
+        page.getByRole("button", { name: "Save terminology" }).click(),
+      ]);
+      await page.reload();
+      await expect(page.getByPlaceholder("requirement")).toHaveValue("Spec");
+
+      await page.getByRole("link", { name: "Specs", exact: true }).click();
+      await expect(page.url()).toContain("/requirements");
+
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      await page.getByPlaceholder("requirement").fill("");
+      await page.getByRole("button", { name: "Save terminology" }).click();
     });
   });
 });

@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -37,6 +37,8 @@ import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useOrgLabel, useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings, useTerm } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
+import { useLatest } from "../hooks/useLatest";
+import { useRequestSequence } from "../hooks/useRequestSequence";
 
 const PAGE_SIZE = 30;
 
@@ -136,6 +138,9 @@ export function ChangeRequestsPage() {
     () => (searchParams.get("status") as CrStatusFilterValue) || "active"
   );
   const [targetStageFilter, setTargetStageFilter] = useState("");
+  // Free-text search (2026-10-04), server-side like the requirements list's,
+  // so it finds a change request on any page of the paginated list.
+  const [search, setSearch] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
   // `order` param, same reasoning as `RequirementsPage.tsx`: this list is
@@ -146,6 +151,7 @@ export function ChangeRequestsPage() {
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+    if (search) params.set("search", search);
     if (statusFilter === "active") params.set("active_only", "true");
     else if (statusFilter) params.set("cr_status", statusFilter);
     if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
@@ -156,20 +162,27 @@ export function ChangeRequestsPage() {
     return params;
   }
 
+  // Read through a ref so a reload started from an older render (a
+  // post-mutation `reload()` resuming after an `await`) still lists with the
+  // filters the user has set since — otherwise, as the newest request, it
+  // would overwrite their filtered results (found 2026-10-04 via the e2e
+  // suite). Declared before the reload effect so it's current there.
+  const listParamsRef = useLatest(listParams);
+
   // Belt-and-suspenders guard (bug fix, 2026-08: dashboard glance
   // navigation race), same reasoning as `RequirementsPage.tsx`'s identical
   // guard — discards a response if a newer request has since been kicked
   // off, covering any overlapping-fetch path beyond the mount-time race the
   // searchParams-seeding fix above eliminates (e.g. rapid filter changes).
-  const loadChangeRequestsRequestIdRef = useRef(0);
+  const beginLoad = useRequestSequence();
 
   async function loadChangeRequests(offset: number, append: boolean) {
     if (!projectId) return;
-    const requestId = ++loadChangeRequestsRequestIdRef.current;
+    const isLatest = beginLoad();
     const page = await api.getPage<ChangeRequest>(
-      `/api/v1/projects/${projectId}/change-requests?${listParams(offset).toString()}`
+      `/api/v1/projects/${projectId}/change-requests?${listParamsRef.current(offset).toString()}`
     );
-    if (requestId !== loadChangeRequestsRequestIdRef.current) return;
+    if (!isLatest()) return;
     setCrs((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
     setTotalUnfiltered(page.totalUnfiltered ?? page.total);
@@ -230,7 +243,7 @@ export function ChangeRequestsPage() {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, statusFilter, targetStageFilter, sort]);
+  }, [projectId, statusFilter, targetStageFilter, sort, search]);
 
   // Deep-linked from a requirement's "Make change request" button
   // (?requirement=<id>) — pre-selects that requirement for a
@@ -815,7 +828,14 @@ export function ChangeRequestsPage() {
           {crs && <LoadMoreButton loaded={crs.length} total={total} onClick={() => loadChangeRequests(crs.length, true)} />}
         </div>
 
-        <FilterPanel sectionKey="changeRequestsFilters" matching={total} total={totalUnfiltered}>
+        <FilterPanel
+          sectionKey="changeRequestsFilters"
+          matching={total}
+          total={totalUnfiltered}
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={strings.changeRequests.search}
+        >
           <FilterField label="Status">
             <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as CrStatusFilterValue)}>
               <option value="active">Active</option>

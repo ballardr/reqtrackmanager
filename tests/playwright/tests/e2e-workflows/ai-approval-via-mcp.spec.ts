@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { clickAndAwaitSave, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
+import { clickAndAwaitSave, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -39,6 +42,7 @@ test.describe("AI approval via MCP: org + project opt-in toggles and acknowledgm
     const org = await (
       await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: serverAdminHeaders, data: { name: orgName } })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: serverAdminHeaders,
       data: { email: adminEmail, display_name: adminName, password: PASSWORD, role: "org_admin" },

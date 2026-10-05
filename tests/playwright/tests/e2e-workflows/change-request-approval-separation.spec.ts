@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
  * Job to be done: a stakeholder who spots a problem with an approved
@@ -19,7 +19,7 @@ test("change request submitter cannot approve their own request; the project man
 
   await test.step("stakeholder submits a change request against the locked requirement", async () => {
     await loginAs(page, PERSONAS.stakeholderAlpha.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
     await page.getByRole("button", { name: "New change request" }).click();
     // The create form is a `Modal` portalled to the end of `document.body`
@@ -48,12 +48,13 @@ test("change request submitter cannot approve their own request; the project man
     await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Tighter latency target after field testing.");
     await page.getByPlaceholder("Reason for change").fill("Customer escalation on response time.");
     await page.getByRole("button", { name: "Create", exact: true }).click();
+    await searchChangeRequests(page, proposedName);
     await expect(page.getByText(proposedName)).toBeVisible();
   });
 
   await test.step("stakeholder submits it for review and sees no approve/reject controls", async () => {
     await page.getByText(proposedName).click();
-    await page.getByRole("button", { name: "Submit" }).click();
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
     // Exact match: a stakeholder can cast an advisory "Vote to approve" /
     // "Vote to reject" (C-R-03, doesn't touch the CR's real status), which
@@ -82,8 +83,9 @@ test("change request submitter cannot approve their own request; the project man
   await test.step("logout, log back in as the project manager, and approve it through the real UI", async () => {
     await logout(page);
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
+    await searchChangeRequests(page, proposedName);
     await page.getByText(proposedName).click();
     // React Router 7 wraps navigation in React's startTransition by
     // default (a behavior change from 6): the URL updates immediately,
@@ -113,7 +115,9 @@ test("change request submitter cannot approve their own request; the project man
     // detail view's own "Name: {proposedName}" changed-field summary can
     // transiently coexist with the requirements list underneath as it
     // settles in. The requirement card's link has no such ambiguity (see
-    // the identical fix in golden-path.spec.ts).
+    // the identical fix in golden-path.spec.ts). Searched first: the list is
+    // paginated and shared Alpha-1 grows every run.
+    await page.getByPlaceholder("Search by name or ID").fill(proposedName);
     await expect(page.getByRole("link", { name: proposedName })).toBeVisible();
   });
 });
@@ -136,7 +140,7 @@ test("a project manager sees and can use 'Approve and clear completion' on a CR 
 
   await test.step("PM creates, approves, and completes a throwaway requirement", async () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
@@ -158,9 +162,10 @@ test("a project manager sees and can use 'Approve and clear completion' on a CR 
     await nameCheckbox.locator("xpath=../..").locator("input.input").fill(proposedName);
     await page.getByPlaceholder("Reason for change").fill("Substantive rework, needs re-verifying.");
     await page.getByRole("button", { name: "Create", exact: true }).click();
+    await searchChangeRequests(page, proposedName);
     await expect(page.getByText(proposedName)).toBeVisible();
     await page.getByText(proposedName).click();
-    await page.getByRole("button", { name: "Submit" }).click();
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
   });
 
@@ -174,7 +179,7 @@ test("a project manager sees and can use 'Approve and clear completion' on a CR 
 
   await test.step("the requirement reflects the change and no longer shows as completed", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    await page.getByRole("link", { name: proposedName }).click();
+    await openRequirementByName(page, proposedName);
     await expect(page.getByText("Status: Approved")).toBeVisible();
     await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Mark completed" })).toBeVisible();

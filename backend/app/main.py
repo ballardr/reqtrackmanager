@@ -49,6 +49,7 @@ from app.services import pubsub
 from app.services.bootstrap import run_bootstrap
 from app.services.disk_monitor import run_disk_monitor_loop
 from app.services.notifications import run_digest_loop
+from app.services.process_coordination import run_leadership_loop, startup_lock
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.scoring import sync_scoring_levels
 from app.version import APP_VERSION
@@ -58,36 +59,56 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Applies pending migrations, runs the server-admin bootstrap, syncs
-    the module-contributed RBAC role registry mirror (module system
-    Phase 2), captures the event loop for pub/sub, and starts the
-    disk-usage monitor (I-M-11) — every process start self-heals the
-    schema rather than requiring a manual migration step first."""
-    run_migrations()
+    """Per worker process: applies pending migrations, runs the server-admin
+    bootstrap and the registry syncs (serialised across workers by
+    `startup_lock`), captures the event loop and starts the cross-process
+    pub/sub listener, then joins leader election — only the elected leader
+    runs the singleton background work (scheduled jobs, digest emails, the
+    disk-usage monitor, I-M-11), so several workers (`BACKEND_WORKERS`) never
+    duplicate it. Every process start self-heals the schema rather than
+    requiring a manual migration step first."""
+    with startup_lock():
+        run_migrations()
+        db = SessionLocal()
+        try:
+            run_bootstrap(db)
+            # Module system Phase 2: keeps `module_role_definitions` caught up
+            # with whatever the live registry currently declares, the same
+            # "self-heal at every process start" pattern `run_bootstrap` itself
+            # follows. See `sync_module_role_definitions`'s own docstring for
+            # why this never deletes a row for a module/role no longer
+            # registered.
+            sync_module_role_definitions(db)
+            # Module 1 Phase 10: seeds every org's missing scoring-axis levels
+            # from the registry, so a module installed after orgs exist still
+            # gets its levels (see `sync_scoring_levels`).
+            sync_scoring_levels(db)
+        finally:
+            db.close()
     pubsub.set_event_loop(asyncio.get_event_loop())
-    db = SessionLocal()
-    try:
-        run_bootstrap(db)
-        # Module system Phase 2: keeps `module_role_definitions` caught up
-        # with whatever the live registry currently declares, the same
-        # "self-heal at every process start" pattern `run_bootstrap` itself
-        # follows. See `sync_module_role_definitions`'s own docstring for
-        # why this never deletes a row for a module/role no longer
-        # registered.
-        sync_module_role_definitions(db)
-        # Module 1 Phase 10: seeds every org's missing scoring-axis levels
-        # from the registry, so a module installed after orgs exist still
-        # gets its levels (see `sync_scoring_levels`).
-        sync_scoring_levels(db)
-    finally:
-        db.close()
-    disk_monitor_task = asyncio.create_task(run_disk_monitor_loop())
-    digest_task = asyncio.create_task(run_digest_loop())
-    start_scheduler()
+    if settings.websocket_enabled:
+        pubsub.start_listener()
+
+    singleton_tasks: list[asyncio.Task] = []
+
+    def start_singletons() -> None:
+        singleton_tasks.extend([
+            asyncio.create_task(run_disk_monitor_loop()),
+            asyncio.create_task(run_digest_loop()),
+        ])
+        start_scheduler()
+
+    def stop_singletons() -> None:
+        for task in singleton_tasks:
+            task.cancel()
+        singleton_tasks.clear()
+        stop_scheduler()
+
+    leadership_task = asyncio.create_task(run_leadership_loop(start_singletons, stop_singletons))
     yield
-    disk_monitor_task.cancel()
-    digest_task.cancel()
-    stop_scheduler()
+    leadership_task.cancel()
+    stop_singletons()
+    pubsub.stop_listener()
 
 
 app = FastAPI(

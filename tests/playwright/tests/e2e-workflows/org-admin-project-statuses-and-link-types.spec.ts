@@ -1,6 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { ensureExpanded, PASSWORD, selectOrgAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, PASSWORD, selectOrgAdminGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * Job to be done: an organisation's project statuses and requirement link
@@ -61,6 +64,7 @@ test.describe("org admin: project statuses and link types", () => {
     const org = await (
       await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: authHeaders, data: { name: orgName } })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: authHeaders,
       data: { email: adminEmail, display_name: "E2E Statuses Admin", password: PASSWORD, role: "org_admin" },

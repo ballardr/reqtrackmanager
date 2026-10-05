@@ -1,6 +1,18 @@
-import { expect, type Page, test } from "@playwright/test";
+import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import {
+  apiHeaders,
+  ensureExpanded,
+  installCleanupHook,
+  loginAs,
+  onCleanup,
+  openProjectGroupPanel,
+  ORG_NAMES,
+  PERSONAS,
+  PROJECT_NAMES,
+  selectOrgAdminGroup,
+  selectProjectAdminGroup,
+} from "./helpers";
 
 /**
  * Opens a project by name from the project list, forced to tile view. A
@@ -15,6 +27,8 @@ import { ensureExpanded, loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES
 async function openProjectByName(page: Page, name: string): Promise<void> {
   await page.goto("/projects");
   await page.getByRole("button", { name: "Tile view" }).click();
+  // Search first: the list pages at 30 and Gamma's projects outgrow it.
+  await page.getByPlaceholder("Search projects").fill(name);
   await page.locator(`a[title="${name}"]`).click();
 }
 
@@ -35,7 +49,15 @@ async function openProjectByName(page: Page, name: string): Promise<void> {
  * scenarios that need a pre-existing, already-configured relationship
  * rather than one this spec builds itself.
  */
+/** Looks up the seeded Gamma organisation's id (for onCleanup closures). */
+async function gammaOrgId(request: APIRequestContext, headers: Record<string, string>): Promise<string> {
+  const orgs: { id: string; name: string }[] = await (await request.get("http://localhost:8000/api/v1/orgs", { headers })).json();
+  return orgs.find((o) => o.name === ORG_NAMES.gamma)!.id;
+}
+
 test.describe("hierarchical (parent/child) projects", () => {
+  installCleanupHook();
+
   test("create a sub-project via the modal, mirror-all requires confirmation, and hierarchy labels + tree view render", async ({
     page,
   }) => {
@@ -48,7 +70,7 @@ test.describe("hierarchical (parent/child) projects", () => {
 
     // Archives (doesn't delete — projects have no hard-delete endpoint,
     // `archive_project` in routers/projects.py) both throwaway projects at
-    // the end, in `finally`: an earlier version left them behind forever,
+    // the end, by an onCleanup (afterEach — runs even on timeout): an earlier version left them behind forever,
     // on the same "leaving throwaway fixtures behind is harmless"
     // assumption `role-display-collapsing.spec.ts` had for its own
     // throwaway groups (see that spec's docstring/fix, docs/decisions.md).
@@ -60,95 +82,87 @@ test.describe("hierarchical (parent/child) projects", () => {
     // created project's own card. Best-effort (each archive call wrapped
     // individually) so a failure archiving one doesn't skip the other or
     // mask whatever the `try` block itself failed with.
-    try {
-      await test.step("create the parent as an ordinary root project", async () => {
-        await page.getByRole("button", { name: "New project" }).click();
-        const dialog = page.getByRole("dialog", { name: "New project" });
-        await dialog.getByLabel("Name", { exact: true }).fill(parentName);
-        await dialog.getByRole("button", { name: "Create", exact: true }).click();
-        await expect(page.getByRole("heading", { name: parentName })).toBeVisible();
-      });
+    // Archives this run's disposable projects even if the test fails or times
+    // out (afterEach via onCleanup).
+    onCleanup(async (request) => {
+      const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
+      const projects: { id: string; name: string }[] = await (await request.get(`http://localhost:8000/api/v1/projects?archived=false`, { headers })).json();
+      for (const project of projects.filter((p) => p.name === parentName || p.name === childName)) {
+        await request.post(`http://localhost:8000/api/v1/projects/${project.id}/archive`, { headers });
+      }
+    });
+    await test.step("create the parent as an ordinary root project", async () => {
+      await page.getByRole("button", { name: "New project" }).click();
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await dialog.getByLabel("Name", { exact: true }).fill(parentName);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(page.getByRole("heading", { name: parentName })).toBeVisible();
+    });
 
-      await test.step("can_be_parent defaults off — opt in via the settings tab before this project can be used as a parent", async () => {
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        const addSubProject = page.getByRole("button", { name: "Add sub-project" });
-        await expect(addSubProject).toBeDisabled();
-        await page.getByLabel(/Allow this .* to be a parent/).check();
-        await page.getByRole("button", { name: "Save settings" }).click();
-        await expect(addSubProject).toBeEnabled();
-      });
+    await test.step("can_be_parent defaults off — opt in via the settings tab before this project can be used as a parent", async () => {
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      const addSubProject = page.getByRole("button", { name: "Add sub-project" });
+      await expect(addSubProject).toBeDisabled();
+      await page.getByLabel(/Allow this .* to be a parent/).check();
+      await page.getByRole("button", { name: "Save settings" }).click();
+      await expect(addSubProject).toBeEnabled();
+    });
 
-      await test.step("'Add sub-project' from the parent's own admin page pre-fills the parent and opens the create modal", async () => {
-        await page.getByRole("button", { name: "Add sub-project" }).click();
-        const dialog = page.getByRole("dialog", { name: "New project" });
-        // The parent select's current selection resolves to the parent
-        // project's own name as its chosen <option> text.
-        await expect(dialog.getByLabel("Parent project").locator("option:checked")).toHaveText(parentName);
+    await test.step("'Add sub-project' from the parent's own admin page pre-fills the parent and opens the create modal", async () => {
+      await page.getByRole("button", { name: "Add sub-project" }).click();
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      // The parent select's current selection resolves to the parent
+      // project's own name as its chosen <option> text.
+      await expect(dialog.getByLabel("Parent project").locator("option:checked")).toHaveText(parentName);
 
-        await dialog.getByLabel("Name", { exact: true }).fill(childName);
-      });
+      await dialog.getByLabel("Name", { exact: true }).fill(childName);
+    });
 
-      await test.step("selecting 'Mirror all roles' requires confirmation naming the parent before it takes effect", async () => {
-        const dialog = page.getByRole("dialog", { name: "New project" });
-        await dialog.getByLabel("Inherit access from parent").selectOption("mirror_all");
+    await test.step("selecting 'Mirror all roles' requires confirmation naming the parent before it takes effect", async () => {
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await dialog.getByLabel("Inherit access from parent").selectOption("mirror_all");
 
-        const confirm = page.getByRole("dialog", { name: "Enable access inheritance?" });
-        await expect(confirm).toBeVisible();
-        await expect(confirm.getByText(new RegExp(`holds any role on '${parentName}'`))).toBeVisible();
-        // Cancelling leaves the mode unchanged (still "None") rather than
-        // silently applying it.
-        await confirm.getByRole("button", { name: "Cancel" }).click();
-        await expect(dialog.getByLabel("Inherit access from parent")).toHaveValue("none");
+      const confirm = page.getByRole("dialog", { name: "Enable access inheritance?" });
+      await expect(confirm).toBeVisible();
+      await expect(confirm.getByText(new RegExp(`holds any role on '${parentName}'`))).toBeVisible();
+      // Cancelling leaves the mode unchanged (still "None") rather than
+      // silently applying it.
+      await confirm.getByRole("button", { name: "Cancel" }).click();
+      await expect(dialog.getByLabel("Inherit access from parent")).toHaveValue("none");
 
-        await dialog.getByLabel("Inherit access from parent").selectOption("mirror_all");
-        await page.getByRole("dialog", { name: "Enable access inheritance?" }).getByRole("button", { name: "Enable inheritance" }).click();
-        await expect(dialog.getByLabel("Inherit access from parent")).toHaveValue("mirror_all");
+      await dialog.getByLabel("Inherit access from parent").selectOption("mirror_all");
+      await page.getByRole("dialog", { name: "Enable access inheritance?" }).getByRole("button", { name: "Enable inheritance" }).click();
+      await expect(dialog.getByLabel("Inherit access from parent")).toHaveValue("mirror_all");
 
-        await dialog.getByRole("button", { name: "Create", exact: true }).click();
-        await expect(page.getByRole("heading", { name: childName })).toBeVisible();
-      });
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(page.getByRole("heading", { name: childName })).toBeVisible();
+    });
 
-      await test.step("'Child of:'/'Parent of:' labels render on the project list", async () => {
-        await page.goto("/projects");
-        await page.getByRole("button", { name: "Tile view" }).click();
-        const cardFor = (name: string) =>
-          page.locator(`a[title="${name}"]`).locator(
-            "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]"
-          );
+    await test.step("'Child of:'/'Parent of:' labels render on the project list", async () => {
+      await page.goto("/projects");
+      await page.getByRole("button", { name: "Tile view" }).click();
+      // Narrowed to this run's pair (both names share the suffix): Gamma's
+      // org admin has more projects than one page holds, so new ones can
+      // land past the first page.
+      await page.getByRole("textbox", { name: "Search projects" }).fill(String(suffix));
+      const cardFor = (name: string) =>
+        page.locator(`a[title="${name}"]`).locator(
+          "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]"
+        );
 
-        const childCard = cardFor(childName);
-        await expect(childCard.getByText("Child of:")).toBeVisible();
-        await expect(childCard.getByRole("link", { name: parentName, exact: true })).toBeVisible();
-        const parentCard = cardFor(parentName);
-        await expect(parentCard.getByText("Parent of:")).toBeVisible();
-        await expect(parentCard.getByRole("link", { name: childName, exact: true })).toBeVisible();
-      });
+      const childCard = cardFor(childName);
+      await expect(childCard.getByText("Child of:")).toBeVisible();
+      await expect(childCard.getByRole("link", { name: parentName, exact: true })).toBeVisible();
+      const parentCard = cardFor(parentName);
+      await expect(parentCard.getByText("Parent of:")).toBeVisible();
+      await expect(parentCard.getByRole("link", { name: childName, exact: true })).toBeVisible();
+    });
 
-      await test.step("tree view renders the new parent/child pair", async () => {
-        await page.getByRole("button", { name: "Tree view" }).click();
-        const treeParentRow = page.getByRole("link", { name: parentName, exact: true }).locator("xpath=ancestor::li[1]");
-        await expect(treeParentRow.getByRole("link", { name: childName, exact: true })).toBeVisible();
-      });
-    } finally {
-      await test.step("clean up: archive the parent and child projects, best-effort so an earlier failure isn't masked", async () => {
-        await loginAs(page, PERSONAS.orgAdminGamma.email);
-        const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-        const headers = { Authorization: `Bearer ${token}` };
-        const projectsResp = await page.request.get("http://localhost:8000/api/v1/projects?archived=false", { headers });
-        const projects: { id: string; name: string }[] = await projectsResp.json();
-        for (const name of [parentName, childName]) {
-          const project = projects.find((p) => p.name === name);
-          if (project) {
-            try {
-              await page.request.post(`http://localhost:8000/api/v1/projects/${project.id}/archive`, { headers });
-            } catch {
-              // Best-effort: a failure here must not replace/mask whatever
-              // the `try` block above actually failed with.
-            }
-          }
-        }
-      });
-    }
+    await test.step("tree view renders the new parent/child pair", async () => {
+      await page.getByRole("button", { name: "Tree view" }).click();
+      const treeParentRow = page.getByRole("link", { name: parentName, exact: true }).locator("xpath=ancestor::li[1]");
+      await expect(treeParentRow.getByRole("link", { name: childName, exact: true })).toBeVisible();
+    });
   });
 
   test("member sources are managed from the parent's admin page only, and effective members show inherited provenance with materialize", async ({
@@ -194,7 +208,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       // via count, not visibility, matching this file's own established
       // `option:checked` CSS-selector workaround for the same native-select
       // limitation (see the "New project" dialog test above).
-      await expect(sourceProjectSelect.getByRole("option", { name: PROJECT_NAMES.gamma1 })).toHaveCount(1);
+      await expect(sourceProjectSelect.getByRole("option", { name: PROJECT_NAMES.gamma1, exact: true })).toHaveCount(1);
     });
 
     await test.step("effective members shows the stakeholder-on-Gamma-3 as forward-inherited (mirror all roles) on Gamma-4", async () => {
@@ -261,7 +275,7 @@ test.describe("hierarchical (parent/child) projects", () => {
     // Uses Gamma-1/Gamma-2 — unrelated (no parent/child relationship)
     // same-org projects, proving the generalization beyond strict
     // parent/child (docs/decisions.md). Both mutations this test makes are
-    // undone in a `finally` block so a mid-test failure can't leave this
+    // undone by an onCleanup (afterEach) so a mid-test failure or timeout can't leave this
     // shared fixture mutated for the next run — self-healing against its
     // own prior partial runs too, via the same cleanup helper called once
     // defensively up front, per this project's test-independence rule.
@@ -319,51 +333,60 @@ test.describe("hierarchical (parent/child) projects", () => {
     }
 
     await cleanup();
-    try {
-      await test.step("add Gamma-2 as a 'Mirror all roles' member source of Gamma-1 (unrelated projects, not parent/child)", async () => {
-        await openProjectByName(page, PROJECT_NAMES.gamma1);
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        // PR5: "Member sources" moved from the Overview tab onto the Groups
-        // tab, as a type-badged row in the same table as real project
-        // groups rather than a separate `<ul>` — the row is now a `<tr>`,
-        // not a `<li>`, has no `<Link>` on its name (read-only detail; a
-        // real group row keeps the click-to-open affordance instead), and
-        // carries two `.badge` spans (Type, then mode), not one.
-        await selectProjectAdminGroup(page, "Project groups");
-        await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
-        await page.getByRole("combobox", { name: "Source project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
-        await page.getByRole("combobox", { name: "Mirror mode" }).selectOption({ label: "Mirror all roles" });
-        await page.getByRole("button", { name: "Add", exact: true }).click();
-        const gamma2SourceRow = page.locator("tr", { hasText: PROJECT_NAMES.gamma2 });
-        await expect(gamma2SourceRow.getByRole("cell", { name: PROJECT_NAMES.gamma2, exact: true })).toBeVisible();
-        await expect(gamma2SourceRow.getByText("Project", { exact: true })).toBeVisible();
-        await expect(gamma2SourceRow.getByText("Mirror all roles", { exact: true })).toBeVisible();
-      });
+    // Undoes both shared-fixture mutations even if this test fails or times
+    // out (afterEach via onCleanup) — the API equivalent of `cleanup()` above.
+    onCleanup(async (request) => {
+      const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
+      await request.delete(`http://localhost:8000/api/v1/projects/${gamma1Id}/member-sources/${gamma2Id}`, { headers });
+      const groups: { id: string; name: string; member_source_project_ids: string[] }[] = await (
+        await request.get(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, { headers })
+      ).json();
+      const membersGroup = groups.find((g) => g.name === sourceRefGroupName);
+      if (membersGroup?.member_source_project_ids.includes(gamma2Id)) {
+        await request.delete(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups/${membersGroup.id}/members/${gamma2Id}`, { headers });
+      }
+    });
+    await test.step("add Gamma-2 as a 'Mirror all roles' member source of Gamma-1 (unrelated projects, not parent/child)", async () => {
+      await openProjectByName(page, PROJECT_NAMES.gamma1);
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      // PR5: "Member sources" moved from the Overview tab onto the Groups
+      // tab, as a type-badged row in the same table as real project
+      // groups rather than a separate `<ul>` — the row is now a `<tr>`,
+      // not a `<li>`, has no `<Link>` on its name (read-only detail; a
+      // real group row keeps the click-to-open affordance instead), and
+      // carries two `.badge` spans (Type, then mode), not one.
+      await selectProjectAdminGroup(page, "Project groups");
+      await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
+      await page.getByRole("combobox", { name: "Source project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
+      await page.getByRole("combobox", { name: "Mirror mode" }).selectOption({ label: "Mirror all roles" });
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      const gamma2SourceRow = page.locator("tr", { hasText: PROJECT_NAMES.gamma2 });
+      await expect(gamma2SourceRow.getByRole("cell", { name: PROJECT_NAMES.gamma2, exact: true })).toBeVisible();
+      await expect(gamma2SourceRow.getByText("Project", { exact: true })).toBeVisible();
+      await expect(gamma2SourceRow.getByText("Mirror all roles", { exact: true })).toBeVisible();
+    });
 
-      await test.step("Gamma-1's own dedicated source-ref group can also define a member as 'Gamma-2's members' directly (get-or-created above, not a per-run throwaway one — `DELETE .../groups/{id}` exists as of Phase 5, but this test doesn't need it, and a fixed name lets a defensive re-run's own cleanup() find it)", async () => {
-        await selectProjectAdminGroup(page, "Project groups");
-        const panel = await openProjectGroupPanel(page, sourceRefGroup.name);
-        await panel.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
-        await panel.getByRole("button", { name: "Reference another project's members…" }).click();
-        await expect(panel.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();
-        // Phase 5: the referenced-project line also links to that project's
-        // own new Members page now, with a "this is live" clarifying hint.
-        await expect(panel.getByRole("link", { name: "View members" })).toBeVisible();
-        // Scoped to the hint's own `<p>` element (`viaProjectMembersHint`,
-        // strings.ts), not a bare page-wide `getByText(/Live/)` — this org
-        // (Gamma) can independently accumulate other specs' own leftover,
-        // dynamically-named fixture projects (e.g. single-org-admin.spec.ts's
-        // "Gamma E2E Live {timestamp}", never cleaned up by design), which
-        // also render as `<option>`s in this same panel's "Referenced
-        // project" combobox — a bare substring match can incidentally
-        // resolve to one of those instead of this hint text, a real
-        // strict-mode violation found running the full suite together.
-        await expect(panel.locator("p", { hasText: "Live" })).toBeVisible();
-        await page.getByRole("button", { name: "Close" }).click();
-      });
-    } finally {
-      await test.step("clean up: remove both additions so this shared fixture is left as found", cleanup);
-    }
+    await test.step("Gamma-1's own dedicated source-ref group can also define a member as 'Gamma-2's members' directly (get-or-created above, not a per-run throwaway one — `DELETE .../groups/{id}` exists as of Phase 5, but this test doesn't need it, and a fixed name lets a defensive re-run's own cleanup() find it)", async () => {
+      await selectProjectAdminGroup(page, "Project groups");
+      const panel = await openProjectGroupPanel(page, sourceRefGroup.name);
+      await panel.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
+      await panel.getByRole("button", { name: "Reference another project's members…" }).click();
+      await expect(panel.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();
+      // Phase 5: the referenced-project line also links to that project's
+      // own new Members page now, with a "this is live" clarifying hint.
+      await expect(panel.getByRole("link", { name: "View members" })).toBeVisible();
+      // Scoped to the hint's own `<p>` element (`viaProjectMembersHint`,
+      // strings.ts), not a bare page-wide `getByText(/Live/)` — this org
+      // (Gamma) can independently accumulate other specs' own leftover,
+      // dynamically-named fixture projects (e.g. single-org-admin.spec.ts's
+      // "Gamma E2E Live {timestamp}", never cleaned up by design), which
+      // also render as `<option>`s in this same panel's "Referenced
+      // project" combobox — a bare substring match can incidentally
+      // resolve to one of those instead of this hint text, a real
+      // strict-mode violation found running the full suite together.
+      await expect(panel.locator("p", { hasText: "Live" })).toBeVisible();
+      await page.getByRole("button", { name: "Close" }).click();
+    });
   });
 
   test("a project manager with no org-level role can create a sub-project under a project they manage, but cannot detach it until granted org rights", async ({
@@ -380,88 +403,70 @@ test.describe("hierarchical (parent/child) projects", () => {
     // very next test in this file, which found this leak: it disables the
     // relaxed child-creation toggle and expects `projectMgrGamma` to be
     // blocked from creating a sub-project, which silently stopped being
-    // true once this grant went unrevoked). `finally` + its own `test.step`
+    // true once this grant went unrevoked). An onCleanup (afterEach)
     // mirrors this file's existing cleanup-on-shared-fixture convention
     // (see e.g. the org-group-nesting test above) — run this test alone,
     // repeated, or before/after any other spec and the persona's roles end
     // up exactly as this test found them either way.
-    try {
-      await test.step("projectMgrGamma (member-only, PM on Gamma-1 via direct role) creates a sub-project of Gamma-1", async () => {
-        await loginAs(page, PERSONAS.projectMgrGamma.email);
-        await openProjectByName(page, PROJECT_NAMES.gamma1);
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        await page.getByRole("button", { name: "Add sub-project" }).click();
+    // Revokes the 'Project creator' grant from the shared persona even if this
+    // test fails or times out (afterEach via onCleanup); a no-op if never made.
+    onCleanup(async (request) => {
+      const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
+      const orgId = await gammaOrgId(request, headers);
+      const users: { user_id: string; email: string }[] = await (await request.get(`http://localhost:8000/api/v1/orgs/${orgId}/users`, { headers })).json();
+      const userId = users.find((u) => u.email === PERSONAS.projectMgrGamma.email)?.user_id;
+      if (userId) await request.delete(`http://localhost:8000/api/v1/orgs/${orgId}/users/${userId}/roles/project_creator`, { headers });
+    });
+    await test.step("projectMgrGamma (member-only, PM on Gamma-1 via direct role) creates a sub-project of Gamma-1", async () => {
+      await loginAs(page, PERSONAS.projectMgrGamma.email);
+      await openProjectByName(page, PROJECT_NAMES.gamma1);
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      await page.getByRole("button", { name: "Add sub-project" }).click();
 
-        const dialog = page.getByRole("dialog", { name: "New project" });
-        await dialog.getByLabel("Name", { exact: true }).fill(childName);
-        await dialog.getByRole("button", { name: "Create", exact: true }).click();
-        await expect(page.getByRole("heading", { name: childName })).toBeVisible();
-      });
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await dialog.getByLabel("Name", { exact: true }).fill(childName);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(page.getByRole("heading", { name: childName })).toBeVisible();
+    });
 
-      await test.step("that same user cannot detach it — the parent_required guard closes the create-then-detach bypass", async () => {
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        await selectProjectAdminGroup(page, "Project settings");
-        await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
-        await page.getByRole("button", { name: "Save settings" }).click();
-        await expect(page.getByText(/must remain nested under a parent/)).toBeVisible();
-      });
+    await test.step("that same user cannot detach it — the parent_required guard closes the create-then-detach bypass", async () => {
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      await selectProjectAdminGroup(page, "Project settings");
+      await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
+      await page.getByRole("button", { name: "Save settings" }).click();
+      await expect(page.getByText(/must remain nested under a parent/)).toBeVisible();
+    });
 
-      await test.step("once granted org-level rights, the same detach succeeds", async () => {
-        await loginAs(page, PERSONAS.orgAdminGamma.email);
-        await page.goto("/orgs");
-        await selectOrgAdminGroup(page, "Users");
-        await ensureExpanded(page, "Organisation users");
-        const row = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.email });
-        await row.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` }).click();
-        // Waits for the grant's own `POST .../roles` response before the
-        // very next line navigates away (`loginAs` below immediately calls
-        // `page.goto("/login")`) — without this, a real, if intermittent,
-        // race exists: `page.goto` can abort an in-flight fetch the click's
-        // `onChange` handler kicked off but hadn't yet completed, so the
-        // grant silently never reaches the server despite the checkbox
-        // having visibly ticked. Mirrors the "turn the org toggle off" step
-        // above (`Promise.all([waitForResponse(...), click()])`), which
-        // already gets this right for the advanced-settings PUT.
-        await Promise.all([
-          page.waitForResponse((r) => r.url().includes("/roles") && r.request().method() === "POST"),
-          page.getByRole("checkbox", { name: `Grant Project creator to ${PERSONAS.projectMgrGamma.name}` }).click(),
-        ]);
+    await test.step("once granted org-level rights, the same detach succeeds", async () => {
+      await loginAs(page, PERSONAS.orgAdminGamma.email);
+      await page.goto("/orgs");
+      await selectOrgAdminGroup(page, "Users");
+      await ensureExpanded(page, "Organisation users");
+      const row = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.email });
+      await row.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` }).click();
+      // Waits for the grant's own `POST .../roles` response before the
+      // very next line navigates away (`loginAs` below immediately calls
+      // `page.goto("/login")`) — without this, a real, if intermittent,
+      // race exists: `page.goto` can abort an in-flight fetch the click's
+      // `onChange` handler kicked off but hadn't yet completed, so the
+      // grant silently never reaches the server despite the checkbox
+      // having visibly ticked. Mirrors the "turn the org toggle off" step
+      // above (`Promise.all([waitForResponse(...), click()])`), which
+      // already gets this right for the advanced-settings PUT.
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/roles") && r.request().method() === "POST"),
+        page.getByRole("checkbox", { name: `Grant Project creator to ${PERSONAS.projectMgrGamma.name}` }).click(),
+      ]);
 
-        await loginAs(page, PERSONAS.projectMgrGamma.email);
-        await openProjectByName(page, childName);
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        await selectProjectAdminGroup(page, "Project settings");
-        await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
-        await page.getByRole("button", { name: "Save settings" }).click();
-        await expect(page.getByText(/must remain nested under a parent/)).toHaveCount(0);
-        await expect(page.getByLabel("Parent project")).toHaveValue("");
-      });
-    } finally {
-      // Only revoke if the grant step actually ran and stuck — an earlier
-      // step in the `try` above may have failed *before* ever reaching the
-      // grant, and this cleanup step throwing in that case would replace
-      // (mask) the real, original failure with this one instead (plain
-      // JS `try`/`finally` semantics: an exception thrown from `finally`
-      // supersedes one already in flight from `try`), hiding the actual
-      // bug from whoever reads the test failure.
-      await test.step("clean up: revoke the 'Project creator' grant if it was made, so later/other runs of this shared persona aren't affected", async () => {
-        await loginAs(page, PERSONAS.orgAdminGamma.email);
-        await page.goto("/orgs");
-        await selectOrgAdminGroup(page, "Users");
-        await ensureExpanded(page, "Organisation users");
-        const row = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.email });
-        await row.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` }).click();
-        const revokeCheckbox = page.getByRole("checkbox", {
-          name: `Revoke Project creator from ${PERSONAS.projectMgrGamma.name}`,
-        });
-        if (await revokeCheckbox.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await Promise.all([
-            page.waitForResponse((r) => r.url().includes("/roles") && r.request().method() === "DELETE"),
-            revokeCheckbox.click(),
-          ]);
-        }
-      });
-    }
+      await loginAs(page, PERSONAS.projectMgrGamma.email);
+      await openProjectByName(page, childName);
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      await selectProjectAdminGroup(page, "Project settings");
+      await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
+      await page.getByRole("button", { name: "Save settings" }).click();
+      await expect(page.getByText(/must remain nested under a parent/)).toHaveCount(0);
+      await expect(page.getByLabel("Parent project")).toHaveValue("");
+    });
   });
 
   test("an org admin can disable the relaxed child-creation path, blocking a plain project manager's 'Add sub-project'", async ({
@@ -470,7 +475,7 @@ test.describe("hierarchical (parent/child) projects", () => {
     // This test flips a shared, org-wide toggle off partway through and
     // must always flip it back — every other test in this file (and this
     // persona's own default "plain project manager" status) depends on it
-    // starting `true`. `finally` here (rather than a bare fourth
+    // starting `true`. An onCleanup (afterEach) here (rather than a bare fourth
     // `test.step`, which this test originally used) means the toggle gets
     // restored even if the middle assertion below fails for some unrelated
     // reason — found the hard way: an earlier failure in the middle step
@@ -478,52 +483,42 @@ test.describe("hierarchical (parent/child) projects", () => {
     // the *other*, unrelated test in this file that assumes relaxed
     // creation is on by default (per this repo's standing "tests must not
     // depend on state left behind by another test" rule).
-    try {
-      await test.step("turn the org toggle off", async () => {
-        await loginAs(page, PERSONAS.orgAdminGamma.email);
-        await page.goto("/orgs");
-        await selectOrgAdminGroup(page, "Security");
-        await ensureExpanded(page, "Security");
-        const toggle = page.getByRole("switch", { name: /Allow \S+ managers to create sub-\S+s/ });
-        await expect(toggle).toBeChecked();
-        await toggle.click();
-        await Promise.all([
-          page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
-          page.getByRole("button", { name: "Save security settings" }).click(),
-        ]);
-      });
+    // Restores the shared org-wide toggle even if this test fails or times
+    // out (afterEach via onCleanup); idempotent — only flips it if it's off.
+    onCleanup(async (request) => {
+      const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
+      const orgId = await gammaOrgId(request, headers);
+      const settings = await (await request.get(`http://localhost:8000/api/v1/orgs/${orgId}/advanced-settings`, { headers })).json();
+      if (!settings.allow_relaxed_child_project_creation) {
+        await request.put(`http://localhost:8000/api/v1/orgs/${orgId}/advanced-settings`, {
+          headers, data: { ...settings, allow_relaxed_child_project_creation: true },
+        });
+      }
+    });
+    await test.step("turn the org toggle off", async () => {
+      await loginAs(page, PERSONAS.orgAdminGamma.email);
+      await page.goto("/orgs");
+      await selectOrgAdminGroup(page, "Security");
+      await ensureExpanded(page, "Security");
+      const toggle = page.getByRole("switch", { name: /Allow \S+ managers to create sub-\S+s/ });
+      await expect(toggle).toBeChecked();
+      await toggle.click();
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
+        page.getByRole("button", { name: "Save security settings" }).click(),
+      ]);
+    });
 
-      await test.step("the plain project manager's 'Add sub-project' now fails", async () => {
-        await loginAs(page, PERSONAS.projectMgrGamma.email);
-        await openProjectByName(page, PROJECT_NAMES.gamma1);
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        await page.getByRole("button", { name: "Add sub-project" }).click();
+    await test.step("the plain project manager's 'Add sub-project' now fails", async () => {
+      await loginAs(page, PERSONAS.projectMgrGamma.email);
+      await openProjectByName(page, PROJECT_NAMES.gamma1);
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      await page.getByRole("button", { name: "Add sub-project" }).click();
 
-        const dialog = page.getByRole("dialog", { name: "New project" });
-        await dialog.getByLabel("Name", { exact: true }).fill(`Blocked Sub-Project ${Date.now()}`);
-        await dialog.getByRole("button", { name: "Create", exact: true }).click();
-        await expect(dialog.getByText("Only org admins or project creators may create projects.")).toBeVisible();
-      });
-    } finally {
-      // Only flip back if it's actually still off — mirrors the previous
-      // test's own cleanup-step guard: if "turn the org toggle off" itself
-      // never got to click Save (e.g. it failed on the initial `toBeChecked`
-      // assertion because a *previous* run already left this toggle off),
-      // clicking here would flip it the wrong way instead of restoring it.
-      await test.step("restore the toggle if it's currently off, so later/other runs aren't affected", async () => {
-        await loginAs(page, PERSONAS.orgAdminGamma.email);
-        await page.goto("/orgs");
-        await selectOrgAdminGroup(page, "Security");
-        await ensureExpanded(page, "Security");
-        const toggle = page.getByRole("switch", { name: /Allow \S+ managers to create sub-\S+s/ });
-        if (!(await toggle.isChecked())) {
-          await toggle.click();
-          await Promise.all([
-            page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
-            page.getByRole("button", { name: "Save security settings" }).click(),
-          ]);
-        }
-      });
-    }
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await dialog.getByLabel("Name", { exact: true }).fill(`Blocked Sub-Project ${Date.now()}`);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(dialog.getByText("Only org admins or project creators may create projects.")).toBeVisible();
+    });
   });
 });

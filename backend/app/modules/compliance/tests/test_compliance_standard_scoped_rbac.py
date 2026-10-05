@@ -478,3 +478,26 @@ def test_group_grant_audit_logged(client, admin_token, org_id):
         assert event.detail["standard_id"] == standard["id"]
     finally:
         db.close()
+
+
+def test_deleting_the_fallback_group_is_blocked_while_a_standard_relies_on_it(client, admin_token, org_id):
+    """Deleting the designated fallback group would null the setting (`ON
+    DELETE SET NULL`) and leave a standard with no manager floor, so the
+    core delete endpoint's module hook blocks it until that standard has a
+    direct manager."""
+    manager_id = create_org_user(client, admin_token, org_id, "sole_manager_del@example.com", role="member")
+    _grant_compliance_manager(client, admin_token, org_id, manager_id)
+    manager_token = login(client, "sole_manager_del@example.com", "Password123!")
+    standard = _create_standard(client, manager_token, org_id, reference="FLOOR-DEL")
+    fallback_member_id = create_org_user(client, admin_token, org_id, "fallback_member_del@example.com", role="member")
+    group_id = _create_org_group(client, admin_token, org_id, name="Fallback To Delete")
+    _add_org_group_member(client, admin_token, org_id, group_id, fallback_member_id)
+    _set_fallback_group(client, admin_token, org_id, group_id)
+    assert _revoke_standard_role(client, admin_token, org_id, standard["id"], manager_id, "standards_manager").status_code == 204
+
+    resp = client.delete(f"/api/v1/orgs/{org_id}/groups/{group_id}", headers=auth_headers(admin_token))
+    assert resp.status_code == 400, resp.text
+    assert "fallback compliance-managers group" in resp.json()["detail"]
+
+    _grant_standard_role(client, admin_token, org_id, standard["id"], manager_id, "standards_manager")
+    assert client.delete(f"/api/v1/orgs/{org_id}/groups/{group_id}", headers=auth_headers(admin_token)).status_code == 204

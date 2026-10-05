@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { PASSWORD, loginAs, selectOrgAdminGroup, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -18,7 +18,8 @@ function section(page: Page, heading: string) {
  * Creates a disposable org (with Context & Strategy enabled, default-on for
  * projects), an org admin, and a parent + child project — all via the API,
  * `Date.now()`-suffixed, so the spec never depends on or mutates shared
- * seed data (CLAUDE.md's test-independence rule).
+ * seed data (CLAUDE.md's test-independence rule). The org is deleted
+ * afterwards by `deleteOrgOnCleanup`.
  */
 async function setup(page: Page, request: APIRequestContext) {
   const suffix = Date.now();
@@ -30,6 +31,7 @@ async function setup(page: Page, request: APIRequestContext) {
   const org = await (await request.post(`${API_BASE_URL}/api/v1/orgs`, {
     headers: serverHeaders, data: { name: `E2E Pain Point Scoring ${suffix}` },
   })).json();
+  deleteOrgOnCleanup({ id: org.id });
   await request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/users`, {
     headers: serverHeaders,
     data: { email: adminEmail, display_name: "E2E Scoring Admin", password: PASSWORD, role: "org_admin" },
@@ -58,6 +60,7 @@ async function setup(page: Page, request: APIRequestContext) {
  * module default) and can override and reset the model and bands.
  */
 test.describe("Context & Strategy: Pain Point scoring configuration", () => {
+  installCleanupHook();
   test("org admin edits levels, default model and bands; projects inherit and override", async ({ page, request }) => {
     const { org, parent, child } = await setup(page, request);
 

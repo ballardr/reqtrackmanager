@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.models.enums import RequirementActionOutcome, ReviewTargetType
 from app.models.project import Project
@@ -30,12 +30,19 @@ from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.schemas.action import RequirementActionOut
 from app.services import engagement
+from app.services.rbac import lock_project_for_update
 
 
 def _next_sequence(project: Project) -> int:
     """Returns the next action sequence number for `project`, advancing the
     counter so it is never reused (mirrors `services.requirements.
-    _next_sequence`), including for archived actions."""
+    _next_sequence`), including for archived actions.
+
+    Locks the project row and re-reads the counter first, for the same
+    concurrent-create race (2026-10-05)."""
+    db = object_session(project)
+    lock_project_for_update(db, project.id)
+    db.refresh(project, attribute_names=["next_action_seq"])
     seq = project.next_action_seq
     project.next_action_seq = seq + 1
     return seq
@@ -91,10 +98,17 @@ def get_requirement_action_in_project(db: Session, project_id: UUID, action_id: 
     return action
 
 
-def action_to_out(db: Session, action: RequirementAction) -> RequirementActionOut:
+def action_to_out(db: Session, action: RequirementAction, comment_count: int | None = None) -> RequirementActionOut:
     """Builds the API response shape for an action, including its
     discussion thread's comment count (not a column on `RequirementAction`
-    itself, so it can't just fall out of `from_attributes`)."""
+    itself, so it can't just fall out of `from_attributes`).
+
+    Args:
+        db: Database session.
+        action: The action.
+        comment_count: Precomputed by list callers (`engagement.
+            get_comment_counts`); queried when omitted.
+    """
     return RequirementActionOut(
         id=action.id, project_id=action.project_id, unique_code=action.unique_code,
         action_type_id=action.action_type_id, title=action.title, description=action.description,
@@ -102,5 +116,8 @@ def action_to_out(db: Session, action: RequirementAction) -> RequirementActionOu
         completed_at=action.completed_at, completed_by=action.completed_by, creator_id=action.creator_id,
         is_archived=action.is_archived, archived_at=action.archived_at, archived_by=action.archived_by,
         created_at=action.created_at, updated_at=action.updated_at,
-        comment_count=engagement.get_comment_count(db, ReviewTargetType.ACTION, action.id),
+        comment_count=(
+            comment_count if comment_count is not None
+            else engagement.get_comment_count(db, ReviewTargetType.ACTION, action.id)
+        ),
     )

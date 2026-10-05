@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { PASSWORD, ensureTwoFactorSectionExpanded, generateTotpCode, selectPreferencesGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureTwoFactorSectionExpanded, generateTotpCode, installCleanupHook, PASSWORD, selectPreferencesGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -51,6 +54,7 @@ test.describe("org-branded login: 2FA handoff to /login", () => {
       const org = await (
         await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: serverAdminHeaders, data: { name: orgName } })
       ).json();
+      deleteOrgOnCleanup({ id: org.id });
       await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
         headers: serverAdminHeaders,
         data: { email: orgAdminEmail, display_name: "E2E 2FA Handoff Admin", password: PASSWORD, role: "org_admin" },

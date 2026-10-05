@@ -383,3 +383,15 @@ def test_delete_category_requires_manage_role(client, admin_token, org_id):
         headers=auth_headers(token),
     )
     assert resp.status_code == 403
+
+
+def test_create_component_rejects_duplicate_prefix(client, admin_token, org_id):
+    """A repeated component prefix is a clean 400, the same as on rename —
+    not an unhandled unique-constraint 500 (2026-10-04)."""
+    project = create_project(client, admin_token, org_id, name="Duplicate Prefix Project")
+    url = f"/api/v1/projects/{project['id']}/components"
+    first = client.post(url, json={"name": "Software", "prefix": "SW"}, headers=auth_headers(admin_token))
+    assert first.status_code == 201, first.text
+    second = client.post(url, json={"name": "Software again", "prefix": "SW"}, headers=auth_headers(admin_token))
+    assert second.status_code == 400
+    assert "prefix already exists" in second.json()["detail"]

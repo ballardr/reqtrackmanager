@@ -494,6 +494,32 @@ export const UsersActionsMenuConsolidatesViewAndLock: Story = {
   },
 };
 
+/** Locking a display name saves, toasts, and updates just that row in
+ * place — reopening the menu offers "Unlock" (2026-10-04: it used to
+ * reload the whole page, which could close a menu reopened meanwhile). */
+export const LockDisplayNameUpdatesRowInPlace: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ users: [orgUser, secondOrgUser] });
+    spyOn(api, "put").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    await userEvent.click(body.getByRole("menuitem", { name: "Lock display name" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      expect.stringContaining("/display-name-lock"), { display_name_locked: true },
+    ));
+    await expect(await body.findByText("Alex Morgan's display name locked.")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    await expect(body.getByRole("menuitem", { name: "Unlock display name" })).toBeInTheDocument();
+  },
+};
+
 /** "Remove from {org}" (new, access-mutating) — offered on a user other
  * than the caller, behind the same Tier-1 `ConfirmDialog` pattern
  * `PreferencesPage.tsx`'s own "Leave organisation" flow already uses. */
@@ -1343,6 +1369,55 @@ export const GroupsSectionOpensSidePanel: Story = {
     await expect(canvas.getByRole("cell", { name: "1 member(s)" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Engineering" }));
     await expect(within(document.body).getByRole("dialog", { name: "Engineering details" })).toBeInTheDocument();
+  },
+};
+
+/** Org groups are deletable (2026-10-05): the side panel's Delete opens a
+ * Tier 1 confirmation naming the group, and confirming calls the delete
+ * endpoint, closes the panel and confirms with a toast. */
+export const GroupsSectionDeleteGroup: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Engineering" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Engineering" }));
+    const panel = body.getByRole("dialog", { name: "Engineering details" });
+    await userEvent.click(within(panel).getByRole("button", { name: "Delete group" }));
+
+    const confirm = body.getByRole("dialog", { name: 'Delete "Engineering"?' });
+    await expect(within(confirm).getByText(/Members lose every role and project access/)).toBeInTheDocument();
+    await userEvent.click(within(confirm).getByRole("button", { name: "Delete group" }));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/groups/grp1`));
+    await expect(body.getByText("Group deleted")).toBeInTheDocument();
+    await waitFor(() => expect(body.queryByRole("dialog", { name: "Engineering details" })).not.toBeInTheDocument());
+  },
+};
+
+/** A refused delete (e.g. a module relies on the group) surfaces
+ * the server's reason as an error toast and leaves the group in place. */
+export const GroupsSectionDeleteGroupRefused: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "delete").mockRejectedValue(
+      new ApiError(400, "This group is this organisation's designated fallback compliance-managers group."),
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Engineering" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Engineering" }));
+    await userEvent.click(within(body.getByRole("dialog", { name: "Engineering details" })).getByRole("button", { name: "Delete group" }));
+    await userEvent.click(within(body.getByRole("dialog", { name: 'Delete "Engineering"?' })).getByRole("button", { name: "Delete group" }));
+    await expect(await body.findByText(/designated fallback compliance-managers group/)).toBeInTheDocument();
+    await expect(body.getByRole("dialog", { name: "Engineering details" })).toBeInTheDocument();
   },
 };
 

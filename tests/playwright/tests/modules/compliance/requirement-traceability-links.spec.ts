@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { loginAs, openProject, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
@@ -55,7 +55,7 @@ test.describe("Compliance Module: core requirement <-> compliance requirement tr
     // --- A fresh core requirement in Alpha-1, so this spec never mutates
     // a seeded/shared requirement's own links.
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(coreRequirementName);

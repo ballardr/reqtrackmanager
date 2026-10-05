@@ -5,9 +5,10 @@
 (draft/submitted/in_review), that omitting both `active_only` and
 `cr_status` still returns every status (the existing, unchanged default),
 and that an explicit `cr_status` wins over `active_only` when both are
-somehow present."""
+somehow present. Also pins the list's default newest-first order and its
+`search` param."""
 
-from tests.conftest import auth_headers, create_project
+from tests.conftest import auth_headers, create_component_and_category, create_project
 
 
 def test_active_only_hides_terminal_statuses(client, admin_token, org_id):
@@ -72,3 +73,57 @@ def test_explicit_cr_status_wins_over_active_only(client, admin_token, org_id):
     ids = {c["id"] for c in resp.json()}
     assert withdrawn["id"] in ids
     assert {c["status"] for c in resp.json()} == {"withdrawn"}
+
+
+def test_search_matches_proposed_name_reason_and_target_requirement(client, admin_token, org_id):
+    """`search` matches what the list shows and what a user would type: the
+    proposed name, the reason, and the target requirement's name/code
+    (2026-10-04)."""
+    project = create_project(client, admin_token, org_id)
+    base = f"/api/v1/projects/{project['id']}/change-requests"
+    headers = auth_headers(admin_token)
+    named = client.post(base, json={"kind": "new_requirement", "proposed_name": "Telemetry Uplink", "reason": "alpha"},
+                        headers=headers).json()
+    by_reason = client.post(base, json={"kind": "new_requirement", "proposed_name": "Other", "reason": "Customer asked"},
+                            headers=headers).json()
+
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = client.post(f"/api/v1/projects/{project['id']}/requirements", json={
+        "name": "Battery Monitor", "component_id": component_id, "category_id": category_id,
+    }, headers=headers).json()
+    assert client.post(f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve",
+                       headers=headers).status_code == 200
+    modify = client.post(base, json={"kind": "modify_requirement", "requirement_id": requirement["id"],
+                                     "changed_fields": ["reasoning"], "proposed_reasoning": "x", "reason": "tweak"},
+                         headers=headers)
+    assert modify.status_code == 201, modify.text
+
+    def ids(term):
+        resp = client.get(base, params={"search": term}, headers=headers)
+        assert resp.status_code == 200, resp.text
+        return {cr["id"] for cr in resp.json()}
+
+    assert ids("telemetry") == {named["id"]}
+    assert ids("CUSTOMER") == {by_reason["id"]}
+    assert ids("battery monitor") == {modify.json()["id"]}
+    assert ids(requirement["unique_code"].lower()) == {modify.json()["id"]}
+    assert ids("no such thing") == set()
+    assert len(ids("")) == 3
+
+
+def test_default_order_is_newest_first_and_pages_are_stable(client, admin_token, org_id):
+    """Without `sort`, rows come newest first, so `limit`/`offset` pages
+    neither repeat nor skip rows (they were previously in arbitrary order)."""
+    project = create_project(client, admin_token, org_id)
+    base = f"/api/v1/projects/{project['id']}/change-requests"
+    created = [
+        client.post(base, json={"kind": "new_requirement", "proposed_name": f"CR {i}", "reason": "because"},
+                    headers=auth_headers(admin_token)).json()["id"]
+        for i in range(5)
+    ]
+    newest_first = list(reversed(created))
+    assert [c["id"] for c in client.get(base, headers=auth_headers(admin_token)).json()] == newest_first
+    paged = []
+    for offset in (0, 2, 4):
+        paged += [c["id"] for c in client.get(f"{base}?limit=2&offset={offset}", headers=auth_headers(admin_token)).json()]
+    assert paged == newest_first

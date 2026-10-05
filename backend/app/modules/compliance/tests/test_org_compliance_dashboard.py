@@ -284,3 +284,42 @@ def test_org_dashboard_endpoints_require_compliance_manager(client, admin_token,
         allowed = client.get(f"{_base(org_id)}/{endpoint}", headers=auth_headers(manager_token))
         assert allowed.status_code == 200, f"{endpoint}: {allowed.text}"
     assert plain_id and manager_id
+
+
+def test_org_dashboard_lists_cost_a_fixed_number_of_queries_per_extra_project(client, admin_token, org_id):
+    """Org-wide listings preload the whole organisation's assignment data
+    into one `ComplianceVersionCache` (2026-10-05: they made ~5 queries per
+    assignment, several per requirement, and timed the dashboard out for an
+    org with ~70 projects). An extra project now costs at most one query
+    (outstanding actions' per-assignment assessment load), independent of
+    how many requirements its version has."""
+    from sqlalchemy import event
+
+    from app.database import engine
+
+    standard, version, *_ = _setup_published_standard_with_tree(client, admin_token, org_id)
+
+    def add_projects(count, prefix):
+        for i in range(count):
+            project = create_project(client, admin_token, org_id, name=f"{prefix} {i}")
+            _assign_standard_to_project(client, admin_token, org_id, project["id"], standard["id"], version["id"])
+
+    def count_queries(path):
+        statements: list[str] = []
+        listener = lambda *args: statements.append(args[2])  # noqa: E731
+        event.listen(engine, "before_cursor_execute", listener)
+        try:
+            resp = client.get(f"{_base(org_id)}/{path}", headers=auth_headers(admin_token))
+        finally:
+            event.remove(engine, "before_cursor_execute", listener)
+        assert resp.status_code == 200, resp.text
+        return len(statements)
+
+    paths = ("non-compliant-requirements", "pending-approvals", "outstanding-required-actions",
+             "reviews-due?include_upcoming=true")
+    add_projects(2, "Few")
+    few = {p: count_queries(p) for p in paths}
+    add_projects(4, "More")
+    more = {p: count_queries(p) for p in paths}
+    for path in paths:
+        assert (more[path] - few[path]) / 4 <= 1, (path, few[path], more[path])

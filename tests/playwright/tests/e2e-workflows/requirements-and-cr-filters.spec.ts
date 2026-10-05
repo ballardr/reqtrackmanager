@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
  * Job to be done: the requirements list can be narrowed by search
@@ -22,7 +22,7 @@ import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
 test.describe("requirements list filters and view-mode persistence", () => {
   test("search, status/category filters, has-comments/watched checkboxes, and view-mode persistence", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
     // A throwaway requirement, guaranteed to start (and stay) `draft`,
@@ -211,7 +211,7 @@ test.describe("requirements list filters and view-mode persistence", () => {
 test.describe("change requests list sorting", () => {
   test("sort by name ascending and descending via the column header", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
 
     const suffix = Date.now();
@@ -233,6 +233,13 @@ test.describe("change requests list sorting", () => {
     await createChangeRequest(secondName);
 
     await page.getByRole("button", { name: "List view" }).click();
+    // Narrowed to this run's two fixtures first: sorting the whole, ever-
+    // growing Alpha-1 list put "ZZZ…" past the first page when ascending
+    // (and earlier runs' "AAA…" rows ahead of this one's).
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/change-requests?") && r.url().includes(`search=Sort+Test+CR+${suffix}`)),
+      searchChangeRequests(page, `Sort Test CR ${suffix}`),
+    ]);
     const nameHeader = page.getByRole("button", { name: "Name" });
     const nameHeaderCell = page.locator("th", { has: nameHeader });
 
@@ -286,7 +293,7 @@ test.describe("change requests list sorting", () => {
 test.describe("change requests default to an active-only status filter", () => {
   test("withdrawn CR is hidden by default and reappears under All statuses", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
 
     const name = `Active Filter Test CR ${Date.now()}`;
@@ -295,6 +302,7 @@ test.describe("change requests default to an active-only status filter", () => {
     await page.getByPlaceholder("Proposed name").fill(name);
     await page.getByPlaceholder("Reason for change").fill("Active-only filter test fixture.");
     await page.getByRole("button", { name: "Create", exact: true }).click();
+    await searchChangeRequests(page, name);
     const crLink = page.getByRole("link", { name, exact: true });
     await expect(crLink).toBeVisible();
 
@@ -306,6 +314,7 @@ test.describe("change requests default to an active-only status filter", () => {
 
     // Back on the list: default view ("Active") hides it.
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
+    await searchChangeRequests(page, name);
     await expect(page.getByLabel("Status")).toHaveValue("active");
     await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
 

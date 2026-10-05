@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { ensureExpanded } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * End-to-end proof of Phase A (follow-up UX batch, docs/decisions.md):
@@ -38,6 +41,7 @@ async function setupOrgAndAdmin(page: Page, adminToken: string, label: string) {
       data: { name: `E2E Org Invite ${suffix}` },
     })
   ).json();
+  deleteOrgOnCleanup({ id: org.id });
   const orgAdminEmail = `e2e-org-invite-admin-${suffix}@example.com`;
   await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
     headers: { Authorization: `Bearer ${adminToken}` },

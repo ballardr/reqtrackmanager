@@ -2,7 +2,10 @@ import fs from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PASSWORD, PERSONAS } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, logout, PASSWORD, PERSONAS } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * Job to be done: merging an exported organisation bundle into an
@@ -36,6 +39,7 @@ test.describe("organisation bundle merge-import", () => {
     const sourceOrg = await (
       await page.request.post("http://localhost:8000/api/v1/orgs", { headers: authHeaders, data: { name: sourceOrgName } })
     ).json();
+    deleteOrgOnCleanup({ id: sourceOrg.id });
     await page.request.post(`http://localhost:8000/api/v1/orgs/${sourceOrg.id}/join-as-admin`, { headers: authHeaders });
     await page.request.post(`http://localhost:8000/api/v1/orgs/${sourceOrg.id}/users`, {
       headers: authHeaders,
@@ -56,6 +60,7 @@ test.describe("organisation bundle merge-import", () => {
     const targetOrg = await (
       await page.request.post("http://localhost:8000/api/v1/orgs", { headers: authHeaders, data: { name: targetOrgName } })
     ).json();
+    deleteOrgOnCleanup({ id: targetOrg.id });
     await page.request.post(`http://localhost:8000/api/v1/orgs/${targetOrg.id}/join-as-admin`, { headers: authHeaders });
     await page.request.post(`http://localhost:8000/api/v1/orgs/${targetOrg.id}/users`, {
       headers: authHeaders,

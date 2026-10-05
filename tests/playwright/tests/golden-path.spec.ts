@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 /**
  * End-to-end golden path against the running tests/container/docker-compose.yml stack:
@@ -66,7 +66,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     // Name/Prefix inputs in this section are the "add component" form's own.
     await componentsSection.getByPlaceholder("Name").fill("Software");
     await componentsSection.getByPlaceholder("Prefix").fill("SW");
-    await componentsSection.getByRole("button", { name: "New component" }).click();
+    await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
     await expect(page.locator('input[value="Software"]').first()).toBeVisible();
     // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
     // concurrently, then two more awaited *sequentially* afterwards
@@ -101,7 +101,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
     await softwareRow.getByPlaceholder("Name").fill("Performance");
     await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-    await softwareRow.getByRole("button", { name: "New category" }).click();
+    await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
     await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
   });
 
@@ -158,7 +158,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await page.getByText("Boot in under 3 seconds").click();
-    await page.getByRole("button", { name: "Submit" }).click();
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
     // Exact match: a project manager also sees the advisory "Vote to
     // approve" button, which a loose "Approve" query would ambiguously
     // match alongside the real decision button.

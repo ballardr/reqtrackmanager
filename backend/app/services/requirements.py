@@ -22,6 +22,7 @@ from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
+from app.services.rbac import lock_project_for_update
 
 # C-G-11: completion is an overlay marker on top of APPROVED, not a
 # separate lifecycle status a requirement can be "in" — a completed
@@ -87,7 +88,15 @@ def requires_change_request_for_links(db: Session, project: Project) -> bool:
 def _next_sequence(db: Session, project: Project) -> int:
     """Returns the next requirement sequence number for `project`, advancing
     the counter so it is never reused (C-G-06), including for archived
-    requirements."""
+    requirements.
+
+    Locks the project row and re-reads the counter first (2026-10-05): two
+    concurrent creates in one project each read the same value and the
+    second failed on the unique `(project_id, unique_code)` constraint with
+    a 500 — the same race `services.sequences` already closes this way.
+    """
+    lock_project_for_update(db, project.id)
+    db.refresh(project, attribute_names=["next_requirement_seq"])
     seq = project.next_requirement_seq
     project.next_requirement_seq = seq + 1
     return seq

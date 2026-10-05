@@ -1,6 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, setOrgModuleAvailability } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, setOrgModuleAvailability } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -39,6 +42,7 @@ async function setupOrg(page: Page, label: string) {
       headers: serverAdminHeaders, data: { name: `E2E Module ${label} Org ${suffix}` },
     })
   ).json();
+  deleteOrgOnCleanup({ id: org.id });
   await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
     headers: serverAdminHeaders,
     data: { email: adminEmail, display_name: "E2E Module Overrides Admin", password: PASSWORD, role: "org_admin" },

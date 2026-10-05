@@ -71,6 +71,41 @@ export const FilterByOutcomeBadge: Story = {
   },
 };
 
+/** A slow, stale response must not overwrite a newer one: the initial
+ * (active-only) load resolves *after* the "Include archived" reload, and
+ * the archived row must still be shown. */
+export const StaleResponseIsIgnored: Story = {
+  beforeEach: () => {
+    const archived = buildRequirementAction({ id: "act3", unique_code: "ACT-003", title: "Archived action", is_archived: true });
+    let releaseFirst: () => void = () => {};
+    const firstLoad = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let actionLoads = 0;
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/action-types")) return actionTypes;
+      if (path.includes("/actions")) {
+        actionLoads += 1;
+        if (path.includes("include_archived=true")) {
+          setTimeout(releaseFirst, 50); // the stale load lands afterwards
+          return [...actions, archived];
+        }
+        if (actionLoads === 1) await firstLoad;
+        return actions;
+      }
+      if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
+      if (path.includes("/users")) return [orgUser];
+      throw new Error(`unmocked path: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByLabelText("Include archived"));
+    await waitFor(() => expect(canvas.getByText("Archived action")).toBeInTheDocument());
+    // Give the stale response time to land; the newer result must survive it.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await expect(canvas.getByText("Archived action")).toBeInTheDocument();
+  },
+};
+
 export const CreateNewAction: Story = {
   beforeEach: () => {
     mockProjectActionsApis();

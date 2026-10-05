@@ -43,6 +43,7 @@ from app.modules.compliance.schemas import (
     ProjectComplianceStatusOut,
 )
 from app.modules.compliance.service import (
+    ComplianceVersionCache,
     build_evidence_out,
     build_review_out,
     build_status_out,
@@ -197,8 +198,10 @@ def list_org_non_compliant_requirements(
     requirements" as its own drillable list, §23's related dashboard
     count)."""
     results: list[OrgNonCompliantRequirementOut] = []
+    cache = ComplianceVersionCache(db)
+    cache.preload_organization(organization_id)
     for project in _org_projects(db, organization_id):
-        for row in list_non_compliant_requirements_for_project(db, project_id=project.id):
+        for row in list_non_compliant_requirements_for_project(db, project_id=project.id, cache=cache):
             results.append(OrgNonCompliantRequirementOut(**row.model_dump(), project_id=project.id, project_name=project.name))
     return results
 
@@ -211,8 +214,10 @@ def list_org_pending_approvals(
     in this organisation (§22's "compliance assessments awaiting approval",
     §23's related dashboard count)."""
     results: list[OrgPendingApprovalOut] = []
+    cache = ComplianceVersionCache(db)
+    cache.preload_organization(organization_id)
     for project in _org_projects(db, organization_id):
-        for row in list_pending_approvals_for_project(db, project_id=project.id):
+        for row in list_pending_approvals_for_project(db, project_id=project.id, cache=cache):
             results.append(OrgPendingApprovalOut(**row.model_dump(), project_id=project.id, project_name=project.name))
     return results
 
@@ -231,8 +236,10 @@ def list_org_outstanding_required_actions(
     list_outstanding_required_actions`'s own, just gathered across every
     project rather than one."""
     results: list[OutstandingRequiredActionOut] = []
+    cache = ComplianceVersionCache(db)
+    cache.preload_organization(organization_id)
     for project in _org_projects(db, organization_id):
-        results.extend(list_outstanding_required_actions_for_project(db, project_id=project.id))
+        results.extend(list_outstanding_required_actions_for_project(db, project_id=project.id, cache=cache))
     return results
 
 
@@ -278,8 +285,12 @@ def list_org_reviews_due(
     scope, in contrast to `recent-activity`'s below, which is deliberately
     per-audit-event rather than per-project."""
     results: list[OrgReviewDueOut] = []
+    cache = ComplianceVersionCache(db)
+    cache.preload_organization(organization_id)
     for project in _org_projects(db, organization_id):
-        for review in list_reviews_due_for_project(db, project_id=project.id, include_upcoming=include_upcoming):
+        for review in list_reviews_due_for_project(
+            db, project_id=project.id, include_upcoming=include_upcoming, cache=cache,
+        ):
             results.append(OrgReviewDueOut(project_id=project.id, project_name=project.name, review=build_review_out(db, review)))
     return results
 

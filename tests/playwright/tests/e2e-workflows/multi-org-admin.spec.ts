@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { apiHeaders, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PERSONAS, PROJECT_NAMES, searchProjects } from "./helpers";
 
 /**
  * Job to be done: as an org admin of two organisations, I can create and
@@ -9,8 +9,25 @@ import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
  *
  * Persona: OrgAdminAlphaBeta (org_admin of Alpha + Beta; not a member of
  * Gamma at all).
+ *
+ * Project-list checks search by exact name (2026-10-05): the list pages at
+ * 30, and an org merge-import can add a "<name> (imported)" copy that a
+ * substring match also hits. The two projects it creates are archived
+ * afterwards; they used to accumulate on every run.
  */
 test.describe("org admin of two organisations", () => {
+  installCleanupHook();
+
+  /** Archives the just-created project (the page is on it) after the test. */
+  function archiveCurrentProjectAfterTest(page: Page) {
+    const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
+    onCleanup(async (request) => {
+      await request.post(`http://localhost:8000/api/v1/projects/${projectId}/archive`, {
+        headers: await apiHeaders(request, PERSONAS.orgAdminAlphaBeta.email),
+      });
+    });
+  }
+
   test("can create projects in both orgs, sees neither Gamma org nor its projects", async ({ page }) => {
     const newAlphaProject = `Alpha E2E Live ${Date.now()}`;
     const newBetaProject = `Beta E2E Live ${Date.now()}`;
@@ -20,7 +37,8 @@ test.describe("org admin of two organisations", () => {
     await test.step("existing Alpha and Beta seed projects are visible", async () => {
       await page.goto("/projects");
       for (const name of [PROJECT_NAMES.alpha1, PROJECT_NAMES.alpha2, PROJECT_NAMES.beta1, PROJECT_NAMES.beta2]) {
-        await expect(page.getByText(name)).toBeVisible();
+        await searchProjects(page, name);
+        await expect(page.getByRole("link", { name, exact: true }).first()).toBeVisible();
       }
     });
 
@@ -39,6 +57,7 @@ test.describe("org admin of two organisations", () => {
       await dialog.getByLabel("Name", { exact: true }).fill(newAlphaProject);
       await dialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByRole("heading", { name: newAlphaProject })).toBeVisible();
+      archiveCurrentProjectAfterTest(page);
     });
 
     await test.step("create a new project in Beta through the real UI form", async () => {
@@ -50,17 +69,22 @@ test.describe("org admin of two organisations", () => {
       await dialog.getByLabel("Name", { exact: true }).fill(newBetaProject);
       await dialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByRole("heading", { name: newBetaProject })).toBeVisible();
+      archiveCurrentProjectAfterTest(page);
     });
 
     await test.step("both new projects now appear in the projects list", async () => {
       await page.goto("/projects");
-      await expect(page.getByText(newAlphaProject)).toBeVisible();
-      await expect(page.getByText(newBetaProject)).toBeVisible();
+      for (const name of [newAlphaProject, newBetaProject]) {
+        await searchProjects(page, name);
+        await expect(page.getByRole("link", { name, exact: true }).first()).toBeVisible();
+      }
     });
 
     await test.step("Gamma's projects are not visible", async () => {
-      await expect(page.getByText(PROJECT_NAMES.gamma1)).toHaveCount(0);
-      await expect(page.getByText(PROJECT_NAMES.gamma2)).toHaveCount(0);
+      for (const name of [PROJECT_NAMES.gamma1, PROJECT_NAMES.gamma2]) {
+        await searchProjects(page, name);
+        await expect(page.getByText(name)).toHaveCount(0);
+      }
     });
 
     await test.step("Gamma's org admin page is not accessible", async () => {

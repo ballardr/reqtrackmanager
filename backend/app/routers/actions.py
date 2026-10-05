@@ -27,12 +27,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.change_request import ReviewComment
-from app.models.enums import ProjectRole, RequirementActionOutcome, ReviewTargetType
+from app.models.enums import ArtefactType, ProjectRole, RequirementActionOutcome, ReviewTargetType
 from app.models.file import CommentFile, FileAsset, RequirementActionFile
 from app.models.project import Project
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
-from app.schemas.action import RequirementActionCreate, RequirementActionOut, RequirementActionUpdate
+from app.schemas.action import LinkedRequirementOut, RequirementActionCreate, RequirementActionOut, RequirementActionUpdate
 from app.schemas.file import FileAssetOut
 from app.schemas.requirement import CommentCreate, CommentOut, CommentUpdate
 from app.services import engagement
@@ -46,6 +47,7 @@ from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
+from app.services.relationships import get_all_links as get_all_artefact_links
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/actions", tags=["actions"])
 
@@ -122,7 +124,8 @@ def list_actions(
     if action_type_id is not None:
         query = query.where(RequirementAction.action_type_id == action_type_id)
     actions = db.scalars(query.order_by(RequirementAction.unique_code)).all()
-    return [action_to_out(db, a) for a in actions]
+    counts = engagement.get_comment_counts(db, ReviewTargetType.ACTION, [a.id for a in actions])
+    return [action_to_out(db, a, counts.get(a.id, 0)) for a in actions]
 
 
 @router.get("/{action_id}", response_model=RequirementActionOut)
@@ -132,6 +135,42 @@ def get_action(
 ):
     action = get_requirement_action_in_project(db, project_id, action_id)
     return action_to_out(db, action)
+
+
+@router.get("/{action_id}/requirements", response_model=list[LinkedRequirementOut])
+def list_linked_requirements(
+    project_id: UUID, action_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Lists the active requirements this action is linked to, by code —
+    the reverse of `GET /requirements/{id}/actions`. Replaces the action
+    detail page fetching every requirement's action list to find them
+    (one request per requirement in the project; 2026-10-04).
+
+    Only requirements in this same project are returned, whatever the link
+    rows say (defense in depth against a cross-tenant link).
+
+    Raises:
+        HTTPException: 404 if the action isn't in this project.
+    """
+    get_requirement_action_in_project(db, project_id, action_id)
+    requirement_ids = {
+        link.target_id
+        for link in get_all_artefact_links(db, ArtefactType.REQUIREMENT_ACTION, action_id)
+        if link.source_type == ArtefactType.REQUIREMENT_ACTION and link.target_type == ArtefactType.REQUIREMENT
+    }
+    if not requirement_ids:
+        return []
+    rows = db.execute(
+        select(Requirement.id, Requirement.unique_code, RequirementVersion.name)
+        .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
+        .where(
+            Requirement.id.in_(requirement_ids), Requirement.project_id == project_id,
+            Requirement.is_archived.is_(False), RequirementVersion.valid_to.is_(None),
+        )
+        .order_by(Requirement.unique_code)
+    ).all()
+    return [LinkedRequirementOut(id=rid, unique_code=code, name=name) for rid, code, name in rows]
 
 
 @router.patch("/{action_id}", response_model=RequirementActionOut)

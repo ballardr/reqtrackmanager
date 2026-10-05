@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, openProject, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
  * Job to be done: a change request under review can have tasks assigned to
@@ -25,7 +25,7 @@ test.describe("change-request tasks and stakeholder voting", () => {
 
     await test.step("PM raises and submits a change request against the locked requirement", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Change requests", exact: true }).click();
       await page.getByRole("button", { name: "New change request" }).click();
       // The create form is a `Modal` portalled to the end of
@@ -40,13 +40,14 @@ test.describe("change-request tasks and stakeholder voting", () => {
       await nameCheckbox.locator("xpath=../..").locator("input.input").fill(proposedName);
       await page.getByPlaceholder("Reason for change").fill("E2E: tasks and voting coverage.");
       await page.getByRole("button", { name: "Create", exact: true }).click();
+      await searchChangeRequests(page, proposedName);
       await expect(page.getByText(proposedName)).toBeVisible();
       await page.getByText(proposedName).click();
 
       projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
       crId = page.url().match(/change-requests\/([0-9a-f-]+)/)![1];
 
-      await page.getByRole("button", { name: "Submit" }).click();
+      await page.getByRole("button", { name: "Submit", exact: true }).click();
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
     });
 

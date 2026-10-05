@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { type Locator, type Page, expect } from "@playwright/test";
+import { type APIRequestContext, type Locator, type Page, expect, test } from "@playwright/test";
 
 /**
  * Personas seeded by backend/scripts/seed_e2e_dataset.py (see
@@ -61,12 +61,22 @@ export const PROJECT_NAMES = {
  * fixed override PROJECT_NAMES.delta1 is seeded with. */
 export const TERMINOLOGY_OVERRIDE = { stage: "Phase", requirement: "Spec", changeRequest: "ECR" } as const;
 
-/** Logs in through the real UI form as the given persona. */
+/** Logs in through the real UI form as the given persona.
+ *
+ * Waits on the login response itself rather than only on "Sign out"
+ * appearing: login is deliberately slow (bcrypt; the app's API client gives
+ * it a 45s allowance), so under load it could outlast the 5s assertion and
+ * read as a missing button. A rejected login (e.g. another spec deactivated
+ * a shared persona) now fails naming the account and status instead. */
 export async function loginAs(page: Page, email: string, password: string = PASSWORD): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
+  const loginResponse = page.waitForResponse(
+    (r) => r.url().endsWith("/api/v1/auth/login") && r.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "Sign in" }).click();
+  expect((await loginResponse).status(), `login as ${email}`).toBe(200);
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 }
 
@@ -401,3 +411,191 @@ export async function openRequirementByName(page: Page, name: string): Promise<v
   await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
   await expect(page.locator("h1")).toContainText("—");
 }
+
+/**
+ * Types `text` into the project list's search box and waits for that exact
+ * search's response, so a following assertion (including an absence check)
+ * reads the searched result set, not the previous one. The list pages at 30,
+ * so checks for a named project should search rather than read page one.
+ */
+export async function searchProjects(page: Page, text: string): Promise<void> {
+  const box = page.getByPlaceholder("Search projects");
+  if ((await box.inputValue()) === text) return;
+  await Promise.all([
+    page.waitForResponse((r) => {
+      if (!r.url().includes("/api/v1/projects?")) return false;
+      return (new URL(r.url()).searchParams.get("search") ?? "") === text;
+    }),
+    box.fill(text),
+  ]);
+}
+
+/**
+ * Opens a project from the project list, searching first: the list is
+ * paginated (30 per page) and disposable projects accumulate in the shared
+ * e2e orgs across runs, so a seeded project isn't guaranteed to be on the
+ * first page (found 2026-10-04 when Alpha passed 30 projects). Navigates to
+ * `/projects` first if not already there. Takes the first matching link,
+ * since a hierarchy parent's row can render its name more than once.
+ */
+export async function openProject(page: Page, name: string): Promise<void> {
+  if (new URL(page.url()).pathname !== "/projects") await page.goto("/projects");
+  await page.getByPlaceholder("Search projects").fill(name);
+  // Exact: an org merge-import can add a same-named "<name> (imported)" copy.
+  await page.getByRole("link", { name, exact: true }).first().click();
+  await page.waitForURL(/\/projects\/[0-9a-f-]+/);
+}
+
+/**
+ * Logs in through the API (not the page) and returns auth headers — for
+ * `test.afterEach` cleanup, which Playwright still runs after a test times
+ * out (with its own budget and live fixtures), unlike a `finally` inside the
+ * test body, whose page is already closed by then. Cleanup that must not
+ * leak shared state belongs in `afterEach` using the standalone `request`
+ * fixture and these headers.
+ */
+export async function apiHeaders(
+  request: APIRequestContext, email: string, password: string = PASSWORD,
+): Promise<Record<string, string>> {
+  const resp = await request.post("http://localhost:8000/api/v1/auth/login", { data: { email, password } });
+  expect(resp.ok()).toBeTruthy();
+  return { Authorization: `Bearer ${(await resp.json()).access_token}` };
+}
+
+type Cleanup = (request: APIRequestContext) => Promise<void>;
+const pendingCleanups: Cleanup[] = [];
+
+/**
+ * Registers API-only cleanup for shared state the current test is about to
+ * change; runs (most recent first) in the `afterEach` that
+ * `installCleanupHook()` adds — which, unlike a `finally` in the test body,
+ * still runs when the test times out. Register *before* making the change,
+ * and make the cleanup idempotent (it may run when the change never
+ * happened). Use `request` + `apiHeaders`, never `page`.
+ */
+export function onCleanup(cleanup: Cleanup): void {
+  pendingCleanups.push(cleanup);
+}
+
+/** Adds the `afterEach` that drains `onCleanup` registrations; call once at
+ * the top of a `test.describe` that uses `onCleanup`. A failing cleanup is
+ * logged, not thrown, so it can't mask the test's own failure. */
+export function installCleanupHook(): void {
+  test.afterEach(async ({ request }) => {
+    while (pendingCleanups.length) {
+      const cleanup = pendingCleanups.pop()!;
+      try {
+        await cleanup(request);
+      } catch (error) {
+        console.warn("e2e cleanup failed:", error);
+      }
+    }
+  });
+}
+
+/** The bootstrap server admin (`backend/scripts/seed_e2e_dataset.py`). */
+export const SERVER_ADMIN_LOGIN = { email: "admin@example.com", password: "ChangeMe123!" } as const;
+
+/**
+ * Deletes a disposable organisation after the test (via `onCleanup`, so the
+ * describe must call `installCleanupHook`; runs even on timeout). Specs that
+ * create their own org call this right after creating it, so throwaway orgs
+ * don't pile up across runs (281 had, by 2026-10-05).
+ *
+ * The org is resolved at cleanup time, as the server admin: by `id`, or by
+ * a `nameContains` fragment unique to this run (e.g. the `Date.now()`
+ * suffix) for orgs created through the UI, signup or an import, whose id
+ * the test never sees. Its current name is read then, since deletion must
+ * confirm it and a test may have renamed the org. A fragment matches every
+ * org containing it, so it must be unique to the test.
+ *
+ * Args:
+ *   target: `{ id }` or `{ nameContains }`.
+ */
+export function deleteOrgOnCleanup(target: { id: string } | { nameContains: string }): void {
+  // A short fragment could match seeded orgs; those are never deleted.
+  if ("nameContains" in target && target.nameContains.length < 10) {
+    throw new Error(`deleteOrgOnCleanup: fragment "${target.nameContains}" is too short to be unique to one test.`);
+  }
+  const protectedNames = new Set<string>([...Object.values(ORG_NAMES), "Default Organization", "Solstice Robotics"]);
+  onCleanup(async (request) => {
+    const api = "http://localhost:8000/api/v1";
+    const headers = await apiHeaders(request, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
+    const orgs: { id: string; name: string }[] = await (await request.get(`${api}/orgs`, { headers })).json();
+    const matches = "id" in target
+      ? orgs.filter((o) => o.id === target.id)
+      : orgs.filter((o) => o.name.includes(target.nameContains));
+    for (const org of matches.filter((o) => !protectedNames.has(o.name))) {
+      const resp = await request.delete(`${api}/orgs/${org.id}`, { headers, data: { confirm_name: org.name } });
+      if (!resp.ok()) console.warn(`deleteOrgOnCleanup: deleting "${org.name}" returned ${resp.status()}`);
+    }
+  });
+}
+
+/** A disposable project created via the API, with the seeded projects'
+ * starting structure. */
+export interface DisposableProject {
+  projectId: string;
+  organizationId: string;
+  projectName: string;
+  headers: Record<string, string>;
+  /** Hardware (HW) and Software (SW). */
+  components: { id: string; name: string; prefix: string }[];
+  /** Functional (FN, under Hardware) and Performance (PERF, under Software). */
+  categories: { id: string; name: string; prefix: string; component_id: string }[];
+}
+
+/**
+ * Creates a uniquely-named project in `orgName` (default: `email`'s first
+ * organisation), with the
+ * Hardware/Software + Functional/Performance shape
+ * `seed_e2e_dataset.py::seed_project_content` gives every seeded project,
+ * and archives it via `onCleanup` (so the describe must call
+ * `installCleanupHook`). For specs whose writes would otherwise accumulate
+ * in, or reshape, a shared seeded project.
+ *
+ * Args:
+ *   request: An API request context (`page.request` or the `request` fixture).
+ *   email: The creating persona; becomes the project's manager.
+ *   label: Readable part of the project name.
+ *   orgName: The organisation to create it in, if not the first.
+ */
+export async function createDisposableProject(
+  request: APIRequestContext, email: string, label: string, orgName?: string,
+): Promise<DisposableProject> {
+  const api = "http://localhost:8000/api/v1";
+  const headers = await apiHeaders(request, email);
+  const projectName = `${label} ${Date.now()}`;
+  const orgs: { id: string; name: string }[] = await (await request.get(`${api}/orgs`, { headers })).json();
+  const org = orgName ? orgs.find((o) => o.name === orgName)! : orgs[0];
+  const projectResp = await request.post(`${api}/projects`, {
+    headers, data: { organization_id: org.id, name: projectName, summary: "" },
+  });
+  expect(projectResp.ok()).toBeTruthy();
+  const projectId: string = (await projectResp.json()).id;
+  onCleanup(async (cleanupRequest) => {
+    await cleanupRequest.post(`${api}/projects/${projectId}/archive`, { headers: await apiHeaders(cleanupRequest, email) });
+  });
+  const post = async (path: string, data: object) => {
+    const resp = await request.post(`${api}/projects/${projectId}/${path}`, { headers, data });
+    expect(resp.ok()).toBeTruthy();
+    return resp.json();
+  };
+  const hw = await post("components", { name: "Hardware", prefix: "HW" });
+  const sw = await post("components", { name: "Software", prefix: "SW" });
+  const fn = await post("categories", { name: "Functional", prefix: "FN", component_id: hw.id });
+  const perf = await post("categories", { name: "Performance", prefix: "PERF", component_id: sw.id });
+  return { projectId, organizationId: org.id, projectName, headers, components: [hw, sw], categories: [fn, perf] };
+}
+
+/**
+ * Searches the change-requests list (server-side, matching proposed name,
+ * reason, and the target requirement's name/ID) so a change request is
+ * found on any page of the paginated list. Must be on that list page.
+ * Matched by the placeholder's fixed prefix — its tail uses the project's
+ * terminology for "requirement".
+ */
+export async function searchChangeRequests(page: Page, text: string): Promise<void> {
+  await page.getByPlaceholder(/^Search by name, reason or /).fill(text);
+}
+

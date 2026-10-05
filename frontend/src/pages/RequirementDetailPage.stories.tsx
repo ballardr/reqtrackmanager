@@ -27,8 +27,8 @@ const REQUIREMENT_ID = "requirement-1";
 
 /**
  * Routes every `api.get`/list call RequirementDetailPage's several parallel
- * fetches can make. `myRoles` drives `useMyProjectRoles` (via the
- * `?archived=false` projects list, matched by id) — the mechanism the QA
+ * fetches can make. `myRoles` drives `useMyProjectRoles` (via `GET
+ * /projects/{id}/my-roles`) — the mechanism the QA
  * inventory flagged as a convenience-only, backend-mirroring permission
  * derivation (see docs/decisions.md); these stories pin the resulting
  * button visibility against `rbac.py`'s role hierarchy so drift here is
@@ -83,6 +83,7 @@ function mockRequirementDetailApis(
   const linkTypes: LinkTypeDefinition[] = [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of" })];
   const actionTypes: ActionTypeDefinition[] = [buildActionType({ id: "at1", name: "Review" })];
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/my-roles")) return { roles: myRoles };
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles })];
     if (path.endsWith(`/requirements/${REQUIREMENT_ID}`)) return requirement;
     if (path.endsWith("/history")) return extra.history ?? [];

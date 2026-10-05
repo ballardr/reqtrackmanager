@@ -71,16 +71,21 @@ export interface EntitySwitcherOption {
  *   scoped to; excluded from the list of siblings offered.
  * @param loadOptions - Fetches every candidate sibling reachable by the
  *   current user (the current entity may be included; it is filtered out
- *   here). Re-run whenever `currentId` changes.
+ *   here). Re-run whenever `currentId` or `reloadKey` changes.
+ * @param reloadKey - Optional; change it to refetch the options.
  */
 export function EntitySwitcher({
   label,
   currentId,
   loadOptions,
+  reloadKey,
 }: {
   label: string;
   currentId: string;
   loadOptions: () => Promise<EntitySwitcherOption[]>;
+  /** For a caller whose options can change after mount (e.g. a version
+   * just created), so the switcher doesn't keep its first list. */
+  reloadKey?: string;
 }) {
   const [siblings, setSiblings] = useState<EntitySwitcherOption[] | null>(null);
   const [open, setOpen] = useState(false);
@@ -104,7 +109,7 @@ export function EntitySwitcher({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId]);
+  }, [currentId, reloadKey]);
 
   if (!siblings || siblings.length === 0) return null;
 

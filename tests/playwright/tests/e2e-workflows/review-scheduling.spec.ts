@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: a requirement can be given a scheduled review (C-R-06),
@@ -21,7 +21,7 @@ test.describe("requirement review scheduling", () => {
 
     await test.step("PM creates a requirement and schedules a past-due review assigned to a stakeholder", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
       // The create form is a `Modal` portalled to the end of
@@ -78,7 +78,7 @@ test.describe("requirement review scheduling", () => {
     await test.step("the PM sees it on the project's due list, filterable by component and reviewer", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements due for review", exact: true }).click();
       await expect(page.getByRole("link", { name: reqName })).toBeVisible();
       await page.getByRole("combobox").nth(1).selectOption({ label: PERSONAS.stakeholderAlpha.name });
@@ -98,7 +98,7 @@ test.describe("requirement review scheduling", () => {
     await test.step("it is also gone from the PM's project due list", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements due for review", exact: true }).click();
       await expect(page.getByRole("link", { name: reqName })).toHaveCount(0);
     });

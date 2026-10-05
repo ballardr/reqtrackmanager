@@ -484,6 +484,14 @@ def get_org_overview_stats(
     `list_org_users`'s own permission already lets any caller who reaches
     this endpoint at all see the full member directory, so scoping it
     further here would only invent a restriction nothing else enforces.
+
+    Project and requirement counts cover *active* items only — archived
+    projects, and archived requirements, are excluded — matching the
+    project and requirement lists these figures summarise (both hide
+    archived items by default). Total file size still includes archived
+    projects' files: they still occupy storage. (2026-10-04, Decided by:
+    Agent — previously archived projects were counted, so a member's
+    "Projects" figure disagreed with their own project list.)
     """
     org_roles = get_effective_org_roles(db, current_user.id, organization_id)
     sees_full_totals = current_user.is_server_admin or OrgRole.ORG_ADMIN in org_roles
@@ -497,13 +505,18 @@ def get_org_overview_stats(
 
     if sees_full_totals:
         project_count = db.scalar(
-            select(func.count()).select_from(Project).where(Project.organization_id == organization_id)
+            select(func.count()).select_from(Project).where(
+                Project.organization_id == organization_id, Project.is_archived.is_(False)
+            )
         ) or 0
         requirement_count = db.scalar(
             select(func.count())
             .select_from(Requirement)
             .join(Project, Project.id == Requirement.project_id)
-            .where(Project.organization_id == organization_id)
+            .where(
+                Project.organization_id == organization_id, Project.is_archived.is_(False),
+                Requirement.is_archived.is_(False),
+            )
         ) or 0
         total_file_size_bytes = db.scalar(
             select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
@@ -519,10 +532,15 @@ def get_org_overview_stats(
                 )
             ).all()
         ) if accessible_ids else set()
-        project_count = len(org_project_ids)
+        active_project_ids = set(
+            db.scalars(select(Project.id).where(Project.id.in_(org_project_ids), Project.is_archived.is_(False))).all()
+        ) if org_project_ids else set()
+        project_count = len(active_project_ids)
         requirement_count = (
-            db.scalar(select(func.count()).select_from(Requirement).where(Requirement.project_id.in_(org_project_ids)))
-            if org_project_ids
+            db.scalar(select(func.count()).select_from(Requirement).where(
+                Requirement.project_id.in_(active_project_ids), Requirement.is_archived.is_(False),
+            ))
+            if active_project_ids
             else 0
         ) or 0
 

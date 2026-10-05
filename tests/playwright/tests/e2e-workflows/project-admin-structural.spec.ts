@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
+import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: a project's structural admin — stages, and the
@@ -37,46 +37,16 @@ import { loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
  * 30s default budget and timed out intermittently under load.
  */
 
-/**
- * Creates a disposable project (as `orgAdminAlphaBeta`, in their first
- * organisation) seeded with the Hardware/Software + Functional/Performance
- * shape `seed_e2e_dataset.py::seed_project_content` gives every seeded
- * project, then opens its Project Admin "Structure" group.
- *
- * Returns the project id/name and the session's auth headers. Each test
- * archives its project in `afterEach` (archived projects drop off every
- * project list), so repeated runs don't push the org's seeded projects off
- * a paginated list.
- */
-/** The current test's disposable project, archived by `afterEach`. */
-let created: { projectId: string; authHeaders: Record<string, string> } | null = null;
-
+/** Creates this test's disposable project (archived afterwards by
+ * `createDisposableProject`'s own cleanup) and opens its Project Admin
+ * "Structure" group. */
 async function openStructuralProject(page: Page, label: string) {
-  const projectName = `Structural ${label} ${Date.now()}`;
+  const { projectId, projectName, headers: authHeaders } = await createDisposableProject(
+    page.request, PERSONAS.orgAdminAlphaBeta.email, `Structural ${label}`,
+  );
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-  const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-  const authHeaders = { Authorization: `Bearer ${token}` };
-  const api = "http://localhost:8000/api/v1";
-  const orgs: { id: string }[] = await (await page.request.get(`${api}/orgs`, { headers: authHeaders })).json();
-  const project = await (await page.request.post(`${api}/projects`, {
-    headers: authHeaders, data: { organization_id: orgs[0].id, name: projectName, summary: "" },
-  })).json();
-  const projectId: string = project.id;
-  const hw = await (await page.request.post(`${api}/projects/${projectId}/components`, {
-    data: { name: "Hardware", prefix: "HW" }, headers: authHeaders,
-  })).json();
-  const sw = await (await page.request.post(`${api}/projects/${projectId}/components`, {
-    data: { name: "Software", prefix: "SW" }, headers: authHeaders,
-  })).json();
-  await page.request.post(`${api}/projects/${projectId}/categories`, {
-    data: { name: "Functional", prefix: "FN", component_id: hw.id }, headers: authHeaders,
-  });
-  await page.request.post(`${api}/projects/${projectId}/categories`, {
-    data: { name: "Performance", prefix: "PERF", component_id: sw.id }, headers: authHeaders,
-  });
   await page.goto(`/projects/${projectId}/admin`);
   await selectProjectAdminGroup(page, "Structure");
-  created = { projectId, authHeaders };
   return { projectId, projectName, authHeaders };
 }
 
@@ -95,13 +65,7 @@ const componentsSectionOf = (page: Page) =>
   page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
 
 test.describe("project admin: structural rename/delete and archiving", () => {
-  test.afterEach(async ({ request }) => {
-    if (!created) return;
-    await request
-      .post(`http://localhost:8000/api/v1/projects/${created.projectId}/archive`, { headers: created.authHeaders })
-      .catch(() => {});
-    created = null;
-  });
+  installCleanupHook();
 
   test("components and categories can be renamed and deleted with reassignment", async ({ page }) => {
     await openStructuralProject(page, "Components");
@@ -118,7 +82,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
 
       await componentsSection.getByPlaceholder("Name", { exact: true }).last().fill("Firmware");
       await componentsSection.getByPlaceholder("Prefix").last().fill("FW");
-      await componentsSection.getByRole("button", { name: "New component" }).click();
+      await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
       await expect(page.locator('input.input[value="Firmware"]:not([placeholder])')).toBeVisible();
 
       const firmwareCategoryName = componentsSection.getByPlaceholder("Name", { exact: true }).nth(2);
@@ -136,7 +100,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
 
       await componentsSection.getByPlaceholder("Name", { exact: true }).last().fill("Sensors");
       await componentsSection.getByPlaceholder("Prefix").last().fill("SEN");
-      await componentsSection.getByRole("button", { name: "New component" }).click();
+      await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
       // Wait for Sensors' own row (and its add-category form) to actually
       // render before computing fixed-index locators below — without this,
       // .nth(3) can still resolve to the bottom add-component form (the

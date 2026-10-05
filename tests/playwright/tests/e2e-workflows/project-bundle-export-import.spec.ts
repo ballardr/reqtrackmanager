@@ -2,7 +2,7 @@ import fs from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: exporting a project as a self-contained bundle (structure,
@@ -13,7 +13,7 @@ import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
 test.describe("project bundle export/import", () => {
   test("export a project from its admin page, then import it as a new project", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.beta1).click();
+    await openProject(page, PROJECT_NAMES.beta1);
     await page.getByRole("link", { name: "Project admin" }).click();
     await expect(page).toHaveURL(/\/admin$/);
 

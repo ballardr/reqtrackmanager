@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: two requirements can be linked with a typed, bidirectional
@@ -71,7 +71,7 @@ async function removeLeftoverLinks(page: import("@playwright/test").Page) {
 test.describe("requirement traceability links", () => {
   test("the seeded custom link type reads correctly from both ends; a new link can be added and removed", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await removeLeftoverLinks(page);
 

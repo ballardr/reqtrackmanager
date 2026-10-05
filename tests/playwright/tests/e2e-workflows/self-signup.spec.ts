@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { deleteOrgOnCleanup, installCleanupHook } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
+
 /**
  * End-to-end proof of public self-signup (`ServerSettings.signup_mode`,
  * `routers/auth.py::signup`): the `/signup` form is unreachable when
@@ -88,6 +93,7 @@ test.describe("public self-signup", () => {
       data: { name: orgName },
     });
     const org = await orgResp.json();
+    deleteOrgOnCleanup({ id: org.id });
     const orgAdminEmail = `orgadmin-${Date.now()}@example.com`;
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: { Authorization: `Bearer ${adminTok}` },

@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, selectProjectAdminGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * End-to-end proof that a report's Markdown content can include an image
@@ -39,6 +42,7 @@ test("insert an image into a project's report intro and generate a PDF", async (
       data: { name: `E2E Report Image Org ${suffix}` },
     })
   ).json();
+  deleteOrgOnCleanup({ id: org.id });
   const orgAdminEmail = `e2e-reportimage-admin-${suffix}@example.com`;
   await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
     headers: { Authorization: `Bearer ${adminToken}` },

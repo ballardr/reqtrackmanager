@@ -95,7 +95,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditEvent
@@ -747,7 +747,9 @@ def build_requirement_out(
 
 
 def load_pcrs_and_applicability(
-    db: Session, *, project_compliance_id: uuid.UUID, standard_version_id: uuid.UUID
+    db: Session, *, project_compliance_id: uuid.UUID, standard_version_id: uuid.UUID,
+    requirements: list[ComplianceRequirement] | None = None,
+    pcrs: list[ProjectComplianceRequirement] | None = None,
 ) -> tuple[list[ProjectComplianceRequirement], ApplicabilityResolution]:
     """Loads every `ProjectComplianceRequirement` row for one assignment
     plus every `ComplianceRequirement` in its standard version, and
@@ -756,19 +758,24 @@ def load_pcrs_and_applicability(
     value goes through, whether it ultimately only needs one row's value
     or all of them: resolution is inherently whole-tree (a row's own
     effective value can depend on its ancestors' explicit decisions), so
-    there is no cheaper "just this one row" query to make instead."""
-    requirements = list(
-        db.scalars(
-            select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == standard_version_id)
-        ).all()
-    )
-    pcrs = list(
-        db.scalars(
-            select(ProjectComplianceRequirement).where(
-                ProjectComplianceRequirement.project_compliance_id == project_compliance_id
-            )
-        ).all()
-    )
+    there is no cheaper "just this one row" query to make instead.
+
+    `requirements`/`pcrs`, when given, are already loaded by the caller
+    (e.g. from a `ComplianceVersionCache`), saving the queries."""
+    if requirements is None:
+        requirements = list(
+            db.scalars(
+                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == standard_version_id)
+            ).all()
+        )
+    if pcrs is None:
+        pcrs = list(
+            db.scalars(
+                select(ProjectComplianceRequirement).where(
+                    ProjectComplianceRequirement.project_compliance_id == project_compliance_id
+                )
+            ).all()
+        )
     pcr_by_requirement_id = {pcr.requirement_id: pcr for pcr in pcrs}
     applicability = resolve_applicability_for_version(requirements, pcr_by_requirement_id)
     return pcrs, applicability
@@ -1429,6 +1436,44 @@ def validate_fallback_group_member_removal(
                 "Standards Manager to that standard, or designate a different fallback group, before "
                 "removing this group's last member."
             )
+    return None
+
+
+def validate_fallback_group_deletion(db: Session, org_group_id: uuid.UUID) -> str | None:
+    """This module's `validate_org_group_deletion` hook body (2026-10-05):
+    blocks deleting the organisation's designated fallback compliance-
+    managers group while any active standard has no explicit
+    `standards_manager` of its own, since deleting it (the setting's foreign
+    key is `ON DELETE SET NULL`) would silently leave those standards with
+    no manager floor at all. The whole-group counterpart of
+    `validate_fallback_group_member_removal`.
+
+    Args:
+        db: Database session (read-only use).
+        org_group_id: The group about to be deleted.
+
+    Returns:
+        A human-readable block message, or `None` to allow the delete.
+    """
+    from app.modules.compliance.models import ComplianceOrgSettings
+
+    settings = db.scalar(
+        select(ComplianceOrgSettings).where(ComplianceOrgSettings.default_standards_manager_group_id == org_group_id)
+    )
+    if settings is None:
+        return None
+    standard_ids = db.scalars(
+        select(ComplianceStandard.id).where(
+            ComplianceStandard.organization_id == settings.organization_id,
+            ComplianceStandard.is_archived.is_(False),
+        )
+    ).all()
+    if any(not standard_has_direct_manager_grant(db, standard_id) for standard_id in standard_ids):
+        return (
+            "This group is this organisation's designated fallback compliance-managers group, and at least one "
+            "compliance standard has no other explicit Standards Manager. Assign a direct Standards Manager to "
+            "that standard, or designate a different fallback group, before deleting this group."
+        )
     return None
 
 
@@ -2147,32 +2192,170 @@ def build_migration_result_out(
 # activity` are new in Phase 14.
 
 
-def list_non_compliant_requirements_for_project(db: Session, *, project_id: uuid.UUID) -> list[NonCompliantRequirementOut]:
+class ComplianceVersionCache:
+    """Per-request cache of the assignment data compliance listings read:
+    active assignments per project, standard versions, their standards,
+    requirement lists, required actions and assessment rows. Org-wide
+    listings call `preload_organization` once, loading everything in a
+    handful of queries, then walk every project from memory (2026-10-05:
+    they made ~5 queries per assignment and one per requirement row —
+    hundreds per call for an org with many projects). Without a preload,
+    each accessor queries on first use. Read-only, within one request.
+
+    Args:
+        db: The request's session.
+    """
+
+    def __init__(self, db: Session) -> None:
+        self._db = db
+        self._versions: dict[uuid.UUID, ComplianceStandardVersion | None] = {}
+        self._standards: dict[uuid.UUID, ComplianceStandard | None] = {}
+        self._requirements: dict[uuid.UUID, list[ComplianceRequirement]] = {}
+        self._required_actions: dict[uuid.UUID, dict[uuid.UUID, ComplianceRequiredAction]] = {}
+        self._assignments: dict[uuid.UUID, list[ProjectCompliance]] | None = None
+        self._pcrs: dict[uuid.UUID, list[ProjectComplianceRequirement]] = {}
+        self._reviews_by_assignment: dict[uuid.UUID, list[ComplianceReview]] | None = None
+        self._reviews_by_standard: dict[uuid.UUID, list[ComplianceReview]] = {}
+
+    def preload_organization(self, organization_id: uuid.UUID) -> None:
+        """Loads every active assignment in the organisation's projects and
+        the versions, standards, requirements and assessment rows they need.
+
+        Args:
+            organization_id: The organisation.
+        """
+        db = self._db
+        assignments = db.scalars(
+            select(ProjectCompliance).join(Project, Project.id == ProjectCompliance.project_id).where(
+                Project.organization_id == organization_id, ProjectCompliance.is_archived.is_(False)
+            )
+        ).all()
+        self._assignments = {}
+        for assignment in assignments:
+            self._assignments.setdefault(assignment.project_id, []).append(assignment)
+        version_ids = {a.standard_version_id for a in assignments}
+        if not version_ids:
+            return
+        versions = db.scalars(select(ComplianceStandardVersion).where(ComplianceStandardVersion.id.in_(version_ids))).all()
+        self._versions.update({v.id: v for v in versions})
+        standard_ids = {v.standard_id for v in versions}
+        self._standards.update({
+            st.id: st for st in db.scalars(select(ComplianceStandard).where(ComplianceStandard.id.in_(standard_ids))).all()
+        })
+        for version_id in version_ids:
+            self._requirements.setdefault(version_id, [])
+        for requirement in db.scalars(
+            select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id.in_(version_ids))
+        ).all():
+            self._requirements[requirement.standard_version_id].append(requirement)
+        for assignment in assignments:
+            self._pcrs.setdefault(assignment.id, [])
+        for pcr in db.scalars(select(ProjectComplianceRequirement).where(
+            ProjectComplianceRequirement.project_compliance_id.in_([a.id for a in assignments])
+        )).all():
+            self._pcrs[pcr.project_compliance_id].append(pcr)
+        self._reviews_by_assignment = {}
+        for review in db.scalars(select(ComplianceReview).where(
+            ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
+            or_(
+                ComplianceReview.project_compliance_id.in_([a.id for a in assignments]),
+                ComplianceReview.standard_id.in_(standard_ids),
+            ),
+        )).all():
+            if review.project_compliance_id is not None:
+                self._reviews_by_assignment.setdefault(review.project_compliance_id, []).append(review)
+            if review.standard_id is not None:
+                self._reviews_by_standard.setdefault(review.standard_id, []).append(review)
+
+    def scheduled_reviews(
+        self, project_compliance_ids: list[uuid.UUID], standard_ids: set[uuid.UUID],
+    ) -> list[ComplianceReview]:
+        """Scheduled reviews of these assignments, then of these standards
+        (the same two sets `list_reviews_due_for_project` queries)."""
+        if self._reviews_by_assignment is not None:
+            return [r for pc_id in project_compliance_ids for r in self._reviews_by_assignment.get(pc_id, [])] + [
+                r for st_id in standard_ids for r in self._reviews_by_standard.get(st_id, [])
+            ]
+        reviews: list[ComplianceReview] = []
+        if project_compliance_ids:
+            reviews.extend(self._db.scalars(select(ComplianceReview).where(
+                ComplianceReview.project_compliance_id.in_(project_compliance_ids),
+                ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
+            )).all())
+        if standard_ids:
+            reviews.extend(self._db.scalars(select(ComplianceReview).where(
+                ComplianceReview.standard_id.in_(standard_ids),
+                ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
+            )).all())
+        return reviews
+
+    def assignments(self, project_id: uuid.UUID) -> list[ProjectCompliance]:
+        """The project's active (non-archived) standard assignments."""
+        if self._assignments is not None:
+            return self._assignments.get(project_id, [])
+        return list(self._db.scalars(
+            select(ProjectCompliance).where(
+                ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
+            )
+        ).all())
+
+    def pcrs(self, project_compliance_id: uuid.UUID) -> list[ProjectComplianceRequirement] | None:
+        """The assignment's requirement rows if preloaded, else None."""
+        return self._pcrs.get(project_compliance_id)
+
+    def version(self, version_id: uuid.UUID) -> ComplianceStandardVersion | None:
+        """The standard version, or None."""
+        if version_id not in self._versions:
+            self._versions[version_id] = self._db.get(ComplianceStandardVersion, version_id)
+        return self._versions[version_id]
+
+    def standard(self, standard_id: uuid.UUID) -> ComplianceStandard | None:
+        """The standard, or None."""
+        if standard_id not in self._standards:
+            self._standards[standard_id] = self._db.get(ComplianceStandard, standard_id)
+        return self._standards[standard_id]
+
+    def requirements(self, version_id: uuid.UUID) -> list[ComplianceRequirement]:
+        """Every requirement in the version."""
+        if version_id not in self._requirements:
+            self._requirements[version_id] = list(self._db.scalars(
+                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version_id)
+            ).all())
+        return self._requirements[version_id]
+
+    def required_actions_by_id(self, version_id: uuid.UUID) -> dict[uuid.UUID, ComplianceRequiredAction]:
+        """Every required action on the version's requirements, by id."""
+        if version_id not in self._required_actions:
+            requirement_ids = [r.id for r in self.requirements(version_id)]
+            self._required_actions[version_id] = {
+                a.id: a for a in self._db.scalars(
+                    select(ComplianceRequiredAction).where(ComplianceRequiredAction.requirement_id.in_(requirement_ids))
+                ).all()
+            } if requirement_ids else {}
+        return self._required_actions[version_id]
+
+
+def list_non_compliant_requirements_for_project(
+    db: Session, *, project_id: uuid.UUID, cache: ComplianceVersionCache | None = None,
+) -> list[NonCompliantRequirementOut]:
     """Every applicable, Non-Compliant requirement across one project's
     active standard assignments (§20/§21's "Non-Compliant requirements" as
     its own drillable list) — shared by `project_router.py::list_non_
     compliant_requirements` (the `compliance_list_non_compliant_
     requirements` MCP tool) and `router.py`'s Phase 14 org-wide
     aggregation."""
-    assignments = db.scalars(
-        select(ProjectCompliance).where(
-            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
-        )
-    ).all()
-
+    cache = cache or ComplianceVersionCache(db)
+    assignments = cache.assignments(project_id)
     results: list[NonCompliantRequirementOut] = []
     for project_compliance in assignments:
-        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
-        standard = db.get(ComplianceStandard, version.standard_id)
+        version = cache.version(project_compliance.standard_version_id)
+        standard = cache.standard(version.standard_id)
+        requirements = cache.requirements(version.id)
         pcrs, applicability = load_pcrs_and_applicability(
-            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
+            db, project_compliance_id=project_compliance.id, standard_version_id=version.id,
+            requirements=requirements, pcrs=cache.pcrs(project_compliance.id),
         )
-        requirements_by_id = {
-            r.id: r
-            for r in db.scalars(
-                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
-            ).all()
-        }
+        requirements_by_id = {r.id: r for r in requirements}
         for pcr in pcrs:
             effective, _source = applicability[pcr.requirement_id]
             if effective != ComplianceApplicability.APPLICABLE or pcr.compliance_status != ComplianceStatus.NON_COMPLIANT:
@@ -2199,32 +2382,27 @@ def list_non_compliant_requirements_for_project(db: Session, *, project_id: uuid
     return results
 
 
-def list_pending_approvals_for_project(db: Session, *, project_id: uuid.UUID) -> list[PendingApprovalOut]:
+def list_pending_approvals_for_project(
+    db: Session, *, project_id: uuid.UUID, cache: ComplianceVersionCache | None = None,
+) -> list[PendingApprovalOut]:
     """Every requirement currently `PENDING_APPROVAL` across one project's
     active standard assignments (§12's "Pending Approval" as its own
     drillable list) — shared by `project_router.py::list_pending_approvals`
     (the `compliance_list_pending_approvals` MCP tool) and `router.py`'s
     Phase 14 org-wide aggregation. Mirrors `list_non_compliant_requirements_
     for_project`'s exact loop shape above."""
-    assignments = db.scalars(
-        select(ProjectCompliance).where(
-            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
-        )
-    ).all()
-
+    cache = cache or ComplianceVersionCache(db)
+    assignments = cache.assignments(project_id)
     results: list[PendingApprovalOut] = []
     for project_compliance in assignments:
-        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
-        standard = db.get(ComplianceStandard, version.standard_id)
+        version = cache.version(project_compliance.standard_version_id)
+        standard = cache.standard(version.standard_id)
+        requirements = cache.requirements(version.id)
         pcrs, _applicability = load_pcrs_and_applicability(
-            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
+            db, project_compliance_id=project_compliance.id, standard_version_id=version.id,
+            requirements=requirements, pcrs=cache.pcrs(project_compliance.id),
         )
-        requirements_by_id = {
-            r.id: r
-            for r in db.scalars(
-                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
-            ).all()
-        }
+        requirements_by_id = {r.id: r for r in requirements}
         for pcr in pcrs:
             if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
                 continue
@@ -2250,7 +2428,7 @@ def list_pending_approvals_for_project(db: Session, *, project_id: uuid.UUID) ->
 
 
 def list_outstanding_required_actions_for_project(
-    db: Session, *, project_id: uuid.UUID
+    db: Session, *, project_id: uuid.UUID, cache: ComplianceVersionCache | None = None,
 ) -> list[OutstandingRequiredActionOut]:
     """Every incomplete `ComplianceRequiredActionAssessment` whose owning
     requirement is currently applicable, across one project's active
@@ -2263,45 +2441,36 @@ def list_outstanding_required_actions_for_project(
     shape, one level deeper (per-PCR required-action assessments rather
     than the PCR itself)."""
     project = db.get(Project, project_id)
-    assignments = db.scalars(
-        select(ProjectCompliance).where(
-            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
-        )
-    ).all()
-
+    cache = cache or ComplianceVersionCache(db)
+    assignments = cache.assignments(project_id)
     results: list[OutstandingRequiredActionOut] = []
     for project_compliance in assignments:
-        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
-        standard = db.get(ComplianceStandard, version.standard_id)
+        version = cache.version(project_compliance.standard_version_id)
+        standard = cache.standard(version.standard_id)
+        requirements = cache.requirements(version.id)
         pcrs, applicability = load_pcrs_and_applicability(
-            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
+            db, project_compliance_id=project_compliance.id, standard_version_id=version.id,
+            requirements=requirements, pcrs=cache.pcrs(project_compliance.id),
         )
-        requirements_by_id = {
-            r.id: r
-            for r in db.scalars(
-                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
-            ).all()
-        }
-        required_actions_by_id = {
-            a.id: a
-            for a in db.scalars(
-                select(ComplianceRequiredAction).where(
-                    ComplianceRequiredAction.requirement_id.in_(requirements_by_id.keys())
+        requirements_by_id = {r.id: r for r in requirements}
+        required_actions_by_id = cache.required_actions_by_id(version.id)
+        # One query for the whole assignment's incomplete assessments, not
+        # one per requirement row.
+        assessments_by_pcr: dict[uuid.UUID, list[ComplianceRequiredActionAssessment]] = {}
+        if pcrs:
+            for assessment in db.scalars(
+                select(ComplianceRequiredActionAssessment).where(
+                    ComplianceRequiredActionAssessment.project_compliance_requirement_id.in_([p.id for p in pcrs]),
+                    ComplianceRequiredActionAssessment.is_completed.is_(False),
                 )
-            ).all()
-        }
+            ).all():
+                assessments_by_pcr.setdefault(assessment.project_compliance_requirement_id, []).append(assessment)
         for pcr in pcrs:
             effective, _source = applicability[pcr.requirement_id]
             if effective != ComplianceApplicability.APPLICABLE:
                 continue
             requirement = requirements_by_id[pcr.requirement_id]
-            assessments = db.scalars(
-                select(ComplianceRequiredActionAssessment).where(
-                    ComplianceRequiredActionAssessment.project_compliance_requirement_id == pcr.id,
-                    ComplianceRequiredActionAssessment.is_completed.is_(False),
-                )
-            ).all()
-            for assessment in assessments:
+            for assessment in assessments_by_pcr.get(pcr.id, []):
                 required_action = required_actions_by_id[assessment.required_action_id]
                 results.append(
                     OutstandingRequiredActionOut(
@@ -2330,7 +2499,8 @@ def list_outstanding_required_actions_for_project(
 
 
 def list_reviews_due_for_project(
-    db: Session, *, project_id: uuid.UUID, include_upcoming: bool = False
+    db: Session, *, project_id: uuid.UUID, include_upcoming: bool = False,
+    cache: ComplianceVersionCache | None = None,
 ) -> list[ComplianceReview]:
     """Unified review listing (§17/§28) across every review relevant to one
     project: its own project-level reviews, plus every review of a standard
@@ -2348,38 +2518,19 @@ def list_reviews_due_for_project(
             function's pre-Phase-14 behaviour), only `due`/`overdue`
             reviews are returned. When `True`, `upcoming` reviews are
             included too.
+        cache: Shared by org-wide callers across projects; one is created
+            when omitted.
     """
-    assignments = db.scalars(
-        select(ProjectCompliance).where(
-            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
-        )
-    ).all()
+    cache = cache or ComplianceVersionCache(db)
+    assignments = cache.assignments(project_id)
     project_compliance_ids = [a.id for a in assignments]
     standard_ids: set[uuid.UUID] = set()
     for assignment in assignments:
-        version = db.get(ComplianceStandardVersion, assignment.standard_version_id)
+        version = cache.version(assignment.standard_version_id)
         if version is not None:
             standard_ids.add(version.standard_id)
 
-    reviews: list[ComplianceReview] = []
-    if project_compliance_ids:
-        reviews.extend(
-            db.scalars(
-                select(ComplianceReview).where(
-                    ComplianceReview.project_compliance_id.in_(project_compliance_ids),
-                    ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
-                )
-            ).all()
-        )
-    if standard_ids:
-        reviews.extend(
-            db.scalars(
-                select(ComplianceReview).where(
-                    ComplianceReview.standard_id.in_(standard_ids),
-                    ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
-                )
-            ).all()
-        )
+    reviews = cache.scheduled_reviews(project_compliance_ids, standard_ids)
     wanted_states = ("upcoming", "due", "overdue") if include_upcoming else ("due", "overdue")
     return [review for review in reviews if compute_review_schedule_state(review) in wanted_states]
 

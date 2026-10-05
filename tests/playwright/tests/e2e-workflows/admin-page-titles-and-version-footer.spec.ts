@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Two real gaps from a first-pass UX review of the 2026-08 audit's own
@@ -41,7 +41,7 @@ test("Org Admin shows the organisation's own name as the page title, persisting 
 
 test("Project Admin shows the project's own name as the page title", async ({ page }) => {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-  await page.getByText(PROJECT_NAMES.alpha1).click();
+  await openProject(page, PROJECT_NAMES.alpha1);
   await page.getByRole("link", { name: "Project admin", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: PROJECT_NAMES.alpha1 })).toBeVisible();
 });

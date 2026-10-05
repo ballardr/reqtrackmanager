@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: browsing every file in a project from one place, rather
@@ -18,7 +18,7 @@ import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
 test.describe("project files", () => {
   test("the Files page lists files from multiple requirements/actions, a download link works, and the dashboard tile links here", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
 
     await test.step("the nav rail has a Files link, consistent with the project's other sub-pages (History, Actions, ...)", async () => {

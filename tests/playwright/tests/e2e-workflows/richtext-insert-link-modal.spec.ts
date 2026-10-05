@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * RichTextEditor's link-insert toolbar button used to open the browser's
@@ -18,7 +18,7 @@ test.describe("RichTextEditor: insert-link uses the app's Modal, not window.prom
   test("clicking Link opens a dialog with an Insert-link form", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: /Alpha-1/ }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Project admin" }).click();
     await selectProjectAdminGroup(page, "Report Setup");
     await page.getByRole("button", { name: "Rich text" }).first().click();

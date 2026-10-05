@@ -692,6 +692,27 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     return tuple(tools)
 
 
+def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUID]:
+    """`ModuleDefinition.artefact_ids_in_organization`: every Strategy,
+    Future State, Pain Point, Guiding Principle and Open Question in the
+    organisation, org-scoped or in one of its projects, for org deletion's
+    polymorphic cleanup."""
+    from sqlalchemy import or_, select
+
+    from app.models.project import Project
+    from app.modules.context_strategy.models import FutureState, GuidingPrinciple, OpenQuestion, PainPoint, Strategy
+
+    project_ids = select(Project.id).where(Project.organization_id == organization_id)
+    ids: set[UUID] = set()
+    for model in (Strategy, FutureState, GuidingPrinciple):
+        ids.update(db.scalars(select(model.id).where(
+            or_(model.organization_id == organization_id, model.project_id.in_(project_ids))
+        )).all())
+    for model in (PainPoint, OpenQuestion):
+        ids.update(db.scalars(select(model.id).where(model.project_id.in_(project_ids))).all())
+    return ids
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=CONTEXT_STRATEGY_MODULE_KEY,
     name="Context & Strategy",
@@ -769,6 +790,7 @@ MODULE_DEFINITION = ModuleDefinition(
         STRATEGY_ARTEFACT_TYPE, FUTURE_STATE_ARTEFACT_TYPE, PAIN_POINT_ARTEFACT_TYPE, GUIDING_PRINCIPLE_ARTEFACT_TYPE,
         OPEN_QUESTION_ARTEFACT_TYPE,
     ),
+    artefact_ids_in_organization=_artefact_ids_in_organization,
     # Module 0 (Platform Foundations) Phase 4: each of Context & Strategy's
     # five artefacts declares its own sub-component key only once its own
     # phase lands (Phase 1 registered "strategy", Phase 2 "future_state",

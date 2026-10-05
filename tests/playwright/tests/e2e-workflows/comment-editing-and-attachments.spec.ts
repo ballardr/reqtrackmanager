@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: comments can be edited and have files attached/removed,
@@ -17,7 +17,7 @@ test.describe("comment editing and attachments", () => {
 
     await test.step("a stakeholder posts a comment with an attachment on the locked requirement", async () => {
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
       await expect(page.getByText("Locked (approved)")).toBeVisible();
@@ -40,7 +40,7 @@ test.describe("comment editing and attachments", () => {
     await test.step("a different user has no Edit control on someone else's comment, and the API rejects it too", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.stakeholderAlpha2.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
       const commentCard = page.locator(".card", { hasText: originalBody }).last();
@@ -65,7 +65,7 @@ test.describe("comment editing and attachments", () => {
     await test.step("the author edits their own comment: new body, an added attachment, and one removed", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
 

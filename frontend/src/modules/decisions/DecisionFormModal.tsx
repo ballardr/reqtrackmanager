@@ -65,6 +65,11 @@ export function DecisionFormModal({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [statement, setStatement] = useState(initial?.decision_statement ?? "");
   const [decisionTypeId, setDecisionTypeId] = useState(initial?.decision_type_id ?? decisionTypes[0]?.id ?? "");
+  // The types may arrive after this form opens (the page loads them in
+  // parallel); adopt the first one then, or Save stays disabled for good
+  // (found 2026-10-04 via the e2e suite under load). React's "adjust state
+  // during render" pattern — converges in one extra render.
+  if (decisionTypeId === "" && decisionTypes[0]) setDecisionTypeId(decisionTypes[0].id);
   const [decisionDate, setDecisionDate] = useState(initial?.decision_date ?? "");
   const [decisionMakerId, setDecisionMakerId] = useState(initial?.decision_maker_id ?? "");
   const [ownerId, setOwnerId] = useState(initial?.owner_id ?? currentUserId ?? "");

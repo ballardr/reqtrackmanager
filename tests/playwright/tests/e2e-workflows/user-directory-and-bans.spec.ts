@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS } from "./helpers";
+import { apiHeaders, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PASSWORD, PERSONAS } from "./helpers";
+
+const API = "http://localhost:8000/api/v1";
 
 /**
  * Job to be done: a server admin can review orphaned accounts (no org
@@ -9,17 +11,45 @@ import { loginAs, logout, PERSONAS } from "./helpers";
  * them, and ban an orphaned account so no org admin can grant it a role
  * again without an explicit unban.
  *
- * Uses the orphan persona (zero org memberships already, not logged into
- * by any other spec) so banning/deactivating it can't disrupt another
- * spec's setup. Always ends unbanned and active again.
+ * Uses its own disposable orphaned account (created as an Alpha member via
+ * the API, then removed from Alpha), not the shared `orphan` persona:
+ * no-org-user, two-factor-auth, org-login-2fa-handoff and
+ * compliance-standards-management all log in as that persona in parallel,
+ * and this spec's deactivate/ban steps made their logins 401 (2026-10-04).
+ * The account is looked up by its unique name via the directory's search,
+ * so it's found however many orphans earlier runs left (the list pages at
+ * 30). Cleanup deactivates it, dropping it from the default view. The
+ * non-server-admin checks go straight to the API rather than logging the
+ * page out and back in.
  */
 test.describe("server-admin user directory: orphaned accounts, deactivation, bans", () => {
-  test("review orphaned accounts, deactivate/reactivate, ban/unban", async ({ page }) => {
+  installCleanupHook();
+
+  test("review orphaned accounts, deactivate/reactivate, ban/unban", async ({ page, request }) => {
+    const suffix = Date.now();
+    const orphan = { email: `e2e-dir-orphan-${suffix}@example.com`, name: `E2E Directory Orphan ${suffix}` };
+    const orgAdminHeaders = await apiHeaders(request, PERSONAS.orgAdminAlphaBeta.email);
+    const orgs: { id: string; name: string }[] = await (await request.get(`${API}/orgs`, { headers: orgAdminHeaders })).json();
+    const alphaId = orgs.find((o) => o.name === ORG_NAMES.alpha)!.id;
+    const created = await request.post(`${API}/orgs/${alphaId}/users`, {
+      headers: orgAdminHeaders, data: { email: orphan.email, display_name: orphan.name, password: PASSWORD, role: "member" },
+    });
+    expect(created.ok()).toBeTruthy();
+    const orphanId: string = (await created.json()).user_id;
+    expect((await request.delete(`${API}/orgs/${alphaId}/users/${orphanId}/membership`, { headers: orgAdminHeaders })).ok()).toBeTruthy();
+    onCleanup(async (cleanupRequest) => {
+      const headers = await apiHeaders(cleanupRequest, PERSONAS.serverAdmin.email);
+      await cleanupRequest.post(`${API}/system/users/${orphanId}/status`, { headers, data: { action: "unban" } });
+      await cleanupRequest.post(`${API}/system/users/${orphanId}/status`, { headers, data: { action: "deactivate" } });
+    });
+
     await loginAs(page, PERSONAS.serverAdmin.email);
     await page.goto("/server/management");
+    const searchBox = page.getByPlaceholder("Search by name or email");
+    await searchBox.fill(orphan.name);
 
-    await test.step("the orphaned-accounts view lists the orphan persona (server-admin only, tenant-blind)", async () => {
-      await expect(page.getByText(PERSONAS.orphan.email)).toBeVisible();
+    await test.step("the orphaned-accounts view lists the orphaned account (server-admin only, tenant-blind)", async () => {
+      await expect(page.getByText(orphan.email)).toBeVisible();
     });
 
     await test.step("the filter panel renders as a full-width bar above the table, not a cramped sidebar (follow-up UX fix)", async () => {
@@ -55,16 +85,16 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
     });
 
     await test.step("search narrows the list by name or email (Phase E, follow-up UX batch)", async () => {
-      const searchBox = page.getByPlaceholder("Search by name or email");
       await searchBox.fill("no-such-user-xyz");
-      await expect(page.getByText(PERSONAS.orphan.email)).toHaveCount(0);
+      await expect(page.getByText(orphan.email)).toHaveCount(0);
 
-      // Matches via the display name fragment, not just the email itself.
-      await searchBox.fill("Orphan Candidate");
-      await expect(page.getByText(PERSONAS.orphan.email)).toBeVisible();
+      // Matches via the email too, not just the display name searched above;
+      // left on this account's own name for the remaining steps.
+      await searchBox.fill(orphan.email);
+      await expect(page.getByText(orphan.email)).toBeVisible();
 
-      await searchBox.fill("");
-      await expect(page.getByText(PERSONAS.orphan.email)).toBeVisible();
+      await searchBox.fill(orphan.name);
+      await expect(page.getByText(orphan.email)).toBeVisible();
     });
 
     await test.step("Email/Name/Last login/Created columns are sortable (DirectoryTable)", async () => {
@@ -72,10 +102,10 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       await expect(emailHeader).toHaveAttribute("aria-sort", "none");
       await emailHeader.getByRole("button", { name: "Email" }).click();
       await expect(emailHeader).toHaveAttribute("aria-sort", "ascending");
-      await expect(page.getByText(PERSONAS.orphan.email)).toBeVisible();
+      await expect(page.getByText(orphan.email)).toBeVisible();
       await emailHeader.getByRole("button", { name: "Email" }).click();
       await expect(emailHeader).toHaveAttribute("aria-sort", "descending");
-      await expect(page.getByText(PERSONAS.orphan.email)).toBeVisible();
+      await expect(page.getByText(orphan.email)).toBeVisible();
       // Third click returns to unsorted, leaving the rest of this spec's
       // steps unaffected by sort order.
       await emailHeader.getByRole("button", { name: "Email" }).click();
@@ -83,25 +113,19 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
     });
 
     await test.step("the migrated 'Show' (view) and 'Include deactivated' filters still narrow results as before", async () => {
+      await searchBox.fill("");
       await page.getByLabel("Show").selectOption("server_admins");
       await expect(page.getByText(PERSONAS.serverAdmin.email)).toBeVisible();
-      await expect(page.getByText(PERSONAS.orphan.email)).toHaveCount(0);
+      await expect(page.getByText(orphan.email)).toHaveCount(0);
       // Back to the default "orphaned" view for the rest of this spec.
       await page.getByLabel("Show").selectOption("orphaned");
-      await expect(page.getByText(PERSONAS.orphan.email)).toBeVisible();
+      await searchBox.fill(orphan.name);
+      await expect(page.getByText(orphan.email)).toBeVisible();
     });
 
     await test.step("a non-server-admin cannot reach this listing via a direct API call", async () => {
-      await logout(page);
-      await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const resp = await page.request.get("http://localhost:8000/api/v1/system/users?no_org_membership=true", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const resp = await request.get(`${API}/system/users?no_org_membership=true`, { headers: orgAdminHeaders });
       expect(resp.status()).toBe(403);
-      await logout(page);
-      await loginAs(page, PERSONAS.serverAdmin.email);
-      await page.goto("/server/management");
     });
 
     // Deactivate/ban/grant-admin now sit behind one `ActionMenu` kebab per
@@ -111,8 +135,8 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
     // `Popover` menu it opens is portalled to `document.body`, so it's
     // looked up at the page level, not scoped to `row`.
     async function openOrphanActionsMenu() {
-      await page.getByRole("button", { name: `${PERSONAS.orphan.name}'s actions` }).click();
-      const menu = page.getByRole("menu", { name: `${PERSONAS.orphan.name}'s actions` });
+      await page.getByRole("button", { name: `${orphan.name}'s actions` }).click();
+      const menu = page.getByRole("menu", { name: `${orphan.name}'s actions` });
       // Clicking a menuitem before the Popover-based menu finishes
       // positioning can silently miss it — see the identical fix in
       // org-rename-and-test-email.spec.ts / org-merge-import.spec.ts.
@@ -121,7 +145,7 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
     }
 
     await test.step("deactivate then reactivate the orphaned account", async () => {
-      const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
+      const row = page.locator("tr", { hasText: orphan.email });
       // Deactivate now confirms via the shared `ConfirmDialog` (sixth-pass
       // audit) rather than `window.confirm`.
       let menu = await openOrphanActionsMenu();
@@ -146,7 +170,7 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
     });
 
     await test.step("ban the orphaned account", async () => {
-      const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
+      const row = page.locator("tr", { hasText: orphan.email });
       // Ban now confirms via the shared `ConfirmDialog` (sixth-pass audit)
       // rather than `window.confirm`.
       const menu = await openOrphanActionsMenu();
@@ -161,38 +185,16 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
     });
 
     await test.step("a banned account can't be granted a fresh org role, even via a direct API call", async () => {
-      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const usersResp = await page.request.get("http://localhost:8000/api/v1/system/users?no_org_membership=true", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const users: { user_id: string; email: string }[] = await usersResp.json();
-      const orphanId = users.find((u) => u.email === PERSONAS.orphan.email)!.user_id;
-
-      const orgsResp = await page.request.get("http://localhost:8000/api/v1/orgs", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const orgs: { id: string; name: string }[] = await orgsResp.json();
-      const alpha = orgs.find((o) => o.name === "E2E Alpha Robotics")!;
-
-      await logout(page);
-      await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      const pmToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const grantResp = await page.request.post(`http://localhost:8000/api/v1/orgs/${alpha.id}/users/${orphanId}/roles`, {
-        headers: { Authorization: `Bearer ${pmToken}` },
-        data: { user_id: orphanId, role: "member" },
+      const grantResp = await request.post(`${API}/orgs/${alphaId}/users/${orphanId}/roles`, {
+        headers: orgAdminHeaders, data: { user_id: orphanId, role: "member" },
       });
       expect(grantResp.status()).toBe(403);
-
-      await logout(page);
-      await loginAs(page, PERSONAS.serverAdmin.email);
-      await page.goto("/server/management");
     });
 
     await test.step("unban restores the ability to grant roles", async () => {
-      // Banning implies deactivation, and a fresh page load resets the
-      // "include deactivated" checkbox — re-check it to find the row.
-      await page.getByLabel("Include deactivated accounts").check();
-      const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
+      // Banning implies deactivation; "include deactivated" is still
+      // checked from the deactivate step, so the row is still listed.
+      const row = page.locator("tr", { hasText: orphan.email });
       const menu = await openOrphanActionsMenu();
       await Promise.all([
         page.waitForResponse(
@@ -201,26 +203,14 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
         menu.getByRole("menuitem", { name: "Unban" }).click(),
       ]);
       await expect(row.getByText("Banned", { exact: true })).toHaveCount(0);
+      await expect(row.getByText("Deactivated", { exact: true })).toBeVisible();
     });
 
-    await test.step("reactivate afterward — restoring this shared, read-only-reused persona to fully active, not just unbanned", async () => {
-      // `unban_orphaned_user` (backend/app/routers/system.py) deliberately
-      // does *not* also reactivate the account: unban and reactivate are a
-      // distinct pair of decisions by design ("may be granted org roles
-      // again" vs. "may log in again"), so this test's own ban step left
-      // the account genuinely deactivated even after the unban step above.
-      // Left that way, the orphan persona — reused *read-only* by
-      // two-factor-auth.spec.ts/org-login-2fa-handoff.spec.ts/this file
-      // itself specifically because it's supposed to be always available —
-      // can no longer log in at all on any later run in the same suite
-      // execution, and would fail this file's own very first step (it's
-      // deactivated, so it drops out of the default, non-"include
-      // deactivated" orphaned-accounts view) on a re-run against the same
-      // database. A real instance of this was found running the full
-      // suite together: this file's own docstring already promised
-      // "Always ends unbanned and active again," but this step was
-      // missing, so it never actually delivered the "active" half.
-      const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
+    await test.step("unban leaves the account deactivated; reactivating it is a separate decision", async () => {
+      // `unban_orphaned_user` deliberately doesn't reactivate: "may be
+      // granted org roles again" and "may log in again" are distinct
+      // decisions, so the row still reads Deactivated until this step.
+      const row = page.locator("tr", { hasText: orphan.email });
       const menu = await openOrphanActionsMenu();
       await Promise.all([
         page.waitForResponse(

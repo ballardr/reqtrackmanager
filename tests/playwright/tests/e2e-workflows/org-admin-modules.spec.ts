@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -48,6 +51,7 @@ test.describe("org admin: Modules section", () => {
         data: { name: `E2E Modules Org ${suffix}` },
       })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: serverAdminHeaders,
       data: { email: adminEmail, display_name: "E2E Modules Admin", password: PASSWORD, role: "org_admin" },
@@ -89,6 +93,7 @@ test.describe("org admin: Modules section", () => {
         data: { name: `E2E Modules Sub Org ${suffix}` },
       })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: serverAdminHeaders,
       data: { email: adminEmail, display_name: "E2E Modules Sub Admin", password: PASSWORD, role: "org_admin" },

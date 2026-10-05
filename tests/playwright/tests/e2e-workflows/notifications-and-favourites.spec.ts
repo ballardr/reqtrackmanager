@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES, searchProjects } from "./helpers";
 
 /**
  * Job to be done: notifications are a first-class, searchable, paginated
@@ -14,7 +14,7 @@ test.describe("notifications page and favourites page", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
 
     await test.step("generate at least one real notification (subscribing then commenting on a requirement)", async () => {
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("link", { name: "Must expose a health-check endpoint", exact: true }).click();
       const subscribeButton = page.getByRole("button", { name: "Subscribe", exact: true });
@@ -43,7 +43,10 @@ test.describe("notifications page and favourites page", () => {
 
     await test.step("favourite a project: the nav-rail Favourites link appears immediately, not just after revisiting /projects or /favourites", async () => {
       await page.goto("/projects");
-      const alphaCard = page.locator(".card", { hasText: PROJECT_NAMES.alpha2 });
+      // Searched and matched by its exact name link: the list pages at 30,
+      // and a merge-import can add an "Alpha-2 … (imported)" card too.
+      await searchProjects(page, PROJECT_NAMES.alpha2);
+      const alphaCard = page.locator(".card", { has: page.getByRole("link", { name: PROJECT_NAMES.alpha2, exact: true }) }).first();
       // .count() below doesn't auto-wait like other Playwright assertions —
       // page.goto only waits for the navigation itself, not for the async
       // project-list fetch React kicks off after mounting, so an immediate
@@ -66,7 +69,7 @@ test.describe("notifications page and favourites page", () => {
       // the nav link).
       await expect(page.getByRole("link", { name: "Favourites", exact: true })).toBeVisible();
       await page.getByRole("link", { name: "Favourites", exact: true }).click();
-      await expect(page.getByText(PROJECT_NAMES.alpha2)).toBeVisible();
+      await expect(page.getByText(PROJECT_NAMES.alpha2, { exact: true })).toBeVisible();
 
       await page.getByRole("button", { name: "Remove from favourites", exact: true }).click();
       await expect(page.getByText(PROJECT_NAMES.alpha2)).toHaveCount(0);
@@ -74,27 +77,35 @@ test.describe("notifications page and favourites page", () => {
 
     await test.step("favourites-only filter on the project list narrows it to favourited projects", async () => {
       await page.goto("/projects");
-      const alphaCard = page.locator(".card", { hasText: PROJECT_NAMES.alpha2 });
+      // Searched and matched by its exact name link: the list pages at 30,
+      // and a merge-import can add an "Alpha-2 … (imported)" card too.
+      await searchProjects(page, PROJECT_NAMES.alpha2);
+      const alphaCard = page.locator(".card", { has: page.getByRole("link", { name: PROJECT_NAMES.alpha2, exact: true }) }).first();
       await expect(alphaCard).toBeVisible();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/favorite")),
         alphaCard.getByRole("button", { name: "Favourite", exact: true }).click(),
       ]);
+      // Clear the search, so the filter below is what hides Beta-1.
+      await searchProjects(page, "");
 
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("favorite_only=true")),
         page.getByRole("checkbox", { name: "Favourites only" }).check(),
       ]);
-      await expect(page.getByText(PROJECT_NAMES.alpha2)).toBeVisible();
+      await expect(page.getByText(PROJECT_NAMES.alpha2, { exact: true })).toBeVisible();
       await expect(page.getByText(PROJECT_NAMES.beta1)).toHaveCount(0);
 
       await page.getByRole("checkbox", { name: "Favourites only" }).uncheck();
-      await expect(page.getByText(PROJECT_NAMES.beta1)).toBeVisible();
+      // Unfiltered, Beta-1 is back — found by search, since it needn't be
+      // on the first page of the full list.
+      await searchProjects(page, PROJECT_NAMES.beta1);
+      await expect(page.getByText(PROJECT_NAMES.beta1, { exact: true })).toBeVisible();
     });
 
     await test.step("the favourites page has its own tile/list view toggle", async () => {
       await page.goto("/favourites");
-      await expect(page.getByText(PROJECT_NAMES.alpha2)).toBeVisible();
+      await expect(page.getByText(PROJECT_NAMES.alpha2, { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "List view" }).click();
       await expect(page.getByRole("columnheader", { name: "Name" })).toBeVisible();
       await expect(page.getByRole("cell", { name: PROJECT_NAMES.alpha2 })).toBeVisible();

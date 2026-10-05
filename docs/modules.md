@@ -716,6 +716,21 @@ user, and coexists with this floor mechanism rather than replacing it. See
 `app.modules.compliance.service.validate_fallback_group_member_removal` for
 the reference implementation.
 
+Its whole-group counterpart, `ModuleDefinition.validate_org_group_deletion:
+Callable[[Session, UUID], str | None]` (2026-10-05, when org groups became
+deletable), is called by `delete_org_group` through `run_org_group_deletion_
+hooks` in the same way. Compliance uses it to block deleting the fallback
+group while a standard relies on it, since its setting is
+`ON DELETE SET NULL` and the floor would otherwise vanish silently (see
+`validate_fallback_group_deletion`).
+
+`ModuleDefinition.artefact_ids_in_organization: Callable[[Session, UUID],
+set[UUID]]` (2026-10-05) returns the ids of a module's own artefacts (of its
+`artefact_types`) belonging to an organisation, org-scoped or in its
+projects. Org deletion uses it to remove `ArtefactLink` rows, comments and
+subscriptions on those artefacts, which have no foreign key core could
+cascade through. Any module declaring `artefact_types` should implement it.
+
 ### 4c. Fine-Grained Access Control: `ModuleRoleDefinition.permissions`, `subtype_providers`, and `entity_scopes`
 
 Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-

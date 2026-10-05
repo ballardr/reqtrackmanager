@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openRequirementByName, PERSONAS } from "./helpers";
+import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: `RequirementDetailPage`'s previously-separate "Change
@@ -22,7 +22,7 @@ test.describe("requirement detail: merged History/Activity card and its view tog
   test("both views render the same underlying event; the chosen view persists across a reload", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: /Alpha-1/ }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
     const name = `E2E History Activity Toggle ${Date.now()}`;

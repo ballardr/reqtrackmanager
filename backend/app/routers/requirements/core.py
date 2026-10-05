@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import io
+from dataclasses import dataclass, field
 from datetime import date
 from uuid import UUID
 
@@ -31,6 +32,7 @@ from app.metrics import (
 )
 from app.models.change_request import ChangeRequest
 from app.models.custom_field import CustomFieldEntityKind, CustomFieldType
+from app.models.engagement import Subscription
 from app.models.enums import (
     ChangeRequestStatus,
     ProjectRole,
@@ -40,7 +42,7 @@ from app.models.enums import (
     StageStatus,
 )
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
-from app.models.requirement import Requirement, RequirementVersion
+from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.project import MoveDirection
@@ -105,10 +107,81 @@ def _has_open_change_request(db: Session, requirement_id: UUID) -> bool:
     )
 
 
-def _to_out(db: Session, requirement: Requirement, version: RequirementVersion, current_user_id: UUID) -> RequirementOut:
+@dataclass
+class _ListPrefetch:
+    """Per-requirement lookups for a whole list, loaded in a fixed number of
+    queries (`_prefetch_for_list`) instead of five per row — the list
+    endpoint was the second-hottest backend path in the e2e suite (99
+    queries for one page of Alpha-1, 2026-10-04 profiling).
+
+    Attributes:
+        versions: Current (`valid_to IS NULL`) version per requirement id.
+        keywords: Keywords per requirement id (absent = none).
+        subscribed: Requirement ids the caller is subscribed to.
+        comment_counts: Comment count per requirement id (absent = 0).
+        open_change_request: Requirement ids with an open change request.
+    """
+
+    versions: dict[UUID, RequirementVersion] = field(default_factory=dict)
+    keywords: dict[UUID, list[str]] = field(default_factory=dict)
+    subscribed: set[UUID] = field(default_factory=set)
+    comment_counts: dict[UUID, int] = field(default_factory=dict)
+    open_change_request: set[UUID] = field(default_factory=set)
+
+
+def _prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id: UUID) -> _ListPrefetch:
+    """Loads every `_ListPrefetch` field for `requirement_ids` — same
+    semantics as `get_current_version`/`get_keywords`/`engagement.
+    is_subscribed`/`engagement.get_comment_count`/`_has_open_change_request`,
+    batched.
+
+    Raises:
+        HTTPException: 500 if a requirement has no current version (the same
+            broken-data signal `get_current_version` raises).
+    """
+    prefetch = _ListPrefetch()
+    if not requirement_ids:
+        return prefetch
+    for version in db.scalars(select(RequirementVersion).where(
+        RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None),
+    )).all():
+        prefetch.versions[version.requirement_id] = version
+    if len(prefetch.versions) != len(set(requirement_ids)):
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
+    for requirement_id, keyword in db.execute(select(RequirementKeyword.requirement_id, RequirementKeyword.keyword).where(
+        RequirementKeyword.requirement_id.in_(requirement_ids),
+    )).all():
+        prefetch.keywords.setdefault(requirement_id, []).append(keyword)
+    prefetch.subscribed = set(db.scalars(select(Subscription.entity_id).where(
+        Subscription.user_id == current_user_id, Subscription.entity_type == "requirement",
+        Subscription.entity_id.in_(requirement_ids),
+    )).all())
+    prefetch.comment_counts = engagement.get_comment_counts(db, ReviewTargetType.REQUIREMENT, requirement_ids)
+    prefetch.open_change_request = set(db.scalars(select(ChangeRequest.requirement_id).where(
+        ChangeRequest.requirement_id.in_(requirement_ids), ChangeRequest.status.in_(OPEN_CR_STATUSES),
+    )).all())
+    return prefetch
+
+
+def _to_out(
+    db: Session, requirement: Requirement, version: RequirementVersion, current_user_id: UUID,
+    prefetch: _ListPrefetch | None = None,
+) -> RequirementOut:
     """Builds the API response shape for a requirement from its identity row
     plus one version snapshot, including `current_user_id`'s subscription
-    state (C-N-01) and derived list-view badge indicators."""
+    state (C-N-01) and derived list-view badge indicators. Pass `prefetch`
+    (from `_prefetch_for_list`) when serialising many rows, so these come
+    from batched lookups instead of per-row queries."""
+    if prefetch is not None:
+        keywords = prefetch.keywords.get(requirement.id, [])
+        subscribed = requirement.id in prefetch.subscribed
+        comment_count = prefetch.comment_counts.get(requirement.id, 0)
+        open_cr = requirement.id in prefetch.open_change_request
+    else:
+        keywords = get_keywords(db, requirement.id)
+        subscribed = engagement.is_subscribed(db, current_user_id, "requirement", requirement.id)
+        comment_count = engagement.get_comment_count(db, ReviewTargetType.REQUIREMENT, requirement.id)
+        open_cr = _has_open_change_request(db, requirement.id)
     return RequirementOut(
         id=requirement.id, project_id=requirement.project_id, unique_code=requirement.unique_code,
         name=version.name, reasoning=version.reasoning, clarification=version.clarification,
@@ -119,11 +192,11 @@ def _to_out(db: Session, requirement: Requirement, version: RequirementVersion, 
         is_archived=requirement.is_archived, is_locked=is_locked(version),
         is_completed=requirement.is_completed, completed_at=requirement.completed_at,
         completed_by=requirement.completed_by,
-        keywords=get_keywords(db, requirement.id), custom_fields=version.custom_fields,
+        keywords=keywords, custom_fields=version.custom_fields,
         created_at=requirement.created_at, updated_at=version.created_at,
-        is_subscribed=engagement.is_subscribed(db, current_user_id, "requirement", requirement.id),
-        comment_count=engagement.get_comment_count(db, ReviewTargetType.REQUIREMENT, requirement.id),
-        has_open_change_request=_has_open_change_request(db, requirement.id),
+        is_subscribed=subscribed,
+        comment_count=comment_count,
+        has_open_change_request=open_cr,
         requires_approval=version.status in REQUIRES_APPROVAL_STATUSES,
         review_date=version.review_date, review_lead_days=version.review_lead_days, reviewer_id=version.reviewer_id,
     )
@@ -258,11 +331,12 @@ def list_requirements(
     if category_id:
         query = query.where(Requirement.category_id == category_id)
     requirements = db.scalars(query).all()
+    prefetch = _prefetch_for_list(db, [r.id for r in requirements], current_user.id)
 
     out = []
     for req in requirements:
-        version = get_current_version(db, req.id)
-        kws = get_keywords(db, req.id)
+        version = prefetch.versions[req.id]
+        kws = prefetch.keywords.get(req.id, [])
         if keyword and keyword.lower() not in kws:
             continue
         if search:
@@ -273,7 +347,7 @@ def list_requirements(
             continue
         if target_stage_id and version.target_stage_id != target_stage_id:
             continue
-        item = _to_out(db, req, version, current_user.id)
+        item = _to_out(db, req, version, current_user.id, prefetch)
         if has_comments and item.comment_count == 0:
             continue
         if only_watched and not item.is_subscribed:

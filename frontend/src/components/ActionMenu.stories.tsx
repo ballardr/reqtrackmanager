@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useEffect, useState } from "react";
 import { Download, Pencil } from "lucide-react";
 import { expect, fn, userEvent, within } from "storybook/test";
 
@@ -71,6 +72,45 @@ export const Disabled: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("button", { name: "Acme Corp actions" })).toBeDisabled();
+  },
+};
+
+/** An item is inserted ahead of the others while the menu is open (Org
+ * Admin adds "Rename" once its settings load). Each button must keep its
+ * own action: with index keys, clicking "Export" ran Rename (2026-10-04). */
+export const ItemsChangeWhileOpen: Story = {
+  render: () => {
+    function Harness() {
+      const [loaded, setLoaded] = useState(false);
+      const [ran, setRan] = useState("");
+      useEffect(() => {
+        const timer = setTimeout(() => setLoaded(true), 300);
+        return () => clearTimeout(timer);
+      }, []);
+      return (
+        <>
+          <ActionMenu
+            triggerLabel="Organisation actions"
+            items={[
+              ...(loaded ? [{ label: "Rename", onSelect: () => setRan("rename") }] : []),
+              { label: "Export", onSelect: () => setRan("export") },
+            ]}
+          />
+          <output>{ran}</output>
+        </>
+      );
+    }
+    return <Harness />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Organisation actions" }));
+    const body = within(document.body);
+    const exportItem = await body.findByRole("menuitem", { name: "Export" });
+    // "Rename" appears ahead of it while the menu is open.
+    await body.findByRole("menuitem", { name: "Rename" });
+    await userEvent.click(exportItem);
+    await expect(canvas.getByRole("status")).toHaveTextContent("export");
   },
 };
 

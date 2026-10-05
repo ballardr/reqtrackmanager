@@ -45,6 +45,10 @@ export interface ActionMenuItem {
   /** Decorative icon shown before `label` — not repeated in the accessible name. */
   icon?: ReactNode;
   onSelect: () => void;
+  /** Stable identity when `label` isn't a plain string; defaults to the
+   * string label. Never relies on position, since the item list can change
+   * while the menu is open. */
+  key?: string;
 }
 
 /**
@@ -95,7 +99,12 @@ export function ActionMenu({
           <div role="menu" aria-label={triggerLabel} className="stack" style={{ gap: "0.15rem", minWidth: 180 }}>
             {items.map((item, i) => (
               <button
-                key={i}
+                // Keyed by label, not index: a caller's item list can change
+                // while the menu is open (Org Admin adds "Rename" once its
+                // settings load), and an index key made React hand one item's
+                // button — and click handler — to another, so clicking
+                // "Export" opened Rename (found 2026-10-04 via the e2e suite).
+                key={item.key ?? (typeof item.label === "string" ? item.label : i)}
                 type="button"
                 role="menuitem"
                 className="btn"

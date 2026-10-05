@@ -34,8 +34,9 @@ function mockActionDetailApis(action: RequirementAction) {
     if (path.includes("/action-types")) return actionTypes;
     if (path.endsWith(`/actions/${ACTION_ID}/comments`)) return [buildComment({ author_display_name: "Jamie Lee" })];
     if (path.endsWith(`/actions/${ACTION_ID}/files`)) return [];
-    if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) return [requirement];
-    if (path.endsWith(`/requirements/${requirement.id}/actions`)) return [action];
+    if (path.endsWith(`/actions/${ACTION_ID}/requirements`)) {
+      return [{ id: requirement.id, unique_code: requirement.unique_code, name: requirement.name }];
+    }
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
     if (path.includes("/users")) return [orgUser];
     throw new Error(`unmocked path: ${path}`);
@@ -64,6 +65,10 @@ export const PendingActionWithLinkedRequirement: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: /Review password reset flow/ })).toBeInTheDocument());
     await expect(canvas.getByText(/AUTH-LOG-001/)).toBeInTheDocument();
     await expect(canvas.getByLabelText("Outcome")).toHaveValue("pending");
+    // Linked requirements come from the action's own endpoint in one call,
+    // not one request per requirement in the project.
+    await expect(api.get).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/actions/${ACTION_ID}/requirements`);
+    await expect(api.get).not.toHaveBeenCalledWith(expect.stringMatching(/\/requirements\/[^/]+\/actions$/));
   },
 };
 

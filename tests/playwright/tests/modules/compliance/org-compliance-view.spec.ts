@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgOverviewGroup } from "../../e2e-workflows/helpers";
+import { loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgOverviewGroup } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
@@ -72,7 +72,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
 
     // --- Assign to Alpha-1 and assess the one requirement Non-Compliant.
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     // exact: true — the project overview page's own compliance summary
     // tiles (Phase 17d) render as cards whose accessible name contains
     // "Compliance" too (e.g. a standard's name), which would otherwise
@@ -117,7 +117,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await expect(nonCompliantTile).toBeVisible();
     await nonCompliantTile.click();
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview\/compliance-by-standard\?groupBy=project&state=non_compliant/);
-    const expandProjectButton = page.getByRole("button", { name: new RegExp(`Expand standards for ${PROJECT_NAMES.alpha1}`) });
+    const expandProjectButton = page.getByRole("button", { name: `Expand standards for ${PROJECT_NAMES.alpha1}`, exact: true });
     await expect(expandProjectButton).toBeVisible();
     await expandProjectButton.click();
     // `getByText` alone would also match this standard's own <option> in the
@@ -219,8 +219,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await expect(page.getByText("Version published.")).toBeVisible();
 
     async function assignStandard(projectName: string, versionLabel: string) {
-      await page.goto("/projects");
-      await page.getByRole("link", { name: projectName }).click();
+      await openProject(page, projectName);
       await page.getByRole("link", { name: "Compliance", exact: true }).click();
       await page.getByRole("button", { name: "Assign standard" }).click();
       const dialog = page.getByRole("dialog", { name: "Assign compliance standard" });
@@ -323,7 +322,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
 
     // --- Assign to Alpha-1 and assess the child requirement Non-Compliant.
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await page.getByRole("button", { name: "Assign standard" }).click();
     const assignDialog = page.getByRole("dialog", { name: "Assign compliance standard" });

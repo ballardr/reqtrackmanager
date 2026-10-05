@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { selectPreferencesGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, selectPreferencesGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * Job to be done: a user can leave an organisation themselves, from
@@ -38,6 +41,7 @@ test.describe("leave organisation from Preferences", () => {
         data: { name: orgName },
       })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     // Plain "member", not "org_admin" — `leave_organization` (backend/app/
     // routers/orgs.py) 409s rather than silently stripping an org of its
     // last admin, which this brand-new, single-user org's own admin would

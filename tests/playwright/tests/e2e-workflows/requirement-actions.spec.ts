@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: a requirement action (e.g. review, test) can be created
@@ -62,7 +62,7 @@ test.describe("requirement actions", () => {
     const req2Name = `E2E Action Target 2 ${ts}`;
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
     const reqUrl: Record<string, string> = {};
 

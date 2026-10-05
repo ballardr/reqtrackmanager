@@ -38,6 +38,8 @@ import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
+import { useLatest } from "../hooks/useLatest";
+import { useRequestSequence } from "../hooks/useRequestSequence";
 
 const PAGE_SIZE = 30;
 
@@ -168,31 +170,7 @@ export function RequirementsPage() {
   const bulkMoveTriggerRef = useRef<HTMLButtonElement>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
-  // The latest filter/sort state, read by `listParams` instead of the
-  // calling render's closure. A reload started from an older render — the
-  // post-create/post-bulk-op `reload()`, which runs after an `await` —
-  // otherwise lists with the filters as they were *before* that await,
-  // and, being the newest request, wins over (and silently discards) a
-  // search/filter the user changed meanwhile (found 2026-10-04 via the e2e
-  // suite: create a requirement, search for it, and the create's own reload
-  // wiped the search). Declared before the reload effect below so it is
-  // always current by the time that effect runs in the same commit.
-  const filterStateRef = useRef({
-    search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
-    hasCommentsOnly, onlyWatched, includeArchived, sort,
-  });
-  useEffect(() => {
-    filterStateRef.current = {
-      search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
-      hasCommentsOnly, onlyWatched, includeArchived, sort,
-    };
-  });
-
   function listParams(offset: number): URLSearchParams {
-    const {
-      search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
-      hasCommentsOnly, onlyWatched, includeArchived, sort,
-    } = filterStateRef.current;
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
@@ -209,6 +187,13 @@ export function RequirementsPage() {
     return params;
   }
 
+  // Read through a ref so a reload started from an older render (a
+  // post-mutation `reload()` resuming after an `await`) still lists with the
+  // filters the user has set since — otherwise, as the newest request, it
+  // would overwrite their filtered results (found 2026-10-04 via the e2e
+  // suite). Declared before the reload effect so it's current there.
+  const listParamsRef = useLatest(listParams);
+
   // Belt-and-suspenders guard (bug fix, 2026-08: dashboard glance
   // navigation race) alongside the searchParams-seeding fix above — neither
   // `loadRequirements` nor `reload()` previously sequenced requests at all,
@@ -217,15 +202,15 @@ export function RequirementsPage() {
   // still let a slower, stale response overwrite a faster, newer one. Each
   // call claims the next id; a response is applied only if no newer call
   // has started since.
-  const loadRequirementsRequestIdRef = useRef(0);
+  const beginLoad = useRequestSequence();
 
   async function loadRequirements(offset: number, append: boolean) {
     if (!projectId) return;
-    const requestId = ++loadRequirementsRequestIdRef.current;
+    const isLatest = beginLoad();
     const page = await api.getPage<Requirement>(
-      `/api/v1/projects/${projectId}/requirements?${listParams(offset).toString()}`
+      `/api/v1/projects/${projectId}/requirements?${listParamsRef.current(offset).toString()}`
     );
-    if (requestId !== loadRequirementsRequestIdRef.current) return;
+    if (!isLatest()) return;
     setRequirements((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
     setTotalUnfiltered(page.totalUnfiltered ?? page.total);

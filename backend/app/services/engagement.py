@@ -8,6 +8,7 @@ work identically for both entity types).
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -86,6 +87,21 @@ def get_comment_count(db: Session, target_type: ReviewTargetType, target_id: UUI
             ReviewComment.target_type == target_type, ReviewComment.target_id == target_id
         )
     ) or 0
+
+
+def get_comment_counts(db: Session, target_type: ReviewTargetType, target_ids: Collection[UUID]) -> dict[UUID, int]:
+    """`get_comment_count` for many targets in one query, for list views.
+
+    Returns:
+        Comment count per target id; targets with no comments are absent.
+    """
+    if not target_ids:
+        return {}
+    return dict(db.execute(
+        select(ReviewComment.target_id, func.count(ReviewComment.id)).where(
+            ReviewComment.target_type == target_type, ReviewComment.target_id.in_(set(target_ids)),
+        ).group_by(ReviewComment.target_id)
+    ).all())
 
 
 def is_subscribed(db: Session, user_id: UUID, entity_type: str, entity_id: UUID) -> bool:

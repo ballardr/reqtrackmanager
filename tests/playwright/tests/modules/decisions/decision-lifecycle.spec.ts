@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { PASSWORD, loginAs, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
 import { selectLabeledOption } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -60,6 +63,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
         data: { name: orgName },
       })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/users`, {
       headers: serverAdminHeaders,
       data: { email: adminEmail, display_name: "E2E Decisions Admin", password: PASSWORD, role: "org_admin" },
@@ -184,6 +188,10 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     quickView = page.getByRole("dialog", { name: "DEC-001" });
     await quickView.getByRole("link", { name: "View full details" }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
+    // The URL changes before the list page unmounts; until it does, its
+    // quick view (also headed "DEC-001"), table badge and status filter
+    // option all match too. Wait for the list's own table to go first.
+    await expect(page.getByRole("table")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "DEC-001" })).toBeVisible();
     await expect(page.getByText("Superseded", { exact: true })).toBeVisible();
   });

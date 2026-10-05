@@ -2,7 +2,10 @@ import fs from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PASSWORD, PERSONAS } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, logout, PASSWORD, PERSONAS } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * Job to be done: exporting an entire organisation (settings, members,
@@ -34,6 +37,7 @@ test.describe("organisation bundle export/import", () => {
     const sourceOrg = await (
       await page.request.post("http://localhost:8000/api/v1/orgs", { headers: authHeaders, data: { name: sourceOrgName } })
     ).json();
+    deleteOrgOnCleanup({ id: sourceOrg.id });
     // Server admins hold no org membership by default (I-M-05) — self-
     // elevate just long enough to bootstrap the org's real admin, the same
     // pattern backend/scripts/seed_e2e_dataset.py itself uses for its
@@ -85,6 +89,7 @@ test.describe("organisation bundle export/import", () => {
 
     await test.step("import the bundle as a new organisation", async () => {
       const newOrgName = `E2E Imported Org (${suffix})`;
+      deleteOrgOnCleanup({ nameContains: newOrgName });
       await page.getByRole("link", { name: "Organisations", exact: true }).click();
       await expect(page).toHaveURL(/\/server\/organisations$/);
       // "New organisation" opens a Modal (style guide "Pattern: modal

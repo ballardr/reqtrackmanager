@@ -416,3 +416,45 @@ def test_approve_strategy_via_mcp_succeeds_once_both_flags_enabled(client, admin
     resp = client.post(f"{base}/approve", json={}, headers=_mcp_headers(token))
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "approved"
+
+
+def test_deleting_the_org_removes_its_artefact_links_and_type_overrides(client, admin_token):
+    """Deleting an organisation that has linked Context & Strategy artefacts
+    and a project pain-point type override succeeds and leaves no orphaned
+    links (2026-10-05: it returned a 500 — links blocked its link types'
+    deletion, and depending on cascade order an override's `SET NULL` FK
+    broke its CHECK constraint; org deletion now removes projects first)."""
+    from sqlalchemy import or_, select
+
+    from app.models.relationship import ArtefactLink
+    from app.modules.context_strategy.models import ProjectPainPointType
+
+    org, project, token = _setup(client, admin_token, "Relationships Org Delete Co")
+    strategy = _create_strategy(client, token, project["id"])
+    org_strategy = _create_org_strategy(client, token, org["id"])
+    pain_point = _create_pain_point(client, token, project["id"])
+    resp = client.post(
+        f"{_project_base(project['id'])}/pain-points/{pain_point['id']}/relationships",
+        json={"kind": "drives_strategy", "target_id": strategy["id"]}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    market_id = _market_pain_point_type_id(client, token, project["id"])
+    resp = client.put(f"{_project_base(project['id'])}/pain-point-types/{market_id}", json={"is_enabled": False},
+                      headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+
+    resp = client.request("DELETE", f"/api/v1/orgs/{org['id']}", json={"confirm_name": org["name"]},
+                          headers=auth_headers(admin_token))
+    assert resp.status_code == 204, resp.text
+
+    ids = [uuid.UUID(x) for x in (strategy["id"], org_strategy["id"], pain_point["id"])]
+    db = SessionLocal()
+    try:
+        assert db.scalars(select(ArtefactLink.id).where(
+            or_(ArtefactLink.source_id.in_(ids), ArtefactLink.target_id.in_(ids))
+        )).all() == []
+        assert db.scalars(select(ProjectPainPointType.id).where(
+            ProjectPainPointType.project_id == uuid.UUID(project["id"])
+        )).all() == []
+    finally:
+        db.close()

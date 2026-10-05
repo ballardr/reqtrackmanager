@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: three pieces of the "New Requirement" creation-flow
@@ -23,7 +23,7 @@ import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
 test.describe("New Requirement split-button trigger", () => {
   test("a plain click opens the create form directly; the chevron reveals Import from CSV", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
     await test.step("a plain click on the main button opens the create form with no menu stop", async () => {
@@ -57,7 +57,7 @@ test.describe("New Requirement split-button trigger", () => {
 test.describe("CSV import wizard: Modal-hosted mapping step and per-field fixed values", () => {
   test("mapping step opens as a Modal, and fixed-value toggles apply one value to every row", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.beta1).click();
+    await openProject(page, PROJECT_NAMES.beta1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
     const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));

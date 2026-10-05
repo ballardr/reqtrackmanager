@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: a unified, filterable timeline of a project's changes
@@ -11,7 +11,7 @@ import { loginAs, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpe
 test.describe("project history / changes-over-time view", () => {
   test("filters by entity type, date range, and optionally includes comments", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
 
     await test.step("post a comment first, so there's something for the include-comments toggle to reveal", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();

@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { openOrgGroupPanel, selectOrgAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, openOrgGroupPanel, selectOrgAdminGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * Job to be done: an org group's SSO-sync sub-section (Phase B, follow-up
@@ -46,6 +49,7 @@ test.describe("org groups: SSO-sync sub-section gating and toggle", () => {
     const org = await (
       await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: authHeaders, data: { name: orgName } })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: authHeaders,
       data: { email: orgAdminEmail, display_name: "SSO Sync Test Admin", password: "OrgAdmin123!", role: "org_admin" },

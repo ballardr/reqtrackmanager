@@ -41,6 +41,7 @@ function mockChangeRequestDetailApis(
   const cr = buildChangeRequest({ id: CR_ID, project_id: PROJECT_ID, ...crOverrides });
   const actionTypes = [buildActionType({ id: "at1", name: "Review" })];
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/my-roles")) return { roles: myRoles };
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles })];
     if (path.endsWith(`/change-requests/${CR_ID}`)) return cr;
     if (path.endsWith("/comments")) return [];
@@ -369,6 +370,7 @@ export const VoteCommentsModal: Story = {
   beforeEach: () => {
     const cr = buildChangeRequest({ id: CR_ID, project_id: PROJECT_ID, status: "submitted", proposed_name: "Add password reset flow" });
     spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/my-roles")) return { roles: ["project_manager"] };
       if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: ["project_manager"] })];
       if (path.endsWith(`/change-requests/${CR_ID}`)) return cr;
       if (path.endsWith("/votes")) {

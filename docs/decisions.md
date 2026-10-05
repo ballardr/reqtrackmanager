@@ -8732,3 +8732,331 @@ was confirmed by re-running them against a frontend built from `HEAD`):
   - Stage-review keeps its earlier root-caused 45s budget, but now runs in
     ~25s instead of ~32s.
   - No other timeouts were raised.
+
+## E2E stability: backend throughput, multi-worker backend, and pagination-proof specs (2026-10-04)
+
+**Root cause (measured, not assumed).** Under the Playwright suite's two
+workers, long multi-step specs exceeded their 30s budget. A Chrome netlog
+showed no hung requests; the single uvicorn process pinned at about one CPU
+core (110–166%, 13 cores available). Each page fires 10–15 API calls, so
+responses stretched from about 0.1s to 3–6s. The pre-Phase-10 code
+(`1a5a4b9`, rebuilt on a fresh database) failed the same way, so this was
+not a Phase 10 regression. The suite also used page-one-of-a-paginated-list
+lookups, which broke as shared e2e data grew.
+
+**Changes:**
+- **Multi-worker backend.** (Decided by: User, choosing option 1 of 3; this
+  reverses the 2026-09-15 deferral recorded in "bcrypt login cost under
+  concurrent load".)
+  - `BACKEND_WORKERS` uvicorn workers, default 4, via
+    `backend/docker-entrypoint.sh`.
+  - Postgres advisory locks (`services/process_coordination.py`): a startup
+    lock serialises migrations/bootstrap/syncs, and leader election means
+    only one process runs the scheduler, digest and disk monitor.
+  - `LISTEN/NOTIFY` fan-out for WebSocket pub/sub.
+  - Prometheus multi-process metrics.
+  - Lock and listener connections are *detached* from the SQLAlchemy pool.
+    A pooled connection's `close()` returns it to the pool and keeps the
+    session, and its lock, alive; the new tests caught this.
+  - Mechanism choices (advisory locks, NOTIFY, default of 4): Decided by:
+    Agent.
+- **N+1 removal.** (Decided by: Agent.)
+  - Requirements list: batched prefetch, 99 → 20 queries for one page, and
+    the count no longer grows with rows.
+  - Project list: batched current-stage lookup, plus a request-scoped RBAC
+    memo (`rbac.memoize_user_lookups`) used only inside read-only
+    `list_projects`.
+  - Role resolution is now batched too (revised later the same day; Decided
+    by: Agent). It was first left per project as too risky to rewrite, but
+    the project list still made ~8 queries per project (547 queries, ~1s
+    per call for a 65-project user). That slow call was what pushed Org
+    Admin's first render past 5s. `rbac.prefetch_project_roles` now loads
+    every listed project's direct roles, inheritance settings and member-
+    source rows in a few bulk queries: 547 → 35 queries, ~1s → ~0.15s.
+    - Single implementation: the one-project resolver now delegates to the
+      bulk one, so there is no second copy of the role rules to drift.
+    - Read-only only: the preloaded values live only inside
+      `memoize_user_lookups`.
+    - Security review (identify → verify → remediate), with tests:
+      - Each listed project's `my_roles` must equal fresh, unbatched
+        resolution across all eight role sources.
+      - Query count must stay flat as projects are added.
+      - Both tests were confirmed to fail when a source is dropped or the
+        preload is removed.
+      - The existing RBAC/hierarchy/group tests pass. Outcome: no
+        regression found.
+- **`GET /projects/{id}/my-roles`.** `useMyProjectRoles` previously
+  downloaded the whole project list to read one project's roles, and
+  returned none on archived projects. (Decided by: Agent.)
+- **Stale-filter race on list pages.** On Requirements, Change Requests and
+  Projects, a reload resuming after an `await` used the pre-await filters
+  and, as the newest request, overwrote filtered results. Fixed with a new
+  shared `useLatest` hook. (Decided by: Agent.)
+- **Spec hardening.** (Decided by: User: "fix them".)
+  - Shared `openProject`/`openRequirementByName` helpers search before
+    clicking (about 70 call sites).
+  - `openRequirementByCode` searches first.
+  - Self-healing setup and cleanup for specs that leaked shared state.
+  - `clickAndAwaitSave` for save-then-reload races.
+  - `workflow-bypass-attempts`' non-waiting `count()` guards removed.
+  - Long specs split or moved to API setup.
+
+**Security review (identify → verify → remediate).**
+- *Identified:* the RBAC memo could serve stale roles if a request mutated
+  membership and then re-checked roles. The new `my-roles` endpoint could
+  leak roles across projects.
+- *Remediated:* the memo is off by default and enabled only around
+  read-only `list_projects`; a test pins that it doesn't apply outside its
+  scope. `my-roles` uses `get_project`'s existing gate
+  (`require_project_view_or_manage`), and tests cover org-admin-without-role
+  (empty), outsiders (refused) and archived projects.
+- *Verified:* no authorization logic changed; role resolution is called the
+  same way, just memoised within one read-only request.
+
+**Tests:**
+- `tests/test_list_query_efficiency.py`: list parity with the detail
+  endpoint, a flat query count, `my-roles`, and memo scope.
+- `tests/test_process_coordination.py`: lock exclusivity, step-down, the
+  election loop, the startup lock, and the NOTIFY round trip.
+- `hooks/useLatest.stories.tsx`.
+
+**Also found and fixed during the follow-up full runs:**
+- **Cleanup moved from `finally` to `afterEach`.** (Decided by: Agent.)
+  - *Problem:* when a test times out, Playwright closes its page before an
+    in-test `finally` can run its API cleanup, so shared state leaked.
+    Five leaked "E2E Bypass Project" grants broke `org-overview.spec.ts`'s
+    exact project count.
+  - *Fix:* new `onCleanup(fn)`/`installCleanupHook()` helpers run API-only
+    cleanup in `afterEach`, which Playwright still runs after a timeout.
+  - *Applied to:* the bypass, stage-review, role-display, project-hierarchy
+    (4), project-list-org-scoping and project-admin-groups-and-fields (3)
+    specs.
+  - *Left as is:* `pelion-v2`, because it only touches its own disposable
+    admin.
+- **Product bug in `DecisionFormModal` and the compliance required-action
+  form.** The type default was read once at mount. If the form opened before
+  the page's types loaded, Save stayed disabled permanently. Both forms now
+  adopt the first type when it arrives, covered by a story that fails
+  without the fix.
+- **`org-admin-manage-users-modal` race.** An unconditional `Escape` after
+  revoking a user's only role sometimes closed the whole modal, because the
+  row and its dropdown had already unmounted.
+- **`requirement-and-action-restore`.** List checks are now scoped by search.
+  Before, the "it's gone" assertion could pass just because the row was off
+  page one.
+- **Change-requests list search.** (Decided by: User: "add search to the
+  page, as it should have one".) `GET /change-requests?search=` is a
+  case-insensitive match on proposed name, reason, and the target
+  requirement's name/code, with one batched lookup. The page uses the shared
+  `FilterPanel` search box. The docs site already claimed this list was
+  searchable; now it is. Specs use `searchChangeRequests` instead of
+  assuming page one.
+- **Org Overview counts active items only.** (Decided by: Agent.) Project and
+  requirement counts now exclude archived projects and requirements, so a
+  member's "Projects" figure matches their own project list. File size still
+  includes archived files, since they still use storage.
+- **`ActionMenu` keyed by label, not index.** When Org Admin added "Rename"
+  to its open menu after settings loaded, the "Export" button inherited
+  Rename's click handler. (Decided by: Agent.)
+- **Display-name lock updates its row in place**, with a toast, instead of
+  reloading the whole Org Admin page (about 15 requests). The reload
+  re-rendered the users table and closed any menu just reopened, and the
+  action had no feedback. (Decided by: Agent.)
+- **Component create returned a 500 on a duplicate prefix.** It now returns
+  400, like rename and category create.
+- **Shared-org interference.** `project-visibility` and `org-overview` now
+  use their own disposable org or member, instead of mutating or counting
+  the shared Alpha org that parallel specs touch.
+- **Spec races.** Component/category creates and display-name lock toggles
+  are now awaited, and change-request "Submit" lookups use exact matching.
+- **Follow-up full runs (same day).** Each failure was traced to a root
+  cause, not retried. (Decided by: Agent unless noted.)
+  - `user-directory-and-bans` deactivated and banned the shared `orphan`
+    persona that four other specs log in as, so their logins got a 401 when
+    run in parallel; a timeout once left it deactivated for good. It now uses
+    its own throwaway orphaned account, and checks permissions through the
+    API instead of extra UI logins.
+  - `csv-import-wizard` exported every requirement in Beta-2 and re-imported
+    them all, doubling the project on each run (1,022 requirements when
+    found). Both CSV tests now use a throwaway project. A new shared helper,
+    `createDisposableProject`, archives it afterwards and is also used by
+    `project-admin-structural` and `workflow-bypass-attempts`.
+  - The compliance Standards view-toggle test assumed the default tiles
+    view. It's a saved per-user preference, which an interrupted run had
+    left on "list". The test now selects its view explicitly and resets
+    the preference in a cleanup step that runs even on timeout.
+  - The Actions list had no guard against out-of-order responses. A slow
+    earlier load could overwrite the "Include archived" results. It now has
+    the same guard as the other list pages, with a story proving it.
+  - Org Admin fetched every project in every org the user belongs to, then
+    filtered to this org. It now asks the server for this org only.
+  - `workflow-bypass-attempts` was trimmed from 18s to 7s by moving setup,
+    stage approval and the archive-and-recreate check to the API, and
+    removing a change-request step that never ran. The UI checks under test
+    are kept.
+  - `loginAs` now waits for the login response, so a slow (bcrypt) login
+    isn't reported as a missing "Sign out" button, and a rejected login
+    names the account and HTTP status.
+  - The leader-lock tests failed in the full suite because the session-wide
+    test client holds the real leader lock. `LeaderLock` now takes its key
+    as a parameter, and the tests use random keys.
+  - `pain-point-scoring` now deletes its throwaway org. About 30 other specs
+    still leave one org behind per run (281 orgs in the test database). This
+    only clutters the server admin's org directory; no spec depends on it.
+    Raised with the user rather than changed in bulk.
+  - The change-request list had no default order, so rows came back in
+    whatever order Postgres chose. "Load more" pages could repeat or skip
+    rows, and a new request could land anywhere. It now defaults to newest
+    first, which also breaks ties when sorting by a column (Decided by:
+    Agent). `test_sorting.py` had pinned the old default as "unchanged"
+    (insertion order); that order was only ever incidental, so the test now
+    asserts newest-first. Oldest-first would also be deterministic, but it
+    would put a new request on the last page. Its sort test
+    now narrows to its own two rows by search before sorting. The list
+    keeps growing, so the "ZZZ…" row was falling off page one.
+  - The Action detail page found its linked requirements by fetching every
+    requirement's action list: one request per requirement, about 130 on
+    Alpha-1. Those requests were still running after navigating away and
+    used up the browser's ~6 connections per host, which stalled the next
+    page. New endpoint `GET /projects/{id}/actions/{action_id}/requirements`
+    returns them in one call; it is project-scoped and excludes archived
+    requirements, as the page did before. The action list's per-row comment
+    counts are now one batched query (`engagement.get_comment_counts`, also
+    reused by the requirements list).
+  - More page-one lookups, all now search-first:
+    - `project-hierarchy`: the label check and `openProjectByName`.
+    - `org-compliance-view`: `assignStandard`.
+    - `single-org-admin`: also archives the Gamma project it creates on
+      every run. Its "Alpha/Beta are invisible" check now searches each
+      name, since absence from page one alone proved nothing.
+    - `org-group-nesting`: searches the 20-per-page groups table. There is
+      no endpoint to delete an org group, so its test groups can't be
+      cleaned up. Raised with the user as a product gap.
+  - `decision-lifecycle` read the detail page while the list page was still
+    unmounting after the URL change, so "Superseded" matched three elements.
+    It now waits for the list's table to go first.
+  - **Org merge-import returned a 500 for any bundle with requirement
+    attachments** (found 2026-10-05 merging the exported Alpha org back
+    in). There were two bugs:
+    - `import_bundled_file` didn't flush the re-uploaded `FileAsset`, so the
+      attachment link was written with a null `file_id`. It now flushes.
+    - `RequirementFile.created_at` and `RequirementActionFile.created_at`
+      had no default, and the importer never set them. Both now default to
+      `utcnow`. This is a Python-side default only, so no migration is
+      needed.
+    - Regression test: `test_merge_and_import_carry_requirement_attachments`.
+      It fails without either fix.
+    - The existing import tests never had attachments, which is why neither
+      bug was caught.
+    - Polluted-data check (user request): the exported Alpha/Beta/Gamma
+      bundles were merged back into their seeded orgs, with every conflict
+      imported as a copy. The test database was snapshotted first. The orgs
+      went to 73/69/96 active projects and the full suite was rerun against
+      that data.
+
+## Org groups are deletable; e2e specs delete their throwaway orgs (2026-10-05)
+
+- **Org group deletion.** (Decided by: User: "Yes org groups should be
+  deletable".) New endpoint `DELETE /orgs/{id}/groups/{group_id}`, org-
+  admin only and tenant-scoped (404 for another org's group). Memberships,
+  nesting links and every role the group carried cascade with it.
+  - No floor check is needed (Decided by: Agent). The C-U-08 project-
+    manager floor counts only direct grants and a project group's direct
+    user members (`rbac._direct_project_managers`). The last-org-admin floor
+    counts direct admins only. Neither counts anything an org group carries,
+    so deleting one can't take either floor below one. A guard copied from
+    `delete_project_group` was written first and then removed, because it
+    could never fire. A test pins the property instead: deleting a group
+    that grants Project Manager, through a nested group, leaves the
+    project's real manager in place.
+  - Module veto: new generic `ModuleDefinition.validate_org_group_deletion`
+    hook (`run_org_group_deletion_hooks`). Compliance implements it to block
+    deleting its fallback compliance-managers group while a standard relies
+    on it, since the setting's foreign key is `ON DELETE SET NULL` and would
+    otherwise silently drop that floor. Core imports no module code.
+  - UI: the group's side panel gets "Delete group", confirmed with the same
+    Tier 1 `ConfirmDialog` and toast as project groups, and refusals show
+    the server's reason as an error toast. Tier 1 rather than Tier 2
+    (Decided by: Agent) for consistency with project-group deletion, the
+    same operation one level down.
+  - Audit: `org_group`/`deleted`, recording the name, member count and
+    granted org role.
+  - Security review (identify → verify → remediate):
+    - Authorization: org admin only, tenant-scoped (tested).
+    - Floors: the project-manager floor is unaffected by design (tested)
+      and the Compliance fallback group is protected (tested).
+    - Audit logging: present (tested).
+    - No Restricted-classified data is returned.
+    - Outcome: no regression found.
+- **Throwaway orgs deleted after each test.** (Decided by: User.) About 30
+  specs left one org behind per run (281 in the test database). A new
+  helper, `deleteOrgOnCleanup`, deletes an org after the test via
+  `onCleanup` (runs even on timeout):
+  - It targets the org by id, or by a name fragment unique to the run for
+    orgs created via the UI, signup or import.
+  - It reads the org's current name at cleanup time, since deletion must
+    confirm the name and one spec renames its org.
+  - It refuses short fragments and never deletes the seeded orgs.
+  - Every spec that creates an org now calls it; `org-group-nesting` also
+    deletes its groups through the new UI.
+- **Deleting an org with module data failed (500)**, found because specs
+  now delete their orgs (Decided by: Agent). There were two causes:
+  - `ArtefactLink` endpoints are polymorphic UUIDs with no foreign key, so
+    links touching the org's artefacts were never removed, and one that
+    used an org link type blocked that link type's deletion. A new generic
+    `ModuleDefinition.artefact_ids_in_organization` hook gives each module's
+    artefacts in an org (`get_module_artefact_ids_in_organization`);
+    Decisions, Context & Strategy and Compliance implement it.
+    `org_deletion` now removes every link touching those or core artefacts,
+    or using the org's link types. Polymorphic comments and subscriptions on
+    actions and module artefacts are swept too; they were silently
+    orphaned before.
+  - Postgres's cascade order between the org's projects and its org-level
+    definitions isn't fixed. Reaching Context & Strategy's pain-point type
+    definitions first set a project override's `org_type_id` to null,
+    which its CHECK constraint rejects. Making that FK `CASCADE` was tried
+    and reverted: pain points referencing the override then blocked it
+    instead. `org_deletion` now deletes the org's projects explicitly first,
+    which fixes the order without any module-specific code.
+  - Tests: `test_delete_succeeds_with_typed_requirement_links_and_action_comments`
+    and the Context & Strategy
+    `test_deleting_the_org_removes_its_artefact_links_and_type_overrides`.
+    The first fails without the link sweep.
+- **Out-of-order list responses: one shared guard.** Server Management's
+  users list and Org Admin's users and groups tables had no guard. Switching
+  a view and then searching fired two loads, and the older one could land
+  last; this was user-directory-and-bans's failure. A new hook,
+  `useRequestSequence`, now guards all of these pages (with stories);
+  Requirements, Change Requests, Projects and Actions had their own inline
+  copies, which now use the hook as well.
+- `org-security-controls` toggled the Stale filter without waiting or
+  asserting anything, so its late reload could re-render the next step's
+  row menu shut. Each toggle now waits for its own response, and the Stale
+  filter is actually asserted.
+- **Org-wide compliance dashboard listings batched** (Decided by: Agent).
+  With the merged polluted data, the five dashboard endpoints made 200 to
+  1,000 queries each, about 5 per assignment plus one per requirement row
+  for outstanding actions. Fired together under suite load, they kept
+  `org-compliance-view` from ever reaching network-idle.
+  `ComplianceVersionCache.preload_organization` now loads the whole org's
+  data in about six queries: active assignments, versions, standards,
+  requirements, assessment rows and scheduled reviews. Every project is
+  then walked from memory. Single-project callers are unchanged, since
+  without a preload each accessor queries on first use. Outstanding
+  actions loads each assignment's assessments in one query.
+  - On the merged data: 768 → 14 queries and 0.56s → 0.15s for
+    non-compliant requirements (pending approvals and reviews-due are the
+    same), and 1,030 → 164 queries and 0.77s → 0.29s for outstanding
+    actions.
+  - A test pins the cost of an extra project at one query or fewer. It
+    fails without the preload.
+- **Concurrent requirement/action creates got the same code (500)**
+  (Decided by: Agent). Found when two specs created requirements in the
+  same project at once: both got the same code, HW-FN-311, and the second
+  hit the unique `(project_id, unique_code)` constraint. The two legacy
+  counters, `next_requirement_seq` and `next_action_seq`, read and
+  incremented without a lock, unlike `services.sequences`, which locks the
+  project row. Both now lock the row and re-read the counter first: the
+  in-memory `Project` may have been loaded before the lock, so its value
+  can be stale. The two-transaction race test fails without the lock.
+

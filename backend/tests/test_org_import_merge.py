@@ -374,3 +374,46 @@ def test_merge_rejects_a_bundle_of_the_wrong_kind(client, admin_token, org_id):
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 400
+
+
+def test_merge_and_import_carry_requirement_attachments(client, admin_token):
+    """A bundle whose requirements have attachments merges (and imports as a
+    new org) with each attachment linked to a real file. Merging used to 500:
+    the re-uploaded file wasn't flushed, so its link got a null `file_id`
+    (found 2026-10-05 merging a real exported org)."""
+    source_org, source_token = create_org_admin_in(client, admin_token, "Merge Attachment Source")
+    project = create_project(client, source_token, source_org["id"], name="Attachment Project")
+    component_id, category_id = create_component_and_category(client, source_token, project["id"])
+    requirement = client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={"name": "Has attachment", "component_id": component_id, "category_id": category_id},
+        headers=auth_headers(source_token),
+    ).json()
+    upload = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
+        files={"file": ("spec.txt", b"attached content", "text/plain")}, headers=auth_headers(source_token),
+    )
+    assert upload.status_code == 201, upload.text
+    bundle_bytes = _export(client, source_token, source_org["id"])
+
+    def assert_attachment_survived(token, organization_id):
+        projects = client.get(f"/api/v1/projects?organization_id={organization_id}", headers=auth_headers(token)).json()
+        imported = next(p for p in projects if p["name"] == "Attachment Project")
+        requirements = client.get(f"/api/v1/projects/{imported['id']}/requirements", headers=auth_headers(token)).json()
+        files = client.get(
+            f"/api/v1/projects/{imported['id']}/requirements/{requirements[0]['id']}/files", headers=auth_headers(token),
+        ).json()
+        assert [f["filename"] for f in files] == ["spec.txt"]
+        download = client.get(f"/api/v1/files/{files[0]['id']}", headers=auth_headers(token))
+        assert download.status_code == 200 and download.content == b"attached content"
+
+    target_org, target_token = create_org_admin_in(client, admin_token, "Merge Attachment Target")
+    resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={})
+    assert resp.status_code == 200, resp.text
+    assert_attachment_survived(target_token, target_org["id"])
+
+    imported = client.post(
+        "/api/v1/orgs/import", data={"name": "Imported Attachment Org"},
+        files={"file": ("bundle.zip", bundle_bytes, "application/zip")}, headers=auth_headers(admin_token),
+    )
+    assert imported.status_code in (200, 201), imported.text

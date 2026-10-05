@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { PASSWORD, loginAs, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -73,6 +76,7 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a St
         data: { name: orgName },
       })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/users`, {
       headers: serverAdminHeaders,
       data: { email: adminEmail, display_name: "E2E Context Strategy Admin", password: PASSWORD, role: "org_admin" },

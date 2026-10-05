@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openRequirementByName, PERSONAS } from "./helpers";
+import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Archiving a requirement used to fire immediately with no confirmation at
@@ -17,7 +17,7 @@ test.describe("requirement archive: confirmation dialog", () => {
   test("cancel leaves it active; confirm archives and returns to the list", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: /Alpha-1/ }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
     const name = `E2E Archive Confirm ${Date.now()}`;

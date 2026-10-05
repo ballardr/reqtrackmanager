@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: `RequirementsPage`'s list/table view supports selecting
@@ -39,7 +39,7 @@ test.describe("requirements list: bulk operations", () => {
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.alpha1, exact: true }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
 
     await test.step("add a second stage to move requirements into later", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();

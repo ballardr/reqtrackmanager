@@ -88,6 +88,7 @@ import { installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
+import { useRequestSequence } from "../hooks/useRequestSequence";
 
 /**
  * The 7 resource-menu groups Org Admin's previous 15 flat accordions were
@@ -250,6 +251,8 @@ export function OrgAdminPage() {
   type OrgGroupSortKey = "name";
   const [groupSort, setGroupSort] = useState<SortState<OrgGroupSortKey> | null>(null);
   const [openOrgGroupId, setOpenOrgGroupId] = useState<string | null>(null);
+  // Org group pending deletion in its Tier 1 `ConfirmDialog`, or null.
+  const [deletingOrgGroupId, setDeletingOrgGroupId] = useState<string | null>(null);
   // Per-group SSO-sync enable/disable toggle (Phase B bug-fix pass) —
   // `undefined` means "not yet touched this session," in which case the
   // checkbox's displayed state derives from `idp_synced_group_name != null`
@@ -421,8 +424,8 @@ export function OrgAdminPage() {
   const [aiApprovalsAckPending, setAiApprovalsAckPending] = useState(false);
   const [aiApprovalsAckChecked, setAiApprovalsAckChecked] = useState(false);
   // Guards the advanced-settings form fields above against `reload()` —
-  // called after every unrelated mutation on this page (e.g.
-  // `toggleDisplayNameLock`) and not awaited by its caller, so it can
+  // called after many unrelated mutations on this page (e.g. deleting a
+  // shared resource) and not awaited by its caller, so it can
   // still be mid-flight when the user edits and saves this form right
   // after triggering one of those other actions. Without this, a slow
   // `reload()`'s own advanced-settings fetch resolving *after* the user's
@@ -532,10 +535,16 @@ export function OrgAdminPage() {
     return { stale: userFilterStale, no2fa: userFilterNo2fa, noAccess: userFilterNoAccess, role: userRoleFilter };
   }
 
+  // Only the newest users/groups load applies its response: filter and
+  // search changes fire overlapping loads (2026-10-05).
+  const beginUsersLoad = useRequestSequence();
+  const beginGroupsLoad = useRequestSequence();
+
   async function loadUsers(
     filters: UserFilters, search: string, offset: number, append: boolean, sort: typeof userSort = userSort
   ) {
     if (!orgId) return;
+    const isLatest = beginUsersLoad();
     function query(includeFilter: boolean) {
       const params = new URLSearchParams({ limit: String(USERS_PAGE_SIZE), offset: String(offset) });
       if (includeFilter) {
@@ -553,6 +562,7 @@ export function OrgAdminPage() {
     }
     try {
       const page = await api.getPage<OrgUser>(`/api/v1/orgs/${orgId}/users?${query(true)}`);
+      if (!isLatest()) return;
       setUsers((prev) => (append ? [...prev, ...page.items] : page.items));
       setUsersTotal(page.total);
     } catch (err) {
@@ -560,6 +570,7 @@ export function OrgAdminPage() {
       // list (search/pagination alone stay available to them either way).
       if (err instanceof ApiError && err.status === 403) {
         const page = await api.getPage<OrgUser>(`/api/v1/orgs/${orgId}/users?${query(false)}`);
+        if (!isLatest()) return;
         setUsers((prev) => (append ? [...prev, ...page.items] : page.items));
         setUsersTotal(page.total);
       } else {
@@ -588,10 +599,12 @@ export function OrgAdminPage() {
     search: string, offset: number, append: boolean, sort: typeof groupSort = groupSort
   ) {
     if (!orgId) return;
+    const isLatest = beginGroupsLoad();
     const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
     if (sort) params.set("order", sort.direction);
     const page = await api.getPage<OrgGroup>(`/api/v1/orgs/${orgId}/groups?${params.toString()}`);
+    if (!isLatest()) return;
     setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
     setGroupsTotal(page.total);
   }
@@ -619,7 +632,9 @@ export function OrgAdminPage() {
         // the Groups section's own search/page state (see `allGroups`).
         api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`),
         api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`),
-        api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
+        // Scoped to this org server-side: only its projects are used below,
+        // and the unscoped list spanned every org the caller belongs to.
+        api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${orgId}`),
         api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
         api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
         api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${orgId}/link-types`),
@@ -1675,6 +1690,22 @@ export function OrgAdminPage() {
     reload();
   }
 
+  /** Deletes an org group after confirmation, closing its panel. A refusal
+   * (a module relies on the group) is shown as an error toast with the
+   * server's reason. */
+  async function deleteOrgGroup(groupId: string) {
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}`);
+      setDeletingOrgGroupId(null);
+      if (openOrgGroupId === groupId) setOpenOrgGroupId(null);
+      showToast(strings.admin.groupDeleted);
+      reload();
+    } catch (err) {
+      setDeletingOrgGroupId(null);
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   async function removeGroupMember(groupId: string, userId: string) {
     await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${userId}`);
     reload();
@@ -1951,11 +1982,20 @@ export function OrgAdminPage() {
     reload();
   }
 
+  /** Toggles one user's display-name lock and updates just that row, with a
+   * toast — not a full `reload()`, which refetched the whole page (~15
+   * requests) and re-rendered the users table, closing any menu the admin
+   * had just reopened (found 2026-10-04 via the e2e suite). */
   async function toggleDisplayNameLock(user: OrgUser) {
-    await api.put(`/api/v1/orgs/${orgId}/users/${user.user_id}/display-name-lock`, {
-      display_name_locked: !user.display_name_locked,
-    });
-    reload();
+    const locked = !user.display_name_locked;
+    try {
+      await api.put(`/api/v1/orgs/${orgId}/users/${user.user_id}/display-name-lock`, { display_name_locked: locked });
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+      return;
+    }
+    setUsers((prev) => prev.map((u) => (u.user_id === user.user_id ? { ...u, display_name_locked: locked } : u)));
+    showToast(strings.orgAdmin.displayNameLockSaved(user.display_name, locked));
   }
 
   /** Users table Actions column, "Remove from {org}" (PR6 of the members/
@@ -3101,10 +3141,28 @@ export function OrgAdminPage() {
                     ) : (
                       <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.ssoNotConfiguredHint(orgLabel)}</span>
                     )}
+                    <button
+                      className="btn btn-danger"
+                      style={{ alignSelf: "flex-start" }}
+                      onClick={() => setDeletingOrgGroupId(g.id)}
+                    >
+                      <Trash2 size={14} /> {strings.admin.deleteGroup}
+                    </button>
                   </div>
                 </SidePanel>
               );
             })()}
+            {deletingOrgGroupId && (
+              <ConfirmDialog
+                title={strings.admin.deleteGroupTitle(
+                  (groups.find((x) => x.id === deletingOrgGroupId) ?? allGroups.find((x) => x.id === deletingOrgGroupId))?.name ?? ""
+                )}
+                message={strings.orgAdmin.deleteGroupMessage}
+                confirmLabel={strings.admin.deleteGroup}
+                onConfirm={() => deleteOrgGroup(deletingOrgGroupId)}
+                onCancel={() => setDeletingOrgGroupId(null)}
+              />
+            )}
           </div>
         )}
 

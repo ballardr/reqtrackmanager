@@ -144,3 +144,48 @@ def test_plain_member_file_size_scoped_to_org_resources_and_accessible_attachmen
     expected_visible_total = org_resource["size_bytes"] + visible_attachment["size_bytes"]
     assert member_stats["total_file_size_bytes"] == expected_visible_total
     assert admin_stats["total_file_size_bytes"] > member_stats["total_file_size_bytes"]
+
+
+def test_archived_projects_and_requirements_are_not_counted(client, admin_token, org_id):
+    """Project/requirement counts cover active items only, matching the
+    lists they summarise (2026-10-04): a member's "Projects" figure used to
+    include archived projects their own project list hides."""
+    active = create_project(client, admin_token, org_id, name="Overview Active Project")
+    archived = create_project(client, admin_token, org_id, name="Overview Archived Project")
+    first_requirement = _create_requirement(client, admin_token, active["id"])
+    # A second requirement in the same project reuses that project's
+    # component/category (the helper creates fresh ones each call).
+    first = client.get(f"/api/v1/projects/{active['id']}/requirements/{first_requirement}",
+                       headers=auth_headers(admin_token)).json()
+    resp = client.post(f"/api/v1/projects/{active['id']}/requirements", json={
+        "name": "To archive", "component_id": first["component_id"], "category_id": first["category_id"],
+    }, headers=auth_headers(admin_token))
+    assert resp.status_code == 201, resp.text
+    archived_requirement = resp.json()["id"]
+    _create_requirement(client, admin_token, archived["id"])
+
+    member_email = "archive_scope_member@example.com"
+    member_id = create_org_user(client, admin_token, org_id, member_email, role="member")
+    for project in (active, archived):
+        _assign_project_role(client, admin_token, project["id"], member_id, role="member")
+    member_token = login(client, member_email, "Password123!")
+
+    def stats(token):
+        return client.get(f"/api/v1/orgs/{org_id}/overview-stats", headers=auth_headers(token)).json()
+
+    admin_before = stats(admin_token)
+    assert stats(member_token)["project_count"] == 2
+
+    # Requirements are archived (never hard-deleted) via DELETE.
+    resp = client.delete(
+        f"/api/v1/projects/{active['id']}/requirements/{archived_requirement}", headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 204, resp.text
+    assert client.post(f"/api/v1/projects/{archived['id']}/archive", headers=auth_headers(admin_token)).status_code == 200
+
+    member_after = stats(member_token)
+    assert (member_after["project_count"], member_after["requirement_count"]) == (1, 1)
+    admin_after = stats(admin_token)
+    assert admin_after["project_count"] == admin_before["project_count"] - 1
+    # One archived requirement, plus the one inside the archived project.
+    assert admin_after["requirement_count"] == admin_before["requirement_count"] - 2

@@ -1212,6 +1212,13 @@ export interface RequirementLink {
  * requirement<->action linking endpoints). Never hard-deleted, only
  * archived (mirrors `Requirement.is_archived`).
  */
+/** A requirement an action is linked to (`GET .../actions/{id}/requirements`). */
+export interface LinkedRequirement {
+  id: string;
+  unique_code: string;
+  name: string;
+}
+
 export interface RequirementAction {
   id: string;
   project_id: string;
