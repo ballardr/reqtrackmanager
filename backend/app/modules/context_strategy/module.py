@@ -323,6 +323,17 @@ _PAIN_POINT_CREATE_PARAMS = [
     {"name": "priority", "type": "string", "required": False, "in": "body", "description": "One of: low, medium, high."},
     {"name": "date_identified", "type": "string", "required": False, "in": "body",
      "description": "ISO date identified; defaults to today if omitted."},
+    {"name": "is_intentional", "type": "boolean", "required": False, "in": "body",
+     "description": "True for a deliberate limitation (e.g. a lower-tier restriction that drives upgrades); "
+                    "scored but excluded from fix rankings by default. On update, omit to leave unchanged."},
+]
+
+_PAIN_POINT_SCORING_QUERY_PARAMS = [
+    {"name": "model_key", "type": "string", "required": False, "in": "query",
+     "description": "Scoring model: sxf (Severity x Frequency), sxc (Severity x Confidence) or sxfxc; "
+                    "defaults to the project's configured default."},
+    {"name": "rollup", "type": "string", "required": False, "in": "query",
+     "description": "How per-persona scores combine: weighted_average (default), worst_case or average."},
 ]
 
 _PAIN_POINT_UPDATE_PARAMS = [
@@ -457,6 +468,33 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             name="update_pain_point", description="Updates a Pain Point's content.", method="PUT",
             path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-points/{{pain_point_id}}",
             params=[_PROJECT_ID_PARAM, _id_param("pain_point", "The Pain Point to update."), *_PAIN_POINT_UPDATE_PARAMS],
+        ),
+        McpToolDefinition(
+            name="list_pain_point_scores",
+            description="Lists every Pain Point's persona-rolled-up score and Blocker flag under a scoring model.",
+            method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-point-scores",
+            params=[_PROJECT_ID_PARAM, *_PAIN_POINT_SCORING_QUERY_PARAMS],
+        ),
+        McpToolDefinition(
+            name="get_pain_point_scores",
+            description="Fetches a Pain Point's per-persona scores, roll-up and the personas it can be scored against.",
+            method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-points/{{pain_point_id}}/scores",
+            params=[_PROJECT_ID_PARAM, _id_param("pain_point", "The Pain Point to read scores for."),
+                    *_PAIN_POINT_SCORING_QUERY_PARAMS],
+        ),
+        McpToolDefinition(
+            name="set_pain_point_scores",
+            description=(
+                "Replaces a Pain Point's scores. Each entry is {target_id (a persona id, or null for all "
+                "personas), severity_level_id, frequency_level_id, confidence_level_id}; level ids come from "
+                "the project's pain_point scoring scheme. Use all-personas OR per-persona entries, not both."
+            ),
+            method="PUT", path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-points/{{pain_point_id}}/scores",
+            params=[
+                _PROJECT_ID_PARAM, _id_param("pain_point", "The Pain Point to score."),
+                {"name": "scores", "type": "array", "required": True, "in": "body",
+                 "description": "The full replacement list of score entries (empty clears all scores)."},
+            ],
         ),
         McpToolDefinition(
             name="create_guiding_principle", description="Creates a new Guiding Principle in Draft status.",

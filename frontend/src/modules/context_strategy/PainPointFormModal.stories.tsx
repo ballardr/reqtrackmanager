@@ -45,6 +45,20 @@ export const SubmitsNewPainPoint: Story = {
   },
 };
 
+/** The intentional-limitation switch defaults off and is saved when flipped. */
+export const MarksAnIntentionalLimitation: Story = {
+  play: async ({ args }) => {
+    const body = within(document.body);
+    const toggle = body.getByRole("switch", { name: "Intentional limitation" });
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await userEvent.selectOptions(body.getByLabelText("Type"), "type-market");
+    await userEvent.type(body.getByLabelText("Pain Point title"), "Export limited to 100 rows on Standard");
+    await userEvent.click(toggle);
+    await userEvent.click(body.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ is_intentional: true })));
+  },
+};
+
 export const SaveDisabledUntilRequiredFieldsFilled: Story = {
   play: async () => {
     const body = within(document.body);
@@ -64,7 +78,7 @@ export const EditExistingOffersDisabledCurrentType: Story = {
       creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
       title: "Report delays under poor connectivity", description: "Field reports queue for days.",
       source: "Operator interviews", impact: "Decisions are made on stale data.", evidence: "12 reports last month.",
-      priority: "high", status: "submitted", owner_id: null, date_identified: "2026-01-05", is_locked: false,
+      priority: "high", status: "submitted", owner_id: null, date_identified: "2026-01-05", is_intentional: false, is_locked: false,
       created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
     } satisfies PainPoint,
   },

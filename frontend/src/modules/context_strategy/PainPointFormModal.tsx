@@ -22,6 +22,7 @@ import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { ToggleSwitch } from "../../components/ToggleSwitch";
 import { PAIN_POINT_PRIORITY_LABEL } from "./types";
 import type { EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority } from "./types";
 
@@ -53,6 +54,7 @@ export function PainPointFormModal({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [priority, setPriority] = useState<PainPointPriority>(initial?.priority ?? "medium");
   const [dateIdentified, setDateIdentified] = useState(initial?.date_identified ?? "");
+  const [isIntentional, setIsIntentional] = useState(initial?.is_intentional ?? false);
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof PainPoint] as string | undefined) ?? ""]))
   );
@@ -67,6 +69,7 @@ export function PainPointFormModal({
       title,
       priority,
       date_identified: dateIdentified || null,
+      is_intentional: isIntentional,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
     } as PainPointFieldValues);
   }
@@ -106,6 +109,13 @@ export function PainPointFormModal({
             onChange={(e) => setDateIdentified(e.target.value)} aria-label="Date identified"
           />
         </label>
+        <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+          <ToggleSwitch checked={isIntentional} onChange={setIsIntentional} label="Intentional limitation" />
+          <span>
+            Intentional limitation
+            <span className="text-muted"> — a deliberate restriction (e.g. in a lower tier). Scored, but kept out of fix rankings.</span>
+          </span>
+        </div>
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel}>Cancel</button>

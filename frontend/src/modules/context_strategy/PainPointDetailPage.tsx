@@ -40,6 +40,10 @@
  *    difference in *who the backend accepts* (any member for upload, manager
  *    only for removal) is real — nothing on this page needs to encode it.
  *
+ * Phase 11 adds `PainPointScoringPanel` (per-persona Severity/Frequency/
+ * Confidence scoring and the chosen-when-viewing roll-up) and an
+ * "Intentional" badge for deliberate limitations.
+ *
  * **Owner assignment via a dedicated `AssigneePicker`, not a
  * `PainPointFormModal` field (Decided by: Agent)** — see `types.ts`'s own
  * docstring on `PainPointFieldValues` for why. This page loads this
@@ -63,6 +67,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
 import { PainPointRelationshipsSection } from "./PainPointRelationshipsSection";
+import { PainPointScoringPanel } from "./PainPointScoringPanel";
 import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
 import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFieldValues } from "./types";
 
@@ -211,8 +216,11 @@ export function PainPointDetailPage() {
       <Link to={`/projects/${projectId}/modules/context_strategy/pain-points`}>← Pain Point</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{painPoint.title}</h1>
-        <span className={`badge badge--${PAIN_POINT_STATUS_TONE[painPoint.status]}`}>
-          {PAIN_POINT_STATUS_LABEL[painPoint.status]}
+        <span className="row" style={{ gap: "0.5rem" }}>
+          {painPoint.is_intentional && <span className="badge badge--info">Intentional</span>}
+          <span className={`badge badge--${PAIN_POINT_STATUS_TONE[painPoint.status]}`}>
+            {PAIN_POINT_STATUS_LABEL[painPoint.status]}
+          </span>
         </span>
       </div>
       <div className="stack">
@@ -269,6 +277,8 @@ export function PainPointDetailPage() {
             {painPoint.is_archived ? "Unarchive" : "Archive"}
           </button>
         </div>
+
+        <PainPointScoringPanel projectId={projectId} painPointId={painPoint.id} locked={painPoint.is_locked} />
 
         <PainPointRelationshipsSection projectId={projectId} painPoint={painPoint} />
 

@@ -9318,3 +9318,87 @@ Tests: 11 backend tests in `test_persona_visibility.py` (basics, scope/tenancy, 
 CI's Playwright run failed three tests: `org-overview.spec.ts` "ResourceMenu chrome is hidden with compliance disabled…" and two `standard-applicability-defaults.spec.ts` tests. Root cause was one test, not three. The org-overview spec toggled Compliance off in the shared seed org Gamma and expected the Overview `ResourceMenu` to have a single group; but the E2E seed enables Stakeholders & Personas on Gamma (Module 2), whose org overview sections add groups, so `.resource-menu-nav` stayed (expected 0, received 1). The test then failed *before* its restore step, leaving Compliance "off" in Gamma: its retry read `off` as the starting state, and the later compliance specs, which create standards in Gamma, could not. It passed locally only because the long-lived local database had been seeded before the module was enabled on Gamma.
 
 Fix (**Decided by: Agent**): the spec now runs in a disposable org (module-free apart from Compliance, deleted by `deleteOrgOnCleanup`), so it neither depends on which modules a seed org has nor can leave shared state mutated if it fails. Verified twice back to back. A fresh-DB local reproduction was not done; the cause is established from the CI log (the `Expected: 0 / Received: 1` failure, the retry reading `off`, and the module's `orgOverviewSections`).
+
+
+## Module 1 (Context & Strategy) Phase 11 — per-persona Pain Point scoring and the intentional flag (2026-10-05)
+
+Pain Points can now be rated per persona on Severity, Frequency and
+Confidence, and rolled up under a model and persona roll-up chosen when
+viewing; deliberate tier limitations are flagged `is_intentional`. New:
+`PainPointScore` table and `pain_points.is_intentional` (module migration
+0064); `pain_point_scores.py` (validation, roll-up maths); three project
+endpoints (`GET .../pain-point-scores`, `GET`/`PUT .../pain-points/{id}/
+scores`); the scheme's `count_level_usage`/`reassign_level_usage` hooks;
+three MCP tools (`list_pain_point_scores`, `get_pain_point_scores`,
+`set_pain_point_scores`) plus `is_intentional` on create/update; a scoring
+panel on the detail page, Score/Blocker columns, a model/roll-up switcher
+and a "Hide intentional limitations" filter on the list; both seed scripts.
+Personas are read only through `registry.get_scoring_targets`, never by
+importing Module 2.
+
+Decisions (the Phase 9 rules are in the plan; these are the build-time
+calls):
+- **Scoring is manager-tier** (`pain_point_manager`, 409 once the Pain
+  Point is locked); reads are open to anyone who can see Pain Points.
+  (Decided by: Agent.) *Why:* creating a Pain Point is deliberately broad,
+  but ranking drives prioritisation.
+- **A persona with no weight among weighted personas gets the mean of the
+  set weights**; if none are weighted, all are equal. (Decided by: Agent.)
+  *Why:* a missing weight should neither dominate nor drop out.
+- **Retired personas stay visible but are skipped by the roll-up and the
+  Blocker flag; a persona the provider no longer lists (deleted, hidden,
+  Module 2 off) is "unavailable": it still counts, unweighted and
+  unlabelled, and the response says `personas_degraded`.** (Decided by:
+  Agent, implementing the plan's "degrades to all-personas display".)
+- **A retired persona can't be newly scored; entries with no level chosen
+  are dropped** rather than stored as empty rows. (Decided by: Agent.)
+- **`is_intentional` on update is `null` = unchanged**, so owner assignment
+  and other partial edits can't reset it. (Decided by: Agent.)
+- **The `intentional_in`/`removed_by` Tier relationships are not built**;
+  they stay reserved until Module 13, the same way Phase 6 handled Decision
+  targets. (Decided by: User, Phase 9 Q9/Q10.)
+- **No org bundle export of scores.** Context & Strategy has no bundle hooks
+  at all yet, so nothing exports Pain Points; when it gets them, scores must
+  map levels by axis + name (Phase 10 note). (Decided by: Agent.)
+- **Nested projects:** `pain_point_scores` rows belong to one Pain Point and
+  so to one project; the model and bands they are read under already resolve
+  project → ancestor → org via Phase 10, so no new fallback is needed.
+  (Decided by: Agent, per `CLAUDE.md`'s checklist.)
+- **Module boundary:** `PainPointScore.target_type`/`target_id` are a plain
+  pair validated against the persona provider, not an FK or enum; levels are
+  FKs into core's `scoring_levels`. No core file changed.
+
+**Security review (identify → verify → remediate; this adds an authorization-
+gated write path, audit logging and cross-tenant references):**
+- *Identified:* (1) level ids from another org or axis; (2) persona ids from
+  another project/org; (3) concurrent saves of one Pain Point colliding on
+  the partial unique indexes, or a level deleted mid-save, surfacing as a
+  500; (4) an unbounded score list; (5) rescoring a locked Pain Point.
+- *Remediated/verified:* (1) levels must belong to the project's org and the
+  entry's axis (400); (2) personas must be in the project's provider list,
+  which does its own tenancy check (400); (3) integrity errors on flush
+  return 409; (4) `scores` is capped at 500 entries (422); (5) 409 on a
+  locked Pain Point. Every real change is audit-logged once
+  (`pain_point`/`scored`, ids and counts only, no free text); reads and
+  writes 404 with the module or sub-component off; non-managers get 403 on
+  write. Covered by `test_context_strategy_pain_point_scoring.py`.
+
+**Verification:** 18 new backend tests (roll-up maths for all three methods,
+1-of-N scored, Blocker surviving an average, input gaps, retired and
+unavailable personas incl. Module 2 off, RBAC, lock, audit, parameters,
+payload cap, level-usage reassignment); the `context_strategy`,
+`stakeholders` and core scoring-matrix suites pass together (301 tests);
+Storybook for the new/changed components (61 tests across the Pain Point
+stories); a new Playwright spec, `pain-point-persona-scoring.spec.ts`
+(scoring per persona, roll-up/Blocker, list re-ranking across models,
+intentional flag), passing in serial and 4-way parallel repeats. Both seed
+scripts were run end to end against a scratch database and local backend.
+The live test stack was not reseeded, so the full Playwright suite has not
+been re-run against the new Gamma seed data (Context & Strategy is now
+enabled for Gamma, as Stakeholders & Personas already was). Two early spec
+runs right after the container rebuild hit a transient 403 enabling the
+module as a brand-new org admin; it did not recur across 14 later runs.
+
+**Known gaps:** the docs website covers the new behaviour in prose only
+(screenshots and the R1–R9 reports are Phase 12–14 work); the Tier
+relationships wait for Module 13.

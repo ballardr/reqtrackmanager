@@ -9,6 +9,13 @@
  * "New X" `Modal` shape — Pain Point is project-scoped only (source overview
  * §6), so unlike that page there is no org-scoped sibling panel.
  *
+ * Phase 11 adds per-persona scoring to the list: a Score column (the
+ * roll-up under the model and persona roll-up picked in the switcher above
+ * the table, "chosen when viewing") and a Blocker badge that stays visible
+ * whichever is chosen. The Score column is sortable, so switching model
+ * re-ranks the list. Intentional limitations carry an "Intentional" badge
+ * and can be hidden from the list via a filter.
+ *
  * Also loads this project's effective Pain Point type list
  * (`projectPainPointApi.listTypes`) once, up front — both the type filter
  * dropdown and `PainPointFormModal`'s own type picker need it, and loading
@@ -20,14 +27,23 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import type { Project } from "../../api/types";
 import { api } from "../../api/client";
+import { projectScoringApi, type ScoringScheme } from "../../api/scoring";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import { Spinner } from "../../components/Spinner";
+import { cycleSort, type SortState } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
-import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
-import type { EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointStatus } from "./types";
+import { BlockerBadge, PainPointScoreBadge } from "./PainPointScoreBadges";
+import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_ROLLUP_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
+import type {
+  EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointRollup,
+  PainPointScoringList, PainPointScoringSummary, PainPointStatus,
+} from "./types";
+
+const SCHEME_KEY = "pain_point";
 
 export function ProjectPainPointsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -42,6 +58,13 @@ export function ProjectPainPointsPage() {
   const [statusFilter, setStatusFilter] = useState<PainPointStatus | "">("");
   const [priorityFilter, setPriorityFilter] = useState<PainPointPriority | "">("");
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [hideIntentional, setHideIntentional] = useState(false);
+
+  const [scheme, setScheme] = useState<ScoringScheme | null>(null);
+  const [model, setModel] = useState<string | null>(null);
+  const [rollup, setRollup] = useState<PainPointRollup>("weighted_average");
+  const [scoring, setScoring] = useState<PainPointScoringList | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -67,24 +90,73 @@ export function ProjectPainPointsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, includeArchived]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    void projectScoringApi.get(projectId, SCHEME_KEY).then(setScheme).catch(() => setScheme(null));
+  }, [projectId]);
+
+  // Scores are secondary to the list itself: a failure here just leaves the
+  // score columns empty rather than hiding the Pain Points.
+  useEffect(() => {
+    if (!projectId) return;
+    projectPainPointApi
+      .listScores(projectId, { model_key: model ?? undefined, rollup, include_archived: includeArchived })
+      .then((loaded) => { setScoring(loaded); setModel((current) => current ?? loaded.model_key); })
+      .catch(() => setScoring(null));
+  }, [projectId, model, rollup, includeArchived]);
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (painPoints === null || project === null) return <Spinner />;
 
+  const summaryById = new Map<string, PainPointScoringSummary>((scoring?.items ?? []).map((i) => [i.pain_point_id, i]));
+  const scoreOf = (p: PainPoint) => summaryById.get(p.id)?.score?.normalised ?? null;
+
   const filtered = painPoints.filter((p) => {
+    if (hideIntentional && p.is_intentional) return false;
     if (statusFilter && p.status !== statusFilter) return false;
     if (priorityFilter && p.priority !== priorityFilter) return false;
     if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
+  // Unscored items always sort last, in either direction.
+  const rows = sort?.key === "score"
+    ? [...filtered].sort((a, b) => {
+        const [x, y] = [scoreOf(a), scoreOf(b)];
+        if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+        return sort.direction === "asc" ? x - y : y - x;
+      })
+    : filtered;
+
   const columns: DirectoryColumn<PainPoint>[] = [
-    { key: "title", label: "Title", render: (p) => p.title },
+    {
+      key: "title", label: "Title",
+      render: (p) => (
+        <>
+          {p.title}
+          {p.is_intentional && <span className="badge badge--info" style={{ marginLeft: "0.5rem" }}>Intentional</span>}
+        </>
+      ),
+    },
     { key: "type", label: "Type", render: (p) => p.pain_point_type_name },
     { key: "priority", label: "Priority", render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
     {
       key: "status", label: "Status",
       render: (p) => <span className={`badge badge--${PAIN_POINT_STATUS_TONE[p.status]}`}>{PAIN_POINT_STATUS_LABEL[p.status]}</span>,
+    },
+    {
+      key: "score", label: "Score", sortable: true,
+      render: (p) => {
+        const summary = summaryById.get(p.id);
+        if (!summary) return "–";
+        return (
+          <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+            <PainPointScoreBadge score={summary.score} />
+            <BlockerBadge summary={summary} />
+          </span>
+        );
+      },
     },
   ];
 
@@ -94,11 +166,23 @@ export function ProjectPainPointsPage() {
       <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
         New Pain Point
       </button>
+      {scheme && model && (
+        <ScoringModelSwitcher
+          models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
+          model={model}
+          onModelChange={setModel}
+          rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}
+          rollup={rollup}
+          onRollupChange={(next) => setRollup(next as PainPointRollup)}
+        />
+      )}
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Pain Points"
           columns={columns}
-          rows={filtered}
+          rows={rows}
+          sort={sort}
+          onSort={(key) => setSort((current) => cycleSort(current, key))}
           rowKey={(p) => p.id}
           onRowClick={(p) => navigate(`/projects/${projectId}/modules/context_strategy/pain-points/${p.id}`)}
           emptyState={<p className="text-muted">No Pain Points recorded for this project yet.</p>}
@@ -123,6 +207,7 @@ export function ProjectPainPointsPage() {
               ))}
             </select>
           </FilterField>
+          <FilterCheckbox label="Hide intentional limitations" checked={hideIntentional} onChange={setHideIntentional} />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

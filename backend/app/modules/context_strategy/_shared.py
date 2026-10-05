@@ -421,7 +421,8 @@ def pain_point_to_out(db: Session, pain_point: PainPoint) -> PainPointOut:
         title=pain_point.title, description=pain_point.description, source=pain_point.source,
         impact=pain_point.impact, evidence=pain_point.evidence, priority=pain_point.priority,
         status=pain_point.status, owner_id=pain_point.owner_id, date_identified=pain_point.date_identified,
-        is_locked=is_pain_point_locked(pain_point), created_at=pain_point.created_at, updated_at=pain_point.updated_at,
+        is_intentional=pain_point.is_intentional, is_locked=is_pain_point_locked(pain_point),
+        created_at=pain_point.created_at, updated_at=pain_point.updated_at,
     )
 
 

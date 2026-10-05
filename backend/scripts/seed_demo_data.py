@@ -1166,6 +1166,33 @@ def mark_pain_point_duplicate(headers: dict, project_id: str, pain_point_id: str
     return r.json()
 
 
+def get_pain_point_levels(headers: dict, project_id: str) -> dict[str, dict[str, str]]:
+    """Returns the org's Pain Point scoring levels as `{axis_key: {level_name: level_id}}` (Phase 10/11)."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/scoring-schemes/pain_point", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
+
+
+def score_entry(levels: dict[str, dict[str, str]], target_id: str | None = None, **chosen: str) -> dict:
+    """Builds one Pain Point score row from level names, e.g. `severity="Major", frequency="Constant"`;
+    `target_id=None` means "all personas"."""
+    return {
+        "target_id": target_id,
+        **{f"{axis}_level_id": levels[axis][chosen[axis]] if axis in chosen else None
+           for axis in ("severity", "frequency", "confidence")},
+    }
+
+
+def set_pain_point_scores(headers: dict, project_id: str, pain_point_id: str, scores: list[dict]) -> dict:
+    """Replaces a Pain Point's per-persona scores (Module 1 Phase 11)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/scores",
+        json={"scores": scores}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def set_project_scoring_default_model(headers: dict, project_id: str, scheme: str, model: str) -> dict:
     """Overrides a project's default scoring model (generic scoring-matrix
     core, Module 1 Phase 10)."""
@@ -2390,6 +2417,56 @@ def main() -> None:
           f" Draft, unweighted), {drone_operator_persona['name']!r} (Falcon-3, Active, weight 2); Falcon-3 weights"
           f" {persona_inspector['name']!r} at 5, which Falcon-3 Avionics Subsystem inherits")
 
+    print("Seeding per-persona Pain Point scoring (Module 1 Phase 11) on Falcon-3 — per-persona scores across"
+          " personas of different weights (one persona left unscored), an all-personas Blocker, an intentional"
+          " limitation, and an unscored Pain Point...")
+    pp_levels = get_pain_point_levels(h_pm, drone["id"])
+    set_pain_point_scores(h_pm, drone["id"], pp_accepted["id"], [
+        score_entry(pp_levels, persona_inspector["id"], severity="Major", frequency="Frequent", confidence="High"),
+        score_entry(pp_levels, drone_operator_persona["id"], severity="Moderate", frequency="Constant", confidence="Medium"),
+    ])
+    pp_scored = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["User"]["id"],
+        title="Pilots cannot tell which redundant flight controller is in command",
+        description="The ground-station display shows both flight controllers as 'healthy' without indicating"
+        " which one is currently flying the aircraft.",
+        source="Pilot debrief — BVLOS trial", impact="A failover mid-flight is not noticed until the next scheduled"
+        " status poll.", evidence="Observed in 3 of 10 BVLOS trial flights.",
+        priority="high", date_identified="2026-09-02",
+    )
+    triage_pain_point(h_pm, drone["id"], pp_scored["id"])
+    accept_pain_point(h_pm, drone["id"], pp_scored["id"])
+    set_pain_point_scores(h_pm, drone["id"], pp_scored["id"], [
+        score_entry(pp_levels, drone_operator_persona["id"], severity="Blocker", frequency="Occasional", confidence="High"),
+        score_entry(pp_levels, persona_inspector["id"], severity="Minor", frequency="Rare", confidence="Medium"),
+    ])
+    pp_all_personas = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Operator"]["id"],
+        title="Flight logs cannot be exported for audit", priority="medium", date_identified="2026-09-05",
+        description="There is no way to export a flight's log for an external audit.",
+        impact="Every audit request needs an engineer to extract the logs by hand.",
+    )
+    set_pain_point_scores(h_pm, drone["id"], pp_all_personas["id"], [
+        score_entry(pp_levels, None, severity="Moderate", frequency="Occasional", confidence="Low"),
+    ])
+    pp_intentional = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Market"]["id"],
+        title="Standard tier limits flights to line-of-sight", priority="low", date_identified="2026-09-08",
+        description="BVLOS operation is only available on the Pro tier.", is_intentional=True,
+        impact="Customers needing BVLOS must upgrade — a deliberate differentiator.",
+    )
+    set_pain_point_scores(h_pm, drone["id"], pp_intentional["id"], [
+        score_entry(pp_levels, drone_operator_persona["id"], severity="Major", frequency="Constant", confidence="High"),
+    ])
+    create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["User"]["id"],
+        title="Pre-flight checklist is not available offline", priority="medium", date_identified="2026-09-10",
+        description="The checklist app needs a connection, which remote launch sites rarely have.",
+    )
+    print(f"  Scored: {pp_accepted['title']!r} (2 personas), {pp_scored['title']!r} (Blocker for the BVLOS pilot),"
+          f" {pp_all_personas['title']!r} (all personas), {pp_intentional['title']!r} (intentional); one Pain Point"
+          " left unscored.")
+
     print("Seeding Stakeholders (Module 2 Phase 1.2) — an org Regulator stakeholder rated High influence/Medium"
           " interest that represents the Compliance Auditor persona, and a Falcon-3 Customer stakeholder with a"
           " monthly cadence that represents the BVLOS Remote Pilot persona...")
@@ -2480,9 +2557,11 @@ def main() -> None:
     print("  Context & Strategy (enabled org-wide): 1 organisation Strategy (Active) and 1 project Strategy on"
           " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win;"
           " 1 organisation Future State and 1 project Future State on Falcon-3 (both Active), each linked to the"
-          " Strategy it elaborates via a real 'Defines' relationship (Module 1 Phase 6); 3 Pain Points on Falcon-3"
+          " Strategy it elaborates via a real 'Defines' relationship (Module 1 Phase 6); 7 Pain Points on Falcon-3"
           " (Accepted->Addressed, Rejected with a real 'Drives' link back to the Falcon-3 Strategy, and Duplicate"
-          " with a real 'Duplicate of' link to the canonical Pain Point); 1 organisation Guiding Principle (Active,"
+          " with a real 'Duplicate of' link to the canonical Pain Point, plus four demonstrating per-persona"
+          " scoring: scored across personas with a BVLOS-pilot Blocker, scored for all personas, an intentional"
+          " limitation, and one unscored; Falcon-3 defaults to the Severity x Frequency model); 1 organisation Guiding Principle (Active,"
           " linked to the org Strategy via a real 'Supports' relationship) and 1 project Guiding Principle (Active)"
           " on Falcon-3; and 2 Open Questions on Falcon-3 (one Ready for Decision, one Withdrawn — the 'resolved by"
           " Decision' relationship stays reserved pending Module 4's own Phase 7, see docs/decisions.md)")

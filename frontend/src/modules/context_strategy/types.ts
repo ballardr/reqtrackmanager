@@ -462,6 +462,9 @@ export interface PainPoint {
   status: PainPointStatus;
   owner_id: string | null;
   date_identified: string;
+  /** A deliberate limitation (e.g. a lower-tier restriction that drives
+   * upgrades): scored, but kept out of fix rankings by default. */
+  is_intentional: boolean;
   is_locked: boolean;
 
   created_at: string;
@@ -485,6 +488,94 @@ export interface PainPointFieldValues {
   evidence: string;
   priority: PainPointPriority;
   date_identified: string | null;
+  /** Omitted on update = unchanged. */
+  is_intentional?: boolean;
+}
+
+// --- Pain Point scoring (Phase 11) --------------------------------------------
+
+/** How per-persona scores combine into one (`pain_point_scores.RollupMethod`). */
+export type PainPointRollup = "weighted_average" | "worst_case" | "average";
+
+export const PAIN_POINT_ROLLUP_LABEL: Record<PainPointRollup, string> = {
+  weighted_average: "Weighted average",
+  worst_case: "Worst case",
+  average: "Plain average",
+};
+
+/** How a score row's persona resolves (`pain_point_scores.TargetStatus`). */
+export type PainPointScoreTargetStatus = "all" | "active" | "inactive" | "unavailable";
+
+export const PAIN_POINT_SCORE_TARGET_STATUS_LABEL: Record<PainPointScoreTargetStatus, string> = {
+  all: "All personas",
+  active: "Active",
+  inactive: "Retired (not counted)",
+  unavailable: "Persona unavailable",
+};
+
+/** A computed score: raw product, 0–1 normalised value and its rating band. */
+export interface PainPointScoreValue {
+  raw: number;
+  normalised: number;
+  band_label: string | null;
+  band_tone: import("../../api/types").BadgeTone | null;
+}
+
+export interface PainPointScoreEntry {
+  target_id: string | null;
+  target_type: string | null;
+  label: string | null;
+  weight: number | null;
+  status: PainPointScoreTargetStatus;
+  severity_level_id: string | null;
+  frequency_level_id: string | null;
+  confidence_level_id: string | null;
+  score: PainPointScoreValue | null;
+  is_blocker: boolean;
+}
+
+/** One Pain Point's roll-up under a model and method. */
+export interface PainPointScoringSummary {
+  pain_point_id: string;
+  scope: "none" | "all_personas" | "per_persona";
+  score: PainPointScoreValue | null;
+  counted: number;
+  is_blocker: boolean;
+  blocker_labels: string[];
+  personas_degraded: boolean;
+  entries: PainPointScoreEntry[];
+}
+
+export interface PainPointScoringTarget {
+  id: string;
+  label: string;
+  weight: number | null;
+  is_active: boolean;
+}
+
+/** `GET .../pain-points/{id}/scores`. `model_source` is a
+ * `ScoringResolutionSource` or `"chosen"` (a non-default model was asked for). */
+export interface PainPointScores extends PainPointScoringSummary {
+  model_key: string;
+  model_source: string;
+  rollup: PainPointRollup;
+  available_targets: PainPointScoringTarget[];
+}
+
+/** `GET .../pain-point-scores`. */
+export interface PainPointScoringList {
+  model_key: string;
+  model_source: string;
+  rollup: PainPointRollup;
+  items: PainPointScoringSummary[];
+}
+
+/** One requested row when replacing a Pain Point's scores. */
+export interface PainPointScoreInput {
+  target_id: string | null;
+  severity_level_id: string | null;
+  frequency_level_id: string | null;
+  confidence_level_id: string | null;
 }
 
 // --- Comments (no reaction mechanism — same shape as StrategyComment/FutureStateComment) -

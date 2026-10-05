@@ -29,6 +29,7 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 | `priority` | `low` / `medium` / `high`. |
 | `owner_id` | Who owns this Pain Point, if assigned. |
 | `date_identified` | Defaults to today if omitted at creation. |
+| `is_intentional` | Marks a **deliberate limitation** (for example, a restriction in a lower product tier that drives upgrades). It is still scored, but isn't something to fix, so the list can hide it. |
 | `status` | Lifecycle state, below. |
 
 ## Lifecycle
@@ -122,7 +123,33 @@ flowchart LR
     O -->|not set| M["Module default"]
 ```
 
-Organisation changes need the **Pain Point Type Admin** role or org admin; project overrides need project manager/administrator (or org admin). Anyone viewing scores can still switch model. Scoring individual Pain Points per persona isn't available yet — see [Known limitations](./known-limitations.md).
+Organisation changes need the **Pain Point Type Admin** role or org admin; project overrides need project manager/administrator (or org admin). Anyone viewing scores can still switch model.
+
+## Scoring a Pain Point
+
+Impact differs by persona, so a Pain Point is scored on its detail page either **for all personas together** or **for each persona separately** (the second option appears when the [Stakeholders & Personas](../stakeholders-personas-module/overview.md) module is on). For each, pick a Severity, Frequency and Confidence level; leave an input blank if you don't know it. Saving scores is for Pain Point Managers; anyone who can see the Pain Point can read them.
+
+The model and how personas combine are chosen **when viewing**, on both the detail page and the list, so you can compare rankings without changing any data:
+
+| Combine personas by | Result |
+| --- | --- |
+| Weighted average (default) | Each scored persona's score, weighted by its importance (equal if none is set). |
+| Worst case | The highest persona score. |
+| Plain average | Every scored persona counts the same. |
+
+```mermaid
+flowchart LR
+    S["Each persona's<br/>Severity · Frequency · Confidence"] --> M["Chosen model<br/>(for example Severity × Frequency)"]
+    M --> R["Per-persona score"]
+    R --> C["Chosen roll-up"]
+    C --> O["One score + rating band"]
+    S -->|any persona at the top Severity level| B["Blocker badge"]
+```
+
+- **Unscored personas are left out, not counted as zero.** If only one of five personas is scored, the Pain Point shows that persona's score. A persona missing an input the chosen model needs is "Not scored" under that model.
+- **The Blocker badge always shows** when any counted persona rates Severity at its top level, whatever model or roll-up is chosen, so one blocked persona can't be averaged away.
+- **Retired personas** stay visible but aren't counted. If a persona has since been deleted, hidden, or the Personas module is off, its scores still count, without a name or weight, and the page says so.
+- The list's **Score** column sorts, and switching the model re-ranks it. Tick **Hide intentional limitations** to take deliberate restrictions out of the list.
 
 ## Where this fits
 

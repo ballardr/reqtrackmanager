@@ -32,7 +32,9 @@ and last Phase 7 sub-phase. Phase 8 (docs website coverage) complete
 (2026-09-29 — see "Phase 8 notes" below), closing the original 13 phases.
 Reopened 2026-10-04 for the Reporting extension (Phases 9–14: per-persona
 Pain Point scoring plus reports R1–R9); Phase 9 sign-off and Phase 10
-(generic scoring-matrix core) complete 2026-10-04 — see "Phase 10 notes".
+(generic scoring-matrix core) complete 2026-10-04 — see "Phase 10 notes";
+Phase 11 (per-persona Pain Point scoring + intentional flag) complete
+2026-10-05 — see "Phase 11 notes".
 First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
@@ -58,7 +60,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-**15 / 19 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–10 are done; Phase 11 is unblocked — Module 2 Phase 1.1 (Persona) shipped 2026-10-05, so build Phase 11 next (read personas via `get_scoring_targets(db, project_id, "persona")`).** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
+**16 / 19 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–11 are done; build Phase 12 (report backend R1–R9) next, reusing `pain_point_scores.py`'s `load_scoring_context`/`build_pain_point_scoring` for R1 and R9 (see "Phase 11 notes").** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
 split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
 note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
 module's last phase, shipped the same day — see "Phase 8 notes" below.
@@ -80,7 +82,7 @@ module's last phase, shipped the same day — see "Phase 8 notes" below.
 | 8 | Docs website coverage | [x] Complete (2026-09-29) |
 | 9 | Exploratory: reporting scope & scoring design sign-off | [x] Resolved (2026-10-04) |
 | 10 | Generic scoring-matrix infrastructure (core) | [x] Complete (2026-10-04) |
-| 11 | Per-persona Pain Point scoring + intentional flag — Module 2 Phase 1.1 done, unblocked | [ ] Not started |
+| 11 | Per-persona Pain Point scoring + intentional flag | [x] Complete (2026-10-05) |
 | 12 | Report generation backend (R1–R9) | [ ] Not started |
 | 13 | Reports UI + generic report-registration hook | [ ] Not started |
 | 14 | Docs website + seeds verification | [ ] Not started |
@@ -3219,6 +3221,8 @@ Phase 10" entry.
 
 ## Phase 11 — Per-persona Pain Point scoring + intentional flag
 
+**Status:** [x] Complete (2026-10-05) — see "Phase 11 notes" below.
+
 **Hard dependency:** Module 2 Phase 1.1 (Persona) and Phase 10. Read Persona
 records and resolved weights only through the generic
 `scoring_target_providers` hook Module 2 Phase 1.1 adds (Module 2 Phase 0
@@ -3257,6 +3261,49 @@ resolution 10), never by importing Module 2.
 a single score hides "unusable for persona X", and deliberate tier
 limitations get treated as bugs. *Outcome:* persona-aware ranking with
 blockers always surfaced.
+
+## Phase 11 notes (2026-10-05)
+
+**Shipped:** `PainPointScore` table + `pain_points.is_intentional` (module
+migration 0064); `pain_point_scores.py` (validation, persistence, roll-up);
+endpoints `GET .../pain-point-scores` (all Pain Points under one model and
+roll-up), `GET`/`PUT .../pain-points/{id}/scores`; the scheme's
+`count_level_usage`/`reassign_level_usage` hooks (in `scoring.py`); MCP tools
+`list_pain_point_scores`, `get_pain_point_scores`, `set_pain_point_scores`
+and `is_intentional` on create/update; frontend `PainPointScoringPanel`,
+`PainPointScoreBadges`, Score/Blocker columns, model/roll-up switcher and a
+"Hide intentional limitations" filter on the list, an "Intentional" switch
+in the form; both seed scripts; Playwright
+`pain-point-persona-scoring.spec.ts`; Storybook for every new/changed
+component.
+
+**Decisions** (full list with reasoning and the security review:
+`docs/decisions.md`'s "Module 1 (Context & Strategy) Phase 11" entry):
+- Scoring is manager-tier; reads are open to anyone who can see Pain Points.
+  **Decided by: Agent.**
+- A persona without a weight among weighted ones gets the mean of the set
+  weights; all-unweighted means equal. **Decided by: Agent.**
+- Retired personas are shown but not counted; unavailable ones (deleted,
+  hidden, Module 2 off) are counted unweighted and unlabelled, flagged
+  `personas_degraded`. **Decided by: Agent.**
+- The `intentional_in`/`removed_by` Tier relationships stay reserved for
+  Module 13. **Decided by: User** (Phase 9 Q9/Q10).
+- Score rows aren't exported in an org bundle because this module has no
+  bundle hooks yet. **Decided by: Agent.**
+
+**For Phase 12:**
+- `load_scoring_context(db, project)` + `build_pain_point_scoring(db, ctx,
+  pain_points, model, method)` return one `PainPointScoringSummary` per Pain
+  Point (score, Blocker, per-persona entries, `personas_degraded`): R1's
+  ranking, matrix and per-persona breakdown, and R9's per-persona severity,
+  should be built on it, not recompute the maths. It does not exclude
+  `is_intentional` items — R1 must segregate them itself.
+- Org-wide roll-ups must call it once per readable project (the persona
+  targets and levels are per project/org).
+- Not yet done, deliberately: docs website screenshots and the reports
+  themselves (Phases 13–14).
+
+**Verification:** see `docs/decisions.md`.
 
 ## Phase 12 — Report generation backend (R1–R9)
 

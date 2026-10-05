@@ -13,7 +13,7 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
     id: "pain-point-1", project_id: PROJECT_ID, pain_point_type_id: "type-operator", pain_point_type_name: "Operator",
     creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     title: "Report delays under poor connectivity", description: "", source: "", impact: "", evidence: "",
-    priority: "high", status: "triaged", owner_id: null, date_identified: "2026-01-05", is_locked: false,
+    priority: "high", status: "triaged", owner_id: null, date_identified: "2026-01-05", is_intentional: false, is_locked: false,
     created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
     ...overrides,
   };

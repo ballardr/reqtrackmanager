@@ -148,6 +148,13 @@ Future State/Guiding Principle's identity+version split:
   structural mirror of `PainPointComment`/`PainPointCommentFile`/
   `PainPointFile` (Phase 0 Q6: module-local tables, not a `ReviewTargetType`
   member).
+
+Phase 11 (Reporting extension) adds `PainPoint.is_intentional` and
+`PainPointScore` — one Severity/Frequency/Confidence rating of a Pain Point
+for one target (a persona, or "all personas" when the target is null).
+`target_type`/`target_id` are a plain validated pair, never an FK into the
+owning module's table (Module 1 cannot import Module 2); the level columns
+are FKs into core's generic `scoring_levels`.
 """
 
 from __future__ import annotations
@@ -628,6 +635,9 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
             (§6.5) — `NULL` until assigned.
         date_identified: When the problem was first identified — defaults
             to the creation date if not supplied (`service.create_pain_point`).
+        is_intentional: A deliberate limitation (e.g. in a lower product
+            tier, to drive upgrades): still scored, but excluded from fix
+            rankings by default and reported separately (Phase 9 Q10).
         creator_id: Who submitted this Pain Point (§6.5's broad-creation
             model — any project member).
         is_archived / archived_at / archived_by: Soft-delete, matching
@@ -652,10 +662,65 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
     status: Mapped[PainPointStatus] = mapped_column(str_enum(PainPointStatus, 20), default=PainPointStatus.SUBMITTED)
     owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     date_identified: Mapped[date] = mapped_column(Date)
+    is_intentional: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_text("false"))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class PainPointScore(UUIDPKMixin, TimestampMixin, Base):
+    """One rating of a Pain Point for one target (Phase 11).
+
+    A Pain Point has either exactly one all-targets row (`target_id` NULL) or
+    one row per target, never both (`service.set_pain_point_scores`
+    enforces it; the unique indexes below only stop duplicates).
+
+    Attributes:
+        pain_point_id: The scored Pain Point.
+        target_type: Artefact type of the scored-for record (e.g.
+            `"persona"`), or NULL for "all personas".
+        target_id: That record's id, or NULL. A plain id, not an FK: the
+            owning module is optional, and a deleted/hidden target
+            degrades to an unlabelled row rather than blocking deletion.
+        severity_level_id / frequency_level_id / confidence_level_id: The
+            chosen `scoring_levels` per axis; NULL = not scored on that axis
+            (a model needing it then shows "not scored under this model").
+            `RESTRICT` on delete: removing a level goes through
+            `scoring.delete_level`, which reassigns users first.
+        scored_by: The last user to change this row.
+    """
+
+    __tablename__ = "pain_point_scores"
+    __table_args__ = (
+        CheckConstraint(
+            "(target_type IS NULL) = (target_id IS NULL)", name="ck_pain_point_scores_target_pair",
+        ),
+        Index(
+            "uq_pain_point_scores_all", "pain_point_id", unique=True,
+            postgresql_where=sa_text("target_id IS NULL"),
+        ),
+        Index(
+            "uq_pain_point_scores_target", "pain_point_id", "target_type", "target_id", unique=True,
+            postgresql_where=sa_text("target_id IS NOT NULL"),
+        ),
+    )
+
+    pain_point_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pain_points.id", ondelete="CASCADE"), index=True
+    )
+    target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    severity_level_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scoring_levels.id"), nullable=True
+    )
+    frequency_level_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scoring_levels.id"), nullable=True
+    )
+    confidence_level_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scoring_levels.id"), nullable=True
+    )
+    scored_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
 class PainPointComment(UUIDPKMixin, TimestampMixin, Base):

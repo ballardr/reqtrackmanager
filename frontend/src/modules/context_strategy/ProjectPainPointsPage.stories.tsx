@@ -2,9 +2,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildScoringScheme, withRouter, withToast } from "../../testing/storybook-helpers";
+import { scoreValue, scoringSummary } from "./painPointScoringFixtures";
 import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
-import type { EffectivePainPointType, PainPoint } from "./types";
+import type { EffectivePainPointType, PainPoint, PainPointScoringSummary } from "./types";
 
 const PROJECT_ID = "project-1";
 
@@ -18,15 +19,20 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
     creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     title: "Report delays under poor connectivity", description: "Field reports queue for days.",
     source: "Operator interviews", impact: "Decisions are made on stale data.", evidence: "12 reports last month.",
-    priority: "high", status: "submitted", owner_id: null, date_identified: "2026-01-05", is_locked: false,
+    priority: "high", status: "submitted", owner_id: null, date_identified: "2026-01-05", is_intentional: false, is_locked: false,
     created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
     ...overrides,
   };
 }
 
-function mockPageApis(painPoints: PainPoint[]) {
+function mockPageApis(painPoints: PainPoint[], scoring: PainPointScoringSummary[] = []) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
+    if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/pain_point`) return buildScoringScheme();
+    if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-scores`)) {
+      const model = new URL(path, "http://localhost").searchParams.get("model_key") ?? "sxfxc";
+      return { model_key: model, model_source: "system", rollup: "weighted_average", items: scoring };
+    }
     if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-types`)) return TYPES;
     if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points`)) return painPoints;
     throw new Error(`Unmocked GET: ${path}`);
@@ -51,6 +57,62 @@ export const ListsPainPoints: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Report delays under poor connectivity")).toBeInTheDocument());
     await expect(canvas.getByText("Competitive pricing pressure")).toBeInTheDocument();
+  },
+};
+
+/** Score and Blocker columns render the roll-up; the Score column sorts unscored last. */
+export const ShowsScoresAndBlockerAndSorts: Story = {
+  beforeEach: () =>
+    mockPageApis(
+      [
+        painPoint({ id: "pp-low", title: "Low scoring problem" }),
+        painPoint({ id: "pp-high", title: "High scoring problem", is_intentional: true }),
+        painPoint({ id: "pp-none", title: "Unscored problem" }),
+      ],
+      [
+        scoringSummary({ pain_point_id: "pp-low", scope: "all_personas", counted: 1, score: scoreValue({ raw: 2, band_label: "Low", band_tone: "muted", normalised: 0.1 }) }),
+        scoringSummary({
+          pain_point_id: "pp-high", scope: "all_personas", counted: 1, is_blocker: true, blocker_labels: ["Field Technician"],
+          score: scoreValue({ raw: 18, band_label: "Critical", band_tone: "danger", normalised: 0.9 }),
+        }),
+        scoringSummary({ pain_point_id: "pp-none" }),
+      ],
+    ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Critical · 18")).toBeInTheDocument());
+    await expect(canvas.getByText("Blocker")).toBeInTheDocument();
+    await expect(canvas.getByText("Intentional")).toBeInTheDocument();
+    await expect(canvas.getByText("Not scored")).toBeInTheDocument();
+
+    const titles = () => canvas.getAllByRole("button", { name: /problem/ }).map((b) => b.textContent?.replace("Intentional", ""));
+    const scoreHeader = canvas.getByRole("button", { name: /Score/ });
+    await userEvent.click(scoreHeader); // ascending
+    await waitFor(() => expect(titles()).toEqual(["Low scoring problem", "High scoring problem", "Unscored problem"]));
+    await userEvent.click(scoreHeader); // descending: unscored still last
+    await waitFor(() => expect(titles()).toEqual(["High scoring problem", "Low scoring problem", "Unscored problem"]));
+  },
+};
+
+/** The model switcher refetches the roll-up under the newly chosen model. */
+export const SwitchingModelRefetchesScores: Story = {
+  beforeEach: () => mockPageApis([painPoint()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("combobox", { name: "Scoring model" }));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Scoring model" }), "sxf");
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("model_key=sxf")));
+  },
+};
+
+export const HideIntentionalFilter: Story = {
+  beforeEach: () => mockPageApis([painPoint({ title: "Fixable problem" }), painPoint({ id: "pp-2", title: "Tier limit problem", is_intentional: true })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/Tier limit problem/)).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Hide intentional limitations" }));
+    await waitFor(() => expect(canvas.queryByText(/Tier limit problem/)).not.toBeInTheDocument());
+    await expect(canvas.getByText("Fixable problem")).toBeInTheDocument();
   },
 };
 

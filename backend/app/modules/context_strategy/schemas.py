@@ -64,7 +64,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.modules.context_strategy.enums import (
     FutureStateScope,
@@ -418,6 +418,7 @@ class PainPointCreate(BaseModel):
     evidence: str = ""
     priority: PainPointPriority = PainPointPriority.MEDIUM
     date_identified: date | None = None
+    is_intentional: bool = False
 
 
 class PainPointUpdate(BaseModel):
@@ -438,6 +439,7 @@ class PainPointUpdate(BaseModel):
     priority: PainPointPriority
     owner_id: UUID | None = None
     date_identified: date | None = None
+    is_intentional: bool | None = None  # None = leave unchanged
 
 
 class PainPointOut(BaseModel):
@@ -459,6 +461,7 @@ class PainPointOut(BaseModel):
     status: PainPointStatus
     owner_id: UUID | None
     date_identified: date
+    is_intentional: bool
     is_locked: bool
 
     created_at: datetime
@@ -494,6 +497,101 @@ class PainPointCommentOut(BaseModel):
     created_at: datetime
     edited_at: datetime | None = None
     attachments: list[FileAssetOut] = []
+
+
+# --- Pain Point scoring (Phase 11) -------------------------------------------
+
+
+class PainPointScoreEntryIn(BaseModel):
+    """One requested score row. `target_id` null = all personas; a level id
+    null = not scored on that axis."""
+
+    target_id: UUID | None = None
+    severity_level_id: UUID | None = None
+    frequency_level_id: UUID | None = None
+    confidence_level_id: UUID | None = None
+
+
+class PainPointScoresUpdate(BaseModel):
+    """Replaces a Pain Point's whole score set (empty list clears it). The
+    cap is far above any real persona count; it just bounds the request."""
+
+    scores: list[PainPointScoreEntryIn] = Field(max_length=500)
+
+
+class ScoreOut(BaseModel):
+    """A computed score: raw product, normalised 0–1 value and rating band."""
+
+    raw: float
+    normalised: float
+    band_label: str | None = None
+    band_tone: str | None = None
+
+
+class PainPointScoreEntryOut(BaseModel):
+    """One resolved score row. `status` is `all`/`active`/`inactive`/
+    `unavailable` (see `pain_point_scores.TargetStatus`); `label` and
+    `weight` come from the target (null for all-personas/unavailable)."""
+
+    target_id: UUID | None
+    target_type: str | None
+    label: str | None
+    weight: float | None
+    status: str
+    severity_level_id: UUID | None
+    frequency_level_id: UUID | None
+    confidence_level_id: UUID | None
+    score: ScoreOut | None
+    is_blocker: bool
+
+
+class PainPointScoringSummaryOut(BaseModel):
+    """A Pain Point's roll-up under the requested model and method."""
+
+    pain_point_id: UUID
+    scope: str
+    score: ScoreOut | None
+    counted: int
+    is_blocker: bool
+    blocker_labels: list[str]
+    personas_degraded: bool
+    entries: list[PainPointScoreEntryOut]
+
+
+class ScoringTargetOut(BaseModel):
+    """A persona the project can score against."""
+
+    id: UUID
+    label: str
+    weight: float | None
+    is_active: bool
+
+
+class PainPointScoringListOut(BaseModel):
+    """`GET .../pain-point-scores`: every (non-archived) Pain Point's roll-up
+    under one model and method."""
+
+    # `model_key`/`model_source` are scoring-domain names, not Pydantic internals.
+    model_config = {"protected_namespaces": ()}
+
+    model_key: str
+    model_source: str
+    rollup: str
+    items: list[PainPointScoringSummaryOut]
+
+
+class PainPointScoresOut(PainPointScoringSummaryOut):
+    """One Pain Point's roll-up plus what the score grid needs: the
+    model/method used and the personas available to score against
+    (empty if Module 2's personas are off — then only "all personas"
+    scoring is possible)."""
+
+    model_config = {"protected_namespaces": ()}
+
+    model_key: str
+    model_source: str
+    rollup: str
+    available_targets: list[ScoringTargetOut]
 
 
 # --- Guiding Principles (Phase 4) --------------------------------------------
