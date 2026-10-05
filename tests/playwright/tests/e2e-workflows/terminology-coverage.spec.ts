@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: C-C-03's per-project terminology overrides actually reach
@@ -26,7 +26,7 @@ test.describe("terminology overrides reach their own surfaces", () => {
     page,
   }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.delta1).click();
+    await openProject(page, PROJECT_NAMES.delta1);
 
     await test.step("nav rail relabels both renamed nouns (Layout.tsx, previously one of the only 2 'working' surfaces)", async () => {
       await expect(page.getByRole("link", { name: "Specs", exact: true })).toBeVisible();

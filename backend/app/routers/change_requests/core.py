@@ -33,7 +33,7 @@ from app.models.enums import ArtefactType, ChangeRequestKind, ChangeRequestStatu
 from app.models.file import FileAsset
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.relationship import ArtefactLink
-from app.models.requirement import Requirement
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.schemas.change_request import (
@@ -392,6 +392,7 @@ def list_change_requests(
     cr_status: ChangeRequestStatus | None = None,
     active_only: bool = False,
     target_stage_id: UUID | None = None,
+    search: str | None = None,
     sort: str | None = Query(None, pattern="^(proposed_name|status|created_at)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
@@ -422,6 +423,14 @@ def list_change_requests(
     if empty, since sorting by the raw column can't resolve that per-row
     fallback without an extra join.
 
+    Without `sort`, rows are newest first.
+
+    `search` (2026-10-04) is a case-insensitive substring match against
+    what the list shows and what a user would type: the proposed name, the
+    reason, and the target requirement's current name and code (the list
+    falls back to the requirement's name when there's no proposed name). The
+    requirement names are looked up in one batched query.
+
     `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
     2026-08 UX audit roadmap) is a second response header reporting the
     count within only the mandatory project scope (change requests have no
@@ -441,12 +450,34 @@ def list_change_requests(
         query = query.where(ChangeRequest.status.in_([
             ChangeRequestStatus.DRAFT, ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW,
         ]))
-    crs = db.scalars(query).all()
+    # Newest first by default. Without an explicit order Postgres returned
+    # rows in arbitrary order, so `limit`/`offset` pages could repeat or skip
+    # rows and a just-created request could land anywhere (2026-10-04). Also
+    # the tie-breaker for `sort` below, since Python's sort is stable.
+    crs = db.scalars(query.order_by(ChangeRequest.created_at.desc(), ChangeRequest.id.desc())).all()
+    needle = search.strip().lower() if search and search.strip() else None
+    requirement_text: dict[UUID, str] = {}
+    if needle:
+        requirement_ids = {cr.requirement_id for cr in crs if cr.requirement_id}
+        if requirement_ids:
+            for requirement_id, code, name in db.execute(
+                select(Requirement.id, Requirement.unique_code, RequirementVersion.name)
+                .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
+                .where(Requirement.id.in_(requirement_ids), RequirementVersion.valid_to.is_(None))
+            ).all():
+                requirement_text[requirement_id] = f"{code} {name}".lower()
     out = []
     for cr in crs:
         version = _latest_version(db, cr)
         if target_stage_id and version.proposed_target_stage_id != target_stage_id:
             continue
+        if needle:
+            haystack = " ".join(filter(None, [
+                (version.proposed_name or "").lower(), (version.reason or "").lower(),
+                requirement_text.get(cr.requirement_id, "") if cr.requirement_id else "",
+            ]))
+            if needle not in haystack:
+                continue
         out.append(_to_out(db, cr, version, current_user.id))
 
     if sort:

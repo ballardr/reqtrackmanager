@@ -59,6 +59,8 @@ from app.services.rbac import (
     get_effective_org_roles,
     get_effective_project_managers,
     get_effective_project_roles,
+    memoize_user_lookups,
+    prefetch_project_roles,
     require_org_admin_or_grant_roles,
     require_org_admin_or_server_admin,
     require_org_role,
@@ -469,24 +471,34 @@ def get_user_access(
     ).all()
     org_groups = [UserAccessGroupRef(id=row.id, name=row.name) for row in org_group_rows]
 
-    projects: list[UserAccessProject] = []
-    for project in db.scalars(
+    org_projects = db.scalars(
         select(Project).where(Project.organization_id == organization_id).order_by(Project.name)
+    ).all()
+    project_ids = [p.id for p in org_projects]
+    # Batched (2026-10-05): resolving roles and group memberships one project
+    # at a time made this ~10 queries per project, outlasting the UI's wait
+    # for an org with ~70 projects. Same resolution, inputs preloaded.
+    groups_by_project: dict[UUID, list[UserAccessGroupRef]] = {}
+    for project_id, group_id, group_name in db.execute(
+        select(ProjectGroup.project_id, ProjectGroup.id, ProjectGroup.name)
+        .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
+        .where(ProjectGroup.project_id.in_(project_ids), ProjectGroupMember.user_id == user_id)
+        .order_by(ProjectGroup.name)
     ).all():
-        roles = get_effective_project_roles(db, user_id, project.id)
-        if not roles:
-            continue
-        project_group_rows = db.execute(
-            select(ProjectGroup.id, ProjectGroup.name)
-            .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
-            .where(ProjectGroup.project_id == project.id, ProjectGroupMember.user_id == user_id)
-            .order_by(ProjectGroup.name)
-        ).all()
-        projects.append(UserAccessProject(
-            project_id=project.id, project_name=project.name,
-            roles=sorted(roles, key=lambda r: r.value),
-            project_groups=[UserAccessGroupRef(id=row.id, name=row.name) for row in project_group_rows],
-        ))
+        groups_by_project.setdefault(project_id, []).append(UserAccessGroupRef(id=group_id, name=group_name))
+
+    projects: list[UserAccessProject] = []
+    with memoize_user_lookups():
+        prefetch_project_roles(db, user_id, project_ids)
+        for project in org_projects:
+            roles = get_effective_project_roles(db, user_id, project.id)
+            if not roles:
+                continue
+            projects.append(UserAccessProject(
+                project_id=project.id, project_name=project.name,
+                roles=sorted(roles, key=lambda r: r.value),
+                project_groups=groups_by_project.get(project.id, []),
+            ))
 
     return UserAccessOut(org_groups=org_groups, projects=projects)
 

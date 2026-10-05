@@ -134,8 +134,16 @@ def import_bundled_file(
     """Re-uploads a file embedded in a bundle as a new `FileAsset` owned by
     the target organisation — storage keys aren't portable across
     deployments/backends, so every attachment gets a fresh key via the
-    normal upload path rather than trying to preserve the original one."""
-    return upload_file(
+    normal upload path rather than trying to preserve the original one.
+
+    Flushed before returning so the asset's id is assigned: callers link it
+    straight away (e.g. `RequirementFile(file_id=asset.id)`), and an
+    unflushed asset gave those links a null `file_id` — a 500 merging any
+    bundle with requirement attachments (found 2026-10-05).
+    """
+    asset = upload_file(
         db, organization_id=organization_id, uploaded_by=uploaded_by,
         filename=filename, content_type=content_type, data=data,
     )
+    db.flush()
+    return asset

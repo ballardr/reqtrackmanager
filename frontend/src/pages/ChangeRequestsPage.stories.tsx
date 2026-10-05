@@ -160,6 +160,18 @@ export const SortByCreatedRefetchesWithSortParams: Story = {
   },
 };
 
+/** The list has a free-text search (2026-10-04), sent server-side so it
+ * finds a change request on any page of the paginated list. */
+export const SearchRefetchesWithSearchParam: Story = {
+  beforeEach: () => mockChangeRequestsListApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const searchBox = await canvas.findByPlaceholderText("Search by name, reason or requirement ID");
+    await userEvent.type(searchBox, "telemetry");
+    await waitFor(() => expect(api.getPage).toHaveBeenCalledWith(expect.stringContaining("search=telemetry")));
+  },
+};
+
 export const SubmitCreatesChangeRequest: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis();

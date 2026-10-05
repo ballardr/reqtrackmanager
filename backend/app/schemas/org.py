@@ -242,6 +242,21 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     allow_ai_approvals: bool = False
 
 
+class ManifestNavEntryOut(BaseModel):
+    """Wire shape of one `app.modules.registry.ModuleNavEntry` — one of a
+    Tier A module's `additional_nav_entries` (Module 1 — Context & Strategy
+    — Phase 7.1, 2026-09-29). `model_config`'s `from_attributes=True` lets
+    `ModuleFrontendManifestOut(**vars(manifest))` (below) construct this
+    list directly from the dataclass's own tuple of `ModuleNavEntry`
+    instances, without every call site needing to convert them by hand."""
+
+    model_config = {"from_attributes": True}
+
+    nav_label: str
+    nav_path: str
+    nav_icon: str = "puzzle"
+
+
 class ModuleFrontendManifestOut(BaseModel):
     """Wire shape of `app.modules.registry.ModuleFrontendManifest` (module
     system Phase 3, extended with Tier C/`"federated"` in a same-system
@@ -260,6 +275,8 @@ class ModuleFrontendManifestOut(BaseModel):
     frame_url: str | None = None
     remote_entry_url: str | None = None
     exposed_module: str | None = None
+    additional_nav_entries: list[ManifestNavEntryOut] = []
+    nav_icon: str = "puzzle"
 
 
 class OrgModuleOut(BaseModel):
@@ -272,6 +289,15 @@ class OrgModuleOut(BaseModel):
     per the plan, the org admin's Modules UI shows them greyed out with an
     explanatory note rather than hiding them entirely — the frontend does
     the graying, not this schema/endpoint.
+
+    `enabled` is the hard floor (Module 0 Phase 5 correction, 2026-09-29):
+    `False` means no project of this organisation may use this module at
+    all. `default_project_enabled` is a separate, independent tier, only
+    meaningful when `enabled` is `True` — whether a project gets this
+    module on or off *by default*, absent an override of its own; a
+    project's own `ProjectModuleEnablement` may still diverge from this in
+    either direction. See `app.models.module.OrganizationModuleEnablement`'s
+    own docstring for the full reasoning.
     """
 
     module_key: str
@@ -281,6 +307,7 @@ class OrgModuleOut(BaseModel):
     implemented: bool
     entitled: bool
     enabled: bool
+    default_project_enabled: bool
     default_enabled: bool
     frontend_manifest: ModuleFrontendManifestOut | None = None
 
@@ -310,10 +337,134 @@ class ModuleFrameTokenOut(BaseModel):
 
 
 class OrgModuleEnablementUpdate(BaseModel):
-    """Sets an organisation's own explicit enable/disable choice for one
-    module. Rejected (403) by the endpoint if the organisation isn't
+    """Sets an organisation's own explicit choices for one module — the
+    hard floor (`enabled`) and, independently, the default a project of
+    this organisation gets absent its own override (`default_project_
+    enabled`). Rejected (403) by the endpoint if the organisation isn't
     entitled to the module at all — see `routers.orgs.
-    update_org_module_enablement`."""
+    update_org_module_enablement`.
+
+    `default_project_enabled` is optional (`None` leaves it untouched on an
+    existing row, or defaults it to match `enabled` on a freshly-created
+    one — **Decided by: Agent**, one combined endpoint for both of this
+    module's own org-tier settings rather than a second endpoint mirroring
+    the sub-component-default endpoint's own separate-resource shape one
+    tier up, since both settings belong to the same "this org's own
+    settings for this module" row and a UI plausibly wants to set both from
+    one form)."""
+
+    enabled: bool
+    default_project_enabled: bool | None = None
+
+
+class ProjectModuleEnablementOut(BaseModel):
+    """One module's state as seen by one project (Module 0 — Platform
+    Foundations — Phase 5) — `GET`/`PUT /projects/{id}/modules/{module_key}`,
+    the project-tier sibling of `OrgModuleOut`'s org-tier whole-module view,
+    one level below it in the same `registry default -> org default ->
+    project override` stack `ProjectModuleSubComponentOut` already uses for
+    sub-components.
+
+    Returns the effective state alongside the organisation's own default
+    and whether this project has its own override, rather than a flat
+    boolean, so the frontend can render "using org default: X" vs.
+    "overridden to: Y" distinctly (`docs/ux-style-guide.md`'s
+    "platform-default override visibility" principle), the same reasoning
+    `ProjectModuleSubComponentOut` already documents.
+
+    `org_default_enabled` (Module 0 Phase 5 correction, 2026-09-29) is
+    specifically `OrganizationModuleEnablement.default_project_enabled` —
+    "what would this project get absent its own override" — not the hard
+    `enabled` floor. `org_hard_enabled` (added the same correction) *is*
+    that floor (`app.modules.registry.is_module_enabled`, entitlement AND
+    the organisation's own `enabled`) — surfaced separately so the
+    frontend can tell "off because the organisation merely defaults it off
+    for new projects, a project may still opt in" apart from "off because
+    the organisation has hard-disabled it, no project override can help"
+    and disable the "turn on" direction of its own toggle only in the
+    latter case, with an explanatory hint (mirroring the org admin
+    Modules page's own `moduleNotEntitledHint`/`moduleNotImplementedHint`
+    convention one tier up).
+    """
+
+    module_key: str
+    name: str
+    effective_enabled: bool
+    org_default_enabled: bool
+    org_hard_enabled: bool
+    has_project_override: bool
+    project_override_enabled: bool | None = None
+
+
+class ProjectModuleEnablementUpdate(BaseModel):
+    """Sets a project's own explicit override of whole-module enablement —
+    see `routers.projects.module_roles.update_project_module_enablement`.
+    Symmetric *against the organisation's `default_project_enabled` value*
+    (Decided by: User): a project admin's own choice always wins over that
+    default in either direction, but only within the organisation's own
+    `enabled=True` floor — the endpoint rejects `enabled=True` here outright
+    (400) when the organisation has hard-disabled the module."""
+
+    enabled: bool
+
+
+class ModuleSubComponentOut(BaseModel):
+    """One sub-component `module_key` declares, with this organisation's
+    own state for it — `GET`/`PUT /orgs/{id}/modules/{module_key}/
+    subcomponents[/{subcomponent_key}]`, mirroring `OrgModuleOut`'s two
+    levers one level down.
+
+    `default_enabled` is the registry's own default; `enabled` is the
+    org's hard floor (and the effective state for org-scoped artefacts);
+    `default_project_enabled` is the value copied into new projects.
+    `has_org_override` is whether the org has its own row at all.
+    """
+
+    module_key: str
+    subcomponent_key: str
+    name: str
+    default_enabled: bool
+    enabled: bool
+    default_project_enabled: bool
+    has_org_override: bool
+
+
+class ModuleSubComponentDefaultUpdate(BaseModel):
+    """Sets an organisation's own levers for one sub-component — see
+    `routers.orgs.update_org_module_subcomponent_default`.
+    `default_project_enabled` of `None` leaves an existing row's value
+    untouched, or matches `enabled` on a new row (same rule as
+    `OrgModuleEnablementUpdate`)."""
+
+    enabled: bool
+    default_project_enabled: bool | None = None
+
+
+class ProjectModuleSubComponentOut(BaseModel):
+    """One sub-component `module_key` declares, as seen from one project
+    (Module 0 — Platform Foundations — Phase 4) — `GET`/`PUT /projects/
+    {id}/modules/{module_key}/subcomponents[/{subcomponent_key}]`.
+
+    `org_default_enabled` is the org's `default_project_enabled` (what a
+    new project gets); `org_hard_enabled` is the org's hard floor (whole
+    module and this sub-component both on) — `False` means no project
+    value can turn it on. Mirrors `ProjectModuleEnablementOut`.
+    """
+
+    module_key: str
+    subcomponent_key: str
+    name: str
+    effective_enabled: bool
+    org_default_enabled: bool
+    org_hard_enabled: bool
+    has_project_override: bool
+    project_override_enabled: bool | None = None
+
+
+class ProjectModuleSubComponentEnablementUpdate(BaseModel):
+    """Sets a project's own explicit override for one sub-component of a
+    module — see `routers.projects.module_roles.
+    update_project_module_subcomponent_enablement`."""
 
     enabled: bool
 

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { CustomRoleDefinition, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { CustomRoleDefinition, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
@@ -47,6 +47,12 @@ function mockOrgAdminApis(overrides: {
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
   modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
+  // Module 0 (Platform Foundations) Phase 4 — a module's own declared
+  // sub-components, keyed by `module_key`; defaults to `[]` per module
+  // (every module except Context & Strategy today), matching the real
+  // `GET .../subcomponents` endpoint's own "no sub-components declared"
+  // response.
+  moduleSubComponents?: Record<string, OrgModuleSubComponent[]>;
   // Fine-Grained Access Control (core) Phase 3 — fetched unconditionally
   // in the main `reload()` bundle (open to any real org role, not
   // ORG_ADMIN-gated), so every story needs these mocked or `reload()`
@@ -109,6 +115,15 @@ function mockOrgAdminApis(overrides: {
     // right after "module"), but checking the more specific path first
     // keeps this robust against that changing.
     if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
+    // Module 0 (Platform Foundations) Phase 4 — checked before the generic
+    // "/modules" branch below, since `.../modules/{key}/subcomponents`
+    // also contains that substring. `moduleKey` is parsed out of the path
+    // itself so each module's own fixture module_key routes to its own
+    // override entry.
+    if (path.includes("/subcomponents")) {
+      const moduleKey = path.split("/modules/")[1]?.split("/subcomponents")[0];
+      return overrides.moduleSubComponents?.[moduleKey ?? ""] ?? [];
+    }
     if (path.includes("/modules")) return overrides.modules ?? [];
     // Fine-Grained Access Control (core) Phase 3 — checked before the
     // plain "/users" branch below since neither substring collides with
@@ -189,8 +204,8 @@ function fixtureOrgModule(overrides: Partial<OrgModule> = {}): OrgModule {
   return {
     module_key: FIXTURE_ORG_MODULE_KEY, name: "Fixture Org Module",
     description: "A fixture module used only by this story file's own org-admin-section assertions.",
-    version: "0.1.0", implemented: true, entitled: true, enabled: true, default_enabled: true,
-    frontend_manifest: null, ...overrides,
+    version: "0.1.0", implemented: true, entitled: true, enabled: true, default_project_enabled: true,
+    default_enabled: true, frontend_manifest: null, ...overrides,
   };
 }
 
@@ -395,7 +410,8 @@ export const UsersSectionModuleRoleGrantAndRevoke: Story = {
       modules: [
         {
           module_key: "compliance", name: "Compliance", description: "Compliance tracking.", version: "1.0.0",
-          implemented: true, entitled: true, enabled: true, default_enabled: true, frontend_manifest: null,
+          implemented: true, entitled: true, enabled: true, default_project_enabled: true,
+          default_enabled: true, frontend_manifest: null,
         },
       ],
       moduleRoles: [
@@ -475,6 +491,32 @@ export const UsersActionsMenuConsolidatesViewAndLock: Story = {
 
     await userEvent.click(within(menu).getByRole("menuitem", { name: "View Alex Morgan's access" }));
     await expect(within(document.body).getByRole("dialog", { name: "Alex Morgan's access" })).toBeInTheDocument();
+  },
+};
+
+/** Locking a display name saves, toasts, and updates just that row in
+ * place — reopening the menu offers "Unlock" (2026-10-04: it used to
+ * reload the whole page, which could close a menu reopened meanwhile). */
+export const LockDisplayNameUpdatesRowInPlace: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ users: [orgUser, secondOrgUser] });
+    spyOn(api, "put").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    await userEvent.click(body.getByRole("menuitem", { name: "Lock display name" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      expect.stringContaining("/display-name-lock"), { display_name_locked: true },
+    ));
+    await expect(await body.findByText("Alex Morgan's display name locked.")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    await expect(body.getByRole("menuitem", { name: "Unlock display name" })).toBeInTheDocument();
   },
 };
 
@@ -1330,6 +1372,55 @@ export const GroupsSectionOpensSidePanel: Story = {
   },
 };
 
+/** Org groups are deletable (2026-10-05): the side panel's Delete opens a
+ * Tier 1 confirmation naming the group, and confirming calls the delete
+ * endpoint, closes the panel and confirms with a toast. */
+export const GroupsSectionDeleteGroup: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Engineering" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Engineering" }));
+    const panel = body.getByRole("dialog", { name: "Engineering details" });
+    await userEvent.click(within(panel).getByRole("button", { name: "Delete group" }));
+
+    const confirm = body.getByRole("dialog", { name: 'Delete "Engineering"?' });
+    await expect(within(confirm).getByText(/Members lose every role and project access/)).toBeInTheDocument();
+    await userEvent.click(within(confirm).getByRole("button", { name: "Delete group" }));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/groups/grp1`));
+    await expect(body.getByText("Group deleted")).toBeInTheDocument();
+    await waitFor(() => expect(body.queryByRole("dialog", { name: "Engineering details" })).not.toBeInTheDocument());
+  },
+};
+
+/** A refused delete (e.g. a module relies on the group) surfaces
+ * the server's reason as an error toast and leaves the group in place. */
+export const GroupsSectionDeleteGroupRefused: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "delete").mockRejectedValue(
+      new ApiError(400, "This group is this organisation's designated fallback compliance-managers group."),
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Engineering" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Engineering" }));
+    await userEvent.click(within(body.getByRole("dialog", { name: "Engineering details" })).getByRole("button", { name: "Delete group" }));
+    await userEvent.click(within(body.getByRole("dialog", { name: 'Delete "Engineering"?' })).getByRole("button", { name: "Delete group" }));
+    await expect(await body.findByText(/designated fallback compliance-managers group/)).toBeInTheDocument();
+    await expect(body.getByRole("dialog", { name: "Engineering details" })).toBeInTheDocument();
+  },
+};
+
 /** SSO group→role mapping (2026-08 UX audit roadmap item 522) is a
  * property of the group being synced into — set alongside its (renamed)
  * SSO group name and saved together via one button in the group's
@@ -2027,39 +2118,109 @@ export const ModulesSectionEmptyState: Story = {
 
 const entitledEnabledModule: OrgModule = {
   module_key: "fake_module", name: "Fake Module", description: "A fixture module used only by this story.",
-  version: "0.1.0", implemented: true, entitled: true, enabled: true, default_enabled: true,
-  frontend_manifest: null,
+  version: "0.1.0", implemented: true, entitled: true, enabled: true, default_project_enabled: true,
+  default_enabled: true, frontend_manifest: null,
 };
 
-/** An entitled, implemented module renders with an active toggle — toggling
- * it off calls `PUT .../modules/{key}` and patches local state from the
- * response, with a toast confirming the change (feedback-on-every-mutation). */
-export const ModulesSectionToggleEntitledModule: Story = {
+/** An entitled, implemented module renders one three-state availability
+ * select. Choosing "Available, off for new projects" sends both levers in
+ * one `PUT` and confirms with a toast (feedback-on-every-mutation). */
+export const ModulesSectionChangeAvailability: Story = {
   beforeEach: () => {
     mockOrgAdminApis({ modules: [entitledEnabledModule] });
-    spyOn(api, "put").mockResolvedValue({ ...entitledEnabledModule, enabled: false });
+    spyOn(api, "put").mockResolvedValue({ ...entitledEnabledModule, default_project_enabled: false });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
     await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
 
-    const toggle = canvas.getByRole("switch", { name: "Enable Fake Module" });
-    await expect(toggle).toBeChecked();
-    await expect(toggle).toBeEnabled();
+    const select = canvas.getByRole("combobox", { name: "Fake Module availability" });
+    await expect(select).toHaveValue("default_on");
+    await expect(select).toBeEnabled();
 
-    await userEvent.click(toggle);
+    await userEvent.selectOptions(select, "opt_in");
     await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/modules/fake_module`, { enabled: false })
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/modules/fake_module`, { enabled: true, default_project_enabled: false },
+      )
     );
-    await expect(within(document.body).getByText("Fake Module disabled")).toBeInTheDocument();
+    await expect(
+      within(document.body).getByText("Fake Module: Available, off for new projects")
+    ).toBeInTheDocument();
+  },
+};
+
+/** A hard-disabled module reads "Off" — one control, so there's no
+ * separate, meaningless "default" lever to grey out. */
+export const ModulesSectionHardDisabledModuleShowsOff: Story = {
+  beforeEach: () =>
+    mockOrgAdminApis({
+      modules: [{ ...entitledEnabledModule, enabled: false, default_project_enabled: true }],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+    await expect(canvas.getByRole("combobox", { name: "Fake Module availability" })).toHaveValue("off");
+  },
+};
+
+const fixtureSubComponent = (overrides: Partial<OrgModuleSubComponent> = {}): OrgModuleSubComponent => ({
+  module_key: "fake_module", subcomponent_key: "widget", name: "Widget",
+  default_enabled: true, enabled: true, default_project_enabled: true, has_org_override: false,
+  ...overrides,
+});
+
+/** Sub-components start collapsed behind a one-line summary; expanding it
+ * shows one availability select per sub-component, which `PUT`s the
+ * sub-component endpoint with both levers. */
+export const ModulesSectionSubComponentAvailability: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      modules: [entitledEnabledModule],
+      moduleSubComponents: { fake_module: [fixtureSubComponent()] },
+    });
+    spyOn(api, "put").mockResolvedValue(fixtureSubComponent({ enabled: false, has_org_override: true }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+    await expect(canvas.queryByText("Widget")).not.toBeInTheDocument();
+
+    const disclosure = canvas.getByRole("button", { name: "1 component · all on" });
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(disclosure);
+    await expect(canvas.getByText("Widget")).toBeInTheDocument();
+
+    const select = canvas.getByRole("combobox", { name: "Widget (Fake Module) availability" });
+    await expect(select).toHaveValue("default_on");
+    await userEvent.selectOptions(select, "off");
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/modules/fake_module/subcomponents/widget`,
+        { enabled: false, default_project_enabled: false },
+      )
+    );
+    await expect(within(document.body).getByText("Widget: Off")).toBeInTheDocument();
+  },
+};
+
+/** A module with no declared sub-components renders no disclosure at all. */
+export const ModulesSectionNoSubComponentsRendersNoDisclosure: Story = {
+  beforeEach: () => mockOrgAdminApis({ modules: [entitledEnabledModule] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: /components/ })).not.toBeInTheDocument();
   },
 };
 
 /** Non-entitled modules are shown greyed out with an explanatory note
- * rather than hidden entirely (plan requirement — visibility helps future
- * upsell), and the toggle itself stays disabled so an org admin can't
- * self-enable a module their organisation isn't entitled to. */
+ * rather than hidden (visibility helps future upsell), and the select is
+ * disabled so an org admin can't self-enable it. */
 export const ModulesSectionNonEntitledModuleIsGreyedOut: Story = {
   beforeEach: () =>
     mockOrgAdminApis({
@@ -2073,14 +2234,12 @@ export const ModulesSectionNonEntitledModuleIsGreyedOut: Story = {
     await expect(
       canvas.getByText("Not available on this organisation's current plan. Contact your server administrator to request access.")
     ).toBeInTheDocument();
-    await expect(canvas.getByRole("switch", { name: "Enable Fake Module" })).toBeDisabled();
+    await expect(canvas.getByRole("combobox", { name: "Fake Module availability" })).toBeDisabled();
   },
 };
 
-/** A registered-but-not-yet-implemented module (`implemented: false`, the
- * state every module will be in before Phase 5) also renders with a
- * disabled toggle and its own explanatory note, distinct from the
- * non-entitled case above. */
+/** A registered-but-not-yet-implemented module is disabled with its own
+ * note, distinct from the non-entitled case above. */
 export const ModulesSectionNotYetImplementedModuleIsDisabled: Story = {
   beforeEach: () =>
     mockOrgAdminApis({
@@ -2092,7 +2251,7 @@ export const ModulesSectionNotYetImplementedModuleIsDisabled: Story = {
     await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
 
     await expect(canvas.getByText("Not yet available in this version of the application.")).toBeInTheDocument();
-    await expect(canvas.getByRole("switch", { name: "Enable Fake Module" })).toBeDisabled();
+    await expect(canvas.getByRole("combobox", { name: "Fake Module availability" })).toBeDisabled();
   },
 };
 

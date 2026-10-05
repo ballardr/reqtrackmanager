@@ -351,7 +351,45 @@ def test_module_role_permissions_field_absent_when_module_disabled(client, admin
                 organization_id=org["id"], project_id=project["id"],
             )
         )
-        db.add(OrganizationModuleEnablement(organization_id=org["id"], module_key=fake_module, enabled=False))
+        db.add(OrganizationModuleEnablement(organization_id=org["id"], module_key=fake_module, enabled=False, default_project_enabled=False))
+        db.commit()
+
+        held = get_effective_permissions(db, uuid_lib.UUID(grantee_id), project_id=uuid_lib.UUID(project["id"]))
+        assert encode_permission("requirement", PermissionLevel.MANAGE.value) not in held
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_module_role_permissions_field_absent_when_project_level_override_disables(
+    client, admin_token, fake_module
+):
+    """Module 0 (Platform Foundations) Phase 5 regression: `_module_role_
+    permission_grants` (inside `get_effective_permissions`) used to check
+    the org-only `is_module_enabled` for a project-scoped grant, bypassing
+    any project-level override entirely. A project that has disabled this
+    module via its own `ProjectModuleEnablement` override — org default
+    left enabled — must exclude the module role's `permissions` the same
+    way an org-level disable already does (test immediately above)."""
+    from app.models.module import ProjectModuleEnablement
+
+    org, org_admin_token = create_org_admin_in(client, admin_token, "Project Override Permission Field Org")
+    project = create_project(client, org_admin_token, org["id"])
+    grantee_id = create_org_user(
+        client, org_admin_token, org["id"], "project_override_module_grantee@example.com", role="member",
+    )
+
+    db = SessionLocal()
+    try:
+        db.add(
+            UserModuleRole(
+                user_id=uuid_lib.UUID(grantee_id), module_key=fake_module, role_key=FAKE_ROLE_KEY,
+                organization_id=org["id"], project_id=project["id"],
+            )
+        )
+        # Replace the row copied in at project creation (snapshot_project_module_state).
+        db.query(ProjectModuleEnablement).filter_by(project_id=project["id"], module_key=fake_module).delete()
+        db.add(ProjectModuleEnablement(project_id=project["id"], module_key=fake_module, enabled=False))
         db.commit()
 
         held = get_effective_permissions(db, uuid_lib.UUID(grantee_id), project_id=uuid_lib.UUID(project["id"]))

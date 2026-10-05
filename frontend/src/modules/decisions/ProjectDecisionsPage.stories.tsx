@@ -67,16 +67,6 @@ export const EmptyState: Story = {
   },
 };
 
-export const SwitchToDecisionTypesTab: Story = {
-  beforeEach: () => mockPageApis([]),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("tab", { name: "Decision Types" }));
-    await userEvent.click(canvas.getByRole("tab", { name: "Decision Types" }));
-    await expect(canvas.getByDisplayValue("Architecture")).toBeInTheDocument();
-  },
-};
-
 export const OpenCreateModal: Story = {
   beforeEach: () => mockPageApis([]),
   play: async ({ canvasElement }) => {

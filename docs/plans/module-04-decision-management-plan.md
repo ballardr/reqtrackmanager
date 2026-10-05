@@ -54,11 +54,12 @@ improvised).
 
 ## Status / Resume Here
 
-8 / 9 phases complete. Phase 7 is blocked on Module 1/Module 6; Phase 8 is
-blocked on Fine-Grained Access Control (core platform capability, formerly
-"Module 12"), whose Phase 0 completed 2026-09-23 specifically to unblock
-this — Phase 1 (data model) is next over there —
-neither phase is actionable right now, but Phase 8 should be soon.
+9 / 10 phases complete. Phase 7 is blocked on Module 1/Module 6. Phase 8
+unblocked and completed 2026-09-27, once [Fine-Grained Access Control
+(core)](core-fine-grained-access-control-plan.md) reached its own Phase 7
+(that plan's 10/10 completion covers this phase's consumer migration
+directly — see that plan's Phase 7 entry and `docs/decisions.md`'s
+"Fine-Grained Access Control (core) — Phase 7 complete" entry).
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -70,7 +71,7 @@ neither phase is actionable right now, but Phase 8 should be soon.
 | 5 | Frontend — Decision list/detail/create/approve UI | [x] Complete (2026-09-21) — see "Phase 5 notes" below |
 | 6 | Docs website coverage | [x] Complete (2026-09-21) — see "Phase 6 notes" below |
 | 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
-| 8 | Per-decision-type approver binding | [ ] Blocked on [Fine-Grained Access Control (core)](core-fine-grained-access-control-plan.md) (Phase 0 complete, Phase 1 next) — see note below |
+| 8 | Per-decision-type approver binding | [x] Complete (2026-09-27) — see note below |
 | 9 | UX/architecture follow-up: template & type placement, nested decision types, detail page | [x] Complete (2026-09-22) — see "Phase 9 notes" below |
 
 ## Phase 2 notes (2026-09-21)
@@ -1140,13 +1141,25 @@ specific types purely by granting a role (fixed or custom) scoped to that
 type through Fine-Grained Access Control's own Role Management UI, with no
 Decision-Management-specific admin surface needed at all.
 
-**Status:** blocked until Fine-Grained Access Control (core) exists — its
-Phase 0 completed 2026-09-23 (see that plan's own Status section); Phase 1
-(data model, including the sub-type registry this phase depends on) is
-next. Not a blocker for Phases 1–7. Superseded, not duplicated, if/when
-Module 8 (Governance) later ships its own generic per-artefact-type
-Approval Policies (Module 8 Phase
-2) — see that plan's Phase 5 note.
+**Status:** [x] Complete (2026-09-27), built as [Fine-Grained Access
+Control (core)](core-fine-grained-access-control-plan.md)'s own Phase 7 —
+see that plan's Phase 7 entry and `docs/decisions.md`'s "Fine-Grained
+Access Control (core) — Phase 7 complete" entry for the full account. One
+correction to this section's own scope text, **Decided by: Agent**:
+`require_permission`'s FastAPI-dependency form can't express a sub-type
+known only from a loaded row, so `approve_decision_endpoint`/
+`reject_decision_endpoint` call `get_effective_permissions`/
+`permission_satisfied` directly from inside the route body after loading
+the decision, rather than `require_permission` itself as a route
+dependency. No Decision-Management-specific admin surface was needed —
+Fine-Grained Access Control's own generic `PermissionPicker` already
+renders Decision Type sub-types via the `get_subtypes` provider. Not a
+blocker for Phases 1–7. Superseded, not duplicated, if/when Module 8
+(Governance) later ships its own generic per-artefact-type Approval
+Policies (Module 8 Phase 2) — Governance's policies would become just
+another way to grant the same underlying `(decision, approve_baseline,
+subtype=...)` permission, not a replacement for this phase's work; see
+that plan's own Phase 2 note.
 
 ## Phase 9 — UX/architecture follow-up: template & type placement, nested decision types, detail page
 

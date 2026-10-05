@@ -27,6 +27,8 @@ Disabled organisations' projects are hidden by default; use the **All** filter t
 
 Click **New project** from the Projects page — either blank, or **from a template** (any project in the organisation marked "usable as a project template," see [Core Features → Project templates](../core-features/project-templates.md)). Only an org admin or a project creator can do this; a plain member sees no create option. A [hierarchical project](../concepts/organisations-and-projects.md) can also be created as a sub-project of one you manage, from that parent project's own admin page.
 
+A new project copies the organisation's current module and sub-component defaults (for every module the organisation has available) — blank or from a template alike, since a template's own module settings aren't carried over (see [Core Features → Project templates](../core-features/project-templates.md#what-a-template-carries-over)). Changing an organisation default later doesn't affect it; turning a module **Off** at organisation level does. See [Modules → Overview → Gating](../modules/overview.md#gating-entitlement--enablement--overrides) and [Administering a project → Modules](./administering-a-project.md#modules).
+
 ## Favouriting a project
 
 Click the star icon next to a project to favourite it — favourited projects always sort to the top of your list, regardless of any other filter or search applied. Once you have at least one, a **Favourites** link appears in the nav's Global section as a quick jump list.

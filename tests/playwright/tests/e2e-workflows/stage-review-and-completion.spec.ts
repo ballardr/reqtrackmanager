@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { type APIRequestContext, expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { installCleanupHook, loginAs, logout, onCleanup, openProject, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: a project stage's full lifecycle — scoping, a review
@@ -30,7 +30,7 @@ import { loginAs, logout, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } fro
  * rather than laziness: once approved it carries a `Baseline` record, and
  * `DELETE /projects/{id}/stages/{id}` refuses to delete any stage with
  * baseline history (C-G-10 — baselines are immutable). The two requirements
- * it creates *are* archived in a `finally` cleanup step below, though —
+ * it creates *are* archived by an onCleanup (afterEach) below, though —
  * archiving (unlike stage deletion) has no such restriction, and bounding
  * the requirements list matters: an unrelated spec, role-display-collapsing
  * .spec.ts, was found flaking not from timing but from an analogous
@@ -39,246 +39,170 @@ import { loginAs, logout, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } fro
  * locator waited forever for it) — see docs/decisions.md. Archiving these
  * requirements after each run keeps Alpha-2's active requirements list from
  * growing the same way, even though the stage row itself can't be avoided.
+ *
+ * Trimmed 2026-10-04: setup (the stage, its two requirements, the member's
+ * 403 probe) goes through the API, requirements are opened by URL, and the
+ * PM's session headers are captured once — only the PM's review/approve/
+ * complete actions and the stakeholder's review response stay in the UI,
+ * since those are what this spec tests. The previous all-UI version took
+ * ~32s and timed out even against a raised 45s budget under full-suite
+ * load. A stakeholder grant or requirements leaked by an interrupted run
+ * are swept before starting.
  */
+const API = "http://localhost:8000/api/v1";
+
 test.describe("stage review deadlines and completion", () => {
+  installCleanupHook();
+
   test("scoping -> review (with a deadline and a stakeholder response) -> approved -> completed, cascaded", async ({
     page,
   }) => {
-    // This test's own budget is real, accounted-for cost, not slack to trim:
-    // it makes 6 real UI logins (~1.5s each end-to-end — navigate, fill,
-    // submit, the ~210ms bcrypt check itself, redirect, hydrate, "Sign out"
-    // visible — inflated further by CPU contention from Playwright's other
-    // concurrent workers hitting the same backend's bcrypt calls) plus real
-    // multi-persona workflow steps, summing to ~26-31s against the 30s
-    // default. Root-caused with an actual trace, not guessed at — see
-    // docs/decisions.md's "bcrypt login cost under concurrent load" and
-    // "React 19/ESLint 10 upgrade plan, Phase 4" entries. This is
-    // deliberately not the blind timeout bump an earlier session rejected
-    // (see the Phase 3 entry) — that rejection was of a bump applied before
-    // root-causing; both entries above did the root-causing first.
+    // Budget kept from the earlier root-caused decision (docs/decisions.md,
+    // "bcrypt login cost under concurrent load"): three real UI logins plus
+    // ~20 multi-persona UI round trips at ~0.8s each. The 2026-10-04 trim
+    // cut runtime from ~32s to ~25s, so this is now ~20s of headroom, not a
+    // blind bump.
     test.setTimeout(45_000);
+    const stamp = Date.now();
+    const stageName = `E2E Stage Cycle ${stamp}`;
+    const reqNameA = `E2E Stage Cycle Req A ${stamp}`;
+    const reqNameB = `E2E Stage Cycle Req B ${stamp}`;
+    const reqUrl: Record<string, string> = {};
 
-    let projectId = "";
-    let stageId = "";
-    const stageName = `E2E Stage Cycle ${Date.now()}`;
-    const reqNameA = `E2E Stage Cycle Req A ${Date.now()}`;
-    const reqNameB = `E2E Stage Cycle Req B ${Date.now()}`;
+    // Deep-linked rather than via `selectProjectAdminGroup`, whose
+    // `networkidle` wait costs ~2s per visit here; every action below
+    // auto-waits for the stage row, so nothing relies on that wait.
+    let structureUrl = "";
 
     function stageContainer() {
-      // Every step scopes to this stage's own row (found by its current
-      // display value in the rename `<input>`) rather than assuming it's
-      // the project's only stage, since Alpha-2 already has the original
-      // seeded stage (and, after a repeat run of this spec, any number of
-      // previous runs' now-`completed` stages) coexisting with it.
+      // Scoped to this run's own stage row (by its rename `<input>` value):
+      // Alpha-2 keeps every earlier run's completed stage alongside it.
       return page.locator(`input[value="${stageName}"]`).locator("xpath=../../..");
     }
 
-    // This test grants `stakeholderAlpha` (a shared persona other specs
-    // assert an exact project count for, e.g. org-overview.spec.ts/project-
-    // access-scope.spec.ts/org-security-controls.spec.ts's "stakeholder on
-    // Alpha-1 only") a real, persistent role on Alpha-2 partway through, to
-    // exercise the review-response UI as a real stakeholder. The revoke used
-    // to be the test's own last step with no guard — if anything earlier
-    // threw or timed out (the risk above is exactly that), the grant would
-    // leak past this run and break every other spec relying on that
-    // persona's role count, on this run or a later one. `try`/`finally`
-    // mirrors this file's own established convention in
-    // `project-hierarchy.spec.ts` for the identical shared-persona-grant
-    // shape.
-    try {
-      await test.step("PM creates a fresh stage for this run", async () => {
-        await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-        await page.getByText(PROJECT_NAMES.alpha2).click();
-        projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        // Project stages now lives inside the merged "Structure" tab
-        // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
-        await selectProjectAdminGroup(page, "Structure");
-        // Scoped to the "Project stages" card: its own "Name" placeholder
-        // would otherwise collide with the identically-labelled "new
-        // component"/"new category" inputs elsewhere on the same Structure
-        // tab (`ProjectAdminPage.tsx` reuses `strings.admin.name` for all
-        // three "add a new X" forms).
-        const stagesSection = page.locator("div.card.stack", {
-          has: page.getByRole("heading", { name: "Project stages" }),
-        });
-        await stagesSection.getByPlaceholder("Name", { exact: true }).fill(stageName);
-        await stagesSection.getByRole("button", { name: "New stage" }).click();
-        await expect(page.locator(`input[value="${stageName}"]`)).toBeVisible();
-      });
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    const pmHeaders = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem("reqtrack_token"))}` };
+    await openProject(page, PROJECT_NAMES.alpha2);
+    const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
+    structureUrl = `/projects/${projectId}/admin/structure`;
+    const { organization_id: orgId } = await (await page.request.get(`${API}/projects/${projectId}`, { headers: pmHeaders })).json();
+    const users: { user_id: string; email: string }[] = await (
+      await page.request.get(`${API}/orgs/${orgId}/users`, { headers: pmHeaders })
+    ).json();
+    const stakeholderId = users.find((u) => u.email === PERSONAS.stakeholderAlpha.email)!.user_id;
 
-      await test.step("PM creates two requirements explicitly targeting the new stage", async () => {
-        await page.getByRole("link", { name: "Requirements", exact: true }).click();
-        for (const name of [reqNameA, reqNameB]) {
-          await page.getByRole("button", { name: "New requirement" }).click();
-          const dialog = page.getByRole("dialog", { name: "New requirement" });
-          await dialog.getByPlaceholder("Name", { exact: true }).fill(name);
-          await dialog.getByLabel("Target version").selectOption({ label: stageName });
-          await dialog.getByRole("button", { name: "Create", exact: true }).click();
-          await expect(page.getByText(name)).toBeVisible();
-        }
-      });
-
-      await test.step("PM starts the stage's review and sets a deadline", async () => {
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        await selectProjectAdminGroup(page, "Structure");
-        await stageContainer().getByRole("button", { name: "Start review" }).click();
-        await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
-
-        const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        await stageContainer().locator('input[type="datetime-local"]').fill(future.toISOString().slice(0, 16));
-        await stageContainer().getByRole("button", { name: "Set review deadline" }).click();
-        await expect(stageContainer().getByText("Review deadline:")).toBeVisible();
-      });
-
-      await test.step("a plain member cannot approve the stage via a direct API call, even while it's in review", async () => {
-        const pmToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-        const stagesResp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/stages`, {
-          headers: { Authorization: `Bearer ${pmToken}` },
-        });
-        const allStages: { id: string; name: string }[] = await stagesResp.json();
-        stageId = allStages.find((s) => s.name === stageName)!.id;
-
-        await logout(page);
-        await loginAs(page, PERSONAS.memberAlphaBeta.email);
-        // memberAlphaBeta has no role at all on Alpha-2 — proves the check is
-        // a real project-manager gate, not merely UI absence.
-        const memberToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-        const resp = await page.request.post(
-          `http://localhost:8000/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`,
-          { headers: { Authorization: `Bearer ${memberToken}` } }
-        );
-        expect(resp.status()).toBe(403);
-      });
-
-      await test.step("a stakeholder responds to the review through the real UI", async () => {
-        await logout(page);
-        await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-        const pmToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-        const projectResp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}`, {
-          headers: { Authorization: `Bearer ${pmToken}` },
-        });
-        const { organization_id: orgId } = await projectResp.json();
-        const usersResp = await page.request.get(`http://localhost:8000/api/v1/orgs/${orgId}/users`, {
-          headers: { Authorization: `Bearer ${pmToken}` },
-        });
-        const users: { user_id: string; email: string }[] = await usersResp.json();
-        const stakeholderId = users.find((u) => u.email === PERSONAS.stakeholderAlpha.email)!.user_id;
-        // Idempotent regardless of whether a previous run already granted
-        // this role — POST /roles is a plain grant, tolerant of re-granting
-        // an already-held role.
-        await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/roles`, {
-          headers: { Authorization: `Bearer ${pmToken}` },
-          data: { user_id: stakeholderId, role: "stakeholder" },
-        });
-
-        await logout(page);
-        await loginAs(page, PERSONAS.stakeholderAlpha.email);
-        await page.goto(`/projects/${projectId}/admin`);
-        await selectProjectAdminGroup(page, "Structure");
-        await stageContainer().getByRole("button", { name: "Approve", exact: true }).click();
-        await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
-      });
-
-      await test.step("PM approves the stage, which locks its requirements and writes a baseline", async () => {
-        await logout(page);
-        await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-        await page.goto(`/projects/${projectId}/admin`);
-        await selectProjectAdminGroup(page, "Structure");
-        await stageContainer().getByRole("button", { name: "Approve stage" }).click();
-        await expect(stageContainer().getByRole("button", { name: "Approve stage" })).toHaveCount(0);
-
-        await page.getByRole("link", { name: "Requirements", exact: true }).click();
-        await expect(page.getByText("Locked (approved)").first()).toBeVisible();
-      });
-
-      await test.step("a locked requirement can be marked completed directly by the PM (no change request needed)", async () => {
-        // C-G-11: completion is an overlay marker independent of lifecycle
-        // status (`Requirement.is_completed`), not its own status value — the
-        // status badge stays "Approved" throughout; a separate "Completed"
-        // badge appears/disappears alongside it instead.
-        await page.getByText(reqNameA).click();
-        await page.getByRole("button", { name: "Mark completed" }).click();
-        await expect(page.getByText("Status: Approved")).toBeVisible();
-        await expect(page.getByText("Completed", { exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Revert completion" }).click();
-        await expect(page.getByText("Status: Approved")).toBeVisible();
-        await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
-        await page.getByRole("button", { name: "Mark completed" }).click();
-        await expect(page.getByText("Completed", { exact: true })).toBeVisible();
-      });
-
-      await test.step("PM completes the stage with cascade, which also completes its still-approved requirements", async () => {
-        await page.getByRole("link", { name: "Project admin", exact: true }).click();
-        await selectProjectAdminGroup(page, "Structure");
-        await stageContainer()
-          .getByLabel("Also mark this stage's approved requirements as completed")
-          .check();
-        await stageContainer().getByRole("button", { name: "Mark stage completed" }).click();
-        await expect(stageContainer().getByText("Implemented", { exact: true })).toBeVisible();
-
-        await page.getByRole("link", { name: "Requirements", exact: true }).click();
-        // reqNameB was never manually completed — only the cascade above
-        // should have marked it, proving the cascade (not the earlier manual
-        // step) is what completed it.
-        await page.getByText(reqNameB).click();
-        await expect(page.getByText("Status: Approved")).toBeVisible();
-        await expect(page.getByText("Completed", { exact: true })).toBeVisible();
-      });
-    } finally {
-      await test.step("clean up: revoke the stakeholder grant and archive this run's two requirements on Alpha-2, best-effort so an earlier failure isn't masked", async () => {
-        // No grant/requirements were ever created if the very first step
-        // (which sets `projectId`) didn't complete — nothing to clean up,
-        // and querying with an empty projectId would itself throw,
-        // replacing the real failure with a confusing one (the same
-        // masking risk `project-hierarchy.spec.ts`'s identical cleanup
-        // comment describes).
-        if (!projectId) return;
-        try {
-          await logout(page);
-          await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-          const pmToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-          const pmHeaders = { Authorization: `Bearer ${pmToken}` };
-
-          const projectResp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}`, {
-            headers: pmHeaders,
-          });
-          const { organization_id: orgId } = await projectResp.json();
-          const usersResp = await page.request.get(`http://localhost:8000/api/v1/orgs/${orgId}/users`, {
-            headers: pmHeaders,
-          });
-          const users: { user_id: string; email: string }[] = await usersResp.json();
-          const stakeholderId = users.find((u) => u.email === PERSONAS.stakeholderAlpha.email)?.user_id;
-          if (stakeholderId) {
-            await page.request.delete(
-              `http://localhost:8000/api/v1/projects/${projectId}/roles/${stakeholderId}/stakeholder`,
-              { headers: pmHeaders }
-            );
-          }
-
-          // Archive (not delete — requirements have no hard-delete endpoint)
-          // both requirements this run created, so Alpha-2's active
-          // requirements list doesn't grow unbounded across repeated runs.
-          // The stage they targeted can't be similarly cleaned up (see the
-          // file docstring), but bounding at least the requirements list
-          // is still worth doing.
-          const reqsResp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/requirements`, {
-            headers: pmHeaders,
-          });
-          const reqs: { id: string; name: string }[] = await reqsResp.json();
-          for (const name of [reqNameA, reqNameB]) {
-            const req = reqs.find((r) => r.name === name);
-            if (req) {
-              await page.request.delete(`http://localhost:8000/api/v1/projects/${projectId}/requirements/${req.id}`, {
-                headers: pmHeaders,
-              });
-            }
-          }
-        } catch {
-          // Best-effort: a failure here must not replace/mask whatever the
-          // `try` block above actually failed with.
-        }
-      });
+    /** Revokes the stakeholder grant on Alpha-2 and archives every "E2E
+     * Stage Cycle Req" requirement — this run's and any leftovers. */
+    async function sweep(api: APIRequestContext) {
+      await api.delete(`${API}/projects/${projectId}/roles/${stakeholderId}/stakeholder`, { headers: pmHeaders });
+      const reqs: { id: string; name: string }[] = await (
+        await api.get(`${API}/projects/${projectId}/requirements?search=${encodeURIComponent("E2E Stage Cycle Req")}`, {
+          headers: pmHeaders,
+        })
+      ).json();
+      for (const req of reqs.filter((r) => r.name.startsWith("E2E Stage Cycle Req"))) {
+        await api.delete(`${API}/projects/${projectId}/requirements/${req.id}`, { headers: pmHeaders });
+      }
     }
+
+    // `stakeholderAlpha` is a shared persona other specs assert an exact
+    // project count for, so the Alpha-2 grant below must never outlive this
+    // test — swept up front (an interrupted earlier run) and in afterEach.
+    await sweep(page.request);
+    // Runs again after the test even if it fails or times out (afterEach).
+    onCleanup((request) => sweep(request));
+    await test.step("set up a fresh stage with two requirements targeting it", async () => {
+      const stage = await (await page.request.post(`${API}/projects/${projectId}/stages`, {
+        headers: pmHeaders, data: { name: stageName },
+      })).json();
+      const categories: { id: string; component_id: string }[] = await (
+        await page.request.get(`${API}/projects/${projectId}/categories`, { headers: pmHeaders })
+      ).json();
+      for (const name of [reqNameA, reqNameB]) {
+        const resp = await page.request.post(`${API}/projects/${projectId}/requirements`, {
+          headers: pmHeaders,
+          data: { name, component_id: categories[0].component_id, category_id: categories[0].id, target_stage_id: stage.id },
+        });
+        expect(resp.ok()).toBeTruthy();
+        reqUrl[name] = `/projects/${projectId}/requirements/${(await resp.json()).id}`;
+      }
+    });
+
+    await test.step("PM starts the stage's review and sets a deadline", async () => {
+      await page.goto(structureUrl);
+      await stageContainer().getByRole("button", { name: "Start review" }).click();
+      await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
+
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await stageContainer().locator('input[type="datetime-local"]').fill(future.toISOString().slice(0, 16));
+      await stageContainer().getByRole("button", { name: "Set review deadline" }).click();
+      await expect(stageContainer().getByText("Review deadline:")).toBeVisible();
+    });
+
+    await test.step("a plain member cannot approve the stage via a direct API call, even while it's in review", async () => {
+      const stages: { id: string; name: string }[] = await (
+        await page.request.get(`${API}/projects/${projectId}/stages`, { headers: pmHeaders })
+      ).json();
+      const stageId = stages.find((s) => s.name === stageName)!.id;
+      // memberAlphaBeta has no role at all on Alpha-2 — proves the check
+      // is a real project-manager gate, not merely UI absence.
+      const login = await page.request.post(`${API}/auth/login`, {
+        data: { email: PERSONAS.memberAlphaBeta.email, password: PASSWORD },
+      });
+      const memberToken = (await login.json()).access_token;
+      const resp = await page.request.post(
+        `${API}/projects/${projectId}/stages/${stageId}/transition?new_status=approved`,
+        { headers: { Authorization: `Bearer ${memberToken}` } },
+      );
+      expect(resp.status()).toBe(403);
+    });
+
+    await test.step("a stakeholder responds to the review through the real UI", async () => {
+      await page.request.post(`${API}/projects/${projectId}/roles`, {
+        headers: pmHeaders, data: { user_id: stakeholderId, role: "stakeholder" },
+      });
+      await logout(page);
+      await loginAs(page, PERSONAS.stakeholderAlpha.email);
+      await page.goto(structureUrl);
+      await stageContainer().getByRole("button", { name: "Approve", exact: true }).click();
+      await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
+    });
+
+    await test.step("PM approves the stage, which locks its requirements and writes a baseline", async () => {
+      await logout(page);
+      await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+      await page.goto(structureUrl);
+      await stageContainer().getByRole("button", { name: "Approve stage" }).click();
+      await expect(stageContainer().getByRole("button", { name: "Approve stage" })).toHaveCount(0);
+
+      await page.goto(reqUrl[reqNameA]);
+      await expect(page.getByText("Status: Approved")).toBeVisible();
+    });
+
+    await test.step("a locked requirement can be marked completed directly by the PM (no change request needed)", async () => {
+      // C-G-11: completion is an overlay marker independent of lifecycle
+      // status (`Requirement.is_completed`) — the status badge stays
+      // "Approved" throughout; a separate "Completed" badge toggles.
+      await page.getByRole("button", { name: "Mark completed" }).click();
+      await expect(page.getByText("Status: Approved")).toBeVisible();
+      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Revert completion" }).click();
+      await expect(page.getByText("Status: Approved")).toBeVisible();
+      await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Mark completed" }).click();
+      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    });
+
+    await test.step("PM completes the stage with cascade, which also completes its still-approved requirements", async () => {
+      await page.goto(structureUrl);
+      await stageContainer().getByLabel("Also mark this stage's approved requirements as completed").check();
+      await stageContainer().getByRole("button", { name: "Mark stage completed" }).click();
+      await expect(stageContainer().getByText("Implemented", { exact: true })).toBeVisible();
+
+      // reqNameB was never manually completed — only the cascade marked it.
+      await page.goto(reqUrl[reqNameB]);
+      await expect(page.getByText("Status: Approved")).toBeVisible();
+      await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    });
   });
 });

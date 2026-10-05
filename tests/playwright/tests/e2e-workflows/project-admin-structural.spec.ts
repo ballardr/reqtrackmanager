@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
+import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: a project's structural admin — stages, and the
@@ -31,84 +31,58 @@ import { loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
  * Component/category/stage names are rendered as editable `<input>` value
  * attributes (the rename form), not text nodes — every locator below
  * matches `input[value="..."]` rather than using `getByText` for them.
+ *
+ * Split into three independent tests (2026-10-04), each with its own
+ * disposable project created via the API: as one test it ran ~25s of the
+ * 30s default budget and timed out intermittently under load.
  */
+
+/** Creates this test's disposable project (archived afterwards by
+ * `createDisposableProject`'s own cleanup) and opens its Project Admin
+ * "Structure" group. */
+async function openStructuralProject(page: Page, label: string) {
+  const { projectId, projectName, headers: authHeaders } = await createDisposableProject(
+    page.request, PERSONAS.orgAdminAlphaBeta.email, `Structural ${label}`,
+  );
+  await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+  await page.goto(`/projects/${projectId}/admin`);
+  await selectProjectAdminGroup(page, "Structure");
+  return { projectId, projectName, authHeaders };
+}
+
+/** Picks the reassignment target in `DefinitionList`-style delete flows and confirms. */
+async function reassignTo(page: Page, label: string) {
+  await page.getByText("Reassign existing items to").locator("xpath=..").getByRole("combobox").selectOption({ label });
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+}
+
+// Stages and Categories live together on the "Structure" group, each in its
+// own `CollapsibleSection`; locators are scoped to one section so the two
+// sections' "Name"-placeholder fields never cross-hit.
+const stagesSectionOf = (page: Page) =>
+  page.locator(".card", { has: page.getByRole("button", { name: "Project stages section" }) });
+const componentsSectionOf = (page: Page) =>
+  page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
+
 test.describe("project admin: structural rename/delete and archiving", () => {
-  test("stages, components, and categories can be renamed and deleted with reassignment", async ({ page }) => {
-    let projectId = "";
-    const projectName = `Structural Test ${Date.now()}`;
+  installCleanupHook();
 
-    await test.step("PM creates a disposable project and seeds its starting structure", async () => {
-      await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.goto("/projects");
-      await page.getByRole("button", { name: "New project" }).click();
-      const dialog = page.getByRole("dialog", { name: "New project" });
-      // Which org this lands in doesn't matter to anything below — left on
-      // the dialog's own default (orgAdminAlphaBeta manages both Alpha and
-      // Beta) rather than explicitly switched, since switching away from
-      // the default here triggers a dependent Parent-project-list refetch
-      // that intermittently outraces Playwright's own selectOption action on
-      // a slower run (the org does end up correctly selected either way —
-      // this is a test-interaction timing quirk, not a product bug: a human
-      // clicking the dropdown at normal speed never hits it).
-      await dialog.getByLabel("Name", { exact: true }).fill(projectName);
-      await dialog.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
-      projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
+  test("components and categories can be renamed and deleted with reassignment", async ({ page }) => {
+    await openStructuralProject(page, "Components");
+    const componentsSection = componentsSectionOf(page);
 
-      // Same Hardware/Software + Functional/Performance starting shape
-      // `seed_e2e_dataset.py::seed_project_content` gives every seeded
-      // project (Beta-2 included) — created directly via API rather than
-      // through the UI form this spec's own "build a two-component tree"
-      // step already exercises below, so this setup step isn't itself
-      // duplicating the behaviour under test.
-      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const authHeaders = { Authorization: `Bearer ${token}` };
-      const hwResp = await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/components`, {
-        data: { name: "Hardware", prefix: "HW" }, headers: authHeaders,
-      });
-      const hw = await hwResp.json();
-      const swResp = await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/components`, {
-        data: { name: "Software", prefix: "SW" }, headers: authHeaders,
-      });
-      const sw = await swResp.json();
-      await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/categories`, {
-        data: { name: "Functional", prefix: "FN", component_id: hw.id }, headers: authHeaders,
-      });
-      await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/categories`, {
-        data: { name: "Performance", prefix: "PERF", component_id: sw.id }, headers: authHeaders,
-      });
-
-      await page.reload();
-      await page.getByRole("link", { name: "Project admin", exact: true }).click();
-    });
-
-    // Stages and Categories now live together on one merged "Structure"
-    // tab (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5), each as
-    // its own `CollapsibleSection` — both mounted simultaneously, unlike
-    // the old separate tabs. "Project stages" has its own "Name"-
-    // placeholder "add stage" field, so every Name/Prefix/rename-adjacent
-    // locator below is scoped to "Components & categories" specifically
-    // rather than page-wide, to avoid cross-hitting it (or vice versa).
-    const stagesSection = page.locator(".card", { has: page.getByRole("button", { name: "Project stages section" }) });
-    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
-
-    // Beta-2 seeds with exactly 2 components (Hardware, Software), each with
-    // 1 category — so before any additions there are 3 "Name"-placeholder
-    // fields within the "Components & categories" section (Hardware's and
-    // Software's own inline add-category forms, plus the bottom-level
-    // add-component form) and 2 "New category" buttons. Every component we
-    // add below appends one more of each, always immediately before the
-    // bottom add-component form — so a new component's own add-category
-    // form/button sits at a *fixed, known* index (2, then 3) for the rest
-    // of the test, unaffected by how many categories get created under it
-    // afterward (a created category renders as a plain rename `<input>`
-    // with no placeholder, not an additional "Name"-placeholder match).
+    // Before any additions there are 3 "Name"-placeholder fields in
+    // "Components & categories" (Hardware's and Software's inline
+    // add-category forms, plus the bottom add-component form) and 2 "New
+    // category" buttons; each added component appends one more of each
+    // just before the bottom form, so its own form/button sits at a fixed
+    // index (2, then 3).
     await test.step("build a two-component tree", async () => {
       await selectProjectAdminGroup(page, "Structure");
 
       await componentsSection.getByPlaceholder("Name", { exact: true }).last().fill("Firmware");
       await componentsSection.getByPlaceholder("Prefix").last().fill("FW");
-      await componentsSection.getByRole("button", { name: "New component" }).click();
+      await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
       await expect(page.locator('input.input[value="Firmware"]:not([placeholder])')).toBeVisible();
 
       const firmwareCategoryName = componentsSection.getByPlaceholder("Name", { exact: true }).nth(2);
@@ -126,7 +100,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
 
       await componentsSection.getByPlaceholder("Name", { exact: true }).last().fill("Sensors");
       await componentsSection.getByPlaceholder("Prefix").last().fill("SEN");
-      await componentsSection.getByRole("button", { name: "New component" }).click();
+      await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
       // Wait for Sensors' own row (and its add-category form) to actually
       // render before computing fixed-index locators below — without this,
       // .nth(3) can still resolve to the bottom add-component form (the
@@ -140,11 +114,6 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       await componentsSection.getByRole("button", { name: "New category" }).nth(3).click();
       await expect(page.locator('input.input[value="Calibration"]:not([placeholder])')).toBeVisible();
     });
-
-    async function reassignTo(label: string) {
-      await page.getByText("Reassign existing items to").locator("xpath=..").getByRole("combobox").selectOption({ label });
-      await page.getByRole("button", { name: "Confirm delete" }).click();
-    }
 
     // Component order is Hardware(0)/Software(1)/Firmware(2)/Sensors(3);
     // Hardware and Software each still have their own single seeded
@@ -163,12 +132,12 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       // The reassign dropdown always prefixes a category option with its
       // owning component's name ("ComponentName / CategoryName"), even
       // within the same component.
-      await reassignTo("Firmware / Safety");
+      await reassignTo(page, "Firmware / Safety");
       await expect(page.locator('input.input[value="Timing"]:not([placeholder])')).toHaveCount(0);
 
       // Timing's removal shifted Safety from index 3 to index 2.
       await componentsSection.getByTitle("Delete this category").nth(2).click(); // Safety
-      await reassignTo("Sensors / Calibration");
+      await reassignTo(page, "Sensors / Calibration");
       await expect(page.locator('input.input[value="Safety"]:not([placeholder])')).toHaveCount(0);
     });
 
@@ -180,6 +149,11 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       await page.getByRole("button", { name: "Confirm delete" }).click();
       await expect(page.locator('input.input[value="Firmware"]:not([placeholder])')).toHaveCount(0);
     });
+  });
+
+  test("stages can be renamed, and deleted with reassignment unless baselined", async ({ page }) => {
+    const { projectId, authHeaders } = await openStructuralProject(page, "Stages");
+    const stagesSection = stagesSectionOf(page);
 
     await test.step("a stage with an approved baseline cannot be deleted, even with a reassignment target", async () => {
       // Already on the "Structure" tab (Stages and Categories are now
@@ -192,19 +166,18 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       await stagesSection.getByRole("button", { name: "New stage" }).click();
       await expect(page.locator('input.input[value="Milestone 2"]:not([placeholder])')).toBeVisible();
 
-      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const stagesResp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/stages`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders,
       });
       const stages: { id: string; name: string }[] = await stagesResp.json();
       const milestone1 = stages.find((s) => s.name === "Milestone 1")!;
       await page.request.post(
         `http://localhost:8000/api/v1/projects/${projectId}/stages/${milestone1.id}/transition?new_status=review`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: authHeaders }
       );
       await page.request.post(
         `http://localhost:8000/api/v1/projects/${projectId}/stages/${milestone1.id}/transition?new_status=approved`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: authHeaders }
       );
       // ProjectAdminPage's group is now a real route segment
       // (`ResourceMenu`, converted from `Tabs`), so a full page reload no
@@ -217,16 +190,20 @@ test.describe("project admin: structural rename/delete and archiving", () => {
 
       // Stage order is Milestone 1(0)/Milestone 2(1).
       await stagesSection.getByTitle("Delete this stage").nth(0).click();
-      await reassignTo("Milestone 2");
+      await reassignTo(page, "Milestone 2");
       await expect(page.locator('input.input[value="Milestone 1"]:not([placeholder])')).toBeVisible();
     });
 
     await test.step("a stage with no baseline can be deleted with reassignment", async () => {
       // Milestone 1 (baselined, undeletable) is still nth(0); Milestone 2 is nth(1).
       await stagesSection.getByTitle("Delete this stage").nth(1).click();
-      await reassignTo("Milestone 1");
+      await reassignTo(page, "Milestone 1");
       await expect(page.locator('input.input[value="Milestone 2"]:not([placeholder])')).toHaveCount(0);
     });
+  });
+
+  test("the project can be archived then unarchived", async ({ page }) => {
+    const { projectId, projectName } = await openStructuralProject(page, "Archive");
 
     await test.step("the project can be archived then unarchived", async () => {
       await selectProjectAdminGroup(page, "Project settings");

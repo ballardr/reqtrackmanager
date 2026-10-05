@@ -124,12 +124,26 @@ above it.
 **Scope** (§32): "Architecture Decisions require approval by an Architecture
 Approver," etc. — policies reference roles, never individual people (§32's
 explicit requirement). This is where Decision Management's own Phase 0 Q2a
-(deferred approver-assignment question) gets its real answer: Governance
-owns the general policy ("this Decision Type needs this role's approval"),
-and Decision Management's own Phase 2 approval endpoint checks against
-whatever Governance configured, once Governance exists — until then,
-Decision Management's Phase 2 uses a single placeholder role, per that
-plan's own note.
+(deferred approver-assignment question) was originally expected to get its
+real answer, but that answer arrived earlier and from a different
+direction than this section originally assumed: [Fine-Grained Access
+Control (core)](core-fine-grained-access-control-plan.md) shipped a
+general organisation-definable-role mechanism first (2026-09-27), and
+Decision Management's own Phase 8 (complete) already binds Decision
+approval to it directly — a caller needs `(decision, approve_baseline,
+subtype=<decision type>)`, satisfiable by a fixed, module, or custom role
+holding that permission (or the unscoped wildcard, preserving today's flat
+behaviour by default). **Phase 2 note, referenced from Decision
+Management's own Phase 8:** when this phase ships, it does not replace
+that binding — an Approval Policy configured here becomes just another way
+to *grant* the same underlying permission atom (e.g. by composing a custom
+role from the configured policy and granting it to the named role), not a
+parallel or competing enforcement path. Decision Management's approval
+endpoint keeps checking the one permission it already checks; only how
+that permission gets granted changes. Any other module's approval-shaped
+action (Risk, Strategy, Design, once those exist) should follow the same
+pattern once it has its own permission atom to bind to, rather than each
+module inventing its own Governance-policy integration independently.
 
 **Why:** §32 — without centralising this, each module (Decisions, Risk,
 Strategy, Design) would independently reinvent "who can approve this,"

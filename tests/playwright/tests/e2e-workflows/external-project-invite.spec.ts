@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, selectProjectAdminGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * End-to-end proof of the "add a project user by email" flow
@@ -46,6 +49,7 @@ async function setupInviteOrgAndProject(page: Page, adminToken: string, label: s
       data: { name: `E2E Invite Org ${suffix}` },
     })
   ).json();
+  deleteOrgOnCleanup({ id: org.id });
   const orgAdminEmail = `e2e-invite-orgadmin-${suffix}@example.com`;
   await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
     headers: { Authorization: `Bearer ${adminToken}` },

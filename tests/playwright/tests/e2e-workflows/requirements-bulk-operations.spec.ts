@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: `RequirementsPage`'s list/table view supports selecting
@@ -39,7 +39,7 @@ test.describe("requirements list: bulk operations", () => {
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.alpha1, exact: true }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
 
     await test.step("add a second stage to move requirements into later", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
@@ -60,6 +60,12 @@ test.describe("requirements list: bulk operations", () => {
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "List view" }).click();
+    // Narrow the list to this run's own rows *before* creating them: the
+    // list is paginated and shared Alpha-1 grows every run, so a new row
+    // isn't guaranteed to be on page one. Setting the search once, up
+    // front, also avoids the search-vs-reload race described below — the
+    // search never changes again while archive/move reloads are in flight.
+    await page.getByPlaceholder("Search by name or ID").fill(String(stamp));
 
     await test.step("create four throwaway requirements", async () => {
       for (const name of names) {

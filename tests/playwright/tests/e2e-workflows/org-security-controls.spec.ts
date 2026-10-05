@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, PASSWORD, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
+import { clickAndAwaitSave, deleteOrgOnCleanup, ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -44,6 +47,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     const org = await (
       await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: serverAdminHeaders, data: { name: orgName } })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: serverAdminHeaders,
       data: { email: adminEmail, display_name: adminName, password: PASSWORD, role: "org_admin" },
@@ -75,12 +79,24 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // 2026-08-31) — now genuinely independent (checking one no longer
       // implicitly clears another), so each is unchecked explicitly rather
       // than via a single "Clear filters" button, which no longer exists.
-      await page.getByRole("checkbox", { name: "No 2FA" }).click();
+      // Each toggle waits for its own reload (`/users?` with or without the
+      // filter's param), so the next step never opens a row menu that a late
+      // reload then re-renders shut, which once timed this test out.
+      const toggle = async (name: string, param: string, on: boolean) => {
+        await Promise.all([
+          page.waitForResponse((r) => r.url().includes("/users?") && r.url().includes(param) === on),
+          page.getByRole("checkbox", { name }).click(),
+        ]);
+      };
+      await toggle("No 2FA", "has_2fa=false", true);
       await expect(page.getByText(adminEmail)).toBeVisible();
-      await page.getByRole("checkbox", { name: "No 2FA" }).click();
+      await toggle("No 2FA", "has_2fa=false", false);
 
-      await page.getByRole("checkbox", { name: "Stale (180+ days)" }).click();
-      await page.getByRole("checkbox", { name: "Stale (180+ days)" }).click();
+      // The admin logged in moments ago, so isn't stale.
+      await toggle("Stale (180+ days)", "stale_since_days=180", true);
+      await expect(page.getByText(adminEmail)).toHaveCount(0);
+      await toggle("Stale (180+ days)", "stale_since_days=180", false);
+      await expect(page.getByText(adminEmail)).toBeVisible();
     });
 
     await test.step("lock then unlock a display name", async () => {
@@ -98,12 +114,16 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       const menuTriggerName = `${adminName}'s actions`;
       await row.getByRole("button", { name: menuTriggerName }).click();
       await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
-      await page.getByRole("menuitem", { name: "Lock display name" }).click();
+      // Await the lock change itself before reopening the menu, so its
+      // label has flipped (the menu reflects the saved state).
+      await clickAndAwaitSave(page, page.getByRole("menuitem", { name: "Lock display name" }), "/display-name-lock");
 
       await row.getByRole("button", { name: menuTriggerName }).click();
       await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "Unlock display name" })).toBeVisible();
-      await page.getByRole("menuitem", { name: "Unlock display name" }).click();
+      // Await the lock change itself before reopening the menu, so its
+      // label has flipped (the menu reflects the saved state).
+      await clickAndAwaitSave(page, page.getByRole("menuitem", { name: "Unlock display name" }), "/display-name-lock");
 
       await row.getByRole("button", { name: menuTriggerName }).click();
       await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();

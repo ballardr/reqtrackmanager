@@ -347,6 +347,8 @@ const en = {
   },
   changeRequests: {
     title: "{ChangeRequests}",
+    // Matches proposed name, reason, and the target requirement's name/ID.
+    search: "Search by name, reason or {requirement} ID",
     newChangeRequest: "New {changeRequest}",
     kindNew: "New {requirement}",
     kindModify: "Modify {requirement}",
@@ -524,6 +526,27 @@ const en = {
     // queries targeting the field itself, a real ambiguity, not just an
     // accessible-naming nicety.
     defaultTemplateSection: "Default template",
+    // Module 0 (Platform Foundations) Phases 4/5 — Project Admin's own
+    // "Modules" tab: a project's whole-module enablement override and,
+    // for a module with sub-components, its own per-sub-component
+    // override — one level below Org Admin's `orgAdmin.modules*` (which
+    // sets the organisation's own default rather than one project's
+    // override of it).
+    modulesNav: "Modules",
+    modulesDescription:
+      "Turn modules on or off for this {project}. New {project}s start with the organisation's defaults; later changes to those defaults don't affect existing {project}s.",
+    modulesEmpty: "No modules are registered on this deployment yet.",
+    moduleToggleLabel: (name: string) => `Enable ${name} for this {project}`,
+    moduleEnabledToast: (name: string) => `${name} enabled for this {project}`,
+    moduleDisabledToast: (name: string) => `${name} disabled for this {project}`,
+    moduleDisabledForOrgHint: "Turned off for your organisation — ask an organisation admin to turn it on.",
+    moduleOrgDefaultHint: (on: boolean) => `Organisation default for new {project}s: ${on ? "on" : "off"}`,
+    moduleSubComponentToggleLabel: (moduleName: string, subComponentName: string) =>
+      `Enable ${subComponentName} (${moduleName}) for this {project}`,
+    moduleSubComponentEnabledToast: (name: string) => `${name} enabled for this {project}`,
+    moduleSubComponentDisabledToast: (name: string) => `${name} disabled for this {project}`,
+    moduleSubComponentsSummary: (count: number, onCount: number) =>
+      `${count} component${count === 1 ? "" : "s"} · ${onCount === count ? "all on" : `${onCount} on`}`,
     structure: "Structure",
     fieldsAndActions: "Fields & actions",
     stages: "{Project} stages",
@@ -648,6 +671,7 @@ const en = {
     deleteComponent: "Delete this {component}",
     deleteCategory: "Delete this {category}",
     deleteLastOneHint: "This is the only one — create another first so there's something to reassign to.",
+    deleteMinItemsHint: (n: number) => `At least ${n} are required — add another before deleting this one.`,
     deleteComponentHasCategoriesHint: "Delete or reassign this {component}'s {categories} first.",
     reassignExistingTo: "Reassign existing items to",
     confirmDelete: "Confirm delete",
@@ -1053,6 +1077,11 @@ const en = {
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Engineering",
     groupCreated: "Group created",
+    // Org group delete (2026-10-05). Title/button/toast reuse the Project
+    // Groups' own `admin.deleteGroup*`/`groupDeleted`; only the consequence
+    // differs, since an org group can carry roles across many projects.
+    deleteGroupMessage:
+      "Members lose every role and project access this group gave them, and it is removed from any group it's nested in. Access they hold some other way is unaffected. This cannot be undone.",
     // `DirectoryTable`'s row-detail panel (Phase B, follow-up UX batch,
     // 2026-08-31) — same "{name} details" shape `admin.groupDetails` already
     // established for Project Groups.
@@ -1115,6 +1144,7 @@ const en = {
     addToGroupSelectPlaceholder: "Choose a group…",
     lockDisplayName: "Lock display name",
     unlockDisplayName: "Unlock display name",
+    displayNameLockSaved: (name: string, locked: boolean) => `${name}'s display name ${locked ? "locked" : "unlocked"}.`,
     viewAccess: (name: string) => `View ${name}'s access`,
     userAccessTitle: (name: string) => `${name}'s access`,
     userAccessOrgGroups: (orgCap: string) => `${orgCap} groups`,
@@ -1139,13 +1169,17 @@ const en = {
     // Module system Phase 1: the org admin's "Modules" section (enable/
     // disable a feature module among those the org is entitled to).
     modulesTitle: "Modules",
-    modulesDescription: "Enable or disable optional feature modules for this organisation. A module greyed out below isn't available on your current plan.",
+    modulesDescription:
+      "Choose which modules this organisation uses. A default only applies to projects created after you change it; Off removes the module from every project.",
     modulesEmpty: "No modules are registered on this deployment yet.",
     moduleNotEntitledHint: "Not available on this organisation's current plan. Contact your server administrator to request access.",
     moduleNotImplementedHint: "Not yet available in this version of the application.",
-    moduleEnabledToast: (name: string) => `${name} enabled`,
-    moduleDisabledToast: (name: string) => `${name} disabled`,
-    moduleToggleLabel: (name: string) => `Enable ${name}`,
+    moduleAvailabilityLabel: (name: string) => `${name} availability`,
+    moduleAvailabilityToast: (name: string, availability: string) => `${name}: ${availability}`,
+    moduleSubComponentAvailabilityLabel: (moduleName: string, subComponentName: string) =>
+      `${subComponentName} (${moduleName}) availability`,
+    moduleSubComponentsSummary: (count: number, offCount: number) =>
+      `${count} component${count === 1 ? "" : "s"} · ${offCount === 0 ? "all on" : `${offCount} off`}`,
     smtpHost: "SMTP host",
     smtpPort: "SMTP port",
     smtpUsername: "SMTP username",
@@ -1633,6 +1667,10 @@ const en = {
     // `FilterPanel`'s collapsible filter body (2026-08 UX audit roadmap) —
     // below the mobile breakpoint it's a `CollapsibleSection` titled this.
     filters: "Filters",
+    showMore: "More",
+    showLess: "Less",
+    // `ModuleSettingsList`'s collapsed sub-component disclosure.
+    moduleComponentsSummary: (count: number) => `${count} component${count === 1 ? "" : "s"}`,
   },
 };
 

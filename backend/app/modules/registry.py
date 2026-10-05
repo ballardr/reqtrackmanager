@@ -49,6 +49,7 @@ import importlib.metadata
 import importlib.util
 import logging
 import os
+import re
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -235,6 +236,114 @@ class EntityScopeDefinition:
 
 
 @dataclass(frozen=True)
+class ModuleSubComponentDefinition:
+    """Declares one independently toggleable sub-component of a module
+    (Module 0 — Platform Foundations — Phase 4, added 2026-09-28 at the
+    user's explicit request: "can a project admin turn off just Strategy
+    while keeping Pain Points on" rather than only the whole module at
+    once). Same shape/spirit as the sibling `ModuleRoleDefinition`/
+    `EntityScopeDefinition` dataclasses above — a module declares a tuple
+    of these on `ModuleDefinition.sub_components` rather than a core file
+    hand-maintaining a per-module list, the same Modular Feature System
+    Boundary reasoning `artefact_types`/`org_creation_choices` already
+    follow one concern earlier.
+
+    Every `ModuleDefinition.sub_components` entry is one of these.
+    `is_module_subcomponent_enabled`/`is_org_module_subcomponent_enabled`
+    (below) resolve a given `(module_key, subcomponent_key)` pair's
+    effective enabled state — project override, then org default, then
+    this dataclass's own `default_enabled` — see those functions'
+    docstrings for the full two-tier resolution formula and
+    `docs/plans/module-00-platform-foundations-plan.md`'s Phase 4 section
+    for the full design record.
+
+    Attributes:
+        key: Stable identifier for this sub-component, unique within its
+            declaring module (e.g. `"strategy"`, `"future_state"`,
+            `"pain_point"`) — used as the `subcomponent_key` column value
+            in `OrganizationModuleSubComponentDefault`/
+            `ProjectModuleSubComponentEnablement`, so it must never change
+            once a deployment has rows keyed on it.
+        name: Human-readable display name shown in admin UIs (e.g.
+            "Strategy").
+        default_enabled: Whether a project/organisation with no explicit
+            override row for this sub-component gets it enabled by
+            default — this dataclass's own analogue of `ModuleDefinition.
+            default_enabled` one tier down.
+    """
+
+    key: str
+    name: str
+    default_enabled: bool = True
+
+
+@dataclass(frozen=True)
+class ModuleNavEntry:
+    """One additional nav-rail entry a Tier A ("installed") module
+    contributes, beyond the single `nav_label`/`nav_path` pair every
+    `ModuleFrontendManifest` already carries (Module 0 — Platform
+    Foundations / Module 1 — Context & Strategy, Phase 7.1, 2026-09-29).
+
+    **Why this exists:** every module registered before Context & Strategy
+    (Compliance, Decision Management) only ever needed one project-scoped
+    nav-rail entry, so `ModuleFrontendManifest.nav_label`/`nav_path` was
+    sufficient on its own. Context & Strategy's own Phase 0 Q7 (`docs/
+    plans/module-01-context-and-strategy-plan.md`) requires **five**
+    separate top-level nav-rail entries — one per artefact type (Strategy,
+    Future State, Pain Point, Guiding Principle, Open Question) — not one
+    grouped entry with tabs, per the user's own explicit override of this
+    plan's original recommendation. Per this repo's own "Modular Feature
+    System Boundary" rule, a core mechanism a module needs *multiple*
+    values from must become a generic, registry-driven extension point
+    rather than a module-specific hack hardcoded into `Layout.tsx` — this
+    dataclass, plus `ModuleFrontendManifest.additional_nav_entries` below,
+    is that extension point.
+
+    **Design choice, Decided by: Agent:** rather than replacing `nav_label`/
+    `nav_path` with a single `nav_entries: tuple[ModuleNavEntry, ...]` list
+    (which would be more uniform), this instead *adds* an `additional_nav_
+    entries` field alongside the existing singular pair — so Compliance's
+    and Decision Management's own `module.py` files, which declare
+    `nav_label=`/`nav_path=` directly, need **zero** changes to keep working
+    (per this phase's own explicit backward-compatibility requirement). A
+    module needing more than one entry (Context & Strategy) treats its
+    *first* entry as the manifest's own primary `nav_label`/`nav_path`, and
+    declares the remaining four via `additional_nav_entries`. `all_nav_
+    entries` (below) gives any consumer the full, order-preserving list
+    without needing to know about this split.
+
+    Deliberately **Tier A ("installed") only** — `__post_init__` below
+    rejects a non-empty `additional_nav_entries` on any other tier. Tier B
+    ("remote") mounts exactly one `<ModuleFrame>` iframe at one `frame_url`,
+    and Tier C ("federated") loads exactly one Module Federation remote at
+    one `remote_entry_url`/`exposed_module` pair — supporting multiple nav
+    entries for either would mean re-architecting the iframe/federation
+    loading mechanism itself, which is out of this phase's scope and has no
+    real module asking for it yet. A Tier A module's own routing already
+    supports multiple routes natively (`TierAModuleDefinition.routes` on the
+    frontend, an array from day one), so only the nav-rail-rendering side
+    needed this extension.
+
+    Attributes:
+        nav_label: Display label for this nav-rail entry.
+        nav_path: The frontend route path this entry links to — same
+            `"{project_id}"`-placeholder convention as `ModuleFrontendManifest.
+            nav_path` (interpolated the same way, at the same call sites).
+        nav_icon: Icon name for this nav-rail entry, resolved client-side by
+            `frontend/src/modules/navIcons.ts`'s lucide-react lookup (same
+            "module supplies its own data, core file resolves it generically"
+            shape as `entityAccentColor` — see that module's own docstring).
+            Defaults to `"puzzle"` (a generic module icon) so every entry
+            declared before this field existed keeps rendering something
+            sensible rather than failing validation.
+    """
+
+    nav_label: str
+    nav_path: str
+    nav_icon: str = "puzzle"
+
+
+@dataclass(frozen=True)
 class ModuleFrontendManifest:
     """Declares a module's frontend integration (compliance-module-plan.md
     Phase 3's two-tier frontend module system, extended with a third tier —
@@ -321,6 +430,22 @@ class ModuleFrontendManifest:
             remote publishes (e.g. `"./Module"`), `import()`-ed from the
             container the host dynamically loads from `remote_entry_url`.
             `None` for every other tier.
+        additional_nav_entries: Zero or more further `ModuleNavEntry` rows,
+            beyond this manifest's own primary `nav_label`/`nav_path` pair
+            (Module 1 — Context & Strategy — Phase 7.1, 2026-09-29) — see
+            `ModuleNavEntry`'s own docstring for the full rationale and the
+            "why add a field instead of replacing the pair" design note.
+            Empty by default, so every module declared before this phase
+            (Compliance, Decision Management) is unaffected. **Tier `
+            "installed"` only** — non-empty on any other tier raises in
+            `__post_init__` below. Use `all_nav_entries()` to read the full,
+            order-preserving list (primary entry first) without needing to
+            know about this split.
+        nav_icon: Icon name for this manifest's own primary nav-rail entry —
+            same field/meaning as `ModuleNavEntry.nav_icon` (see that
+            dataclass's docstring); this manifest doesn't reuse `ModuleNavEntry`
+            for its primary pair, so it needs its own copy of the field.
+            Defaults to `"puzzle"` for the same backward-compatibility reason.
     """
 
     tier: Literal["installed", "remote", "federated"]
@@ -329,6 +454,8 @@ class ModuleFrontendManifest:
     frame_url: str | None = None
     remote_entry_url: str | None = None
     exposed_module: str | None = None
+    additional_nav_entries: tuple[ModuleNavEntry, ...] = ()
+    nav_icon: str = "puzzle"
 
     def __post_init__(self) -> None:
         if self.tier == "remote":
@@ -338,6 +465,11 @@ class ModuleFrontendManifest:
                 raise ValueError(
                     "ModuleFrontendManifest: tier 'remote' must not set remote_entry_url/exposed_module "
                     "(those are Tier C 'federated'-only fields)."
+                )
+            if self.additional_nav_entries:
+                raise ValueError(
+                    "ModuleFrontendManifest: tier 'remote' must not set additional_nav_entries — a Tier B "
+                    "module mounts exactly one <ModuleFrame> iframe at one frame_url."
                 )
         elif self.tier == "installed":
             if self.frame_url or self.remote_entry_url or self.exposed_module:
@@ -355,6 +487,24 @@ class ModuleFrontendManifest:
                 raise ValueError(
                     "ModuleFrontendManifest: tier 'federated' requires both remote_entry_url and exposed_module."
                 )
+            if self.additional_nav_entries:
+                raise ValueError(
+                    "ModuleFrontendManifest: tier 'federated' must not set additional_nav_entries — a Tier C "
+                    "module loads exactly one Module Federation remote at one remote_entry_url/exposed_module."
+                )
+
+    def all_nav_entries(self) -> tuple[ModuleNavEntry, ...]:
+        """This manifest's full, order-preserving list of nav-rail entries —
+        its own primary `nav_label`/`nav_path` pair, followed by every
+        `additional_nav_entries` row (empty for every module declared before
+        Context & Strategy's own Phase 7.1). The one place that combines the
+        two so a consumer never needs to special-case "the first entry comes
+        from different fields than the rest."
+        """
+        return (
+            ModuleNavEntry(nav_label=self.nav_label, nav_path=self.nav_path, nav_icon=self.nav_icon),
+            *self.additional_nav_entries,
+        )
 
 
 @dataclass(frozen=True)
@@ -780,6 +930,208 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
     return resolved
 
 
+# --- Scoring schemes (Module 1 Phase 10 — generic scoring-matrix core) -----
+
+# The fixed design-system palette a rating band may be coloured with — the
+# same tone vocabulary as the frontend's `.badge--*` modifiers, not a
+# per-module list, so no module ever needs an entry added here.
+SCORING_BAND_TONES: frozenset[str] = frozenset({"muted", "info", "accent", "warning", "danger"})
+_SCORING_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+MAX_SCORING_BANDS = 10
+
+
+def validate_scoring_bands(bands: list[tuple[str, float, str]]) -> None:
+    """Validates one rating-band set (shared by registry defaults and the
+    org/project band-override endpoints, so both obey the same rules).
+
+    Args:
+        bands: `(label, min_score, tone)` triples in ascending order.
+            `min_score` is a *normalised* threshold (score ÷ the model's
+            maximum possible score), so bands survive an org re-weighting
+            its levels.
+
+    Raises:
+        ValueError: If the set is empty or longer than `MAX_SCORING_BANDS`,
+            the first threshold isn't 0, thresholds aren't strictly
+            increasing within [0, 1), a label is blank/duplicated, or a
+            tone isn't in `SCORING_BAND_TONES`.
+    """
+    if not bands or len(bands) > MAX_SCORING_BANDS:
+        raise ValueError(f"A band set needs between 1 and {MAX_SCORING_BANDS} bands.")
+    if bands[0][1] != 0:
+        raise ValueError("The first band must start at 0.")
+    labels: set[str] = set()
+    previous = -1.0
+    for label, min_score, tone in bands:
+        if not label.strip():
+            raise ValueError("Band labels must not be blank.")
+        if label.strip().lower() in labels:
+            raise ValueError(f"Duplicate band label '{label}'.")
+        labels.add(label.strip().lower())
+        if not 0 <= min_score < 1 or min_score <= previous:
+            raise ValueError("Band thresholds must be strictly increasing and within [0, 1).")
+        previous = min_score
+        if tone not in SCORING_BAND_TONES:
+            raise ValueError(f"Unknown band tone '{tone}'.")
+
+
+@dataclass(frozen=True)
+class ScoringLevelDefault:
+    """One seeded level of a scoring axis (e.g. Severity "Blocker", weight 5).
+
+    Attributes:
+        name: Display name, unique within the axis.
+        weight: Positive numeric weight, unique within the axis; levels are
+            always ordered by weight, so the highest weight is the axis's
+            top level.
+        description: Optional guidance shown beside the level when scoring.
+    """
+
+    name: str
+    weight: float
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class ScoringAxisDefinition:
+    """One scoring input (e.g. Severity) a module registers.
+
+    Attributes:
+        key: Stable machine key, unique within its scheme.
+        label: Display label.
+        description: Optional guidance for scorers.
+        default_levels: Levels seeded into every organisation (at least 2).
+    """
+
+    key: str
+    label: str
+    default_levels: tuple[ScoringLevelDefault, ...]
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class ScoringBandDefault:
+    """One default rating band (e.g. "High" from normalised score 0.5).
+
+    Attributes:
+        label: Display label.
+        min_score: Normalised lower bound in [0, 1).
+        tone: One of `SCORING_BAND_TONES`.
+    """
+
+    label: str
+    min_score: float
+    tone: str
+
+
+@dataclass(frozen=True)
+class ScoringModelDefinition:
+    """A named combination of axes (e.g. S×F) whose score is the product of
+    the chosen levels' weights.
+
+    Attributes:
+        key: Stable machine key, unique within its scheme.
+        label: Display label.
+        axis_keys: The axes combined (≥1); the first two are the matrix
+            chart's rows (Y) and columns (X).
+        default_bands: Optional default rating bands (empty = no banding
+            until an org/project defines some).
+    """
+
+    key: str
+    label: str
+    axis_keys: tuple[str, ...]
+    default_bands: tuple[ScoringBandDefault, ...] = ()
+
+
+@dataclass(frozen=True)
+class ScoringSchemeDefinition:
+    """A module's scoring scheme: its axes, models and defaults, resolved
+    generically by `app.services.scoring` (core) so no module-specific code
+    lives in core and no core enum is hand-edited per module.
+
+    Attributes:
+        key: Globally unique scheme key (also its URL segment).
+        label: Display label.
+        axes: The scheme's scoring axes.
+        models: Named axis combinations.
+        default_model_key: The system default model (bottom of the
+            project → ancestor → org → system resolution chain).
+        admin_role_key: Optional key of one of the registering module's
+            own roles whose holders (plus org admins) may edit the org-level
+            configuration. `None` = org admins only.
+        count_level_usage: Optional `(db, level_id) -> int` returning how
+            many module rows reference a level, so core can block or
+            reassign a delete. `None` = levels are never referenced.
+        reassign_level_usage: Optional `(db, from_level_id, to_level_id)`
+            moving those references. Required whenever `count_level_usage`
+            is set.
+
+    Raises:
+        ValueError: On construction, if keys are malformed or duplicated,
+            an axis has fewer than 2 levels or duplicate names/weights, a
+            model references an unknown axis, the default model is unknown,
+            default bands are invalid, or only one usage hook is supplied.
+    """
+
+    key: str
+    label: str
+    axes: tuple[ScoringAxisDefinition, ...]
+    models: tuple[ScoringModelDefinition, ...]
+    default_model_key: str
+    admin_role_key: str | None = None
+    count_level_usage: Callable[[Session, uuid.UUID], int] | None = None
+    reassign_level_usage: Callable[[Session, uuid.UUID, uuid.UUID], None] | None = None
+
+    def __post_init__(self) -> None:
+        """Validates the scheme's internal consistency (see class docstring)."""
+        if not _SCORING_KEY_PATTERN.match(self.key):
+            raise ValueError(f"Invalid scoring scheme key '{self.key}'.")
+        axis_keys = [a.key for a in self.axes]
+        if not axis_keys or len(set(axis_keys)) != len(axis_keys):
+            raise ValueError(f"Scheme '{self.key}' needs at least one axis and unique axis keys.")
+        for axis in self.axes:
+            if not _SCORING_KEY_PATTERN.match(axis.key):
+                raise ValueError(f"Invalid scoring axis key '{axis.key}'.")
+            names = {lvl.name.strip().lower() for lvl in axis.default_levels}
+            weights = {lvl.weight for lvl in axis.default_levels}
+            count = len(axis.default_levels)
+            if count < 2 or len(names) != count or len(weights) != count or min(weights) <= 0:
+                raise ValueError(f"Axis '{axis.key}' needs ≥2 levels with unique names and unique positive weights.")
+        model_keys = [m.key for m in self.models]
+        if not model_keys or len(set(model_keys)) != len(model_keys):
+            raise ValueError(f"Scheme '{self.key}' needs at least one model and unique model keys.")
+        for model in self.models:
+            if not _SCORING_KEY_PATTERN.match(model.key):
+                raise ValueError(f"Invalid scoring model key '{model.key}'.")
+            if not model.axis_keys or not set(model.axis_keys) <= set(axis_keys) or len(set(model.axis_keys)) != len(model.axis_keys):
+                raise ValueError(f"Model '{model.key}' must combine distinct axes of scheme '{self.key}'.")
+            if model.default_bands:
+                validate_scoring_bands([(b.label, b.min_score, b.tone) for b in model.default_bands])
+        if self.default_model_key not in model_keys:
+            raise ValueError(f"Default model '{self.default_model_key}' is not one of scheme '{self.key}'s models.")
+        if (self.count_level_usage is None) != (self.reassign_level_usage is None):
+            raise ValueError("count_level_usage and reassign_level_usage must be supplied together.")
+
+    def axis(self, axis_key: str) -> ScoringAxisDefinition | None:
+        """Returns the axis with `axis_key`, or `None`."""
+        return next((a for a in self.axes if a.key == axis_key), None)
+
+    def model(self, model_key: str) -> ScoringModelDefinition | None:
+        """Returns the model with `model_key`, or `None`."""
+        return next((m for m in self.models if m.key == model_key), None)
+
+
+@dataclass(frozen=True)
+class RegisteredScoringScheme:
+    """A scoring scheme paired with the key of the module that registered
+    it — the module key drives enablement gating and `admin_role_key`
+    resolution."""
+
+    module_key: str
+    scheme: ScoringSchemeDefinition
+
+
 @dataclass(frozen=True)
 class ModuleDefinition:
     """Declares a single module — first-party or third-party — to the
@@ -1114,6 +1466,23 @@ class ModuleDefinition:
             endpoint 400s with it) or `None` to allow the removal. `None`
             for a module with no group-based floor concept of its own
             (every module before Compliance's Phase 22).
+        validate_org_group_deletion: The whole-group counterpart of
+            `validate_org_group_member_removal` (2026-10-05, when org
+            groups became deletable). `routers.orgs.groups.delete_org_group`
+            calls every module's copy via `run_org_group_deletion_hooks`
+            before deleting, so a module that relies on a group (e.g.
+            Compliance's fallback compliance-managers group) can block it.
+            Takes `(db, org_group_id)`; returns a block message (the
+            endpoint 400s with it) or `None` to allow the delete.
+        artefact_ids_in_organization: Returns the ids of every artefact of
+            this module's own `artefact_types` that belongs to an
+            organisation (org-scoped or in one of its projects). Org
+            deletion (`services.org_deletion`) uses it to remove the
+            polymorphic rows core can't reach by foreign key: `ArtefactLink`
+            rows, comments and subscriptions on those artefacts. Takes
+            `(db, organization_id)`; `None` for a module with no artefact
+            types. Added 2026-10-05: deleting an org whose module artefacts
+            were linked failed with a 500.
         artefact_types: Module-contributed values for the shared
             `ArtefactType` vocabulary (Module 0 — Platform Foundations,
             Phase 3) that `app.models.relationship.ArtefactLink.source_
@@ -1157,6 +1526,23 @@ class ModuleDefinition:
             can reach it too, not just `require_module_role`. Additive and
             defaulted empty — a module with no entity-scoped role of its own
             (every module before Compliance) simply leaves this empty.
+        sub_components: Module 0 (Platform Foundations) Phase 4 —
+            independently toggleable sub-components of this module (e.g.
+            Context & Strategy's `"strategy"`/`"future_state"`/
+            `"pain_point"`/`"guiding_principle"`/`"open_question"`), each a
+            `ModuleSubComponentDefinition`. Resolved by `is_module_
+            subcomponent_enabled`/`is_org_module_subcomponent_enabled`
+            (below), gated behind `app.services.rbac.require_project_
+            subcomponent_enabled`/`require_org_subcomponent_enabled`.
+            Empty tuple (the default) for a module with no sub-component-
+            level toggling of its own — every module before Context &
+            Strategy's own `"strategy"` entry needs no change.
+        scoring_schemes: Module 1 (Context & Strategy) Phase 10 — scoring
+            schemes (axes with ordered, weighted levels; named models;
+            default rating bands) this module registers into core's generic
+            scoring-matrix mechanism (`app.services.scoring`). Merged by
+            `get_all_registered_scoring_schemes` (below). Empty for a module
+            that scores nothing.
     """
 
     key: str
@@ -1184,9 +1570,13 @@ class ModuleDefinition:
     project_nav_visible: Callable[[Session, Project], bool] | None = None
     on_project_created: Callable[[Session, Project, uuid.UUID], None] | None = None
     validate_org_group_member_removal: Callable[[Session, uuid.UUID, uuid.UUID], str | None] | None = None
+    validate_org_group_deletion: Callable[[Session, uuid.UUID], str | None] | None = None
     artefact_types: tuple[str, ...] = field(default=())
+    artefact_ids_in_organization: Callable[[Session, uuid.UUID], set[uuid.UUID]] | None = None
     subtype_providers: dict[str, Callable[[Session, uuid.UUID], list[str]]] = field(default_factory=dict)
     entity_scopes: dict[str, EntityScopeDefinition] = field(default_factory=dict)
+    sub_components: tuple[ModuleSubComponentDefinition, ...] = field(default=())
+    scoring_schemes: tuple[ScoringSchemeDefinition, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1481,6 +1871,416 @@ def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) 
     if override is not None:
         return override.enabled
     return definition.default_enabled
+
+
+def resolve_default_project_enabled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
+    """Resolves the organisation-tier "default for a project absent its
+    own override" value for `module_key` (Module 0 — Platform Foundations
+    — Phase 5 correction, `OrganizationModuleEnablement.
+    default_project_enabled`) — an explicit row's own value if one exists,
+    else the registry's own `default_enabled`, same fallback shape
+    `is_module_enabled` already uses for the sibling `enabled` column.
+
+    This is deliberately **not** gated on `enabled` itself here — that hard
+    floor is checked separately by `is_module_enabled`/
+    `is_module_enabled_for_project`, which both call this only after
+    already confirming `enabled` is `True`. Calling this alone, with
+    `enabled` `False`, would return a meaningless value (the "would-be
+    default if this module were ever turned on" figure, not a real
+    effective state) — callers that need the real effective state should
+    use `is_module_enabled_for_project` instead, which combines both tiers
+    correctly.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve the default for.
+        module_key: The module's registry key.
+
+    Returns:
+        `True` if a project of this organisation, with no override of its
+        own, gets this module on by default.
+    """
+    definition = get_module(module_key)
+    if definition is None:
+        return False
+
+    from app.models.module import OrganizationModuleEnablement
+
+    row = db.scalar(
+        select(OrganizationModuleEnablement).where(
+            OrganizationModuleEnablement.organization_id == organization_id,
+            OrganizationModuleEnablement.module_key == module_key,
+        )
+    )
+    if row is not None:
+        return row.default_project_enabled
+    return definition.default_enabled
+
+
+def is_module_enabled_for_project(db: Session, project_id: uuid.UUID, module_key: str) -> bool:
+    """Resolves the *effective* enabled state of `module_key` for one
+    specific project (Module 0 — Platform Foundations — Phase 5, added
+    immediately after Phase 4's own sub-component layer; corrected
+    2026-09-29 to add the `default_project_enabled` tier below — see
+    `docs/decisions.md`'s dated entry and `docs/plans/module-00-platform-
+    foundations-plan.md`'s Phase 5 correction note for the full reasoning).
+
+    Four tiers, the formula collapsing to:
+
+        effective = entitled AND org_hard_enabled AND (project_override.enabled if a row exists else default_project_enabled)
+
+    In words:
+
+    1. **Entitlement** and **org hard enablement** (`is_module_enabled`,
+       which already folds both together) are an absolute floor — if
+       either is `False`, the result is `False` full stop, regardless of
+       any `ProjectModuleEnablement` row's value, existing or new. This is
+       the genuine "the org needs to shut this off entirely, no
+       exceptions" case; no project override can cross it in either
+       direction.
+    2. Once that floor is clear (both `True`), a project's own override
+       row, if one exists, decides the result directly — **symmetric**,
+       either direction: a project may turn on a module its organisation
+       merely *defaults* off for new projects (the "available, but opt-in
+       per project" case — a specialist module most projects don't need,
+       but any project manager may still choose for their own), or turn
+       off one the organisation defaults on.
+    3. Absent a project override, `resolve_default_project_enabled` (the
+       organisation's own `default_project_enabled` value, or the registry
+       default if the organisation has no row at all) is the effective
+       state. In practice only a module registered after the project was
+       created reaches this tier: projects get a row copied in at creation
+       (`snapshot_project_module_state`) and before an org default changes
+       (`freeze_projects_module_default`).
+
+    Write-time validation (`routers.projects.module_roles.
+    update_project_module_enablement`) rejects an attempt to *set*
+    `enabled=True` only when tier 1 (entitlement/hard-enablement) is
+    `False` — not merely because `default_project_enabled` is `False`,
+    which is exactly the case a project is allowed to opt into. A
+    pre-existing override row from before entitlement/hard-enablement was
+    revoked is left in place rather than force-deleted, per this
+    codebase's existing precedent for harmless stale rows
+    (`OrganizationModuleEntitlement`'s own docstring) — it simply never
+    takes effect while tier 1 stays `False`.
+
+    Also returns `False` if `module_key` isn't registered or `project_id`
+    doesn't resolve to a real project — mirrors `is_module_enabled`'s own
+    "unregistered/absent behaves as disabled, not an error" posture.
+
+    `require_project_module_enabled`/`require_project_module_enabled_dynamic`
+    (`app.services.rbac`) call this instead of resolving `organization_id`
+    and calling `is_module_enabled` directly — every existing module-gated
+    project endpoint keeps working unchanged from this switch alone, since
+    it's a pure resolution-depth change with an identical result until a
+    project override row actually exists.
+
+    `is_module_subcomponent_enabled`'s own first (whole-module) check also
+    calls this, not the org-only `is_module_enabled`, so a project-level
+    whole-module override correctly cascades to disable/enable that
+    module's sub-components too — see that function's own docstring.
+
+    Args:
+        db: An active database session.
+        project_id: The project to resolve `module_key`'s state for.
+        module_key: The module's registry key.
+
+    Returns:
+        The effective enabled state, per the formula above.
+    """
+    # Deferred import, same circular-import reason `is_module_subcomponent_
+    # enabled` below documents on its own identical import.
+    from app.services.rbac import _project_organization_id
+
+    organization_id = _project_organization_id(db, project_id)
+    if organization_id is None:
+        return False
+    if get_module(module_key) is None:
+        return False
+
+    # Tier 1: entitlement AND org hard enablement, already folded together
+    # by `is_module_enabled` — an absolute floor no project override can
+    # cross in either direction.
+    if not is_module_enabled(db, organization_id, module_key):
+        return False
+
+    from app.models.module import ProjectModuleEnablement
+
+    project_override = db.scalar(
+        select(ProjectModuleEnablement).where(
+            ProjectModuleEnablement.project_id == project_id,
+            ProjectModuleEnablement.module_key == module_key,
+        )
+    )
+    if project_override is not None:
+        # Floor already confirmed True above — a project's own choice is
+        # symmetric from here: it may widen past the organisation's own
+        # `default_project_enabled`, or narrow below it, either way.
+        return project_override.enabled
+
+    return resolve_default_project_enabled(db, organization_id, module_key)
+
+
+def _find_subcomponent_definition(module_key: str, subcomponent_key: str) -> ModuleSubComponentDefinition | None:
+    """Looks up one `ModuleSubComponentDefinition` by key off the registered
+    module's own `ModuleDefinition.sub_components` — `None` if the module
+    itself isn't registered, or is registered but never declared a
+    sub-component with this key. Shared by `is_module_subcomponent_enabled`/
+    `is_org_module_subcomponent_enabled` below."""
+    definition = get_module(module_key)
+    if definition is None:
+        return None
+    return next((s for s in definition.sub_components if s.key == subcomponent_key), None)
+
+
+def resolve_org_subcomponent_state(
+    db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> tuple[bool, bool] | None:
+    """Resolves the organisation-tier state of one sub-component — the
+    same two-lever shape whole modules have (`enabled` hard floor +
+    `default_project_enabled`), from an explicit
+    `OrganizationModuleSubComponentDefault` row if one exists, else the
+    registry's own `ModuleSubComponentDefinition.default_enabled` for both.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve for.
+        module_key: The declaring module's registry key.
+        subcomponent_key: The sub-component's declared key.
+
+    Returns:
+        `(enabled, default_project_enabled)`, or `None` if the module or
+        sub-component isn't registered.
+    """
+    subcomponent = _find_subcomponent_definition(module_key, subcomponent_key)
+    if subcomponent is None:
+        return None
+
+    from app.models.module import OrganizationModuleSubComponentDefault
+
+    row = db.scalar(
+        select(OrganizationModuleSubComponentDefault).where(
+            OrganizationModuleSubComponentDefault.organization_id == organization_id,
+            OrganizationModuleSubComponentDefault.module_key == module_key,
+            OrganizationModuleSubComponentDefault.subcomponent_key == subcomponent_key,
+        )
+    )
+    if row is not None:
+        return row.enabled, row.default_project_enabled
+    return subcomponent.default_enabled, subcomponent.default_enabled
+
+
+def is_module_subcomponent_enabled(
+    db: Session, project_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> bool:
+    """Resolves the *effective* enabled state of one project-scoped
+    sub-component of `module_key` (Module 0 — Platform Foundations —
+    Phase 4) — the generic mechanism behind "keep Pain Points on, turn off
+    Strategy" for a project admin, without a per-module hand-edit.
+
+    Mirrors `is_module_enabled_for_project` one level down. Resolution
+    order (first that applies wins):
+
+    1. Whole module disabled for this project (`is_module_enabled_for_
+       project`) -> `False`; a disabled module cascades to every
+       sub-component.
+    2. The organisation's own sub-component hard floor (`resolve_org_
+       subcomponent_state`'s `enabled`) is `False` -> `False`; no project
+       value can cross it, so an org-level Off reaches every project at
+       once.
+    3. This project's own `ProjectModuleSubComponentEnablement` row ->
+       its `enabled`. Projects get one copied in at creation (`snapshot_
+       project_module_state`) and before an org default changes
+       (`freeze_projects_subcomponent_default`), so an org default change
+       never silently flips an existing project.
+    4. No project row -> the org's `default_project_enabled`.
+
+    Unregistered module/sub-component keys resolve to `False`, not an
+    error, matching `is_module_enabled`.
+
+    Args:
+        db: An active database session.
+        project_id: The project to resolve this sub-component's state for.
+        module_key: The declaring module's registry key.
+        subcomponent_key: The sub-component's key, as declared in that
+            module's own `ModuleDefinition.sub_components`.
+
+    Returns:
+        The effective enabled state, per the resolution order above.
+    """
+    # Deferred import: `app.services.rbac` imports this module at load time
+    # (for `is_module_enabled`/`get_module`), so importing it back here at
+    # module top-level would be circular — reusing its existing project ->
+    # organisation resolution helper instead of duplicating that lookup.
+    from app.services.rbac import _project_organization_id
+
+    organization_id = _project_organization_id(db, project_id)
+    if organization_id is None:
+        return False
+    if not is_module_enabled_for_project(db, project_id, module_key):
+        return False
+
+    org_state = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
+    if org_state is None:
+        return False
+    org_enabled, org_default_project_enabled = org_state
+    if not org_enabled:
+        return False
+
+    from app.models.module import ProjectModuleSubComponentEnablement
+
+    project_override = db.scalar(
+        select(ProjectModuleSubComponentEnablement).where(
+            ProjectModuleSubComponentEnablement.project_id == project_id,
+            ProjectModuleSubComponentEnablement.module_key == module_key,
+            ProjectModuleSubComponentEnablement.subcomponent_key == subcomponent_key,
+        )
+    )
+    if project_override is not None:
+        return project_override.enabled
+    return org_default_project_enabled
+
+
+def is_org_module_subcomponent_enabled(
+    db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> bool:
+    """Org-scoped sibling of `is_module_subcomponent_enabled`, for a
+    sub-component of an **org-scoped** artefact (e.g. Context & Strategy's
+    org-level Strategy records), which has no project tier at all. The
+    organisation's own hard `enabled` lever is the effective value; its
+    `default_project_enabled` only matters for projects.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve this sub-component's
+            state for.
+        module_key: The declaring module's registry key.
+        subcomponent_key: The sub-component's declared key.
+
+    Returns:
+        `False` if the whole module is disabled/unregistered or the key is
+        unregistered, else the org's `enabled` for this sub-component.
+    """
+    if not is_module_enabled(db, organization_id, module_key):
+        return False
+    org_state = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
+    return org_state is not None and org_state[0]
+
+
+def _project_ids_without_row(db: Session, organization_id: uuid.UUID, row_model, **row_filters) -> list[uuid.UUID]:
+    """Returns ids of `organization_id`'s projects that have no `row_model`
+    row matching `row_filters` — the projects still reading an org default
+    live. Shared by the two `freeze_*` helpers below."""
+    from app.models.project import Project
+
+    has_row = select(row_model.project_id).where(*(getattr(row_model, k) == v for k, v in row_filters.items()))
+    return list(
+        db.scalars(
+            select(Project.id).where(Project.organization_id == organization_id, Project.id.not_in(has_row))
+        )
+    )
+
+
+def snapshot_project_module_state(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> None:
+    """Copies the organisation's current project defaults into a newly
+    created project — one `ProjectModuleEnablement` row per available
+    module and one `ProjectModuleSubComponentEnablement` row per available
+    sub-component (**Decided by: User**, 2026-10-04: an org default only
+    affects projects that get the module afterwards; an org hard Off still
+    reaches every project via the floor checks above).
+
+    Only modules/sub-components the org has hard-on are copied (**Decided
+    by: Agent**): copying a default-off module (e.g. Decisions) while it's
+    unavailable would leave the project without it once the org turns it
+    on. Row-less projects read the live default until it next changes
+    (`freeze_projects_module_default`).
+
+    Skips any row that already exists. Does not commit.
+
+    Args:
+        db: An active database session.
+        project_id: The new project.
+        organization_id: The project's owning organisation.
+    """
+    from app.models.module import ProjectModuleEnablement, ProjectModuleSubComponentEnablement
+
+    existing_modules = set(
+        db.scalars(select(ProjectModuleEnablement.module_key).where(ProjectModuleEnablement.project_id == project_id))
+    )
+    existing_subs = set(
+        db.execute(
+            select(ProjectModuleSubComponentEnablement.module_key, ProjectModuleSubComponentEnablement.subcomponent_key)
+            .where(ProjectModuleSubComponentEnablement.project_id == project_id)
+        ).tuples()
+    )
+    for definition in get_module_registry().values():
+        if not is_module_enabled(db, organization_id, definition.key):
+            continue
+        if definition.key not in existing_modules:
+            db.add(ProjectModuleEnablement(
+                project_id=project_id, module_key=definition.key,
+                enabled=resolve_default_project_enabled(db, organization_id, definition.key),
+            ))
+        for sub in definition.sub_components:
+            org_enabled, org_default_project_enabled = resolve_org_subcomponent_state(
+                db, organization_id, definition.key, sub.key,
+            )
+            if org_enabled and (definition.key, sub.key) not in existing_subs:
+                db.add(ProjectModuleSubComponentEnablement(
+                    project_id=project_id, module_key=definition.key, subcomponent_key=sub.key,
+                    enabled=org_default_project_enabled,
+                ))
+
+
+def freeze_projects_module_default(db: Session, organization_id: uuid.UUID, module_key: str) -> None:
+    """Writes the organisation's *current* `default_project_enabled` for
+    `module_key` into every one of its projects that has no row yet — call
+    before changing that default, so existing projects keep their state
+    (see `snapshot_project_module_state`). No-op while the module is
+    hard-off for the org: no project is using the default then, so row-
+    less projects should pick up whatever default applies once it's turned
+    on. Does not commit.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation whose default is about to change.
+        module_key: The module's registry key.
+    """
+    from app.models.module import ProjectModuleEnablement
+
+    if not is_module_enabled(db, organization_id, module_key):
+        return
+    current = resolve_default_project_enabled(db, organization_id, module_key)
+    for project_id in _project_ids_without_row(db, organization_id, ProjectModuleEnablement, module_key=module_key):
+        db.add(ProjectModuleEnablement(project_id=project_id, module_key=module_key, enabled=current))
+
+
+def freeze_projects_subcomponent_default(
+    db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> None:
+    """Sub-component sibling of `freeze_projects_module_default`; likewise
+    a no-op while the module or sub-component is hard-off, or for an
+    unregistered key. Does not commit.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation whose default is about to change.
+        module_key: The declaring module's registry key.
+        subcomponent_key: The sub-component's declared key.
+    """
+    from app.models.module import ProjectModuleSubComponentEnablement
+
+    org_state = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
+    if org_state is None or not org_state[0] or not is_module_enabled(db, organization_id, module_key):
+        return
+    project_ids = _project_ids_without_row(
+        db, organization_id, ProjectModuleSubComponentEnablement,
+        module_key=module_key, subcomponent_key=subcomponent_key,
+    )
+    for project_id in project_ids:
+        db.add(ProjectModuleSubComponentEnablement(
+            project_id=project_id, module_key=module_key, subcomponent_key=subcomponent_key, enabled=org_state[1],
+        ))
 
 
 def import_all_module_models() -> None:
@@ -1932,6 +2732,10 @@ def run_on_org_created_hooks(
     caller passed one explicitly (even an empty set, an explicit "seed none
     of these"), otherwise `default_org_creation_choice_keys()`.
 
+    Also seeds the organisation's default levels for every registered
+    scoring scheme (`services.scoring.seed_missing_scoring_levels`, Module
+    1 Phase 10) — generic core behaviour, not a per-module hook.
+
     A module with neither hook (the default `None` for both) is simply
     skipped. Does not commit — each hook only adds rows, the same
     convention `seed_project_statuses`/`seed_link_types` already follow;
@@ -1948,9 +2752,12 @@ def run_on_org_created_hooks(
             keys`'s own docstring for why `None`, not an empty set, is the
             "caller didn't specify" sentinel).
     """
+    from app.services.scoring import seed_missing_scoring_levels
+
     resolved_keys = (
         default_org_creation_choice_keys() if selected_choice_keys is None else selected_choice_keys
     )
+    seed_missing_scoring_levels(db, organization_id)
     for definition in get_module_registry().values():
         if definition.on_org_created is not None:
             definition.on_org_created(db, organization_id)
@@ -2022,6 +2829,45 @@ def run_org_group_member_removal_hooks(db: Session, org_group_id: uuid.UUID, mem
     return None
 
 
+def run_org_group_deletion_hooks(db: Session, org_group_id: uuid.UUID) -> str | None:
+    """Calls every registered module's `validate_org_group_deletion` hook,
+    stopping at the first block message — so `delete_org_group` can respect
+    module-owned invariants without importing any module.
+
+    Args:
+        db: An active database session (read-only use).
+        org_group_id: The group about to be deleted.
+
+    Returns:
+        The first module's block message, or `None` if every module allows it.
+    """
+    for definition in get_module_registry().values():
+        if definition.validate_org_group_deletion is None:
+            continue
+        message = definition.validate_org_group_deletion(db, org_group_id)
+        if message is not None:
+            return message
+    return None
+
+
+def get_module_artefact_ids_in_organization(db: Session, organization_id: uuid.UUID) -> set[uuid.UUID]:
+    """Every module's `artefact_ids_in_organization` for one organisation,
+    unioned — for org deletion's polymorphic cleanup.
+
+    Args:
+        db: An active database session (read-only use).
+        organization_id: The organisation.
+
+    Returns:
+        Ids of every module-owned artefact belonging to it.
+    """
+    ids: set[uuid.UUID] = set()
+    for definition in get_module_registry().values():
+        if definition.artefact_ids_in_organization is not None:
+            ids |= definition.artefact_ids_in_organization(db, organization_id)
+    return ids
+
+
 def get_all_registered_artefact_types() -> set[str]:
     """Every valid `ArtefactType` value — the two built-in core values
     (`ArtefactType.REQUIREMENT`/`REQUIREMENT_ACTION`) plus every registered
@@ -2042,6 +2888,30 @@ def get_all_registered_artefact_types() -> set[str]:
     for definition in get_module_registry().values():
         types.update(definition.artefact_types)
     return types
+
+
+def get_all_registered_scoring_schemes() -> dict[str, RegisteredScoringScheme]:
+    """Merges every registered module's `scoring_schemes` into one
+    `{scheme_key: RegisteredScoringScheme}` mapping (Module 1 Phase 10).
+
+    A scheme key claimed by two modules keeps the first registration (in
+    registry order) and logs the rejection, the same "earlier wins" rule
+    `build_registry` applies to module keys.
+
+    Returns:
+        Every currently registered scoring scheme, keyed by scheme key.
+    """
+    schemes: dict[str, RegisteredScoringScheme] = {}
+    for definition in get_module_registry().values():
+        for scheme in definition.scoring_schemes:
+            if scheme.key in schemes:
+                logger.error(
+                    "Scoring scheme '%s' from module '%s' collides with module '%s'; ignoring it.",
+                    scheme.key, definition.key, schemes[scheme.key].module_key,
+                )
+                continue
+            schemes[scheme.key] = RegisteredScoringScheme(module_key=definition.key, scheme=scheme)
+    return schemes
 
 
 def get_subtype_providers() -> dict[str, Callable[[Session, uuid.UUID], list[str]]]:

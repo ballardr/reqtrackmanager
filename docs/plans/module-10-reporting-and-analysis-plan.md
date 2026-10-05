@@ -102,6 +102,13 @@ the provenance-record shape, before Phase 1.
    closing line), so it should consume existing query infrastructure, not
    build a parallel one.
 
+**2026-10-04 note:** Module 1's Reporting extension (Phase 13) adds a
+generic `projectReports`/`orgReports` report-registration hook on
+`TierAModuleDefinition`/`ModuleDefinition`, rendered by core `ReportsPage`.
+It is designed as this module's future report-type registration API.
+Phase 0 here should adopt and extend it rather than replace it.
+**Decided by: User.**
+
 ## Phase 1 — Reporting engine core: templates, provenance, output generation
 
 **Scope** (per Phase 0's resolution): `ReportTemplate` (versioned, per

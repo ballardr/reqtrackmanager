@@ -15,6 +15,8 @@ import type {
   PendingInvite,
   ProjectGroup,
   ProjectMemberSource,
+  ProjectModuleEnablement,
+  ProjectModuleSubComponent,
   ProjectStage,
   ProjectStatusDefinition,
 } from "../api/types";
@@ -65,6 +67,13 @@ function mockProjectAdminApis(
     groups?: ProjectGroup[];
     pendingInvites?: PendingInvite[];
     moduleRoles?: ModuleRoleDefinition[];
+    // Module 0 (Platform Foundations) Phases 4/5 — the Modules tab's own
+    // bulk module list and, per module, its declared sub-components (keyed
+    // by `module_key`; defaults to `[]` per module, matching the real
+    // `GET .../subcomponents` endpoint's own "no sub-components declared"
+    // response).
+    projectModules?: ProjectModuleEnablement[];
+    projectModuleSubComponents?: Record<string, ProjectModuleSubComponent[]>;
     // Platform review 2026-09, Phase 8 — the org's own
     // `force_require_change_request_for_approved_links`, fetched via a bare
     // `GET /orgs/{id}` alongside the other org-scoped calls below.
@@ -123,6 +132,22 @@ function mockProjectAdminApis(
     // Members section's own module-role fetch throws as unmocked and
     // rejects `reload()`'s own `Promise.all`.
     if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
+    // Module 0 (Platform Foundations) Phases 4/5 — checked before the
+    // generic "/modules" bulk-list branch below, since both the
+    // enablement and subcomponents paths also contain that substring.
+    // `moduleKey` is parsed out of the path itself so each module's own
+    // fixture routes to its own override entry.
+    if (path.includes("/subcomponents")) {
+      const moduleKey = path.split("/modules/")[1]?.split("/subcomponents")[0];
+      return overrides.projectModuleSubComponents?.[moduleKey ?? ""] ?? [];
+    }
+    if (path.includes("/modules/") && path.includes("/enablement")) {
+      const moduleKey = path.split("/modules/")[1]?.split("/enablement")[0];
+      const found = overrides.projectModules?.find((m) => m.module_key === moduleKey);
+      if (found) return found;
+      throw new Error(`unmocked module enablement fixture for: ${moduleKey}`);
+    }
+    if (path.endsWith("/modules")) return overrides.projectModules ?? [];
     // Phase 6 (docs/platform-review-2026-09-plan.md): `ProjectMembersTable`'s
     // third data source — checked before the plain "/groups" check above
     // doesn't apply here since "/group-roles" isn't a substring of
@@ -1446,6 +1471,138 @@ export const EntitySwitcherOffersSiblingProjects: Story = {
       "href",
       "/projects/project-2/admin"
     );
+  },
+};
+
+// --- Module 0 (Platform Foundations) Phases 4/5: Modules tab ---------------------------
+
+const usingOrgDefaultModule: ProjectModuleEnablement = {
+  module_key: "fake_module", name: "Fake Module", effective_enabled: true,
+  org_default_enabled: true, org_hard_enabled: true, has_project_override: false, project_override_enabled: null,
+};
+const overriddenModule: ProjectModuleEnablement = {
+  module_key: "context_strategy", name: "Context & Strategy", effective_enabled: false,
+  org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: false,
+};
+// Module 0 (Platform Foundations) Phase 5 correction (2026-09-29) — the
+// organisation has hard-disabled this module outright: no project
+// override, existing or new, can widen it on. The Modules tab must render
+// its toggle disabled with an explanatory hint in this state.
+const orgHardDisabledModule: ProjectModuleEnablement = {
+  module_key: "fake_module", name: "Fake Module", effective_enabled: false,
+  org_default_enabled: false, org_hard_enabled: false, has_project_override: false, project_override_enabled: null,
+};
+const usingOrgDefaultSubComponent: ProjectModuleSubComponent = {
+  module_key: "context_strategy", subcomponent_key: "pain_point", name: "Pain Point",
+  effective_enabled: true, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: true,
+};
+const overriddenSubComponent: ProjectModuleSubComponent = {
+  module_key: "context_strategy", subcomponent_key: "strategy", name: "Strategy",
+  effective_enabled: false, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: false,
+};
+
+/** One switch per module; a module whose value differs from the org's
+ * default for new projects says so in a hint. Sub-components start
+ * collapsed behind a summary and expand to their own switches. */
+export const ModulesTabShowsStateAndCollapsedSubComponents: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      projectModules: [usingOrgDefaultModule, { ...overriddenModule, effective_enabled: true, project_override_enabled: true, org_default_enabled: false }],
+      projectModuleSubComponents: { context_strategy: [overriddenSubComponent, usingOrgDefaultSubComponent] },
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    await expect(canvas.getByRole("switch", { name: "Enable Fake Module for this project" })).toBeChecked();
+    await expect(canvas.getByRole("switch", { name: "Enable Context & Strategy for this project" })).toBeChecked();
+    await expect(canvas.getByText("Organisation default for new projects: off")).toBeInTheDocument();
+
+    await expect(canvas.queryByText("Strategy")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "2 components · 1 on" }));
+    await expect(canvas.getByRole("switch", { name: "Enable Strategy (Context & Strategy) for this project" })).not.toBeChecked();
+    await expect(canvas.getByRole("switch", { name: "Enable Pain Point (Context & Strategy) for this project" })).toBeChecked();
+  },
+};
+
+/** Toggling a module's own effective enablement calls `PUT .../enablement`
+ * and patches local state from the response, with a toast confirming the
+ * change (feedback-on-every-mutation) — mirroring Org Admin's own
+ * whole-module toggle one tier up. */
+export const ModulesTabToggleWholeModule: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({ projectModules: [usingOrgDefaultModule] });
+    spyOn(api, "put").mockResolvedValue({ ...usingOrgDefaultModule, effective_enabled: false, has_project_override: true, project_override_enabled: false });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    const toggle = canvas.getByRole("switch", { name: "Enable Fake Module for this project" });
+    await userEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/modules/fake_module/enablement`, { enabled: false },
+      )
+    );
+    await expect(within(document.body).getByText("Fake Module disabled for this project")).toBeInTheDocument();
+  },
+};
+
+/** Module 0 (Platform Foundations) Phase 5 correction (2026-09-29): a
+ * module the organisation has hard-disabled outright (`org_hard_enabled:
+ * false`) renders its row greyed out, its toggle disabled, and an
+ * explanatory hint — the same "greyed out, not hidden, with a reason"
+ * convention Org Admin's own Modules page already uses for a
+ * non-entitled/not-yet-implemented module — rather than a toggle a
+ * project admin could click and have silently rejected (or, before this
+ * correction, silently accepted and then never take effect). */
+export const ModulesTabHardDisabledModuleShowsDisabledToggleWithHint: Story = {
+  beforeEach: () => mockProjectAdminApis({ projectModules: [orgHardDisabledModule] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    await expect(
+      canvas.getByText("Turned off for your organisation — ask an organisation admin to turn it on.")
+    ).toBeInTheDocument();
+    const toggle = canvas.getByRole("switch", { name: "Enable Fake Module for this project" });
+    await expect(toggle).not.toBeChecked();
+    await expect(toggle).toBeDisabled();
+  },
+};
+
+/** Toggling one sub-component's own override, one level below the
+ * whole-module toggle — proves the nested sub-component row is wired to
+ * its own `PUT .../subcomponents/{key}` endpoint, independent of the
+ * parent module's own toggle. */
+export const ModulesTabToggleSubComponent: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      projectModules: [{ ...overriddenModule, effective_enabled: true, has_project_override: false, project_override_enabled: null }],
+      projectModuleSubComponents: { context_strategy: [usingOrgDefaultSubComponent] },
+    });
+    spyOn(api, "put").mockResolvedValue({
+      ...usingOrgDefaultSubComponent, effective_enabled: false, has_project_override: true, project_override_enabled: false,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Context & Strategy")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "1 component · all on" }));
+
+    const toggle = canvas.getByRole("switch", { name: "Enable Pain Point (Context & Strategy) for this project" });
+    await userEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/subcomponents/pain_point`, { enabled: false },
+      )
+    );
+    await expect(within(document.body).getByText("Pain Point disabled for this project")).toBeInTheDocument();
   },
 };
 

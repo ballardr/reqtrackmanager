@@ -295,6 +295,12 @@ class MaterializeResultOut(BaseModel):
     skipped: list[dict[str, str]]
 
 
+class ProjectMyRolesOut(BaseModel):
+    """The caller's effective roles on one project (`GET /{project_id}/my-roles`)."""
+
+    roles: list[ProjectRole]
+
+
 class ProjectListItemOut(ProjectOut):
     """Project list view row (U-E-03): includes stage and role context."""
 

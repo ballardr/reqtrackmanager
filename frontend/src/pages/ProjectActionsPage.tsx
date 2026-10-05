@@ -12,6 +12,7 @@ import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
+import { useRequestSequence } from "../hooks/useRequestSequence";
 
 const strings = t();
 
@@ -63,13 +64,21 @@ export function ProjectActionsPage() {
     setOutcomeFilter((current) => (current === outcome ? "" : outcome));
   }
 
+  // Request-sequencing guard, same shape as `RequirementsPage.tsx`'s: a
+  // filter change starts a new load while the previous one may still be in
+  // flight, and the slower, stale response must not overwrite the newer
+  // one (e.g. toggling "Include archived" right after the page loads).
+  const beginLoad = useRequestSequence();
+
   async function reload() {
     if (!projectId) return;
+    const isLatest = beginLoad();
     setActions(null);
     const [types, list] = await Promise.all([
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/actions${listParams()}`),
     ]);
+    if (!isLatest()) return;
     setActionTypes(types);
     setActions(list);
     if (!newActionTypeId && types[0]) setNewActionTypeId(types[0].id);

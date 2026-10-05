@@ -97,7 +97,7 @@ def test_effective_entitlement_and_enablement_all_four_combinations(client, admi
         assert module_registry.is_module_enabled(db, org_uuid, fake_module) is True
 
         # (b) entitled + explicitly disabled via an OrganizationModuleEnablement row.
-        enablement = OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False)
+        enablement = OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False, default_project_enabled=False)
         db.add(enablement)
         db.commit()
         assert module_registry.is_module_entitled(db, org_uuid, fake_module) is True
@@ -108,7 +108,7 @@ def test_effective_entitlement_and_enablement_all_four_combinations(client, admi
         db.delete(enablement)
         db.commit()
         db.add(OrganizationModuleEntitlement(organization_id=org_uuid, module_key=fake_module, entitled=False))
-        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=True))
+        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=True, default_project_enabled=True))
         db.commit()
         assert module_registry.is_module_entitled(db, org_uuid, fake_module) is False
         assert module_registry.is_module_enabled(db, org_uuid, fake_module) is False
@@ -171,7 +171,7 @@ def test_require_org_module_enabled_404_when_disabled(client, admin_token, org_i
     db = SessionLocal()
     try:
         org_uuid = uuid_lib.UUID(org_id)
-        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False))
+        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False, default_project_enabled=False))
         db.commit()
         admin_user = _get_admin_user(db)
         dependency = require_org_module_enabled(fake_module)
@@ -215,7 +215,7 @@ def test_require_project_module_enabled_404_when_disabled(client, admin_token, o
     db = SessionLocal()
     try:
         org_uuid = uuid_lib.UUID(org_id)
-        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False))
+        db.add(OrganizationModuleEnablement(organization_id=org_uuid, module_key=fake_module, enabled=False, default_project_enabled=False))
         db.commit()
         admin_user = _get_admin_user(db)
         dependency = require_project_module_enabled(fake_module)

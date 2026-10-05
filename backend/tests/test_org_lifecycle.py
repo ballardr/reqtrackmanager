@@ -475,3 +475,39 @@ def test_organisation_name_cannot_be_blank_or_whitespace(client, admin_token):
     resp = client.post("/api/v1/orgs", json={"name": "  Trimmed Org  "}, headers=auth_headers(admin_token))
     assert resp.status_code == 201, resp.text
     assert resp.json()["name"] == "Trimmed Org"
+
+
+def test_delete_succeeds_with_typed_requirement_links_and_action_comments(client, admin_token):
+    """`ArtefactLink` endpoints are polymorphic (no FK to the artefact), and a
+    link still pointing at one of the org's link types made deletion fail
+    (found 2026-10-05). Deleting the org now removes those links, and the
+    polymorphic comments on its actions too."""
+    org, token = create_org_admin_in(client, admin_token, "Linked Cascade Org")
+    project = create_project(client, token, org["id"])
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    source = _create_requirement(client, token, project["id"], component_id, category_id, "Source")
+    target = _create_requirement(client, token, project["id"], component_id, category_id, "Target")
+    link_type_id = client.get(f"/api/v1/orgs/{org['id']}/link-types", headers=auth_headers(token)).json()[0]["id"]
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{source['id']}/links",
+        json={"target_requirement_id": target["id"], "link_type_id": link_type_id}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    action_type_id = client.get(f"/api/v1/projects/{project['id']}/action-types", headers=auth_headers(token)).json()[0]["id"]
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{source['id']}/actions/create-and-link",
+        json={"title": "Check it", "action_type_id": action_type_id}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    action_id = resp.json()["id"]
+    resp = client.post(f"/api/v1/projects/{project['id']}/actions/{action_id}/comments", json={"body": "note"},
+                       headers=auth_headers(token))
+    assert resp.status_code == 201, resp.text
+
+    resp = client.request("DELETE", f"/api/v1/orgs/{org['id']}", json={"confirm_name": org["name"]},
+                          headers=auth_headers(admin_token))
+    assert resp.status_code == 204, resp.text
+    for artefact_id in (source["id"], target["id"], action_id):
+        assert _row_count("artefact_links", "source_id", artefact_id) == 0
+        assert _row_count("artefact_links", "target_id", artefact_id) == 0
+    assert _row_count("review_comments", "target_id", action_id) == 0

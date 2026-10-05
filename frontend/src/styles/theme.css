@@ -298,7 +298,8 @@ select.input {
    --color-surface-alt) to keep this additive to the graphite palette
    rather than a set of solid filled pills. Driven by the *_TONE maps next
    to each status/outcome enum's *_LABEL map in api/types.ts — a status
-   should never get an inline one-off colour, only one of these 4 tones. */
+   should never get an inline one-off colour, only one of these 5 tones
+   (`warning` = needs attention, e.g. a "High" scoring band). */
 .badge--muted {
   color: var(--color-text-muted);
   border-color: var(--color-border);
@@ -314,6 +315,10 @@ select.input {
 .badge--danger {
   color: var(--color-danger);
   border-color: var(--color-danger);
+}
+.badge--warning {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
 }
 
 /* Entity-type accent (Phase 4, item 2): a left-border stripe applied to a
@@ -1115,3 +1120,130 @@ td:has(> .disclosure-toggle) {
 .popover-bubble {
   max-width: calc(100vw - 1rem);
 }
+
+/* Clamp text to two lines (e.g. `ModuleSettingsList`'s descriptions). */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* A borderless inline text action ("More"/"Less") — reads as a link, not a
+   `.btn` chip, for a toggle that sits inside running text. */
+.text-button {
+  background: none;
+  border: none;
+  padding: 0 0 0 0.35rem;
+  font: inherit;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.text-button:hover {
+  text-decoration: underline;
+}
+
+/* `ModuleSettingsList` — Org/Project Admin's Modules list. */
+.module-settings-list,
+.module-settings-sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.module-settings-row {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.module-settings-row:last-child {
+  border-bottom: none;
+}
+.module-settings-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.module-settings-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.module-settings-control {
+  flex-shrink: 0;
+}
+.module-settings-version {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+}
+.module-settings-small {
+  font-size: 0.8rem;
+}
+.module-settings-row > .disclosure-toggle {
+  width: auto;
+  margin-top: 0.35rem;
+  padding: 0.25rem 0.4rem;
+}
+.module-settings-sublist {
+  margin-top: 0.25rem;
+  padding-left: 1.5rem;
+}
+.module-settings-sublist > li {
+  padding: 0.35rem 0;
+}
+
+/* Scoring matrix (components/ScoringMatrixChart.tsx, Module 1 Phase 10):
+   cells tinted with the same 5 BadgeTone colours as `.badge--<tone>`,
+   mixed into the surface so text stays readable in both themes. The
+   wrapper scrolls horizontally rather than the page on narrow screens. */
+.scoring-matrix {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.scoring-matrix table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.scoring-matrix th,
+.scoring-matrix td {
+  border: 1px solid var(--color-border);
+  padding: 0.35rem 0.5rem;
+  min-width: 4.5rem;
+  text-align: center;
+  vertical-align: middle;
+}
+.scoring-matrix caption {
+  caption-side: bottom;
+  text-align: left;
+  padding-top: 0.35rem;
+}
+.scoring-matrix__band {
+  display: block;
+  font-weight: 600;
+}
+.scoring-matrix__dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+}
+.scoring-matrix__dot {
+  display: inline-block;
+  border-radius: 999px;
+  background: var(--color-text);
+  opacity: 0.75;
+}
+.scoring-matrix__cell-btn {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+}
+.scoring-matrix__cell-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+}
+.scoring-cell--muted { background: color-mix(in srgb, var(--color-text-muted) 15%, var(--color-surface)); }
+.scoring-cell--info { background: color-mix(in srgb, var(--color-info) 22%, var(--color-surface)); }
+.scoring-cell--accent { background: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface)); }
+.scoring-cell--warning { background: color-mix(in srgb, var(--color-warning) 28%, var(--color-surface)); }
+.scoring-cell--danger { background: color-mix(in srgb, var(--color-danger) 28%, var(--color-surface)); }

@@ -70,8 +70,8 @@ only be granted by a full server admin, never by another
 those three principles, not invented independently of them — see "Design
 principles carried over" below.
 
-**Status:** Proposed. Phase 0 complete (2026-09-23) — see "Status / Resume
-Here" below. Picked up immediately after Module 4 (Decision Management),
+**Status:** Complete — 10/10 phases (2026-09-27); see "Status / Resume
+Here" below for the full table. Picked up immediately after Module 4 (Decision Management),
 ahead of Module 1, for the same reason Module 4 jumped the queue: it
 unblocks a concretely blocked phase (Module 4's own Phase 8) and every
 subsequent content module's approval design can build against it from day

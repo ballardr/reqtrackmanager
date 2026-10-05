@@ -133,6 +133,32 @@ npx playwright install --with-deps chromium
 npm test
 ```
 
+**Writing specs that survive a shared, growing database.** The e2e data
+persists between runs and grows with every disposable project/requirement a
+spec creates, so:
+
+- Open seeded projects and requirements with `openProject`,
+  `openRequirementByName` or `openRequirementByCode` (in
+  `tests/e2e-workflows/helpers.ts`). They search first, so they work no
+  matter which page of a paginated list the row lands on. Never click a
+  name you assume is on page one.
+- Clean up shared state you change with `onCleanup(fn)` plus
+  `installCleanupHook()` at the top of the `describe`. Use API calls with
+  `apiHeaders(request, email)`, never `page`. This runs in `afterEach`,
+  which still runs when a test times out; a `finally` in the test body
+  doesn't get the chance, because the page is already closed.
+- If a test writes to a project in bulk or changes its structure (imports,
+  exports, stage approval, renames), use its own project from
+  `createDisposableProject`, which archives it afterwards. Likewise, never
+  deactivate, ban or re-prefer (view mode, collapsed sections) a shared
+  persona that other specs log in as. Create a throwaway account, or set
+  the preference explicitly and reset it in `onCleanup`.
+- Await a save before reloading (`clickAndAwaitSave`), or the reload can
+  cancel it.
+- Keep each test well inside its 30s budget, aiming for under about 60%
+  locally, since CI runners are slower. Split long journeys, and do setup
+  that isn't under test through the API.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push/PR to `main` (and on demand via `workflow_dispatch`):

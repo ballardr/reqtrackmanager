@@ -24,7 +24,9 @@ export function LabeledSelect({
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   disabled?: boolean;
-  placeholder?: string;
+  /** Leading empty option's text; `null` omits it, for a select that
+   * always has a value (e.g. a scoring-model switcher). */
+  placeholder?: string | null;
 }) {
   return (
     <label className="stack" style={{ gap: "0.25rem" }}>
@@ -36,7 +38,7 @@ export function LabeledSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
-        <option value="">{placeholder}</option>
+        {placeholder !== null && <option value="">{placeholder}</option>}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

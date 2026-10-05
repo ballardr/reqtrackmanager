@@ -7,8 +7,9 @@ import, tree, favourites, files, export, terminology, changes, metrics),
 access-inheritance materialization), `report_config`, `lifecycle`
 (archive/unarchive), `stages`, `taxonomy` (components/categories),
 `groups`, `roles` (direct/group/by-email project role assignment,
-pending invites), and `module_roles` — into the single `/api/v1/projects`
-router `main.py` mounts.
+pending invites), `module_roles`, and `scoring` (project overrides of
+the generic scoring-matrix default model/bands — Module 1 Phase 10) —
+into the single `/api/v1/projects` router `main.py` mounts.
 
 Split out from one ~3,500-line module (previously `routers/projects.py`)
 so each concern can be read and changed independently; see
@@ -23,7 +24,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.routers.projects import core, groups, hierarchy, lifecycle, module_roles, report_config, roles, stages, taxonomy
+from app.routers.projects import (
+    core,
+    groups,
+    hierarchy,
+    lifecycle,
+    module_roles,
+    report_config,
+    roles,
+    scoring,
+    stages,
+    taxonomy,
+)
 
 _PREFIX = "/api/v1/projects"
 
@@ -42,3 +54,4 @@ router.include_router(taxonomy.router, prefix=_PREFIX)
 router.include_router(groups.router, prefix=_PREFIX)
 router.include_router(roles.router, prefix=_PREFIX)
 router.include_router(module_roles.router, prefix=_PREFIX)
+router.include_router(scoring.router, prefix=_PREFIX)

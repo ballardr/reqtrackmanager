@@ -19,6 +19,10 @@ The **Users** section lists every member, with access-review filters useful for 
 
 **Groups** let you assign organisation-level roles to a set of users at once rather than one at a time — the same building block [project groups](./administering-a-project.md#project-groups) use one level down.
 
+To delete a group, open it from **Groups** and choose **Delete group**. Its members lose every role and project access the group gave them, and it's removed from any group it was nested in. Access they hold some other way is unaffected. Deletion can't be undone. It's refused when an enabled module depends on the group: for example, Compliance blocks deleting the organisation's fallback compliance-managers group while a standard relies on it.
+
+Deleting a group never leaves a project without a Project Manager. Every project always keeps at least one manager who holds the role directly, and group-granted managers don't count toward that minimum.
+
 ## Shared resource files
 
 **Shared resources** are files that aren't specific to one requirement or change request — a standards document, a reference spec — available to link into any project in the organisation and to append as an extra section on a generated report. See [Core Features → File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md).
@@ -30,6 +34,23 @@ Set the organisation's logo and, under **Templates & reports**, define **report 
 ## Single sign-on
 
 Configure an identity provider for the organisation under **SSO** — see [API & Integrations → Single sign-on](../api-integrations/single-sign-on.md) for the full setup.
+
+## Modules
+
+**Modules** lists every optional feature module this deployment offers, each with one availability dropdown (a module your plan doesn't include shows greyed out with a note):
+
+- **Off** — no project in the organisation can use it; takes effect in every project immediately.
+- **Available, off for new projects** — projects start without it but a project admin can turn it on.
+- **On for new projects** — projects start with it; a project admin can turn it off.
+
+A default only applies to projects created afterwards — changing it never switches a module on or off in an existing project. Sub-components (as of this writing, only [Context & Strategy](../modules/context-strategy-module/overview.md)'s, one per artefact type) sit behind a collapsed summary under their module, each with the same dropdown.
+
+| Organisation admin: Modules |
+| --- |
+| One availability dropdown per module; Context & Strategy's sub-components collapsed behind a summary |
+| ![Organisation admin Modules page: each module row has a name, version, short description and one availability dropdown; Context & Strategy shows a collapsed "5 components" summary](../../static/img/screenshots/org-admin-modules.png) |
+
+See [Administering a project → Modules](./administering-a-project.md#modules) for the per-project switch, and [Modules → Overview](../modules/overview.md) for the full gating mechanics.
 
 ## Role management
 

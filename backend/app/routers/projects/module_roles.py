@@ -17,16 +17,41 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.module import (
+    ProjectModuleEnablement,
+    ProjectModuleSubComponentEnablement,
+)
 from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
 from app.models.project import Project
 from app.models.user import User
-from app.modules.registry import get_frontend_manifest, get_module_registry, is_module_enabled, list_enabled_module_roles
-from app.schemas.org import ModuleFrameTokenOut, ModuleFrontendManifestOut, ModuleNavEntryOut, ModuleRoleAssign, ModuleRoleDefinitionOut
+from app.modules.registry import (
+    get_frontend_manifest,
+    get_module_registry,
+    is_module_enabled,
+    is_module_enabled_for_project,
+    is_module_subcomponent_enabled,
+    list_enabled_module_roles,
+    resolve_default_project_enabled,
+    resolve_org_subcomponent_state,
+)
+from app.schemas.org import (
+    ManifestNavEntryOut,
+    ModuleFrameTokenOut,
+    ModuleFrontendManifestOut,
+    ModuleNavEntryOut,
+    ModuleRoleAssign,
+    ModuleRoleDefinitionOut,
+    ProjectModuleEnablementOut,
+    ProjectModuleEnablementUpdate,
+    ProjectModuleSubComponentEnablementUpdate,
+    ProjectModuleSubComponentOut,
+)
 from app.security import create_module_frame_token
 from app.services.audit import log_event
 from app.services.notifications import notify
 from app.services.rbac import (
+    require_project_manage,
     require_project_manage_or_grant_roles,
     require_project_module_enabled_dynamic,
     require_project_view_or_manage,
@@ -103,7 +128,15 @@ def list_project_enabled_modules(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     result: list[ModuleNavEntryOut] = []
     for definition in get_module_registry().values():
-        if not is_module_enabled(db, project.organization_id, definition.key):
+        # `is_module_enabled_for_project`, not the org-only `is_module_
+        # enabled` — Module 0 Phase 5's project-level override means a
+        # project's own effective state can now diverge from its
+        # organisation's default in either direction; using the org-only
+        # check here would either keep showing a nav entry for a module
+        # this project has itself disabled (clicking it would 404), or
+        # hide one for a module this project has itself enabled over an
+        # org default that's off.
+        if not is_module_enabled_for_project(db, project_id, definition.key):
             continue
         manifest = get_frontend_manifest(definition.key)
         # A module may hide its own already-enabled nav entry for this
@@ -129,11 +162,70 @@ def list_project_enabled_modules(
                 # ever contain that placeholder.
                 remote_entry_url=manifest.remote_entry_url,
                 exposed_module=manifest.exposed_module,
+                # additional_nav_entries (Module 1 — Context & Strategy —
+                # Phase 7.1): same "{project_id}" interpolation as nav_path
+                # itself — every one of a Tier A module's own multiple nav
+                # entries follows the same convention as its primary one.
+                additional_nav_entries=[
+                    ManifestNavEntryOut(
+                        nav_label=entry.nav_label,
+                        nav_path=entry.nav_path.replace("{project_id}", str(project_id)),
+                        nav_icon=entry.nav_icon,
+                    )
+                    for entry in manifest.additional_nav_entries
+                ],
+                nav_icon=manifest.nav_icon,
             )
         result.append(
             ModuleNavEntryOut(module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out)
         )
     return result
+
+
+@router.get("/{project_id}/modules", response_model=list[ProjectModuleEnablementOut])
+def list_project_modules(
+    project_id: UUID,
+    current_user: User = Depends(require_project_view_or_manage),
+    db: Session = Depends(get_db),
+):
+    """Lists every registered module with this project's own effective
+    whole-module enablement state (Module 0 — Platform Foundations —
+    Phase 5 follow-up, added alongside the Project Admin Modules tab this
+    endpoint exists to feed) — mirrors `routers.orgs.settings.
+    list_org_modules`'s own loop shape one tier down, but reachable by a
+    plain project manager who isn't also an org admin. Before this
+    endpoint, a Project Admin "Modules" UI had no way to discover which
+    modules exist to list at all: `GET /orgs/{id}/modules` is org-admin-
+    gated, and `GET /projects/{id}/modules/{module_key}/enablement`
+    requires already knowing every `module_key` to iterate.
+
+    Gated by `require_project_view_or_manage`, the same "structure, not
+    content" dependency this file's other read endpoints (`list_project_
+    module_roles`, `list_project_enabled_modules`, `list_project_module_
+    subcomponents`) already use.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    project_rows = {
+        row.module_key: row
+        for row in db.scalars(
+            select(ProjectModuleEnablement).where(ProjectModuleEnablement.project_id == project_id)
+        )
+    }
+    return [
+        ProjectModuleEnablementOut(
+            module_key=definition.key, name=definition.name,
+            effective_enabled=is_module_enabled_for_project(db, project_id, definition.key),
+            org_default_enabled=resolve_default_project_enabled(db, project.organization_id, definition.key),
+            org_hard_enabled=is_module_enabled(db, project.organization_id, definition.key),
+            has_project_override=definition.key in project_rows,
+            project_override_enabled=(
+                project_rows[definition.key].enabled if definition.key in project_rows else None
+            ),
+        )
+        for definition in get_module_registry().values()
+    ]
 
 
 @router.post("/{project_id}/modules/{module_key}/frame-token", response_model=ModuleFrameTokenOut)
@@ -157,6 +249,291 @@ def create_project_module_frame_token(
         user_id=str(current_user.id), project_id=str(project_id),
     )
     return ModuleFrameTokenOut(token=token, expires_in_minutes=15)
+
+
+@router.get("/{project_id}/modules/{module_key}/enablement", response_model=ProjectModuleEnablementOut)
+def get_project_module_enablement(
+    project_id: UUID,
+    module_key: str,
+    current_user: User = Depends(require_project_view_or_manage),
+    db: Session = Depends(get_db),
+):
+    """Returns this project's own effective whole-module enablement state
+    for `module_key` (Module 0 — Platform Foundations — Phase 5): the
+    effective state, the organisation's own default, and whether this
+    project has an explicit override of its own — deliberately all three,
+    not just the effective boolean, so the frontend can render "using org
+    default: X" vs. "overridden to: Y" distinctly, the same "platform-
+    default override visibility" reasoning Phase 4's sub-component
+    endpoints already follow one level down. Gated by `require_project_
+    view_or_manage`, the same "structure, not content" dependency this
+    file's other read endpoints already use.
+
+    Path is `.../modules/{module_key}/enablement`, not the bare `.../
+    modules/{module_key}` the task brief originally sketched — found and
+    corrected during this phase's own verification: this router is
+    included into the app *before* any module's own `get_project_router()`
+    (`main.py`'s mount order), so a bare `GET/PUT .../modules/{module_key}`
+    here would shadow any module whose own project router happens to
+    declare a bare `GET/PUT ""` at its own base path — which Decision
+    Management's `project_router/core.py` (list/create Decisions) already
+    does, and the full pytest suite's own `test_decisions_api.py` caught
+    directly (a decisions list request silently returning this endpoint's
+    `ProjectModuleEnablementOut` shape instead). The extra `/enablement`
+    segment, mirroring Phase 4's own `/subcomponents` convention one field
+    over, makes this path structurally impossible for a module's own
+    bare-base route to collide with, current or future.
+
+    404s if the project doesn't exist or `module_key` isn't registered.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+
+    # `effective_enabled`/`org_default_enabled` are computed via the real
+    # resolution functions, not hand-rolled from the raw rows below, so
+    # this read can never drift from what `require_project_module_enabled`
+    # actually enforces (entitlement is a ceiling `is_module_enabled_for_
+    # project`/`is_module_enabled` both apply — a stale override row alone
+    # would otherwise misreport "enabled" for a since-de-entitled module).
+    project_row = db.scalar(
+        select(ProjectModuleEnablement).where(
+            ProjectModuleEnablement.project_id == project_id,
+            ProjectModuleEnablement.module_key == module_key,
+        )
+    )
+    return ProjectModuleEnablementOut(
+        module_key=module_key, name=definition.name,
+        effective_enabled=is_module_enabled_for_project(db, project_id, module_key),
+        org_default_enabled=resolve_default_project_enabled(db, project.organization_id, module_key),
+        org_hard_enabled=is_module_enabled(db, project.organization_id, module_key),
+        has_project_override=project_row is not None,
+        project_override_enabled=project_row.enabled if project_row is not None else None,
+    )
+
+
+@router.put("/{project_id}/modules/{module_key}/enablement", response_model=ProjectModuleEnablementOut)
+def update_project_module_enablement(
+    project_id: UUID,
+    module_key: str,
+    payload: ProjectModuleEnablementUpdate,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sets this project's own explicit override of whole-module
+    enablement for `module_key` (Module 0 — Platform Foundations — Phase
+    5; corrected 2026-09-29) — **symmetric against the organisation's own
+    `default_project_enabled` value** (Decided by: User): a project
+    admin's own choice always wins over that default in either direction
+    (turning on a module the organisation defaults off for new projects,
+    or off one it defaults on), but only within the organisation's own
+    `enabled=True` floor — see below.
+
+    Gated by `require_project_manage` — the same project-settings-
+    management dependency Phase 4's own project-tier sub-component
+    endpoints in this file already use, not a new role.
+
+    **Entitlement and the organisation's own hard `enabled` flag are both
+    an absolute floor this override cannot cross upward, enforced here at
+    write time, not just silently inert at read time:** setting
+    `enabled=True` is rejected outright (400) if `is_module_enabled(db,
+    project.organization_id, module_key)` is `False` — the organisation
+    either isn't entitled to `module_key` at all, or has hard-disabled it.
+    Setting `enabled=False` (narrowing) is always allowed regardless.
+    Narrower unavailability — the organisation merely *defaults* this
+    module off for new projects (`default_project_enabled=False`) while
+    still having it hard-`enabled=True` — is **not** rejected here: a
+    project may still opt in, exactly the "available, but off by default"
+    case this correction exists to support.
+
+    404s if `module_key` isn't registered.
+    """
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+    if payload.enabled and not is_module_enabled(db, project.organization_id, module_key):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This module is disabled for your organisation — ask an organisation admin to enable it before "
+            "setting a project override.",
+        )
+
+    row = db.scalar(
+        select(ProjectModuleEnablement).where(
+            ProjectModuleEnablement.project_id == project_id,
+            ProjectModuleEnablement.module_key == module_key,
+        )
+    )
+    if row is None:
+        row = ProjectModuleEnablement(project_id=project_id, module_key=module_key)
+        db.add(row)
+    row.enabled = payload.enabled
+    row.updated_by = current_user.id
+    log_event(
+        # `entity_id=module_key` alone, not prefixed with `project_id`
+        # (already its own dedicated `AuditEvent` column, passed below) —
+        # see the sub-component endpoint below for why: `AuditEvent.
+        # entity_id` is `String(64)`, and a UUID plus colon-joined keys
+        # risks overflowing it for a real module/sub-component key pair.
+        db, entity_type="project_module", entity_id=module_key,
+        action="module.enablement_updated", actor_id=current_user.id, project_id=project_id,
+        detail={"module_key": module_key, "enabled": payload.enabled},
+    )
+    db.commit()
+    db.refresh(row)
+
+    return ProjectModuleEnablementOut(
+        module_key=module_key, name=definition.name,
+        effective_enabled=is_module_enabled_for_project(db, project_id, module_key),
+        org_default_enabled=resolve_default_project_enabled(db, project.organization_id, module_key),
+        org_hard_enabled=is_module_enabled(db, project.organization_id, module_key),
+        has_project_override=True, project_override_enabled=row.enabled,
+    )
+
+
+def _project_subcomponent_out(
+    db: Session, project: Project, module_key: str, sub, project_row: ProjectModuleSubComponentEnablement | None,
+) -> ProjectModuleSubComponentOut:
+    """Builds one `ProjectModuleSubComponentOut`. `effective_enabled` comes
+    from `is_module_subcomponent_enabled` itself so this read can't drift
+    from what `require_project_subcomponent_enabled` enforces.
+
+    Args:
+        db: An active database session.
+        project: The project being viewed.
+        module_key: The declaring module's registry key.
+        sub: The `ModuleSubComponentDefinition`.
+        project_row: This project's own row for `sub`, if any.
+
+    Returns:
+        The response model.
+    """
+    org_enabled, org_default_project_enabled = resolve_org_subcomponent_state(
+        db, project.organization_id, module_key, sub.key,
+    ) or (False, False)
+    return ProjectModuleSubComponentOut(
+        module_key=module_key, subcomponent_key=sub.key, name=sub.name,
+        effective_enabled=is_module_subcomponent_enabled(db, project.id, module_key, sub.key),
+        org_default_enabled=org_default_project_enabled,
+        org_hard_enabled=org_enabled and is_module_enabled(db, project.organization_id, module_key),
+        has_project_override=project_row is not None,
+        project_override_enabled=project_row.enabled if project_row is not None else None,
+    )
+
+
+@router.get("/{project_id}/modules/{module_key}/subcomponents", response_model=list[ProjectModuleSubComponentOut])
+def list_project_module_subcomponents(
+    project_id: UUID,
+    module_key: str,
+    current_user: User = Depends(require_project_view_or_manage),
+    db: Session = Depends(get_db),
+):
+    """Lists every sub-component `module_key` declares, from this
+    project's own point of view (Module 0 — Platform Foundations — Phase
+    4): its effective state, its organisation's own default, and whether
+    this project has an explicit override of its own — deliberately all
+    three, not just the effective boolean, so the frontend can render the
+    UX style guide's "platform-default override visibility" pattern
+    ("using org default: X" vs. "overridden to: Y") rather than a flat
+    toggle with no provenance. Gated by `require_project_view_or_manage`,
+    the same "structure, not content" dependency `list_project_module_
+    roles`/`list_project_enabled_modules` already use.
+
+    404s if the project doesn't exist or `module_key` isn't registered. A
+    module with no declared `sub_components` simply returns an empty list.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+
+    project_rows = {
+        row.subcomponent_key: row
+        for row in db.scalars(
+            select(ProjectModuleSubComponentEnablement).where(
+                ProjectModuleSubComponentEnablement.project_id == project_id,
+                ProjectModuleSubComponentEnablement.module_key == module_key,
+            )
+        )
+    }
+    return [_project_subcomponent_out(db, project, module_key, sub, project_rows.get(sub.key)) for sub in definition.sub_components]
+
+
+@router.put(
+    "/{project_id}/modules/{module_key}/subcomponents/{subcomponent_key}", response_model=ProjectModuleSubComponentOut,
+)
+def update_project_module_subcomponent_enablement(
+    project_id: UUID,
+    module_key: str,
+    subcomponent_key: str,
+    payload: ProjectModuleSubComponentEnablementUpdate,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sets this project's own explicit override for one sub-component of
+    `module_key` (Module 0 — Platform Foundations — Phase 4) — a project
+    admin's own choice for this project only, taking precedence over the
+    organisation's own default (`routers.orgs.settings.
+    update_org_module_subcomponent_default`).
+
+    Gated by `require_project_manage` — project managers/administrators,
+    and organisation admins of the project's own organisation — the same
+    project-settings-management capability every other project-settings
+    endpoint in this codebase already uses, not a new role invented for
+    this one surface.
+
+    404s if `module_key`/`subcomponent_key` isn't registered.
+    """
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+    subcomponent = next((s for s in definition.sub_components if s.key == subcomponent_key), None)
+    if subcomponent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sub-component not found.")
+    org_state = resolve_org_subcomponent_state(db, project.organization_id, module_key, subcomponent_key)
+    if payload.enabled and not (is_module_enabled(db, project.organization_id, module_key) and org_state and org_state[0]):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This sub-component is turned off for your organisation — ask an organisation admin to enable it first.",
+        )
+
+    row = db.scalar(
+        select(ProjectModuleSubComponentEnablement).where(
+            ProjectModuleSubComponentEnablement.project_id == project_id,
+            ProjectModuleSubComponentEnablement.module_key == module_key,
+            ProjectModuleSubComponentEnablement.subcomponent_key == subcomponent_key,
+        )
+    )
+    if row is None:
+        row = ProjectModuleSubComponentEnablement(
+            project_id=project_id, module_key=module_key, subcomponent_key=subcomponent_key,
+        )
+        db.add(row)
+    row.enabled = payload.enabled
+    row.updated_by = current_user.id
+    log_event(
+        db, entity_type="project_module_subcomponent",
+        # `f"{module_key}:{subcomponent_key}"`, not prefixed with
+        # `project_id` — `AuditEvent.entity_id` is `String(64)`, and a UUID
+        # (36 chars) plus two colon-joined keys risks overflowing it for a
+        # real module/sub-component key pair (found via this endpoint's
+        # own test, which reproduced the overflow directly with a
+        # deliberately long fixture module key).
+        entity_id=f"{module_key}:{subcomponent_key}",
+        action="module.subcomponent_enablement_updated", actor_id=current_user.id, project_id=project_id,
+        detail={"module_key": module_key, "subcomponent_key": subcomponent_key, "enabled": payload.enabled},
+    )
+    db.commit()
+    db.refresh(row)
+
+    return _project_subcomponent_out(db, project, module_key, subcomponent, row)
 
 
 @router.post("/{project_id}/members/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)

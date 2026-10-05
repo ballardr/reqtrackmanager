@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { selectPreferencesGroup, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { clickAndAwaitSave, deleteOrgOnCleanup, installCleanupHook, selectPreferencesGroup, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * End-to-end coverage for the Pelion (v2) feature set, on top of the Ossa
@@ -47,6 +50,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
         headers: authHeaders, data: { name: `Pelion V2 Org ${suffix}` },
       })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: authHeaders,
       data: {
@@ -120,7 +124,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
     await componentsSection.getByPlaceholder("Name").first().fill("Software");
     await componentsSection.getByPlaceholder("Prefix").first().fill("SW");
-    await componentsSection.getByRole("button", { name: "New component" }).click();
+    await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
     await expect(page.locator('input[value="Software"]').first()).toBeVisible();
     // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
     // concurrently, then two more awaited *sequentially* afterwards (org
@@ -167,7 +171,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     if ((await softwareRow.getByPlaceholder("Prefix").inputValue()) !== "PERF") {
       await softwareRow.getByPlaceholder("Prefix").fill("PERF");
     }
-    await softwareRow.getByRole("button", { name: "New category" }).click();
+    await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
     await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
 
     // Custom fields now lives inside the merged "Fields & actions" group.

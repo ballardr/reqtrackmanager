@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, selectOrgAdminGroup, selectServerManagementGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PERSONAS, selectOrgAdminGroup, selectServerManagementGroup } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * Job to be done: an org admin can rename their own organisation, and can
@@ -105,6 +108,7 @@ test.describe("organisation rename and test-email actions", () => {
         data: { name: orgName },
       })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: { Authorization: `Bearer ${adminToken}` },
       data: { email: orgAdminEmail, display_name: "Org SMTP Test Admin", password: "OrgAdmin123!", role: "org_admin" },
@@ -232,6 +236,7 @@ test.describe("organisation rename and test-email actions", () => {
         data: { name: orgName },
       })
     ).json();
+    deleteOrgOnCleanup({ id: org.id });
     await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
       headers: { Authorization: `Bearer ${adminToken}` },
       data: { email: personaEmail, display_name: "Notif Email Persona", password: "Password123!", role: "member" },

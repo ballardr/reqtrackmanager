@@ -164,6 +164,169 @@ second gate at the mount-loop level. Each module wires
 routes internally, the same way every other router in this codebase already
 owns its own dependency wiring.
 
+### 2a. Sub-component enablement: one tier finer than whole-module (Module 0 — Platform Foundations — Phase 4)
+
+A module may be too coarse a unit to enable/disable as a whole — Context &
+Strategy's organisation may want to keep Pain Point on while turning Strategy
+and Future State off, not an all-or-nothing switch. `ModuleDefinition.
+sub_components` declares a tuple of `ModuleSubComponentDefinition(key, name,
+default_enabled=True)` entries (empty by default — every module before
+Context & Strategy needs no change), and a **third, independent gating
+tier** sits below whole-module enablement for each one:
+
+- **Org default** — `OrganizationModuleSubComponentDefault`, an explicit-
+  override-only row keyed on `(organization_id, module_key,
+  subcomponent_key)`; absence means "use the registry's own
+  `default_enabled`." Org-admin-managed, same endpoint family as whole-
+  module enablement: `GET`/`PUT /orgs/{id}/modules/{module_key}/
+  subcomponents[/{subcomponent_key}]`.
+- **Project override** — `ProjectModuleSubComponentEnablement`, same
+  explicit-override-only shape, keyed on `(project_id, module_key,
+  subcomponent_key)`; absence means "use the org default above, or the
+  registry default if the organisation has none either." This is a
+  genuinely new capability at the project level — whole-module enablement
+  itself has **no** project-level override at all, only this finer-grained
+  layer gets one. Project-admin-managed: `GET`/`PUT /projects/{id}/
+  modules/{module_key}/subcomponents[/{subcomponent_key}]` (`require_
+  project_manage`-gated, same dependency every other project-settings
+  endpoint uses).
+
+Resolution (`app.modules.registry.is_module_subcomponent_enabled`, for a
+project-scoped artefact): whole-module disabled always wins first, with no
+further lookup; then project override; then org default; then the
+registry's own `default_enabled`. `require_project_subcomponent_enabled
+(module_key, subcomponent_key)` (`app.services.rbac`) is the RBAC dependency
+a module's project-scoped router depends on instead of/in addition to
+`require_project_module_enabled` — same 404-not-403 posture, same Tier B
+`<ModuleFrame>` token acceptance.
+
+**An org-scoped artefact has no project tier to speak of** — there is no
+`project_id` for a project override to key against at all (Context &
+Strategy's own org-scoped Strategy records are the first example). For this
+case, `is_org_module_subcomponent_enabled`/`require_org_subcomponent_enabled`
+resolve purely from the organisation's own default: that row *is* the
+effective value, not a fallback beneath a tier that doesn't exist for this
+artefact. This reuses the same org-default table/endpoint the project-scoped
+resolution's own middle tier already uses, rather than inventing a second,
+parallel org-scoped mechanism.
+
+```mermaid
+flowchart TD
+    WM{"Whole module enabled?"}
+    WM -->|no| OFF["Effectively disabled — no further lookup"]
+    WM -->|yes| PO{"Project override row exists? (project-scoped artefact only)"}
+    PO -->|yes| POVAL["Use its 'enabled' value"]
+    PO -->|no| OD{"Org default row exists?"}
+    OD -->|yes| ODVAL["Use its 'enabled' value"]
+    OD -->|no| REGDEF["Fall back to ModuleSubComponentDefinition.default_enabled"]
+    POVAL --> RESULT["Effective enabled state"]
+    ODVAL --> RESULT
+    REGDEF --> RESULT
+```
+
+Both endpoint families return the effective state alongside the org
+default/registry default and whether an override exists at that tier — not
+just a flat boolean — so the frontend can render the UX style guide's
+"platform-default override visibility" pattern ("using org default: X" vs.
+"overridden to: Y"). **Frontend built** (2026-09-29, a later pass than
+Context & Strategy's own Phase 7 artefact UI, once a real "toggle a
+sub-component" need existed to build it against): the org admin's
+**Modules** page (`OrgAdminPage.tsx`) renders one extra, indented row per
+sub-component underneath its own module's row, each with a `ToggleSwitch`
+bound to that sub-component's org default — entirely generic over
+`ModuleSubComponentDefinition.name`/`default_enabled`, so a future module
+declaring `sub_components` needs no frontend edit of its own to get this.
+`GET .../subcomponents` is called for every registered module
+unconditionally (it safely returns `[]` for one with none declared, e.g.
+every module before Context & Strategy) rather than checked first. See
+`docs/plans/module-00-platform-foundations-plan.md`'s Phase 4 section.
+
+### 2b. Project-level override of whole-module enablement (Module 0 — Platform Foundations — Phase 5)
+
+Added immediately after Phase 4, at the user's request: whole-module
+enablement itself (§2's `OrganizationModuleEnablement`) had no project-
+level override at all — the org's own row was the one and only effective
+value for every project in that org. This phase gives a project an
+override lever over the organisation's own setting for that module —
+**corrected 2026-09-29** (Decided by: User — see `docs/decisions.md`'s
+dated entry) once the original design's first real consuming UI exposed a
+gap: the original single `enabled` boolean conflated "is this module
+available to the organisation at all" with "what does a project get by
+default," which meant a project override could re-enable a module the
+organisation had deliberately disabled outright — not what "disabled"
+should mean.
+
+The corrected model is four tiers, not two: `OrganizationModuleEnablement`
+gains a second, independent column, `default_project_enabled` (migration
+`0055`). `enabled` is now a genuine **hard floor** — `False` means no
+project of this organisation may use the module at all, and no
+`ProjectModuleEnablement` override can cross it in either direction (a
+`PUT` attempting `enabled=True` from the project side is rejected 400 while
+the organisation's own `enabled` is `False`). `default_project_enabled`,
+only consulted once `enabled` is `True`, is the actual default a project
+inherits absent its own override — and a project's own override remains
+**symmetric** against *this* value, either direction (a specialist module
+the organisation makes available but defaults off for most projects can
+still be opted into by an individual project manager). `is_module_enabled_
+for_project(db, project_id, module_key)` (`app.modules.registry`) resolves
+it: entitlement and `enabled` first (both an absolute ceiling), then
+`ProjectModuleEnablement` (project override, if any), then
+`default_project_enabled`, then the registry's own `default_enabled` (for
+an organisation with no explicit row at all). `require_project_module_
+enabled`/`require_project_module_enabled_dynamic` (`app.services.rbac`)
+resolve through this function now instead of calling the org-only
+`is_module_enabled` directly — every existing module-gated project
+endpoint keeps working unchanged, since day one has zero `ProjectModuleEnablement`
+rows and the fallback is exactly the pre-Phase-5 org-only behaviour.
+
+**Copy-on-create (2026-10-04, Decided by: User).** An org default only
+affects projects that get the module afterwards; an org hard Off still
+reaches every project. `snapshot_project_module_state` (called from
+`routers.projects.create_project`, blank and template-cloned alike) writes
+a `ProjectModuleEnablement`/`ProjectModuleSubComponentEnablement` row per
+module/sub-component the org has hard-on; `freeze_projects_module_default`/
+`freeze_projects_subcomponent_default` write the *old* default into any
+row-less project just before an org default changes. Both skip anything
+hard-off, so a project created while a module was Off picks up whatever
+default applies when it's turned on (Decided by: Agent). The live-default
+tier in the resolvers is therefore only reached by such projects or by a
+module registered after the project was created.
+
+**Sub-components have the same two org levers** (migration `0056`):
+`OrganizationModuleSubComponentDefault.enabled` is a hard floor (also the
+effective value for org-scoped artefacts) and `default_project_enabled` is
+what gets copied. `resolve_org_subcomponent_state` returns both.
+
+`GET`/`PUT /projects/{id}/modules/{module_key}/enablement` and
+`GET`/`PUT .../subcomponents[/{subcomponent_key}]`
+(`app.routers.projects.module_roles`) are the project surface; the former
+`DELETE` "reset to org default" endpoints were removed — with copied
+values there is no live default to reset to, so a reset is just a `PUT`.
+`GET /projects/{id}/modules` (no `module_key`) lists every registered
+module with this project's own effective state in one call — the bulk
+discovery endpoint a Project Admin "Modules" tab needs to know which
+modules exist to list at all, since `GET /orgs/{id}/modules` is org-admin-
+gated and the per-module endpoint above requires already knowing every
+`module_key` to iterate.
+
+**Not purely additive — Phase 4's own resolution had to be repointed.**
+`is_module_subcomponent_enabled`'s first (whole-module) check used to call
+the org-only `is_module_enabled` directly; it now calls this phase's
+`is_module_enabled_for_project` instead, so a project-level whole-module
+override correctly cascades to disable/enable that module's every
+sub-component too — not just the org-level disable case Phase 4 alone
+could see. Org-scoped artefacts are unaffected by this phase either way:
+`require_org_module_enabled`/`is_org_module_subcomponent_enabled` remain
+untouched, the same "no project to hold an override against" reasoning
+Phase 4 already applied to org-scoped sub-component gating. **Frontend
+built** (2026-09-29, same later pass as Phase 4's own): the Project Admin
+**Modules** tab (`ProjectAdminPage.tsx`, a new core nav entry — not a
+`moduleAdminSections` module-contributed panel) renders every registered
+module with an `OverridePill` (`custom={has_project_override}`) alongside
+its `ToggleSwitch`, and the same shape one level down for each module's own
+sub-components — generic over the registry, so no per-module frontend
+work is needed here either.
+
 ---
 
 ## 3. `ModuleDefinition`: the contract
@@ -182,6 +345,8 @@ class ModuleDefinition:
     implemented: bool                           # False for a registered-but-not-yet-live placeholder
     get_router: Callable[[], APIRouter | None]   # called once; None if no HTTP endpoints
     roles: tuple[ModuleRoleDefinition, ...] = ()  # module-contributed RBAC roles
+    sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
+    scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     models_import_path: str | None = None       # dotted path to your ORM models module
@@ -356,6 +521,53 @@ ModuleRoleDefinition(
 )
 ```
 
+Nothing stops a module from declaring **both** an org-scoped and a
+project-scoped role that mean the same conceptual thing at two different
+levels — Context & Strategy (`docs/plans/module-01-context-and-strategy-
+plan.md`) is the first module whose own artefact (a Strategy) is itself
+scoped at either level, so it registers `strategy_owner`/`strategy_approver`
+(project) *and* `org_strategy_owner`/`org_strategy_approver` (org) side by
+side, picking whichever pair applies per-row from the artefact's own
+`scope` column. No mechanism change was needed for this — `scope` was
+already a plain per-role string, not a fixed choice a module makes once for
+its whole role set. Context & Strategy's own Phase 2 (Future State) repeats
+this exact pattern a second time in the same module, for a second artefact
+type — `future_state_owner`/`future_state_approver` (project) and
+`org_future_state_owner`/`org_future_state_approver` (org) — bringing that
+one module to eight roles total, confirming the mechanism scales to more
+than one org/project-dual-scoped artefact per module without any further
+change. Phase 3 (Pain Points) then adds two more roles that deliberately
+*don't* follow this dual-scope pairing at all — `pain_point_manager` is
+project-scoped only (Pain Point itself has no organisation-level record,
+unlike Strategy/Future State, so there is no `org_pain_point_manager`
+counterpart to pair it with), and `pain_point_type_admin` is org-scoped
+only, gating a different table (`PainPointTypeDefinition`) than the one
+`pain_point_manager` gates. Confirms `scope` was never actually a
+per-artefact-type constraint — a module is free to mix single-scope roles
+alongside dual-scope pairs in the same `roles` tuple as its own artefacts'
+shapes actually require, not obligated to always declare both halves of a
+pair. Phase 4 (Guiding Principles) goes back to the dual-scope pairing —
+`guiding_principle_owner`/`guiding_principle_approver` (project) and
+`org_guiding_principle_owner`/`org_guiding_principle_approver` (org) —
+since Guiding Principle, like Strategy/Future State and unlike Pain Point,
+is itself scoped at either level; this brings Context & Strategy to
+fourteen roles total across four artefact types, three of which follow the
+dual-scope pattern (four roles each) and one (Pain Point, two roles) which
+doesn't. Phase 5 (Open Questions) adds a third shape neither of the first
+two covers: `open_question_owner`/`open_question_resolver` — two roles,
+like Pain Point (Open Question has no organisation scope either), but
+*not* a single role the way Pain Point's own two-tier permission model
+collapses to. Source overview §9.4 names three distinct tiers (broad
+project members; "Question Owner / Project Manager"; a separate "Decision
+Maker"), so this phase's two roles split "change status" from "resolve"
+rather than one role covering every decide-tier action the way `pain_
+point_manager` does — confirming a module's roles are free to mix all
+three shapes (dual-scope pairs, a single project-only role, or two
+project-only roles) as each artefact's own source text actually requires,
+not obligated to reuse whichever shape a sibling artefact in the same
+module already happened to need. This brings Context & Strategy to sixteen
+roles total across five artefact types.
+
 At every process startup, `sync_module_role_definitions` mirrors the live
 registry's roles into a `module_role_definitions` table — deliberately
 **append-only** (a role is never deleted from this table just because its
@@ -504,6 +716,21 @@ user, and coexists with this floor mechanism rather than replacing it. See
 `app.modules.compliance.service.validate_fallback_group_member_removal` for
 the reference implementation.
 
+Its whole-group counterpart, `ModuleDefinition.validate_org_group_deletion:
+Callable[[Session, UUID], str | None]` (2026-10-05, when org groups became
+deletable), is called by `delete_org_group` through `run_org_group_deletion_
+hooks` in the same way. Compliance uses it to block deleting the fallback
+group while a standard relies on it, since its setting is
+`ON DELETE SET NULL` and the floor would otherwise vanish silently (see
+`validate_fallback_group_deletion`).
+
+`ModuleDefinition.artefact_ids_in_organization: Callable[[Session, UUID],
+set[UUID]]` (2026-10-05) returns the ids of a module's own artefacts (of its
+`artefact_types`) belonging to an organisation, org-scoped or in its
+projects. Org deletion uses it to remove `ArtefactLink` rows, comments and
+subscriptions on those artefacts, which have no foreign key core could
+cascade through. Any module declaring `artefact_types` should implement it.
+
 ### 4c. Fine-Grained Access Control: `ModuleRoleDefinition.permissions`, `subtype_providers`, and `entity_scopes`
 
 Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
@@ -560,6 +787,47 @@ Full design and phase-by-phase detail lives in that plan, not here — this
 entry exists only so a module author extending either the core `Module
 RoleDefinition`/`ModuleDefinition` contract or their own module's roles
 knows these fields exist.
+
+### 4d. Scoring schemes: configurable scoring matrices (Module 1 Phase 10)
+
+A module that scores something (Pain Points today; Risk, Module 3, next)
+registers a `ScoringSchemeDefinition` on `ModuleDefinition.scoring_schemes`
+instead of building its own matrix tables. Core owns storage, resolution,
+maths, API and UI; the module only declares keys and defaults.
+
+```mermaid
+flowchart LR
+    MOD["Module: ScoringSchemeDefinition<br/>axes · models · default bands"] --> REG["registry.get_all_registered_scoring_schemes()"]
+    REG --> SVC["services/scoring.py<br/>seed · resolve · compute"]
+    SVC --> T1[("scoring_levels<br/>org only")]
+    SVC --> T2[("scoring_model_defaults<br/>org + project")]
+    SVC --> T3[("scoring_bands<br/>org + project")]
+    SVC --> API["/orgs/{id}/scoring-schemes/{key}<br/>/projects/{id}/scoring-schemes/{key}"]
+    API --> UI["ScoringSchemeEditor · ProjectScoringSettings<br/>embedded in the module's admin sections"]
+```
+
+- **Axes** have ordered, weighted levels (≥2, unique names and weights,
+  ordered by weight; the highest is the top level). Seeded per org on
+  creation/import and at every startup (`sync_scoring_levels`), so a module
+  installed later still gets levels. Org-only: module rows reference levels
+  by id.
+- **Models** combine axes; score = product of the chosen levels' weights,
+  "not scored" if any input is missing. **Bands** use the normalised score
+  (score ÷ maximum), so they survive re-weighting.
+- **Default model and bands** resolve project → nearest ancestor → org →
+  module default (the nested-projects fallback rule). No rows = inherit.
+- **Gating:** reads need org membership (org endpoints) or project
+  view-or-manage (project endpoints); org writes need org admin or the
+  scheme's `admin_role_key` module role; project writes need
+  `require_project_manage`. All 404 when the module is disabled. Writes are
+  audit-logged.
+- **Level references:** set `count_level_usage`/`reassign_level_usage`
+  once your own rows reference levels, so core can block a delete or
+  reassign references to another level on the same axis.
+- **UI:** embed `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
+  (project) in your own `orgAdminSections`/`projectAdminSections`, passing
+  your scheme key. `ScoringLevelPicker`, `ScoringModelSwitcher` and
+  `ScoringMatrixChart` are the shared scoring/viewing components.
 
 ---
 

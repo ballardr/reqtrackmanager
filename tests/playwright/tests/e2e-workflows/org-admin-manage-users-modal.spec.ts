@@ -109,8 +109,15 @@ test.describe("org admin: Manage users modal", () => {
       const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Member from ${PERSONAS.projectMgrGamma.name}`) });
       await expect(checkbox).toBeEnabled();
       await checkbox.click();
-      await page.keyboard.press("Escape");
+      // Revoking the user's only role removes their row — and its dropdown
+      // with it. An unconditional Escape raced that: if the row had already
+      // unmounted, Escape closed the whole modal instead (making the
+      // row-gone check pass vacuously and the "Close" step below hang).
+      // Wait for the row to go, and only press Escape if the dropdown
+      // survived.
       await expect(modal.getByRole("cell", { name: PERSONAS.projectMgrGamma.name, exact: true })).toHaveCount(0);
+      if (await rolesGroup.isVisible()) await page.keyboard.press("Escape");
+      await expect(modal).toBeVisible();
     });
 
     await test.step("closing the modal returns to the plain project list row", async () => {

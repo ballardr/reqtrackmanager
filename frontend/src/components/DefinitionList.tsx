@@ -16,6 +16,11 @@ export interface DefinitionListField<T> {
   placeholder?: string;
   ariaLabel?: string;
   maxWidth?: number;
+  /** Allows a blank value (default: every field is required). */
+  optional?: boolean;
+  /** HTML input type; `"number"` for numeric fields such as a scoring
+   * level's weight (default `"text"`). */
+  inputType?: "text" | "number";
 }
 
 export interface DefinitionListProps<T extends { id: string }> {
@@ -23,7 +28,9 @@ export interface DefinitionListProps<T extends { id: string }> {
   fields: DefinitionListField<T>[];
   /** Label shown for each candidate in the reassign-on-delete dropdown. */
   getReassignLabel: (item: T) => string;
-  onMove: (id: string, direction: "up" | "down") => Promise<void>;
+  /** Reorders an item. Omit for lists whose order is derived (e.g.
+   * scoring levels, ordered by weight) — the reorder buttons are hidden. */
+  onMove?: (id: string, direction: "up" | "down") => Promise<void>;
   onRename: (id: string, values: Record<string, string>) => Promise<void>;
   onAdd: (values: Record<string, string>) => Promise<void>;
   /**
@@ -49,6 +56,9 @@ export interface DefinitionListProps<T extends { id: string }> {
    * Omit for the common all-text case (every pre-existing call site).
    */
   renderExtra?: (item: T) => ReactNode;
+  /** The fewest items the list may hold (default 1); delete is disabled at
+   * this floor. Scoring axes, for example, keep at least two levels. */
+  minItems?: number;
 }
 
 /**
@@ -70,6 +80,7 @@ export function DefinitionList<T extends { id: string }>({
   deleteLabel,
   addLabel,
   renderExtra,
+  minItems = 1,
 }: DefinitionListProps<T>) {
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const [newDraft, setNewDraft] = useState<Record<string, string>>(() =>
@@ -87,7 +98,7 @@ export function DefinitionList<T extends { id: string }>({
     return fields.some((f) => draft[f.key] !== f.getValue(item));
   }
   function isValid(draft: Record<string, string>) {
-    return fields.every((f) => draft[f.key].trim() !== "");
+    return fields.every((f) => f.optional || draft[f.key].trim() !== "");
   }
 
   async function handleRename(item: T) {
@@ -148,6 +159,8 @@ export function DefinitionList<T extends { id: string }>({
         const draft = draftFor(item);
         const dirty = isDirty(item, draft);
         const others = items.filter((other) => other.id !== item.id);
+        const atFloor = items.length <= minItems;
+        const floorHint = minItems > 1 ? strings.admin.deleteMinItemsHint(minItems) : strings.admin.deleteLastOneHint;
         return (
           <div key={item.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
@@ -156,6 +169,7 @@ export function DefinitionList<T extends { id: string }>({
                   <input
                     key={f.key}
                     className="input"
+                    type={f.inputType ?? "text"}
                     style={{ maxWidth: f.maxWidth ?? 220 }}
                     aria-label={f.ariaLabel}
                     value={draft[f.key]}
@@ -170,29 +184,33 @@ export function DefinitionList<T extends { id: string }>({
               </div>
               <div className="row">
                 {renderExtra?.(item)}
-                <button
-                  className="btn"
-                  disabled={idx === 0}
-                  title={strings.common.up}
-                  aria-label={strings.common.up}
-                  onClick={() => onMove(item.id, "up")}
-                >
-                  <ArrowUp size={14} />
-                </button>
-                <button
-                  className="btn"
-                  disabled={idx === items.length - 1}
-                  title={strings.common.down}
-                  aria-label={strings.common.down}
-                  onClick={() => onMove(item.id, "down")}
-                >
-                  <ArrowDown size={14} />
-                </button>
+                {onMove && (
+                  <>
+                    <button
+                      className="btn"
+                      disabled={idx === 0}
+                      title={strings.common.up}
+                      aria-label={strings.common.up}
+                      onClick={() => onMove(item.id, "up")}
+                    >
+                      <ArrowUp size={14} />
+                    </button>
+                    <button
+                      className="btn"
+                      disabled={idx === items.length - 1}
+                      title={strings.common.down}
+                      aria-label={strings.common.down}
+                      onClick={() => onMove(item.id, "down")}
+                    >
+                      <ArrowDown size={14} />
+                    </button>
+                  </>
+                )}
                 <button
                   className="btn btn-danger"
-                  disabled={others.length === 0}
-                  title={others.length === 0 ? strings.admin.deleteLastOneHint : deleteLabel}
-                  aria-label={others.length === 0 ? strings.admin.deleteLastOneHint : deleteLabel}
+                  disabled={atFloor}
+                  title={atFloor ? floorHint : deleteLabel}
+                  aria-label={atFloor ? floorHint : deleteLabel}
                   onClick={() => handleAttemptDelete(item)}
                 >
                   <Trash2 size={14} />
@@ -225,6 +243,7 @@ export function DefinitionList<T extends { id: string }>({
           <input
             key={f.key}
             className="input"
+            type={f.inputType ?? "text"}
             placeholder={f.placeholder}
             aria-label={fields.length > 1 ? f.ariaLabel : undefined}
             value={newDraft[f.key]}

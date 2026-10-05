@@ -2,7 +2,7 @@
 Module: routers.orgs.groups
 
 Organisation groups (C-U-08, C-U-12): create/list/update (IdP-sync target
-and granted-role configuration, item 522) and member/nested-group
+and granted-role configuration, item 522), delete, and member/nested-group
 add/remove.
 
 Split out of the former flat `routers/orgs.py` as a pure code-organization
@@ -15,17 +15,21 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.enums import OrgRole
 from app.models.organization import OrgGroup, OrgGroupMember
 from app.models.user import User
-from app.modules.registry import run_org_group_member_removal_hooks
+from app.modules.registry import run_org_group_deletion_hooks, run_org_group_member_removal_hooks
 from app.schemas.org import OrgGroupCreate, OrgGroupMemberAdd, OrgGroupOut, OrgGroupUpdate
 from app.services.audit import log_event
-from app.services.rbac import get_effective_org_roles, require_org_role, would_create_org_group_cycle
+from app.services.rbac import (
+    get_effective_org_roles,
+    require_org_role,
+    would_create_org_group_cycle,
+)
 
 router = APIRouter(tags=["organizations-groups"])
 
@@ -210,6 +214,49 @@ def update_org_group(
         id=group.id, name=group.name, member_user_ids=list(member_ids), member_org_group_ids=list(nested_group_ids),
         idp_synced_group_name=group.idp_synced_group_name, granted_org_role=group.granted_org_role,
     )
+
+
+@router.delete("/{organization_id}/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_org_group(
+    organization_id: UUID,
+    group_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Deletes an org group (2026-10-05, Decided by: User — groups had no
+    delete at all). Its memberships, nested-group links and every role it
+    held (org-group project roles, project-group memberships, module and
+    custom role grants) go with it via `ondelete="CASCADE"`; members keep
+    any access they hold some other way.
+
+    Guard: every registered module may block it
+    (`run_org_group_deletion_hooks`, e.g. Compliance's fallback compliance-
+    managers group). No project-manager (C-U-08) or last-org-admin check is
+    needed: both floors count only direct grants (and a project group's
+    direct user members), never anything an org group carries — see
+    `rbac._direct_project_managers` — so deleting an org group can't take
+    either below one.
+
+    Raises:
+        HTTPException: 404 if the group isn't in this organisation; 400 if a
+            module blocks it.
+    """
+    group = _get_org_group_in_org(db, organization_id, group_id)
+    block_message = run_org_group_deletion_hooks(db, group_id)
+    if block_message is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, block_message)
+
+    member_count = db.scalar(
+        select(func.count()).select_from(OrgGroupMember).where(OrgGroupMember.org_group_id == group_id)
+    )
+    log_event(
+        db, entity_type="org_group", entity_id=group_id, action="deleted", actor_id=current_user.id,
+        organization_id=organization_id,
+        detail={"name": group.name, "member_count": member_count,
+                "granted_org_role": group.granted_org_role.value if group.granted_org_role else None},
+    )
+    db.delete(group)
+    db.commit()
 
 
 def _get_org_group_in_org(db: Session, organization_id: UUID, group_id: UUID) -> OrgGroup:

@@ -143,3 +143,50 @@ def test_cannot_link_action_from_another_project(client, admin_token, org_id):
         json={"action_id": other_project_action["id"]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 404
+
+
+def test_action_linked_requirements_endpoint(client, admin_token, org_id):
+    """`GET /actions/{id}/requirements` (2026-10-04) lists the action's
+    linked active requirements by code, excludes archived ones, and is
+    project-scoped."""
+    project = create_project(client, admin_token, org_id)
+    base = f"/api/v1/projects/{project['id']}"
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    linked = [_create_requirement(client, admin_token, project["id"], component_id, category_id, name=n)
+              for n in ("Linked one", "Linked two", "Linked then archived")]
+    _create_requirement(client, admin_token, project["id"], component_id, category_id, name="Not linked")
+    action_type_id = _action_types(client, admin_token, project["id"])[0]["id"]
+    action = client.post(f"{base}/actions", json={"title": "Shared", "action_type_id": action_type_id},
+                         headers=auth_headers(admin_token)).json()
+    for requirement in linked:
+        resp = client.post(f"{base}/requirements/{requirement['id']}/actions", json={"action_id": action["id"]},
+                           headers=auth_headers(admin_token))
+        assert resp.status_code == 204, resp.text
+    assert client.delete(f"{base}/requirements/{linked[2]['id']}", headers=auth_headers(admin_token)).status_code in (200, 204)
+
+    resp = client.get(f"{base}/actions/{action['id']}/requirements", headers=auth_headers(admin_token))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == [
+        {"id": r["id"], "unique_code": r["unique_code"], "name": r["name"]}
+        for r in sorted(linked[:2], key=lambda r: r["unique_code"])
+    ]
+
+    other = create_project(client, admin_token, org_id, name="Other project")
+    assert client.get(f"/api/v1/projects/{other['id']}/actions/{action['id']}/requirements",
+                      headers=auth_headers(admin_token)).status_code == 404
+
+
+def test_action_list_comment_counts_are_batched(client, admin_token, org_id):
+    """The action list's per-row comment counts come from one batched query
+    and still match each action's own count."""
+    project = create_project(client, admin_token, org_id)
+    base = f"/api/v1/projects/{project['id']}/actions"
+    action_type_id = _action_types(client, admin_token, project["id"])[0]["id"]
+    ids = [client.post(base, json={"title": f"A{i}", "action_type_id": action_type_id},
+                       headers=auth_headers(admin_token)).json()["id"] for i in range(3)]
+    for _ in range(2):
+        resp = client.post(f"{base}/{ids[1]}/comments", json={"body": "hi"}, headers=auth_headers(admin_token))
+        assert resp.status_code == 201, resp.text
+    counts = {a["id"]: a["comment_count"] for a in client.get(base, headers=auth_headers(admin_token)).json()}
+    assert counts == {ids[0]: 0, ids[1]: 2, ids[2]: 0}
+    assert client.get(f"{base}/{ids[1]}", headers=auth_headers(admin_token)).json()["comment_count"] == 2

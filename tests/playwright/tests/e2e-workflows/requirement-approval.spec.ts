@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Before this feature, a requirement only ever reached "approved" as a side
@@ -26,19 +26,19 @@ test.describe("requirement approval", () => {
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: /Alpha-1/ }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(name);
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.getByText(name).click();
+    await openRequirementByName(page, name);
 
     await test.step("a stakeholder can edit the still-draft requirement but sees neither Approve nor Make change request", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(name).click();
+      await openRequirementByName(page, name);
       await expect(page.getByLabel("Name", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Make change request" })).toHaveCount(0);
@@ -59,9 +59,9 @@ test.describe("requirement approval", () => {
     await test.step("the project manager sees and uses Approve; the requirement locks", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(name).click();
+      await openRequirementByName(page, name);
       await expect(page.getByRole("link", { name: "Make change request" })).toHaveCount(0);
       await page.getByRole("button", { name: "Approve", exact: true }).click();
       await expect(page.getByText("Requirement approved")).toBeVisible();

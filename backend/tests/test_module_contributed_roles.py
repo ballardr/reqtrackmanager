@@ -101,7 +101,7 @@ def _get_admin_user(db) -> User:
 
 
 def _disable_module(db, organization_id, module_key: str) -> None:
-    db.add(OrganizationModuleEnablement(organization_id=organization_id, module_key=module_key, enabled=False))
+    db.add(OrganizationModuleEnablement(organization_id=organization_id, module_key=module_key, enabled=False, default_project_enabled=False))
     db.commit()
 
 
@@ -422,6 +422,83 @@ def test_require_module_role_404_when_module_disabled_even_for_admins(client, ad
         with pytest.raises(HTTPException) as exc_info:
             dependency(organization_id=org_uuid, request=_FakeRequest(), current_user=org_admin_user, db=db)
         assert exc_info.value.status_code == 404
+    finally:
+        _enable_module(db, uuid_lib.UUID(org_id), fake_module)
+        db.close()
+
+
+def test_require_module_role_project_scope_respects_phase5_project_override(client, admin_token, org_id, fake_module):
+    """Module 0 (Platform Foundations) Phase 5 regression: `require_module_
+    role`'s project-scoped branch used to resolve whole-module state via
+    the org-only `is_module_enabled` directly, bypassing any project-level
+    override entirely. It must now 404 when *this project's own*
+    `ProjectModuleEnablement` override disables the module, even though
+    the organisation's own default is still enabled.
+
+    **Corrected 2026-09-29** (Decided by: User — see `docs/decisions.md`'s
+    dated entry): the second half of this test originally proved a project
+    override could re-enable a module the organisation had *hard-disabled*
+    (`enabled=False`) — that widen is no longer valid; `is_module_enabled_
+    for_project`'s hard floor now blocks it, so this dependency must 404 in
+    that case too. What a project override *can* still do, symmetrically,
+    is widen past the organisation's own `default_project_enabled` value
+    while the module stays hard-`enabled=True` — proven as the corrected
+    second case below."""
+    from app.models.module import OrganizationModuleEnablement, ProjectModuleEnablement
+
+    project = create_project(client, admin_token, org_id, "Require Module Role Phase 5 Project Override")
+    db = SessionLocal()
+    try:
+        project_uuid = uuid_lib.UUID(project["id"])
+        org_uuid = uuid_lib.UUID(org_id)
+        admin_user = _get_admin_user(db)
+        dependency = require_module_role(fake_module, PROJECT_ROLE_KEY)
+
+        # Org default stays enabled; this project alone disables the
+        # module via its own Phase 5 override.
+        # Replace the row copied in at project creation (snapshot_project_module_state).
+        db.query(ProjectModuleEnablement).filter_by(project_id=project_uuid, module_key=fake_module).delete()
+        db.add(ProjectModuleEnablement(project_id=project_uuid, module_key=fake_module, enabled=False))
+        db.commit()
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(project_id=project_uuid, request=_FakeRequest(), current_user=admin_user, db=db)
+        assert exc_info.value.status_code == 404
+
+        # A project override can no longer cross the organisation's own
+        # hard-disable floor — still 404, not the pre-correction "wins
+        # symmetrically" pass.
+        db.query(ProjectModuleEnablement).filter(
+            ProjectModuleEnablement.project_id == project_uuid, ProjectModuleEnablement.module_key == fake_module,
+        ).delete()
+        _disable_module(db, org_uuid, fake_module)
+        db.add(ProjectModuleEnablement(project_id=project_uuid, module_key=fake_module, enabled=True))
+        db.commit()
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(project_id=project_uuid, request=_FakeRequest(), current_user=admin_user, db=db)
+        assert exc_info.value.status_code == 404
+
+        # The genuine new capability: hard-`enabled=True` (available), but
+        # `default_project_enabled=False` (off for new projects) — this
+        # project's own override may still widen past that default, and
+        # the dependency must pass (admin_user is a ProjectRole.
+        # PROJECT_MANAGER on this project, which `require_module_role`'s
+        # core-role override already satisfies).
+        db.query(ProjectModuleEnablement).filter(
+            ProjectModuleEnablement.project_id == project_uuid, ProjectModuleEnablement.module_key == fake_module,
+        ).delete()
+        db.query(OrganizationModuleEnablement).filter(
+            OrganizationModuleEnablement.organization_id == org_uuid,
+            OrganizationModuleEnablement.module_key == fake_module,
+        ).delete()
+        db.add(
+            OrganizationModuleEnablement(
+                organization_id=org_uuid, module_key=fake_module, enabled=True, default_project_enabled=False,
+            )
+        )
+        db.add(ProjectModuleEnablement(project_id=project_uuid, module_key=fake_module, enabled=True))
+        db.commit()
+        result = dependency(project_id=project_uuid, request=_FakeRequest(), current_user=admin_user, db=db)
+        assert result.id == admin_user.id
     finally:
         _enable_module(db, uuid_lib.UUID(org_id), fake_module)
         db.close()

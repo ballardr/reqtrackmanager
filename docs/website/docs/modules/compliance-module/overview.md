@@ -15,7 +15,7 @@ For example, an organisation might author "ISO 27001:2022" and "Customer Securit
 
 ## Enabling the module
 
-Compliance defaults to **enabled** for every organisation. A server admin can turn it off deployment-wide (module entitlement), and an org admin can enable or disable it per organisation (module enablement) from the organisation's Modules settings — see [Modules → Overview](../overview.md#gating-entitlement--enablement) for the exact mechanics. Disabling it hides its navigation and endpoints for that organisation; no data is deleted.
+Compliance defaults to **enabled** for every organisation. A server admin can turn it off deployment-wide (module entitlement), and an org admin can enable or disable it per organisation (module enablement) from the organisation's Modules settings — see [Modules → Overview](../overview.md#gating-entitlement--enablement--overrides) for the exact mechanics. Disabling it hides its navigation and endpoints for that organisation; no data is deleted.
 
 ## Roles
 

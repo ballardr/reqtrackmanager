@@ -8,7 +8,7 @@ import type {
   Comment,
   FileAsset,
   OrgUser,
-  Requirement,
+  LinkedRequirement,
   RequirementAction,
   RequirementActionOutcome,
 } from "../api/types";
@@ -38,7 +38,7 @@ export function ActionDetailPage() {
   const [action, setAction] = useState<RequirementAction | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  const [linkedRequirements, setLinkedRequirements] = useState<Requirement[]>([]);
+  const [linkedRequirements, setLinkedRequirements] = useState<LinkedRequirement[]>([]);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
 
@@ -80,20 +80,9 @@ export function ActionDetailPage() {
       });
     }
 
-    // Every requirement in the project is fetched and filtered client-side
-    // against `/requirements/{id}/actions` per requirement — mirrors how
-    // `RequirementDetailPage.tsx` fetches the project's full action list
-    // for its own "link existing" picker (no bulk "which requirements link
-    // this action" endpoint exists, so this walks the small reverse set
-    // instead of adding one for a single detail page).
-    const allRequirements = await api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`);
-    const linked = await Promise.all(
-      allRequirements.map(async (r) => {
-        const acts = await api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${r.id}/actions`);
-        return acts.some((la) => la.id === actionId) ? r : null;
-      })
+    setLinkedRequirements(
+      await api.get<LinkedRequirement[]>(`/api/v1/projects/${projectId}/actions/${actionId}/requirements`)
     );
-    setLinkedRequirements(linked.filter((r): r is Requirement => r !== null));
   }
 
   useEffect(() => {

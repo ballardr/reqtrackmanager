@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Project Overview's own "+ New Requirement" button deep-links to
@@ -18,8 +18,7 @@ import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
 test.describe("Project Overview '+ New Requirement' opens the same create-form modal", () => {
   test("deep-linked create form is a layer, not a page reflow", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.goto("/projects");
-    await page.getByRole("link", { name: new RegExp(PROJECT_NAMES.alpha1) }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Overview", exact: true }).click();
 
     await page.getByRole("link", { name: "New requirement" }).click();
@@ -39,6 +38,9 @@ test.describe("Project Overview '+ New Requirement' opens the same create-form m
     await dialog.getByPlaceholder("Name", { exact: true }).fill(name);
     await dialog.getByRole("button", { name: "Create", exact: true }).click();
     await expect(dialog).not.toBeVisible();
+    // Search rather than assume the new row is on the paginated list's
+    // first page (shared Alpha-1 grows every run).
+    await page.getByPlaceholder("Search by name or ID").fill(name);
     await expect(page.getByText(name)).toBeVisible();
   });
 });

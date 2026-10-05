@@ -33,6 +33,7 @@ COPY . .
 # this project's other pre-release "reset and reseed" upgrade path.
 RUN useradd --system --create-home --home-dir /home/app app \
     && mkdir -p /app/data/files \
+    && chmod +x /app/docker-entrypoint.sh \
     && chown -R app:app /app
 USER app
 
@@ -41,4 +42,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --retries=10 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Multi-worker uvicorn plus Prometheus multi-process setup — see the script.
+CMD ["./docker-entrypoint.sh"]

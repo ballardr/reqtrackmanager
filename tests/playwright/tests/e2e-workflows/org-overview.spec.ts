@@ -1,6 +1,18 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, ORG_NAMES, PERSONAS, selectOrgAdminGroup } from "./helpers";
+import {
+  apiHeaders,
+  installCleanupHook,
+  loginAs,
+  logout,
+  onCleanup,
+  ORG_NAMES,
+  PASSWORD,
+  PERSONAS,
+  PROJECT_NAMES,
+  selectOrgAdminGroup,
+  setOrgModuleAvailability,
+} from "./helpers";
 
 /**
  * Job to be done: compliance-module-plan.md Phase 19 — the new
@@ -12,14 +24,42 @@ import { loginAs, logout, ORG_NAMES, PERSONAS, selectOrgAdminGroup } from "./hel
  * the organisation's real totals, while a plain member with only partial
  * project access sees counts scoped to what they can actually see.
  *
- * Persona: `stakeholderAlpha` (org role `member` of Alpha only, but a
- * project-level `stakeholder` on Alpha-1 alone — never assigned any role
- * on Alpha-2, see backend/scripts/seed_e2e_dataset.py) vs `orgAdminAlphaBeta`
- * (`org_admin` of Alpha, sees both Alpha-1 and Alpha-2).
+ * Personas: a disposable Alpha member created per run with a `stakeholder`
+ * role on Alpha-1 alone (removed afterwards) vs `orgAdminAlphaBeta`
+ * (`org_admin` of Alpha, sees every Alpha project). The counts cover
+ * active (non-archived) projects only.
  */
 test.describe("Organisation Overview page (Phase 19)", () => {
-  test("a single-org member with partial project access sees scoped totals; the org admin sees the real totals", async ({ page }) => {
-    await loginAs(page, PERSONAS.stakeholderAlpha.email);
+  installCleanupHook();
+
+  test("a single-org member with partial project access sees scoped totals; the org admin sees the real totals", async ({ page, request }) => {
+    // A disposable Alpha member with a role on Alpha-1 only (2026-10-04),
+    // not the shared stakeholderAlpha persona: other specs running in
+    // parallel temporarily grant that persona roles on their own projects,
+    // which made this exact count race them.
+    const memberEmail = `e2e-overview-member-${Date.now()}@example.com`;
+    const adminHeaders = await apiHeaders(request, PERSONAS.orgAdminAlphaBeta.email);
+    const api = "http://localhost:8000/api/v1";
+    const orgs: { id: string; name: string }[] = await (await request.get(`${api}/orgs`, { headers: adminHeaders })).json();
+    const alphaId = orgs.find((o) => o.name === ORG_NAMES.alpha)!.id;
+    const created = await request.post(`${api}/orgs/${alphaId}/users`, {
+      headers: adminHeaders, data: { email: memberEmail, display_name: "E2E Overview Member", password: PASSWORD, role: "member" },
+    });
+    expect(created.ok()).toBeTruthy();
+    const memberId: string = (await created.json()).user_id;
+    onCleanup(async (cleanupRequest) => {
+      const headers = await apiHeaders(cleanupRequest, PERSONAS.orgAdminAlphaBeta.email);
+      await cleanupRequest.delete(`${api}/orgs/${alphaId}/users/${memberId}/membership`, { headers });
+    });
+    const alpha1 = (await (await request.get(`${api}/projects?archived=false&search=${encodeURIComponent(PROJECT_NAMES.alpha1)}`, {
+      headers: adminHeaders,
+    })).json() as { id: string; name: string }[]).find((p) => p.name === PROJECT_NAMES.alpha1)!;
+    const granted = await request.post(`${api}/projects/${alpha1.id}/roles`, {
+      headers: adminHeaders, data: { user_id: memberId, role: "stakeholder" },
+    });
+    expect(granted.ok()).toBeTruthy();
+
+    await loginAs(page, memberEmail);
 
     // Single-org account: `/org-overview` redirects straight in, mirroring
     // `/orgs`'s own existing single-org/multi-org auto-redirect.
@@ -39,9 +79,9 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     const memberProjectsItem = page.locator(".stat-bar-item").filter({ hasText: /^Projects\d+$/ });
     const memberProjectCountText = (await memberProjectsItem.innerText()).replace("Projects", "");
     const memberProjectCount = Number(memberProjectCountText);
-    // Alpha-2 is never granted to this persona (see this file's own
-    // docstring) — exactly Alpha-1 is visible to them, regardless of how
-    // many other Alpha projects other specs' own fixtures may have added.
+    // Only Alpha-1 was granted — exactly one project is visible to them,
+    // regardless of how many other Alpha projects other specs have added
+    // (org-wide-visibility projects now live in their specs' own orgs).
     expect(memberProjectCount).toBe(1);
 
     await logout(page);
@@ -79,11 +119,12 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
-    const toggle = page.locator("tr", { hasText: "Compliance" }).getByRole("switch");
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
-
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    // Record the starting availability (either "on" state) to restore it
+    // exactly afterwards — shared seed org, so don't assume which one.
+    const select = page.getByRole("combobox", { name: "Compliance availability", exact: true });
+    const initial = (await select.inputValue()) as "opt_in" | "default_on";
+    expect(["opt_in", "default_on"]).toContain(initial);
+    await setOrgModuleAvailability(page, "Compliance", "off");
 
     await page.goto("/org-overview");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview$/);
@@ -99,9 +140,7 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     // mutation survives the test.
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
-    await expect(toggle).toHaveAttribute("aria-checked", "false");
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await setOrgModuleAvailability(page, "Compliance", initial);
 
     await page.goto("/org-overview");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview$/);

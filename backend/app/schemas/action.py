@@ -41,6 +41,14 @@ class RequirementActionUpdate(BaseModel):
     outcome_status: RequirementActionOutcome | None = None
 
 
+class LinkedRequirementOut(BaseModel):
+    """A requirement an action is linked to, as the action's detail page lists it."""
+
+    id: UUID
+    unique_code: str
+    name: str
+
+
 class RequirementActionOut(BaseModel):
     id: UUID
     project_id: UUID

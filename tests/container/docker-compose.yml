@@ -148,6 +148,8 @@ services:
     build:
       context: ../../backend
     environment:
+      # Worker processes (CPU cores the API can use); see backend/docker-entrypoint.sh.
+      BACKEND_WORKERS: ${BACKEND_WORKERS:-4}
       DATABASE_URL: postgresql://reqtrack:reqtrack@db:5432/reqtrack_test
       JWT_SECRET: test-secret-not-for-production
       APP_SECRET_ENCRYPTION_KEY: test-encryption-key-not-for-production

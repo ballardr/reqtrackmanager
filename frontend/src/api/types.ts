@@ -75,16 +75,18 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
 };
 
 // Platform review 2026-09, Phase 4 (status colour). A `BadgeTone` is one of
-// only 4 values, each backed by a `.badge--<tone>` CSS modifier
+// only 5 values, each backed by a `.badge--<tone>` CSS modifier
 // (styles/theme.css) — muted = not yet actionable (draft/withdrawn/
 // archived), info = awaiting a decision (in review/pending — deliberately
 // NOT --color-warning, which stays reserved for things that need
 // attention, not routine in-progress states), accent = a positive
 // terminal outcome (approved/completed), danger = a negative terminal
-// outcome (rejected/failed). Every status/outcome enum rendered as a
+// outcome (rejected/failed), warning = needs attention (used by scoring
+// rating bands, e.g. a "High" pain point — Module 1 Phase 10; the backend's
+// `SCORING_BAND_TONES` mirrors this set). Every status/outcome enum rendered as a
 // badge should have a *_TONE map here alongside its *_LABEL map, never an
 // inline colour at the call site.
-export type BadgeTone = "muted" | "info" | "accent" | "danger";
+export type BadgeTone = "muted" | "info" | "accent" | "warning" | "danger";
 export const REQUIREMENT_STATUS_TONE: Record<RequirementStatus, BadgeTone> = {
   draft: "muted",
   reviewed: "info",
@@ -1210,6 +1212,13 @@ export interface RequirementLink {
  * requirement<->action linking endpoints). Never hard-deleted, only
  * archived (mirrors `Requirement.is_archived`).
  */
+/** A requirement an action is linked to (`GET .../actions/{id}/requirements`). */
+export interface LinkedRequirement {
+  id: string;
+  unique_code: string;
+  name: string;
+}
+
 export interface RequirementAction {
   id: string;
   project_id: string;
@@ -1500,6 +1509,23 @@ export interface OrgAdvancedSettings {
  * `get_frontend_manifest` on the backend guarantees this tier only ever
  * appears for a module discovered through the third-party pipeline, never a
  * first-party one. */
+/** One of a Tier A module's extra nav-rail entries beyond its manifest's own
+ * primary `nav_label`/`nav_path` pair (`ModuleFrontendManifest.
+ * additional_nav_entries` below) — wire shape of the backend's `app.modules.
+ * registry.ModuleNavEntry`. Named `ManifestNavEntry`, not `ModuleNavEntry`,
+ * to avoid colliding with this file's own pre-existing `ModuleNavEntry`
+ * interface below (a different concept: "one currently-enabled module", as
+ * returned by `GET /projects/{id}/enabled-modules`). */
+export interface ManifestNavEntry {
+  nav_label: string;
+  nav_path: string;
+  /** Icon name resolved by `modules/navIcons.ts`'s `resolveNavIcon` — see
+   * that file's own docstring. Optional for the same "old fixtures predate
+   * the field" reason as `additional_nav_entries` below; `resolveNavIcon`
+   * falls back to a generic icon when absent. */
+  nav_icon?: string;
+}
+
 export interface ModuleFrontendManifest {
   tier: "installed" | "remote" | "federated";
   nav_label: string;
@@ -1507,8 +1533,29 @@ export interface ModuleFrontendManifest {
   frame_url: string | null;
   remote_entry_url: string | null;
   exposed_module: string | null;
+  /** Zero or more further nav-rail entries beyond this manifest's own
+   * primary `nav_label`/`nav_path` pair (module system follow-up, Module 1
+   * — Context & Strategy — Phase 7.1, 2026-09-29) — see backend `app.
+   * modules.registry.ModuleFrontendManifest.additional_nav_entries`'s own
+   * docstring for the full rationale. Tier A ("installed") only; always
+   * empty for Tier B/C. Optional (rather than required) purely so existing
+   * hand-written fixtures in this codebase's own `.stories.tsx`/test files
+   * that predate this field don't all need updating — the real API always
+   * sends it (defaulted `[]` server-side). `Layout.tsx` reads it as
+   * `manifest.additional_nav_entries ?? []`. */
+  additional_nav_entries?: ManifestNavEntry[];
+  /** This manifest's own primary nav-rail entry's icon — see `ManifestNavEntry.
+   * nav_icon`'s own docstring. */
+  nav_icon?: string;
 }
 
+/** `enabled` is the hard floor (Module 0 Phase 5 correction, 2026-09-29):
+ * `false` means no project of this organisation may use this module at
+ * all, no project override possible in either direction.
+ * `default_project_enabled` is a separate, independent tier, only
+ * meaningful when `enabled` is `true` — whether a project gets this module
+ * on or off *by default*, absent an override of its own; a project's own
+ * override may still diverge from this in either direction. */
 export interface OrgModule {
   module_key: string;
   name: string;
@@ -1517,8 +1564,84 @@ export interface OrgModule {
   implemented: boolean;
   entitled: boolean;
   enabled: boolean;
+  default_project_enabled: boolean;
   default_enabled: boolean;
   frontend_manifest: ModuleFrontendManifest | null;
+}
+
+/** One sub-component a module declares, with this organisation's own
+ * levers for it — `GET/PUT /orgs/{id}/modules/{module_key}/subcomponents
+ * [/{subcomponent_key}]`. Same two levers as `OrgModule`: `enabled` (hard
+ * floor) and `default_project_enabled` (copied into new projects);
+ * `default_enabled` is the registry's own default. */
+export interface OrgModuleSubComponent {
+  module_key: string;
+  subcomponent_key: string;
+  name: string;
+  default_enabled: boolean;
+  enabled: boolean;
+  default_project_enabled: boolean;
+  has_org_override: boolean;
+}
+
+/** An org's availability choice for a module or sub-component — the two
+ * backend levers (`enabled`, `default_project_enabled`) collapsed into the
+ * three states that are actually meaningful (the default does nothing
+ * while `enabled` is false). */
+export type ModuleAvailability = "off" | "opt_in" | "default_on";
+
+export const MODULE_AVAILABILITY_LABEL: Record<ModuleAvailability, string> = {
+  off: "Off",
+  opt_in: "Available, off for new projects",
+  default_on: "On for new projects",
+};
+
+/** Maps the two backend levers to a `ModuleAvailability`. */
+export function toModuleAvailability(enabled: boolean, defaultProjectEnabled: boolean): ModuleAvailability {
+  if (!enabled) return "off";
+  return defaultProjectEnabled ? "default_on" : "opt_in";
+}
+
+/** Maps a `ModuleAvailability` back to the PUT payload's two levers. */
+export function fromModuleAvailability(availability: ModuleAvailability): {
+  enabled: boolean;
+  default_project_enabled: boolean;
+} {
+  return { enabled: availability !== "off", default_project_enabled: availability === "default_on" };
+}
+
+/** One module's state as seen by one project — `GET/PUT /projects/{id}/
+ * modules/{module_key}/enablement`, and `GET /projects/{id}/modules` for
+ * the Project Admin Modules list. `effective_enabled` is the resolved
+ * state; `org_default_enabled` is the org's default for new projects (a
+ * project copies it at creation, so later changes don't affect it);
+ * `org_hard_enabled` is the org's floor — when `false` nothing the project
+ * sets can turn the module on. */
+export interface ProjectModuleEnablement {
+  module_key: string;
+  name: string;
+  effective_enabled: boolean;
+  org_default_enabled: boolean;
+  org_hard_enabled: boolean;
+  has_project_override: boolean;
+  project_override_enabled: boolean | null;
+}
+
+/** One sub-component a module declares, as seen from one project (Module 0
+ * — Platform Foundations — Phase 4) — `GET/PUT /projects/{id}/
+ * modules/{module_key}/subcomponents[/{subcomponent_key}]`. Same
+ * "effective state alongside org default and this project's own override,
+ * not just a flat boolean" shape as `ProjectModuleEnablement`, one level
+ * down (a whole module can have several of these). */
+export interface ProjectModuleSubComponent {
+  module_key: string;
+  subcomponent_key: string;
+  name: string;
+  effective_enabled: boolean;
+  org_default_enabled: boolean;
+  org_hard_enabled: boolean;
+  has_project_override: boolean;
+  project_override_enabled: boolean | null;
 }
 
 /** One currently-enabled module, as returned by `GET /projects/{id}/enabled-

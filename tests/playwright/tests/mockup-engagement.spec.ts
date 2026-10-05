@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 /**
  * Coverage for the mockup-driven engagement features added on top of the
@@ -61,7 +61,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
     await componentsSection.getByPlaceholder("Name").first().fill("Web");
     await componentsSection.getByPlaceholder("Prefix").first().fill("WEB");
-    await componentsSection.getByRole("button", { name: "New component" }).click();
+    await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
     // Wait for "Web" (and its own, now-rendered nested "add category" form)
     // before filling it — otherwise the fill can race ahead of the reload
     // and land on the wrong (not-yet-replaced) form.
@@ -90,7 +90,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     const webRow = page.locator('input[value="Web"]:not([placeholder])').locator("xpath=../../..");
     await webRow.getByPlaceholder("Name").fill("Functional");
     await webRow.getByPlaceholder("Prefix").fill("FN");
-    await webRow.getByRole("button", { name: "New category" }).click();
+    await clickAndAwaitSave(page, webRow.getByRole("button", { name: "New category" }), "/categories");
     await expect(page.locator('input[value="Functional"]').first()).toBeVisible();
   });
 

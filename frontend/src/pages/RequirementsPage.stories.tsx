@@ -28,6 +28,7 @@ function mockRequirementsListApis(myRoles: "manager" | "member", opts: { compone
   const comps = opts.components ?? components;
   const cats = opts.categories ?? categories;
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/my-roles")) return { roles: myRoles === "manager" ? ["project_manager"] : ["member"] };
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles === "manager" ? ["project_manager"] : ["member"] })];
     if (path.includes("/components")) return comps;
     if (path.includes("/categories")) return cats;
@@ -408,6 +409,7 @@ export const CreateStepAddLinkDisabledWithNoEligibleTargets: Story = {
     // Override the full-project-requirements fetch (used to compute
     // eligible link targets) to contain nothing but the one just created.
     spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/my-roles")) return { roles: ["project_manager"] };
       if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: ["project_manager"] })];
       if (path.includes("/components")) return components;
       if (path.includes("/categories")) return categories;
@@ -445,6 +447,7 @@ export const CreateStepAttachFileAddLinkThenFinish: Story = {
     });
     spyOn(api, "postFile").mockResolvedValue(buildFileAsset({ id: "f1", filename: "design-notes.pdf" }));
     spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/my-roles")) return { roles: ["project_manager"] };
       if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: ["project_manager"] })];
       if (path.includes("/components")) return components;
       if (path.includes("/categories")) return categories;

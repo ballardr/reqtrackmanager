@@ -238,9 +238,16 @@ docker compose --profile observability up -d
 
 Adds Prometheus, Loki, Tempo, Grafana Alloy, and Grafana. In production, put Grafana behind the same authentication/reverse-proxy layer as the rest of the stack — the bundled Grafana config enables anonymous viewer access, which is appropriate for local development only. See the [README](../README.md#optional-observability-stack) for the exposed ports and pre-wired dashboards/scrape config.
 
-### Scaling beyond a single backend replica
+### Scaling the backend: worker processes and replicas
 
-The current architecture assumes a single backend process: the WebSocket pub/sub hub, the notification digest job, and the disk-usage monitor all run in-process (see [decisions.md](decisions.md)). Running multiple backend replicas behind a load balancer works for the stateless request/response API, but those three background mechanisms would need to move to a shared broker or a dedicated worker service first — this is called out as a deliberate future step in [solution-architecture.md](solution-architecture.md), not something the current deployment model supports today.
+Each backend container runs `BACKEND_WORKERS` uvicorn worker processes (default `4`) so the API uses more than one CPU core. Workers — and separate replicas behind a load balancer, which share the same database — coordinate through PostgreSQL, with no extra infrastructure:
+
+- **Startup** (migrations, bootstrap, registry syncs) is serialised by an advisory lock; the first process does the work.
+- **Singleton background work** (scheduled jobs, the notification digest, the disk-usage monitor) runs only on one elected leader process (advisory lock, re-checked every 30s; leadership moves if the leader dies).
+- **WebSocket broadcasts** fan out to every process via `LISTEN`/`NOTIFY`, so a client receives events whichever process it's connected to.
+- **Metrics:** `/metrics` aggregates all workers of one container (Prometheus multi-process mode); scrape each replica separately.
+
+Sizing: each worker holds up to 15 database connections (SQLAlchemy's default pool) plus two dedicated ones, so keep `BACKEND_WORKERS × replicas × ~17` under Postgres's `max_connections` (default 100), and budget roughly 150–250 MB of memory per worker. `BACKEND_WORKERS=1` restores single-process behaviour.
 
 ## Troubleshooting
 

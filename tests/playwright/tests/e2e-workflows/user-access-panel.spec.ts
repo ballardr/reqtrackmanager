@@ -55,8 +55,9 @@ test.describe("view a user's access", () => {
     await page.getByRole("menuitem", { name: /'s access$/ }).click();
 
     const panel = page.getByRole("dialog", { name: /'s access$/ });
-    await expect(panel.getByText(PROJECT_NAMES.alpha1)).toBeVisible();
-    await expect(panel.getByText(PROJECT_NAMES.alpha2)).toBeVisible();
+    // Exact: an org merge-import can add same-named "(imported)" projects.
+    await expect(panel.getByText(PROJECT_NAMES.alpha1, { exact: true })).toBeVisible();
+    await expect(panel.getByText(PROJECT_NAMES.alpha2, { exact: true })).toBeVisible();
     await expect(panel.getByText("Project manager").first()).toBeVisible();
 
     // Closes like every other SidePanel — Escape, same as Modal/Popover.

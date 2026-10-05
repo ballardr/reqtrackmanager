@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PERSONAS } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
 
 /**
  * Job to be done: as a server administrator, I need to be able to disable
@@ -15,6 +18,8 @@ import { loginAs, PERSONAS } from "./helpers";
 test.describe("server admin manages an organisation's lifecycle", () => {
   test("create, disable, re-enable, then permanently delete an organisation", async ({ page }) => {
     const orgName = `Lifecycle Test Org ${Date.now()}`;
+    // Backstop only: the test deletes the org itself as its last step.
+    deleteOrgOnCleanup({ nameContains: orgName });
 
     await loginAs(page, PERSONAS.serverAdmin.email);
     await page.getByRole("link", { name: "Organisations", exact: true }).last().click();

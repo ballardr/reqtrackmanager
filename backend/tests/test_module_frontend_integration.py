@@ -30,6 +30,7 @@ from app.modules import registry as module_registry
 from app.modules.registry import (
     ModuleDefinition,
     ModuleFrontendManifest,
+    ModuleNavEntry,
     build_registry,
     get_frontend_manifest,
 )
@@ -40,6 +41,7 @@ from tests.conftest import auth_headers, create_project
 INSTALLED_MODULE_KEY = "fake_frontend_installed_module"
 REMOTE_MODULE_KEY = "fake_frontend_remote_module"
 PROJECT_SCOPED_MODULE_KEY = "fake_frontend_project_scoped_module"
+MULTI_NAV_MODULE_KEY = "fake_frontend_multi_nav_module"
 FEDERATED_MODULE_KEY = "fake_frontend_federated_module"
 ALLOWED_ORIGIN = "https://trusted-module.example.com"
 NOT_ALLOWED_ORIGIN = "https://untrusted-module.example.com"
@@ -135,6 +137,35 @@ def project_scoped_installed_module():
     build_registry(force=True)
 
 
+@pytest.fixture
+def multi_nav_entry_installed_module():
+    """Registers a Tier A module declaring `additional_nav_entries`
+    (Module 1 — Context & Strategy — Phase 7.1, 2026-09-29) — this module's
+    real-world motivation: Context & Strategy needs five top-level nav-rail
+    entries, not one. Uses the `"{project_id}"` placeholder on both the
+    primary and an additional entry, to prove interpolation applies
+    uniformly to every entry, not just the first."""
+    module_registry.INSTALLED_MODULES.append(
+        _fake_module(
+            key=MULTI_NAV_MODULE_KEY, name="Fake Multi-Nav Module",
+            frontend_manifest=ModuleFrontendManifest(
+                tier="installed", nav_label="Fake Primary",
+                nav_path="/projects/{project_id}/modules/fake-multi-nav/primary",
+                additional_nav_entries=(
+                    ModuleNavEntry(nav_label="Fake Secondary", nav_path="/projects/{project_id}/modules/fake-multi-nav/secondary"),
+                    ModuleNavEntry(nav_label="Fake Tertiary", nav_path="/projects/{project_id}/modules/fake-multi-nav/tertiary"),
+                ),
+            ),
+        )
+    )
+    build_registry(force=True)
+    yield MULTI_NAV_MODULE_KEY
+    module_registry.INSTALLED_MODULES[:] = [
+        m for m in module_registry.INSTALLED_MODULES if m.key != MULTI_NAV_MODULE_KEY
+    ]
+    build_registry(force=True)
+
+
 def _get_admin_user(db) -> User:
     return db.query(User).filter(User.email == "admin@example.com").first()
 
@@ -152,6 +183,54 @@ def test_installed_tier_must_not_set_frame_url():
         ModuleFrontendManifest(
             tier="installed", nav_label="Bad", nav_path="/bad", frame_url="https://example.com/x"
         )
+
+
+# --- ModuleNavEntry / additional_nav_entries (Module 1 — Context & Strategy — Phase 7.1) --
+
+
+def test_remote_tier_must_not_set_additional_nav_entries():
+    with pytest.raises(ValueError, match="must not set additional_nav_entries"):
+        ModuleFrontendManifest(
+            tier="remote", nav_label="Bad", nav_path="/bad", frame_url="https://example.com/x",
+            additional_nav_entries=(ModuleNavEntry(nav_label="Extra", nav_path="/extra"),),
+        )
+
+
+def test_federated_tier_must_not_set_additional_nav_entries():
+    with pytest.raises(ValueError, match="must not set additional_nav_entries"):
+        ModuleFrontendManifest(
+            tier="federated", nav_label="Bad", nav_path="/bad",
+            remote_entry_url="https://example.com/remoteEntry.js", exposed_module="./Module",
+            additional_nav_entries=(ModuleNavEntry(nav_label="Extra", nav_path="/extra"),),
+        )
+
+
+def test_installed_tier_accepts_additional_nav_entries():
+    manifest = ModuleFrontendManifest(
+        tier="installed", nav_label="Primary", nav_path="/primary",
+        additional_nav_entries=(ModuleNavEntry(nav_label="Secondary", nav_path="/secondary"),),
+    )
+    assert manifest.additional_nav_entries == (ModuleNavEntry(nav_label="Secondary", nav_path="/secondary"),)
+
+
+def test_all_nav_entries_defaults_to_just_the_primary_entry():
+    manifest = ModuleFrontendManifest(tier="installed", nav_label="Primary", nav_path="/primary")
+    assert manifest.all_nav_entries() == (ModuleNavEntry(nav_label="Primary", nav_path="/primary"),)
+
+
+def test_all_nav_entries_includes_primary_first_then_additional_in_order():
+    manifest = ModuleFrontendManifest(
+        tier="installed", nav_label="Primary", nav_path="/primary",
+        additional_nav_entries=(
+            ModuleNavEntry(nav_label="Secondary", nav_path="/secondary"),
+            ModuleNavEntry(nav_label="Tertiary", nav_path="/tertiary"),
+        ),
+    )
+    assert manifest.all_nav_entries() == (
+        ModuleNavEntry(nav_label="Primary", nav_path="/primary"),
+        ModuleNavEntry(nav_label="Secondary", nav_path="/secondary"),
+        ModuleNavEntry(nav_label="Tertiary", nav_path="/tertiary"),
+    )
 
 
 # --- get_frontend_manifest / allowlist enforcement ---------------------------
@@ -427,7 +506,8 @@ def test_org_frame_token_endpoint_404_for_disabled_module(client, admin_token, o
     try:
         db.add(
             OrganizationModuleEnablement(
-                organization_id=uuid_lib.UUID(org_id), module_key=installed_tier_module, enabled=False
+                organization_id=uuid_lib.UUID(org_id), module_key=installed_tier_module, enabled=False,
+                default_project_enabled=False,
             )
         )
         db.commit()
@@ -648,7 +728,7 @@ def test_org_modules_endpoint_includes_frontend_manifest(client, admin_token, or
     manifest = by_key[installed_tier_module]["frontend_manifest"]
     assert manifest == {
         "tier": "installed", "nav_label": "Fake Frontend", "nav_path": "/fake-frontend", "frame_url": None,
-        "remote_entry_url": None, "exposed_module": None,
+        "remote_entry_url": None, "exposed_module": None, "additional_nav_entries": [], "nav_icon": "puzzle",
     }
 
 
@@ -683,7 +763,8 @@ def test_project_enabled_modules_endpoint_lists_only_enabled_modules(
     try:
         db.add(
             OrganizationModuleEnablement(
-                organization_id=uuid_lib.UUID(org_id), module_key=installed_tier_module, enabled=False
+                organization_id=uuid_lib.UUID(org_id), module_key=installed_tier_module, enabled=False,
+                default_project_enabled=False,
             )
         )
         db.commit()
@@ -744,6 +825,60 @@ def test_org_modules_endpoint_carries_federated_fields(client, admin_token, org_
     assert manifest["remote_entry_url"] == FEDERATED_REMOTE_ENTRY_URL
     assert manifest["exposed_module"] == FEDERATED_EXPOSED_MODULE
     assert manifest["frame_url"] is None
+
+
+def test_org_modules_endpoint_carries_additional_nav_entries_uninterpolated(
+    client, admin_token, org_id, multi_nav_entry_installed_module
+):
+    """`GET /orgs/{id}/modules` has no single concrete project in scope, so
+    (matching `nav_path`'s own established behaviour) every additional entry's
+    `"{project_id}"` placeholder is left as-is here too."""
+    resp = client.get(f"/api/v1/orgs/{org_id}/modules", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    by_key = {m["module_key"]: m for m in resp.json()}
+    manifest = by_key[multi_nav_entry_installed_module]["frontend_manifest"]
+    assert manifest["nav_label"] == "Fake Primary"
+    assert manifest["additional_nav_entries"] == [
+        {
+            "nav_label": "Fake Secondary",
+            "nav_path": "/projects/{project_id}/modules/fake-multi-nav/secondary",
+            "nav_icon": "puzzle",
+        },
+        {
+            "nav_label": "Fake Tertiary",
+            "nav_path": "/projects/{project_id}/modules/fake-multi-nav/tertiary",
+            "nav_icon": "puzzle",
+        },
+    ]
+
+
+def test_project_enabled_modules_endpoint_interpolates_every_additional_nav_entry(
+    client, admin_token, org_id, multi_nav_entry_installed_module
+):
+    """The project-scoped nav endpoint must interpolate `"{project_id}"` on
+    every one of a module's nav entries, not just its primary one — this is
+    the exact mechanism Context & Strategy's own five nav-rail entries rely
+    on to each resolve to a real, navigable project-scoped route."""
+    project = create_project(client, admin_token, org_id, "Multi Nav Entry Project")
+    resp = client.get(
+        f"/api/v1/projects/{project['id']}/enabled-modules", headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200
+    by_key = {m["module_key"]: m for m in resp.json()}
+    manifest = by_key[multi_nav_entry_installed_module]["frontend_manifest"]
+    assert manifest["nav_path"] == f"/projects/{project['id']}/modules/fake-multi-nav/primary"
+    assert manifest["additional_nav_entries"] == [
+        {
+            "nav_label": "Fake Secondary",
+            "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/secondary",
+            "nav_icon": "puzzle",
+        },
+        {
+            "nav_label": "Fake Tertiary",
+            "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/tertiary",
+            "nav_icon": "puzzle",
+        },
+    ]
 
 
 def test_project_enabled_modules_endpoint_carries_federated_fields(

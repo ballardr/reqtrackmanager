@@ -19,6 +19,7 @@
 import type { Decorator } from "@storybook/react-vite";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
+import type { ScoringScheme } from "../api/scoring";
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
 import { ProjectContext } from "../context/ProjectContextValue";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -91,6 +92,45 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     role_inheritance_mode: "none",
     role_inheritance_filter_role: null,
     can_be_parent: false,
+    ...overrides,
+  };
+}
+
+/** A two-axis-plus-confidence scoring scheme shaped like Context &
+ * Strategy's `pain_point` scheme, for the generic scoring components. */
+export function buildScoringScheme(overrides: Partial<ScoringScheme> = {}): ScoringScheme {
+  const bands = [
+    { label: "Low", min_score: 0, tone: "muted" as const },
+    { label: "Medium", min_score: 0.2, tone: "info" as const },
+    { label: "High", min_score: 0.4, tone: "warning" as const },
+    { label: "Critical", min_score: 0.6, tone: "danger" as const },
+  ];
+  return {
+    key: "pain_point", label: "Pain Point scoring", module_key: "context_strategy",
+    axes: [
+      { key: "severity", label: "Severity", description: "How badly the problem affects the persona.", levels: [
+        { id: "sev-1", name: "Cosmetic", description: "Task unaffected.", weight: 1 },
+        { id: "sev-2", name: "Minor", description: null, weight: 2 },
+        { id: "sev-3", name: "Moderate", description: null, weight: 3 },
+        { id: "sev-4", name: "Major", description: null, weight: 4 },
+        { id: "sev-5", name: "Blocker", description: "Unusable for this persona; no workaround.", weight: 5 },
+      ] },
+      { key: "frequency", label: "Frequency", description: null, levels: [
+        { id: "freq-1", name: "Rare", description: null, weight: 1 },
+        { id: "freq-2", name: "Occasional", description: null, weight: 2 },
+        { id: "freq-3", name: "Frequent", description: null, weight: 3 },
+        { id: "freq-4", name: "Constant", description: null, weight: 4 },
+      ] },
+      { key: "confidence", label: "Confidence", description: null, levels: [
+        { id: "conf-1", name: "Low", description: null, weight: 0.5 },
+        { id: "conf-2", name: "High", description: null, weight: 1 },
+      ] },
+    ],
+    models: [
+      { key: "sxf", label: "Severity × Frequency", axis_keys: ["severity", "frequency"], bands, bands_source: "system" },
+      { key: "sxfxc", label: "Severity × Frequency × Confidence", axis_keys: ["severity", "frequency", "confidence"], bands, bands_source: "system" },
+    ],
+    system_default_model_key: "sxfxc", default_model_key: "sxfxc", default_model_source: "system",
     ...overrides,
   };
 }

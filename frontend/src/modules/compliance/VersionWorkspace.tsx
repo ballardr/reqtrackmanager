@@ -118,7 +118,14 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
             <h3 style={{ margin: 0 }}>
               {standard.reference} — {version.version_label}
             </h3>
-            <EntitySwitcher label="Switch version" currentId={version.id} loadOptions={loadVersionSwitcherOptions} />
+            {/* `reloadKey`: `versions` can gain an entry after this mounts
+                (e.g. one just created), which the switcher must pick up. */}
+            <EntitySwitcher
+              label="Switch version"
+              currentId={version.id}
+              loadOptions={loadVersionSwitcherOptions}
+              reloadKey={versions.map((v) => v.id).join(",")}
+            />
           </div>
           <span className="text-muted">{COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]}</span>
         </div>

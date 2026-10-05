@@ -414,6 +414,16 @@ def _validate_org_group_member_removal(db: Session, org_group_id: UUID, member_u
     return validate_fallback_group_member_removal(db, org_group_id, member_user_id)
 
 
+def _validate_org_group_deletion(db: Session, org_group_id: UUID) -> str | None:
+    """This module's `ModuleDefinition.validate_org_group_deletion` hook —
+    blocks deleting the organisation's fallback compliance-managers group
+    while a standard relies on it for its manager floor. Imported lazily
+    for the same import-cycle reason as `get_router()`."""
+    from app.modules.compliance.service import validate_fallback_group_deletion
+
+    return validate_fallback_group_deletion(db, org_group_id)
+
+
 # `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` (module system follow-up,
 # self-containment pass — see `app.modules.compliance.export`'s own module
 # docstring) — each a thin wrapper delegating to `export.py`, imported
@@ -486,6 +496,32 @@ def _run_target_date_notifications(db: Session) -> None:
     send_target_date_notifications(db)
 
 
+def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUID]:
+    """`ModuleDefinition.artefact_ids_in_organization`: every piece of
+    evidence, project compliance requirement and required-action assessment
+    in the organisation's projects, for org deletion's polymorphic cleanup."""
+    from sqlalchemy import select
+
+    from app.models.project import Project
+    from app.modules.compliance.models import (
+        ComplianceEvidence,
+        ComplianceRequiredActionAssessment,
+        ProjectCompliance,
+        ProjectComplianceRequirement,
+    )
+
+    project_ids = select(Project.id).where(Project.organization_id == organization_id)
+    requirement_ids = select(ProjectComplianceRequirement.id).join(
+        ProjectCompliance, ProjectCompliance.id == ProjectComplianceRequirement.project_compliance_id
+    ).where(ProjectCompliance.project_id.in_(project_ids))
+    ids = set(db.scalars(select(ComplianceEvidence.id).where(ComplianceEvidence.project_id.in_(project_ids))).all())
+    ids.update(db.scalars(requirement_ids).all())
+    ids.update(db.scalars(select(ComplianceRequiredActionAssessment.id).where(
+        ComplianceRequiredActionAssessment.project_compliance_requirement_id.in_(requirement_ids)
+    )).all())
+    return ids
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=COMPLIANCE_MODULE_KEY,
     name="Compliance",
@@ -506,7 +542,9 @@ MODULE_DEFINITION = ModuleDefinition(
     project_nav_visible=_project_nav_visible,
     on_project_created=_reconcile_new_project,
     validate_org_group_member_removal=_validate_org_group_member_removal,
+    validate_org_group_deletion=_validate_org_group_deletion,
     artefact_types=_ARTEFACT_TYPES,
+    artefact_ids_in_organization=_artefact_ids_in_organization,
     entity_scopes={
         "standard": EntityScopeDefinition(
             resolve_organization_id=_resolve_standard_organization_id,
@@ -529,6 +567,7 @@ MODULE_DEFINITION = ModuleDefinition(
         tier="installed",
         nav_label="Compliance",
         nav_path=f"/projects/{{project_id}}/modules/{COMPLIANCE_MODULE_KEY}",
+        nav_icon="shield-check",
     ),
     scheduled_jobs=(
         ModuleScheduledJob(

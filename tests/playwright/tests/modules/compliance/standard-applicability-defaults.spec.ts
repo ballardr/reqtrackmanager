@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { loginAs, logout, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
@@ -59,7 +59,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     // than one element matching this accessible name, all pointing at the
     // same project, so pinning to the first match keeps this test's own
     // assertion about *this* project unaffected by that.
-    await page.getByRole("link", { name: PROJECT_NAMES.gamma1 }).first().click();
+    await openProject(page, PROJECT_NAMES.gamma1);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
@@ -86,7 +86,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
 
     // --- Before switching the default, Gamma-2 has no such assignment.
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.gamma2 }).click();
+    await openProject(page, PROJECT_NAMES.gamma2);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page.getByText(new RegExp(reference))).not.toBeVisible();
 
@@ -104,7 +104,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     await expect(page.getByText("No projects are excluded")).toBeVisible();
 
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.gamma2 }).click();
+    await openProject(page, PROJECT_NAMES.gamma2);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page.getByText(new RegExp(reference))).toBeVisible();
 
@@ -113,7 +113,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     // change from an actually-reconciled state, not a no-op against a
     // project reconciliation never reached.
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.gamma1 }).click();
+    await openProject(page, PROJECT_NAMES.gamma1);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page.getByText(new RegExp(reference))).toBeVisible();
 
@@ -126,11 +126,13 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     await excludeDialog.getByLabel("Project").selectOption({ label: PROJECT_NAMES.gamma1 });
     await excludeDialog.getByLabel("Reason (required)").fill("Already governed by a separate local standard.");
     await excludeDialog.getByRole("button", { name: "Exclude" }).click();
-    await expect(page.getByText(PROJECT_NAMES.gamma1)).toBeVisible();
+    // Exact, and not the Exclude dialog's own <option>s (a merge-import can
+    // add a "Gamma-1 … (imported)" project alongside).
+    await expect(page.getByText(PROJECT_NAMES.gamma1, { exact: true }).filter({ visible: true }).first()).toBeVisible();
     await expect(page.getByText("Already governed by a separate local standard.")).toBeVisible();
 
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.gamma1 }).click();
+    await openProject(page, PROJECT_NAMES.gamma1);
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     // An archived assignment's row deliberately renders "—" for its
     // Standard column (`GET .../status` excludes archived assignments by

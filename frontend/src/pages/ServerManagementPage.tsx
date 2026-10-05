@@ -19,6 +19,7 @@ import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
+import { useRequestSequence } from "../hooks/useRequestSequence";
 
 const strings = t();
 
@@ -87,8 +88,15 @@ function AccessReviewTab() {
     return params;
   }
 
+  // Applies only the newest load's response: switching the view and then
+  // re-typing a search fires two loads, and the older one could land last
+  // (found 2026-10-05).
+  const beginLoad = useRequestSequence();
+
   async function loadUsers(offset: number, append: boolean) {
+    const isLatest = beginLoad();
     const page = await api.getPage<SystemUser>(`/api/v1/system/users?${listParams(offset).toString()}`);
+    if (!isLatest()) return;
     setUsers((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
   }

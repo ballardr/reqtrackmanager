@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { deleteOrgOnCleanup, installCleanupHook } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
+
 /**
  * Job to be done: `Pattern: resource picker dialog` (2026-08 UX audit
  * roadmap row 508) — `RequirementDetailPage.tsx`'s Attachments card can
@@ -38,6 +43,7 @@ test("link an organisation shared resource onto a requirement via the resource p
       data: { name: `E2E Resource Picker Org ${suffix}` },
     })
   ).json();
+  deleteOrgOnCleanup({ id: org.id });
   const orgAdminEmail = `e2e-resourcepicker-admin-${suffix}@example.com`;
   const orgAdminPassword = "OrgAdmin123!";
   await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {

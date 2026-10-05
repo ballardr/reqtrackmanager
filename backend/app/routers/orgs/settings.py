@@ -22,14 +22,25 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models.enums import OrgRole
-from app.models.module import OrganizationModuleEnablement
+from app.models.module import OrganizationModuleEnablement, OrganizationModuleSubComponentDefault
 from app.models.organization import Organization
 from app.models.user import User
-from app.modules.registry import get_frontend_manifest, get_module_registry, is_module_enabled, is_module_entitled
+from app.modules.registry import (
+    freeze_projects_module_default,
+    freeze_projects_subcomponent_default,
+    get_frontend_manifest,
+    get_module_registry,
+    is_module_enabled,
+    is_module_entitled,
+    resolve_default_project_enabled,
+    resolve_org_subcomponent_state,
+)
 from app.schemas.email import TestEmailRequest
 from app.schemas.org import (
     ModuleFrameTokenOut,
     ModuleFrontendManifestOut,
+    ModuleSubComponentDefaultUpdate,
+    ModuleSubComponentOut,
     OrgAdvancedSettingsOut,
     OrgAdvancedSettingsUpdate,
     OrgModuleEnablementUpdate,
@@ -169,12 +180,14 @@ def list_org_modules(
     for definition in get_module_registry().values():
         entitled = is_module_entitled(db, organization_id, definition.key)
         enabled = is_module_enabled(db, organization_id, definition.key)
+        default_project_enabled = resolve_default_project_enabled(db, organization_id, definition.key)
         manifest = get_frontend_manifest(definition.key)
         result.append(
             OrgModuleOut(
                 module_key=definition.key, name=definition.name, description=definition.description,
                 version=definition.version, implemented=definition.implemented,
-                entitled=entitled, enabled=enabled, default_enabled=definition.default_enabled,
+                entitled=entitled, enabled=enabled, default_project_enabled=default_project_enabled,
+                default_enabled=definition.default_enabled,
                 frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
             )
         )
@@ -187,9 +200,12 @@ def update_org_module_enablement(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Sets this organisation's own explicit enable/disable choice for one
-    module (module system Phase 1) — the org-tier "day-to-day switch"
-    among modules the organisation is entitled to.
+    """Sets this organisation's own explicit choices for one module
+    (module system Phase 1; `default_project_enabled` added Module 0 Phase
+    5's 2026-09-29 correction) — the hard floor (`enabled`, the org-tier
+    "day-to-day switch" among modules the organisation is entitled to) and,
+    independently, the default a project of this organisation gets absent
+    its own override (`default_project_enabled`).
 
     404s on an unregistered `module_key`, matching how every other
     org-scoped resource lookup in this router responds to a bogus id.
@@ -198,6 +214,16 @@ def update_org_module_enablement(
     by toggling this endpoint — entitlement is a server-tier lever
     (`PUT /system/orgs/{organization_id}/module-entitlements/{module_key}`),
     strictly above what this endpoint can touch.
+
+    Changing `default_project_enabled` never alters an existing project:
+    projects without their own row are frozen at the current value first
+    (`freeze_projects_module_default`).
+
+    `payload.default_project_enabled` of `None` (the default) leaves an
+    existing row's own value untouched, or, on a freshly-created row,
+    initialises it to match `payload.enabled` — a sensible starting point
+    (a module just turned on for the org starts on-by-default for its
+    projects too, until an org admin explicitly narrows that).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -214,15 +240,29 @@ def update_org_module_enablement(
             OrganizationModuleEnablement.module_key == module_key,
         )
     )
+    is_new_row = row is None
+    # Copy-before-change (Decided by: User, 2026-10-04): an org default only
+    # affects projects created afterwards, so existing projects still
+    # reading it live get today's value written in first.
+    new_default = (
+        payload.default_project_enabled if payload.default_project_enabled is not None
+        else payload.enabled if is_new_row else row.default_project_enabled
+    )
+    if new_default != resolve_default_project_enabled(db, organization_id, module_key):
+        freeze_projects_module_default(db, organization_id, module_key)
     if row is None:
         row = OrganizationModuleEnablement(organization_id=organization_id, module_key=module_key)
         db.add(row)
     row.enabled = payload.enabled
+    row.default_project_enabled = new_default
     row.updated_by = current_user.id
     log_event(
         db, entity_type="organization_module", entity_id=f"{organization_id}:{module_key}",
         action="module.enablement_updated", actor_id=current_user.id, organization_id=organization_id,
-        detail={"module_key": module_key, "enabled": payload.enabled},
+        detail={
+            "module_key": module_key, "enabled": payload.enabled,
+            "default_project_enabled": row.default_project_enabled,
+        },
     )
     db.commit()
     db.refresh(row)
@@ -230,8 +270,140 @@ def update_org_module_enablement(
     return OrgModuleOut(
         module_key=definition.key, name=definition.name, description=definition.description,
         version=definition.version, implemented=definition.implemented,
-        entitled=True, enabled=row.enabled, default_enabled=definition.default_enabled,
+        entitled=True, enabled=row.enabled, default_project_enabled=row.default_project_enabled,
+        default_enabled=definition.default_enabled,
         frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
+    )
+
+
+@router.get("/{organization_id}/modules/{module_key}/subcomponents", response_model=list[ModuleSubComponentOut])
+def list_org_module_subcomponents(
+    organization_id: UUID,
+    module_key: str,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Lists every sub-component `module_key` declares (Module 0 —
+    Platform Foundations — Phase 4), with this organisation's own
+    effective default state for each — the org-tier bookkeeping view an
+    org admin uses to set per-sub-component defaults, one level below
+    `list_org_modules`'s whole-module view.
+
+    404s on an unregistered `module_key`, matching `update_org_module_
+    enablement`'s own handling of a bogus key. A module with no declared
+    `sub_components` at all (every module before Context & Strategy's own
+    `"strategy"` entry) simply returns an empty list — not an error, since
+    "this module has no sub-components" is a legitimate, common state.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+
+    rows_by_key = {
+        row.subcomponent_key: row
+        for row in db.scalars(
+            select(OrganizationModuleSubComponentDefault).where(
+                OrganizationModuleSubComponentDefault.organization_id == organization_id,
+                OrganizationModuleSubComponentDefault.module_key == module_key,
+            )
+        )
+    }
+    return [
+        ModuleSubComponentOut(
+            module_key=module_key,
+            subcomponent_key=sub.key,
+            name=sub.name,
+            default_enabled=sub.default_enabled,
+            enabled=rows_by_key[sub.key].enabled if sub.key in rows_by_key else sub.default_enabled,
+            default_project_enabled=(
+                rows_by_key[sub.key].default_project_enabled if sub.key in rows_by_key else sub.default_enabled
+            ),
+            has_org_override=sub.key in rows_by_key,
+        )
+        for sub in definition.sub_components
+    ]
+
+
+@router.put(
+    "/{organization_id}/modules/{module_key}/subcomponents/{subcomponent_key}", response_model=ModuleSubComponentOut,
+)
+def update_org_module_subcomponent_default(
+    organization_id: UUID,
+    module_key: str,
+    subcomponent_key: str,
+    payload: ModuleSubComponentDefaultUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sets this organisation's own levers for one sub-component of
+    `module_key` — the same two as whole modules: `enabled` (hard floor,
+    reaches every project; the effective value for org-scoped artefacts)
+    and `default_project_enabled` (copied into projects created afterwards;
+    existing projects are frozen at their current value first via
+    `freeze_projects_subcomponent_default`).
+
+    404s on an unregistered `module_key` or a `subcomponent_key` that
+    module doesn't declare, matching `update_org_module_enablement`'s own
+    handling of a bogus module key.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+    subcomponent = next((s for s in definition.sub_components if s.key == subcomponent_key), None)
+    if subcomponent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sub-component not found.")
+
+    row = db.scalar(
+        select(OrganizationModuleSubComponentDefault).where(
+            OrganizationModuleSubComponentDefault.organization_id == organization_id,
+            OrganizationModuleSubComponentDefault.module_key == module_key,
+            OrganizationModuleSubComponentDefault.subcomponent_key == subcomponent_key,
+        )
+    )
+    is_new_row = row is None
+    new_default = (
+        payload.default_project_enabled if payload.default_project_enabled is not None
+        else payload.enabled if is_new_row else row.default_project_enabled
+    )
+    _, current_default = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
+    if new_default != current_default:
+        freeze_projects_subcomponent_default(db, organization_id, module_key, subcomponent_key)
+    if row is None:
+        row = OrganizationModuleSubComponentDefault(
+            organization_id=organization_id, module_key=module_key, subcomponent_key=subcomponent_key,
+        )
+        db.add(row)
+    row.enabled = payload.enabled
+    row.default_project_enabled = new_default
+    row.updated_by = current_user.id
+    log_event(
+        db, entity_type="organization_module_subcomponent",
+        # `f"{module_key}:{subcomponent_key}"`, not prefixed with
+        # `organization_id` (already its own dedicated `AuditEvent`
+        # column, passed below) — `AuditEvent.entity_id` is `String(64)`,
+        # and a UUID (36 chars) plus two colon-joined keys risks
+        # overflowing it for a real module/sub-component key pair (found
+        # via this endpoint's own test using a deliberately long fixture
+        # module key, which reproduced the overflow directly).
+        entity_id=f"{module_key}:{subcomponent_key}",
+        action="module.subcomponent_default_updated", actor_id=current_user.id, organization_id=organization_id,
+        detail={
+            "module_key": module_key, "subcomponent_key": subcomponent_key, "enabled": payload.enabled,
+            "default_project_enabled": row.default_project_enabled,
+        },
+    )
+    db.commit()
+    db.refresh(row)
+    return ModuleSubComponentOut(
+        module_key=module_key, subcomponent_key=subcomponent_key, name=subcomponent.name,
+        default_enabled=subcomponent.default_enabled, enabled=row.enabled,
+        default_project_enabled=row.default_project_enabled, has_org_override=True,
     )
 
 

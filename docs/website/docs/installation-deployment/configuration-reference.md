@@ -32,6 +32,7 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space |
 | `DISK_USAGE_WARNING_THRESHOLD_PERCENT` | `90` | — | Disk usage monitor threshold for the `local` storage backend |
 | `WEBSOCKET_ENABLED` | `true` | — | Whether the optional live-update WebSocket interface is mounted at all |
+| `BACKEND_WORKERS` | `4` | — | Backend worker processes per container (CPU cores the API can use). Workers coordinate via PostgreSQL; see the deployment guide's scaling section for connection/memory sizing |
 | `GEOIP_LOOKUP_ENABLED` | `false` | — | Whether login events resolve an approximate location for the client IP via a third-party lookup. Off by default since it's an external network dependency; login is never blocked by it regardless |
 | `GEOIP_LOOKUP_EXCLUDE_CIDRS` | private/loopback ranges | — | Comma-separated CIDR ranges never sent to the geolocation lookup, even when enabled |
 | `PUBLIC_BACKEND_URL` | `http://localhost:8000` | Recommended if SSO is used | This backend's own externally-reachable base URL — must exactly match the redirect URI registered on any OIDC identity provider |

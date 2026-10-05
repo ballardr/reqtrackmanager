@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 /**
  * UX review: files and links could previously only be attached to a
@@ -38,13 +38,13 @@ test("Create & attach files/links advances to an attach-files-and-links step, th
   const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
   await componentsSection.getByPlaceholder("Name").fill("Software");
   await componentsSection.getByPlaceholder("Prefix").fill("SW");
-  await componentsSection.getByRole("button", { name: "New component" }).click();
+  await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
   await expect(page.locator('input[value="Software"]').first()).toBeVisible();
   await page.waitForLoadState("networkidle");
   const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
   await softwareRow.getByPlaceholder("Name").fill("Performance");
   await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-  await softwareRow.getByRole("button", { name: "New category" }).click();
+  await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
   // Note: this locator also matches the still-open "New category" name
   // input itself (it too has value="Performance" the instant it's filled,
   // well before the create request resolves) — visible from the moment
@@ -98,13 +98,13 @@ test("plain Create closes the modal immediately, unchanged", async ({ page }) =>
   const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
   await componentsSection.getByPlaceholder("Name").fill("Software");
   await componentsSection.getByPlaceholder("Prefix").fill("SW");
-  await componentsSection.getByRole("button", { name: "New component" }).click();
+  await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
   await expect(page.locator('input[value="Software"]').first()).toBeVisible();
   await page.waitForLoadState("networkidle");
   const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
   await softwareRow.getByPlaceholder("Name").fill("Performance");
   await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-  await softwareRow.getByRole("button", { name: "New category" }).click();
+  await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
   // See the sibling test above: this locator also matches the still-open
   // "New category" name input (visible with this value the instant it's
   // typed, before the create request resolves), so the networkidle wait

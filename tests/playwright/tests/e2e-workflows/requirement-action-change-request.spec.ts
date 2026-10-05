@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
  * 2026-08 UX audit roadmap item 514: once a requirement is locked
@@ -28,12 +28,12 @@ test.describe("requirement action change requests", () => {
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.getByText(reqName).click();
+    await openRequirementByName(page, reqName);
 
     await test.step("approve the requirement, locking it", async () => {
       await page.getByRole("button", { name: "Approve", exact: true }).click();
@@ -63,7 +63,9 @@ test.describe("requirement action change requests", () => {
       // `proposed_name` is null (`ChangeRequestsPage.tsx::crTitle` — true
       // for every ADD_ACTION change request, which never sets
       // `proposed_name`), the same fallback a field-only MODIFY_REQUIREMENT
-      // change request already relies on.
+      // change request already relies on. Searched first: the list is
+      // paginated, and its search matches the target requirement's name.
+      await searchChangeRequests(page, reqName);
       await page.getByText(reqName).click();
       // `exact: true` — a bare substring match would also resolve against
       // the action's own generated title text below ("E2E Proposed Action
@@ -79,7 +81,7 @@ test.describe("requirement action change requests", () => {
 
     await test.step("the action now appears on the requirement", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByText(reqName).click();
+      await openRequirementByName(page, reqName);
       await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
     });
   });

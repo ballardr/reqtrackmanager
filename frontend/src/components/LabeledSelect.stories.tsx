@@ -38,3 +38,14 @@ export const DisabledUntilParentChosen: Story = {
     await expect(canvas.getByRole("option", { name: "Select a standard first…" })).toBeInTheDocument();
   },
 };
+
+/** `placeholder={null}` omits the blank option, for a select that always
+ * holds a value (e.g. a scoring-model switcher). */
+export const NoPlaceholder: Story = {
+  args: { label: "Model", value: "a", placeholder: null, options: [{ value: "a", label: "A" }, { value: "b", label: "B" }] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByRole("option")).toHaveLength(2);
+    await expect(canvas.getByLabelText("Model")).toHaveValue("a");
+  },
+};

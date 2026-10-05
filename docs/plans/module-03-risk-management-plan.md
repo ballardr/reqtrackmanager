@@ -72,6 +72,16 @@ list, and lifecycle states before Phase 1.
    before building it — this is the module's one piece of real
    configuration-engine work, comparable in kind to Traceability's rule
    engine (Module 7), and deserves the same care.
+   **2026-10-04 update:** Module 1's Reporting extension (Phase 10) builds
+   a generic, core scoring-matrix mechanism first: module-registered axes
+   with ordered, weighted levels, named models, and org default + project
+   override. **Decided by: User.** This Q1 should reuse that mechanism by
+   registering Likelihood/Consequence axes, not build a separate
+   `RiskMatrixDefinition`.
+   **Shipped 2026-10-04** — see `docs/modules.md` §4d for the registration
+   shape (`ScoringSchemeDefinition`; bands are normalised score thresholds
+   per model, so a cell-by-cell rating override would be a new extension
+   if Risk needs one).
 2. **Risk category/type configurability.** §11.3's defaults (Safety,
    Technical, Reliability, Performance, Security, Compliance, Operational,
    Schedule, Cost, Supply chain, Integration, Environmental) — same

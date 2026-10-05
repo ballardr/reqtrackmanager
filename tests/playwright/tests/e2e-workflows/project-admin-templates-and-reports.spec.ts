@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { ensureExpanded, loginAs, openProject, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin defines a reusable report template (accent
@@ -77,7 +77,7 @@ test.describe("org report templates and project report setup", () => {
       // Org Admin's own "Projects" section is management-only (user
       // access), not a navigation link — go via the real Projects list.
       await page.goto("/projects");
-      await page.getByText(PROJECT_NAMES.gamma1).click();
+      await openProject(page, PROJECT_NAMES.gamma1);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Report Setup");
       await page.getByLabel("Default report template").selectOption({ label: revisedName });
@@ -113,7 +113,7 @@ test.describe("org report templates and project report setup", () => {
 
     await test.step("mark Gamma-2 as usable as a project template", async () => {
       await page.goto("/projects");
-      await page.getByText(PROJECT_NAMES.gamma2).click();
+      await openProject(page, PROJECT_NAMES.gamma2);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await page.getByLabel("Usable as a project template").check();
       // Same PUT-vs-reload race the "select it as Gamma-1's default report

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
+import { apiHeaders, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
@@ -36,6 +36,7 @@ import { createStandardWithVersion } from "./helpers";
  * a previous run's.
  */
 test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail tab (Phase 18)", () => {
+  installCleanupHook();
   test("tab is hidden for a user with no org memberships, and visible for a compliance manager", async ({ page }) => {
     // `orphan` has zero org memberships at all (seed_e2e_dataset.py — left
     // Alpha via self-service for the user-directory/ban workflow), so
@@ -226,24 +227,25 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
 
+    // `view_mode:standards` is a per-user preference shared by every run of
+    // this persona, so the test starts from tiles explicitly (an interrupted
+    // run used to leave it on "list", failing the next one) and resets it in
+    // an afterEach cleanup that runs even on timeout. The tiles *default*
+    // itself is covered by StandardListPage's TogglesBetweenTilesAndListView story.
+    onCleanup(async (request) => {
+      await request.patch("http://localhost:8000/api/v1/auth/me/preferences", {
+        headers: await apiHeaders(request, PERSONAS.orgAdminAlphaBeta.email),
+        data: { ui_preferences: { "view_mode:standards": "tiles" } },
+      });
+    });
     await page.goto("/standards");
-    // Defaults to tiles view (`ProjectListPage.tsx`'s own default) — the
-    // standard renders as a card link, not a table row.
-    await expect(page.getByRole("table")).toHaveCount(0);
+    await page.getByRole("button", { name: "Tile view" }).click();
+    // Tiles: the standard renders as a card link, not a table row.
     await expect(page.getByRole("link", { name: new RegExp(standardName) })).toBeVisible();
+    await expect(page.getByRole("table")).toHaveCount(0);
 
     await page.getByRole("button", { name: "List view" }).click();
-    try {
-      await expect(page.getByRole("table")).toBeVisible();
-      await expect(page.getByRole("cell", { name: standardName })).toBeVisible();
-    } finally {
-      // `view_mode:standards` (`useViewMode`) is a per-user preference
-      // shared across every run of this shared `orgAdminAlphaBeta` persona,
-      // not scoped to this one test — reset to the default here regardless
-      // of what happens above, mirroring this file's own "Overview stat
-      // tiles…" test's identical reasoning for the requirement browser's
-      // own toggle.
-      await page.getByRole("button", { name: "Tile view" }).click();
-    }
+    await expect(page.getByRole("table")).toBeVisible();
+    await expect(page.getByRole("cell", { name: standardName })).toBeVisible();
   });
 });

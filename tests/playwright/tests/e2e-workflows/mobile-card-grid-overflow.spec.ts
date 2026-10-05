@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * The tile/card views on Requirements, Change Requests, Project List, and
@@ -27,7 +27,7 @@ test.describe("mobile: card/tile grids never overflow the viewport width", () =>
   test("Requirements tile view", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: /Alpha-1/ }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "Tile view" }).click();
     await expect(page.locator(".card").first()).toBeVisible();
@@ -44,7 +44,7 @@ test.describe("mobile: card/tile grids never overflow the viewport width", () =>
   test("Change Requests tile view", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: /Alpha-1/ }).click();
+    await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
     await page.getByRole("button", { name: "Tile view" }).click();
     await expect(page.locator(".card").first()).toBeVisible();

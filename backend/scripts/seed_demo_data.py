@@ -1008,6 +1008,341 @@ def create_decision_supersession(headers: dict, project_id: str, new_decision_id
     return r.json()
 
 
+# --- Context & Strategy module helpers (docs/plans/module-01-context-and-
+# strategy-plan.md Phase 1) -------------------------------------------------
+
+
+def create_org_strategy(headers: dict, org_id: str, **fields) -> dict:
+    r = httpx.post(f"{BASE}/orgs/{org_id}/modules/context_strategy/strategies", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_strategy(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/strategies", json=fields, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_org_strategy(headers: dict, org_id: str, strategy_id: str, *, approval_comment: str = "") -> dict:
+    """Walks an org-scoped Strategy through `Draft -> Proposed -> Under
+    Review -> Approved -> Active` in one call, for a demo Strategy meant to
+    already read as settled and in force."""
+    base = f"{BASE}/orgs/{org_id}/modules/context_strategy/strategies/{strategy_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/submit-for-review", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_project_strategy(
+    headers: dict, project_id: str, strategy_id: str, *, approval_comment: str = ""
+) -> dict:
+    """Project-scoped sibling of `propose_and_approve_org_strategy`."""
+    base = f"{BASE}/projects/{project_id}/modules/context_strategy/strategies/{strategy_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/submit-for-review", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+# --- Context & Strategy module helpers, Phase 2 (docs/plans/module-01-
+# context-and-strategy-plan.md Phase 2 — Future State) -----------------------
+
+
+def create_org_future_state(headers: dict, org_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/context_strategy/future-states", json=fields, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_future_state(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/future-states", json=fields, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_org_future_state(
+    headers: dict, org_id: str, future_state_id: str, *, approval_comment: str = ""
+) -> dict:
+    """Walks an org-scoped Future State through `Draft -> Proposed -> Under
+    Review -> Approved -> Active` in one call — sibling of `propose_and_
+    approve_org_strategy`."""
+    base = f"{BASE}/orgs/{org_id}/modules/context_strategy/future-states/{future_state_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/submit-for-review", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_project_future_state(
+    headers: dict, project_id: str, future_state_id: str, *, approval_comment: str = ""
+) -> dict:
+    """Project-scoped sibling of `propose_and_approve_org_future_state`."""
+    base = f"{BASE}/projects/{project_id}/modules/context_strategy/future-states/{future_state_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/submit-for-review", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+# --- Context & Strategy module helpers, Phase 3 (docs/plans/module-01-
+# context-and-strategy-plan.md Phase 3 — Pain Points) -----------------------
+
+
+def list_effective_pain_point_types(headers: dict, project_id: str) -> dict[str, dict]:
+    """Returns this project's effective Pain Point type list (Phase 0 Q3)
+    keyed by name — mirrors `list_decision_types`'s identical shape."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/modules/context_strategy/pain-point-types", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {t["name"]: t for t in r.json()}
+
+
+def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points", json=fields, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def triage_pain_point(headers: dict, project_id: str, pain_point_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/triage",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def accept_pain_point(headers: dict, project_id: str, pain_point_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/accept",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def address_pain_point(headers: dict, project_id: str, pain_point_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/address",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def reject_pain_point(headers: dict, project_id: str, pain_point_id: str, *, comment: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/reject",
+        json={"comment": comment}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def mark_pain_point_duplicate(headers: dict, project_id: str, pain_point_id: str, *, comment: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/mark-duplicate",
+        json={"comment": comment}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_project_scoring_default_model(headers: dict, project_id: str, scheme: str, model: str) -> dict:
+    """Overrides a project's default scoring model (generic scoring-matrix
+    core, Module 1 Phase 10)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/scoring-schemes/{scheme}/default-model", json={"model": model},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# --- Context & Strategy module helpers, Phase 4 (docs/plans/module-01-
+# context-and-strategy-plan.md Phase 4 — Guiding Principles) -----------------
+
+
+def create_org_guiding_principle(headers: dict, org_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/context_strategy/guiding-principles", json=fields, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_guiding_principle(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/guiding-principles", json=fields, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_org_guiding_principle(
+    headers: dict, org_id: str, guiding_principle_id: str, *, approval_comment: str = ""
+) -> dict:
+    """Walks an org-scoped Guiding Principle through `Draft -> Proposed ->
+    Approved -> Active` in one call — sibling of `propose_and_approve_org_
+    strategy`, minus the `submit-for-review` step (Guiding Principle's
+    lifecycle has no `Under Review` state — see `enums.
+    GuidingPrincipleStatus`'s own docstring)."""
+    base = f"{BASE}/orgs/{org_id}/modules/context_strategy/guiding-principles/{guiding_principle_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_project_guiding_principle(
+    headers: dict, project_id: str, guiding_principle_id: str, *, approval_comment: str = ""
+) -> dict:
+    """Project-scoped sibling of `propose_and_approve_org_guiding_principle`."""
+    base = f"{BASE}/projects/{project_id}/modules/context_strategy/guiding-principles/{guiding_principle_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+# --- Context & Strategy module helpers, Phase 5 (docs/plans/module-01-
+# context-and-strategy-plan.md Phase 5 — Open Questions) --------------------
+
+
+def create_open_question(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/open-questions", json=fields, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def investigate_open_question(headers: dict, project_id: str, open_question_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/open-questions/{open_question_id}/investigate",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def mark_open_question_ready_for_decision(headers: dict, project_id: str, open_question_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/open-questions/{open_question_id}"
+        "/mark-ready-for-decision",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def resolve_open_question(headers: dict, project_id: str, open_question_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/open-questions/{open_question_id}/resolve",
+        json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def withdraw_open_question(headers: dict, project_id: str, open_question_id: str, *, comment: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/open-questions/{open_question_id}/withdraw",
+        json={"comment": comment}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# --- Context & Strategy relationship helpers (Module 1 Phase 6) ------------
+
+
+def create_org_strategy_relationship(headers: dict, org_id: str, strategy_id: str, *, kind: str, target_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/context_strategy/strategies/{strategy_id}/relationships",
+        json={"kind": kind, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_strategy_relationship(
+    headers: dict, project_id: str, strategy_id: str, *, kind: str, target_id: str
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/strategies/{strategy_id}/relationships",
+        json={"kind": kind, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_pain_point_relationship(
+    headers: dict, project_id: str, pain_point_id: str, *, kind: str, target_id: str
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/relationships",
+        json={"kind": kind, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_org_guiding_principle_relationship(
+    headers: dict, org_id: str, guiding_principle_id: str, *, kind: str, target_id: str
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/context_strategy/guiding-principles/{guiding_principle_id}/relationships",
+        json={"kind": kind, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_guiding_principle_relationship(
+    headers: dict, project_id: str, guiding_principle_id: str, *, kind: str, target_id: str
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/guiding-principles/{guiding_principle_id}/relationships",
+        json={"kind": kind, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_open_question_relationship(
+    headers: dict, project_id: str, open_question_id: str, *, kind: str, target_id: str
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/open-questions/{open_question_id}/relationships",
+        json={"kind": kind, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -1653,6 +1988,230 @@ def main() -> None:
         " internal test fleet but not for a customer-operated one.",
     )
 
+    print("Seeding Context & Strategy (Module 1) — enabling the module, then an org Strategy and a project Strategy...")
+    # default_enabled=False (docs/plans/module-01-context-and-strategy-plan.md
+    # Phase 1) — an org must opt in explicitly, same as Decision Management above.
+    enable_module(h_pm, org["id"], "context_strategy")
+    org_strategy = create_org_strategy(
+        h_pm, org["id"], title="Lead the market in autonomous aerial inspection",
+        objective="Become the preferred aerial-inspection platform for critical infrastructure operators.",
+        current_state="A capable but early-stage entrant with two live product lines and a small install base.",
+        desired_future_state="The default choice for utility/infrastructure operators evaluating autonomous"
+        " inspection within three years.",
+        rationale="Infrastructure operators are moving from manual to autonomous inspection faster than"
+        " expected; being the default choice compounds through data/training-set advantages over time.",
+        expected_outcomes="Majority market share among utility-scale inspection contracts within three years.",
+        constraints="Regulatory approval timelines for BVLOS operations vary significantly by jurisdiction.",
+        measures_of_success="Contracted inspection routes under management; win rate on competitive RFPs.",
+        priority="high", time_horizon="long_term",
+    )
+    propose_and_approve_org_strategy(
+        h_pm, org["id"], org_strategy["id"],
+        approval_comment="Approved at the organisation's strategy review; supersedes no prior strategy.",
+    )
+    drone_strategy = create_project_strategy(
+        h_pm, drone["id"], title="Falcon-3: win the populated-corridor inspection contract",
+        objective="Deliver a dual-redundant inspection platform certified for flight over populated"
+        " infrastructure corridors.",
+        current_state="Single-controller platform flying test routes over unpopulated terrain only.",
+        desired_future_state="Dual-redundant platform certified and contracted for populated-corridor routes.",
+        rationale="Directly implements the organisation's Strategy above — populated-corridor contracts are"
+        " the largest near-term source of the market share that Strategy targets.",
+        expected_outcomes="Signed populated-corridor inspection contract within the next fiscal year.",
+        constraints="Airframe payload budget limits redundancy to dual, not triple, modular redundancy.",
+        measures_of_success="Certification sign-off date; contract value signed.",
+        priority="high", time_horizon="medium_term",
+    )
+    propose_and_approve_project_strategy(
+        h_pm, drone["id"], drone_strategy["id"],
+        approval_comment="Approved — directly traces to the dual-redundant flight controller Decision above.",
+    )
+
+    print("Seeding Future State (Module 1 Phase 2) — an org Future State and a project Future State, each linked"
+          " to the Strategy it elaborates via a real 'Defines' relationship (Module 1 Phase 6)...")
+    org_future_state = create_org_future_state(
+        h_pm, org["id"], title="Default choice for utility-scale autonomous inspection",
+        current_state="A capable but early-stage entrant with two live product lines and a small install base.",
+        desired_state="The default choice for utility/infrastructure operators evaluating autonomous inspection,"
+        " with the majority of contracted inspection routes under management across the sector.",
+        target_date="2029-06-30",
+        outcomes="Majority market share among utility-scale inspection contracts; the organisation's autonomous"
+        " inspection data/training-set advantage compounds faster than any single competitor can close it.",
+        success_measures="Contracted inspection routes under management; win rate on competitive RFPs; unaided"
+        " brand recall among utility-scale procurement teams.",
+        constraints="Regulatory approval timelines for BVLOS operations vary significantly by jurisdiction and"
+        " cannot be accelerated unilaterally.",
+        assumptions="Utility/infrastructure operators continue migrating from manual to autonomous inspection at"
+        " roughly the current pace, rather than stalling on regulatory uncertainty.",
+    )
+    propose_and_approve_org_future_state(
+        h_pm, org["id"], org_future_state["id"],
+        approval_comment="Approved at the organisation's strategy review, alongside the Strategy it elaborates.",
+    )
+    drone_future_state = create_project_future_state(
+        h_pm, drone["id"], title="Falcon-3 certified and contracted for populated-corridor routes",
+        current_state="Single-controller platform flying test routes over unpopulated terrain only.",
+        desired_state="Dual-redundant Falcon-3 platform certified for flight over populated infrastructure"
+        " corridors, with a signed populated-corridor inspection contract in place.",
+        target_date="2027-09-30",
+        outcomes="Signed populated-corridor inspection contract; certification sign-off enabling further"
+        " populated-corridor contracts without re-certifying the airframe.",
+        success_measures="Certification sign-off date; contract value signed; number of populated-corridor routes"
+        " flown without incident in the first two quarters post-certification.",
+        constraints="Airframe payload budget limits redundancy to dual, not triple, modular redundancy.",
+        assumptions="The dual-redundant flight controller Decision above is not itself superseded again before"
+        " certification testing completes.",
+    )
+    propose_and_approve_project_future_state(
+        h_pm, drone["id"], drone_future_state["id"],
+        approval_comment="Approved — this is the future state the dual-redundant flight controller Decision and"
+        " the Falcon-3 Strategy above are both driving toward.",
+    )
+    create_org_strategy_relationship(
+        h_pm, org["id"], org_strategy["id"], kind="defines_future_state", target_id=org_future_state["id"],
+    )
+    create_project_strategy_relationship(
+        h_pm, drone["id"], drone_strategy["id"], kind="defines_future_state", target_id=drone_future_state["id"],
+    )
+    create_project_strategy_relationship(
+        h_pm, drone["id"], drone_strategy["id"], kind="drives_requirement", target_id=remote_id_req["id"],
+    )
+
+    print("Seeding Pain Points (Module 1 Phase 3) — one per branch outcome (Accepted->Addressed, Rejected,"
+          " Duplicate) on the Falcon-3 project, using the org's default Market/User/Operator types...")
+    # `default_enabled` sub-components (Phase 3's own `module.py`) mean no
+    # separate enable-subcomponent call is needed beyond the whole-module
+    # `enable_module` call already made above for Strategy/Future State.
+    drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])
+    pp_accepted = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Operator"]["id"],
+        title="Field inspectors re-key paper reports days after each flight",
+        description="Inspection reports are recorded on paper in the field, then manually re-keyed into the"
+        " reporting system by an office administrator, often 2-3 days after the flight itself.",
+        source="Ops incident report — Q3 field review", impact="SLA-breach risk on every populated-corridor"
+        " contract; re-keying also introduces transcription errors into the compliance record.",
+        evidence="14 SLA-breach support tickets in the last quarter, all citing report delay as root cause.",
+        priority="high", date_identified="2026-08-15",
+    )
+    triage_pain_point(h_pm, drone["id"], pp_accepted["id"])
+    accept_pain_point(h_pm, drone["id"], pp_accepted["id"])
+    address_pain_point(h_pm, drone["id"], pp_accepted["id"])
+    print(f"  Accepted -> Addressed: {pp_accepted['title']!r}")
+
+    pp_rejected = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Market"]["id"],
+        title="Competitor offers a lower-cost single-controller platform for unpopulated-corridor routes",
+        description="A competitor's cheaper, single-controller platform has started winning unpopulated-corridor"
+        " inspection contracts on price alone.",
+        source="Customer interview — lost-deal debrief", impact="Some unpopulated-corridor deals lost on price.",
+        evidence="Two lost-deal debriefs citing price as the deciding factor.",
+        priority="low", date_identified="2026-07-20",
+    )
+    triage_pain_point(h_pm, drone["id"], pp_rejected["id"])
+    reject_pain_point(
+        h_pm, drone["id"], pp_rejected["id"],
+        comment="Out of scope — Falcon-3's own strategy explicitly targets populated-corridor contracts, where"
+        " dual-redundancy is a certification requirement competitors can't easily match on price alone.",
+    )
+    create_project_pain_point_relationship(
+        h_pm, drone["id"], pp_rejected["id"], kind="drives_strategy", target_id=drone_strategy["id"],
+    )
+    print(f"  Rejected: {pp_rejected['title']!r} (real 'Drives' relationship to the Falcon-3 Strategy, not just the"
+          " rejection comment's own prose)")
+
+    pp_duplicate = create_pain_point(
+        h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Operator"]["id"],
+        title="Field reports are delayed reaching the compliance record",
+        description="Same underlying delay as the paper re-keying Pain Point above, reported separately by a"
+        " different operator team before the two reports were compared.",
+        source="Support ticket #492", impact="Duplicate of the accepted paper-re-keying Pain Point above.",
+        evidence="Support ticket #492.", priority="medium", date_identified="2026-08-18",
+    )
+    triage_pain_point(h_pm, drone["id"], pp_duplicate["id"])
+    mark_pain_point_duplicate(
+        h_pm, drone["id"], pp_duplicate["id"],
+        comment=f"Duplicate of {pp_accepted['title']!r} (id {pp_accepted['id']}) — same root cause, reported"
+        " independently by a different operator team.",
+    )
+    create_project_pain_point_relationship(
+        h_pm, drone["id"], pp_duplicate["id"], kind="duplicate_of", target_id=pp_accepted["id"],
+    )
+    print(f"  Duplicate: {pp_duplicate['title']!r} (real 'Duplicate of' relationship to the canonical Pain Point,"
+          " not just the mandatory comment's own prose)")
+
+    print("Seeding Pain Point scoring config (Module 1 Phase 10) — org keeps the seeded Severity/Frequency/"
+          "Confidence levels and module-default model; Falcon-3 overrides its default model to S×F...")
+    set_project_scoring_default_model(h_pm, drone["id"], "pain_point", "sxf")
+
+    print("Seeding Guiding Principles (Module 1 Phase 4) — an org Guiding Principle and a project Guiding"
+          " Principle, both walked to Active and linked to the Strategy they support (Module 1 Phase 6)...")
+    # `default_enabled` sub-components (Phase 4's own `module.py`) mean no
+    # separate enable-subcomponent call is needed beyond the whole-module
+    # `enable_module` call already made above for Strategy/Future State/Pain Point.
+    org_guiding_principle = create_org_guiding_principle(
+        h_pm, org["id"], name="Operate safely under degraded connectivity",
+        principle_statement="Every product must keep operating safely, with a clear degraded-mode indicator to"
+        " the operator, when connectivity back to fleet/cloud services is lost.",
+        rationale="Utility/infrastructure inspection sites the organisation's Strategy above targets frequently"
+        " have unreliable or absent network coverage; a platform that fails unsafely offline cannot win"
+        " populated-corridor contracts regardless of its certification status.",
+        priority="high",
+    )
+    propose_and_approve_org_guiding_principle(
+        h_pm, org["id"], org_guiding_principle["id"],
+        approval_comment="Approved at the organisation's strategy review, alongside the Strategy/Future State"
+        " it constrains.",
+    )
+    create_org_guiding_principle_relationship(
+        h_pm, org["id"], org_guiding_principle["id"], kind="supports_strategy", target_id=org_strategy["id"],
+    )
+    drone_guiding_principle = create_project_guiding_principle(
+        h_pm, drone["id"], name="Field reports are captured once, at the point of inspection",
+        principle_statement="Inspection findings must be captured directly in the system of record at the point"
+        " of inspection — never on an intermediate paper form re-keyed later.",
+        rationale="Directly addresses the accepted 'field inspectors re-key paper reports' Pain Point above —"
+        " re-keying is both an SLA-breach risk and a transcription-error risk in the compliance record, so this"
+        " principle exists to stop new features from reintroducing the same failure mode.",
+        priority="high", owner_id=demo_engineer["user_id"],
+    )
+    propose_and_approve_project_guiding_principle(
+        h_pm, drone["id"], drone_guiding_principle["id"],
+        approval_comment="Approved — directly checked against the accepted paper-re-keying Pain Point above.",
+    )
+
+    print("Seeding Open Questions (Module 1 Phase 5) — one walked partway through investigation, one withdrawn"
+          " (no ArtefactLink relationship to a Decision yet — that's Phase 6, and the actual 'Create Decision"
+          " from Open Question' workflow is Module 4's own Phase 7)...")
+    oq_battery_vendor = create_open_question(
+        h_pm, drone["id"], question="Should the Falcon-3 drone fleet standardise on a single battery vendor?",
+        context="Falcon-3 currently qualifies battery packs from two vendors. A single-vendor policy would"
+        " simplify spares logistics and field-technician training, directly supporting the 'field reports"
+        " captured once' Guiding Principle above by reducing the number of distinct part numbers inspectors"
+        " must record — but it increases exposure to a single supply-chain disruption.",
+        evidence="Procurement flagged a 6-week lead-time gap for the secondary vendor last quarter; the"
+        " primary vendor has never missed a delivery window in 18 months.",
+        priority="high", due_date=(date.today() + timedelta(days=21)).isoformat(),
+    )
+    investigate_open_question(h_pm, drone["id"], oq_battery_vendor["id"])
+    mark_open_question_ready_for_decision(h_pm, drone["id"], oq_battery_vendor["id"])
+    print(f"  Ready for Decision: {oq_battery_vendor['question']!r} (awaiting a Decision to resolve it —"
+          " Module 4's own Phase 7)")
+
+    oq_offline_ui = create_open_question(
+        h_pm, drone["id"], question="Should the degraded-connectivity indicator (per the org Guiding Principle"
+        " above) be a persistent banner or a modal interrupt?",
+        context="Raised during UI design review; the org's 'Operate safely under degraded connectivity'"
+        " Guiding Principle requires a clear indicator, but not a specific presentation.",
+        evidence="", priority="medium",
+    )
+    investigate_open_question(h_pm, drone["id"], oq_offline_ui["id"])
+    withdraw_open_question(
+        h_pm, drone["id"], oq_offline_ui["id"],
+        comment="Withdrawn — already settled as part of the platform-wide UX style guide's alert-tier"
+        " patterns; no separate decision needed for this product.",
+    )
+    print(f"  Withdrawn: {oq_offline_ui['question']!r}")
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -1677,6 +2236,15 @@ def main() -> None:
     print("  Decision Management (enabled org-wide): 3 Decisions on Falcon-3 — the single-flight-controller"
           " decision (Approved, then Superseded), the dual-redundant decision that supersedes it (Approved),"
           " and an OTA-signing decision left in Draft")
+    print("  Context & Strategy (enabled org-wide): 1 organisation Strategy (Active) and 1 project Strategy on"
+          " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win;"
+          " 1 organisation Future State and 1 project Future State on Falcon-3 (both Active), each linked to the"
+          " Strategy it elaborates via a real 'Defines' relationship (Module 1 Phase 6); 3 Pain Points on Falcon-3"
+          " (Accepted->Addressed, Rejected with a real 'Drives' link back to the Falcon-3 Strategy, and Duplicate"
+          " with a real 'Duplicate of' link to the canonical Pain Point); 1 organisation Guiding Principle (Active,"
+          " linked to the org Strategy via a real 'Supports' relationship) and 1 project Guiding Principle (Active)"
+          " on Falcon-3; and 2 Open Questions on Falcon-3 (one Ready for Decision, one Withdrawn — the 'resolved by"
+          " Decision' relationship stays reserved pending Module 4's own Phase 7, see docs/decisions.md)")
 
 
 if __name__ == "__main__":

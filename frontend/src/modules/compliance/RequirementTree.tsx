@@ -778,6 +778,11 @@ function RequiredActionFormModal({
   onSave: (values: { action_type_id: string; name: string; description: string; is_mandatory: boolean }) => void;
 }) {
   const [actionTypeId, setActionTypeId] = useState(initial?.action_type_id ?? actionTypes[0]?.id ?? "");
+  // The types may arrive after this form opens (the page loads them in
+  // parallel); adopt the first one then, or Save stays disabled for good
+  // (found 2026-10-04 via the e2e suite under load). React's "adjust state
+  // during render" pattern — converges in one extra render.
+  if (actionTypeId === "" && actionTypes[0]) setActionTypeId(actionTypes[0].id);
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [isMandatory, setIsMandatory] = useState(initial?.is_mandatory ?? true);

@@ -6,7 +6,7 @@ sidebar_position: 8
 
 ## Search and filters
 
-The **Projects** list is searchable by name/summary and filterable by active/archived status, by role on the project, by the project's current stage status, and — for anyone belonging to more than one organisation — by which organisation it's in. Favourited projects always sort to the top regardless of any other filter or search applied. The **Requirements** and **Change Requests** lists work the same way: search by name or ID, and click a status (or target-stage) badge to filter the list to it — click it again to clear the filter, rather than needing a separate "clear filters" control.
+The **Projects** list is searchable by name/summary and filterable by active/archived status, by role on the project, by the project's current stage status, and — for anyone belonging to more than one organisation — by which organisation it's in. Favourited projects always sort to the top regardless of any other filter or search applied. The **Requirements** and **Change Requests** lists work the same way: search by name or ID (change requests also match on their reason and target requirement), and click a status (or target-stage) badge to filter the list to it — click it again to clear the filter, rather than needing a separate "clear filters" control.
 
 | Projects dashboard |
 | --- |

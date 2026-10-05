@@ -50,7 +50,7 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
-from app.modules.registry import run_on_project_created_hooks
+from app.modules.registry import run_on_project_created_hooks, snapshot_project_module_state
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, ProjectFileOut
 from app.schemas.project import (
@@ -59,6 +59,7 @@ from app.schemas.project import (
     ProjectImportResult,
     ProjectListItemOut,
     ProjectMetricsOut,
+    ProjectMyRolesOut,
     ProjectOut,
     ProjectTreeNodeOut,
     ProjectUpdate,
@@ -80,6 +81,8 @@ from app.services.rbac import (
     get_user_org_group_ids,
     is_org_admin,
     lock_project_for_update,
+    memoize_user_lookups,
+    prefetch_project_roles,
     require_project_manage,
     require_project_view,
     require_project_view_or_manage,
@@ -472,6 +475,11 @@ def create_project(
         if payload.parent_project_id is None:
             seed_action_types(db, project.id)
 
+    # Copy the org's current module/sub-component defaults into the new
+    # project (blank or template-cloned alike), so a later change to an org
+    # default never flips this project (Decided by: User, 2026-10-04).
+    snapshot_project_module_state(db, project.id, project.organization_id)
+
     if payload.terminology:
         project.terminology = payload.terminology
     if payload.is_template:
@@ -604,158 +612,174 @@ def list_projects(
     `X-Total-Count`, it does not change when the caller applies one of
     those filters.
     """
-    # No server-admin bypass here (I-M-05): project listings are "data within
-    # organisations", so even server admins only see projects they hold a
-    # genuine role in, same as anyone else.
-    accessible_ids = _accessible_project_ids(db, current_user.id)
-    if not accessible_ids:
-        projects = []
-        response.headers["X-Total-Unfiltered-Count"] = "0"
-    else:
-        # Joins to Organization to exclude projects belonging to a disabled
-        # org (`Organization.is_active`) — a disabled org locks out its own
-        # content everywhere else (`rbac._require_org_active`), and this
-        # aggregate cross-org listing had been the one place that check
-        # didn't reach, since it filters by project accessible-ids rather
-        # than going through a per-org `require_org_role` dependency.
-        #
-        # `base_conditions` (no `organization_id`) is the mandatory scope
-        # for the unfiltered count above — `organization_id` is itself a
-        # FilterPanel filter (the "Organisation" dropdown), the same
-        # relationship `category_id` has to `RequirementsPage`'s unfiltered
-        # count, so it's added only to `conditions` below, after the count
-        # is taken.
-        base_conditions = [
-            Project.id.in_(accessible_ids),
-            Project.is_archived == archived,
-            Organization.is_active.is_(True),
-        ]
-        response.headers["X-Total-Unfiltered-Count"] = str(
-            db.scalar(
-                select(func.count()).select_from(
-                    select(Project.id)
-                    .join(Organization, Organization.id == Project.organization_id)
-                    .where(*base_conditions)
-                    .subquery()
+    # Role resolution below runs once per accessible project; cache the
+    # caller's user-level lookups (org groups, org roles) for this read-only
+    # request instead of re-querying them per project — see
+    # `rbac.memoize_user_lookups`.
+    with memoize_user_lookups():
+        # No server-admin bypass here (I-M-05): project listings are "data within
+        # organisations", so even server admins only see projects they hold a
+        # genuine role in, same as anyone else.
+        accessible_ids = _accessible_project_ids(db, current_user.id)
+        if not accessible_ids:
+            projects = []
+            response.headers["X-Total-Unfiltered-Count"] = "0"
+        else:
+            # Joins to Organization to exclude projects belonging to a disabled
+            # org (`Organization.is_active`) — a disabled org locks out its own
+            # content everywhere else (`rbac._require_org_active`), and this
+            # aggregate cross-org listing had been the one place that check
+            # didn't reach, since it filters by project accessible-ids rather
+            # than going through a per-org `require_org_role` dependency.
+            #
+            # `base_conditions` (no `organization_id`) is the mandatory scope
+            # for the unfiltered count above — `organization_id` is itself a
+            # FilterPanel filter (the "Organisation" dropdown), the same
+            # relationship `category_id` has to `RequirementsPage`'s unfiltered
+            # count, so it's added only to `conditions` below, after the count
+            # is taken.
+            base_conditions = [
+                Project.id.in_(accessible_ids),
+                Project.is_archived == archived,
+                Organization.is_active.is_(True),
+            ]
+            response.headers["X-Total-Unfiltered-Count"] = str(
+                db.scalar(
+                    select(func.count()).select_from(
+                        select(Project.id)
+                        .join(Organization, Organization.id == Project.organization_id)
+                        .where(*base_conditions)
+                        .subquery()
+                    )
                 )
             )
+            conditions = list(base_conditions)
+            if organization_id is not None:
+                conditions.append(Project.organization_id == organization_id)
+            projects = db.scalars(
+                select(Project).join(Organization, Organization.id == Project.organization_id).where(*conditions)
+            ).all()
+
+        if search:
+            needle = search.lower()
+            projects = [p for p in projects if needle in p.name.lower() or needle in p.summary.lower()]
+
+        favorite_ids = set(
+            db.scalars(select(FavoriteProject.project_id).where(FavoriteProject.user_id == current_user.id)).all()
         )
-        conditions = list(base_conditions)
-        if organization_id is not None:
-            conditions.append(Project.organization_id == organization_id)
-        projects = db.scalars(
-            select(Project).join(Organization, Organization.id == Project.organization_id).where(*conditions)
-        ).all()
-
-    if search:
-        needle = search.lower()
-        projects = [p for p in projects if needle in p.name.lower() or needle in p.summary.lower()]
-
-    favorite_ids = set(
-        db.scalars(select(FavoriteProject.project_id).where(FavoriteProject.user_id == current_user.id)).all()
-    )
-    org_names = dict(
-        db.execute(
-            select(Organization.id, Organization.name).where(
-                Organization.id.in_({p.organization_id for p in projects})
-            )
-        ).all()
-    )
-    requirement_counts = dict(
-        db.execute(
-            select(Requirement.project_id, func.count(Requirement.id))
-            .where(Requirement.project_id.in_({p.id for p in projects}), Requirement.is_archived.is_(False))
-            .group_by(Requirement.project_id)
-        ).all()
-    )
-
-    # Hierarchical projects: parent_project_name/children are populated only
-    # from projects in `accessible_ids` — the caller's own accessible set,
-    # already computed above — so a hidden parent/child never surfaces even
-    # from a project the caller *can* see (visibility-boundary rule, see
-    # docs/decisions.md), **or** from a project in an organisation the
-    # caller is `org_admin` of — added as a narrow, explicit OR-condition
-    # here (not a change to what `_accessible_project_ids` itself returns)
-    # so an org admin sees the true hierarchy of any project in their own
-    # organisation regardless of their own role on the parent/child, per
-    # the "Project hierarchy on Project Overview" entry in
-    # docs/decisions.md. Safe to key off each row's own `organization_id`
-    # for both its parent and its children: `parent_project_id` is
-    # validated same-organisation at write time (`create_project`/
-    # `update_project`, "must be a project in this organisation"), so a
-    # project's parent/children always share its own organisation.
-    # `admin_org_ids` is computed once per distinct organisation actually
-    # present in `projects`, not per row.
-    admin_org_ids = {
-        oid for oid in {p.organization_id for p in projects} if is_org_admin(db, current_user.id, oid)
-    }
-    visible_parent_ids = {p.parent_project_id for p in projects if p.parent_project_id is not None} & accessible_ids
-    visible_parent_ids |= {
-        p.parent_project_id
-        for p in projects
-        if p.parent_project_id is not None and p.organization_id in admin_org_ids
-    }
-    parent_names = (
-        dict(db.execute(select(Project.id, Project.name).where(Project.id.in_(visible_parent_ids))).all())
-        if visible_parent_ids
-        else {}
-    )
-    children_by_parent: dict[UUID, list[ProjectAncestorOut]] = {}
-    project_ids = {p.id for p in projects}
-    if project_ids:
-        for child_id, child_parent_id, child_name in db.execute(
-            select(Project.id, Project.parent_project_id, Project.name).where(
-                Project.parent_project_id.in_(project_ids),
-                or_(Project.id.in_(accessible_ids), Project.organization_id.in_(admin_org_ids)),
-            )
-        ).all():
-            children_by_parent.setdefault(child_parent_id, []).append(
-                ProjectAncestorOut(id=child_id, name=child_name)
-            )
-
-    out = []
-    for p in projects:
-        stage = db.scalar(
-            select(ProjectStage).where(ProjectStage.project_id == p.id, ProjectStage.is_current.is_(True))
+        org_names = dict(
+            db.execute(
+                select(Organization.id, Organization.name).where(
+                    Organization.id.in_({p.organization_id for p in projects})
+                )
+            ).all()
         )
-        if stage_status is not None and (stage is None or stage.status != stage_status):
-            continue
-        roles = sorted(get_effective_project_roles(db, current_user.id, p.id), key=lambda r: r.value)
-        if role is not None and role not in roles:
-            continue
-        parent_visible = p.parent_project_id is not None and p.parent_project_id in parent_names
-        out.append(
-            ProjectListItemOut(
-                id=p.id, organization_id=p.organization_id, name=p.name, summary=p.summary,
-                created_at=p.created_at, updated_at=p.updated_at,
-                is_archived=p.is_archived, is_template=p.is_template,
-                allow_member_change_requests=p.allow_member_change_requests,
-                require_change_request_for_approved_links=p.require_change_request_for_approved_links,
-                exempt_from_org_link_lock=p.exempt_from_org_link_lock, allow_ai_approvals=p.allow_ai_approvals,
-                visibility=p.visibility,
-                terminology=p.terminology, status_id=p.status_id,
-                current_stage_name=stage.name if stage else None,
-                current_stage_status=stage.status if stage else None,
-                my_roles=list(roles),
-                is_favorite=p.id in favorite_ids,
-                organization_name=org_names.get(p.organization_id, ""),
-                requirement_count=requirement_counts.get(p.id, 0),
-                parent_project_id=p.parent_project_id if parent_visible else None,
-                parent_project_name=parent_names.get(p.parent_project_id) if parent_visible else None,
-                role_inheritance_mode=p.role_inheritance_mode,
-                role_inheritance_filter_role=p.role_inheritance_filter_role,
-                can_be_parent=p.can_be_parent,
-                children=children_by_parent.get(p.id, []),
-            )
+        requirement_counts = dict(
+            db.execute(
+                select(Requirement.project_id, func.count(Requirement.id))
+                .where(Requirement.project_id.in_({p.id for p in projects}), Requirement.is_archived.is_(False))
+                .group_by(Requirement.project_id)
+            ).all()
         )
-    if favorite_only:
-        out = [item for item in out if item.is_favorite]
-    out.sort(key=lambda item: (not item.is_favorite, item.name.lower()))
 
-    response.headers["X-Total-Count"] = str(len(out))
-    if limit is not None:
-        out = out[offset:offset + limit]
-    return out
+        # Hierarchical projects: parent_project_name/children are populated only
+        # from projects in `accessible_ids` — the caller's own accessible set,
+        # already computed above — so a hidden parent/child never surfaces even
+        # from a project the caller *can* see (visibility-boundary rule, see
+        # docs/decisions.md), **or** from a project in an organisation the
+        # caller is `org_admin` of — added as a narrow, explicit OR-condition
+        # here (not a change to what `_accessible_project_ids` itself returns)
+        # so an org admin sees the true hierarchy of any project in their own
+        # organisation regardless of their own role on the parent/child, per
+        # the "Project hierarchy on Project Overview" entry in
+        # docs/decisions.md. Safe to key off each row's own `organization_id`
+        # for both its parent and its children: `parent_project_id` is
+        # validated same-organisation at write time (`create_project`/
+        # `update_project`, "must be a project in this organisation"), so a
+        # project's parent/children always share its own organisation.
+        # `admin_org_ids` is computed once per distinct organisation actually
+        # present in `projects`, not per row.
+        admin_org_ids = {
+            oid for oid in {p.organization_id for p in projects} if is_org_admin(db, current_user.id, oid)
+        }
+        visible_parent_ids = {p.parent_project_id for p in projects if p.parent_project_id is not None} & accessible_ids
+        visible_parent_ids |= {
+            p.parent_project_id
+            for p in projects
+            if p.parent_project_id is not None and p.organization_id in admin_org_ids
+        }
+        parent_names = (
+            dict(db.execute(select(Project.id, Project.name).where(Project.id.in_(visible_parent_ids))).all())
+            if visible_parent_ids
+            else {}
+        )
+        children_by_parent: dict[UUID, list[ProjectAncestorOut]] = {}
+        project_ids = {p.id for p in projects}
+        if project_ids:
+            for child_id, child_parent_id, child_name in db.execute(
+                select(Project.id, Project.parent_project_id, Project.name).where(
+                    Project.parent_project_id.in_(project_ids),
+                    or_(Project.id.in_(accessible_ids), Project.organization_id.in_(admin_org_ids)),
+                )
+            ).all():
+                children_by_parent.setdefault(child_parent_id, []).append(
+                    ProjectAncestorOut(id=child_id, name=child_name)
+                )
+
+        # One query for every listed project's current stage, not one per row
+        # (2026-10-04 profiling: this endpoint was the hottest in the e2e suite).
+        current_stages = {
+            stage.project_id: stage
+            for stage in db.scalars(
+                select(ProjectStage).where(ProjectStage.project_id.in_(project_ids), ProjectStage.is_current.is_(True))
+            ).all()
+        } if project_ids else {}
+
+        # Bulk-loads each listed project's role inputs into the request memo,
+        # so the per-row `get_effective_project_roles` below doesn't query.
+        prefetch_project_roles(db, current_user.id, project_ids)
+
+        out = []
+        for p in projects:
+            stage = current_stages.get(p.id)
+            if stage_status is not None and (stage is None or stage.status != stage_status):
+                continue
+            roles = sorted(get_effective_project_roles(db, current_user.id, p.id), key=lambda r: r.value)
+            if role is not None and role not in roles:
+                continue
+            parent_visible = p.parent_project_id is not None and p.parent_project_id in parent_names
+            out.append(
+                ProjectListItemOut(
+                    id=p.id, organization_id=p.organization_id, name=p.name, summary=p.summary,
+                    created_at=p.created_at, updated_at=p.updated_at,
+                    is_archived=p.is_archived, is_template=p.is_template,
+                    allow_member_change_requests=p.allow_member_change_requests,
+                    require_change_request_for_approved_links=p.require_change_request_for_approved_links,
+                    exempt_from_org_link_lock=p.exempt_from_org_link_lock, allow_ai_approvals=p.allow_ai_approvals,
+                    visibility=p.visibility,
+                    terminology=p.terminology, status_id=p.status_id,
+                    current_stage_name=stage.name if stage else None,
+                    current_stage_status=stage.status if stage else None,
+                    my_roles=list(roles),
+                    is_favorite=p.id in favorite_ids,
+                    organization_name=org_names.get(p.organization_id, ""),
+                    requirement_count=requirement_counts.get(p.id, 0),
+                    parent_project_id=p.parent_project_id if parent_visible else None,
+                    parent_project_name=parent_names.get(p.parent_project_id) if parent_visible else None,
+                    role_inheritance_mode=p.role_inheritance_mode,
+                    role_inheritance_filter_role=p.role_inheritance_filter_role,
+                    can_be_parent=p.can_be_parent,
+                    children=children_by_parent.get(p.id, []),
+                )
+            )
+        if favorite_only:
+            out = [item for item in out if item.is_favorite]
+        out.sort(key=lambda item: (not item.is_favorite, item.name.lower()))
+
+        response.headers["X-Total-Count"] = str(len(out))
+        if limit is not None:
+            out = out[offset:offset + limit]
+        return out
 
 
 @router.put("/{project_id}/favorite", status_code=status.HTTP_204_NO_CONTENT)
@@ -786,6 +810,21 @@ def unset_favorite_project(
     if existing is not None:
         db.delete(existing)
         db.commit()
+
+
+@router.get("/{project_id}/my-roles", response_model=ProjectMyRolesOut)
+def get_my_project_roles(
+    project_id: UUID, current_user: User = Depends(require_project_view_or_manage), db: Session = Depends(get_db),
+):
+    """Returns the caller's effective roles on this one project, sorted — for
+    pages that hide actions the viewer can't take. Replaces reading
+    `my_roles` out of the whole `GET /projects` list, which resolved roles
+    for every accessible project (the e2e suite's hottest backend call,
+    2026-10-04) and missed archived projects entirely. Same gate as
+    `get_project`: an org admin with no project role gets `[]`.
+    """
+    roles = sorted(get_effective_project_roles(db, current_user.id, project_id), key=lambda r: r.value)
+    return ProjectMyRolesOut(roles=roles)
 
 
 @router.get("/{project_id}", response_model=ProjectOut)

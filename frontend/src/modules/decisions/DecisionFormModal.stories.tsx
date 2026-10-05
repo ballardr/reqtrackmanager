@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useEffect, useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { DecisionFormModal } from "./DecisionFormModal";
@@ -84,6 +85,32 @@ export const EditExisting: Story = {
     await expect(body.getByRole("heading", { name: "Edit DEC-001" })).toBeInTheDocument();
     await expect(body.getByDisplayValue("Legacy MySQL is EOL.")).toBeInTheDocument();
     await expect(body.queryByLabelText("Start from a template (optional)")).not.toBeInTheDocument();
+  },
+};
+
+/** The page loads decision types in parallel, so the form can open before
+ * they arrive; it must adopt the first type once they do, or Save stays
+ * disabled for good (regression, 2026-10-04). */
+export const TypesArriveAfterOpening: Story = {
+  render: (args) => {
+    function Harness() {
+      const [types, setTypes] = useState<DecisionTypeDefinition[]>([]);
+      useEffect(() => {
+        const timer = setTimeout(() => setTypes(DECISION_TYPES), 50);
+        return () => clearTimeout(timer);
+      }, []);
+      return <DecisionFormModal {...args} decisionTypes={types} />;
+    }
+    return <Harness />;
+  },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.type(await body.findByLabelText("Decision title"), "Adopt PostgreSQL");
+    await userEvent.type(body.getByLabelText("Decision statement"), "Use PostgreSQL.");
+    const save = body.getByRole("button", { name: "Save" });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ decision_type_id: DECISION_TYPES[0].id }));
   },
 };
 

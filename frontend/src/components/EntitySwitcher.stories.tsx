@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, within } from "storybook/test";
+import { useState } from "react";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import { withRouter } from "../testing/storybook-helpers";
 import { EntitySwitcher, type EntitySwitcherOption } from "./EntitySwitcher";
@@ -125,6 +126,34 @@ export const ChevronChromeIsBorderless: Story = {
     const atRest = getComputedStyle(trigger);
     await expect(atRest.borderStyle === "none" || atRest.borderWidth === "0px").toBe(true);
     await expect(atRest.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  },
+};
+
+/** The caller's options gain a sibling after mount (e.g. a version created
+ * while the page was open): changing `reloadKey` refetches, so the switcher
+ * appears instead of keeping its first, sibling-less list. */
+export const ReloadKeyPicksUpNewSiblings: Story = {
+  render: function Render(args) {
+    const [options, setOptions] = useState<EntitySwitcherOption[]>([
+      { id: "org-1", label: "Current Org", href: "/orgs/org-1/overview" },
+    ]);
+    return (
+      <div className="row">
+        <EntitySwitcher {...args} loadOptions={resolvedLoader(options)} reloadKey={options.map((o) => o.id).join(",")} />
+        <button
+          className="btn"
+          onClick={() => setOptions((prev) => [...prev, { id: "org-2", label: "New Org", href: "/orgs/org-2/overview" }])}
+        >
+          Add sibling
+        </button>
+      </div>
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Switch organisation" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Add sibling" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Switch organisation" })).toBeInTheDocument());
   },
 };
 

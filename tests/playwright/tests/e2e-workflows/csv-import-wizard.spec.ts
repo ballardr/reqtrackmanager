@@ -1,33 +1,34 @@
 import fs from "node:fs";
 
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 
 /**
  * Job to be done: bulk-importing requirements from a CSV whose headers
  * don't already match the backend's canonical field names — column
  * mapping, a preview, and per-row error reporting for rows that reference
  * a component/category prefix that doesn't exist.
+ *
+ * Each test imports into its own disposable project (2026-10-04): the
+ * round-trip test exported *every* requirement in the shared Beta-2 project
+ * and re-imported them all, doubling it on each run (1,022 requirements
+ * when found), until the import outlasted its assertion timeout.
  */
 test.describe("CSV import wizard", () => {
-  test("upload, auto-mapped columns, preview, import with one deliberately bad row", async ({ page }) => {
-    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.beta1).click();
-    await page.getByRole("link", { name: "Requirements", exact: true }).click();
+  installCleanupHook();
 
-    const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-    const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
-    const [componentsResp, categoriesResp] = await Promise.all([
-      page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/components`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/categories`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-    ]);
-    const components: { id: string; prefix: string }[] = await componentsResp.json();
-    const categories: { id: string; prefix: string; component_id: string }[] = await categoriesResp.json();
+  /** Creates the test's disposable project and opens its requirements list. */
+  async function openImportProject(page: Page, label: string) {
+    const project = await createDisposableProject(page.request, PERSONAS.orgAdminAlphaBeta.email, label);
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.goto(`/projects/${project.projectId}`);
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
+    return project;
+  }
+
+  test("upload, auto-mapped columns, preview, import with one deliberately bad row", async ({ page }) => {
+    const { components, categories } = await openImportProject(page, "E2E CSV Import");
     const component = components[0];
     const category = categories.find((c) => c.component_id === component.id)!;
 
@@ -71,13 +72,7 @@ test.describe("CSV import wizard", () => {
    * must stay in sync with the backend's column contract).
    */
   test("export includes a custom field value and re-imports unchanged", async ({ page }) => {
-    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.beta2).click();
-    await page.getByRole("link", { name: "Requirements", exact: true }).click();
-
-    const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-    const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
-    const authHeaders = { Authorization: `Bearer ${token}` };
+    const { projectId, headers: authHeaders, components, categories } = await openImportProject(page, "E2E CSV Round Trip");
     const fieldName = `E2E Priority ${Date.now()}`;
     const fieldResp = await page.request.post(
       `http://localhost:8000/api/v1/projects/${projectId}/custom-fields`,
@@ -86,12 +81,6 @@ test.describe("CSV import wizard", () => {
     expect(fieldResp.ok()).toBeTruthy();
     const field = await fieldResp.json();
 
-    const components: { id: string; prefix: string }[] = await (
-      await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/components`, { headers: authHeaders })
-    ).json();
-    const categories: { id: string; prefix: string; component_id: string }[] = await (
-      await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/categories`, { headers: authHeaders })
-    ).json();
     const component = components[0];
     const category = categories.find((c) => c.component_id === component.id)!;
     const reqName = `E2E Export Round Trip (${Date.now()})`;
@@ -122,10 +111,11 @@ test.describe("CSV import wizard", () => {
       await expect(page.getByText("Map your CSV columns")).toBeVisible();
       // The exported file is already canonically headed, so every field
       // auto-maps — including the dynamic `cf_<name>` column.
-      const importButton = page.getByRole("button", { name: /^Import \d+ row/ });
+      const importButton = page.getByRole("button", { name: /^Import 1 row/ });
       await expect(importButton).toBeEnabled();
       await importButton.click();
-      await expect(page.getByText(/Import complete: \d+ created, 0 error\(s\)/)).toBeVisible();
+      // The disposable project holds just the one exported requirement.
+      await expect(page.getByText("Import complete: 1 created, 0 error(s)")).toBeVisible();
     });
   });
 });
