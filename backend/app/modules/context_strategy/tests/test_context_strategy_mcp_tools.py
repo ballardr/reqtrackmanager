@@ -31,13 +31,13 @@ def _by_local_name() -> dict[str, object]:
 
 
 def test_context_strategy_mcp_tools_resolve_against_the_real_registry():
-    """All 65 declared tools resolve — no tool is silently excluded by
+    """All 74 declared tools resolve — no tool is silently excluded by
     `build_mcp_tool_manifest`'s mechanical verification (a wrong path
     template, an unmatched route, or a mismatched method would exclude a
     tool rather than error, so this count is the actual regression guard —
     see that function's own docstring)."""
     by_name = _by_local_name()
-    assert len(by_name) == 65
+    assert len(by_name) == 74
 
 
 def test_context_strategy_read_only_tools_are_get_and_non_mutating():
@@ -48,6 +48,9 @@ def test_context_strategy_read_only_tools_are_get_and_non_mutating():
         "list_open_questions", "get_open_question", "list_pain_point_scores", "get_pain_point_scores",
         "list_strategy_relationships", "list_future_state_relationships", "list_pain_point_relationships",
         "list_guiding_principle_relationships", "list_open_question_relationships",
+        "get_pain_point_prioritisation_report", "get_strategy_cascade_report", "get_pain_point_coverage_report",
+        "get_open_question_register_report", "get_future_state_roadmap_report", "get_guiding_principle_usage_report",
+        "get_strategy_change_history_report", "get_summary_report", "get_upgrade_drivers_report",
     ):
         tool = by_name[name]
         assert tool.method == "GET", name

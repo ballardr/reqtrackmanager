@@ -34,7 +34,8 @@ Reopened 2026-10-04 for the Reporting extension (Phases 9–14: per-persona
 Pain Point scoring plus reports R1–R9); Phase 9 sign-off and Phase 10
 (generic scoring-matrix core) complete 2026-10-04 — see "Phase 10 notes";
 Phase 11 (per-persona Pain Point scoring + intentional flag) complete
-2026-10-05 — see "Phase 11 notes".
+2026-10-05 — see "Phase 11 notes"; Phase 12 (report backend R1–R9) complete
+2026-10-05 — see "Phase 12 notes".
 First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
@@ -60,7 +61,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-**16 / 19 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–11 are done; build Phase 12 (report backend R1–R9) next, reusing `pain_point_scores.py`'s `load_scoring_context`/`build_pain_point_scoring` for R1 and R9 (see "Phase 11 notes").** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
+**17 / 20 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–12 are done. Phase 12b (extract the module-neutral report framework into core, added 2026-10-06) is next, then Phase 13 (shared Reports UI) on top of it.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
 split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
 note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
 module's last phase, shipped the same day — see "Phase 8 notes" below.
@@ -83,8 +84,9 @@ module's last phase, shipped the same day — see "Phase 8 notes" below.
 | 9 | Exploratory: reporting scope & scoring design sign-off | [x] Resolved (2026-10-04) |
 | 10 | Generic scoring-matrix infrastructure (core) | [x] Complete (2026-10-04) |
 | 11 | Per-persona Pain Point scoring + intentional flag | [x] Complete (2026-10-05) |
-| 12 | Report generation backend (R1–R9) | [ ] Not started |
-| 13 | Reports UI + generic report-registration hook | [ ] Not started |
+| 12 | Report generation backend (R1–R9) | [x] Complete (2026-10-05) |
+| 12b | Core report framework (extracted from Phase 12) | [ ] Not started — added 2026-10-06 |
+| 13 | Reports UI (shared core UI + per-module views) | [ ] Not started — builds on 12b |
 | 14 | Docs website + seeds verification | [ ] Not started |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
@@ -3307,6 +3309,8 @@ component.
 
 ## Phase 12 — Report generation backend (R1–R9)
 
+**Status:** [x] Complete (2026-10-05) — see "Phase 12 notes" below.
+
 Implement this in `backend/app/modules/context_strategy/reports.py`,
 following `modules/compliance/reports.py`'s pattern.
 
@@ -3335,32 +3339,402 @@ addressed:* figures that disagree between outputs, and cross-project or
 cross-tenant leakage through aggregated exports. *Outcome:* consistent,
 permission-correct report data.
 
-## Phase 13 — Reports UI + generic report-registration hook
+## Phase 12 notes (2026-10-05)
+
+**Shipped** (the module-neutral parts move to core in Phase 12b):
+`reports.py` (`collect_*` for R1–R9, the `REPORTS` catalogue,
+`readable_projects`), `report_render.py` (PDF, CSV), `report_router.py`
+(JSON/PDF/CSV routes generated from the catalogue), `labels.py` (backend
+label maps), the `org_reports_viewer` org role, nine read-only MCP tools
+(manifest now 74), `relationships.get_links_from_many`, and a fix to
+`services.downloads.filename_safe` (non-ASCII names crashed every export with
+a 500). No table or migration.
+
+**Endpoints** (all `GET`, `?format=json|pdf|csv`, default `json`):
+- Project: `/api/v1/projects/{id}/modules/context_strategy/reports/<slug>`
+  for all nine; extra params `include_children`, `model_key`, `rollup`,
+  `stale_months` (R7), `since` (R7).
+- Organisation: `/api/v1/orgs/{id}/modules/context_strategy/reports/<slug>`
+  for R1, R3, R4, R8, R9 only; needs the `org_reports_viewer` role.
+
+| Key | Slug | Org-wide | Gating sub-component |
+|-----|------|----------|----------------------|
+| R1 | `pain-point-prioritisation` | yes | `pain_point` |
+| R2 | `strategy-cascade` | no | `strategy` |
+| R3 | `pain-point-coverage` | yes | `pain_point` |
+| R4 | `open-question-register` | yes | `open_question` |
+| R5 | `future-state-roadmap` | no | `future_state` |
+| R6 | `guiding-principle-usage` | no | `guiding_principle` |
+| R7 | `strategy-change-history` | no | any |
+| R8 | `summary` | yes | any |
+| R9 | `upgrade-drivers` | yes | `pain_point` |
+
+```mermaid
+flowchart LR
+    REQ[ReportRequest<br/>readable projects, model, roll-up] --> COL[collect_* R1–R9]
+    COL --> RES[ReportResult<br/>sections + metrics + data]
+    RES --> JSON[JSON on-screen / MCP]
+    RES --> PDF[PDF: all sections]
+    RES --> CSV[CSV: first section]
+    RES --> R8[R8 re-lists gap sections]
+```
+
+**Decisions and the security review:** see `docs/decisions.md`'s "Module 1
+(Context & Strategy) Phase 12" entry. Headlines: org access is a module role
+(**Decided by: Agent**); reports cover only projects the caller has a role on;
+"open" Pain Points are Submitted/Triaged/Accepted; cross-artefact gap checks
+count only readable artefacts.
+
+**For Phase 12b/13:**
+- The JSON response is `{key, title, scope_label, generated_at, notes,
+  sections[{key,title,columns,rows,note,gap}], metrics[{label,value}], data,
+  eligible_projects}`. The generic Reports page can render `sections` for any
+  report with no per-report code; `data` carries the structured form: R1/R9
+  `groups[]` (per scoring model: axis levels and `items[]` with score, band,
+  Blocker, per-persona rows and a Severity × Frequency `matrix` point), R4
+  `items[]`, R2 `tree`.
+- Hide a report entry when its sub-component is off (the route 404s) or, for
+  the org section, when the caller lacks `org_reports_viewer`. There is no
+  endpoint listing the caller's roles for this, so the UI should treat a 403
+  on an org report as "not permitted" (or the registration hook can expose a
+  capability check).
+- The catalogue the registration hook needs (key, slug, title, description,
+  org-level, sub-component) is `reports.REPORTS`; Module 10's registration API
+  should be shaped from that.
+
+**Verification:** see `docs/decisions.md`.
+
+## Phase 12b — Core report framework (extract the module-neutral half of Phase 12)
+
+**Status:** [ ] Not started — added 2026-10-06 (**Decided by: User**, after
+asking whether Phase 12's backend should be core; the extraction scope below
+is **Decided by: Agent** from a survey of the other modules' plans).
+
+**Why this phase exists.** Phase 12 put everything in `modules/
+context_strategy/`, but about half of it has nothing Context & Strategy in
+it: the result shapes, the PDF/CSV renderers, the JSON schema, the
+"readable projects" scope rule, the `?format=` route plumbing and the org-role
+gate. Modules can't import each other, so the only way to share that code is
+core. Leaving it in this module guarantees the next consumer copies it (or
+breaks the boundary) — the same drift `modules/compliance/reports.py` already
+shows.
+
+**The existing requirement report is a second thing to share with (added
+2026-10-06, after review).** Core already generates requirement reports
+(`services/reports.py`, `routers/reports.py`, `ReportTemplate` in
+`models/organization.py`, the page `frontend/src/pages/ReportsPage.tsx` at
+`/projects/:id/reports`). It mixes two layers:
+- *Requirement-specific:* `ReportRequirementRow`, grouping by component and
+  category, the four-column table, terminology overrides in the CSV,
+  `_collect_rows` filters.
+- *Document-level, reusable by any report:* org branding via
+  `ReportBranding` (accent colour, cover page with logo, footer text),
+  the Markdown-to-PDF renderer for intro, chapters and appendices
+  (`_markdown_to_flowables`), image resolution restricted to org shared
+  resources with an ownership check (`_resolve_report_images`), the
+  ReportLab-markup escaping (`_safe`, an SSRF guard), CSV formula
+  neutralising, and the filename helper.
+
+Phase 12's renderer ignores all of the second group, so a Pain Point report
+looks unbranded next to a requirements report from the same organisation,
+and a third copy of `_safe` now exists. The shared layer therefore has to be
+built *from* `services/reports.py`, not alongside it.
+
+**Consumers surveyed (2026-10-06):**
+
+| Module | Plan says | Needs from core |
+|--------|-----------|-----------------|
+| Module 2 Stakeholders & Personas | Phase 6 reports S1–S5, "follow Module 1 Phase 12's pattern", org variants, sub-component gating | everything in this phase |
+| Module 14 Product Feedback | Phase 6 reports F1–F5 through "Module 1 Phase 13's hook" | the same |
+| Module 7 Traceability | Phase 5 matrices and coverage reporting | `ReportSection` tables and PDF/CSV; matrices may need a richer section kind (open question 2) |
+| Module 13 Product Tiers | R9's tier columns only; no reports of its own | nothing new |
+| Module 3 Risk | Reporting is mentioned only as a query need; no report phase yet | the same, when it adds one |
+| Module 10 Reporting & Analysis | Phase 0 note: adopt and extend the Phase 13 hook as its registration API | the registration shape; its engine (templates, provenance) is a different layer, kept out of this phase |
+| Compliance (existing) | own `reports.py` (1,170 lines): ~700 lines of module-specific collectors and row dataclasses, plus its own PDF/CSV code: a second copy of `_safe`, `_p`, `_styled_table` and the A4 document build, default accent only (no org branding, cover or footer). Project and org report routes already merge PDF/CSV behind `?format=` with scoping filters | the shell (item 3b) and the registration/catalogue; see "Compliance review" below |
+| Decision Management (Module 4) | no report or export code at all, and its plan lists none. The overview's Module 10 list names decision logs and registers | nothing now; a Decision register is a natural first `ReportDefinition` once 12b lands (open question 4) |
+
+**Compliance review (2026-10-06).** Compliance's reports are the same
+pattern built a second time, with three differences that the framework has
+to allow for or a migration would change behaviour:
+1. *Org-wide scope is a different rule.* Compliance's org report covers
+   **every project in the organisation** for a Compliance Manager (§26: "view
+   compliance across projects" is a manager capability), not only projects the
+   caller holds a role on. Context & Strategy's rule is the stricter
+   readable-projects one. So the scope policy must be a declared field on
+   `ReportDefinition` (`org_scope`: `readable_projects` or `all_org_projects`,
+   default the stricter), never hard-coded in the framework. Choosing
+   `all_org_projects` must be explicit and tied to an `org_role_key`.
+2. *Richer cells.* Its main PDF table uses a multi-line "narrative" cell
+   (title, then bold-prefixed reasoning, clarification, notes), which a plain
+   string cell can't express. The shell needs a safe rich-cell form (a small
+   allow-listed set: bold prefix, line breaks) before its layout can move.
+3. *More parameter types.* Its filters are UUIDs (`standard_id`,
+   `standard_version_id`, `requirement_id`, `project_id`), so
+   `ReportParamDefinition` needs a `uuid` type.
+
+What is shareable now: `_safe`, `_p`, `_styled_table`, the document build,
+`csv_safe` use, and branding. That removes real duplication and gives
+Compliance reports the org's branding without touching their content.
+
+**What moves to core, and what stays**
+
+```mermaid
+flowchart TB
+    subgraph core[Core: new, module-neutral]
+        DEF[ReportDefinition on ModuleDefinition.reports]
+        CTX[ReportContext + readable_projects]
+        RES[ReportSection / ReportResult]
+        REN[render_pdf / render_csv]
+        RT[build_report_routers + report MCP tools]
+        CAT[catalogue endpoints]
+    end
+    subgraph mod[Each module: domain content]
+        COL[collect_* functions]
+        LAB[label maps]
+        ROLE[org reports role declaration]
+    end
+    COL --> RES
+    DEF --> RT
+    DEF --> CAT
+    RT --> REN
+    CTX --> COL
+```
 
 **Scope:**
-- **Registration hook.** Add generic `projectReports`/`orgReports` to
-  `TierAModuleDefinition`, with matching `ModuleDefinition` metadata.
-  - The shape is designed as Module 10's future report-type registration
-    API; record it in Module 10's plan too.
-  - Core `ReportsPage` renders every enabled module's entries through the
-    registry, with no import from `modules/context_strategy/`.
-  - Compliance can migrate onto the hook later.
-  - Module 2 (Stakeholders & Personas) Phase 6 is a second planned consumer
-    (reports S1–S5), so don't shape the hook around Context & Strategy
-    alone.
-- **Report entries.** Context & Strategy registers R1–R9, each with
-  filters, model/roll-up switchers where relevant, PDF/CSV downloads, and a
-  Toast on success or failure.
-- **On-screen views:** the R1 matrix and per-persona view, and the R4
-  ageing table, built from shared components.
-- **Tests:** Playwright for each download, the R1 view and switchers, the
-  org reports being hidden without the permission, and a module-disabled
-  project showing no entries. Storybook.
 
-**Reasoning:** *Why:* reports behind an API go unused. *Risk addressed:* a
-bespoke nav pattern, a core-imports-module violation, or a structure that
-Module 10 has to throw away. *Outcome:* one extensible Reports
-destination.
+1. **Registry.** `ReportDefinition` (frozen dataclass: `key`, `slug`,
+   `title`, `description`, `subcomponent` or `None`, `org_level`,
+   `org_role_key`, `org_scope` (see "Compliance review"), `params: tuple[ReportParamDefinition, ...]`, `collector`)
+   and `ModuleDefinition.reports`, with `get_all_reports()`. Validated at
+   registration the way MCP tools are: a duplicate slug, an unknown
+   sub-component or an `org_role_key` that isn't an org-scoped role of that
+   module excludes the report and logs.
+2. **Typed parameters.** `ReportParamDefinition` (`name`, `type`: `string|
+   integer|boolean|date|uuid`, `default`, `choices`, `minimum`/`maximum`,
+   `description`) so core validates query values (400 on a bad choice, 422 on
+   a bound) and derives both the OpenAPI parameters and the MCP tool params
+   from one declaration. Today's `model_key`, `rollup`, `include_children`,
+   `stale_months` and `since` become declarations; `include_children` and
+   `format` are framework-level, not per-report.
+3. **Framework module** `backend/app/services/report_framework.py` (name
+   chosen to avoid the existing requirement-report `services/reports.py`,
+   `routers/reports.py`, `schemas/report.ReportRequest` and
+   `services.reports.ReportBranding`, none of which change):
+   `ReportSection`, `ReportResult`, `ReportContext` (organisation,
+   readable projects, root project, `today`, validated `params`, and a cached
+   `eligible(db, subcomponent)`), `readable_projects`, `render_pdf`,
+   `render_csv`, and the JSON schema (`ReportOut` and friends). Moved
+   essentially unchanged from `reports.py`, `report_render.py` and
+   `report_router.py`.
+3b. **Shared document shell, extracted from `services/reports.py`.** New
+   `services/report_document.py` holding what is not requirement-specific:
+   `ReportBranding`, cover page, footer, the Markdown renderer, image
+   resolution with its ownership check, `_safe`, and a table-flowable
+   builder that takes a page size (requirement reports are portrait A4 with
+   fixed column widths; wide module tables are landscape). Then:
+   - `services/reports.py` keeps only the requirement-specific pieces
+     (rows, grouping, its table, terminology CSV) and builds on the shell.
+     **Its output must not change**: `test_reports.py`,
+     `test_report_templates.py`, `test_report_images.py` and
+     `test_reporting_and_changes.py` pass untouched.
+   - `render_pdf` (item 3) is built on the same shell, so a module report
+     gets the same cover, footer and escaping.
+   - Module reports accept an optional `report_template_id` (a query
+     parameter, validated against the caller's organisation exactly as
+     `routers/reports.py` does) and apply the template's **branding only**:
+     accent colour, cover page, logo and footer. A template's intro,
+     chapters and appendices are written for requirement reports and are
+     not applied to other report types (open question 1).
+   - `routers/reports.py` keeps its own route and request model; only the
+     helpers it imports move. `schemas/report.ReportRequest` is untouched.
+4. **Route and MCP builders.** `build_report_routers(module_key,
+   definitions)` returns the project and org routers for the module to
+   include from its own routers, so routes stay under the module's prefix
+   and the existing MCP path verification keeps working (a core-owned
+   generic route would not). The org gate becomes generic: the definition's
+   `org_role_key` through `user_satisfies_module_role`. Companion
+   `report_mcp_tools(...)` returns the `McpToolDefinition`s (project routes
+   only, as in Phase 12).
+5. **Catalogue endpoints** `GET /api/v1/projects/{id}/report-catalogue` and
+   `GET /api/v1/orgs/{id}/report-catalogue`: every report the caller can run
+   (module enabled, sub-component enabled, org role held), with title,
+   description, parameters and which formats exist. This lets Phase 13's page
+   decide what to show without probing for 403/404.
+6. **Re-point Context & Strategy** onto it. Delete `report_render.py` and the
+   moved parts of `reports.py`/`report_router.py`; `module.py` declares
+   `reports=` and uses the two builders; `_shared.require_org_reports_role`
+   and `_REPORT_QUERY_PARAMS` go. Collectors, `labels.py`, the
+   `org_reports_viewer` role and all report maths stay.
+7. **Docs.** A new `docs/modules.md` section (next to §4d scoring schemes)
+   with a worked example; `docs/solution-architecture.md`; a
+   `docs/decisions.md` entry that also corrects Phase 12's "renderer is
+   module-local" wording; and a one-line pointer in the Module 2 and Module 14
+   plans.
+
+**Acceptance guard.** Behaviour must not change: the four requirement-report test files above, the 31 tests in
+`test_context_strategy_reports.py`, `test_downloads_filename.py` and the MCP
+manifest test (74 tools) pass with only import/fixture edits (a report
+requested without a template stays unbranded). Add core tests
+that use a synthetic `ReportDefinition` that is *not* Context & Strategy:
+param validation, duplicate-slug exclusion, org gate (403 without the role,
+404 for a project-only slug), unreadable-project exclusion, cross-org
+isolation, PDF/CSV rendering and formula neutralising, catalogue contents.
+Core must import nothing from `app.modules.<key>/` (the boundary rule).
+
+**Open questions for the implementing session** (flag to the user, don't
+settle silently):
+1. **Template content for non-requirement reports.** Branding is shared
+   (item 3b). Whether a `ReportTemplate`'s intro, chapters and appendices
+   should ever apply to a module report is a template-design question:
+   today they are requirement-report content, so recommendation is
+   branding-only now, with per-report-type content left to Module 10, which
+   owns template versioning.
+2. **Richer section kinds.** Module 7's matrices and S1's grid are tables
+   today. If a `ReportSection` needs a `kind` (table, matrix, chart data) add
+   it when Module 7 needs it, not now.
+3. **Pagination.** Phase 12 returns everything; decide whether the framework
+   should cap rows for very large organisation-wide reports.
+4. **Decision register.** Decision Management has no reports. Add one
+   (a register by status and type, with approval ageing) as a Module 4 or
+   Module 10 phase? Not part of 12b, but it would be the first non-Context &
+   Strategy proof that the framework is genuinely generic.
+5. **Compliance migration depth.** Recommendation: in 12b move only the
+   shared primitives (item 3b); migrate its collectors onto
+   `ReportDefinition`/catalogue and its layout onto rich cells in a later
+   phase, with its existing report tests as the guard.
+
+**Notes for the implementing session** (written 2026-10-06 so a fresh
+session needs nothing from the conversation that produced this plan):
+- **Start state.** Phase 12 (module-local report backend) must be committed
+  first; if the working tree still shows `reports.py`, `report_render.py`,
+  `report_router.py`, `labels.py` and `test_context_strategy_reports.py` as
+  uncommitted, ask the user to commit before refactoring. Phase 12 is
+  described in "Phase 12 notes" and `docs/decisions.md`'s "Module 1 (Context
+  & Strategy) Phase 12" entry (including its security review: cross-project
+  leakage, role escalation, CSV and PDF injection), all of which must hold
+  after the extraction.
+- **Baseline before changing anything.** Run the backend suite once and
+  record the failures. The last full run (after Phase 12) was 1,658 passed
+  and 14 failed, all in `tests/test_invites_and_external_users.py`,
+  `tests/test_oidc_provisioning.py` and `tests/test_org_export_import.py`.
+  They are believed to be the known host-level SMTP/mailhog DNS failures
+  (see `docs/development.md`) but that was not confirmed; check them against
+  a clean checkout so they aren't mistaken for regressions, or hidden.
+- **Running tests.** From `backend/`: `DATABASE_URL=postgresql://reqtrack:
+  reqtrack@localhost:5432/reqtrack_test python -m pytest ...` (it actually
+  uses `reqtrack_pytest_test`; `docker compose up -d db` in
+  `tests/container` first). Never run two pytest invocations at once; they
+  share one database (see `CLAUDE.md`).
+- **Likely regression traps.** (1) The requirement-report output must be
+  byte-for-byte equivalent in structure: run its four test files after every
+  step, not just at the end. (2) The MCP manifest drops a tool silently if
+  its path doesn't match a real route on the module's router, so the
+  74-tool count test is the guard. (3) `services/downloads.filename_safe`
+  was fixed in Phase 12 (non-ASCII names caused a 500); keep it. (4) Name
+  clashes in core: `services/reports.py`, `routers/reports.py`,
+  `schemas/report.ReportRequest`, `services.reports.ReportBranding` already
+  exist for requirement reports.
+- **Rules from `CLAUDE.md` that apply**: no per-module code in core files
+  (extend `ModuleDefinition` generically); every function documented;
+  file-level docstrings; fix any bug found rather than defer it; record
+  decisions in `docs/decisions.md` with *Decided by: User/Agent*; do not
+  commit (the user commits); update `docs/modules.md`,
+  `docs/solution-architecture.md` and the plan's status table on completion.
+- **Security review required** (SOC 2 change-management policy): this phase
+  touches access control (the org role gate, the scope rule) and aggregated
+  reads. Repeat the identify, verify, remediate pass and record it.
+
+**Reasoning:** *Why:* Modules 2 and 14 (and later 7 and 3) will each build
+reports, and modules can only share code through core. *Risk addressed:* a
+second and third copy of the renderer, scope rule and route plumbing that
+drift apart (different CSV safety, different access rules), or a module
+importing another module's report code. *Outcome:* adding a report to a
+module is a `collect_*` function plus one declaration; access, formats, MCP,
+parameters and the catalogue come from core.
+
+## Phase 13 — Reports UI (shared core UI + per-module views)
+
+**Hard dependency:** Phase 12b (core report framework and catalogue
+endpoints). Rewritten 2026-10-06 so the shared parts are core; the shape
+change from the original "`projectReports`/`orgReports` hook" is **Decided
+by: Agent**, for the user to confirm.
+
+**Principle:** everything that is the same for every report is a core
+component, built once; only genuinely report-specific rendering lives in a
+module. Core imports nothing from `modules/<key>/`, and a module-specific
+view is reached only through its declarative registration
+(`TierAModuleDefinition`), per the module-boundary rule.
+
+**Core (shared) frontend, new:**
+- **Reports catalogue section** on the existing
+  `frontend/src/pages/ReportsPage.tsx` (route `/projects/:projectId/
+  reports`, today the requirement-report page only: templates,
+  intro/chapters/appendices editors, component/category filters). Extend
+  it, don't replace it: the requirement report stays as it is, and a
+  "More reports" area lists every report from
+  `GET /api/v1/projects/{id}/report-catalogue`. No frontend list of reports
+  exists: the catalogue (module enabled, sub-component enabled, org role
+  held) is the single source.
+- **`ReportViewer`**: renders any `ReportResult` JSON generically: notes,
+  headline metrics, each section as a table (gap sections marked), the empty
+  state, loading and error states.
+- **`ReportParamsForm`**: generated from the declared parameters (select for
+  `choices`, number with bounds, boolean switch, date, uuid) plus the
+  framework-level `include_children` switch and the optional branding
+  template picker. Labels come from the catalogue, not hard-coded per
+  report.
+- **Downloads** through the existing shared
+  `components/ReportExportButton.tsx` (the style guide's "report export
+  trigger"), with a Toast on success or failure. Do not build another.
+- **Organisation-wide reports surface.** Registered organisation reports
+  appear for callers who hold the org role, from
+  `GET /api/v1/orgs/{id}/report-catalogue`. Where they live is open
+  question 1 below.
+- Storybook for each new component; shared label maps for any enum shown.
+  Follow `docs/ux-style-guide.md` (Principles 11/12; feedback on every
+  action).
+
+**Per-module (Context & Strategy), registered, not imported by core:**
+- Optional `reportViews: Record<reportKey, Component>` on
+  `TierAModuleDefinition` (`frontend/src/modules/types.ts`), consumed
+  generically by core. A report with no registered view falls back to
+  `ReportViewer`. This replaces the originally planned
+  `projectReports`/`orgReports` entries, which the backend catalogue now
+  makes unnecessary.
+- R1 view: the Severity × Frequency matrix (shared `ScoringMatrixChart`),
+  ranked list with Blocker badges, model and roll-up switchers (shared
+  `ScoringModelSwitcher`), and the per-persona breakdown.
+- R4 view: the ageing table with overdue and unowned highlighted.
+- Every other report (R2, R3, R5–R9) uses the generic `ReportViewer`; add a
+  custom view only if the table form genuinely fails the reader.
+
+**Tests:** Playwright for: each report's PDF and CSV download; the R1 view
+and its model/roll-up switching; org reports hidden without the org role
+(and visible with it); a module-disabled project and a disabled
+sub-component showing no entry; the branding template applying to a module
+PDF. Storybook for every new component. Component tests may use a synthetic
+catalogue entry so the generic components are proven independent of Context
+& Strategy.
+
+**Open questions for the implementing session** (flag, don't settle
+silently):
+1. Where organisation-wide reports live: a section of the org overview
+   (`orgOverviewSections` already exists), the org admin area, or a new
+   `/orgs/:orgId/reports` page.
+2. Whether the requirement report should also appear as an entry in the
+   catalogue so the page has one list (it has a different request model, so
+   this is presentation only).
+3. Whether Module 2's and Module 14's planned custom views (S1 grid, F1
+   ranking) need anything the `reportViews` shape lacks; check their Phase 6
+   plans before finalising it, and record the shape in Module 10's plan,
+   which adopts it as its registration API.
+
+**Reasoning:** *Why:* reports behind an API go unused, and Modules 2 and 14
+will each need the same page, form, viewer and downloads. *Risk addressed:*
+a bespoke per-module report page (the "fifth one-off pattern" the style
+guide warns about), a core-imports-module violation, or a structure Module
+10 has to throw away. *Outcome:* one Reports destination; adding a report is
+a backend declaration, plus a custom view only when a table isn't enough.
 
 ## Phase 14 — Docs website + seeds verification
 

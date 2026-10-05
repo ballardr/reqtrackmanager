@@ -9402,3 +9402,121 @@ module as a brand-new org admin; it did not recur across 14 later runs.
 **Known gaps:** the docs website covers the new behaviour in prose only
 (screenshots and the R1–R9 reports are Phase 12–14 work); the Tier
 relationships wait for Module 13.
+
+## Module 1 (Context & Strategy) Phase 12 — report backend R1–R9 (2026-10-05)
+
+The nine Context & Strategy reports now exist as a backend: one `collect_*`
+function each in `modules/context_strategy/reports.py` returning a
+`ReportResult`, which `report_render.py` turns into PDF or CSV and
+`report_router.py` serves as JSON, PDF or CSV (`GET .../reports/<slug>?format=`).
+Project routes cover all nine reports; organisation routes cover R1, R3, R4,
+R8 and R9. Nine read-only MCP tools (`get_<slug>_report`) call the project
+routes. R1 and R9 are built on Phase 11's `build_pain_point_scoring`, so
+scoring maths exists in one place. No new table or migration. Phases 13–14
+(UI, docs site, seed verification) are untouched.
+
+Decisions (the report list, formats, model/roll-up choice and access rules
+are the plan's Phase 9; these are the build-time calls):
+- **Org-wide access is a new org-scoped module role, `org_reports_viewer`,
+  not a new permission atom.** (Decided by: Agent, implementing Phase 9 Q12
+  "a dedicated module-registered permission, org admins by default".)
+  *Why:* the FGAC vocabulary (`services/permissions.py`) is
+  artefact-type × level plus a hand-maintained administrative list, so a
+  module-specific atom would need a core edit; a module role composes with
+  org admin automatically, is assignable in the existing role UI, and
+  mirrors `pain_point_type_admin`. *Risk:* it is not a first-class atom, so
+  custom roles can't carry it. Revisit if FGAC gains module-registered
+  administrative atoms.
+- **A report covers only projects the caller holds a project role on**
+  (`readable_projects`). (Decided by: Agent, per Phase 9 Q12 "still filtered
+  to projects the caller can read".) Org admin alone is not enough, matching
+  `rbac.require_project_view`; server admins get nothing extra. Child
+  projects are added only with `include_children` and only if readable.
+- **"Open" Pain Points are Submitted, Triaged and Accepted.** (Decided by:
+  Agent.) Addressed means fixed; Rejected, Duplicate and Closed are
+  finished. They would only add noise to a fix ranking.
+- **Org-wide R1/R9 group by the model actually applied** (the project's
+  resolved default unless `model_key` is given) and never rank across
+  models. (Decided by: User, Phase 9 Q3.) Empty groups are omitted.
+- **R1's matrix point is the worst counted persona** (highest
+  Severity × Frequency), independent of the chosen model. (Decided by:
+  Agent.) *Why:* the matrix is fixed to Severity vs Frequency, so it must
+  not move when the user switches model, and one point per Pain Point needs
+  a rule that can't average a Blocker away.
+- **R9's churn-risk rule:** a counted persona at or above 80% of the top
+  Severity level. (Decided by: Agent.) The plan said only "high-severity".
+  Tier columns are empty and the report says so until Module 13 exists.
+- **Cross-artefact gap checks count only artefacts inside the readable
+  scope.** (Decided by: Agent.) *Why:* a link to a Requirement or Decision in
+  a project the caller can't read must neither be shown nor silently hide a
+  gap. The cost is that a gap list can over-report; it can't leak. Decisions
+  are resolved through `registry.get_artefact_summary`, never by importing
+  Module 4, so R6's Decision counts stay 0 until Module 4 Phase 7 links them.
+- **Organisation-scoped Strategies, Future States and Guiding Principles
+  appear in project reports** (R2 parents, R6/R7 rows) because every org
+  member can already read them. R7 labels their scope "Organisation".
+  (Decided by: Agent.)
+- **CSV is the first section only; PDF carries all sections.** (Decided by:
+  User for "PDF + CSV, CSV = main table"; the section order is Agent.)
+- **MCP covers project routes only.** (Decided by: Agent.) The existing
+  rule, enforced by `test_context_strategy_org_scoped_endpoints_have_no_mcp_tools`,
+  is that every tool path is project-scoped, and an org-wide aggregate has
+  no project to gate on.
+- **Report reads are not audit-logged**, following `modules.compliance.reports`.
+  (Decided by: Agent.) The SOC 2 data-classification policy asks for
+  exports to be handled as Confidential, not for each read to be logged;
+  every field is already available to the same caller via the JSON
+  endpoints, and nothing Restricted (files, secrets) is included.
+- **Core addition:** `services.relationships.get_links_from_many`, the
+  mirror of `get_links_to_many`, so reports don't issue one query per item.
+
+**Review (identify → verify → remediate), per the change-management policy:**
+the change adds a role and aggregated read paths.
+1. *Leak across projects/tenants via an aggregate.* Verified by tests: an org
+   viewer on one of two projects sees only that project's items; a second
+   organisation's admin gets none of the first's data and 403/404 on its
+   routes; a member of a parent only doesn't gain its child with
+   `include_children`.
+2. *Role escalation.* `org_reports_viewer` grants no project access and no
+   write; project-only reports aren't routed at org level (404, tested).
+3. *Injection.* CSV formula cells are prefixed (tested); PDF text is
+   XML-escaped (a `<b>` title test); sort/filter inputs are typed query
+   parameters (`rollup` and `model_key` rejected with 400, `stale_months`
+   bounded).
+4. **Found and fixed: any export whose project or organisation name held a
+   character outside Latin-1 (an em dash, CJK) returned 500.**
+   `services.downloads.filename_safe` fed such names straight into the
+   `Content-Disposition` header, which Starlette encodes as Latin-1 and
+   which clients mis-decode if it isn't ASCII. It is shared by the
+   requirement, project and org exports and the Compliance reports, so it
+   was fixed once: anything outside printable ASCII becomes `_`. Covered by
+   `tests/test_downloads_filename.py` and a report test.
+
+**Verification:** 31 new report tests (one or more per report, model and
+roll-up switching, 1-of-N personas, Blocker surviving an average,
+intentional segregation, input gaps, finished/archived exclusion, role gate,
+unreadable-project exclusion, cross-org isolation, child projects, disabled
+module and sub-component, PDF/CSV output, an empty project in every format
+for all nine reports) and a unit test for `filename_safe`. The full
+`context_strategy` suite (173 tests, before the filename fix) and the MCP
+manifest test (now 74 tools) pass; `ruff check` is clean for the backend.
+
+**Known gaps:** no UI yet (Phase 13), so none of this is user-visible; R6's
+Decision counts and R9's tier columns are placeholders until Modules 4
+Phase 7 and 13; report endpoints aren't paginated (a very large
+organisation-wide R1 returns every open Pain Point).
+
+**Superseded in part (2026-10-06):** this entry records the renderer, result
+shapes, scope rule and route plumbing as module-local. On review they are
+module-neutral and Modules 2 and 14 (and later 7 and 3) will need them, so
+**Phase 12b** extracts them into a core report framework and re-points this
+module onto it. The collectors, label maps, `org_reports_viewer` role and all
+report maths stay in this module. (Decided by: User, to extract; scope Decided
+by: Agent.) See the plan's "Phase 12b".
+
+**Addendum (2026-10-06):** the shared layer also has to come from the existing
+requirement-report code (`services/reports.py`: branding, cover page, footer,
+Markdown renderer, image resolution, escaping), not only from Phase 12's
+renderer, so every report type gets the same document shell and org branding.
+Phase 12b's scope was widened accordingly (item 3b); requirement-report output
+must not change. (Decided by: User, to share; scope Decided by: Agent.)

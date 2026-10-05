@@ -139,6 +139,14 @@ Phase 10 (Reporting extension) adds `scoring_schemes` — the `pain_point`
 scheme (`scoring.py`) registered into core's generic scoring-matrix
 mechanism, and widens `pain_point_type_admin` to cover its org-level
 configuration.
+
+Phase 12 (Reports) adds the org-scoped `org_reports_viewer` role (gating the
+organisation-wide reports; org admins hold it by default) and nine read-only
+`get_<slug>_report` MCP tools generated from `reports.REPORTS`. The report
+routers are mounted on the existing org and project routers, so
+`get_router()`/`get_project_router()` are unchanged. Organisation-wide
+report endpoints are not MCP tools, for the same reason as the other
+org-scoped endpoints above.
 """
 
 from __future__ import annotations
@@ -155,6 +163,7 @@ from app.modules.context_strategy._shared import (
 from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSION as _OPEN_QUESTION_RESOLVE_PERMISSION
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
+from app.modules.context_strategy.reports import REPORTS
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
@@ -334,6 +343,16 @@ _PAIN_POINT_SCORING_QUERY_PARAMS = [
                     "defaults to the project's configured default."},
     {"name": "rollup", "type": "string", "required": False, "in": "query",
      "description": "How per-persona scores combine: weighted_average (default), worst_case or average."},
+]
+
+_REPORT_QUERY_PARAMS = [
+    *_PAIN_POINT_SCORING_QUERY_PARAMS,
+    {"name": "include_children", "type": "boolean", "required": False, "in": "query",
+     "description": "Also cover readable child projects."},
+    {"name": "stale_months", "type": "integer", "required": False, "in": "query",
+     "description": "Change history only: months without a revision before an Active item is stale (default 6)."},
+    {"name": "since", "type": "string", "required": False, "in": "query",
+     "description": "Change history only: ISO date of the earliest version to include."},
 ]
 
 _PAIN_POINT_UPDATE_PARAMS = [
@@ -729,6 +748,16 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             "open_question", "resolve", "The Open Question to resolve.",
         ),
     ]
+    # --- Reports R1–R9 (Phase 12): read-only JSON. The organisation-wide variants are not declared
+    # (org-scoped endpoints have no MCP-safe path, as for the org-scoped artefact endpoints above).
+    tools += [
+        McpToolDefinition(
+            name=f"get_{spec.slug.replace('-', '_')}_report", description=f"{spec.title}: {spec.description}",
+            method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/reports/{spec.slug}",
+            params=[_PROJECT_ID_PARAM, *_REPORT_QUERY_PARAMS],
+        )
+        for spec in REPORTS.values()
+    ]
     return tuple(tools)
 
 
@@ -966,6 +995,16 @@ MODULE_DEFINITION = ModuleDefinition(
                 "plus any org-added types) — add/rename/disable/remove, per source overview §6.2 — and its Pain "
                 "Point scoring configuration (Severity/Frequency/Confidence levels, default model, rating bands). "
                 "Organisation-scoped; does not by itself grant any project-level Pain Point Manager capability."
+            ),
+            scope="org",
+        ),
+        ModuleRoleDefinition(
+            role_key="org_reports_viewer",
+            name="Organisation Reports Viewer",
+            description=(
+                "May run the organisation-wide Context & Strategy reports (Pain Point prioritisation, coverage, "
+                "Open Question register, summary pack, upgrade drivers). Org admins hold it by default. It does "
+                "not widen project access: a report still covers only projects the caller can already read."
             ),
             scope="org",
         ),

@@ -170,6 +170,7 @@ from app.modules.context_strategy.pain_point_scores import (
     resolve_model,
     set_pain_point_scores,
 )
+from app.modules.context_strategy.report_router import project_reports_router
 from app.modules.context_strategy.schemas import (
     ContextStrategyLinkOut,
     EffectivePainPointTypeOut,
@@ -3126,3 +3127,7 @@ def create_project_open_question_relationship(
     return context_strategy_link_to_out(
         db, link, viewpoint_type=OPEN_QUESTION_ARTEFACT_TYPE, viewpoint_id=open_question.id,
     )
+
+
+# Phase 12: reports (`report_router.py`).
+router.include_router(project_reports_router)

@@ -109,6 +109,14 @@ It is designed as this module's future report-type registration API.
 Phase 0 here should adopt and extend it rather than replace it.
 **Decided by: User.**
 
+**2026-10-06 update:** the shape changed. Module 1's Phase 12b adds a core
+report framework: `ReportDefinition` on `ModuleDefinition.reports`, typed
+parameters, shared PDF/CSV rendering and a document shell with org branding,
+and `report-catalogue` endpoints. Phase 13 adds the shared Reports UI and an
+optional per-report `reportViews` hook on `TierAModuleDefinition`. That is
+the registration API to adopt here. This module's template versioning and
+provenance sit on top of it; they are not part of 12b/13.
+
 ## Phase 1 — Reporting engine core: templates, provenance, output generation
 
 **Scope** (per Phase 0's resolution): `ReportTemplate` (versioned, per
