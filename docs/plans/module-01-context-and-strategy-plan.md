@@ -58,7 +58,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-**15 / 19 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–10 are done; Phase 11 is blocked on Module 2 Phases 0–1, so build Module 2 next.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
+**15 / 19 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–10 are done; Phase 11 is blocked on Module 2 Phase 1.1 (Persona). Module 2 Phase 0 was signed off 2026-10-05, so build Module 2 Phase 1.1 next.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
 split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
 note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
 module's last phase, shipped the same day — see "Phase 8 notes" below.
@@ -80,7 +80,7 @@ module's last phase, shipped the same day — see "Phase 8 notes" below.
 | 8 | Docs website coverage | [x] Complete (2026-09-29) |
 | 9 | Exploratory: reporting scope & scoring design sign-off | [x] Resolved (2026-10-04) |
 | 10 | Generic scoring-matrix infrastructure (core) | [x] Complete (2026-10-04) |
-| 11 | Per-persona Pain Point scoring + intentional flag — needs Module 2 Phase 1 | [ ] Not started |
+| 11 | Per-persona Pain Point scoring + intentional flag — needs Module 2 Phase 1.1 | [ ] Not started |
 | 12 | Report generation backend (R1–R9) | [ ] Not started |
 | 13 | Reports UI + generic report-registration hook | [ ] Not started |
 | 14 | Docs website + seeds verification | [ ] Not started |
@@ -3219,7 +3219,10 @@ Phase 10" entry.
 
 ## Phase 11 — Per-persona Pain Point scoring + intentional flag
 
-**Hard dependency:** Module 2 Phase 1 and Phase 10.
+**Hard dependency:** Module 2 Phase 1.1 (Persona) and Phase 10. Read Persona
+records and resolved weights only through the generic
+`scoring_target_providers` hook Module 2 Phase 1.1 adds (Module 2 Phase 0
+resolution 10), never by importing Module 2.
 
 **Scope:**
 - **`PainPointScore` table** (module-owned): `pain_point_id`, a persona

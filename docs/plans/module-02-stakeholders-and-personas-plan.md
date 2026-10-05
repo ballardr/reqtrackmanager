@@ -9,19 +9,24 @@ re-derive it, and does not need Module 1 for that purpose.
 **Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
 §10 "Module 2 — Stakeholders & Personas".
 
-**Status:** Proposed. Not started. Second in the overview's recommended
-build order (§46 Phase 2), after Context & Strategy.
+**Status:** Phase 0 complete (2026-10-05, user sign-off obtained — see
+"Phase 0 resolutions" below). Phase 1 split into 1.1 (Persona) and 1.2
+(Stakeholder) so Module 1 Phase 11's dependency, which needs only Personas,
+unblocks first. Built ahead of the overview's §46 order because Module 1's
+Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-0 / 4 phases complete. Phase 0 is next.
+1 / 6 phases complete. **Phase 1.1 (Persona) is next.** It unblocks Module 1
+Phase 11.
 
 | # | Phase | Status |
 |---|-------|--------|
-| 0 | Exploratory: persona-modelling decision & open questions | [ ] Not started |
-| 1 | Data model: Stakeholder/Persona, types, module RBAC | [ ] Not started |
+| 0 | Exploratory: persona-modelling decision & open questions | [x] Complete (2026-10-05) |
+| 1.1 | Persona: data model, types, weight + override, RBAC, scoring-target hook, UI | [ ] Not started |
+| 1.2 | Stakeholder: data model, types, RBAC, UI | [ ] Not started |
 | 2 | Stakeholder Needs (as first-class records) | [ ] Not started |
-| 3 | Relationships + frontend UI | [ ] Not started |
+| 3 | Relationships + remaining frontend UI + MCP | [ ] Not started |
 | 4 | Docs website coverage | [ ] Not started — depends on Phase 3 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
@@ -102,41 +107,148 @@ list, and scope model before Phase 1.
    confirm reuse of `ReviewComment`/`CommentFile` via a new `ReviewTargetType`
    member rather than a bespoke table.
 
-## Phase 1 — Data model: Stakeholder/Persona, types, module RBAC
+### Phase 0 resolutions (2026-10-05)
 
-**Scope** (fields §10.3, types §10.2, per Phase 0's resolution):
-identifier, name, `kind` (stakeholder/persona, if Q1 resolves that way),
-type (FK to configurable type definition), description, role,
-organisation/group, interests, responsibilities, goals and needs
-(free-text summary — distinct from the first-class Need records in Phase
-2), priorities, constraints, relevant workflows/use scenarios, contact/
-reference info, project/organisation scope, owner, status, revision/history.
+```mermaid
+flowchart LR
+    ST[Stakeholder<br/>own table, typed] -- represents --> PE[Persona<br/>own table, typed, weight]
+    ST -- has need --> N[Stakeholder Need<br/>optional artefact]
+    PE -- has need --> N
+    N -- gives rise to --> R[Requirement]
+    ST -. direct link still valid .-> R
+    PE -- weight --> M1[Module 1 per-persona<br/>Pain Point scoring]
+```
 
-**Why:** §10.1 — without an explicit stakeholder/persona record, "stakeholder
-needs" and "requirement rationale" have no anchor other than the
-requirement's own free text, which is exactly the gap this module exists
-to close (the same rationale as Pain Points, one layer earlier in the
-chain: Stakeholder/Persona → Need → Stakeholder Requirement → Project
-Requirement, per §10.1's own diagram).
+1. **Persona modelling: separate `personas` table**, not a `kind`
+   discriminator. **Decided by: User** (the Agent recommended one table
+   with `kind`). Stakeholder and Persona are two registered artefact types
+   (`stakeholder`, `persona`), each with its own CRUD, version table, RBAC
+   atoms and MCP tools. "Represents Persona" is an `ArtefactLink` from a
+   Stakeholder to a Persona. *Accepted cost:* two parallel surfaces. This
+   diverges from the overview §10.1's stated preference, which is guidance,
+   not a `docs/requirements.md` requirement.
+2. **Scope: org or project, live records.** A `scope` discriminator with
+   exactly one of `organization_id`/`project_id` set, as Strategy and
+   Guiding Principle do, applied to both tables. An org-level Persona is one
+   shared record that any project in the org can link to and score against.
+   **Decided by: User.**
+3. **Types: separate two-tier lists for each kind.** Stakeholder types and
+   Persona types each reuse Module 1's `PainPointTypeDefinition`/
+   `ProjectPainPointType` shape: an org base list plus project-level
+   rename, reorder, disable and add. **Decided by: User** (the Agent
+   recommended giving Personas no type). Defaults:
+   - Stakeholder types: §10.2's list (Customer … Support organisation).
+   - Persona types: Primary, Secondary, Negative (anti-persona). **Decided
+     by: Agent**, because §10.2 names no persona categories. All are
+     org-editable.
+   - *Nested projects:* no ancestor fallback, for the same reason Module 1
+     Phase 0 Q3 gave: the org list is the base every project already sees.
+     **Decided by: Agent.**
+4. **Persona field set** (beyond identifier, name, description, scope,
+   type, owner, status, history): role/job title, goals, needs, behaviours,
+   context/environment, skills/proficiency, frequency of use, constraints,
+   importance weight. Stakeholder-only fields (contact info,
+   organisation/group, interests, responsibilities) stay on Stakeholder.
+   **Decided by: User.** Stakeholder keeps §10.3's field set.
+5. **Persona weight: on the persona, plus a project override.** `Persona.
+   weight` is nullable and positive. `ProjectPersonaWeight(project_id,
+   persona_id, weight)` overrides it per project. Resolution order: the
+   project's own row → nearest ancestor's row → `Persona.weight` → equal
+   weights. **Decided by: User.** The override table is override-only, so
+   nothing is seeded and the root-only seeding rule has nothing to apply
+   to; the cycle-safe ancestor walk reuses `services.project_hierarchy`.
+   **Decided by: Agent.**
+6. **Lifecycle, history and RBAC.** `Draft → Active → Retired`, with no
+   approval gate, because §10 names no approver. Full version-history
+   tables (`PersonaVersion`, `StakeholderVersion`), following
+   `RequirementVersion`'s shape and consistent with Module 1 Phase 0 Q4.
+   **Decided by: User.** Modifying is RBAC-gated (**Decided by: User**):
+   - View: all project members.
+   - Create, edit, retire: a module-registered project role, plus FGAC atoms
+     derived from the registered artefact types.
+   - Org-scoped records: org admins plus an org-level module role, following
+     the same pattern as Strategy's org scope.
+   - Role names and keys: **Decided by: Agent** in Phase 1.1.
+   - No approve action, so MCP write tools need neither the
+     `allow_ai_approvals` gate nor `APPROVAL_ACTION_ROUTE_EXTRA`.
+7. **Stakeholder Need: optional, its own artefact.** It is a registered
+   artefact type with its own table, `ArtefactLink` relationships and
+   comments. A direct Stakeholder/Persona → Requirement link stays valid.
+   **Decided by: User.**
+8. **Comments/attachments: module-local tables** (`PersonaComment`/
+   `PersonaCommentFile`/`PersonaFile` and equivalents for each artefact),
+   following Module 1 and Module 4. This corrects open question 4 above:
+   adding `ReviewTargetType` members would be a per-module edit to a core
+   enum, which `CLAUDE.md`'s module boundary rule forbids. **Decided by:
+   Agent.**
+9. **Relationships:** confirmed on Module 0's polymorphic `ArtefactLink`,
+   validated against registered artefact types. Decision and Design
+   targets stay reserved until Modules 4 Phase 7 and 6 respectively.
+   **Decided by: Agent.**
+10. **A generic scoring-target hook for Module 1** (Phase 1.1). Module 1
+    can't import this module, and `ModuleDefinition` has no field that
+    lists one module's records with weights to another. Phase 1.1 adds a
+    generic one, `ModuleDefinition.scoring_target_providers` (the name is
+    provisional): artefact type → `(session, project_id) → [(id, label,
+    weight | None, is_active)]`. Core exposes it, and Module 1 Phase 11
+    consumes it. A disabled module returns nothing, so scoring falls back
+    to all-personas. **Decided by: Agent.**
+11. **Persona UI ships in Phase 1.1**, not Phase 3. Otherwise Module 1
+    Phase 11's score grid would depend on personas that can only be created
+    through the API or seeds. **Decided by: Agent**; revisit if the user
+    prefers the original order.
 
-**Roles:** per the common permission model — View for all project members,
-Propose/Manage for a stakeholder-owning role, no explicit "Approver" role
-named in §10 (stakeholders aren't approved/baselined the way requirements
-or decisions are) — confirm this asymmetry is intentional in Phase 0 rather
-than assumed.
+## Phase 1.1 — Persona
+
+**Scope** (per Phase 0 resolutions 1–6, 8, 10, 11):
+- `Persona` table (scope discriminator, Q4 fields, nullable `weight`),
+  `PersonaVersion`, module-local comments and files.
+- Two-tier Persona types (`PersonaTypeDefinition`/`ProjectPersonaType`),
+  seeded with Primary/Secondary/Negative on org creation.
+- `ProjectPersonaWeight` plus a weight-resolution service with ancestor
+  fallback.
+- Lifecycle `Draft → Active → Retired`, module roles and FGAC atoms, and
+  audit logging through `services/audit.py`.
+- Registered artefact type `persona`, plus the generic
+  `scoring_target_providers` hook in core (Q10).
+- Org and project routers, write-enabled MCP tools, and org/project bundle
+  export hooks.
+- Frontend: list, detail and create/edit (as a layer) for Personas,
+  type-admin sections, and a per-project weight override UI. Use shared
+  components and label maps.
+- Both seed scripts get org- and project-scoped Personas, some weighted and
+  some not.
+- Tests: pytest (scope rules, weight resolution chain, RBAC, cross-org
+  isolation, version history, hook output when the module is disabled),
+  Playwright and Storybook.
+
+**Why:** Module 1 Phase 11 scores Pain Points per persona and needs real,
+weighted Persona records. *Risk addressed:* scoring against personas that
+don't exist, or Module 1 importing this module directly. *Outcome:* a
+persona list Module 1 reads through a generic hook.
+
+## Phase 1.2 — Stakeholder
+
+**Scope:** the same shape as Phase 1.1 for `Stakeholder` (§10.3 fields:
+identifier, name, type, description, role, organisation/group, interests,
+responsibilities, goals and needs, priorities, constraints, workflows/use
+scenarios, contact/reference info, scope, owner, status, history). Includes
+`StakeholderVersion`, two-tier Stakeholder types seeded from §10.2, RBAC,
+MCP, bundle hooks, frontend, seeds and tests. It reuses whatever Phase 1.1
+extracted as shared code, and does not copy it.
+
+**Why:** §10.1. Without an explicit stakeholder record, needs and
+requirement rationale have no anchor beyond the requirement's own text.
+*Risk addressed:* lost intent behind requirements. *Outcome:* traceable
+stakeholder context.
 
 ## Phase 2 — Stakeholder Needs (as first-class records)
 
-**Scope** (per Phase 0 Q3's resolution; example in §10.4): a Need record
-with its own text, linked to exactly one Stakeholder/Persona and
-(optionally) to the Requirement(s) it gave rise to. This is the one place
-in this module where the Stakeholder → Need → Requirement chain needs an
-intermediate table, distinct from the general relationship-model
-infrastructure — a Need isn't a general-purpose linkable artefact type in
-its own right so much as a structured annotation between a stakeholder and
-a requirement; confirm in Phase 0 whether it should instead just be
-another relationship-model-participating artefact type (simpler, more
-consistent with everything else) rather than a special case.
+**Scope** (per Phase 0 resolution 7; example in §10.4): `StakeholderNeed`
+is a registered artefact type (`stakeholder_need`) with its own text, linked
+through `ArtefactLink` to Stakeholders/Personas ("has need") and to the
+Requirements it gave rise to. It is optional: direct Stakeholder/Persona →
+Requirement links stay valid.
 
 **Why:** §10.4's own worked example (Field Technician → "diagnose faults
 quickly" → "remote diagnostic info within 30 seconds") is the concrete
@@ -146,16 +258,21 @@ statements at different levels of precision, and losing the need's own
 wording loses the original intent that justifies the requirement's exact
 threshold (why 30 seconds, not 10 or 60).
 
-## Phase 3 — Relationships + frontend UI
+## Phase 3 — Relationships + remaining frontend UI + MCP
 
 **Scope:** wire the relationships in §10.5 (Has Need, Experiences Pain
 Point, Provides Requirement, Affected by Requirement, Consulted on
 Decision, Approves/Reviews, Uses Design/System Element, Represents
 Persona) using Module 0's relationship infrastructure — targets that don't
 exist yet (Decision, Design) are reserved the same way Module 4 reserves
-its own forward-relationships. Frontend: list/detail/create UI for
-Stakeholders/Personas and Needs, per UX style guide conventions, with
+its own forward-relationships. Frontend: Needs UI and relationship panels on
+the Persona and Stakeholder detail pages. Their list, detail and create UI
+already ship in Phases 1.1 and 1.2. Follow UX style guide conventions, with
 Playwright e2e + Storybook coverage.
+
+**2026-10-05 update (Phase 0, Decided by: Agent):** Phases 1.1 and 1.2 now
+ship their own MCP tools with their CRUD, so the MCP commitment below covers
+only Needs and relationship tools here.
 
 **MCP tools.** Added 2026-09-21 at the user's explicit instruction, applied
 across every not-yet-built module plan (**Decided by: User**) — see
@@ -173,9 +290,8 @@ Agent**) — revisit if a future pass splits this phase's backend and
 frontend halves apart, or splits Phase 1/2's own endpoints out explicitly.
 Once these endpoints exist, declare `McpToolDefinition` entries for the
 safe list/get endpoints — candidates made concrete by Phase 1/2's own
-scope text: `list_stakeholders`/`get_stakeholder` (covering both
-`kind=stakeholder` and `kind=persona` rows, per Phase 0 Q1's resolution)
-and `list_stakeholder_needs`/`get_stakeholder_need`.
+scope text: `list_stakeholders`/`get_stakeholder` and `list_personas`/`get_persona`
+(separate tables, per Phase 0 resolution 1) and `list_stakeholder_needs`/`get_stakeholder_need`.
 
 **2026-09-22 update (Decided by: User):** this plan originally committed to
 **read-only-only** MCP tools; per the same reversal applied to the
@@ -224,12 +340,12 @@ persona-vs-stakeholder distinction that is easy to under-explain if rushed).
 
 - A new docs-site page or section (matching whatever grouping the site
   already uses for other project-scoped modules, e.g. Compliance and
-  Decision Management) covering: what a Stakeholder is and how a Persona
-  (per Phase 0 Q1's `kind` discriminator, if resolved that way) sits on the
-  same record type rather than as an unrelated concept; the Stakeholder →
+  Decision Management) covering: what a Stakeholder is, what a Persona is (a separate record, per Phase 0
+  resolution 1), and how they relate through "Represents Persona"; the Stakeholder →
   Need → Stakeholder Requirement → Project Requirement chain (§10.1) as a
   Mermaid diagram, including why a Need is optional rather than mandatory
-  in that chain (Phase 0 Q3); the relationships wired in Phase 3 (Has Need,
+  in that chain (Phase 0 resolution 7); persona weight and its project
+  override; the relationships wired in Phase 3 (Has Need,
   Experiences Pain Point, Provides Requirement, Represents Persona, etc.),
   including which targets (Decision, Design) are reserved pending Modules 4
   and 6.
@@ -250,8 +366,7 @@ persona-vs-stakeholder distinction that is easy to under-explain if rushed).
   onto a page whose content is genuinely diagram/table-only. Candidate
   screens for this module's own page — **Decided by: Agent**: the
   Stakeholder/Persona list view, a Stakeholder detail page showing its
-  Needs and relationships, and the Persona-vs-Stakeholder `kind` field on
-  the create/edit form.
+  Needs and relationships, and a Persona detail page showing its weight.
 
 **Status:** not started — depends on Phase 3 (relationships + frontend)
 actually shipping; there is no real user-facing workflow to document

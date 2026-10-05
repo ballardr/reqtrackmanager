@@ -9060,3 +9060,32 @@ lookups, which broke as shared e2e data grew.
   in-memory `Project` may have been loaded before the lock, so its value
   can be stale. The two-transaction race test fails without the lock.
 
+
+## Module 2 (Stakeholders & Personas) Phase 0 — design sign-off (2026-10-05)
+
+Planning only; nothing implemented yet. The full record with `Decided by:`
+tags is in [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeholders-and-personas-plan.md)'s
+"Phase 0 resolutions".
+
+- **Personas get their own `personas` table**, separate from Stakeholders,
+  instead of a `kind` discriminator. (Decided by: User; the Agent
+  recommended one table.) "Represents Persona" is an `ArtefactLink`.
+- **Both are org- or project-scoped live records**, using a `scope`
+  discriminator like Strategy's. (Decided by: User.)
+- **Separate two-tier type lists**, one for Stakeholder types and one for
+  Persona types, reusing the Pain Point type shape. (Decided by: User.)
+  Persona type defaults are Primary/Secondary/Negative. (Decided by: Agent.)
+- **Persona weight sits on the Persona, with a per-project override**
+  resolved project → nearest ancestor → persona → equal weights. (Decided
+  by: User.)
+- **`Draft → Active → Retired`, full version tables, and RBAC-gated
+  modification** (module role + FGAC atoms), with no approval gate.
+  (Decided by: User.)
+- **Stakeholder Need is an optional, registered artefact type.** (Decided
+  by: User.)
+- **Comments use module-local tables, not new `ReviewTargetType` members.**
+  New members would be per-module edits to a core enum. (Decided by: Agent.)
+- **A new generic `scoring_target_providers` hook** lets Module 1 read
+  personas and weights without importing Module 2. (Decided by: Agent.)
+- **Phase 1 is split**: 1.1 Persona, including its UI, which unblocks
+  Module 1 Phase 11; 1.2 Stakeholder. (Decided by: Agent.)

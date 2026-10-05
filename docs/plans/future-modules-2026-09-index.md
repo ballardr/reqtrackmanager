@@ -88,8 +88,8 @@ that discussion; this just reorders the table to match it).
 | — | — | Platform Foundations | **Built** | [module-00-platform-foundations-plan.md](module-00-platform-foundations-plan.md) | — (build this first) | — | not in the overview's own list — see "Module dependency graph" below |
 | — | — | Fine-Grained Access Control (core, formerly "Module 12") | **Built** (10/10, 2026-09-27) | [core-fine-grained-access-control-plan.md](core-fine-grained-access-control-plan.md) | — (core infrastructure, no content module "depends on" it — see note below) | — | not in the overview at all — requested by the user 2026-09-21, reclassified to core 2026-09-23 |
 | — | 4 | Decision Management | **9/10** — Phase 7 (reserved-relationship wiring) blocked on Module 1 and/or Module 6 below | [module-04-decision-management-plan.md](module-04-decision-management-plan.md) | Module 0 | Context & Strategy (1) — Open Question/Pain Point/Strategy/Guiding Principle relationship targets only (Phase 7) | §13 (labelled §10 in the source doc; see note in that plan) |
-| — | 1 | Context & Strategy | **Built** (original 13 phases, 2026-09-29); Reporting extension added 2026-10-04 (15/19 — Phase 10 generic scoring-matrix core done 2026-10-04; Phase 11 blocked on Module 2 Phases 0–1) | [module-01-context-and-strategy-plan.md](module-01-context-and-strategy-plan.md) | Module 0 | — | §5–9 |
-| **Next** | 2 | Stakeholders & Personas | Not started — next (2026-10-04, **Decided by: User**): Phases 0–1 unblock Module 1's per-persona Pain Point scoring | [module-02-stakeholders-and-personas-plan.md](module-02-stakeholders-and-personas-plan.md) | Module 0, Requirements (existing) | — | §10 |
+| — | 1 | Context & Strategy | **Built** (original 13 phases, 2026-09-29); Reporting extension added 2026-10-04 (15/19 — Phase 10 generic scoring-matrix core done 2026-10-04; Phase 11 blocked on Module 2 Phase 1.1) | [module-01-context-and-strategy-plan.md](module-01-context-and-strategy-plan.md) | Module 0 | — | §5–9 |
+| **Next** | 2 | Stakeholders & Personas | In progress: Phase 0 signed off 2026-10-05 (Personas get a separate table); Phase 1.1 (Persona) is next and unblocks Module 1's per-persona Pain Point scoring (2026-10-04, **Decided by: User**) | [module-02-stakeholders-and-personas-plan.md](module-02-stakeholders-and-personas-plan.md) | Module 0, Requirements (existing) | — | §10 |
 | 3 | 5 | Requirements & Requirement Libraries | Not started | [module-05-requirements-and-libraries-plan.md](module-05-requirements-and-libraries-plan.md) | — (already largely built; does not need Module 0) | — | §14–16 |
 | 4 | 6 | Engineering Design | Not started | [module-06-engineering-design-plan.md](module-06-engineering-design-plan.md) | Module 0, Requirements (existing) | Decisions (4) — design/decision are usually created together, per the doc below; now satisfiable immediately, Decision Management having shipped | §3 Module 6 list, now superseded by [engineering-design-vs-decisions.md](engineering-design-vs-decisions.md) — a supplementary source the user provided 2026-09-16 with a full field-level spec, no longer the thinnest module |
 | 5 | 3 | Risk Management | Not started | [module-03-risk-management-plan.md](module-03-risk-management-plan.md) | Module 0, Requirements (existing) | Context (1), Decisions (4), Design (6), Verification (existing) — all four satisfied by this point in the order except Context, which lands immediately before it | §11 |
@@ -608,8 +608,9 @@ questions the overview leaves open across the whole roadmap:
    (§10.1) says "personas should normally be modelled as a specialised
    stakeholder type rather than an unrelated concept" but doesn't settle
    whether that means one `stakeholders` table with a `kind` discriminator,
-   or a `personas` table with a foreign key to `stakeholders`. Raised again,
-   more concretely, in Module 2's own Phase 0.
+   or a `personas` table with a foreign key to `stakeholders`. **Resolved
+   2026-10-05: separate `personas` table** (Decided by: User). See Module 2's
+   Phase 0 resolutions.
 2. **Which modules are first-party (in this repo) vs. plausible third-party
    extensions.** The existing module system supports both. Given these are
    core, broadly-applicable capabilities (not organisation-specific), the
