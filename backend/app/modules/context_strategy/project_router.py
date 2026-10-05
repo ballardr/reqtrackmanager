@@ -170,7 +170,7 @@ from app.modules.context_strategy.pain_point_scores import (
     resolve_model,
     set_pain_point_scores,
 )
-from app.modules.context_strategy.report_router import project_reports_router
+from app.modules.context_strategy.reports import REPORT_ROUTERS
 from app.modules.context_strategy.schemas import (
     ContextStrategyLinkOut,
     EffectivePainPointTypeOut,
@@ -3129,5 +3129,5 @@ def create_project_open_question_relationship(
     )
 
 
-# Phase 12: reports (`report_router.py`).
-router.include_router(project_reports_router)
+# Phases 12/12b: reports (core `services.report_framework`, declared in `reports.py`).
+router.include_router(REPORT_ROUTERS.project)

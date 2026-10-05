@@ -61,7 +61,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-**17 / 20 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–12 are done. Phase 12b (extract the module-neutral report framework into core, added 2026-10-06) is next, then Phase 13 (shared Reports UI) on top of it.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
+**18 / 20 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–12 and 12b are done (12b, the core report framework, shipped 2026-10-06). Phase 13 (shared Reports UI, built on 12b's catalogue endpoints) is next.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
 split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
 note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
 module's last phase, shipped the same day — see "Phase 8 notes" below.
@@ -85,8 +85,8 @@ module's last phase, shipped the same day — see "Phase 8 notes" below.
 | 10 | Generic scoring-matrix infrastructure (core) | [x] Complete (2026-10-04) |
 | 11 | Per-persona Pain Point scoring + intentional flag | [x] Complete (2026-10-05) |
 | 12 | Report generation backend (R1–R9) | [x] Complete (2026-10-05) |
-| 12b | Core report framework (extracted from Phase 12) | [ ] Not started — added 2026-10-06 |
-| 13 | Reports UI (shared core UI + per-module views) | [ ] Not started — builds on 12b |
+| 12b | Core report framework (extracted from Phase 12) | [x] Complete (2026-10-06) — see "Phase 12b notes" |
+| 13 | Reports UI (shared core UI + per-module views) | [ ] Not started — builds on 12b (now shipped) |
 | 14 | Docs website + seeds verification | [ ] Not started |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
@@ -3341,7 +3341,7 @@ permission-correct report data.
 
 ## Phase 12 notes (2026-10-05)
 
-**Shipped** (the module-neutral parts move to core in Phase 12b):
+**Shipped** (the module-neutral parts moved to core in Phase 12b; the files named here as module-local — `report_render.py`, `report_router.py` and the result shapes in `reports.py` — no longer exist there):
 `reports.py` (`collect_*` for R1–R9, the `REPORTS` catalogue,
 `readable_projects`), `report_render.py` (PDF, CSV), `report_router.py`
 (JSON/PDF/CSV routes generated from the catalogue), `labels.py` (backend
@@ -3406,9 +3406,10 @@ count only readable artefacts.
 
 ## Phase 12b — Core report framework (extract the module-neutral half of Phase 12)
 
-**Status:** [ ] Not started — added 2026-10-06 (**Decided by: User**, after
-asking whether Phase 12's backend should be core; the extraction scope below
-is **Decided by: Agent** from a survey of the other modules' plans).
+**Status:** [x] Complete (2026-10-06) — see "Phase 12b notes" below.
+(**Decided by: User**, after asking whether Phase 12's backend should be core;
+the extraction scope below is **Decided by: Agent** from a survey of the other
+modules' plans.)
 
 **Why this phase exists.** Phase 12 put everything in `modules/
 context_strategy/`, but about half of it has nothing Context & Strategy in
@@ -3651,6 +3652,49 @@ drift apart (different CSV safety, different access rules), or a module
 importing another module's report code. *Outcome:* adding a report to a
 module is a `collect_*` function plus one declaration; access, formats, MCP,
 parameters and the catalogue come from core.
+
+## Phase 12b notes (2026-10-06)
+
+**Shipped.** `services/report_framework.py` (result shapes, `ReportContext`,
+scope rule, CSV/PDF, JSON schema, `build_report_routers`, `report_mcp_tools`,
+catalogue builders), `services/report_document.py` (the shell extracted from
+`services/reports.py`), `routers/report_catalogue.py`, and in the registry
+`ReportParamDefinition`, `ReportDefinition`, `ModuleDefinition.reports`,
+`validate_report_definitions`, `get_module_reports`, `get_all_reports`.
+Context & Strategy now declares `REPORT_DEFINITIONS` and mounts
+`REPORT_ROUTERS`; `report_render.py`, `report_router.py` and
+`require_org_reports_role` are gone. Compliance's reports use the shared
+`safe`, `styled_table`, title block and PDF build. No table or migration.
+
+**For Phase 13** (the JSON shape is unchanged from Phase 12's notes):
+- `GET /api/v1/projects/{id}/report-catalogue` and
+  `GET /api/v1/orgs/{id}/report-catalogue` return, per runnable report:
+  `module_key`, `module_name`, `key`, `slug`, `title`, `description`,
+  `scope` (`project`|`organization`), `path` (id already substituted),
+  `formats`, `supports_include_children` and `params[]` (`name`, `type`
+  `string|integer|boolean|date|uuid`, `default`, `choices`, `minimum`,
+  `maximum`, `description`). The org catalogue lists only reports whose
+  `org_role_key` the caller holds, so the UI need not treat a 403 as "not
+  permitted". The project catalogue 403s a non-member.
+- Every report route also takes `format=json|pdf|csv` and
+  `report_template_id` (branding only, 400 for another organisation's);
+  project routes also take `include_children`.
+- `org_reports_viewer` is Context & Strategy's own `org_role_key`; a module
+  declares its own and the catalogue handles the rest.
+
+**Deviations from the plan text:** parameters are per report (R8 declares all
+four because it re-runs the others; R3–R6 no longer accept `model_key` etc.);
+an organisation-wide report must declare an `org_role_key`; registry-dependent
+validation (unknown sub-component or role) is lazy and fail-closed rather than
+at router construction, and the MCP manifest drops tools for reports that fail
+it; rich cells, section kinds and row caps were not built. See
+`docs/decisions.md`'s "Module 1 (Context & Strategy) Phase 12b" entry.
+
+**Open questions** (plan's list above): 1 branding-only (recommendation
+followed, confirm with the user); 2 and 3 not built; 4 (Decision register) not
+started; 5 followed (shared primitives only).
+
+**Verification:** see `docs/decisions.md`.
 
 ## Phase 13 — Reports UI (shared core UI + per-module views)
 

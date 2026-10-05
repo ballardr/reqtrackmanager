@@ -38,7 +38,7 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 3b | Project visibility of org Stakeholders and Personas (hide per project) | [x] Complete (2026-10-05) |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
 | 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
-| 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phases 12b (report framework) and 13 (Reports UI) |
+| 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06 |
 | 7a | Docs website coverage — shipped scope (Personas, Stakeholders, Needs, relationships, MCP) | [x] Complete (2026-10-05) |
 | 7b | Docs website coverage — extension for Engagements, research extras, cadence workflow and reports S1–S5 | [ ] Not started — depends on Phases 4, 5 and 6 |
 
@@ -611,8 +611,10 @@ traced.
 
 **Hard dependency:** Module 1 Phase 12b's core report framework (a
 `ReportDefinition` per report on `ModuleDefinition.reports`) and Phase 13's
-Reports UI. Follow Module 1 Phase 12's pattern: one `collect_*` per report,
-reused by PDF, CSV, on-screen views and MCP.
+Reports UI. Phase 12b has shipped: declare `ReportDefinition`s as described in
+`docs/modules.md` §4g (one `collect_*` per report; each org-level report names
+this module's own org role as `org_role_key`), reused by PDF, CSV, on-screen
+views and MCP.
 
 | # | Report | Content |
 |---|--------|---------|

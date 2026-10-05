@@ -32,6 +32,11 @@ CS = "context_strategy"
 SH = "stakeholders"
 
 
+def _today() -> date:
+    """The reports' own reference date (UTC), not the host's local date, which differs for part of each day."""
+    return datetime.now(UTC).date()
+
+
 def _cs(project_id) -> str:
     return f"/api/v1/projects/{project_id}/modules/{CS}"
 
@@ -314,7 +319,7 @@ def test_r2_cascade_and_gaps(client, admin_token):
 def test_r3_coverage_matrix_uncovered_and_ageing(client, admin_token):
     _, project, token = _setup(client, admin_token, "R3 Coverage Co")
     pid = project["id"]
-    old = (date.today() - timedelta(days=30)).isoformat()
+    old = (_today() - timedelta(days=30)).isoformat()
     covered = _pain_point(client, token, pid, "Covered", date_identified=old)
     uncovered = _pain_point(client, token, pid, "Uncovered", date_identified=old)
     for pp in (covered, uncovered):
@@ -339,7 +344,7 @@ def test_r3_coverage_matrix_uncovered_and_ageing(client, admin_token):
 def test_r4_overdue_unowned_and_resolved_excluded(client, admin_token):
     org, project, token = _setup(client, admin_token, "R4 Register Co")
     pid = project["id"]
-    past = (date.today() - timedelta(days=3)).isoformat()
+    past = (_today() - timedelta(days=3)).isoformat()
     created = client.post(
         _cs(pid) + "/open-questions", json={"question": "Late?", "priority": "high", "due_date": past}, headers=auth_headers(token),
     )
@@ -372,9 +377,9 @@ def test_r4_overdue_unowned_and_resolved_excluded(client, admin_token):
 def test_r5_roadmap_order_overdue_and_missing_measures(client, admin_token):
     _, project, token = _setup(client, admin_token, "R5 Roadmap Co")
     pid = project["id"]
-    past = (date.today() - timedelta(days=10)).isoformat()
-    soon = (date.today() + timedelta(days=10)).isoformat()
-    later = (date.today() + timedelta(days=100)).isoformat()
+    past = (_today() - timedelta(days=10)).isoformat()
+    soon = (_today() + timedelta(days=10)).isoformat()
+    later = (_today() + timedelta(days=100)).isoformat()
     for title, target, measures in (
         ("Later", later, "Measured"), ("Missed", past, ""), ("Soon", soon, "Measured"), ("Undated", None, "Measured"),
     ):
@@ -448,7 +453,7 @@ def test_r7_history_status_moves_and_stale_active_items(client, admin_token):
     stale = _report(client, token, pid, "strategy-change-history")
     assert _titles(_section(stale, "stale"), "Title") == ["Aging strategy"]
     # `since` trims the history but not the stale check.
-    recent = _report(client, token, pid, "strategy-change-history", since=date.today().isoformat())
+    recent = _report(client, token, pid, "strategy-change-history", since=_today().isoformat())
     assert len(_section(recent, "history")["rows"]) < len(_section(stale, "history")["rows"])
     assert _section(recent, "stale")["rows"]
     assert StrategyStatus.ACTIVE.value == "active"

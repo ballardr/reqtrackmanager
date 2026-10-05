@@ -26,7 +26,7 @@ Phase 1.2 and Module 1 Phase 13 have shipped.
 | 3 | ICE/RICE scoring on the core scoring matrix | [ ] Not started |
 | 4 | Relationships + close-the-loop | [ ] Not started |
 | 5 | Frontend UI | [ ] Not started |
-| 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phases 12b (report framework) and 13 (Reports UI) |
+| 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06, see `docs/modules.md` §4g |
 | 7 | Docs website coverage | [ ] Not started |
 
 ## Where it fits

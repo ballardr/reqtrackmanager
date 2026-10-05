@@ -449,18 +449,6 @@ def require_pain_point_type_admin_role(db: Session, current_user: User, *, organ
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Pain Point Type Admin (or org admin) may do this.")
 
 
-def require_org_reports_role(db: Session, current_user: User, *, organization_id: uuid.UUID) -> None:
-    """Gate for organisation-wide Context & Strategy reports — satisfied by
-    the `org_reports_viewer` module role (which composes with server admin
-    and `OrgRole.ORG_ADMIN`, so org admins hold it by default). Held in
-    addition to project access: the reports still cover only projects the
-    caller can read (`reports.readable_projects`)."""
-    if not user_satisfies_module_role(
-        db, current_user, MODULE_KEY, "org_reports_viewer", organization_id=organization_id, project_id=None,
-    ):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an Organisation Reports Viewer (or org admin) may run organisation-wide reports.")
-
-
 def require_pain_point_manage_role(db: Session, current_user: User, *, organization_id: uuid.UUID, project_id: uuid.UUID) -> None:
     """Gate for Pain Point type-vocabulary CRUD (`ProjectPainPointType`
     create/override/delete) and direct content updates (`PUT`) — satisfied

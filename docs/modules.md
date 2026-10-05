@@ -349,6 +349,7 @@ class ModuleDefinition:
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
+    reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     models_import_path: str | None = None       # dotted path to your ORM models module
@@ -909,6 +910,78 @@ flowchart LR
   creatable. It goes live when the owner registers a provider.
 - The caller stores `target_id` in `ArtefactLink` as a plain id; the provider
   does not authorise, so the caller still checks the `(type, view)` permission.
+
+### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
+
+A module that reports on its records declares a `ReportDefinition` per report on
+`ModuleDefinition.reports` and writes one `collect_*` function for each. Core
+(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|csv`,
+access gating, typed parameters, MCP tools, the catalogue and the branded PDF.
+
+```mermaid
+flowchart LR
+    MOD["Module: ReportDefinition<br/>+ collect_* function"] --> BR["build_report_routers()<br/>project + org routers"]
+    MOD --> MCP["report_mcp_tools()"]
+    MOD --> REG["registry.get_module_reports()"]
+    BR -->|"module includes them<br/>under its own prefixes"| API["…/reports/{slug}"]
+    REG --> CAT["GET /projects/{id}/report-catalogue<br/>GET /orgs/{id}/report-catalogue"]
+    API --> CTX["ReportContext<br/>readable projects · validated params"]
+    CTX --> COL["collector → ReportResult"]
+    COL --> OUT["JSON · CSV (first section) · PDF (all sections,<br/>template branding via report_document)"]
+```
+
+```python
+# reports.py
+def collect_overdue(db: Session, ctx: ReportContext) -> ReportResult:
+    projects = ctx.eligible(db, "tasks")          # in-scope projects with the sub-component on
+    rows = [[t.title, t.project_name] for t in load_overdue(db, projects, ctx.params["days"], ctx.today)]
+    return ReportResult(
+        key="t1", title="Overdue tasks", scope_label=ctx.scope_label, generated_at=datetime.now(UTC),
+        notes=[ctx.scope_note], sections=[ReportSection("overdue", "Overdue", ["Task", "Project"], rows, gap=True)],
+        eligible_projects=len(projects),
+    )
+
+REPORT_DEFINITIONS = (
+    ReportDefinition(
+        "t1", "overdue-tasks", "Overdue tasks", "Tasks past their due date.", collect_overdue,
+        subcomponent="tasks", org_level=True, org_role_key="tasks_reports_viewer",
+        params=(ReportParamDefinition("days", "integer", default=0, minimum=0, maximum=365),),
+    ),
+)
+REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
+# project_router.include_router(REPORT_ROUTERS.project); org_router.include_router(REPORT_ROUTERS.org)
+# ModuleDefinition(reports=REPORT_DEFINITIONS, mcp_tools=(*other_tools, *report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=PREFIX)))
+```
+
+- **Access (generic, fail-closed).** A project route needs project membership
+  and the module (and declared `subcomponent`) enabled, else 404. An
+  organisation route also needs `org_role_key`, an org-scoped role of your
+  module (403); org admins hold module roles by default.
+- **Scope.** `ctx.projects` is the whole set a collector may cover and it never
+  widens it. Project runs and org runs default to `readable_projects` (only
+  projects the caller holds a role on; `include_children` adds readable
+  descendants). A role whose purpose is cross-project oversight may declare
+  `org_scope="all_org_projects"` explicitly, as Compliance's manager view would.
+- **Parameters** are declared, not hand-written: core validates types and bounds
+  (422), checks `choices` (400), applies defaults, and derives the OpenAPI and
+  MCP parameters from the same declaration. `format`, `include_children`
+  and `report_template_id` are framework-level; unknown query parameters are
+  ignored.
+- **Branding.** `?report_template_id=` applies an organisation report template's
+  accent colour, cover page, logo and footer to the PDF (400 for another
+  organisation's template). Its intro, chapters and appendices are
+  requirement-report content and are not applied.
+- **Validation.** A definition with a duplicate key/slug, malformed parameter,
+  `org_level` without an `org_role_key`, an unknown sub-component, or an
+  `org_role_key` that is not an org-scoped role is excluded and logged: no
+  catalogue entry, no MCP tool, 404 on its route.
+- **Cells are untrusted.** CSV cells go through `csv_safe`, PDF cells through
+  `report_document.safe`. Do not put Restricted data (secrets, file content) in
+  a result: report reads are not audit-logged, on the basis that every field is
+  already returned to the same caller elsewhere.
+- **Not built yet:** rich cells (Compliance's multi-line narrative), richer
+  section kinds (matrices) and row caps; add them when a second consumer needs
+  them.
 
 ### Tier A — installed (the primary path)
 
@@ -1559,6 +1632,9 @@ that approves/decides something with your route's own approval-action
 metadata — don't rely on the manifest builder's exclusion as your only
 defence; design the endpoint itself so an AI-driven caller can't reach an
 approval action even if the tool mechanism changes later.
+
+**Reports.** If your module reports on its records, declare `ReportDefinition`s
+(§4g) rather than building routes, PDF/CSV code or a catalogue of your own.
 
 **Test it** the way every other change in this codebase is tested: a
 backend test pinning your endpoints' behaviour (including the disabled/

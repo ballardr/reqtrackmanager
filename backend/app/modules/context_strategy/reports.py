@@ -2,22 +2,21 @@
 Module: modules.context_strategy.reports
 
 Report data layer for Context & Strategy (docs/plans/module-01-context-and-
-strategy-plan.md Phase 12): the nine reports R1–R9 as one `collect_*`
-function each, returning a `ReportResult`. PDF/CSV rendering lives in
-`report_render.py` and the HTTP surface in `report_router.py`; every output
-form (PDF, CSV, on-screen JSON, MCP) reads the same `ReportResult`, so a
-figure is computed exactly once.
+strategy-plan.md Phases 12/12b): the nine reports R1–R9 as one `collect_*`
+function each, returning the core framework's `ReportResult`, plus the
+`REPORT_DEFINITIONS` that declare them to the registry. Everything
+module-neutral — result shapes, scope rule (`readable_projects`), PDF/CSV
+rendering, routes, MCP tools, the catalogue — lives in
+`app.services.report_framework`; every output form (PDF, CSV, on-screen JSON,
+MCP) reads the same `ReportResult`, so a figure is computed exactly once.
 
 Responsibilities:
-- `readable_projects`: the single place report scope is decided — only
-  projects the caller holds a project role on (org admin alone is not
-  enough, per `rbac.require_project_view`), optionally widened to child
-  projects. Collectors never widen it, and further narrow it per
-  sub-component (`pain_point`, `strategy`, ...) that is enabled.
-- `REPORTS`: the report catalogue (key, slug, gating sub-component, which
-  scopes it supports) the router and MCP declarations are generated from.
 - Collectors R1–R9. Pain Point scoring is not recomputed here: R1 and R9 are
   built on `pain_point_scores.build_pain_point_scoring`.
+- Collectors never widen `ctx.projects` and further narrow it per
+  sub-component (`pain_point`, `strategy`, ...) that is enabled.
+- `REPORT_DEFINITIONS`: key, slug, gating sub-component, organisation role and
+  declared parameters per report.
 
 Design decisions (all Decided by: Agent unless stated; the report list,
 formats, model/roll-up choice and access rules are Phase 9, Decided by:
@@ -33,10 +32,11 @@ User):
   caller cannot read is treated as absent rather than leaked, so a gap list
   may over-report; it never reveals a hidden record.
 - R2, R5, R6 and R7 are project-level only; R1, R3, R4, R8 and R9 also run
-  organisation-wide (Phase 9 Q12). Organisation-scoped Strategies, Future
-  States and Guiding Principles appear in the project reports they relate
-  to (R2 parents, R6 and R7 rows) because every org member can already read
-  them.
+  organisation-wide (Phase 9 Q12), gated by the `org_reports_viewer` role and
+  the framework's default `readable_projects` scope. Organisation-scoped
+  Strategies, Future States and Guiding Principles appear in the project
+  reports they relate to (R2 parents, R6 and R7 rows) because every org
+  member can already read them.
 - Report reads are not audit-logged, following `modules.compliance.reports`:
   every field here is already returned to the same caller by the module's
   JSON endpoints, and nothing Restricted (no file content, no secrets) is
@@ -44,16 +44,15 @@ User):
 - R9 has no tier columns yet: `intentional_in`/`removed_by` stay reserved
   until Product Tiers (Module 13) exists, so the report says so in a note.
 
-Dependencies: core `services.relationships`/`services.scoring`, the
-`registry` artefact-summary hook (Decisions, without importing Module 4) and
-this module's own models.
+Dependencies: core `services.relationships`/`services.scoring`/
+`services.report_framework`, the `registry` artefact-summary hook (Decisions,
+without importing Module 4) and this module's own models.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
@@ -61,7 +60,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
@@ -106,10 +104,9 @@ from app.modules.context_strategy.pain_point_scores import (
     load_scoring_context,
     resolve_model,
 )
-from app.modules.registry import get_artefact_summary, is_module_subcomponent_enabled
+from app.modules.registry import ReportDefinition, ReportParamDefinition, get_artefact_summary
 from app.services import relationships
-from app.services.project_hierarchy import get_descendant_project_ids
-from app.services.rbac import get_effective_project_roles, memoize_user_lookups, prefetch_project_roles
+from app.services.report_framework import ReportContext, ReportResult, ReportSection, build_report_routers
 
 STRATEGY_TYPE = "strategy"
 FUTURE_STATE_TYPE = "future_state"
@@ -134,154 +131,12 @@ CHURN_RISK_SEVERITY_RATIO = 0.8
 _PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
-# --- Result shapes -------------------------------------------------------------
-
-
-@dataclass
-class ReportSection:
-    """One table of a report.
-
-    Attributes:
-        key: Stable machine key.
-        title: Heading shown above the table.
-        columns: Column headings.
-        rows: Rows of already-formatted cell strings.
-        note: Optional one-line explanation printed under the heading.
-        gap: Whether this table lists problems to fix (the summary pack
-            re-lists every report's gap tables).
-    """
-
-    key: str
-    title: str
-    columns: list[str]
-    rows: list[list[str]]
-    note: str = ""
-    gap: bool = False
-
-
-@dataclass
-class ReportResult:
-    """A collected report, shared by every output form.
-
-    Attributes:
-        key: Catalogue key, e.g. `"r1"`.
-        title: Report title.
-        scope_label: Project or organisation name the report covers.
-        generated_at: When it was collected.
-        notes: Caveats shown at the top (scope, model, reserved features).
-        sections: The tables; `sections[0]` is the CSV export.
-        metrics: `(label, value)` headline figures for the summary pack.
-        data: Report-specific structured data for on-screen views.
-        eligible_projects: How many in-scope projects have the report's
-            sub-component enabled (0 = nothing to report on).
-    """
-
-    key: str
-    title: str
-    scope_label: str
-    generated_at: datetime
-    notes: list[str]
-    sections: list[ReportSection]
-    metrics: list[tuple[str, int | str]] = field(default_factory=list)
-    data: Any = None
-    eligible_projects: int = 0
-
-
-@dataclass
-class ReportRequest:
-    """Everything a collector needs.
-
-    Attributes:
-        organization: The organisation reported on.
-        projects: Readable in-scope projects (see `readable_projects`).
-        root_project: The project the report was requested for, or `None`
-            for an organisation-wide report.
-        model_key: Requested Pain Point scoring model, or `None` for each
-            project's resolved default.
-        rollup: How per-persona scores combine.
-        stale_months: R7's "not revised in N months" threshold.
-        since: R7's earliest version date, or `None` for all history.
-        today: The reference date (injectable for tests).
-    """
-
-    organization: Organization
-    projects: list[Project]
-    root_project: Project | None = None
-    model_key: str | None = None
-    rollup: RollupMethod = RollupMethod.WEIGHTED_AVERAGE
-    stale_months: int = 6
-    since: date | None = None
-    today: date = field(default_factory=lambda: datetime.now(UTC).date())
-    _enabled: dict[tuple[uuid.UUID, str], bool] = field(default_factory=dict, repr=False)
-
-    @property
-    def scope_label(self) -> str:
-        """The name printed as the report's scope."""
-        return self.root_project.name if self.root_project is not None else self.organization.name
-
-    @property
-    def scope_note(self) -> str:
-        """A caveat describing which projects are covered."""
-        if self.root_project is None:
-            return f"Covers {len(self.projects)} project(s) in this organisation that you can read."
-        if len(self.projects) > 1:
-            return f"Covers this project and {len(self.projects) - 1} readable child project(s)."
-        return "Covers this project only."
-
-
-# --- Access ----------------------------------------------------------------
-
-
-def readable_projects(
-    db: Session, user: User, *, organization: Organization, root_project: Project | None, include_children: bool,
-) -> list[Project]:
-    """Returns the projects a report may cover for `user`.
-
-    Only projects on which the user holds an effective project role are
-    returned (an org admin without a project role is not), so an aggregate
-    report never exposes a project its reader cannot open. For a project
-    report the root is always included (the caller's route dependency has
-    already authorised it); child projects are added only when requested and
-    only if readable.
-
-    Args:
-        db: Database session.
-        user: The requesting user.
-        organization: The organisation; projects of other organisations are
-            never returned.
-        root_project: The project for a project-level report, or `None`.
-        include_children: Add readable descendants of `root_project`.
-
-    Returns:
-        Projects ordered by name.
-    """
-    if root_project is not None:
-        candidate_ids = {root_project.id}
-        if include_children:
-            candidate_ids |= get_descendant_project_ids(db, root_project.id)
-        candidates = list(db.scalars(
-            select(Project).where(Project.id.in_(candidate_ids), Project.organization_id == organization.id)
-        ).all())
-    else:
-        candidates = list(db.scalars(select(Project).where(Project.organization_id == organization.id)).all())
-    with memoize_user_lookups():
-        prefetch_project_roles(db, user.id, [p.id for p in candidates])
-        readable = [
-            p for p in candidates
-            if (root_project is not None and p.id == root_project.id) or get_effective_project_roles(db, user.id, p.id)
-        ]
-    return sorted(readable, key=lambda p: (p.name.lower(), str(p.id)))
-
-
-def _eligible(db: Session, req: ReportRequest, subcomponent: str) -> list[Project]:
-    """The request's projects that have `subcomponent` effectively enabled."""
-    for p in req.projects:
-        if (p.id, subcomponent) not in req._enabled:
-            req._enabled[(p.id, subcomponent)] = is_module_subcomponent_enabled(db, p.id, MODULE_KEY, subcomponent)
-    return [p for p in req.projects if req._enabled[(p.id, subcomponent)]]
-
-
 # --- Small shared helpers --------------------------------------------------------
+
+
+def _rollup(req: ReportContext) -> RollupMethod:
+    """The persona roll-up method requested (the framework already rejected an unknown value)."""
+    return RollupMethod(req.params["rollup"])
 
 
 def _fmt_date(value: date | datetime | None) -> str:
@@ -350,7 +205,7 @@ def _project_names(projects: list[Project]) -> dict[uuid.UUID, str]:
     return {p.id: p.name for p in projects}
 
 
-def _result(req: ReportRequest, key: str, title: str, *, eligible: int, notes: list[str] | None = None) -> ReportResult:
+def _result(req: ReportContext, key: str, title: str, *, eligible: int, notes: list[str] | None = None) -> ReportResult:
     """Starts a `ReportResult` with the scope note and any report-specific notes."""
     return ReportResult(
         key=key, title=title, scope_label=req.scope_label, generated_at=datetime.now(UTC),
@@ -481,7 +336,7 @@ def _matrix_point(ctx: ScoringContext, summary: PainPointScoringSummary) -> Matr
 
 
 def _score_pain_points(
-    db: Session, req: ReportRequest, statuses: frozenset[PainPointStatus], *, intentional: bool | None = None,
+    db: Session, req: ReportContext, statuses: frozenset[PainPointStatus], *, intentional: bool | None = None,
 ) -> list[ScoredGroup]:
     """Scores the in-scope Pain Points in `statuses`, grouped by the model
     actually applied.
@@ -502,7 +357,7 @@ def _score_pain_points(
     """
     groups: dict[str, ScoredGroup] = {}
     type_names: dict[uuid.UUID, str] = {}
-    for project in _eligible(db, req, "pain_point"):
+    for project in req.eligible(db, "pain_point"):
         query = select(PainPoint).where(
             PainPoint.project_id == project.id, PainPoint.is_archived.is_(False), PainPoint.status.in_(statuses),
         )
@@ -510,16 +365,16 @@ def _score_pain_points(
             query = query.where(PainPoint.is_intentional.is_(intentional))
         pain_points = list(db.scalars(query.order_by(PainPoint.created_at)).all())
         ctx = load_scoring_context(db, project)
-        model = resolve_model(ctx, req.model_key)
+        model = resolve_model(ctx, req.params["model_key"])
         group = groups.get(model.key)
         if group is None:
             group = groups[model.key] = ScoredGroup(
-                model_key=model.key, model_label=model.label, rollup=req.rollup.value,
+                model_key=model.key, model_label=model.label, rollup=_rollup(req).value,
                 severity_levels=[LevelRef(lvl.name, float(lvl.weight)) for lvl in ctx.levels_by_axis.get("severity", [])],
                 frequency_levels=[LevelRef(lvl.name, float(lvl.weight)) for lvl in ctx.levels_by_axis.get("frequency", [])],
                 items=[],
             )
-        summaries = build_pain_point_scoring(db, ctx, pain_points, model, req.rollup)
+        summaries = build_pain_point_scoring(db, ctx, pain_points, model, _rollup(req))
         for pp, summary in zip(pain_points, summaries, strict=True):
             if pp.pain_point_type_id not in type_names:
                 ppt = db.get(ProjectPainPointType, pp.pain_point_type_id)
@@ -559,7 +414,7 @@ def _item_row(i: RankedPainPoint) -> list[str]:
 _R1_COLUMNS = ["Model", "Rank", "Pain point", "Project", "Type", "Status", "Priority", "Score (0–100)", "Band", "Blocker", "Note"]
 
 
-def collect_pain_point_prioritisation(db: Session, req: ReportRequest) -> ReportResult:
+def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> ReportResult:
     """R1 — open Pain Points ranked by the chosen model and roll-up.
 
     Ranked items are unintentional, open and scored; unscored items and
@@ -576,9 +431,9 @@ def collect_pain_point_prioritisation(db: Session, req: ReportRequest) -> Report
         The report; `data` is `{"rollup", "groups": list[ScoredGroup]}`.
     """
     groups = _score_pain_points(db, req, OPEN_PAIN_POINT_STATUSES)
-    eligible = len(_eligible(db, req, "pain_point"))
+    eligible = len(req.eligible(db, "pain_point"))
     result = _result(req, "r1", "Pain Point prioritisation", eligible=eligible, notes=[
-        f"Persona roll-up: {label(ROLLUP_LABEL, req.rollup.value)}. Unscored personas are excluded, not counted as zero.",
+        f"Persona roll-up: {label(ROLLUP_LABEL, _rollup(req).value)}. Unscored personas are excluded, not counted as zero.",
         "Items are ranked within one scoring model only; a Blocker is shown whatever the roll-up.",
         "Intentional limitations are excluded from the ranking (see the Intentional section and R9).",
     ])
@@ -623,7 +478,7 @@ def collect_pain_point_prioritisation(db: Session, req: ReportRequest) -> Report
         ("Open Pain Points (excluding intentional)", open_count), ("Scored", scored),
         ("Not scored", len(unscored)), ("Blockers", len(blockers)), ("Intentional limitations", len(intentional)),
     ]
-    result.data = {"rollup": req.rollup.value, "groups": groups}
+    result.data = {"rollup": _rollup(req).value, "groups": groups}
     return result
 
 
@@ -649,7 +504,7 @@ def _matrix_rows(group: ScoredGroup, items: list[RankedPainPoint]) -> list[list[
     return rows
 
 
-def collect_upgrade_drivers(db: Session, req: ReportRequest) -> ReportResult:
+def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
     """R9 — intentional Pain Points (deliberate tier limitations) with
     per-persona Severity.
 
@@ -666,7 +521,7 @@ def collect_upgrade_drivers(db: Session, req: ReportRequest) -> ReportResult:
         The report; `data` is `{"rollup", "groups"}` as for R1.
     """
     groups = _score_pain_points(db, req, OPEN_PAIN_POINT_STATUSES, intentional=True)
-    result = _result(req, "r9", "Upgrade drivers", eligible=len(_eligible(db, req, "pain_point")), notes=[
+    result = _result(req, "r9", "Upgrade drivers", eligible=len(req.eligible(db, "pain_point")), notes=[
         "Tier columns are empty until Product Tiers (Module 13) is available; limitations are not yet linked to a tier.",
         "Churn risk: a persona is at or near the top Severity level, so the limitation may push users away "
         "rather than towards an upgrade.",
@@ -689,7 +544,7 @@ def collect_upgrade_drivers(db: Session, req: ReportRequest) -> ReportResult:
         ReportSection("churn", "Churn risks", columns, churn_rows, gap=True),
     ]
     result.metrics = [("Intentional limitations", len(rows)), ("Churn risks", len(churn_rows))]
-    result.data = {"rollup": req.rollup.value, "groups": groups}
+    result.data = {"rollup": _rollup(req).value, "groups": groups}
     return result
 
 
@@ -708,7 +563,7 @@ class CascadeNode:
     children: list[CascadeNode] = field(default_factory=list)
 
 
-def collect_strategy_cascade(db: Session, req: ReportRequest) -> ReportResult:
+def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
     """R2 — Org Strategy → Project Strategy → Future State → Requirement,
     with the alignment gaps: Project Strategies with no organisation parent,
     Active Strategies with no Requirement, Future States with no Strategy.
@@ -720,7 +575,7 @@ def collect_strategy_cascade(db: Session, req: ReportRequest) -> ReportResult:
     Returns:
         The report; `data` is `{"tree": list[CascadeNode]}`.
     """
-    projects = _eligible(db, req, "strategy")
+    projects = req.eligible(db, "strategy")
     project_ids = {p.id for p in req.projects}
     names = _project_names(req.projects)
     result = _result(req, "r2", "Strategy cascade and alignment", eligible=len(projects), notes=[
@@ -742,7 +597,7 @@ def collect_strategy_cascade(db: Session, req: ReportRequest) -> ReportResult:
     } if related_ids else {}
     all_strategies = {**{s.id: s for s in project_strategies}, **org_strategies}
     versions = _current_versions(db, StrategyVersion, "strategy_id", list(all_strategies))
-    future_states = _future_states_in_scope(db, req, _eligible(db, req, "future_state"), list(all_strategies))
+    future_states = _future_states_in_scope(db, req, req.eligible(db, "future_state"), list(all_strategies))
     fs_by_strategy = _outgoing(db, STRATEGY_TYPE, list(all_strategies), FUTURE_STATE_TYPE)
     req_by_strategy = _outgoing(db, STRATEGY_TYPE, list(all_strategies), REQUIREMENT_TYPE)
     req_by_fs = _outgoing(db, FUTURE_STATE_TYPE, list(future_states), REQUIREMENT_TYPE)
@@ -854,7 +709,7 @@ def _current_versions(db: Session, model: Any, fk: str, ids: list[uuid.UUID]) ->
 
 
 def _future_states_in_scope(
-    db: Session, req: ReportRequest, projects: list[Project], strategy_ids: list[uuid.UUID],
+    db: Session, req: ReportContext, projects: list[Project], strategy_ids: list[uuid.UUID],
 ) -> dict[uuid.UUID, FutureState]:
     """Non-archived Future States of `projects`, plus org-scoped ones linked
     from any of `strategy_ids`."""
@@ -872,7 +727,7 @@ def _future_states_in_scope(
     return found
 
 
-def _all_visible_strategy_ids(db: Session, req: ReportRequest) -> set[uuid.UUID]:
+def _all_visible_strategy_ids(db: Session, req: ReportContext) -> set[uuid.UUID]:
     """Ids of every non-archived Strategy the report scope can see: those of
     its projects, plus the organisation's own."""
     ids = db.scalars(select(Strategy.id).where(
@@ -886,7 +741,7 @@ def _all_visible_strategy_ids(db: Session, req: ReportRequest) -> set[uuid.UUID]
 # --- R3: Pain Point coverage and ageing -------------------------------------------------
 
 
-def collect_pain_point_coverage(db: Session, req: ReportRequest) -> ReportResult:
+def collect_pain_point_coverage(db: Session, req: ReportContext) -> ReportResult:
     """R3 — Pain Point type × status matrix, Accepted Pain Points with no
     motivated Requirement, the Requirements that answer them, and the age of
     each open Pain Point.
@@ -898,7 +753,7 @@ def collect_pain_point_coverage(db: Session, req: ReportRequest) -> ReportResult
     Returns:
         The report; `data` is `{"accepted_without_requirement": [...]}` ids.
     """
-    projects = _eligible(db, req, "pain_point")
+    projects = req.eligible(db, "pain_point")
     names = _project_names(projects)
     result = _result(req, "r3", "Pain Point coverage and ageing", eligible=len(projects), notes=[
         "Links to Requirements outside the projects you can read in this report are not counted.",
@@ -970,7 +825,7 @@ class OpenQuestionRow:
     is_overdue: bool
 
 
-def collect_open_question_register(db: Session, req: ReportRequest) -> ReportResult:
+def collect_open_question_register(db: Session, req: ReportContext) -> ReportResult:
     """R4 — unresolved Open Questions by priority and owner, with overdue,
     unowned and days-open figures.
 
@@ -981,7 +836,7 @@ def collect_open_question_register(db: Session, req: ReportRequest) -> ReportRes
     Returns:
         The report; `data` is `{"items": list[OpenQuestionRow]}`.
     """
-    projects = _eligible(db, req, "open_question")
+    projects = req.eligible(db, "open_question")
     names = _project_names(projects)
     result = _result(req, "r4", "Open Question register", eligible=len(projects))
     questions = list(db.scalars(select(OpenQuestion).where(
@@ -1027,7 +882,7 @@ def collect_open_question_register(db: Session, req: ReportRequest) -> ReportRes
 # --- R5: Future State roadmap ----------------------------------------------------------------
 
 
-def collect_future_state_roadmap(db: Session, req: ReportRequest) -> ReportResult:
+def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResult:
     """R5 — Future States on a timeline by `target_date`, flagging target
     dates already passed while not Active and Future States with no
     `success_measures`.
@@ -1039,7 +894,7 @@ def collect_future_state_roadmap(db: Session, req: ReportRequest) -> ReportResul
     Returns:
         The report; `data` is `{"items": [...]}` with the roadmap rows.
     """
-    projects = _eligible(db, req, "future_state")
+    projects = req.eligible(db, "future_state")
     names = _project_names(projects)
     result = _result(req, "r5", "Future State roadmap", eligible=len(projects))
     states = list(db.scalars(select(FutureState).where(
@@ -1089,7 +944,7 @@ def collect_future_state_roadmap(db: Session, req: ReportRequest) -> ReportResul
 # --- R6: Guiding Principle usage -----------------------------------------------------------------
 
 
-def collect_guiding_principle_usage(db: Session, req: ReportRequest) -> ReportResult:
+def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportResult:
     """R6 — Active Guiding Principles with how many Requirements and
     Decisions they are linked to, and those never applied.
 
@@ -1105,7 +960,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportRequest) -> ReportRe
     Returns:
         The report; `data` is `{"items": [...]}`.
     """
-    projects = _eligible(db, req, "guiding_principle")
+    projects = req.eligible(db, "guiding_principle")
     names = _project_names(projects)
     project_ids = {p.id for p in req.projects}
     result = _result(req, "r6", "Guiding Principle register and usage", eligible=len(projects), notes=[
@@ -1172,7 +1027,7 @@ def _months_ago(today: date, months: int) -> date:
     return date(index // 12, index % 12 + 1, min(today.day, 28))
 
 
-def collect_change_history(db: Session, req: ReportRequest) -> ReportResult:
+def collect_change_history(db: Session, req: ReportContext) -> ReportResult:
     """R7 — every version of the Strategies, Future States and Guiding
     Principles in scope (status moves, change note, author), plus Active
     items not revised within `stale_months`.
@@ -1184,12 +1039,12 @@ def collect_change_history(db: Session, req: ReportRequest) -> ReportResult:
     Returns:
         The report; `data` is `{"items": [...]}` newest first.
     """
-    enabled_ids = {p.id for sub in ("strategy", "future_state", "guiding_principle") for p in _eligible(db, req, sub)}
+    enabled_ids = {p.id for sub in ("strategy", "future_state", "guiding_principle") for p in req.eligible(db, sub)}
     projects = [p for p in req.projects if p.id in enabled_ids]
     names = _project_names(req.projects)
     result = _result(req, "r7", "Strategy change history", eligible=len(projects), notes=[
-        f"Active items not revised in {req.stale_months} months are listed as stale."
-        + (f" History from {req.since.isoformat()}." if req.since else ""),
+        f"Active items not revised in {req.params["stale_months"]} months are listed as stale."
+        + (f" History from {req.params["since"].isoformat()}." if req.params["since"] else ""),
     ])
     kinds = [
         ("strategy", "Strategy", Strategy, StrategyVersion, "strategy_id", "title", StrategyScope.ORGANIZATION, StrategyStatus.ACTIVE),
@@ -1200,9 +1055,9 @@ def collect_change_history(db: Session, req: ReportRequest) -> ReportResult:
     ]
     entries: list[dict[str, Any]] = []
     stale: list[dict[str, Any]] = []
-    threshold = _months_ago(req.today, req.stale_months)
+    threshold = _months_ago(req.today, req.params["stale_months"])
     for sub, kind_label, root, version_model, fk, title_attr, org_scope, active_status in kinds:
-        enabled = [p.id for p in _eligible(db, req, sub)]
+        enabled = [p.id for p in req.eligible(db, sub)]
         if not enabled:
             continue
         artefacts = list(db.scalars(select(root).where(
@@ -1226,7 +1081,7 @@ def collect_change_history(db: Session, req: ReportRequest) -> ReportResult:
                     "change_note": v.change_note, "author": authors.get(v.created_by, ""), "changed_at": v.created_at,
                 }
                 previous = v
-                if req.since is None or v.created_at.date() >= req.since:
+                if req.params["since"] is None or v.created_at.date() >= req.params["since"]:
                     entries.append(entry)
             if versions and versions[-1].status is active_status and versions[-1].created_at.date() < threshold:
                 stale.append({**entry, "changed_at": versions[-1].created_at})
@@ -1246,7 +1101,7 @@ def collect_change_history(db: Session, req: ReportRequest) -> ReportResult:
     columns = ["Date", "Artefact", "Title", "Project", "Version", "Status", "Status change", "Change note", "Author"]
     result.sections = [
         ReportSection("history", "Version history", columns, [row(e) for e in entries]),
-        ReportSection("stale", f"Active, not revised in {req.stale_months} months", columns, [row(e) for e in stale],
+        ReportSection("stale", f"Active, not revised in {req.params["stale_months"]} months", columns, [row(e) for e in stale],
                       gap=True, note="Review each: confirm it still holds, or revise or retire it."),
     ]
     result.metrics = [("Versions in range", len(entries)), ("Active items not revised recently", len(stale))]
@@ -1256,10 +1111,7 @@ def collect_change_history(db: Session, req: ReportRequest) -> ReportResult:
 
 # --- R8: Summary pack --------------------------------------------------------------------------------------
 
-_Collector = Callable[[Session, ReportRequest], ReportResult]
-
-
-def collect_summary_pack(db: Session, req: ReportRequest) -> ReportResult:
+def collect_summary_pack(db: Session, req: ReportContext) -> ReportResult:
     """R8 — headline counts plus every other report's gap lists in one
     document. At organisation level only the organisation-wide reports are
     included; reports whose sub-component is off everywhere are omitted.
@@ -1273,7 +1125,7 @@ def collect_summary_pack(db: Session, req: ReportRequest) -> ReportResult:
     """
     org_level = req.root_project is None
     parts = [
-        spec for spec in REPORTS.values()
+        spec for spec in REPORT_DEFINITIONS
         if spec.key != "r8" and (spec.org_level or not org_level)
     ]
     results = [r for r in (spec.collector(db, req) for spec in parts) if r.eligible_projects > 0]
@@ -1294,59 +1146,73 @@ def collect_summary_pack(db: Session, req: ReportRequest) -> ReportResult:
     return result
 
 
-# --- Catalogue ------------------------------------------------------------------------------------------------
+# --- Declarations ---------------------------------------------------------------------------------------------
 
+_ORG_ROLE = "org_reports_viewer"
+_MODEL_KEY = ReportParamDefinition(
+    "model_key", "string",
+    description="Scoring model: sxf (Severity x Frequency), sxc (Severity x Confidence) or sxfxc; "
+                "defaults to the project's configured default.",
+)
+_ROLLUP = ReportParamDefinition(
+    "rollup", "string", default=RollupMethod.WEIGHTED_AVERAGE.value, choices=tuple(m.value for m in RollupMethod),
+    description="How per-persona scores combine: weighted_average (default), worst_case or average.",
+)
+_STALE_MONTHS = ReportParamDefinition(
+    "stale_months", "integer", default=6, minimum=1, maximum=120,
+    description="Change history only: months without a revision before an Active item is stale (default 6).",
+)
+_SINCE = ReportParamDefinition(
+    "since", "date", description="Change history only: earliest version date to include.",
+)
 
-@dataclass(frozen=True)
-class ReportSpec:
-    """One catalogue entry.
+REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
+    ReportDefinition(
+        "r1", "pain-point-prioritisation", "Pain Point prioritisation",
+        "Open Pain Points ranked by the chosen scoring model and persona roll-up, with Blockers always shown.",
+        collect_pain_point_prioritisation, subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE,
+        params=(_MODEL_KEY, _ROLLUP),
+    ),
+    ReportDefinition(
+        "r2", "strategy-cascade", "Strategy cascade and alignment",
+        "Organisation Strategy to Requirement, with alignment gaps.", collect_strategy_cascade, subcomponent="strategy",
+    ),
+    ReportDefinition(
+        "r3", "pain-point-coverage", "Pain Point coverage and ageing",
+        "Pain Points by type and status, Accepted ones with no Requirement, and age.", collect_pain_point_coverage,
+        subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE,
+    ),
+    ReportDefinition(
+        "r4", "open-question-register", "Open Question register",
+        "Unresolved Open Questions by priority and owner, with overdue and unowned items.",
+        collect_open_question_register, subcomponent="open_question", org_level=True, org_role_key=_ORG_ROLE,
+    ),
+    ReportDefinition(
+        "r5", "future-state-roadmap", "Future State roadmap",
+        "Future States by target date, with missed targets and missing success measures.",
+        collect_future_state_roadmap, subcomponent="future_state",
+    ),
+    ReportDefinition(
+        "r6", "guiding-principle-usage", "Guiding Principle register and usage",
+        "Active Guiding Principles and how they are applied.", collect_guiding_principle_usage,
+        subcomponent="guiding_principle",
+    ),
+    ReportDefinition(
+        "r7", "strategy-change-history", "Strategy change history",
+        "Version history of Strategies, Future States and Guiding Principles, and stale Active items.",
+        collect_change_history, params=(_STALE_MONTHS, _SINCE),
+    ),
+    ReportDefinition(
+        "r8", "summary", "Context & Strategy summary", "Headline figures and every report's gap lists in one pack.",
+        collect_summary_pack, org_level=True, org_role_key=_ORG_ROLE,
+        params=(_MODEL_KEY, _ROLLUP, _STALE_MONTHS, _SINCE),
+    ),
+    ReportDefinition(
+        "r9", "upgrade-drivers", "Upgrade drivers",
+        "Intentional tier limitations with per-persona Severity and churn risk.", collect_upgrade_drivers,
+        subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE, params=(_MODEL_KEY, _ROLLUP),
+    ),
+)
 
-    Attributes:
-        key: Short key, `"r1"`…`"r9"`.
-        slug: URL segment.
-        title: Display title.
-        description: One line shown on the Reports page and in MCP.
-        subcomponent: Sub-component that must be enabled for the report to
-            be offered, or `None` when any enabled sub-component suffices.
-        org_level: Whether an organisation-wide variant exists.
-        collector: The `collect_*` function.
-    """
-
-    key: str
-    slug: str
-    title: str
-    description: str
-    subcomponent: str | None
-    org_level: bool
-    collector: _Collector
-
-
-REPORTS: dict[str, ReportSpec] = {
-    spec.key: spec for spec in (
-        ReportSpec("r1", "pain-point-prioritisation", "Pain Point prioritisation",
-                   "Open Pain Points ranked by the chosen scoring model and persona roll-up, with Blockers always shown.",
-                   "pain_point", True, collect_pain_point_prioritisation),
-        ReportSpec("r2", "strategy-cascade", "Strategy cascade and alignment",
-                   "Organisation Strategy to Requirement, with alignment gaps.", "strategy", False, collect_strategy_cascade),
-        ReportSpec("r3", "pain-point-coverage", "Pain Point coverage and ageing",
-                   "Pain Points by type and status, Accepted ones with no Requirement, and age.", "pain_point", True,
-                   collect_pain_point_coverage),
-        ReportSpec("r4", "open-question-register", "Open Question register",
-                   "Unresolved Open Questions by priority and owner, with overdue and unowned items.", "open_question", True,
-                   collect_open_question_register),
-        ReportSpec("r5", "future-state-roadmap", "Future State roadmap",
-                   "Future States by target date, with missed targets and missing success measures.", "future_state", False,
-                   collect_future_state_roadmap),
-        ReportSpec("r6", "guiding-principle-usage", "Guiding Principle register and usage",
-                   "Active Guiding Principles and how they are applied.", "guiding_principle", False,
-                   collect_guiding_principle_usage),
-        ReportSpec("r7", "strategy-change-history", "Strategy change history",
-                   "Version history of Strategies, Future States and Guiding Principles, and stale Active items.", None, False,
-                   collect_change_history),
-        ReportSpec("r8", "summary", "Context & Strategy summary",
-                   "Headline figures and every report's gap lists in one pack.", None, True, collect_summary_pack),
-        ReportSpec("r9", "upgrade-drivers", "Upgrade drivers",
-                   "Intentional tier limitations with per-persona Severity and churn risk.", "pain_point", True,
-                   collect_upgrade_drivers),
-    )
-}
+# Project and organisation routers for the module to include (`router.py`, `project_router.py`).
+REPORT_ROUTERS = build_report_routers(MODULE_KEY, REPORT_DEFINITIONS)

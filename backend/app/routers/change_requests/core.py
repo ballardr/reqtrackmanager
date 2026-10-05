@@ -322,7 +322,7 @@ def create_change_request(
 
     if payload.proposed_attachment_file_ids:
         # Same cross-org isolation check report images use
-        # (routers/reports.py::_resolve_report_images) — an attachment
+        # (services/report_document.py::resolve_report_images) — an attachment
         # proposed here must already be an org shared resource belonging to
         # this project's own organisation, not an arbitrary file id from
         # anywhere else in the system.

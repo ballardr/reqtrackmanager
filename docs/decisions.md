@@ -9520,3 +9520,122 @@ Markdown renderer, image resolution, escaping), not only from Phase 12's
 renderer, so every report type gets the same document shell and org branding.
 Phase 12b's scope was widened accordingly (item 3b); requirement-report output
 must not change. (Decided by: User, to share; scope Decided by: Agent.)
+
+
+## Module 1 (Context & Strategy) Phase 12b — core report framework (2026-10-06)
+
+The module-neutral half of Phase 12 now lives in core and Context & Strategy
+declares its reports against it. Adding a report to a module is a `collect_*`
+function plus one `ReportDefinition` on `ModuleDefinition.reports`; routes,
+`?format=json|pdf|csv`, access gating, typed parameters, MCP tools, the
+catalogue and the branded PDF come from core. No table or migration.
+
+What moved:
+- `services/report_framework.py` (new): `ReportSection`/`ReportResult`,
+  `ReportContext` (with a cached per-sub-component `eligible`),
+  `readable_projects`/`scope_projects`, `render_csv`/`render_pdf`, `ReportOut`,
+  `build_report_routers`, `report_mcp_tools`, the catalogue builders.
+- `services/report_document.py` (new): the shell extracted from
+  `services/reports.py` — `ReportBranding`/`resolve_branding`, cover/title,
+  footer + A4 build (`build_pdf`, page size is a parameter), the Markdown
+  renderer, `resolve_report_images` (with its organisation-ownership check),
+  `safe` (ReportLab escaping), `styled_table`. `services/reports.py` keeps
+  only requirement-specific code and its output is unchanged (its four test
+  files pass untouched). Compliance's reports now use the same `safe`,
+  `styled_table`, title block and PDF build instead of private copies.
+- `routers/report_catalogue.py` (new): `GET /projects/{id}/report-catalogue`
+  (project member) and `GET /orgs/{id}/report-catalogue` (org member, listing
+  only reports whose role the caller holds).
+- `registry.py`: `ReportParamDefinition`, `ReportDefinition`,
+  `ModuleDefinition.reports`, `validate_report_definitions`,
+  `get_module_reports`, `get_all_reports`.
+- Deleted from Context & Strategy: `report_render.py`, `report_router.py`,
+  `_shared.require_org_reports_role`, `_REPORT_QUERY_PARAMS`. Collectors,
+  `labels.py`, the `org_reports_viewer` role and all report maths stay.
+
+Decisions:
+- **The scope policy is a declared field, `org_scope`** (`readable_projects`
+  default, or `all_org_projects`), never hard-coded, so Compliance's "manager
+  sees every project" rule can be expressed later without weakening the
+  stricter default. (Decided by: Agent, from the plan's Compliance review.) No
+  shipped report uses `all_org_projects` yet.
+- **An organisation-wide report must declare an `org_role_key`** (an org-scoped
+  role of its own module); `org_level` without one, or a role on a report with
+  no organisation variant, is rejected. (Decided by: Agent.) *Why:* an
+  aggregate across projects should never be gated by project access alone.
+- **Registry-dependent validation happens lazily, fail-closed.** Routers are
+  built at import, before the registry exists, so structural checks (duplicate
+  slug, malformed parameters) run in `build_report_routers` and the registry
+  checks (unknown sub-component, role not org-scoped) in `get_module_reports`.
+  A route for a report that fails the latter answers 404, is not catalogued,
+  and `build_mcp_tool_manifest` drops its MCP tool. (Decided by: Agent.)
+- **Parameters are declared and become the route signature**, so FastAPI
+  validates types/bounds (422) and OpenAPI is accurate; `choices` are checked
+  in core (400); unknown query parameters are still ignored. Phase 12's
+  universal parameters (every endpoint accepted `model_key`, `rollup`,
+  `stale_months`, `since`) are now per report: R8 declares all four because it
+  re-runs the others; R3–R6 no longer accept them (ignored if sent). (Decided
+  by: Agent.)
+- **Template branding only** (plan open question 1): `report_template_id`
+  applies accent colour, cover page, logo and footer; a template's intro,
+  chapters and appendices stay requirement-report content. Without a template
+  a module report is unbranded as before. (Decided by: Agent, recommendation
+  in the plan; confirm with the user.)
+- **Compliance migration depth** (open question 5): only shared primitives
+  (`safe`, `styled_table`, title block, PDF build) were repointed; its
+  collectors, narrative cells and routes are not migrated. Rich cells,
+  section kinds (open question 2) and row caps (open question 3) are not
+  built: no consumer needs them yet. (Decided by: Agent.)
+- **Not done, flagged:** no Decision register report (open question 4); no
+  `uuid`-typed parameter is used by any shipped report (it is supported and
+  tested via the probe module).
+- **Docs website:** no change. Nothing user-visible moved (requirement-report
+  output is identical; the module reports have no UI until Phase 13, and the
+  catalogue endpoints are consumed by that UI). Phase 13 owns the site update.
+  (Decided by: Agent.)
+
+**Review (identify → verify → remediate)** — touches access control and
+aggregated reads:
+1. *Org gate bypass.* The org route runs `require_org_module_enabled` (org
+   membership, module on) then the definition's `org_role_key`
+   (`user_satisfies_module_role`); a role declared at project scope is rejected
+   at validation. Tested: member 403, org admin and role holder 200, project-only
+   slug 404, foreign organisation 404.
+2. *Scope widening.* `readable_projects` moved unchanged; `all_org_projects` is
+   only reachable for an organisation run of a definition that declares it, and
+   still requires the role. Tested: a role holder on one of two projects gets
+   one project under the default and both under `all_org_projects`; an org
+   admin with no project role gets none under the default; a second
+   organisation's admin gets 404 on both routes.
+3. *Template cross-tenant read.* `report_template_id` is loaded with an
+   organisation-ownership check (`load_report_template`); another
+   organisation's template, an unknown id and a malformed id give 400/400/422
+   (tested). The logo is read from the report's own organisation only.
+4. *Injection.* CSV cells go through `csv_safe` and PDF cells through the single
+   `safe` (a probe collector returns `=HYPERLINK(...)` and
+   `<img src="file:///etc/passwd">` in notes, cells and section notes; tested for
+   CSV and PDF). The codebase's third and fourth copies of the escaping helper
+   are gone.
+5. *Fail-open registration.* An invalid declaration could have been served.
+   Verified it is not (404, no catalogue entry); **found and fixed:** the MCP
+   manifest still advertised a tool for a report that failed registry
+   validation. `build_mcp_tool_manifest` now excludes it (tested).
+6. *Phase 12 guarantees.* Re-run unchanged: the 23 Context & Strategy report
+   tests (cross-project leakage, role escalation, CSV/PDF injection), the MCP
+   manifest (74 tools), `test_downloads_filename.py`.
+7. **Found and fixed (existing bug):** two Phase 12 report tests failed whenever
+   the host's local date differed from the UTC date (they used `date.today()`
+   while the reports use the UTC date), e.g. between midnight and 11:00 in
+   AEDT. They now use the UTC date.
+
+**Verification:** `tests/test_report_framework.py` (17 tests, against a
+synthetic non-Context & Strategy module): registry validation, parameter
+typing/choices/bounds, OpenAPI and MCP derivation, project and org gates,
+sub-component gating, readable vs all-projects scope, child projects,
+cross-organisation isolation, JSON shape, CSV/PDF output and injection,
+template branding and rejection, both catalogues, and an AST check that core
+report files import nothing from a specific module. The four requirement-report
+test files, the Compliance report tests, the Context & Strategy suite and the
+MCP manifest tests pass; `ruff check` is clean.
+
+**Known gaps:** no UI (Phase 13); report endpoints are not paginated.
