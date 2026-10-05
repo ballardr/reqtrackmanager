@@ -123,6 +123,8 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.modules.decisions.service import DECISION_APPROVE_PERMISSION, DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
 from app.modules.registry import (
+    ArtefactSummary,
+    ArtefactSummaryProvider,
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
@@ -227,6 +229,34 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
     ).all())
 
 
+def _decision_summary(decision) -> ArtefactSummary:
+    return ArtefactSummary(
+        id=decision.id, project_id=decision.project_id, label=f"{decision.unique_code} {decision.title}",
+        status=decision.status.value, is_archived=decision.is_archived,
+    )
+
+
+def _get_decision_summary(db: Session, decision_id: UUID) -> ArtefactSummary | None:
+    """`ArtefactSummaryProvider.get` for Decisions."""
+    from app.modules.decisions.models import Decision
+
+    decision = db.get(Decision, decision_id)
+    return None if decision is None else _decision_summary(decision)
+
+
+def _list_decision_summaries(db: Session, project_id: UUID) -> list[ArtefactSummary]:
+    """`ArtefactSummaryProvider.list_for_project` for Decisions (unarchived, by code)."""
+    from sqlalchemy import select
+
+    from app.modules.decisions.models import Decision
+
+    rows = db.scalars(
+        select(Decision).where(Decision.project_id == project_id, Decision.is_archived.is_(False))
+        .order_by(Decision.unique_code)
+    ).all()
+    return [_decision_summary(d) for d in rows]
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=DECISIONS_MODULE_KEY,
     name="Decision Management",
@@ -254,6 +284,9 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     artefact_types=(DECISION_ARTEFACT_TYPE,),
     artefact_ids_in_organization=_artefact_ids_in_organization,
+    artefact_summary_providers={
+        DECISION_ARTEFACT_TYPE: ArtefactSummaryProvider(get=_get_decision_summary, list_for_project=_list_decision_summaries),
+    },
     roles=(
         ModuleRoleDefinition(
             role_key="decision_owner",

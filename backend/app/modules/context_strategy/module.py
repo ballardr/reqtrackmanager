@@ -164,6 +164,8 @@ from app.modules.context_strategy.service import (
     STRATEGY_ARTEFACT_TYPE,
 )
 from app.modules.registry import (
+    ArtefactSummary,
+    ArtefactSummaryProvider,
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
@@ -713,6 +715,34 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
     return ids
 
 
+def _pain_point_summary(point) -> ArtefactSummary:
+    return ArtefactSummary(
+        id=point.id, project_id=point.project_id, label=point.title, status=point.status.value,
+        is_archived=point.is_archived,
+    )
+
+
+def _get_pain_point_summary(db: Session, pain_point_id: UUID) -> ArtefactSummary | None:
+    """`ArtefactSummaryProvider.get` for Pain Points."""
+    from app.modules.context_strategy.models import PainPoint
+
+    point = db.get(PainPoint, pain_point_id)
+    return None if point is None else _pain_point_summary(point)
+
+
+def _list_pain_point_summaries(db: Session, project_id: UUID) -> list[ArtefactSummary]:
+    """`ArtefactSummaryProvider.list_for_project` for Pain Points (unarchived, by title)."""
+    from sqlalchemy import select
+
+    from app.modules.context_strategy.models import PainPoint
+
+    rows = db.scalars(
+        select(PainPoint).where(PainPoint.project_id == project_id, PainPoint.is_archived.is_(False))
+        .order_by(PainPoint.title)
+    ).all()
+    return [_pain_point_summary(p) for p in rows]
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=CONTEXT_STRATEGY_MODULE_KEY,
     name="Context & Strategy",
@@ -791,6 +821,11 @@ MODULE_DEFINITION = ModuleDefinition(
         OPEN_QUESTION_ARTEFACT_TYPE,
     ),
     artefact_ids_in_organization=_artefact_ids_in_organization,
+    artefact_summary_providers={
+        PAIN_POINT_ARTEFACT_TYPE: ArtefactSummaryProvider(
+            get=_get_pain_point_summary, list_for_project=_list_pain_point_summaries,
+        ),
+    },
     # Module 0 (Platform Foundations) Phase 4: each of Context & Strategy's
     # five artefacts declares its own sub-component key only once its own
     # phase lands (Phase 1 registered "strategy", Phase 2 "future_state",

@@ -34,6 +34,8 @@ If the [Decision Management module](../modules/decision-management-module/overvi
 
 If the [Context & Strategy module](../modules/context-strategy-module/overview.md) is enabled, a requirement can similarly be linked back to the Strategy that drives it, the Pain Point that motivated it, or the Guiding Principle it's informed by — see [Context & Strategy → Relationships and types](../modules/context-strategy-module/relationships-and-types.md) — giving a requirement's own reasoning an upstream trail beyond its own `reasoning` field.
 
+If the [Stakeholders & Personas module](../modules/stakeholders-personas-module/overview.md) is enabled, a requirement can be linked to the Stakeholders and Personas who provide it or are affected by it, and traced back through a Stakeholder Need to the wording of what someone actually asked for — see [Stakeholders & Personas → Stakeholder Need](../modules/stakeholders-personas-module/stakeholder-need.md) and [Relationships](../modules/stakeholders-personas-module/relationships.md).
+
 ## Review scheduling and completion
 
 A requirement can carry a review date and an assigned reviewer. Once the date passes, it appears on the assigned reviewer's **My reviews due** page and the project's own reviews-due page until someone records an outcome — met, or failed with a required comment explaining why — from the requirement's detail page.

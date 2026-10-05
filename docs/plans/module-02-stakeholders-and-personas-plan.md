@@ -9,19 +9,23 @@ re-derive it, and does not need Module 1 for that purpose.
 **Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
 §10 "Module 2 — Stakeholders & Personas".
 
-**Status:** Phases 0, 1.1, 1.2 and 2 complete (all 2026-10-05; Phase 0 had user
-sign-off, see "Phase 0 resolutions" below); Phase 3 is next. Phase 1 was split
+**Status:** Phases 0, 1.1, 1.2, 2 and 3 complete (all 2026-10-05; Phase 0 had user
+sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 4 is next. Phase 1 was split
 into 1.1 (Persona) and 1.2 (Stakeholder) so Module 1 Phase 11's dependency,
 which needs only Personas, unblocked first. Built ahead of the overview's §46 order because Module 1's
 Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-4 / 9 phases complete. **Phase 3 (Relationships + remaining frontend UI + MCP) is next.**
+6 / 10 phases complete. **Phases 0–3 and 7a are done, so the module can ship; Phase 4 (Engagements: data
+model, backend, erasure) is next, with 5, 6 and 7b after it.** The user asked for the docs phase to be pulled ahead of Phases 4–6
+(**Decided by: User**, 2026-10-05): Phase 7a documents what Phases 0–3 shipped, and Phase 7b extends the
+same section once Phases 4–6 land.
 Phase 1.1 (Persona, 2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder,
 2026-10-05) adds the Stakeholder artefact, its Influence × Interest scoring scheme and
 erasure; Phase 2 (Stakeholder Needs, 2026-10-05) adds the Need artefact and its "has need"
-and "gives rise to" links. Phases 4–6
+and "gives rise to" links; Phase 3 (Relationships, 2026-10-05) adds the remaining §10.5
+relationships, the link MCP tools and the relationship panel. Phases 4–6
 were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 
 | # | Phase | Status |
@@ -30,11 +34,12 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 1.1 | Persona: data model, types, weight + override, RBAC, scoring-target hook, UI | [x] Complete (2026-10-05) |
 | 1.2 | Stakeholder: data model, types, RBAC, UI | [x] Complete (2026-10-05) |
 | 2 | Stakeholder Needs (as first-class records) | [x] Complete (2026-10-05) |
-| 3 | Relationships + remaining frontend UI + MCP | [ ] Not started |
+| 3 | Relationships + remaining frontend UI + MCP | [x] Complete (2026-10-05) |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
 | 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
 | 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13's report hook |
-| 7 | Docs website coverage | [ ] Not started — depends on Phases 3, 5 and 6 |
+| 7a | Docs website coverage — shipped scope (Personas, Stakeholders, Needs, relationships, MCP) | [x] Complete (2026-10-05) |
+| 7b | Docs website coverage — extension for Engagements, research extras, cadence workflow and reports S1–S5 | [ ] Not started — depends on Phases 4, 5 and 6 |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -474,6 +479,19 @@ generalized `allow_ai_approvals` gate or (b) `APPROVAL_ACTION_ROUTE_EXTRA`
 after all, decide between (a)/(b) for it then, defaulting to (a) per the
 Compliance precedent absent a specific reason otherwise.
 
+**Status: complete (2026-10-05).** Same module (`stakeholders`), no new sub-component or
+role: relationships ride on the holder's own (`stakeholder`/`persona`) sub-component and manage
+gate. Account, deviations and review: `docs/decisions.md`'s "Module 2 Phase 3" entry. Left for
+later phases:
+
+- **Decision/Design targets.** "Consulted on Decision" and "Approves/Reviews" shipped against real
+  Decisions; "Uses Design / System Element" is declared but unavailable until a module registers an
+  `artefact_summary_providers` entry for `design`/`system_element` (Module 6).
+- **Phase 4 (Engagements)** links participants/findings the same way (`relationships.get_kind`-style
+  table or `service.get_or_create_link_type`), and S3 can read `relationships.list_incoming`.
+- **Bundles** carry Requirement-targeted links; Pain Point/Decision-targeted ones are exported but
+  skipped with a warning on import until those modules' own records travel in the bundle.
+
 ## Phase 4 — Engagements (+ research extras): data model, backend, erasure
 
 **Scope** (addendum 14, 15 and addendum 2, item 20):
@@ -556,7 +574,7 @@ when the research extras are off.
 permission, cross-org isolation, sub-component gating), Playwright for
 downloads and the S1 grid, and Storybook.
 
-## Phase 7 — Docs website coverage
+## Phase 7 — Docs website coverage (7a now, 7b after Phases 4–6)
 
 Added 2026-09-21 at the user's explicit instruction, applied across every
 not-yet-built module plan (**Decided by: User**); the specific scope and
@@ -564,67 +582,67 @@ placement below are this session's own judgment (**Decided by: Agent**),
 modelled closely on [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
 Phase 6 of the same name.
 
+**Split (2026-10-05, Decided by: User):** the user asked for docs coverage
+to be planned in *before* Phases 4–6 so the module can ship with what Phases
+0–3 delivered, and the rest be done later. So the phase is two parts:
+
+- **7a — shipped scope, now.** Documents only what exists: Personas,
+  Stakeholders (incl. the Influence × Interest rating, target cadence and
+  availability, user → stakeholder, hard delete), Stakeholder Needs, the
+  §10.5 relationships, MCP tools and known limitations. Anything from
+  Phases 4–6 appears only as a clearly labelled "coming later" entry in
+  *Known limitations*, never as a described feature.
+- **7b — extension, after Phases 4–6.** Adds Engagements and the research
+  extras, the cadence/staleness workflow, reports S1–S5 and their MCP tools,
+  and removes the matching "coming later" entries.
+
 **Goal:** add Stakeholders & Personas' user-facing surface to
-`docs/website/` (the published docs site, `docs/plans/docs-website-plan.md`)
-— what a Stakeholder/Persona record is, how a Persona differs from (and is
-modelled alongside) an ordinary Stakeholder, what a Stakeholder Need is and
-why it exists as its own record, and how these relate to Requirements and
-other artefacts — following the site's existing structure, tone, and
-Mermaid-diagram conventions (per this repo's Documentation Requirements:
-prefer diagrams, validate they render before finalising).
+`docs/website/` (the published docs site, `docs/plans/docs-website-plan.md`),
+following the site's existing structure, tone, and Mermaid-diagram
+conventions (per this repo's Documentation Requirements: prefer diagrams,
+validate they render before finalising).
 
-**Why this is its own tracked phase, not folded silently into this phase's
-own frontend work:** `CLAUDE.md`'s "Docs Website Maintenance" rule already
-requires this check on every change with a user-facing surface, performed
-in the same change rather than deferred — so in the ordinary case this
-would just be part of Phase 3's own work. It's broken out explicitly here,
-mirroring Decision Management's own Phase 6 reasoning, so the docs-site
-update has its own checklist-visible exit criteria rather than being an
-implicit sub-bullet of Phase 3's UI work, which already has plenty of its
-own scope (two artefact types, eight relationship kinds, and a
-persona-vs-stakeholder distinction that is easy to under-explain if rushed).
+**Why this is its own tracked phase, not folded silently into Phase 3's
+own frontend work:** `CLAUDE.md`'s "Docs Website Maintenance" rule requires
+this check on every change with a user-facing surface, performed in the same
+change. Phases 1.1–3 each deferred it to here (**Decided by: User**, via this
+plan), so it needs its own checklist-visible exit criteria, mirroring
+Decision Management's own Phase 6.
 
-**Scope:**
+**Scope (7a):**
 
-- A new docs-site page or section (matching whatever grouping the site
-  already uses for other project-scoped modules, e.g. Compliance and
-  Decision Management) covering: what a Stakeholder is, what a Persona is (a separate record, per Phase 0
-  resolution 1), and how they relate through "Represents Persona"; the Stakeholder →
-  Need → Stakeholder Requirement → Project Requirement chain (§10.1) as a
-  Mermaid diagram, including why a Need is optional rather than mandatory
-  in that chain (Phase 0 resolution 7); persona weight and its project
-  override; the relationships wired in Phase 3 (Has Need,
-  Experiences Pain Point, Provides Requirement, Represents Persona, etc.),
-  including which targets (Decision, Design) are reserved pending Modules 4
-  and 6.
-- Update the site's module/feature index or nav to include Stakeholders &
-  Personas alongside the other installed modules it already lists.
-- Cross-link from the Requirements documentation to the new page wherever
-  the site already documents how a Requirement traces back to the
-  stakeholder or need that motivated it, if it does.
-- **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
-  every not-yet-built module plan's own "Docs website coverage" phase,
-  alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
-  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
-  "Screenshots" standard (1440×900 viewport, captured against the seeded
-  demo dataset, stored under `docs/website/static/img/screenshots/`, real
-  alt text plus a one-line caption, no surrounding "what this shows/why it
-  matters" prose) and its "every Concepts, Core Features, Workflows, and
-  Modules page needs at least one screenshot or diagram" bar — not forced
-  onto a page whose content is genuinely diagram/table-only. Candidate
-  screens for this module's own page — **Decided by: Agent**: the
-  Stakeholder/Persona list view, a Stakeholder detail page showing its
-  Needs and relationships, and a Persona detail page showing its weight.
+- A nested *Stakeholders & Personas module* section under Modules, matching
+  Context & Strategy's shape (overview, one page per artefact, relationships,
+  MCP, known limitations): *Overview*, *Persona*, *Stakeholder*,
+  *Stakeholder Need*, *Relationships*, *AI assistant (MCP) integration*,
+  *Known limitations*. The overview carries the Stakeholder → Need →
+  Requirement chain as a Mermaid diagram and why a Need is optional (Phase 0
+  resolution 7), why a Persona is a separate record from a Stakeholder
+  (resolution 1), enabling the module, and the roles table.
+- Update the Modules overview and roadmap (move Stakeholders & Personas from
+  "proposed" to shipped, note what remains proposed), the sidebar, and
+  cross-link from the Requirements documentation where it describes tracing
+  a Requirement back to what motivated it.
+- Document persona weight and its project override, the reserved Design /
+  System Element relationship, and the personal-data erasure behaviour.
+- **Screenshots.** — **Decided by: User** (2026-09-22). Follow
+  `docs/plans/docs-website-plan.md`'s "Screenshots" standard (1440×900,
+  captured against the seeded demo dataset, stored under
+  `docs/website/static/img/screenshots/`, real alt text plus a one-line
+  caption, no surrounding "what this shows/why it matters" prose). Screens —
+  **Decided by: Agent**: the Persona and Stakeholder lists, a Persona detail
+  page showing its weight, and a Stakeholder detail page showing its Needs
+  and relationships.
+- Verify: `npm run build` clean (broken links fail it) and Mermaid diagrams
+  validated.
 
-Also cover (addendum): user → stakeholder → persona, persona champions,
-Engagements and research extras, target cadence and the cadence hint, the
-power/interest grid, and reports S1–S5.
+**Scope (7b):** Engagements and research extras, user → stakeholder →
+persona walk-through with engagement history, target cadence, the cadence
+hint and staleness, the power/interest grid, reports S1–S5 and their MCP
+tools, with screenshots of each new screen.
 
-**Status:** not started — depends on Phases 3, 5 and 6 (relationships + frontend)
-actually shipping; there is no real user-facing workflow to document
-accurately before then, the same reasoning Decision Management's own
-Phase 6 and Compliance's docs-site page both used. Not a blocker for any
-other phase.
+**Status:** 7a complete (2026-10-05): `docs/website/docs/modules/stakeholders-personas-module/` (overview, Persona, Stakeholder, Stakeholder Need, Relationships, MCP, known limitations), five screenshots, sidebar, Modules overview/roadmap and Requirements-management cross-links; `npm run build` clean and the Mermaid diagrams render. 7b not started — depends on Phases
+4, 5 and 6 shipping. Neither blocks any other phase.
 
 ## Acceptance criteria (from overview §48, Stakeholders & Personas subset)
 

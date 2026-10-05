@@ -57,7 +57,7 @@ from app.modules.registry import (
     ModuleSubComponentDefinition,
 )
 from app.modules.stakeholders import export as persona_export
-from app.modules.stakeholders import need_export, stakeholder_export
+from app.modules.stakeholders import need_export, relationship_export, stakeholder_export
 from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
@@ -92,12 +92,14 @@ def get_project_router() -> APIRouter | None:
     lazily like `get_router`."""
     from app.modules.stakeholders.need_project_router import router as need_router
     from app.modules.stakeholders.project_router import router
+    from app.modules.stakeholders.relationship_project_router import router as relationship_router
     from app.modules.stakeholders.stakeholder_project_router import router as stakeholder_router
 
     combined = APIRouter()
     combined.include_router(router)
     combined.include_router(stakeholder_router)
     combined.include_router(need_router)
+    combined.include_router(relationship_router)
     return combined
 
 
@@ -140,18 +142,21 @@ def _export_project(db: Session, project):
     persona_data, persona_assets = persona_export.export_project_data(db, project)
     stakeholder_data, stakeholder_assets = stakeholder_export.export_project_data(db, project)
     need_data, need_assets = need_export.export_project_data(db, project)
+    relationship_data = relationship_export.export_project_data(db, project)
     return (
-        {**persona_data, **stakeholder_data, **need_data},
+        {**persona_data, **stakeholder_data, **need_data, **relationship_data},
         {**persona_assets, **stakeholder_assets, **need_assets},
     )
 
 
 def _import_project(db, project, data, file_bytes_by_ref, current_user, users, warnings) -> None:
     """Project bundle import: Personas, then Stakeholders (which link to them),
-    then Needs (which link to both)."""
+    then Needs (which link to both), then the §10.5 relationships (which need
+    all of those plus other modules' Pain Points and Decisions)."""
     persona_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     stakeholder_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     need_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+    relationship_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
 
 
 def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUID]:
@@ -236,6 +241,118 @@ _NEED_FIELD_PARAMS = [
 ]
 
 
+def _path(name: str, description: str) -> dict:
+    return {"name": name, "type": "uuid", "required": True, "in": "path", "description": description}
+
+
+def _query(name: str, type_: str, description: str) -> dict:
+    return {"name": name, "type": type_, "required": True, "in": "query", "description": description}
+
+
+def _build_link_mcp_tools() -> tuple[McpToolDefinition, ...]:
+    """Link tools (Phase 3): the §10.5 relationships, "represents Persona", "has
+    need" and "gives rise to". Writes need the same role as the REST endpoints;
+    removing a link deletes only the link, never either record."""
+    prefix = _PROJECT_ROUTER_PREFIX
+    link_id = _path("link_id", "The relationship's link id (from the list tool).")
+    kind_body = [
+        _body("kind", "string", "A relationship kind key (see list_relationship_kinds).", required=True),
+        _body("target_type", "string", "The target's artefact type, e.g. pain_point, requirement, decision.", required=True),
+        _body("target_id", "uuid", "The target record's id (it must belong to this project).", required=True),
+    ]
+    tools: list[McpToolDefinition] = [
+        McpToolDefinition(
+            name="list_relationship_kinds", method="GET", path_template=f"{prefix}/relationship-kinds",
+            description="Lists the relationship kinds a Stakeholder or Persona can have and which targets are linkable now.",
+            params=[_PROJECT_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="list_relationship_targets", method="GET", path_template=f"{prefix}/relationship-targets",
+            description="Lists the project's records of one target type a relationship can point at.",
+            params=[_PROJECT_ID_PARAM, _query("target_type", "string", "e.g. pain_point, requirement, decision.")],
+        ),
+        McpToolDefinition(
+            name="list_incoming_relationships", method="GET", path_template=f"{prefix}/relationships/incoming",
+            description="Lists the Stakeholders and Personas related to one Pain Point, Requirement or Decision.",
+            params=[_PROJECT_ID_PARAM, _query("target_type", "string", "The target's artefact type."),
+                    _query("target_id", "uuid", "The target record's id.")],
+        ),
+    ]
+    for holder, label, holder_param in (
+        ("stakeholder", "Stakeholder", _STAKEHOLDER_ID_PARAM), ("persona", "Persona", _PERSONA_ID_PARAM),
+    ):
+        base = f"{prefix}/{holder}s/{{{holder}_id}}"
+        tools += [
+            McpToolDefinition(
+                name=f"list_{holder}_relationships", method="GET", path_template=f"{base}/relationships",
+                description=f"Lists a {label}'s relationships to this project's Pain Points, Requirements and Decisions.",
+                params=[_PROJECT_ID_PARAM, holder_param],
+            ),
+            McpToolDefinition(
+                name=f"add_{holder}_relationship", method="POST", path_template=f"{base}/relationships",
+                description=f"Adds a relationship from a {label} to a record of this project.",
+                params=[_PROJECT_ID_PARAM, holder_param, *kind_body],
+            ),
+            McpToolDefinition(
+                name=f"remove_{holder}_relationship", method="DELETE", path_template=f"{base}/relationships/{{link_id}}",
+                description=f"Removes one of a {label}'s relationships (the link only).",
+                params=[_PROJECT_ID_PARAM, holder_param, link_id],
+            ),
+        ]
+    stakeholder_base = f"{prefix}/stakeholders/{{stakeholder_id}}"
+    need_base = f"{prefix}/needs/{{need_id}}"
+    tools += [
+        McpToolDefinition(
+            name="list_stakeholder_personas", method="GET", path_template=f"{stakeholder_base}/personas",
+            description="Lists the Personas a Stakeholder represents.", params=[_PROJECT_ID_PARAM, _STAKEHOLDER_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="add_stakeholder_persona", method="POST", path_template=f"{stakeholder_base}/personas",
+            description="Records that a project-scoped Stakeholder represents a Persona.",
+            params=[_PROJECT_ID_PARAM, _STAKEHOLDER_ID_PARAM, _body("persona_id", "uuid", "The Persona.", required=True)],
+        ),
+        McpToolDefinition(
+            name="remove_stakeholder_persona", method="DELETE", path_template=f"{stakeholder_base}/personas/{{persona_id}}",
+            description="Removes a Stakeholder's \"represents\" link to a Persona (the link only).",
+            params=[_PROJECT_ID_PARAM, _STAKEHOLDER_ID_PARAM, _PERSONA_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="list_need_holders", method="GET", path_template=f"{need_base}/holders",
+            description="Lists the Stakeholders and Personas that have a Stakeholder Need.",
+            params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="add_need_holder", method="POST", path_template=f"{need_base}/holders",
+            description="Records that a Stakeholder or Persona has a Stakeholder Need.",
+            params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM,
+                    _body("kind", "string", "stakeholder or persona.", required=True),
+                    _body("id", "uuid", "The Stakeholder's or Persona's id.", required=True)],
+        ),
+        McpToolDefinition(
+            name="remove_need_holder", method="DELETE", path_template=f"{need_base}/holders/{{kind}}/{{holder_id}}",
+            description="Removes a \"has need\" link (the link only).",
+            params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM,
+                    {"name": "kind", "type": "string", "required": True, "in": "path", "description": "stakeholder or persona."},
+                    _path("holder_id", "The Stakeholder's or Persona's id.")],
+        ),
+        McpToolDefinition(
+            name="list_need_requirements", method="GET", path_template=f"{need_base}/requirements",
+            description="Lists the Requirements a Stakeholder Need gave rise to.", params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="add_need_requirement", method="POST", path_template=f"{need_base}/requirements",
+            description="Records that a Stakeholder Need gave rise to a Requirement of this project.",
+            params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM, _body("requirement_id", "uuid", "The Requirement.", required=True)],
+        ),
+        McpToolDefinition(
+            name="remove_need_requirement", method="DELETE", path_template=f"{need_base}/requirements/{{requirement_id}}",
+            description="Removes a \"gives rise to\" link (the link only).",
+            params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM, _path("requirement_id", "The Requirement.")],
+        ),
+    ]
+    return tuple(tools)
+
+
 def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     """Persona, Stakeholder and Stakeholder Need read and write tools (no approval-gated action
     exists, so no `require_ai_approvals_enabled` handling is needed). There is
@@ -244,7 +361,7 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     persona_path = f"{_PROJECT_ROUTER_PREFIX}/personas/{{persona_id}}"
     stakeholder_path = f"{_PROJECT_ROUTER_PREFIX}/stakeholders/{{stakeholder_id}}"
     need_path = f"{_PROJECT_ROUTER_PREFIX}/needs/{{need_id}}"
-    return (
+    return _build_link_mcp_tools() + (
         McpToolDefinition(
             name="list_personas", description="Lists a project's Personas, including its organisation's shared ones.",
             method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/personas", params=[_PROJECT_ID_PARAM],

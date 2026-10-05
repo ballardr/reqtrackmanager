@@ -6,7 +6,7 @@
  * shape, and the `stakeholder` scoring scheme the Stakeholder form reads.
  */
 import type { ScoringScheme } from "../../api/scoring";
-import type { Need, Persona, Stakeholder } from "./types";
+import type { Need, Persona, Relationship, RelationshipKind, Stakeholder } from "./types";
 
 /** A complete project-scoped, active `Persona` with `overrides` applied. */
 export function buildPersona(overrides: Partial<Persona> = {}): Persona {
@@ -71,5 +71,36 @@ export function buildNeed(overrides: Partial<Need> = {}): Need {
     rationale: "Observed on site visits; each delay costs an hour.", status: "active", owner_id: null,
     version_number: 1, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
+  };
+}
+
+/** The declared §10.5 relationship kinds as the backend returns them, with the
+ * Design/System Element kind reserved (no target module installed). */
+export function buildRelationshipKinds(): RelationshipKind[] {
+  const both: RelationshipKind["holder_types"] = ["stakeholder", "persona"];
+  const stakeholderOnly: RelationshipKind["holder_types"] = ["stakeholder"];
+  return [
+    { key: "experiences_pain_point", forward: "Experiences", reverse: "Is experienced by", holder_types: both,
+      target_types: ["pain_point"], available_target_types: ["pain_point"] },
+    { key: "provides_requirement", forward: "Provides", reverse: "Is provided by", holder_types: both,
+      target_types: ["requirement"], available_target_types: ["requirement"] },
+    { key: "affected_by_requirement", forward: "Is affected by", reverse: "Affects", holder_types: both,
+      target_types: ["requirement"], available_target_types: ["requirement"] },
+    { key: "consulted_on_decision", forward: "Consulted on", reverse: "Consulted", holder_types: stakeholderOnly,
+      target_types: ["decision"], available_target_types: ["decision"] },
+    { key: "approves", forward: "Approves", reverse: "Is approved by", holder_types: stakeholderOnly,
+      target_types: ["requirement", "decision"], available_target_types: ["requirement", "decision"] },
+    { key: "reviews", forward: "Reviews", reverse: "Is reviewed by", holder_types: stakeholderOnly,
+      target_types: ["requirement", "decision"], available_target_types: ["requirement", "decision"] },
+    { key: "uses_design_element", forward: "Uses", reverse: "Is used by", holder_types: both,
+      target_types: ["design", "system_element"], available_target_types: [] },
+  ];
+}
+
+/** A `Relationship` (Experiences → a Pain Point) with `overrides` applied. */
+export function buildRelationship(overrides: Partial<Relationship> = {}): Relationship {
+  return {
+    link_id: "rel-1", kind: "experiences_pain_point", forward: "Experiences", target_type: "pain_point",
+    target_id: "pp-1", label: "Reports arrive late", is_archived: false, ...overrides,
   };
 }

@@ -30,8 +30,13 @@ from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.user import User
 from app.modules.stakeholders import _attachments as att
-from app.modules.stakeholders._shared import apply_value_error_as_conflict, validate_people
-from app.modules.stakeholders.enums import NeedStatus, PersonaScope, StakeholderScope
+from app.modules.stakeholders._shared import (
+    apply_value_error_as_conflict,
+    get_visible_holder,
+    holder_name,
+    validate_people,
+)
+from app.modules.stakeholders.enums import NeedStatus
 from app.modules.stakeholders.models import (
     Persona,
     Stakeholder,
@@ -52,15 +57,12 @@ from app.modules.stakeholders.schemas import (
 )
 from app.modules.stakeholders.service import (
     NEED_ARTEFACT_TYPE,
-    STAKEHOLDER_ARTEFACT_TYPE,
     STAKEHOLDERS_MODULE_KEY,
     add_gives_rise_to_link,
     add_has_need_link,
     apply_need_new_version,
     create_need,
     get_current_need_version,
-    get_current_persona_version,
-    get_current_stakeholder_version,
     list_need_holders,
     list_need_requirement_links,
     transition_need,
@@ -168,46 +170,9 @@ def transition_need_endpoint(
 # --- Links -------------------------------------------------------------------
 
 
-def _visible_stakeholder(db: Session, project: Project, stakeholder_id: uuid.UUID) -> Stakeholder:
-    stakeholder = db.get(Stakeholder, stakeholder_id)
-    visible = stakeholder is not None and (
-        (stakeholder.scope == StakeholderScope.PROJECT and stakeholder.project_id == project.id)
-        or (stakeholder.scope == StakeholderScope.ORGANIZATION
-            and stakeholder.organization_id == project.organization_id)
-    )
-    if not visible:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder not found.")
-    return stakeholder
-
-
-def _visible_persona(db: Session, project: Project, persona_id: uuid.UUID) -> Persona:
-    persona = db.get(Persona, persona_id)
-    visible = persona is not None and (
-        (persona.scope == PersonaScope.PROJECT and persona.project_id == project.id)
-        or (persona.scope == PersonaScope.ORGANIZATION and persona.organization_id == project.organization_id)
-    )
-    if not visible:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Persona not found.")
-    return persona
-
-
-def get_visible_holder(db: Session, project: Project, kind: str, holder_id: uuid.UUID) -> Stakeholder | Persona:
-    """A Stakeholder/Persona (`kind` is its artefact type) this project can
-    see, else 404."""
-    if kind == STAKEHOLDER_ARTEFACT_TYPE:
-        return _visible_stakeholder(db, project, holder_id)
-    return _visible_persona(db, project, holder_id)
-
-
-def _holder_name(db: Session, kind: str, record: Stakeholder | Persona) -> str:
-    if kind == STAKEHOLDER_ARTEFACT_TYPE:
-        return get_current_stakeholder_version(db, record.id).name
-    return get_current_persona_version(db, record.id).name
-
-
 def holder_to_out(db: Session, link, kind: str, record: Stakeholder | Persona) -> NeedHolderOut:
     """API shape of a "has need" link seen from the need."""
-    return NeedHolderOut(link_id=link.id, kind=kind, id=record.id, name=_holder_name(db, kind, record), scope=record.scope.value)
+    return NeedHolderOut(link_id=link.id, kind=kind, id=record.id, name=holder_name(db, kind, record), scope=record.scope.value)
 
 
 def held_need_to_out(db: Session, link, need: StakeholderNeed) -> HeldNeedOut:

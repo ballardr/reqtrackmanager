@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildPersona } from "./fixtures";
+import { buildPersona, buildRelationshipKinds } from "./fixtures";
 import { PersonaDetailPage } from "./PersonaDetailPage";
 import type { Persona } from "./types";
 
@@ -28,6 +28,8 @@ function mockDetailApis(current: Persona, versions: unknown[] = [], represented:
       return { members: ORG_USERS.filter((u) => u.display_name.toLowerCase().includes(q)), external: null };
     }
     if (path === `${PROJECT_BASE}/persona-types`) return [{ id: "type-primary", name: "Primary", display_order: 0, is_enabled: true, source: "org" }];
+    if (path === `${PROJECT_BASE}/relationship-kinds`) return buildRelationshipKinds();
+    if (path.endsWith(`/personas/${PERSONA_ID}/relationships`)) return [];
     if (path.endsWith(`/personas/${PERSONA_ID}/stakeholders`)) return represented;
     if (path.endsWith(`/personas/${PERSONA_ID}/needs`)) return [];
     if (path.endsWith(`/personas/${PERSONA_ID}`)) return current;

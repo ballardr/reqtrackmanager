@@ -383,6 +383,19 @@ def create_need(
     return need
 
 
+def add_stakeholder_relationship(
+    headers: dict, project_id: str, holder_kind: str, holder_id: str, kind: str, target_type: str, target_id: str,
+) -> dict:
+    """Adds a §10.5 relationship (Phase 3) from a Stakeholder/Persona (`holder_kind` `"stakeholder"`/`"persona"`) to a
+    record of `project_id`."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/{holder_kind}s/{holder_id}/relationships",
+        json={"kind": kind, "target_type": target_type, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def get_stakeholder_levels(headers: dict, org_id: str) -> dict[str, dict[str, str]]:
     """`{axis: {level name: level id}}` of the org's `stakeholder` scoring scheme."""
     r = httpx.get(f"{BASE}/orgs/{org_id}/scoring-schemes/stakeholder", headers=headers, timeout=30)
@@ -560,7 +573,7 @@ def main() -> None:
     print("Seeding Stakeholders on Gamma: an org Stakeholder (rated, with a cadence, representing the org Field"
           " Inspector persona) and a project Stakeholder on the Gamma-3 hierarchy parent...")
     levels = get_stakeholder_levels(h_g, gamma["id"])
-    create_stakeholder(
+    org_regulator = create_stakeholder(
         h_g, org_id=gamma["id"], activate=True, represents=(field_inspector["id"],), name=STAKEHOLDER_ORG_NAME,
         role="Safety regulator", organisation_group="National Safety Board", interests="Compliance evidence.",
         contact_info="regulator@e2e.example.com", target_cadence="quarterly",
@@ -597,6 +610,14 @@ def main() -> None:
     beta1_reqs = seed_project_content(h_ab, beta1, 7)
     seed_project_content(h_ab, beta2, 6)
     gamma1_reqs = seed_project_content(h_g, gamma1, 7)
+    print("Seeding Stakeholder/Persona relationships on Gamma-1 (Phase 3): the org regulator reviews, and the org Field"
+          " Inspector persona is affected by, its first requirement...")
+    add_stakeholder_relationship(
+        h_g, gamma1["id"], "stakeholder", org_regulator["id"], "reviews", "requirement", gamma1_reqs[0]["id"],
+    )
+    add_stakeholder_relationship(
+        h_g, gamma1["id"], "persona", field_inspector["id"], "affected_by_requirement", "requirement", gamma1_reqs[0]["id"],
+    )
     seed_project_content(h_g, gamma2, 6)
     delta1_reqs = seed_project_content(h_ab, delta1, 3)
 

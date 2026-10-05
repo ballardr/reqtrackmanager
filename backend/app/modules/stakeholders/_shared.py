@@ -25,9 +25,10 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
+from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import _attachments as att
-from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
+from app.modules.stakeholders.enums import PersonaScope, PersonaStatus, StakeholderScope
 from app.modules.stakeholders.models import (
     Persona,
     PersonaComment,
@@ -35,15 +36,18 @@ from app.modules.stakeholders.models import (
     PersonaFile,
     PersonaTypeDefinition,
     PersonaVersion,
+    Stakeholder,
 )
 from app.modules.stakeholders.schemas import PersonaCommentOut, PersonaCreate, PersonaOut, PersonaUpdate
 from app.modules.stakeholders.service import (
     PERSONA_ARTEFACT_TYPE,
     PERSONA_TYPES,
+    STAKEHOLDER_ARTEFACT_TYPE,
     STAKEHOLDERS_MODULE_KEY,
     apply_persona_new_version,
     create_persona,
     get_current_persona_version,
+    get_current_stakeholder_version,
     resolve_persona_type_refs,
     resolve_persona_weight_with_source,
     transition_persona,
@@ -292,3 +296,45 @@ def transition_persona_endpoint(
     apply_value_error_as_conflict(transition_persona, db, persona, current, new_status, actor, action=action, comment=comment)
     db.commit()
     return persona_to_out(db, persona, get_current_persona_version(db, persona.id), project_id=project_id)
+
+
+# --- Records a project can see -----------------------------------------------
+
+
+def get_visible_stakeholder(db: Session, project: Project, stakeholder_id: uuid.UUID) -> Stakeholder:
+    """A Stakeholder `project` can see (its own, or its organisation's), else 404."""
+    stakeholder = db.get(Stakeholder, stakeholder_id)
+    visible = stakeholder is not None and (
+        (stakeholder.scope == StakeholderScope.PROJECT and stakeholder.project_id == project.id)
+        or (stakeholder.scope == StakeholderScope.ORGANIZATION
+            and stakeholder.organization_id == project.organization_id)
+    )
+    if not visible:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder not found.")
+    return stakeholder
+
+
+def get_visible_persona(db: Session, project: Project, persona_id: uuid.UUID) -> Persona:
+    """A Persona `project` can see (its own, or its organisation's), else 404."""
+    persona = db.get(Persona, persona_id)
+    visible = persona is not None and (
+        (persona.scope == PersonaScope.PROJECT and persona.project_id == project.id)
+        or (persona.scope == PersonaScope.ORGANIZATION and persona.organization_id == project.organization_id)
+    )
+    if not visible:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Persona not found.")
+    return persona
+
+
+def get_visible_holder(db: Session, project: Project, kind: str, holder_id: uuid.UUID) -> Stakeholder | Persona:
+    """A Stakeholder/Persona (`kind` is its artefact type) `project` can see, else 404."""
+    if kind == STAKEHOLDER_ARTEFACT_TYPE:
+        return get_visible_stakeholder(db, project, holder_id)
+    return get_visible_persona(db, project, holder_id)
+
+
+def holder_name(db: Session, kind: str, record: Stakeholder | Persona) -> str:
+    """The current name of a Stakeholder/Persona."""
+    if kind == STAKEHOLDER_ARTEFACT_TYPE:
+        return get_current_stakeholder_version(db, record.id).name
+    return get_current_persona_version(db, record.id).name

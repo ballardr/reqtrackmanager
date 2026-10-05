@@ -1448,6 +1448,19 @@ def create_need(
     return need
 
 
+def add_stakeholder_relationship(
+    headers: dict, project_id: str, holder_kind: str, holder_id: str, kind: str, target_type: str, target_id: str,
+) -> dict:
+    """Adds a §10.5 relationship (Module 2 Phase 3) from a Stakeholder (`holder_kind="stakeholder"`) or Persona
+    (`"persona"`) to a record of `project_id`, e.g. kind `experiences_pain_point` with target type `pain_point`."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/{holder_kind}s/{holder_id}/relationships",
+        json={"kind": kind, "target_type": target_type, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -2391,6 +2404,17 @@ def main() -> None:
     )
     print(f"  Needs: {need_status_display['name']!r} (Active, held by Dana Whitfield and the BVLOS Remote Pilot persona,"
           f" gave rise to {drone_reqs[0]['name']!r}), plus a Draft need held by Pat Okafor")
+
+    print("Seeding Stakeholder/Persona relationships (Module 2 Phase 3) — the Field Inspector persona experiences the"
+          " re-keying Pain Point, the fleet manager provides the status-display requirement and was consulted on the"
+          " single flight controller Decision, the regulator reviews that requirement...")
+    for holder_kind, holder_id, kind, target_type, target_id in (
+        ("persona", persona_inspector["id"], "experiences_pain_point", "pain_point", pp_accepted["id"]),
+        ("stakeholder", stakeholder_fleet["id"], "provides_requirement", "requirement", drone_reqs[0]["id"]),
+        ("stakeholder", stakeholder_fleet["id"], "consulted_on_decision", "decision", single_fc_decision["id"]),
+        ("stakeholder", stakeholder_authority["id"], "reviews", "requirement", drone_reqs[0]["id"]),
+    ):
+        add_stakeholder_relationship(h_pm, drone["id"], holder_kind, holder_id, kind, target_type, target_id)
 
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")

@@ -61,6 +61,9 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  */
 export const moduleDefinition: TierAModuleDefinition = {
   key: "decisions",
+  artefactPaths: {
+    decision: (projectId, id) => `/projects/${projectId}/modules/decisions/${id}`,
+  },
   routes: [
     { path: "/projects/:projectId/modules/decisions", element: createElement(ProjectDecisionsPage) },
     { path: "/projects/:projectId/modules/decisions/:decisionId", element: createElement(DecisionDetailPage) },

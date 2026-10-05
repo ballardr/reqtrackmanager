@@ -348,6 +348,7 @@ class ModuleDefinition:
     sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
+    artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     models_import_path: str | None = None       # dotted path to your ORM models module
@@ -881,6 +882,34 @@ flowchart LR
   tolerate a target disappearing or the owner being disabled.
 - The provider does its own sub-component and tenancy checks; the caller has
   already authorised the project.
+### 4f. Link targets: records another module relates to (Module 2 Phase 3)
+
+A module that relates its records to another module's (a Stakeholder
+"experiences" a Pain Point, is "consulted on" a Decision) can't import that
+module, but must still validate the target belongs to the same project, label it
+and offer a picker. The owner declares
+`artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project)`;
+callers use `registry.get_artefact_summary` / `list_artefact_summaries` /
+`has_artefact_summary_provider`. On the frontend the owner's
+`TierAModuleDefinition.artefactPaths[artefact_type] = (projectId, id) => route`
+lets `modules/artefactPaths.ts` link to the record's page. Core owns only
+`requirement`.
+
+```mermaid
+flowchart LR
+    REL["Relating module<br/>(stakeholders)"] -->|"get_artefact_summary(db, 'pain_point', id)"| REG[registry]
+    REG -->|"no provider, or owner disabled for the record's project"| NONE["None → treated as not found"]
+    REG -->|"enabled"| PROV["owner's provider<br/>id · project_id · label · status · is_archived"]
+```
+
+- `ArtefactSummary` carries the target's `project_id`, so the caller enforces
+  "same project as the request" without knowing the owner's tables.
+- A relationship kind whose target type has no provider (Design / System
+  Element, until Module 6) is *declared but unavailable*: listed, never
+  creatable. It goes live when the owner registers a provider.
+- The caller stores `target_id` in `ArtefactLink` as a plain id; the provider
+  does not authorise, so the caller still checks the `(type, view)` permission.
+
 ### Tier A — installed (the primary path)
 
 A first-party module ships default-exported route components and registers

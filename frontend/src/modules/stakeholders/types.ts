@@ -378,3 +378,67 @@ export interface NeedRequirement {
   unique_code: string;
   title: string;
 }
+
+
+// --- Relationships (Phase 3) ---------------------------------------------------
+
+/** Who can hold a §10.5 relationship (the other artefacts' own links have
+ * dedicated shapes above). */
+export type RelationshipHolderKind = "stakeholder" | "persona";
+
+/** One declared relationship kind (`GET .../relationship-kinds`). A kind with
+ * no `available_target_types` is reserved: its target module isn't installed. */
+export interface RelationshipKind {
+  key: string;
+  /** Holder → target wording, e.g. "Experiences" (also the label shown). */
+  forward: string;
+  /** Target → holder wording, e.g. "Is experienced by". */
+  reverse: string;
+  holder_types: RelationshipHolderKind[];
+  target_types: string[];
+  available_target_types: string[];
+}
+
+/** One relationship seen from its holder. */
+export interface Relationship {
+  link_id: string;
+  kind: string;
+  forward: string;
+  target_type: string;
+  target_id: string;
+  label: string;
+  is_archived: boolean;
+}
+
+/** A record a relationship picker offers. */
+export interface RelationshipTarget {
+  id: string;
+  label: string;
+}
+
+/** One relationship seen from its target: the Stakeholder or Persona. */
+export interface IncomingRelationship {
+  link_id: string;
+  kind: string;
+  reverse: string;
+  holder_type: RelationshipHolderKind;
+  holder_id: string;
+  holder_name: string;
+  scope: "organization" | "project";
+}
+
+/** Display names of the artefact types a relationship can point at. Targets
+ * are other modules' records, so a type this map doesn't know falls back to
+ * the raw key rather than being hidden. */
+export const RELATIONSHIP_TARGET_TYPE_LABEL: Record<string, string> = {
+  requirement: "Requirement",
+  pain_point: "Pain Point",
+  decision: "Decision",
+  design: "Design",
+  system_element: "System Element",
+};
+
+/** `RELATIONSHIP_TARGET_TYPE_LABEL`'s entry for `targetType`, or the key itself. */
+export function relationshipTargetTypeLabel(targetType: string): string {
+  return RELATIONSHIP_TARGET_TYPE_LABEL[targetType] ?? targetType;
+}

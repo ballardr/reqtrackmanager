@@ -33,8 +33,9 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import _shared as psh
 from app.modules.stakeholders import _stakeholder_shared as sh
+from app.modules.stakeholders._shared import get_visible_persona, get_visible_stakeholder
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus
-from app.modules.stakeholders.models import Persona, ProjectStakeholderType, Stakeholder
+from app.modules.stakeholders.models import ProjectStakeholderType, Stakeholder
 from app.modules.stakeholders.schemas import (
     CadenceHintOut,
     EffectiveTypeOut,
@@ -93,26 +94,6 @@ def _is_visible(stakeholder: Stakeholder, project: Project) -> bool:
         (stakeholder.scope == StakeholderScope.PROJECT and stakeholder.project_id == project.id)
         or (stakeholder.scope == StakeholderScope.ORGANIZATION and stakeholder.organization_id == project.organization_id)
     )
-
-
-def _get_visible(db: Session, project: Project, stakeholder_id: UUID) -> Stakeholder:
-    """A stakeholder this project can read: its own, or its organisation's."""
-    stakeholder = db.get(Stakeholder, stakeholder_id)
-    if stakeholder is None or not _is_visible(stakeholder, project):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder not found.")
-    return stakeholder
-
-
-def _get_visible_persona(db: Session, project: Project, persona_id: UUID) -> Persona:
-    """A persona this project can read: its own, or its organisation's."""
-    persona = db.get(Persona, persona_id)
-    visible = persona is not None and (
-        (persona.scope == PersonaScope.PROJECT and persona.project_id == project.id)
-        or (persona.scope == PersonaScope.ORGANIZATION and persona.organization_id == project.organization_id)
-    )
-    if not visible:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Persona not found.")
-    return persona
 
 
 def _require_manage(db: Session, user: User, project: Project) -> None:
@@ -260,7 +241,7 @@ def list_project_stakeholders(
 def get_project_stakeholder(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return _out(db, _get_visible(db, _project(db, project_id), stakeholder_id))
+    return _out(db, get_visible_stakeholder(db, _project(db, project_id), stakeholder_id))
 
 
 @router.put("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)
@@ -280,7 +261,7 @@ def update_project_stakeholder(
 def list_project_stakeholder_versions(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return _get_visible(db, _project(db, project_id), stakeholder_id).versions
+    return get_visible_stakeholder(db, _project(db, project_id), stakeholder_id).versions
 
 
 @router.delete("/stakeholders/{stakeholder_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -363,7 +344,7 @@ def list_project_stakeholder_personas(
 ):
     """The Personas this stakeholder represents that this project can see."""
     project = _project(db, project_id)
-    stakeholder = _get_visible(db, project, stakeholder_id)
+    stakeholder = get_visible_stakeholder(db, project, stakeholder_id)
     return [
         sh.represents_to_out(db, link, p)
         for link, p in list_represented_personas(db, stakeholder, project.organization_id)
@@ -380,7 +361,7 @@ def add_project_stakeholder_persona(
     can see (409 on a duplicate)."""
     project = _project(db, project_id)
     stakeholder = _get(db, project_id, stakeholder_id)
-    persona = _get_visible_persona(db, project, payload.persona_id)
+    persona = get_visible_persona(db, project, payload.persona_id)
     _require_manage(db, current_user, project)
     return sh.add_represents(db, stakeholder, persona, current_user, organization_id=project.organization_id)
 
@@ -410,7 +391,7 @@ def list_project_persona_stakeholders(
     """The Stakeholders that represent this Persona and that this project can
     see (its own and the organisation's)."""
     project = _project(db, project_id)
-    persona = _get_visible_persona(db, project, persona_id)
+    persona = get_visible_persona(db, project, persona_id)
     return [
         sh.stakeholder_link_to_out(db, link, s)
         for link, s in list_representing_stakeholders(db, persona, project.organization_id)
@@ -426,7 +407,7 @@ def add_project_stakeholder_comment(
     project_id: UUID, stakeholder_id: UUID, payload: StakeholderCommentCreate,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    stakeholder = _get_visible(db, _project(db, project_id), stakeholder_id)
+    stakeholder = get_visible_stakeholder(db, _project(db, project_id), stakeholder_id)
     return sh.add_comment(db, stakeholder, current_user, payload.body, project_id=project_id)
 
 
@@ -434,7 +415,7 @@ def add_project_stakeholder_comment(
 def list_project_stakeholder_comments(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return sh.list_comments(db, _get_visible(db, _project(db, project_id), stakeholder_id))
+    return sh.list_comments(db, get_visible_stakeholder(db, _project(db, project_id), stakeholder_id))
 
 
 @router.patch("/stakeholders/{stakeholder_id}/comments/{comment_id}", response_model=StakeholderCommentOut)
@@ -442,7 +423,7 @@ def edit_project_stakeholder_comment(
     project_id: UUID, stakeholder_id: UUID, comment_id: UUID, payload: StakeholderCommentUpdate,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    stakeholder = _get_visible(db, _project(db, project_id), stakeholder_id)
+    stakeholder = get_visible_stakeholder(db, _project(db, project_id), stakeholder_id)
     return sh.edit_comment(db, stakeholder, comment_id, current_user, payload.body, project_id=project_id)
 
 
@@ -452,7 +433,7 @@ async def upload_project_stakeholder_comment_attachment(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     project = _project(db, project_id)
-    stakeholder = _get_visible(db, project, stakeholder_id)
+    stakeholder = get_visible_stakeholder(db, project, stakeholder_id)
     return await sh.attach_to_comment(
         db, stakeholder, comment_id, current_user, file, organization_id=project.organization_id,
         project_id=project_id,
@@ -464,7 +445,7 @@ def remove_project_stakeholder_comment_attachment(
     project_id: UUID, stakeholder_id: UUID, comment_id: UUID, file_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    stakeholder = _get_visible(db, _project(db, project_id), stakeholder_id)
+    stakeholder = get_visible_stakeholder(db, _project(db, project_id), stakeholder_id)
     sh.remove_comment_attachment(db, stakeholder, comment_id, file_id, current_user, project_id=project_id)
 
 
@@ -488,7 +469,7 @@ async def upload_project_stakeholder_file(
 def list_project_stakeholder_files(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return sh.list_files(db, _get_visible(db, _project(db, project_id), stakeholder_id))
+    return sh.list_files(db, get_visible_stakeholder(db, _project(db, project_id), stakeholder_id))
 
 
 @router.delete("/stakeholders/{stakeholder_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)

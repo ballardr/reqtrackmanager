@@ -38,6 +38,7 @@ import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "./RecordDetailParts";
 import { RecordDiscussion } from "./RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
+import { RelationshipsPanel } from "./RelationshipsPanel";
 import { RepresentationPanel } from "./RepresentationPanel";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderVersion } from "./types";
@@ -269,6 +270,8 @@ export function StakeholderDetailPage() {
         />
 
         <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
+
+        <RelationshipsPanel projectId={projectId} holder="stakeholder" holderId={stakeholder.id} />
 
         {!readOnlyInProject && (
           <RecordLifecycleControls

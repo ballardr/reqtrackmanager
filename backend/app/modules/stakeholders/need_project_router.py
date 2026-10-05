@@ -24,6 +24,7 @@ from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import _need_shared as nd
+from app.modules.stakeholders._shared import get_visible_holder
 from app.modules.stakeholders.enums import NeedStatus
 from app.modules.stakeholders.models import StakeholderNeed
 from app.modules.stakeholders.schemas import (
@@ -215,7 +216,7 @@ def list_stakeholder_needs(
 ):
     """The needs of this project that a visible Stakeholder has."""
     project = _project(db, project_id)
-    record = nd.get_visible_holder(db, project, STAKEHOLDER_ARTEFACT_TYPE, stakeholder_id)
+    record = get_visible_holder(db, project, STAKEHOLDER_ARTEFACT_TYPE, stakeholder_id)
     return [
         nd.held_need_to_out(db, link, need)
         for link, need in list_holder_needs(db, STAKEHOLDER_ARTEFACT_TYPE, record.id, project.organization_id, project_id)
@@ -228,7 +229,7 @@ def list_persona_needs(
 ):
     """The needs of this project that a visible Persona has."""
     project = _project(db, project_id)
-    record = nd.get_visible_holder(db, project, PERSONA_ARTEFACT_TYPE, persona_id)
+    record = get_visible_holder(db, project, PERSONA_ARTEFACT_TYPE, persona_id)
     return [
         nd.held_need_to_out(db, link, need)
         for link, need in list_holder_needs(db, PERSONA_ARTEFACT_TYPE, record.id, project.organization_id, project_id)

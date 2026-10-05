@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildPersona, buildStakeholder, buildStakeholderScheme } from "./fixtures";
+import { buildPersona, buildRelationshipKinds, buildStakeholder, buildStakeholderScheme } from "./fixtures";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
 import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder } from "./types";
 
@@ -36,6 +36,8 @@ function mockDetailApis(current: Stakeholder, { versions = [], represents = [], 
     if (path === `${PROJECT_BASE}/stakeholder-types`) return [{ id: "stype-regulator", name: "Regulator", display_order: 0, is_enabled: true, source: "org" }];
     if (path === `${PROJECT_BASE}/personas`) return [buildPersona(), buildPersona({ id: "persona-3", name: "Control Room Operator" })];
     if (path.startsWith(`${PROJECT_BASE}/stakeholders/cadence-hint`)) return HINT;
+    if (path === `${PROJECT_BASE}/relationship-kinds`) return buildRelationshipKinds();
+    if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/relationships`)) return [];
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/personas`)) return represents;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/needs`)) return needs;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}`)) return current;

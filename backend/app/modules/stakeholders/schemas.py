@@ -508,3 +508,57 @@ class NeedRequirementCreate(BaseModel):
 NeedTransitionRequest = PersonaTransitionRequest
 NeedCommentCreate = PersonaCommentCreate
 NeedCommentUpdate = PersonaCommentUpdate
+
+
+# --- Relationships (Phase 3) -------------------------------------------------
+
+
+class RelationshipKindOut(BaseModel):
+    """One declared relationship kind, including whether each target type can
+    be linked to yet (a reserved kind has `available_target_types == []`)."""
+
+    key: str
+    forward: str
+    reverse: str
+    holder_types: list[str]
+    target_types: list[str]
+    available_target_types: list[str]
+
+
+class RelationshipCreate(BaseModel):
+    kind: str
+    target_type: str
+    target_id: UUID
+
+
+class RelationshipOut(BaseModel):
+    """One relationship seen from its Stakeholder/Persona: the kind and the target."""
+
+    link_id: UUID
+    kind: str
+    forward: str
+    target_type: str
+    target_id: UUID
+    label: str
+    status: str | None = None
+    is_archived: bool = False
+
+
+class RelationshipTargetOut(BaseModel):
+    """One record a relationship picker can offer."""
+
+    id: UUID
+    label: str
+    status: str | None = None
+
+
+class IncomingRelationshipOut(BaseModel):
+    """One relationship seen from its target: the Stakeholder/Persona."""
+
+    link_id: UUID
+    kind: str
+    reverse: str
+    holder_type: Literal["stakeholder", "persona"]
+    holder_id: UUID
+    holder_name: str
+    scope: str

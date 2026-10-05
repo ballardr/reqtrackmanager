@@ -17,6 +17,7 @@ import type {
   CadenceHint,
   EffectivePersonaType,
   HeldNeed,
+  IncomingRelationship,
   Need,
   NeedComment,
   NeedFieldValues,
@@ -29,6 +30,10 @@ import type {
   PersonaFieldValues,
   PersonaTypeDefinition,
   PersonaVersion,
+  Relationship,
+  RelationshipHolderKind,
+  RelationshipKind,
+  RelationshipTarget,
   RepresentedLink,
   Stakeholder,
   StakeholderComment,
@@ -244,6 +249,29 @@ export const projectNeedApi = {
     api.get<HeldNeed[]>(`${projectBase(projectId)}/stakeholders/${stakeholderId}/needs`),
   listPersonaNeeds: (projectId: string, personaId: string) =>
     api.get<HeldNeed[]>(`${projectBase(projectId)}/personas/${personaId}/needs`),
+};
+
+/** Project-scoped §10.5 relationships a Stakeholder or Persona has with Pain
+ * Points, Requirements and Decisions (`id` is a `project_id`). A holder's links
+ * are always listed per project, so a shared org record shows only this project's. */
+export const projectRelationshipApi = {
+  kinds: (projectId: string) => api.get<RelationshipKind[]>(`${projectBase(projectId)}/relationship-kinds`),
+  targets: (projectId: string, targetType: string) =>
+    api.get<RelationshipTarget[]>(`${projectBase(projectId)}/relationship-targets?target_type=${encodeURIComponent(targetType)}`),
+  list: (projectId: string, holder: RelationshipHolderKind, holderId: string) =>
+    api.get<Relationship[]>(`${projectBase(projectId)}/${holder}s/${holderId}/relationships`),
+  add: (projectId: string, holder: RelationshipHolderKind, holderId: string, kind: string, targetType: string, targetId: string) =>
+    api.post<Relationship>(`${projectBase(projectId)}/${holder}s/${holderId}/relationships`, {
+      kind,
+      target_type: targetType,
+      target_id: targetId,
+    }),
+  remove: (projectId: string, holder: RelationshipHolderKind, holderId: string, linkId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/${holder}s/${holderId}/relationships/${linkId}`),
+  incoming: (projectId: string, targetType: string, targetId: string) =>
+    api.get<IncomingRelationship[]>(
+      `${projectBase(projectId)}/relationships/incoming?target_type=${encodeURIComponent(targetType)}&target_id=${targetId}`,
+    ),
 };
 
 /** The shape the artefacts' APIs share, for components written against any. */

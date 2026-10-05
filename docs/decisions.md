@@ -9236,3 +9236,46 @@ flowchart LR
 - *Known limitation:* a need's text is visible to every project member who can view the module (Phase 0 resolution 6); no field-level restriction.
 
 Tests: 17 backend tests for Needs (CRUD and versions, lifecycle and archive, holders from both ends, shared-org-holder filtering, holder and Requirement tenancy, erasing a linked Stakeholder, RBAC/FGAC/role isolation, module and sub-component gates, cross-tenant and sibling isolation, comments/files, org deletion, audit, registration) plus two bundle round-trips and the extended MCP manifest test; Storybook for every new component (and the extended Stakeholder/Persona pages); Playwright `modules/stakeholders/need-lifecycle.spec.ts`. Both seed scripts gain Needs.
+
+## Module 2 (Stakeholders & Personas) Phase 3 — Relationships (2026-10-05)
+
+Built the remaining overview §10.5 relationships end to end in the `stakeholders` module: backend, bundle hooks, MCP link tools, UI, seeds, tests. Plan: [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeholders-and-personas-plan.md).
+
+```mermaid
+flowchart LR
+    H["Stakeholder / Persona"] -- "Experiences" --> PP[Pain Point<br/>Context & Strategy]
+    H -- "Provides / Is affected by" --> R[Requirement<br/>core]
+    S[Stakeholder only] -- "Consulted on" --> D[Decision<br/>Decision Management]
+    S -- "Approves / Reviews" --> R
+    S -- "Approves / Reviews" --> D
+    H -. "Uses (reserved)" .-> DE[Design / System Element<br/>Module 6]
+```
+
+- **A second generic extension point instead of cross-module imports.** Modules never import each other, and Pain Points/Decisions are other modules' tables. `ModuleDefinition.artefact_summary_providers` (`ArtefactSummaryProvider(get, list_for_project)` → `ArtefactSummary`) plus `registry.get_artefact_summary`/`list_artefact_summaries`/`has_artefact_summary_provider` lets Stakeholders validate (same project, owner module enabled), label and list targets generically. Context & Strategy and Decision Management each register their own provider; the frontend mirror is `TierAModuleDefinition.artefactPaths` + `modules/artefactPaths.ts`. Documented in `docs/modules.md` §4f. A test asserts the stakeholders package imports no other module. (Decided by: Agent.)
+- **One declarative table, not one router per kind.** `relationships.RELATIONSHIP_KINDS` (key, org link-type names, holder types, target types) drives generic endpoints under the existing project prefix: `relationship-kinds`, `relationship-targets`, `{stakeholders|personas}/{id}/relationships` (list/add/remove) and `relationships/incoming` (the reverse view, for Module 10's change impact and later reports). Link types are created per org on first use via the existing `get_or_create_link_type`. (Decided by: Agent.)
+- **Kinds and who may hold them.** Experiences Pain Point, Provides Requirement, Is affected by Requirement (Stakeholder or Persona); Consulted on Decision, Approves, Reviews (Stakeholder only — a Persona is an archetype, not a person who is consulted or signs off); Approves/Reviews target a Requirement or a Decision. "Approves / Reviews" is two kinds because one link type couldn't say which. (Decided by: Agent.)
+- **Reserved target.** "Uses Design / System Element" is declared but `available_target_types` is empty and creation is a 409, until a module registers a provider for `design`/`system_element`. The UI shows a muted note, not an option. (Decided by: Agent, per the plan's "reserved the same way Module 4 reserves" wording.)
+- **Tenancy and authorisation.** A target must belong to the request's project (404 otherwise, including another tenant's and a sibling project's); listing is per project, so a shared org Stakeholder/Persona shows only this project's links. Writes need the holder kind's manage gate in the project (`stakeholder_owner`/`persona_owner` or the FGAC grant), so each role confers nothing on the other kind. A project owner may therefore link an org-scoped holder to *this project's* records, which is project-level data, not an edit of the org record. A target is only shown to a caller holding `(target_type, view)`, so a relationship never reveals a title the owner module's own screens would hide. (Decided by: Agent.)
+- **Target status is not rendered.** It is another module's enum with no label map here; showing the raw string would break the label-map rule. The API still returns it. (Decided by: Agent.)
+- **Bundles.** Relationships travel in the project bundle (holder by name/scope, Requirement by unique code, other targets by label). Pain Points and Decisions are not in project bundles at all yet (their modules have no bundle hooks), so those links export but are skipped on import with a warning per link rather than silently dropped; this closes by itself when those modules gain bundle support. (Decided by: Agent.)
+- **MCP.** 18 link tools: kinds/targets/incoming, list/add/remove relationships for each holder kind, and the previously REST-only "represents", "has need" and "gives rise to" links. Every `remove_*` deletes only a link (tested); there is still no erase tool. (Decided by: User, via the plan's MCP commitment; tool set Decided by: Agent.)
+- **Shared code.** `_shared.get_visible_stakeholder/persona/holder` and `holder_name` replace three copies (the Need helpers and the Stakeholder router). Frontend: one `RelationshipsPanel` for both holder kinds.
+- **Nested-projects check.** No new project-scoped definition table (links are `ArtefactLink` rows), so no ancestor fallback or seeding hook applies. (Decided by: Agent.)
+
+**Core-boundary checks.** No core file imports `modules/stakeholders/`. Core touched only by generic additions: the registry hook, and `TierAModuleDefinition.artefactPaths`. No core enum/column/stylesheet needed a per-module value (`pain_point`/`decision`/`stakeholder*` are registered artefact types).
+
+**Review (identify → verify → remediate).**
+- *Tenancy:* sibling-project, other-org and wrong-type ids all 404 (tested); a link id of another holder cannot be removed (tested); a disabled owner module hides its targets and blocks adding, and re-enabling restores them (tested).
+- *Authorisation:* writes gated per holder kind, view-only members read but can't write, disabled sub-component 404s, FGAC view filter (tested with a role lacking `pain_point:view`).
+- *Audit:* `relationship_added`/`relationship_removed` events through `services/audit.py` carry ids only (tested).
+- *Erasure:* erasing a Stakeholder removes its relationship links and leaves the targets (tested).
+- *Known limitations:* the reverse view lives in the API only (no UI on the Pain Point/Decision pages yet).
+
+Tests: 18 + 3 backend tests (kinds and reserved kind, every kind from both holder kinds, holder/target type rules, tenancy, shared-holder filtering, picker and incoming, disabled owner module, FGAC view filter, RBAC, audit, erasure, summary-provider hook, module boundary, bundle round-trip/warnings) and the extended MCP manifest test; Storybook `RelationshipsPanel` (and updated detail-page mocks); Playwright `modules/stakeholders/relationship-lifecycle.spec.ts`. Full backend suite: 1583 passed, 14 failed — the known host-level mailhog DNS failures in the invite/OIDC/email tests, unrelated. Both seed scripts gain relationships. Docs website not updated: the plan sequences it as Phase 7 (Decided by: User, via the plan).
+
+## Module 2 (Stakeholders & Personas) — docs website coverage pulled ahead of Phases 4–6 (2026-10-05)
+
+- **The docs phase is split so the module can ship now.** Phase 7 became 7a (document what Phases 0–3 shipped) and 7b (extend it once Engagements, the research extras and reports S1–S5 land). (Decided by: User.)
+- **7a is done.** A nested *Stakeholders & Personas module* section under Modules (overview, Persona, Stakeholder, Stakeholder Need, Relationships, MCP, known limitations), plus the Modules overview/roadmap, sidebar and a Requirements-management cross-link. Five screenshots were captured at 1440×900 from the demo organisation. Unbuilt Phase 4–6 content appears only as "not built yet" entries in *Known limitations*, never as a described feature, so the site claims nothing that doesn't exist. (Decided by: Agent.)
+- **Verified:** `npm run build` (fails on broken links) is clean; the four pages with diagrams were loaded from the built site and their Mermaid diagrams render with no syntax error and every image loads. A first draft wrongly said Medium counts as low on the power/interest grid; the code treats the upper half of an axis, so Medium, as high, and the page was corrected before finishing.
+- **Demo data:** the demo seed script already creates the Needs and relationships; the live demo organisation was seeded before they existed, so the same content was added to it directly for the screenshots.

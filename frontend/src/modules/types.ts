@@ -354,4 +354,11 @@ export interface TierAModuleDefinition {
    * Omitted for a module with no entity of its own ever shown in a mixed
    * list (falls back to a neutral grey — see `entityAccentColor.ts`). */
   entityAccentColor?: { light: string; dark: string };
+  /** Where each of this module's own artefact types has its detail page, keyed
+   * by the backend's artefact-type string (e.g. `"pain_point"`) — so another
+   * module's relationship list can link to a record it doesn't own without
+   * hardcoding this module's URLs (`modules/artefactPaths.ts` resolves them;
+   * the frontend counterpart of the backend's `artefact_summary_providers`).
+   * Omitted for a module whose records nothing else links to. */
+  artefactPaths?: Record<string, (projectId: string, id: string) => string>;
 }

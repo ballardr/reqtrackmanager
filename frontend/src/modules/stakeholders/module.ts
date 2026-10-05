@@ -43,6 +43,11 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  */
 export const moduleDefinition: TierAModuleDefinition = {
   key: "stakeholders",
+  artefactPaths: {
+    persona: (projectId, id) => `/projects/${projectId}/modules/stakeholders/personas/${id}`,
+    stakeholder: (projectId, id) => `/projects/${projectId}/modules/stakeholders/stakeholders/${id}`,
+    stakeholder_need: (projectId, id) => `/projects/${projectId}/modules/stakeholders/needs/${id}`,
+  },
   routes: [
     { path: "/projects/:projectId/modules/stakeholders/personas", element: createElement(ProjectPersonasPage) },
     { path: "/projects/:projectId/modules/stakeholders/personas/:personaId", element: createElement(PersonaDetailPage) },

@@ -1147,6 +1147,43 @@ class ScoringTarget:
 
 
 @dataclass(frozen=True)
+class ArtefactSummary:
+    """A minimal, module-neutral description of one artefact, returned by an
+    `ArtefactSummaryProvider` so one module can link to, validate and label
+    another module's records without importing them (Module 2 Phase 3).
+
+    Attributes:
+        id: The artefact's id.
+        project_id: The project the artefact belongs to (links are validated
+            against the linking record's own project).
+        label: Display name (a code plus title where the artefact has one).
+        status: The artefact's lifecycle status as a plain string, or `None`.
+        is_archived: Whether the artefact is archived.
+    """
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    label: str
+    status: str | None = None
+    is_archived: bool = False
+
+
+@dataclass(frozen=True)
+class ArtefactSummaryProvider:
+    """How a module exposes one of its own `artefact_types` as a link target.
+
+    Attributes:
+        get: `(db, artefact_id) -> ArtefactSummary | None`; `None` when the
+            record does not exist.
+        list_for_project: `(db, project_id) -> list[ArtefactSummary]`, the
+            records a picker can offer for the project.
+    """
+
+    get: Callable[[Session, uuid.UUID], ArtefactSummary | None]
+    list_for_project: Callable[[Session, uuid.UUID], list[ArtefactSummary]]
+
+
+@dataclass(frozen=True)
 class RegisteredScoringScheme:
     """A scoring scheme paired with the key of the module that registered
     it — the module key drives enablement gating and `admin_role_key`
@@ -1576,6 +1613,14 @@ class ModuleDefinition:
             `get_scoring_targets` (below), which returns `[]` when the
             owning module is disabled for the project. Empty for a module
             offering no scoring targets.
+        artefact_summary_providers: Module 2 Phase 3 — maps one of this
+            module's own `artefact_types` to an `ArtefactSummaryProvider`
+            (`get` + `list_for_project`), so another module can validate,
+            label and offer a picker for this module's records as relationship
+            targets without importing it. Read via `get_artefact_summary` /
+            `list_artefact_summaries` (below), which return `None`/`[]` when
+            the owning module is disabled for the project. Empty for a module
+            whose records nothing else links to.
     """
 
     key: str
@@ -1613,6 +1658,7 @@ class ModuleDefinition:
     scoring_target_providers: dict[str, Callable[[Session, uuid.UUID], list[ScoringTarget]]] = field(
         default_factory=dict
     )
+    artefact_summary_providers: dict[str, ArtefactSummaryProvider] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -2976,6 +3022,61 @@ def get_scoring_targets(db: Session, project_id: uuid.UUID, target_type: str) ->
             return []
         return provider(db, project_id)
     return []
+
+
+def _summary_provider_for(artefact_type: str) -> tuple[ModuleDefinition, ArtefactSummaryProvider] | None:
+    """The `(module, provider)` that declared a summary provider for `artefact_type`, if any."""
+    for definition in get_module_registry().values():
+        provider = definition.artefact_summary_providers.get(artefact_type)
+        if provider is not None:
+            return definition, provider
+    return None
+
+
+def has_artefact_summary_provider(artefact_type: str) -> bool:
+    """Whether some registered module can label/list records of `artefact_type`
+    as relationship targets (`False` for an artefact type whose module is not
+    installed, e.g. a reserved target that does not exist yet)."""
+    return _summary_provider_for(artefact_type) is not None
+
+
+def get_artefact_summary(db: Session, artefact_type: str, artefact_id: uuid.UUID) -> ArtefactSummary | None:
+    """A module-neutral summary of one artefact via its owning module's
+    `artefact_summary_providers` entry (Module 2 Phase 3).
+
+    Returns `None` — never raises — when no module provides `artefact_type`,
+    the record does not exist, or the owning module is disabled for the
+    record's project, so a caller treats "not available" and "not found" alike.
+
+    Args:
+        db: An active database session.
+        artefact_type: A registered artefact type, e.g. `"pain_point"`.
+        artefact_id: The record's id.
+
+    Returns:
+        The summary, or `None`.
+    """
+    found = _summary_provider_for(artefact_type)
+    if found is None:
+        return None
+    definition, provider = found
+    summary = provider.get(db, artefact_id)
+    if summary is None or not is_module_enabled_for_project(db, summary.project_id, definition.key):
+        return None
+    return summary
+
+
+def list_artefact_summaries(db: Session, project_id: uuid.UUID, artefact_type: str) -> list[ArtefactSummary]:
+    """The records of `artefact_type` a picker can offer for `project_id`, via
+    the owning module's provider; `[]` when none provides it or its module is
+    disabled for the project."""
+    found = _summary_provider_for(artefact_type)
+    if found is None:
+        return []
+    definition, provider = found
+    if not is_module_enabled_for_project(db, project_id, definition.key):
+        return []
+    return provider.list_for_project(db, project_id)
 
 
 def get_subtype_providers() -> dict[str, Callable[[Session, uuid.UUID], list[str]]]:
