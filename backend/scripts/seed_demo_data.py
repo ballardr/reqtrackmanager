@@ -1343,6 +1343,144 @@ def create_project_open_question_relationship(
     return r.json()
 
 
+# --- Stakeholders & Personas helpers (docs/plans/module-02-stakeholders-and-
+# personas-plan.md Phase 1.1 — Persona) --------------------------------------
+
+
+def create_org_persona(headers: dict, org_id: str, **fields) -> dict:
+    r = httpx.post(f"{BASE}/orgs/{org_id}/modules/stakeholders/personas", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_persona(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(f"{BASE}/projects/{project_id}/modules/stakeholders/personas", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def activate_org_persona(headers: dict, org_id: str, persona_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/stakeholders/personas/{persona_id}/activate", json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def activate_project_persona(headers: dict, project_id: str, persona_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/activate", json={}, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_project_persona_weight_override(headers: dict, project_id: str, persona_id: str, weight: float) -> dict:
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/weight", json={"weight": weight},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# --- Stakeholders helpers (Module 2 Phase 1.2 — Stakeholder) ------------------
+
+
+def get_stakeholder_levels(headers: dict, org_id: str) -> dict[str, dict[str, str]]:
+    """`{axis: {level name: level id}}` of the org's `stakeholder` scoring scheme."""
+    r = httpx.get(f"{BASE}/orgs/{org_id}/scoring-schemes/stakeholder", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
+
+
+def get_stakeholder_type_id(headers: dict, *, org_id: str | None = None, project_id: str | None = None, name: str) -> str:
+    """The id of the org (or a project's effective) Stakeholder type called `name`."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.get(f"{base}/stakeholder-types", headers=headers, timeout=30)
+    r.raise_for_status()
+    return next(t["id"] for t in r.json() if t["name"] == name)
+
+
+def create_stakeholder(
+    headers: dict, *, org_id: str | None = None, project_id: str | None = None, activate: bool = False,
+    represents: tuple[str, ...] = (), **fields,
+) -> dict:
+    """Creates an org- or project-scoped Stakeholder (exactly one of `org_id`/`project_id`), optionally activating it
+    and linking it to the given Persona ids."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/stakeholders", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    stakeholder = r.json()
+    if activate:
+        r = httpx.post(f"{base}/stakeholders/{stakeholder['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        stakeholder = r.json()
+    for persona_id in represents:
+        r = httpx.post(
+            f"{base}/stakeholders/{stakeholder['id']}/personas", json={"persona_id": persona_id}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+    return stakeholder
+
+
+def set_persona_visibility(headers: dict, project_id: str, persona_id: str, hidden: bool) -> dict:
+    """Hides an org Persona from a project (`hidden=True`), or shows it again where a parent project hides it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/visibility",
+        json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_stakeholder_visibility(headers: dict, project_id: str, stakeholder_id: str, hidden: bool) -> dict:
+    """Hides an org Stakeholder from a project (`hidden=True`), or shows it again where a parent project hides it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/stakeholders/{stakeholder_id}/visibility",
+        json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_need(
+    headers: dict, project_id: str, *, activate: bool = False, holders: tuple[tuple[str, str], ...] = (),
+    requirement_ids: tuple[str, ...] = (), **fields,
+) -> dict:
+    """Creates a project Stakeholder Need, optionally activating it, linking the given `(kind, id)` Stakeholder/Persona
+    holders ("has need") and the given Requirement ids ("gives rise to")."""
+    base = f"{BASE}/projects/{project_id}/modules/stakeholders/needs"
+    r = httpx.post(base, json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    need = r.json()
+    if activate:
+        r = httpx.post(f"{base}/{need['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        need = r.json()
+    for kind, holder_id in holders:
+        r = httpx.post(f"{base}/{need['id']}/holders", json={"kind": kind, "id": holder_id}, headers=headers, timeout=30)
+        r.raise_for_status()
+    for requirement_id in requirement_ids:
+        r = httpx.post(f"{base}/{need['id']}/requirements", json={"requirement_id": requirement_id}, headers=headers, timeout=30)
+        r.raise_for_status()
+    return need
+
+
+def add_stakeholder_relationship(
+    headers: dict, project_id: str, holder_kind: str, holder_id: str, kind: str, target_type: str, target_id: str,
+) -> dict:
+    """Adds a §10.5 relationship (Module 2 Phase 3) from a Stakeholder (`holder_kind="stakeholder"`) or Persona
+    (`"persona"`) to a record of `project_id`, e.g. kind `experiences_pain_point` with target type `pain_point`."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/{holder_kind}s/{holder_id}/relationships",
+        json={"kind": kind, "target_type": target_type, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -2212,6 +2350,109 @@ def main() -> None:
     )
     print(f"  Withdrawn: {oq_offline_ui['question']!r}")
 
+    print("Seeding Stakeholders & Personas (Module 2 Phase 1.1) — enabling the module, then two org personas (one"
+          " weighted, one not) and a project persona on Falcon-3, plus a Falcon-3 weight override that its"
+          " Avionics sub-project inherits...")
+    enable_module(h_pm, org["id"], "stakeholders")
+    persona_inspector = create_org_persona(
+        h_pm, org["id"], name="Field Inspector", role_title="Utility field inspector",
+        description="Walks infrastructure corridors capturing inspection findings.",
+        goals="Capture every finding once, at the point of inspection, without re-keying.",
+        needs="Offline-first data capture; a degraded-connectivity indicator that is hard to miss.",
+        behaviours="Works in short bursts between sites; avoids anything needing a signal.",
+        context_environment="Outdoors, gloves on, often no network coverage.",
+        skills_proficiency="Expert in the infrastructure, comfortable but not enthusiastic with software.",
+        frequency_of_use="Daily", constraints="Intermittent connectivity; one hand often occupied.", weight=3.0,
+    )
+    activate_org_persona(h_pm, org["id"], persona_inspector["id"])
+    persona_auditor = create_org_persona(
+        h_pm, org["id"], name="Compliance Auditor", role_title="Regulatory auditor",
+        description="Reviews certification evidence on behalf of the regulator; not yet validated with a real auditor.",
+        goals="Verify evidence quickly without having to chase the engineering team.",
+    )
+    drone_operator_persona = create_project_persona(
+        h_pm, drone["id"], name="BVLOS Remote Pilot", role_title="Remote pilot",
+        description="Flies Falcon-3 beyond visual line of sight from an operations centre.",
+        goals="Keep every flight within the certified envelope.", needs="Unambiguous status for the redundant"
+        " flight controllers.", frequency_of_use="Several flights per shift", weight=2.0,
+    )
+    activate_project_persona(h_pm, drone["id"], drone_operator_persona["id"])
+    set_project_persona_weight_override(h_pm, drone["id"], persona_inspector["id"], 5.0)
+    persona_harbour = create_org_persona(
+        h_pm, org["id"], name="Harbour Pilot", role_title="Marine pilot",
+        description="Guides vessels into port; relevant to the org's marine products, not to the drone programme.",
+        goals="Bring each vessel alongside safely.", weight=1.0,
+    )
+    activate_org_persona(h_pm, org["id"], persona_harbour["id"])
+    set_persona_visibility(h_pm, drone["id"], persona_harbour["id"], True)
+    print(f"  Personas: {persona_inspector['name']!r} (org, Active, weight 3), {persona_harbour['name']!r} (org, Active,"
+          f" hidden from Falcon-3), {persona_auditor['name']!r} (org,"
+          f" Draft, unweighted), {drone_operator_persona['name']!r} (Falcon-3, Active, weight 2); Falcon-3 weights"
+          f" {persona_inspector['name']!r} at 5, which Falcon-3 Avionics Subsystem inherits")
+
+    print("Seeding Stakeholders (Module 2 Phase 1.2) — an org Regulator stakeholder rated High influence/Medium"
+          " interest that represents the Compliance Auditor persona, and a Falcon-3 Customer stakeholder with a"
+          " monthly cadence that represents the BVLOS Remote Pilot persona...")
+    levels = get_stakeholder_levels(h_pm, org["id"])
+    stakeholder_authority = create_stakeholder(
+        h_pm, org_id=org["id"], activate=True, represents=(persona_auditor["id"],), name="Pat Okafor",
+        stakeholder_type_id=get_stakeholder_type_id(h_pm, org_id=org["id"], name="Regulator"),
+        role="Certification auditor", organisation_group="Civil Aviation Authority",
+        interests="Evidence that the airworthiness case is complete and traceable.",
+        responsibilities="Signs off the type certificate.", goals_needs="Traceable evidence without chasing engineers.",
+        priorities="Safety of flight above schedule.", constraints="Only available for two audit windows a year.",
+        workflows_scenarios="Desk review of the certification evidence, then an on-site audit.",
+        contact_info="pat.okafor@authority.example.com", target_cadence="quarterly",
+        availability_constraints="Prefers email; unavailable in Q1.",
+        influence_level_id=levels["influence"]["High"], interest_level_id=levels["interest"]["Medium"],
+    )
+    stakeholder_fleet = create_stakeholder(
+        h_pm, project_id=drone["id"], activate=True, represents=(drone_operator_persona["id"],), name="Dana Whitfield",
+        stakeholder_type_id=get_stakeholder_type_id(h_pm, project_id=drone["id"], name="Customer"),
+        role="Fleet operations manager", organisation_group="Skyline Logistics",
+        interests="Maximum flight hours per airframe.", goals_needs="A status display her pilots can trust at a glance.",
+        contact_info="dana.whitfield@skyline.example.com", target_cadence="monthly",
+        availability_constraints="Weekday mornings only.",
+        influence_level_id=levels["influence"]["Medium"], interest_level_id=levels["interest"]["High"],
+    )
+    stakeholder_harbour = create_stakeholder(
+        h_pm, org_id=org["id"], activate=True, name="Lee Harbour",
+        stakeholder_type_id=get_stakeholder_type_id(h_pm, org_id=org["id"], name="Regulator"),
+        role="Port authority liaison", organisation_group="Harbour Authority",
+        interests="Marine safety inspections of vessels.", target_cadence="yearly",
+        influence_level_id=levels["influence"]["Low"], interest_level_id=levels["interest"]["Low"],
+    )
+    set_stakeholder_visibility(h_pm, drone["id"], stakeholder_harbour["id"], True)
+    print(f"  Stakeholders: {stakeholder_authority['name']!r} (org, Regulator, Active, High/Medium, quarterly),"
+          f" {stakeholder_fleet['name']!r} (Falcon-3, Customer, Active, Medium/High, monthly),"
+          f" {stakeholder_harbour['name']!r} (org, Regulator, Active) — hidden from Falcon-3, which has no marine dealings")
+
+    print("Seeding Stakeholder Needs (Module 2 Phase 2) — Falcon-3's fleet manager needs a trustworthy status display,"
+          " which gave rise to its first requirement; the BVLOS Remote Pilot persona has the same need...")
+    need_status_display = create_need(
+        h_pm, drone["id"], activate=True, holders=(("stakeholder", stakeholder_fleet["id"]), ("persona", drone_operator_persona["id"])),
+        requirement_ids=(flight_log_req["id"],), name="Trust the flight status at a glance",
+        description="My pilots must be able to tell, in under a second, whether the redundant flight controllers agree.",
+        rationale="Two incidents last year where a pilot misread a degraded-channel warning.",
+    )
+    create_need(
+        h_pm, drone["id"], holders=(("stakeholder", stakeholder_authority["id"]),), name="Evidence without chasing engineers",
+        description="Certification evidence should be traceable to the requirement it supports without a meeting.",
+    )
+    print(f"  Needs: {need_status_display['name']!r} (Active, held by Dana Whitfield and the BVLOS Remote Pilot persona,"
+          f" gave rise to {flight_log_req['name']!r}), plus a Draft need held by Pat Okafor")
+
+    print("Seeding Stakeholder/Persona relationships (Module 2 Phase 3) — the Field Inspector persona experiences the"
+          " re-keying Pain Point, the fleet manager provides the status-display requirement and was consulted on the"
+          " single flight controller Decision, the regulator reviews that requirement...")
+    for holder_kind, holder_id, kind, target_type, target_id in (
+        ("persona", persona_inspector["id"], "experiences_pain_point", "pain_point", pp_accepted["id"]),
+        ("stakeholder", stakeholder_fleet["id"], "provides_requirement", "requirement", flight_log_req["id"]),
+        ("stakeholder", stakeholder_fleet["id"], "consulted_on_decision", "decision", single_fc_decision["id"]),
+        ("stakeholder", stakeholder_authority["id"], "reviews", "requirement", flight_log_req["id"]),
+    ):
+        add_stakeholder_relationship(h_pm, drone["id"], holder_kind, holder_id, kind, target_type, target_id)
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -2245,6 +2486,12 @@ def main() -> None:
           " linked to the org Strategy via a real 'Supports' relationship) and 1 project Guiding Principle (Active)"
           " on Falcon-3; and 2 Open Questions on Falcon-3 (one Ready for Decision, one Withdrawn — the 'resolved by"
           " Decision' relationship stays reserved pending Module 4's own Phase 7, see docs/decisions.md)")
+    print("  Stakeholders & Personas (enabled org-wide): 3 organisation Personas (Field Inspector — Active, weight 3;"
+          " Compliance Auditor — Draft, unweighted; Harbour Pilot — Active, hidden from Falcon-3) and 1 project Persona on Falcon-3 (BVLOS Remote"
+          " Pilot — Active, weight 2), with a Falcon-3 weight override of 5 on Field Inspector that the Avionics sub-project inherits;"
+          " plus 2 organisation Stakeholders (Pat Okafor, Regulator — High influence/Medium interest, quarterly, represents"
+          " Compliance Auditor; and Lee Harbour, hidden from Falcon-3 to show per-project visibility) and 1 Falcon-3"
+          " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot)")
 
 
 if __name__ == "__main__":

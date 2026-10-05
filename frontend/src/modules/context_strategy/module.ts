@@ -136,6 +136,9 @@ const PAIN_POINT_SCORING_SCHEME = "pain_point";
 
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
+  artefactPaths: {
+    pain_point: (projectId, id) => `/projects/${projectId}/modules/context_strategy/pain-points/${id}`,
+  },
   routes: [
     { path: "/projects/:projectId/modules/context_strategy/strategies", element: createElement(ProjectStrategiesPage) },
     {

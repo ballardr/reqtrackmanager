@@ -58,7 +58,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-**15 / 19 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–10 are done; Phase 11 is blocked on Module 2 Phase 1.1 (Persona). Module 2 Phase 0 was signed off 2026-10-05, so build Module 2 Phase 1.1 next.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
+**15 / 19 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–10 are done; Phase 11 is unblocked — Module 2 Phase 1.1 (Persona) shipped 2026-10-05, so build Phase 11 next (read personas via `get_scoring_targets(db, project_id, "persona")`).** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
 split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
 note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
 module's last phase, shipped the same day — see "Phase 8 notes" below.
@@ -80,7 +80,7 @@ module's last phase, shipped the same day — see "Phase 8 notes" below.
 | 8 | Docs website coverage | [x] Complete (2026-09-29) |
 | 9 | Exploratory: reporting scope & scoring design sign-off | [x] Resolved (2026-10-04) |
 | 10 | Generic scoring-matrix infrastructure (core) | [x] Complete (2026-10-04) |
-| 11 | Per-persona Pain Point scoring + intentional flag — needs Module 2 Phase 1.1 | [ ] Not started |
+| 11 | Per-persona Pain Point scoring + intentional flag — Module 2 Phase 1.1 done, unblocked | [ ] Not started |
 | 12 | Report generation backend (R1–R9) | [ ] Not started |
 | 13 | Reports UI + generic report-registration hook | [ ] Not started |
 | 14 | Docs website + seeds verification | [ ] Not started |
@@ -3298,6 +3298,9 @@ permission-correct report data.
   - Core `ReportsPage` renders every enabled module's entries through the
     registry, with no import from `modules/context_strategy/`.
   - Compliance can migrate onto the hook later.
+  - Module 2 (Stakeholders & Personas) Phase 6 is a second planned consumer
+    (reports S1–S5), so don't shape the hook around Context & Strategy
+    alone.
 - **Report entries.** Context & Strategy registers R1–R9, each with
   filters, model/roll-up switchers where relevant, PDF/CSV downloads, and a
   Toast on success or failure.

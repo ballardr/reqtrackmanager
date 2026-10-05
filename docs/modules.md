@@ -347,6 +347,8 @@ class ModuleDefinition:
     roles: tuple[ModuleRoleDefinition, ...] = ()  # module-contributed RBAC roles
     sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
+    scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
+    artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     models_import_path: str | None = None       # dotted path to your ORM models module
@@ -790,7 +792,7 @@ knows these fields exist.
 
 ### 4d. Scoring schemes: configurable scoring matrices (Module 1 Phase 10)
 
-A module that scores something (Pain Points today; Risk, Module 3, next)
+A module that scores something (Pain Points and Stakeholders today; Risk, Module 3, next)
 registers a `ScoringSchemeDefinition` on `ModuleDefinition.scoring_schemes`
 instead of building its own matrix tables. Core owns storage, resolution,
 maths, API and UI; the module only declares keys and defaults.
@@ -823,7 +825,11 @@ flowchart LR
   audit-logged.
 - **Level references:** set `count_level_usage`/`reassign_level_usage`
   once your own rows reference levels, so core can block a delete or
-  reassign references to another level on the same axis.
+  reassign references to another level on the same axis. Stakeholders
+  (Module 2) is the first to do so: its versioned rows hold
+  `influence_level_id`/`interest_level_id`, the hooks count and move only
+  *current* versions, and a historic version's reference is cleared by the
+  foreign key's `ON DELETE SET NULL` instead of rewriting history.
 - **UI:** embed `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
   (project) in your own `orgAdminSections`/`projectAdminSections`, passing
   your scheme key. `ScoringLevelPicker`, `ScoringModelSwitcher` and
@@ -852,6 +858,57 @@ flowchart TD
     NAV["Nav rail entry / routed page"] --> TierA
     NAV --> TierB
 ```
+
+
+### 4e. Scoring targets: records another module scores against (Module 2 Phase 1.1)
+
+A module that scores *per something another module owns* (Pain Points per
+Persona) can't import that module. The owner declares
+`scoring_target_providers[artefact_type] = (db, project_id) -> [ScoringTarget]`
+and the scorer calls `registry.get_scoring_targets(db, project_id, type)`.
+
+```mermaid
+flowchart LR
+    SC["Scoring module"] -->|"get_scoring_targets(db, project, 'persona')"| REG[registry]
+    REG -->|"module disabled for project"| EMPTY["[]  → score against everything"]
+    REG -->|"enabled"| PROV["owner's provider<br/>id · label · weight · is_active"]
+```
+
+- `ScoringTarget(id, label, weight, is_active)`: `weight` is the resolved
+  importance for that project (`None` = equal weighting); `is_active` is
+  false for records that shouldn't be scored (Personas: anything but
+  Active).
+- The scorer stores `target_id` as a plain id, never a foreign key, and must
+  tolerate a target disappearing or the owner being disabled.
+- The provider does its own sub-component and tenancy checks; the caller has
+  already authorised the project.
+### 4f. Link targets: records another module relates to (Module 2 Phase 3)
+
+A module that relates its records to another module's (a Stakeholder
+"experiences" a Pain Point, is "consulted on" a Decision) can't import that
+module, but must still validate the target belongs to the same project, label it
+and offer a picker. The owner declares
+`artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project)`;
+callers use `registry.get_artefact_summary` / `list_artefact_summaries` /
+`has_artefact_summary_provider`. On the frontend the owner's
+`TierAModuleDefinition.artefactPaths[artefact_type] = (projectId, id) => route`
+lets `modules/artefactPaths.ts` link to the record's page. Core owns only
+`requirement`.
+
+```mermaid
+flowchart LR
+    REL["Relating module<br/>(stakeholders)"] -->|"get_artefact_summary(db, 'pain_point', id)"| REG[registry]
+    REG -->|"no provider, or owner disabled for the record's project"| NONE["None → treated as not found"]
+    REG -->|"enabled"| PROV["owner's provider<br/>id · project_id · label · status · is_archived"]
+```
+
+- `ArtefactSummary` carries the target's `project_id`, so the caller enforces
+  "same project as the request" without knowing the owner's tables.
+- A relationship kind whose target type has no provider (Design / System
+  Element, until Module 6) is *declared but unavailable*: listed, never
+  creatable. It goes live when the owner registers a provider.
+- The caller stores `target_id` in `ArtefactLink` as a plain id; the provider
+  does not authorise, so the caller still checks the `(type, view)` permission.
 
 ### Tier A — installed (the primary path)
 

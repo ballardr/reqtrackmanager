@@ -291,6 +291,141 @@ def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_sta
     return r.json()
 
 
+# Stakeholders & Personas (docs/plans/module-02-stakeholders-and-personas-plan.md
+# Phase 1.1). The module is default-off, so it is enabled for Gamma only —
+# Alpha/Beta keep the nav and module list the existing specs were written
+# against. Fixed names the persona specs may rely on; the persona Playwright
+# spec itself builds its own disposable org rather than depending on these.
+PERSONA_ORG_WEIGHTED_NAME = "E2E Field Inspector"
+PERSONA_ORG_UNWEIGHTED_NAME = "E2E Compliance Auditor"
+PERSONA_PROJECT_NAME = "E2E Hierarchy Operator"
+
+
+def enable_module(headers: dict, org_id: str, module_key: str) -> None:
+    r = httpx.put(f"{BASE}/orgs/{org_id}/modules/{module_key}", json={"enabled": True}, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
+def create_persona(headers: dict, *, org_id: str | None = None, project_id: str | None = None, activate: bool = False, **fields) -> dict:
+    """Creates an org- or project-scoped Persona (exactly one of `org_id`/`project_id`), optionally activating it."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/personas", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    persona = r.json()
+    if activate:
+        r = httpx.post(f"{base}/personas/{persona['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        persona = r.json()
+    return persona
+
+
+def set_persona_weight_override(headers: dict, project_id: str, persona_id: str, weight: float) -> dict:
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/weight",
+        json={"weight": weight}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# Stakeholders (Phase 1.2) — enabled with the rest of the module on Gamma only.
+# Fixed names a spec may rely on; the stakeholder Playwright spec itself builds
+# its own disposable org rather than depending on these.
+STAKEHOLDER_ORG_NAME = "E2E Safety Regulator"
+STAKEHOLDER_PROJECT_NAME = "E2E Plant Manager"
+# Phase 3b — an org stakeholder hidden from Gamma-3 (and so from its child Gamma-4).
+STAKEHOLDER_HIDDEN_NAME = "E2E Hidden Stakeholder"
+PERSONA_HIDDEN_NAME = "E2E Hidden Persona"
+# Stakeholder Needs (Phase 2) — one on the Gamma-3 hierarchy parent, held by the
+# project stakeholder; the need Playwright spec builds its own disposable data.
+NEED_PROJECT_NAME = "E2E Keep the line running"
+
+
+def create_stakeholder(
+    headers: dict, *, org_id: str | None = None, project_id: str | None = None, activate: bool = False,
+    represents: tuple[str, ...] = (), **fields,
+) -> dict:
+    """Creates an org- or project-scoped Stakeholder (exactly one of `org_id`/`project_id`), optionally activating it
+    and linking it to the given Persona ids."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/stakeholders", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    stakeholder = r.json()
+    if activate:
+        r = httpx.post(f"{base}/stakeholders/{stakeholder['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        stakeholder = r.json()
+    for persona_id in represents:
+        r = httpx.post(
+            f"{base}/stakeholders/{stakeholder['id']}/personas", json={"persona_id": persona_id}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+    return stakeholder
+
+
+def set_persona_visibility(headers: dict, project_id: str, persona_id: str, hidden: bool) -> dict:
+    """Hides an org Persona from a project (`hidden=True`), or shows it again where a parent project hides it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/visibility",
+        json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_stakeholder_visibility(headers: dict, project_id: str, stakeholder_id: str, hidden: bool) -> dict:
+    """Hides an org Stakeholder from a project (`hidden=True`), or shows it again where a parent project hides it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/stakeholders/{stakeholder_id}/visibility",
+        json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_need(
+    headers: dict, project_id: str, *, activate: bool = False, holders: tuple[tuple[str, str], ...] = (),
+    requirement_ids: tuple[str, ...] = (), **fields,
+) -> dict:
+    """Creates a project Stakeholder Need, optionally activating it, linking the given `(kind, id)` Stakeholder/Persona
+    holders ("has need") and the given Requirement ids ("gives rise to")."""
+    base = f"{BASE}/projects/{project_id}/modules/stakeholders/needs"
+    r = httpx.post(base, json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    need = r.json()
+    if activate:
+        r = httpx.post(f"{base}/{need['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        need = r.json()
+    for kind, holder_id in holders:
+        r = httpx.post(f"{base}/{need['id']}/holders", json={"kind": kind, "id": holder_id}, headers=headers, timeout=30)
+        r.raise_for_status()
+    for requirement_id in requirement_ids:
+        r = httpx.post(f"{base}/{need['id']}/requirements", json={"requirement_id": requirement_id}, headers=headers, timeout=30)
+        r.raise_for_status()
+    return need
+
+
+def add_stakeholder_relationship(
+    headers: dict, project_id: str, holder_kind: str, holder_id: str, kind: str, target_type: str, target_id: str,
+) -> dict:
+    """Adds a §10.5 relationship (Phase 3) from a Stakeholder/Persona (`holder_kind` `"stakeholder"`/`"persona"`) to a
+    record of `project_id`."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/{holder_kind}s/{holder_id}/relationships",
+        json={"kind": kind, "target_type": target_type, "target_id": target_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def get_stakeholder_levels(headers: dict, org_id: str) -> dict[str, dict[str, str]]:
+    """`{axis: {level name: level id}}` of the org's `stakeholder` scoring scheme."""
+    r = httpx.get(f"{BASE}/orgs/{org_id}/scoring-schemes/stakeholder", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
+
+
 def seed_project_content(headers: dict, project: dict, req_count: int) -> list[dict]:
     """Adds two components, two categories, and `req_count` requirements to a project."""
     hw = create_component(headers, project["id"], "Hardware", "HW")
@@ -437,6 +572,57 @@ def main() -> None:
     print(f"Creating {FGAC_STANDARD_NAME!r} (compliance standard for Alpha, role-management.spec.ts's entity-picker fixture)...")
     fgac_standard = create_compliance_standard(h_ab, alpha["id"], reference=FGAC_STANDARD_REFERENCE, name=FGAC_STANDARD_NAME)
 
+    print("Seeding Stakeholders & Personas on Gamma (module enabled for Gamma only): two org personas (one weighted,"
+          " one not), a project persona on the Gamma-3 hierarchy parent, and a weight override there that"
+          " Gamma-4 inherits...")
+    enable_module(h_g, gamma["id"], "stakeholders")
+    field_inspector = create_persona(
+        h_g, org_id=gamma["id"], activate=True, name=PERSONA_ORG_WEIGHTED_NAME, role_title="Field inspector",
+        goals="Finish each inspection in one visit.", needs="Offline access to instrument manuals.",
+        behaviours="Works in short bursts between sites.", context_environment="Outdoors, gloves on.",
+        skills_proficiency="Expert with the instruments, novice with software.", frequency_of_use="Daily",
+        constraints="No reliable network.", weight=3.0,
+    )
+    create_persona(
+        h_g, org_id=gamma["id"], name=PERSONA_ORG_UNWEIGHTED_NAME, role_title="Compliance auditor",
+        goals="Verify evidence without chasing the team.",
+    )
+    create_persona(
+        h_g, project_id=gamma3["id"], activate=True, name=PERSONA_PROJECT_NAME, role_title="Line operator",
+        goals="Keep the pipeline running.", weight=1.5,
+    )
+    set_persona_weight_override(h_g, gamma3["id"], field_inspector["id"], 5.0)
+    hidden_persona = create_persona(
+        h_g, org_id=gamma["id"], activate=True, name=PERSONA_HIDDEN_NAME, role_title="Out-of-scope archetype",
+    )
+    set_persona_visibility(h_g, gamma3["id"], hidden_persona["id"], True)
+
+    print("Seeding Stakeholders on Gamma: an org Stakeholder (rated, with a cadence, representing the org Field"
+          " Inspector persona) and a project Stakeholder on the Gamma-3 hierarchy parent...")
+    levels = get_stakeholder_levels(h_g, gamma["id"])
+    org_regulator = create_stakeholder(
+        h_g, org_id=gamma["id"], activate=True, represents=(field_inspector["id"],), name=STAKEHOLDER_ORG_NAME,
+        role="Safety regulator", organisation_group="National Safety Board", interests="Compliance evidence.",
+        contact_info="regulator@e2e.example.com", target_cadence="quarterly",
+        influence_level_id=levels["influence"]["High"], interest_level_id=levels["interest"]["Medium"],
+    )
+    hidden_stakeholder = create_stakeholder(
+        h_g, org_id=gamma["id"], activate=True, name=STAKEHOLDER_HIDDEN_NAME, role="Out-of-scope supplier contact",
+    )
+    set_stakeholder_visibility(h_g, gamma3["id"], hidden_stakeholder["id"], True)
+    plant_manager = create_stakeholder(
+        h_g, project_id=gamma3["id"], activate=True, name=STAKEHOLDER_PROJECT_NAME, role="Plant manager",
+        goals_needs="Keep the line running.", target_cadence="monthly",
+        influence_level_id=levels["influence"]["Medium"], interest_level_id=levels["interest"]["High"],
+    )
+
+    print("Seeding a Stakeholder Need on Gamma-3, held by the project Stakeholder and the org Field Inspector persona...")
+    create_need(
+        h_g, gamma3["id"], activate=True, holders=(("stakeholder", plant_manager["id"]), ("persona", field_inspector["id"])),
+        name=NEED_PROJECT_NAME, description="Unplanned stoppages must be diagnosed within minutes.",
+        rationale="Each stoppage costs an hour of line output.",
+    )
+
     print("Assigning project-scoped roles...")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a["user_id"], "stakeholder")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a2["user_id"], "stakeholder")
@@ -455,6 +641,14 @@ def main() -> None:
     beta1_reqs = seed_project_content(h_ab, beta1, 7)
     seed_project_content(h_ab, beta2, 6)
     gamma1_reqs = seed_project_content(h_g, gamma1, 7)
+    print("Seeding Stakeholder/Persona relationships on Gamma-1 (Phase 3): the org regulator reviews, and the org Field"
+          " Inspector persona is affected by, its first requirement...")
+    add_stakeholder_relationship(
+        h_g, gamma1["id"], "stakeholder", org_regulator["id"], "reviews", "requirement", gamma1_reqs[0]["id"],
+    )
+    add_stakeholder_relationship(
+        h_g, gamma1["id"], "persona", field_inspector["id"], "affected_by_requirement", "requirement", gamma1_reqs[0]["id"],
+    )
     seed_project_content(h_g, gamma2, 6)
     delta1_reqs = seed_project_content(h_ab, delta1, 3)
 
@@ -542,6 +736,13 @@ def main() -> None:
           f"'E2E Review Action', comment attachment on {alpha1_reqs[5]['unique_code']} — one of each project-files origin.")
     print(f"Compliance standard {FGAC_STANDARD_NAME!r} (id {fgac_standard['id']}) on Alpha — Role Management page's"
           " entity-scope picker fixture.")
+    print(f"Personas on Gamma (Stakeholders & Personas enabled for Gamma only): org personas {PERSONA_ORG_WEIGHTED_NAME!r}"
+          f" (Active, weight 3) and {PERSONA_ORG_UNWEIGHTED_NAME!r} (Draft, unweighted); project persona"
+          f" {PERSONA_PROJECT_NAME!r} on {GAMMA3_NAME!r}; Gamma-3's weight override of 5 on {PERSONA_ORG_WEIGHTED_NAME!r}"
+          f" is inherited by {GAMMA4_NAME!r}; org {PERSONA_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")
+    print(f"Stakeholders on Gamma: org {STAKEHOLDER_ORG_NAME!r} (Active, High/Medium, quarterly, represents"
+          f" {PERSONA_ORG_WEIGHTED_NAME!r}) and project {STAKEHOLDER_PROJECT_NAME!r} on {GAMMA3_NAME!r} (Active, monthly);"
+          f" org {STAKEHOLDER_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")
 
 
 if __name__ == "__main__":

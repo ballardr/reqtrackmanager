@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   apiHeaders,
+  deleteOrgOnCleanup,
   installCleanupHook,
   loginAs,
   logout,
@@ -11,6 +12,7 @@ import {
   PERSONAS,
   PROJECT_NAMES,
   selectOrgAdminGroup,
+  SERVER_ADMIN_LOGIN,
   setOrgModuleAvailability,
 } from "./helpers";
 
@@ -108,19 +110,30 @@ test.describe("Organisation Overview page (Phase 19)", () => {
   /**
    * Phase 27c — the stats header is folded into a real, always-present
    * "Overview" `ResourceMenu` group, and `ResourceMenu` itself hides its own
-   * menu-strip chrome whenever there's nothing to switch between. Every org
-   * in the seed dataset has Compliance entitled and enabled by default (see
-   * `org-admin-modules.spec.ts`), so this test toggles it off itself
-   * (single-org `orgAdminGamma`, mirroring that spec's own toggle-then-
-   * restore pattern) rather than relying on a persona that happens to have
-   * it disabled — no such persona exists in the seed dataset.
+   * menu-strip chrome whenever there's nothing to switch between. A module
+   * that is enabled for the org contributes overview groups of its own, and
+   * the seeded orgs differ in which modules they have on (Gamma has
+   * Stakeholders & Personas, for example), so this runs in a disposable org
+   * whose only module is Compliance (default on) and toggles that off itself,
+   * rather than mutating a shared seed org — a failure between the toggle and
+   * the restore used to leave Compliance off for every later spec in the org.
    */
-  test("ResourceMenu chrome is hidden with compliance disabled, shown with it enabled", async ({ page }) => {
-    await loginAs(page, PERSONAS.orgAdminGamma.email);
+  test("ResourceMenu chrome is hidden with compliance disabled, shown with it enabled", async ({ page, request }) => {
+    const suffix = Date.now();
+    const adminEmail = `e2e-overview-admin-${suffix}@example.com`;
+    const api = "http://localhost:8000/api/v1";
+    const serverHeaders = await apiHeaders(request, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
+    const org = await (await request.post(`${api}/orgs`, { headers: serverHeaders, data: { name: `E2E Overview Org ${suffix}` } })).json();
+    deleteOrgOnCleanup({ id: org.id });
+    const created = await request.post(`${api}/orgs/${org.id}/users`, {
+      headers: serverHeaders,
+      data: { email: adminEmail, display_name: "E2E Overview Admin", password: PASSWORD, role: "org_admin" },
+    });
+    expect(created.ok()).toBeTruthy();
+
+    await loginAs(page, adminEmail);
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
-    // Record the starting availability (either "on" state) to restore it
-    // exactly afterwards — shared seed org, so don't assume which one.
     const select = page.getByRole("combobox", { name: "Compliance availability", exact: true });
     const initial = (await select.inputValue()) as "opt_in" | "default_on";
     expect(["opt_in", "default_on"]).toContain(initial);
@@ -135,9 +148,6 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     await expect(page.locator(".resource-menu-nav")).toHaveCount(0);
     await expect(page.locator(".stat-bar")).toBeVisible();
 
-    // Restore the org's own enablement state to what this test found it in,
-    // per this repo's standing test-idempotency rule — no shared-fixture
-    // mutation survives the test.
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
     await setOrgModuleAvailability(page, "Compliance", initial);

@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Overview
 
-Some capabilities are large, optional, and not every organisation wants them — Compliance, Decision Management, and Context & Strategy are the first three, with more planned. Rather than bolt each one directly into the core application (a bespoke enable/disable switch per feature, roles permanently added to the core enums whether or not an organisation ever uses them, a UI either crammed into the core bundle or built as a second, inconsistent way of extending it), ReqTrackManager plugs optional capabilities in through one small, fixed mechanism: a **module**.
+Some capabilities are large, optional, and not every organisation wants them — Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas are the first four, with more planned. Rather than bolt each one directly into the core application (a bespoke enable/disable switch per feature, roles permanently added to the core enums whether or not an organisation ever uses them, a UI either crammed into the core bundle or built as a second, inconsistent way of extending it), ReqTrackManager plugs optional capabilities in through one small, fixed mechanism: a **module**.
 
 A module is a self-contained unit — backend endpoints, database tables, RBAC roles, frontend pages, and optionally AI-assistant tools — that plugs into the application through this mechanism rather than through edits scattered across core code. A module can ship inside this repository ("first-party") or be built and installed independently ("third-party"). Either way it's gated the same way, uses the same RBAC and UI conventions as the core application, and can be turned on or off per deployment and per organisation without any code changes.
 
@@ -91,13 +91,14 @@ Org `PUT` bodies carry `enabled` (Off = `false`) and an optional `default_projec
 
 ## Roadmap
 
-Compliance, Decision Management, and Context & Strategy are the modules built on this system today, and more are planned to follow the same pattern — each one an optional, self-contained capability an organisation can entitle and enable independently, rather than a feature permanently bolted into the core application. See [Roadmap](./roadmap.md) for a brief look at what's currently being explored — none of it is scheduled or committed yet.
+Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas are the modules built on this system today, and more are planned to follow the same pattern — each one an optional, self-contained capability an organisation can entitle and enable independently, rather than a feature permanently bolted into the core application. See [Roadmap](./roadmap.md) for a brief look at what's currently being explored — none of it is scheduled or committed yet.
 
 ## Where this fits
 
 - [Compliance module](./compliance-module/overview.md) — what it does and how to work with it.
 - [Decision Management module](./decision-management-module/overview.md) — what it does and how to work with it.
 - [Context & Strategy module](./context-strategy-module/overview.md) — what it does and how to work with it.
+- [Stakeholders & Personas module](./stakeholders-personas-module/overview.md) — what it does and how to work with it.
 - [Building your own module](./building-your-own-module.md) — the contract for a module that ships inside this repository (Tier A).
 - [Third-party and federated modules](./third-party-and-federated-modules.md) — building and installing a module that was never compiled into this deployment's own images.
 - [Roadmap](./roadmap.md) — modules being explored beyond what's shipped today.

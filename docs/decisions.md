@@ -9089,3 +9089,232 @@ tags is in [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeho
   personas and weights without importing Module 2. (Decided by: Agent.)
 - **Phase 1 is split**: 1.1 Persona, including its UI, which unblocks
   Module 1 Phase 11; 1.2 Stakeholder. (Decided by: Agent.)
+- **Addendum, same day: people, research and reports.**
+  - **Stakeholder ↔ Persona is many-to-many**, and it moves to Phase 1.2.
+    (Decided by: User.)
+  - **Org users reach personas through an optional `Stakeholder.user_id`**,
+    not a direct link, plus a `Persona.champion_id`. (Decided by: User; the
+    Agent's proposal.) *Why:* most people a persona describes have no
+    account, and two person → persona paths would split every report.
+  - **Research Sessions** (interviews, focus groups, usability tests,
+    surveys) are a toggleable sub-component with session prompts and
+    findings that link to Pain Points, Needs and Open Questions. (Decided
+    by: User.)
+  - **Hard delete for Stakeholders and Research Session personal data.**
+    Retirement alone fails the data-retention policy's disposal rule
+    (Known Gap 1). (Decided by: Agent.)
+  - **Influence × Interest on the core scoring matrix**, and reports S1–S5
+    through Module 1 Phase 13's report hook. (Decided by: User.)
+- **Addendum 2, same day: engagement cadence and contact log.**
+  - **Stakeholder gets `target_cadence` (our goal) and
+    `availability_constraints` (their limit)** as separate fields.
+    (Decided by: User.) *Why:* one field can't show "we should talk monthly
+    but they'll only agree to quarterly".
+  - **One-off is a cadence value, not a flag; random participants are
+    anonymous** (a label plus a persona, no Stakeholder record). (Decided
+    by: User.) *Why:* data minimisation, while named one-off parties can
+    still be linked to Requirements.
+  - **Always-on Engagements replace Research Sessions as the core record**,
+    with prompts, findings and anonymous participants as the switchable
+    research extras. (Decided by: User.) *Why:* "last contact" needs a
+    single source.
+  - **The power/interest quadrant suggests a cadence** (a hint, never set
+    automatically), and S4 measures against each stakeholder's own
+    cadence. (Hint: Decided by: User. Mapping and S4 rule: Decided by:
+    Agent.)
+
+## Module 14 (Product Feedback / Enhancement Requests) proposed (2026-10-05)
+
+Planning only. Plan: [module-14-product-feedback-plan.md](plans/module-14-product-feedback-plan.md).
+
+- **A new, independently toggleable module for enhancement requests**,
+  planned now and built after Modules 1 and 2. (Decided by: User.)
+- **A request is a solution, a Pain Point is a problem.** Requests with no
+  linked Pain Point get a warning, not a block. (Decided by: User.) *Why:*
+  ranking by demand alone rewards the loudest voice.
+- **In scope: demand aggregation with merge, ICE/RICE on the core scoring
+  matrix, and a close-the-loop list.** (Decided by: User.) ICE fits here
+  because requests are solutions, which is why it was rejected for Pain
+  Points.
+- **Out of scope: delivery tracking and a public submission portal.**
+  (Decided by: Agent.) *Why:* delivery belongs in Jira-like tools, and a
+  no-account portal is a large abuse and privacy surface.
+
+## Module 2 (Stakeholders & Personas) Phase 1.1 — Persona (2026-10-05)
+
+Built Persona end to end as a new `stakeholders` module (backend, bundle hooks, MCP tools, UI, seeds, tests). Plan: [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeholders-and-personas-plan.md). Unblocks Module 1 Phase 11.
+
+```mermaid
+flowchart LR
+    SC["Module 1 scoring<br/>(Phase 11)"] -->|"get_scoring_targets('persona')"| REG[registry hook]
+    REG -->|"scoring_target_providers"| PER[stakeholders module]
+    PER --> W["weight: project override →<br/>ancestor override → persona → equal"]
+```
+
+- **Module key is `stakeholders`**, one sub-component `persona` (Stakeholder joins in Phase 1.2). (Decided by: Agent.)
+- **`ModuleDefinition.scoring_target_providers` + `get_scoring_targets()`** are the generic hook from Phase 0 resolution 10. It returns `[]` when the owning module is disabled for the project, so scoring degrades to all-personas. (Decided by: Agent, as planned.)
+- **Only `Active` personas are `is_active` scoring targets**, so an unvetted draft can't skew a weighted roll-up. (Decided by: Agent.)
+- **A persona's own weight is versioned content** (on `PersonaVersion`), not on the identity row, so re-weighting appears in history; the per-project override is a separate row. The resolved weight also reports its *source* (`weight_source`) so the UI can name the tier, per the style guide's inherited-settings pattern. (Decided by: Agent.)
+- **Type is optional**, and a persona version references either an org type (org persona) or a project type row (project persona). The migration backfills the default Primary/Secondary/Negative types for existing organisations. (Decided by: Agent.)
+- **Lifecycle allows `Retired → Active`** (reactivation) and has no content lock, since there is no approval gate. (Decided by: Agent.)
+- **`org_persona_owner` carries no FGAC atom**; only the project role does. An org-level role's atoms apply to every project in the org, which would have let an org persona owner manage all project personas (caught by a test). (Decided by: Agent.)
+- **Bundles carry current content only** (no version history, comments or comment files); org-level files can't travel because `ModuleOrgBundleHooks.import_` receives no attachment bytes. (Decided by: Agent.)
+- **Two extractions to shared components**, per the one-component-per-pattern rule, with every call site updated: `components/ArtefactCommentsSection` (was duplicated in `context_strategy` and `decisions`) and `components/TypeVocabularyPanels` (`OrgTypeVocabularyPanel`/`ProjectTypeVocabularyPanel`, the Pain Point type panels generalised; the Pain Point panels are now thin wrappers). Backend: `stakeholders/type_vocabulary.py` is the matching generic `TypeVocabulary`, which Phase 1.2 reuses for Stakeholder types. (Decided by: Agent.)
+- **An org persona opens inside a project** so its weight override stays reachable; there it is read-only apart from the override and comments. (Decided by: Agent.)
+- **Docs website not updated yet.** The plan sequences it as Phase 7 (needs Stakeholders, relationships and reports to document honestly). (Decided by: User, via the plan.)
+
+**Core-boundary checks.** No core file imports `modules/stakeholders/`. `Layout.tsx` is untouched; the nav entry comes from `ModuleFrontendManifest`, and `navIcons.ts` only gained a generic `users` icon in its open palette. `persona` is a registered artefact type, so no core enum/column needed a per-module value. No new project-scoped *definition* table needs an ancestor fallback: the type tables follow Pain Point's org-base design, and `ProjectPersonaWeight` is override-only and resolved through the ancestor chain (Phase 0 resolutions 3 and 5).
+
+**Review (identify → verify → remediate).** Found and fixed in this pass: an org-role atom leaking to project scope (above); non-finite weights (`inf` passes `> 0` and would poison a weighted roll-up) now rejected with `allow_inf_nan=False`, which also exposed a core bug — any 422 whose echoed input was `inf`/`nan` crashed JSON encoding into a 500 — fixed in `main.py`'s validation handler; comment edit and comment-attachment removal were not audit-logged (now are, and a test asserts every mutating action leaves an event); owner/champion must be members of the organisation (cross-tenant reference); persona type ids are validated against the persona's own organisation/project; every id lookup is scoped to its org/project and 404s across tenants. Personas hold no personal data (descriptive archetypes), so the retention policy's Known Gap 1 is unchanged. Tests: 34 backend (CRUD, scope, versions, lifecycle, types, weights, RBAC, FGAC, isolation, comments, files, hook, bundles, MCP manifest), Storybook for every new component, Playwright `modules/stakeholders/persona-lifecycle.spec.ts`.
+
+## Module 2 (Stakeholders & Personas) Phase 1.2 — Stakeholder (2026-10-05)
+
+Built Stakeholder end to end in the existing `stakeholders` module: backend, bundle hooks, MCP tools, UI, seeds, tests. Plan: [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeholders-and-personas-plan.md).
+
+```mermaid
+flowchart LR
+    ST[Stakeholder] -- "represents (ArtefactLink, many-to-many)" --> PE[Persona]
+    U[Org user] -. "optional user_id" .-> ST
+    ST -- "Influence × Interest levels" --> SC["core scoring matrix<br/>scheme 'stakeholder'"]
+    SC -- "power/interest quadrant" --> HINT["suggested cadence<br/>(a hint, never applied)"]
+    ST -- "DELETE (tier-2 confirm)" --> ERASE["erase: versions · comments · files in storage · links<br/>audit keeps only the id"]
+```
+
+- **Sub-component `stakeholder`**, beside `persona`; roles `stakeholder_owner` (project, carries the FGAC `(stakeholder, manage)` atom), `org_stakeholder_owner` (org, no atom, for the same reason `org_persona_owner` has none) and `stakeholder_type_admin` (org; also administers the `stakeholder` scoring scheme). (Decided by: Agent, following Phase 1.1.)
+- **Stakeholder types: no ancestor fallback for nested projects.** `ProjectStakeholderType` is a project-scoped table of the shape the nested-projects rule asks about; like Persona types it is an override layer over an org base list that every project already sees, so an empty project table already means "use the org list". Checked explicitly here, as the rule requires. (Decided by: Agent, as Phase 0 resolution 3.)
+- **`user_id` is versioned content, not identity**, and "create from org user" prefills name and contact info (the user's email) and returns 409 if a live stakeholder in the same scope already represents that user. (Decided by: Agent.)
+- **"Represents Persona" is a typed `ArtefactLink`** (an org-created "Represents"/"Is represented by" link type, made on first use like the other modules'). Compatibility rule: an org stakeholder may only represent org personas, so an org-level record never depends on one project's data; a project stakeholder may represent org personas or its own project's. The persona-side reverse list is filtered to stakeholders the *viewing scope* can see (a project sees its own and the org's; the org view sees org-scoped ones only), so one project never learns of another's records. REST only; MCP link tools stay in Phase 3. (Decided by: Agent.)
+- **Influence × Interest** is a second consumer of the core scoring matrix (default Low/Medium/High per axis, one model). It is the first to reference levels from a module table, so it implements `count_level_usage`/`reassign_level_usage` over *current* versions only; a historic version's reference is cleared by `ON DELETE SET NULL` rather than rewriting history. (Decided by: Agent.)
+- **Quadrant rule: a level is "high" when its weight is at least half its axis's top weight.** On the defaults Medium counts as high, so Medium/Medium is "Manage closely"; the rule survives org re-weighting. The hint is computed server-side only (`GET .../stakeholders/cadence-hint`), so the form, the detail page and the future S4 report share one rule; the form shows it as text and never sets the cadence field. (Decided by: Agent; the hint itself Decided by: User.)
+- **Erasure.** `DELETE .../stakeholders/{id}` (manage role; tier-2 `ConfirmDialog` requiring the exact name) removes versions, comments, comment attachments, direct attachments (rows and storage bytes) and every `ArtefactLink` touching the record. Audit events for a stakeholder never carry the name, contact info or a filename (the shared attachment kit's `log_filenames` is off for it), so the single `erased` event holds only the id and actor and nothing earlier needs scrubbing. The retention policy's Known Gap 1 and the TSC mapping's C1.2 row are updated to the narrower closure. No MCP tool can erase. (Decided by: Agent, per Phase 0 resolution 15.)
+- **Version history omits contact info**; only the current record carries it. (Decided by: Agent.)
+- **Bundles** carry current content, levels by name, and "represents" links by persona name and scope; the Persona half always imports first. Contact info travels, so a bundle is treated as Confidential (data-classification policy item 4). (Decided by: Agent.)
+- **Shared code instead of copies**, per Phase 1.1's "reuse, don't copy" instruction, with every Persona call site moved onto it: backend `_attachments.AttachmentKit` (comments/files for both artefacts) and generic `resolve_type_refs`/`archive_record`; frontend `RecordListView`, `RecordLifecycleControls`, `RecordDiscussion`, `RecordDetailParts`, `RecordFormFields`, `RepresentationPanel`, and a generic `buildRecordApi` in `api.ts`. Context & Strategy's and Decisions' detail pages still hold their own copies of the lifecycle/discussion/version blocks; migrating them is separate work. (Decided by: Agent.)
+- **Docs website not updated yet**, as Phase 1.1: the plan sequences it as Phase 7. (Decided by: User, via the plan.)
+
+**Core-boundary checks.** No core file imports `modules/stakeholders/`. The only core frontend file touched is `modules/navIcons.ts`'s open icon palette (a generic `user-round`), the same way Phase 1.1 added `users`. `stakeholder` is a registered artefact type and the scheme is registered through `scoring_schemes`, so no core enum/column/stylesheet needed a per-module value; the nav entry comes from `additional_nav_entries`.
+
+**Review (identify → verify → remediate).**
+- *Found and fixed, pre-existing from Phase 1.1:* deleting an organisation that had a typed Persona returned a 500. `persona_versions.org_type_id`/`project_type_id` were plain foreign keys into type tables that cascade-delete with the org in the same cascade, so the delete failed depending on cascade order. The Playwright cleanup hook was logging these 500s. Fixed with migration `0060` (`ON DELETE SET NULL`, also covering `stakeholder_versions`) and a regression test; in-use types are still protected by `TypeVocabulary`, so deleting a type through the API behaves as before.
+- *Tenancy:* every id lookup is scoped to its org/project and 404s across tenants (tested for read, write, erase, comments, files, the cadence hint, link targets and reverse lists); owner and linked user must be organisation members; scoring levels must belong to the same organisation, scheme and axis; type ids are validated against the record's own organisation/project.
+- *Personal data:* the audit trail and the version-history listing carry no contact info; there is no MCP erase; erasure is covered by a test that counts rows, links, comment attachments and storage bytes afterwards and proves a bystander is untouched.
+- *Authorisation:* a Persona role confers nothing on Stakeholders (tested), a project role does not reach org scope (tested), and org stakeholders are read-only from a project.
+- *Known limitation, unchanged:* contact info is readable by every member who can see the stakeholder (Phase 0 resolution 6: view is open to all project members); field-level restriction is not built.
+
+Tests: 36 backend tests for Stakeholder (CRUD, scope, versions, lifecycle, types, level validation, cadence-hint quadrants, level usage/reassignment, create-from-user, represents from both ends and tenancy filtering, erasure, RBAC, FGAC, gates, isolation, comments, files, audit, org deletion) plus bundle round-trips and the MCP manifest; Storybook for every new component (and the refactored Persona pages); Playwright `modules/stakeholders/stakeholder-lifecycle.spec.ts` (shared setup now in `helpers.ts`, also used by the Persona spec). Both seed scripts gain Stakeholders.
+
+## Module 2 (Stakeholders & Personas) Phase 2 — Stakeholder Needs (2026-10-05)
+
+Built Stakeholder Need end to end in the existing `stakeholders` module: backend, bundle hooks, MCP tools, UI, seeds, tests. Plan: [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeholders-and-personas-plan.md).
+
+```mermaid
+flowchart LR
+    ST[Stakeholder] -- "has need (ArtefactLink)" --> N[Stakeholder Need<br/>project-scoped]
+    PE[Persona] -- "has need (ArtefactLink)" --> N
+    N -- "gives rise to (ArtefactLink)" --> R[Requirement<br/>same project]
+    ST -. "direct link still valid" .-> R
+```
+
+- **A Need is project-scoped only: no `scope` column, no org router, no org bundle half.** It sits between a person and the project's own Requirements, so an org-level reading has nothing to link to; an org Stakeholder or Persona can still *have* a project's need. Phase 0 resolution 2's org/project scope was stated for Stakeholder and Persona. (Decided by: Agent.)
+- **Sub-component `stakeholder_need`** and one role, `stakeholder_need_owner` (project, carries the FGAC `(stakeholder_need, manage)` atom). No org role, since there is no org scope; a Stakeholder or Persona role confers nothing on Needs (tested). (Decided by: Agent, following Phases 1.1/1.2.)
+- **Nested-projects check (required for new project-scoped tables).** Needs are records, not a closed per-project definition vocabulary (the `ActionTypeDefinition` shape), and Phase 2 adds no config table, so no ancestor fallback applies and no root-only seeding hook exists. Checked explicitly here. (Decided by: Agent.)
+- **Fields are deliberately thin**: name, the need in the stakeholder's own words (`description`), `rationale`, status, owner. §10.4's point is the *wording* of the need, so priority/severity are left to the Requirement it gives rise to and to Module 1's scoring. No type vocabulary. (Decided by: Agent.)
+- **Links.** "Has need" runs Stakeholder/Persona → Need and "gives rise to" Need → Requirement, both typed `ArtefactLink`s with org link types created on first use. `service.get_or_create_link_type`/`link_type_id_if_exists` were extracted from the "Represents" helper and that helper now calls them, rather than a third copy. The holder must be visible to the need's project (its own or the org's); the Requirement must belong to the *same* project; anything else 404s. A Stakeholder/Persona's page lists only this project's needs, so an org-wide record shared by several projects never reveals another project's needs. REST only: MCP *link* tools stay in Phase 3, as for "represents". (Decided by: Agent.)
+- **The core "approved Requirement needs a change request to be linked" gate (platform review Phase 8) does not apply**: like Decisions' "Implements" links, module-owned links to a Requirement aren't gated by it. Recorded rather than silently skipped. (Decided by: Agent.)
+- **No erasure for Needs.** A Need is not itself personal data, so it keeps the archive path only; erasing a Stakeholder removes its "has need" links and leaves the Need (tested). A need's free text can still quote a person, so the project bundle is treated as Confidential like the Stakeholder half. (Decided by: Agent.)
+- **Shared code instead of copies.** Backend: the existing `AttachmentKit` (made to tolerate a record with no `organization_id`) and `apply_value_error_as_conflict`/`validate_people`. Frontend: `RecordListView` (its Type column/filter and Scope column are now optional), `RecordLifecycleControls`, `RecordDiscussion`, `RecordDetailParts`, `RecordFormFields`, `buildRecordApi`, and `RepresentationPanel` for all three link lists and the read-only "Needs" list (`HeldNeedsPanel`) on the Stakeholder and Persona pages. (Decided by: Agent.)
+- **Bundles**: needs travel in the *project* bundle with holders by name and scope, Requirements by unique code and attachments; the Persona and Stakeholder halves import first, and a holder or Requirement the target lacks is skipped with a warning. (Decided by: Agent.)
+- **Docs website not updated yet**, as Phases 1.1/1.2: the plan sequences it as Phase 7. (Decided by: User, via the plan.)
+
+**Core-boundary checks.** No core file imports `modules/stakeholders/`. The only core frontend file touched is `modules/navIcons.ts`'s open icon palette (a generic `target`), the same way Phases 1.1/1.2 added `users`/`user-round`; the "Needs" nav entry comes from `additional_nav_entries`. `stakeholder_need` is a registered artefact type, so no core enum/column/stylesheet needed a per-module value.
+
+**Review (identify → verify → remediate).**
+- *Tenancy:* every id lookup is scoped to the project and 404s across projects and organisations (tested for read, versions, comments, holders, requirements and files); owner must be an organisation member; holders and Requirements are validated against the need's own project (tested with a sibling project's records and another tenant's).
+- *Authorisation:* every mutation, including link changes and direct file upload, needs the owner role or the FGAC grant (tested); comments stay open to every member who can view; file download goes through the module's file-owner hook (tested).
+- *Audit:* every mutating action writes an event through `services/audit.py` (tested); events carry ids, never filenames' content beyond the shared kit's existing behaviour.
+- *Found and fixed while building:* `AttachmentKit` assumed every record has an `organization_id`, which a project-only record doesn't; it now reads it defensively.
+- *Known limitation:* a need's text is visible to every project member who can view the module (Phase 0 resolution 6); no field-level restriction.
+
+Tests: 17 backend tests for Needs (CRUD and versions, lifecycle and archive, holders from both ends, shared-org-holder filtering, holder and Requirement tenancy, erasing a linked Stakeholder, RBAC/FGAC/role isolation, module and sub-component gates, cross-tenant and sibling isolation, comments/files, org deletion, audit, registration) plus two bundle round-trips and the extended MCP manifest test; Storybook for every new component (and the extended Stakeholder/Persona pages); Playwright `modules/stakeholders/need-lifecycle.spec.ts`. Both seed scripts gain Needs.
+
+## Module 2 (Stakeholders & Personas) Phase 3 — Relationships (2026-10-05)
+
+Built the remaining overview §10.5 relationships end to end in the `stakeholders` module: backend, bundle hooks, MCP link tools, UI, seeds, tests. Plan: [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeholders-and-personas-plan.md).
+
+```mermaid
+flowchart LR
+    H["Stakeholder / Persona"] -- "Experiences" --> PP[Pain Point<br/>Context & Strategy]
+    H -- "Provides / Is affected by" --> R[Requirement<br/>core]
+    S[Stakeholder only] -- "Consulted on" --> D[Decision<br/>Decision Management]
+    S -- "Approves / Reviews" --> R
+    S -- "Approves / Reviews" --> D
+    H -. "Uses (reserved)" .-> DE[Design / System Element<br/>Module 6]
+```
+
+- **A second generic extension point instead of cross-module imports.** Modules never import each other, and Pain Points/Decisions are other modules' tables. `ModuleDefinition.artefact_summary_providers` (`ArtefactSummaryProvider(get, list_for_project)` → `ArtefactSummary`) plus `registry.get_artefact_summary`/`list_artefact_summaries`/`has_artefact_summary_provider` lets Stakeholders validate (same project, owner module enabled), label and list targets generically. Context & Strategy and Decision Management each register their own provider; the frontend mirror is `TierAModuleDefinition.artefactPaths` + `modules/artefactPaths.ts`. Documented in `docs/modules.md` §4f. A test asserts the stakeholders package imports no other module. (Decided by: Agent.)
+- **One declarative table, not one router per kind.** `relationships.RELATIONSHIP_KINDS` (key, org link-type names, holder types, target types) drives generic endpoints under the existing project prefix: `relationship-kinds`, `relationship-targets`, `{stakeholders|personas}/{id}/relationships` (list/add/remove) and `relationships/incoming` (the reverse view, for Module 10's change impact and later reports). Link types are created per org on first use via the existing `get_or_create_link_type`. (Decided by: Agent.)
+- **Kinds and who may hold them.** Experiences Pain Point, Provides Requirement, Is affected by Requirement (Stakeholder or Persona); Consulted on Decision, Approves, Reviews (Stakeholder only — a Persona is an archetype, not a person who is consulted or signs off); Approves/Reviews target a Requirement or a Decision. "Approves / Reviews" is two kinds because one link type couldn't say which. (Decided by: Agent.)
+- **Reserved target.** "Uses Design / System Element" is declared but `available_target_types` is empty and creation is a 409, until a module registers a provider for `design`/`system_element`. The UI shows a muted note, not an option. (Decided by: Agent, per the plan's "reserved the same way Module 4 reserves" wording.)
+- **Tenancy and authorisation.** A target must belong to the request's project (404 otherwise, including another tenant's and a sibling project's); listing is per project, so a shared org Stakeholder/Persona shows only this project's links. Writes need the holder kind's manage gate in the project (`stakeholder_owner`/`persona_owner` or the FGAC grant), so each role confers nothing on the other kind. A project owner may therefore link an org-scoped holder to *this project's* records, which is project-level data, not an edit of the org record. A target is only shown to a caller holding `(target_type, view)`, so a relationship never reveals a title the owner module's own screens would hide. (Decided by: Agent.)
+- **Target status is not rendered.** It is another module's enum with no label map here; showing the raw string would break the label-map rule. The API still returns it. (Decided by: Agent.)
+- **Bundles.** Relationships travel in the project bundle (holder by name/scope, Requirement by unique code, other targets by label). Pain Points and Decisions are not in project bundles at all yet (their modules have no bundle hooks), so those links export but are skipped on import with a warning per link rather than silently dropped; this closes by itself when those modules gain bundle support. (Decided by: Agent.)
+- **MCP.** 18 link tools: kinds/targets/incoming, list/add/remove relationships for each holder kind, and the previously REST-only "represents", "has need" and "gives rise to" links. Every `remove_*` deletes only a link (tested); there is still no erase tool. (Decided by: User, via the plan's MCP commitment; tool set Decided by: Agent.)
+- **Shared code.** `_shared.get_visible_stakeholder/persona/holder` and `holder_name` replace three copies (the Need helpers and the Stakeholder router). Frontend: one `RelationshipsPanel` for both holder kinds.
+- **Nested-projects check.** No new project-scoped definition table (links are `ArtefactLink` rows), so no ancestor fallback or seeding hook applies. (Decided by: Agent.)
+
+**Core-boundary checks.** No core file imports `modules/stakeholders/`. Core touched only by generic additions: the registry hook, and `TierAModuleDefinition.artefactPaths`. No core enum/column/stylesheet needed a per-module value (`pain_point`/`decision`/`stakeholder*` are registered artefact types).
+
+**Review (identify → verify → remediate).**
+- *Tenancy:* sibling-project, other-org and wrong-type ids all 404 (tested); a link id of another holder cannot be removed (tested); a disabled owner module hides its targets and blocks adding, and re-enabling restores them (tested).
+- *Authorisation:* writes gated per holder kind, view-only members read but can't write, disabled sub-component 404s, FGAC view filter (tested with a role lacking `pain_point:view`).
+- *Audit:* `relationship_added`/`relationship_removed` events through `services/audit.py` carry ids only (tested).
+- *Erasure:* erasing a Stakeholder removes its relationship links and leaves the targets (tested).
+- *Known limitations:* the reverse view lives in the API only (no UI on the Pain Point/Decision pages yet).
+
+Tests: 18 + 3 backend tests (kinds and reserved kind, every kind from both holder kinds, holder/target type rules, tenancy, shared-holder filtering, picker and incoming, disabled owner module, FGAC view filter, RBAC, audit, erasure, summary-provider hook, module boundary, bundle round-trip/warnings) and the extended MCP manifest test; Storybook `RelationshipsPanel` (and updated detail-page mocks); Playwright `modules/stakeholders/relationship-lifecycle.spec.ts`. Full backend suite: 1583 passed, 14 failed — the known host-level mailhog DNS failures in the invite/OIDC/email tests, unrelated. Both seed scripts gain relationships. Docs website not updated: the plan sequences it as Phase 7 (Decided by: User, via the plan).
+
+## Module 2 (Stakeholders & Personas) — docs website coverage pulled ahead of Phases 4–6 (2026-10-05)
+
+- **The docs phase is split so the module can ship now.** Phase 7 became 7a (document what Phases 0–3 shipped) and 7b (extend it once Engagements, the research extras and reports S1–S5 land). (Decided by: User.)
+- **7a is done.** A nested *Stakeholders & Personas module* section under Modules (overview, Persona, Stakeholder, Stakeholder Need, Relationships, MCP, known limitations), plus the Modules overview/roadmap, sidebar and a Requirements-management cross-link. Five screenshots were captured at 1440×900 from the demo organisation. Unbuilt Phase 4–6 content appears only as "not built yet" entries in *Known limitations*, never as a described feature, so the site claims nothing that doesn't exist. (Decided by: Agent.)
+- **Verified:** `npm run build` (fails on broken links) is clean; the four pages with diagrams were loaded from the built site and their Mermaid diagrams render with no syntax error and every image loads. A first draft wrongly said Medium counts as low on the power/interest grid; the code treats the upper half of an axis, so Medium, as high, and the page was corrected before finishing.
+- **Demo data:** the demo seed script already creates the Needs and relationships; the live demo organisation was seeded before they existed, so the same content was added to it directly for the screenshots.
+
+## Module 2 (Stakeholders & Personas) Phase 3b — Project stakeholder visibility (2026-10-05)
+
+Asked: "can projects hide organisation stakeholders from their project?" Answer was no — every org Stakeholder was visible to every project in the organisation, with only a per-request `include_org=false` list filter. The user asked for it to be built. Full plan: `docs/plans/module-02-stakeholders-and-personas-plan.md` Phase 3b. (**Decided by: User** — that a project can hide org Stakeholders; everything below is **Decided by: Agent**.)
+
+- **Override-only table, not a flag on the Stakeholder.** `ProjectStakeholderVisibility(project_id, stakeholder_id, hidden)`, unique per pair, the `ProjectPersonaWeight` shape; org-scoped Stakeholders of the project's own organisation only (a project's own Stakeholder is archived/erased instead). A flag on the shared record would hide it everywhere, which is the one thing a per-project choice must not do.
+- **Nested-projects check (done at design time, per CLAUDE.md).** The table is project-scoped config, so the ancestor fallback was decided explicitly: resolved per stakeholder, nearest row wins up the chain, cycle-safe via `get_ancestor_chain`, always on, no seeding hook (no rows by default). `hidden` is a boolean so a child can re-show what its parent hid. Rejected the Action Type shape ("own rows replace all ancestor rows"): hiding one more stakeholder in a child would silently un-hide everything the parent hid. Own set/clear endpoints touch only the project's own row; the effective set is a read-path resolution.
+- **Hidden = invisible to the project, non-destructive.** `get_visible_stakeholder` (shared by needs, relationships, "represents" and the project router) 404s a hidden Stakeholder, so it cannot be newly linked; `list_project_visible_stakeholders`, a need's holder list and a Persona's represented-by list omit it. Existing links stay stored and reappear on un-hide. The list's `include_hidden=true` (the manage UI's "Show hidden") returns them flagged `project_hidden`/`hidden_source`. Detail GET of a hidden stakeholder stays 404 rather than leaking a read path around the hide.
+- **Core-boundary checks.** No core file imports `modules/stakeholders/`; no core enum/column/stylesheet gained a module value, and no core file was touched at all. The list/filter UI reused `RecordListView` (new generic `extraFilters` slot) and the style guide's `OverridePill` and tier-1 `ConfirmDialog`.
+- **RBAC / audit / data handling.** Gated by the project's Stakeholder manage permission (`stakeholder_owner` role or the FGAC `(stakeholder, manage)` grant), the Persona-weight-override gate; view-only members still read. Events `visibility_hidden`/`visibility_shown`/`visibility_reset` go through `services/audit.log_event` with ids only (a no-op reset logs nothing). Hiding only narrows visibility, so no control in the data-classification policy regresses. Erasing the org Stakeholder cascades its override rows (tested), keeping the retention policy's "no rows left" claim true.
+- **Bundles.** `project_stakeholder_visibility` (org stakeholder by name + `hidden`) is exported in the project half and recreated on import; a name missing from the target org is skipped with a warning. Relationship/need exports still carry hidden holders' links so a bundle stays a full backup.
+- **MCP.** `set_stakeholder_visibility`, `reset_stakeholder_visibility`, and `include_hidden` on `list_stakeholders` (38 module tools now).
+- **Reports (Phase 6)** must use the hide-aware `list_project_visible_stakeholders`; recorded in the plan.
+
+**Review (identify → verify → remediate).**
+- *Tenancy:* another org's or a project-scoped stakeholder id 404s on both endpoints (tested); a hide never changes what another project in the org sees (tested).
+- *Authorisation:* a plain member gets 403 on PUT/DELETE but still reads; `stakeholder_owner` can hide (tested); disabled module 404s.
+- *Bypass paths found and closed:* the persona-side "who represents this Persona" list (`_is_visible` in the project router) had its own visibility copy and would have leaked a hidden stakeholder — made hide-aware and tested. Relationship and need exports deliberately keep hidden holders (backup fidelity).
+- *Pre-existing bug found and fixed while verifying the seeds:* `seed_demo_data.py` crashed at the Module 2 Phase 2 block (`drone_reqs[0]` on a dict keyed by name), so the demo dataset could not be seeded at all; it now links the status-display need to the flight-log requirement. Both seed scripts were run end to end against a scratch database.
+- *Test fix:* the Playwright spec waits for the list to reload after "Show" before unchecking the filter (a click raced a stale hidden row and was ignored).
+
+Tests: 11 backend tests (`test_stakeholder_visibility.py`: hide/show/reset and list/detail effects, flags, scope and tenancy, links blocked and restored, reverse list, three-level hierarchy resolution, RBAC, module gate, audit, cascade on erase, bundle round trip + warning) plus the MCP tool registry test; Storybook stories for the visibility control, the list's "Show hidden" and its two Show paths, and the detail page's hide/revert/no-control-for-project-stakeholders cases; 2 Playwright specs (hide → Show hidden → show again; child inherits, overrides and reverts), each run twice back to back. Docs: stakeholder, overview, MCP and known-limitations pages of the docs website (Mermaid rendering verified), architecture doc, plan, demo and E2E seeds.
+
+## Module 2 Phase 3b follow-up — org Personas can be hidden per project too (2026-10-05)
+
+Asked: "can org personas also be made so they can be hidden per project?" (**Decided by: User** — that they can; the rest **Decided by: Agent**.) Same design as the Stakeholder entry above; see the plan's "Extended to Personas" paragraph.
+
+- **One implementation, two tables.** `ProjectPersonaVisibility` (migration 0063) mirrors `ProjectStakeholderVisibility`; the nearest-ancestor resolution, set and clear logic moved into `service._resolve_visibility`/`_set_visibility`/`_clear_visibility`, bound per kind by thin wrappers, rather than copied. A single polymorphic table was rejected: it cannot carry an FK `ON DELETE CASCADE` to two parents. Nested-projects check: same answer as Stakeholders (nearest row wins, explicit `hidden` bool, no seeding hook), so no new decision.
+- **Frontend consolidated, not duplicated** (CLAUDE.md shared-component rule): `StakeholderVisibilityControl` became `RecordVisibilityControl` (noun + consequence text as props), the list's "Show hidden" filter and Visibility column moved from `StakeholderListView` into `RecordListView` (so Personas and Stakeholders share them), and the two-step "show again" rule is `visibility.ts`'s `showRecordInProject`. The hidden-source label map and type are generic (`HIDDEN_SOURCE_LABEL`/`HiddenSource`), and the request body is the shared `VisibilitySet`.
+- **Persona-specific effect: not a scoring target.** `persona_scoring_targets` is built on `list_project_visible_personas`, so a hidden persona disappears from the project's scoring targets. Module 1 Phase 11 reads targets through `get_scoring_targets`, so it needs no change and nothing recorded against the persona is deleted. Tested.
+- **Review (identify → verify → remediate).** *Bypass paths checked:* the persona's weight override endpoints, comments/files (all through the project router's `_get_visible`, which previously carried its own copy of the visibility check — now delegates to `_shared.get_visible_persona`, removing the duplicate); needs, relationships and "represents" (all through `get_visible_persona`/`get_visible_holder`); the stakeholder-side "represents" list (was filtering by scope only — now omits hidden org personas; the link can still be removed from the stakeholder side so a hide never strands data). *RBAC/audit:* persona manage permission (`persona_owner` or FGAC), events `visibility_hidden`/`shown`/`reset` with ids only (tested). *Seeds:* both run end to end on a scratch DB with a hidden persona added.
+
+Tests: 11 backend tests in `test_persona_visibility.py` (basics, scope/tenancy, scoring target, links blocked and restored, stakeholder-side list, three-level hierarchy, independence from the Stakeholder overrides, RBAC, audit, bundle round trip + warning) plus the MCP registry test; Storybook stories for the shared control (Persona wording), the Personas list ("Show hidden" and both Show paths) and the Persona detail page; a Playwright spec (`persona-visibility.spec.ts`, two tests). Docs website: persona, stakeholder, overview, MCP and known-limitations pages.
+
+## CI E2E failure on PR #30: org-overview spec poisoned Gamma's Compliance setting (2026-10-05)
+
+CI's Playwright run failed three tests: `org-overview.spec.ts` "ResourceMenu chrome is hidden with compliance disabled…" and two `standard-applicability-defaults.spec.ts` tests. Root cause was one test, not three. The org-overview spec toggled Compliance off in the shared seed org Gamma and expected the Overview `ResourceMenu` to have a single group; but the E2E seed enables Stakeholders & Personas on Gamma (Module 2), whose org overview sections add groups, so `.resource-menu-nav` stayed (expected 0, received 1). The test then failed *before* its restore step, leaving Compliance "off" in Gamma: its retry read `off` as the starting state, and the later compliance specs, which create standards in Gamma, could not. It passed locally only because the long-lived local database had been seeded before the module was enabled on Gamma.
+
+Fix (**Decided by: Agent**): the spec now runs in a disposable org (module-free apart from Compliance, deleted by `deleteOrgOnCleanup`), so it neither depends on which modules a seed org has nor can leave shared state mutated if it fails. Verified twice back to back. A fresh-DB local reproduction was not done; the cause is established from the CI log (the `Expected: 0 / Received: 1` failure, the retry reading `off`, and the module's `orgOverviewSections`).

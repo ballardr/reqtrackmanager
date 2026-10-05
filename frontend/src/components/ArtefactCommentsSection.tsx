@@ -1,25 +1,42 @@
 /**
- * Module: modules/decisions/DecisionCommentsSection
+ * Module: components/ArtefactCommentsSection
  *
- * A Decision's own comment thread — deliberately not the shared
- * `components/CommentThread.tsx`: that component's `Comment` type and its
- * mandatory `onToggleReaction` prop assume a heart-reaction mechanism
- * `DecisionCommentOut` doesn't have (see `schemas.py`'s own docstring: "a
- * `DecisionComment` has no reaction mechanism... those two fields are
- * simply omitted rather than carried over unused"). Rather than widening the
- * shared, widely-used core component to make its reaction prop optional for
- * one module's sake, this is a small, trimmed sibling — same author/
- * timestamp/body/attachments/edit shape as `CommentThread`, minus the
- * reaction button.
+ * The shared comment thread for module artefacts whose comments carry no
+ * reaction mechanism (Strategy, Future State, Pain Point, Guiding Principle,
+ * Open Question, Decision, Persona …) — deliberately not
+ * `components/CommentThread.tsx`, whose mandatory `onToggleReaction` prop
+ * assumes a heart-reaction these module-local comment tables don't have.
+ *
+ * Generic over the comment shape: any row structurally satisfying
+ * `ArtefactComment` works, so a module's own `*Comment` type needs no
+ * adapter. Extracted from the previously duplicated
+ * `modules/context_strategy/ArtefactCommentsSection.tsx` and
+ * `modules/decisions/DecisionCommentsSection.tsx` (docs/ux-style-guide.md's
+ * one-component-per-pattern rule) so a third module (Stakeholders &
+ * Personas) didn't add a third copy.
+ *
+ * Attachment upload/remove and edit are each opt-in via their callback; edit
+ * is offered only on the current user's own comments.
  */
 import { Paperclip, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { fileUrl } from "../../api/client";
-import { FileUploadTrigger } from "../../components/FileUploadTrigger";
-import type { DecisionComment } from "./types";
+import { fileUrl } from "../api/client";
+import type { FileAsset } from "../api/types";
+import { FileUploadTrigger } from "./FileUploadTrigger";
 
-export function DecisionCommentsSection({
+/** The structural shape of a comment this thread can render. */
+export interface ArtefactComment {
+  id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: FileAsset[];
+}
+
+export function ArtefactCommentsSection<T extends ArtefactComment>({
   comments,
   onPost,
   onUploadAttachment,
@@ -27,8 +44,8 @@ export function DecisionCommentsSection({
   onEdit,
   currentUserId,
 }: {
-  comments: DecisionComment[];
-  onPost: (body: string) => Promise<DecisionComment>;
+  comments: T[];
+  onPost: (body: string) => Promise<T>;
   onUploadAttachment?: (commentId: string, file: File) => Promise<void>;
   onRemoveAttachment?: (commentId: string, fileId: string) => Promise<void>;
   onEdit?: (commentId: string, body: string) => Promise<void>;
@@ -56,7 +73,7 @@ export function DecisionCommentsSection({
     }
   }
 
-  function startEdit(comment: DecisionComment) {
+  function startEdit(comment: T) {
     setEditingId(comment.id);
     setEditBody(comment.body);
   }

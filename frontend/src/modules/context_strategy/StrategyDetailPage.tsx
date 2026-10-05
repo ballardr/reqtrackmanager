@@ -36,13 +36,13 @@ import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
 import type { FileAsset } from "../../api/types";
+import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgStrategyApi, projectStrategyApi } from "./api";
-import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { StrategyRelationshipsSection } from "./StrategyRelationshipsSection";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL } from "./types";
