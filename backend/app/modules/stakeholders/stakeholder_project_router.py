@@ -6,12 +6,14 @@ Project-scoped Stakeholder API (Phase 1.2), mounted at
 `project_router.py`'s Persona routes: project-scoped Stakeholder
 CRUD/lifecycle/comments/files/erasure, the project's Stakeholder type
 vocabulary (effective list plus rename/reorder/disable/add), "create from org
-user", the cadence hint and the "represents Persona" links.
+user", the cadence hint, the "represents Persona" links and the project's
+per-stakeholder visibility override (Phase 3b).
 
 Reads return the project's own stakeholders *and* the organisation's live
-org-scoped ones (Phase 0 resolution 2). Every mutation targets a
-project-scoped stakeholder only; an org stakeholder is edited through the org
-router. A project stakeholder may represent an org persona or one of its own
+org-scoped ones (Phase 0 resolution 2), minus org ones the project (or an
+ancestor) has hidden. Every mutation targets a project-scoped stakeholder
+only; an org stakeholder is edited through the org router — the one exception
+is hiding/showing it, which writes only the project's own override row. A project stakeholder may represent an org persona or one of its own
 project's personas; the persona-side reverse list is filtered to stakeholders
 this project can see, so one project never learns of another's records.
 
@@ -53,17 +55,21 @@ from app.modules.stakeholders.schemas import (
     StakeholderTransitionRequest,
     StakeholderUpdate,
     StakeholderVersionOut,
+    StakeholderVisibilitySet,
 )
 from app.modules.stakeholders.service import (
     STAKEHOLDER_ARTEFACT_TYPE,
     STAKEHOLDER_TYPES,
     archive_record,
+    clear_project_stakeholder_visibility,
     delete_represents_link,
     get_current_stakeholder_version,
     grid_quadrant,
+    hidden_stakeholder_ids,
     list_project_visible_stakeholders,
     list_represented_personas,
     list_representing_stakeholders,
+    set_project_stakeholder_visibility,
     suggest_cadence,
     unarchive_record,
 )
@@ -89,10 +95,12 @@ def _get(db: Session, project_id: UUID, stakeholder_id: UUID) -> Stakeholder:
     return sh.get_stakeholder_in_scope(db, _SCOPE, project_id=project_id, stakeholder_id=stakeholder_id)
 
 
-def _is_visible(stakeholder: Stakeholder, project: Project) -> bool:
+def _is_visible(stakeholder: Stakeholder, project: Project, hidden: set[UUID]) -> bool:
+    """Whether `project` can see `stakeholder`; `hidden` is `hidden_stakeholder_ids` for the project."""
     return (
         (stakeholder.scope == StakeholderScope.PROJECT and stakeholder.project_id == project.id)
-        or (stakeholder.scope == StakeholderScope.ORGANIZATION and stakeholder.organization_id == project.organization_id)
+        or (stakeholder.scope == StakeholderScope.ORGANIZATION and stakeholder.organization_id == project.organization_id
+            and stakeholder.id not in hidden)
     )
 
 
@@ -100,8 +108,10 @@ def _require_manage(db: Session, user: User, project: Project) -> None:
     sh.require_stakeholder_manage(db, user, _SCOPE, organization_id=project.organization_id, project_id=project.id)
 
 
-def _out(db: Session, stakeholder: Stakeholder) -> StakeholderOut:
-    return sh.stakeholder_to_out(db, stakeholder, get_current_stakeholder_version(db, stakeholder.id))
+def _out(db: Session, stakeholder: Stakeholder, project_id: UUID | None = None) -> StakeholderOut:
+    return sh.stakeholder_to_out(
+        db, stakeholder, get_current_stakeholder_version(db, stakeholder.id), project_id=project_id
+    )
 
 
 # --- Stakeholder type vocabulary (project half) ------------------------------
@@ -226,22 +236,70 @@ def create_project_stakeholder_from_user(
 
 @router.get("/stakeholders", response_model=list[StakeholderOut])
 def list_project_stakeholders(
-    project_id: UUID, include_archived: bool = False, include_org: bool = True,
+    project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """The project's stakeholders, plus the organisation's unless `include_org=false`."""
+    """The project's stakeholders, plus the organisation's unless
+    `include_org=false`. Org stakeholders hidden from the project are left out
+    unless `include_hidden=true` (the manage UI), where they carry `project_hidden`."""
     project = _project(db, project_id)
-    stakeholders = list_project_visible_stakeholders(db, project, include_archived=include_archived)
+    stakeholders = list_project_visible_stakeholders(
+        db, project, include_archived=include_archived, include_hidden=include_hidden
+    )
     if not include_org:
         stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
-    return [_out(db, s) for s in stakeholders]
+    return [_out(db, s, project_id) for s in stakeholders]
 
 
 @router.get("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)
 def get_project_stakeholder(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return _out(db, get_visible_stakeholder(db, _project(db, project_id), stakeholder_id))
+    return _out(db, get_visible_stakeholder(db, _project(db, project_id), stakeholder_id), project_id)
+
+
+# --- Visibility override (hide an org stakeholder from this project) ----------
+
+
+def _get_org_stakeholder(db: Session, project: Project, stakeholder_id: UUID) -> Stakeholder:
+    """An org stakeholder of the project's organisation, hidden or not (404 otherwise)."""
+    return sh.get_stakeholder_in_scope(
+        db, StakeholderScope.ORGANIZATION, organization_id=project.organization_id, stakeholder_id=stakeholder_id
+    )
+
+
+@router.put("/stakeholders/{stakeholder_id}/visibility", response_model=StakeholderOut)
+def set_project_stakeholder_visibility_endpoint(
+    project_id: UUID, stakeholder_id: UUID, payload: StakeholderVisibilitySet,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Hides an org stakeholder from this project (`hidden=true`) or, if a
+    parent project hides it, shows it again here (`hidden=false`). Writes only
+    this project's override; the shared record, its links and needs are untouched."""
+    project = _project(db, project_id)
+    stakeholder = _get_org_stakeholder(db, project, stakeholder_id)
+    _require_manage(db, current_user, project)
+    psh.apply_value_error_as_conflict(set_project_stakeholder_visibility, db, project, stakeholder, payload.hidden)
+    log_event(db, entity_type=STAKEHOLDER_ARTEFACT_TYPE, entity_id=stakeholder.id,
+              action="visibility_hidden" if payload.hidden else "visibility_shown", actor_id=current_user.id,
+              project_id=project_id)
+    db.commit()
+    return _out(db, stakeholder, project_id)
+
+
+@router.delete("/stakeholders/{stakeholder_id}/visibility", response_model=StakeholderOut)
+def clear_project_stakeholder_visibility_endpoint(
+    project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Removes this project's own override, reverting to the inherited (else visible) state."""
+    project = _project(db, project_id)
+    stakeholder = _get_org_stakeholder(db, project, stakeholder_id)
+    _require_manage(db, current_user, project)
+    if clear_project_stakeholder_visibility(db, project_id, stakeholder.id):
+        log_event(db, entity_type=STAKEHOLDER_ARTEFACT_TYPE, entity_id=stakeholder.id, action="visibility_reset",
+                  actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    return _out(db, stakeholder, project_id)
 
 
 @router.put("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)
@@ -392,10 +450,11 @@ def list_project_persona_stakeholders(
     see (its own and the organisation's)."""
     project = _project(db, project_id)
     persona = get_visible_persona(db, project, persona_id)
+    hidden = hidden_stakeholder_ids(db, project_id)
     return [
         sh.stakeholder_link_to_out(db, link, s)
         for link, s in list_representing_stakeholders(db, persona, project.organization_id)
-        if _is_visible(s, project)
+        if _is_visible(s, project, hidden)
     ]
 
 

@@ -163,6 +163,47 @@ export const OrgStakeholderInProjectIsReadOnly: Story = {
   },
 };
 
+const ORG_IN_PROJECT = { scope: "organization", organization_id: "org-1", project_id: null, project_hidden: false } as const;
+
+export const OrgStakeholderCanBeHiddenFromTheProject: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildStakeholder(ORG_IN_PROJECT));
+    spyOn(api, "put").mockResolvedValue(buildStakeholder({ ...ORG_IN_PROJECT, project_hidden: true, hidden_override: true, hidden_source: "project" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByTestId("project-visibility")).toHaveTextContent("Visible"));
+    await userEvent.click(canvas.getByRole("button", { name: "Hide from this project" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Hide Pat Regulator from this project?" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Hide" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/visibility`, { hidden: true }),
+    );
+  },
+};
+
+export const ExplicitlyShownOrgStakeholderCanRevertToInherited: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildStakeholder({ ...ORG_IN_PROJECT, hidden_override: false, hidden_source: "project" }));
+    spyOn(api, "delete").mockResolvedValue(buildStakeholder({ ...ORG_IN_PROJECT, project_hidden: true, hidden_source: "ancestor_project" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByTestId("project-visibility")).toHaveTextContent("Shown, although a parent project hides it"));
+    await userEvent.click(canvas.getByRole("button", { name: "Use inherited value" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/visibility`));
+  },
+};
+
+export const ProjectStakeholderHasNoVisibilityControl: Story = {
+  beforeEach: () => mockDetailApis(buildStakeholder()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Pat Regulator" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Hide from this project" })).not.toBeInTheDocument();
+  },
+};
+
 export const RepresentsListsPersonasAndAddsMore: Story = {
   beforeEach: () => {
     mockDetailApis(buildStakeholder(), { represents: [{ link_id: "l1", id: "persona-1", name: "Field Technician", scope: "project" }] });

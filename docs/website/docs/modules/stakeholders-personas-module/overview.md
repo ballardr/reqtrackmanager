@@ -53,7 +53,7 @@ The module defines seven roles of its own, rather than additions to the core rol
 | Persona | **Persona Owner** | Project | Creates, edits, retires and re-weights a project's Personas, and manages the project's Persona types. |
 | Persona | **Organisation Persona Owner** | Organisation | The same for organisation-wide Personas. |
 | Persona | **Persona Type Admin** | Organisation | Manages the organisation's shared Persona type vocabulary. |
-| Stakeholder | **Stakeholder Owner** | Project | Creates, edits, retires and permanently deletes a project's Stakeholders, manages their Persona links, and manages the project's Stakeholder types. |
+| Stakeholder | **Stakeholder Owner** | Project | Creates, edits, retires and permanently deletes a project's Stakeholders, manages their Persona links, manages the project's Stakeholder types, and hides organisation Stakeholders from the project. |
 | Stakeholder | **Organisation Stakeholder Owner** | Organisation | The same for organisation-wide Stakeholders. |
 | Stakeholder | **Stakeholder Type Admin** | Organisation | Manages the shared Stakeholder type vocabulary and the Influence/Interest scoring levels and bands. |
 | Stakeholder Need | **Stakeholder Need Owner** | Project | Creates, edits and retires the project's Needs and links them to Stakeholders, Personas and Requirements. |

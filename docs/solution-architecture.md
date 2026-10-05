@@ -293,6 +293,9 @@ See `docs/decisions.md`'s "Module 4 (Decision Management) Phase 9" entry for the
 
 **Stakeholder Needs (Module 2 — Phase 2).** The same module records Stakeholder Needs — a person's need in their own words, kept apart from the Requirement it leads to (§10.4). A Need is project-scoped only, versioned like the other two artefacts (Draft/Active/Retired), and linked through two typed `ArtefactLink`s: Stakeholder or Persona → Need ("has need") and Need → Requirement of the same project ("gives rise to"). Both link types are created per organisation on first use by the shared `service.get_or_create_link_type`. A Stakeholder's or Persona's page lists only the current project's needs, so an organisation-wide record never exposes another project's.
 
+
+**Per-project Stakeholder visibility (Module 2 — Phase 3b).** An org Stakeholder is visible to every project in its organisation unless a project hides it. `ProjectStakeholderVisibility(project_id, stakeholder_id, hidden)` is an override-only row (the `ProjectPersonaWeight` shape), resolved per stakeholder through the project hierarchy with the nearest row winning (`service.resolve_stakeholder_visibility`), so a child can re-show what its parent hid. Hidden means unlisted and unlinkable from that project — `_shared.get_visible_stakeholder` 404s it, which covers the project's list, needs, relationships and "represents" links in one place — while the shared record and its links are untouched. It is written through `PUT`/`DELETE .../stakeholders/{id}/visibility` (project Stakeholder manage permission, audit-logged) and travels in the project bundle.
+
 ### Data Layer
 PostgreSQL is the primary transactional store for the system. It stores:
 - organizations and users

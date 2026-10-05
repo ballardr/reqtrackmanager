@@ -56,6 +56,25 @@ A Stakeholder can optionally be marked as a platform user, for a colleague who i
 
 A Stakeholder can **represent** any number of Personas, and a Persona can be represented by any number of Stakeholders; each end shows the link. A project Stakeholder may represent an organisation Persona or one from its own project. An organisation Stakeholder may represent only organisation Personas, so a record shared by every project never depends on one project's data.
 
+## Hiding an organisation Stakeholder from a project
+
+Every project in the organisation sees every organisation Stakeholder. A project that has no dealings with one can **hide** it: open the Stakeholder from that project and choose **Hide from this project**. Hiding changes only that project's view. The shared record, its links and its Needs are untouched, and every other project still sees it.
+
+While hidden, the Stakeholder is left out of the project's Stakeholders list, can't be picked when linking a Need or relationship, and drops out of the lists of Stakeholders that represent a Persona. Links it already had stay recorded and reappear when it is shown again. Turn on **Show hidden** in the list's filters to see hidden Stakeholders, who hid them, and a **Show** action. A project's own Stakeholders can't be hidden — archive them instead.
+
+A child project follows its parent, and the **nearest** setting wins, so a child can show again what its parent hid without affecting the parent:
+
+```mermaid
+flowchart TD
+    Q{"Does this project have its own<br/>setting for the Stakeholder?"}
+    Q -->|Yes| OWN["Use it: hidden or shown"]
+    Q -->|No| P{"Does a parent project?<br/>(nearest first)"}
+    P -->|Yes| ANC["Use the nearest parent's setting"]
+    P -->|No| VIS["Visible"]
+```
+
+Hiding needs the project's **Stakeholder Owner** role (or Project Manager, org admin or server admin), the same as editing a project Stakeholder. Each change is audit-logged without the Stakeholder's name.
+
 ## Lifecycle
 
 Draft → Active → Retired (reactivatable), with no approval step, full version history, and a separate reversible **Archive**, exactly as for a [Persona](./persona.md#lifecycle).

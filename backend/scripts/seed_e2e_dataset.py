@@ -333,6 +333,8 @@ def set_persona_weight_override(headers: dict, project_id: str, persona_id: str,
 # its own disposable org rather than depending on these.
 STAKEHOLDER_ORG_NAME = "E2E Safety Regulator"
 STAKEHOLDER_PROJECT_NAME = "E2E Plant Manager"
+# Phase 3b — an org stakeholder hidden from Gamma-3 (and so from its child Gamma-4).
+STAKEHOLDER_HIDDEN_NAME = "E2E Hidden Stakeholder"
 # Stakeholder Needs (Phase 2) — one on the Gamma-3 hierarchy parent, held by the
 # project stakeholder; the need Playwright spec builds its own disposable data.
 NEED_PROJECT_NAME = "E2E Keep the line running"
@@ -358,6 +360,16 @@ def create_stakeholder(
         )
         r.raise_for_status()
     return stakeholder
+
+
+def set_stakeholder_visibility(headers: dict, project_id: str, stakeholder_id: str, hidden: bool) -> dict:
+    """Hides an org Stakeholder from a project (`hidden=True`), or shows it again where a parent project hides it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/stakeholders/{stakeholder_id}/visibility",
+        json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
 
 def create_need(
@@ -579,6 +591,10 @@ def main() -> None:
         contact_info="regulator@e2e.example.com", target_cadence="quarterly",
         influence_level_id=levels["influence"]["High"], interest_level_id=levels["interest"]["Medium"],
     )
+    hidden_stakeholder = create_stakeholder(
+        h_g, org_id=gamma["id"], activate=True, name=STAKEHOLDER_HIDDEN_NAME, role="Out-of-scope supplier contact",
+    )
+    set_stakeholder_visibility(h_g, gamma3["id"], hidden_stakeholder["id"], True)
     plant_manager = create_stakeholder(
         h_g, project_id=gamma3["id"], activate=True, name=STAKEHOLDER_PROJECT_NAME, role="Plant manager",
         goals_needs="Keep the line running.", target_cadence="monthly",
@@ -710,7 +726,8 @@ def main() -> None:
           f" {PERSONA_PROJECT_NAME!r} on {GAMMA3_NAME!r}; Gamma-3's weight override of 5 on {PERSONA_ORG_WEIGHTED_NAME!r}"
           f" is inherited by {GAMMA4_NAME!r}.")
     print(f"Stakeholders on Gamma: org {STAKEHOLDER_ORG_NAME!r} (Active, High/Medium, quarterly, represents"
-          f" {PERSONA_ORG_WEIGHTED_NAME!r}) and project {STAKEHOLDER_PROJECT_NAME!r} on {GAMMA3_NAME!r} (Active, monthly).")
+          f" {PERSONA_ORG_WEIGHTED_NAME!r}) and project {STAKEHOLDER_PROJECT_NAME!r} on {GAMMA3_NAME!r} (Active, monthly);"
+          f" org {STAKEHOLDER_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")
 
 
 if __name__ == "__main__":

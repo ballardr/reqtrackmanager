@@ -26,6 +26,8 @@ def test_all_declared_tools_resolve():
         "list_stakeholder_personas", "add_stakeholder_persona", "remove_stakeholder_persona",
         "list_need_holders", "add_need_holder", "remove_need_holder",
         "list_need_requirements", "add_need_requirement", "remove_need_requirement",
+        # Phase 3b visibility tools.
+        "set_stakeholder_visibility", "reset_stakeholder_visibility",
     }
 
 
@@ -42,7 +44,8 @@ def test_read_tools_are_non_mutating_and_write_tools_mutate():
         "update_stakeholder_need", "activate_stakeholder_need", "retire_stakeholder_need",
         "add_stakeholder_relationship", "remove_stakeholder_relationship", "add_persona_relationship",
         "remove_persona_relationship", "add_stakeholder_persona", "remove_stakeholder_persona", "add_need_holder",
-        "remove_need_holder", "add_need_requirement", "remove_need_requirement",
+        "remove_need_holder", "add_need_requirement", "remove_need_requirement", "set_stakeholder_visibility",
+        "reset_stakeholder_visibility",
     ):
         assert tools[name].mutates is True
 

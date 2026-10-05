@@ -59,6 +59,7 @@ from app.modules.stakeholders.service import (
     get_current_persona_version,
     get_current_stakeholder_version,
     resolve_stakeholder_type_refs,
+    resolve_stakeholder_visibility,
     transition_stakeholder,
     validate_scoring_levels,
 )
@@ -82,8 +83,19 @@ STAKEHOLDER_ATTACHMENTS = att.AttachmentKit(
 )
 
 
-def stakeholder_to_out(db: Session, stakeholder: Stakeholder, version: StakeholderVersion) -> StakeholderOut:
-    """Merges a stakeholder with its current version."""
+def stakeholder_to_out(
+    db: Session, stakeholder: Stakeholder, version: StakeholderVersion, *, project_id: uuid.UUID | None = None
+) -> StakeholderOut:
+    """Merges a stakeholder with its current version. When `project_id` is given
+    (project router) and the stakeholder is an org one, also resolves its
+    visibility to that project (`project_hidden`, `hidden_override`,
+    `hidden_source`)."""
+    hidden = override = source = None
+    if project_id is not None and stakeholder.scope == StakeholderScope.ORGANIZATION:
+        visibility = resolve_stakeholder_visibility(db, project_id).get(stakeholder.id)
+        hidden = bool(visibility and visibility[0])
+        source = visibility[1] if visibility else None
+        override = visibility[0] if visibility and visibility[1] == "project" else None
     return StakeholderOut(
         id=stakeholder.id, scope=stakeholder.scope, organization_id=stakeholder.organization_id,
         project_id=stakeholder.project_id, creator_id=stakeholder.creator_id, is_archived=stakeholder.is_archived,
@@ -99,7 +111,7 @@ def stakeholder_to_out(db: Session, stakeholder: Stakeholder, version: Stakehold
         availability_constraints=version.availability_constraints, influence_level_id=version.influence_level_id,
         interest_level_id=version.interest_level_id, status=version.status, owner_id=version.owner_id,
         user_id=version.user_id, version_number=version.version_number, created_at=stakeholder.created_at,
-        updated_at=stakeholder.updated_at,
+        updated_at=stakeholder.updated_at, project_hidden=hidden, hidden_override=override, hidden_source=source,
     )
 
 

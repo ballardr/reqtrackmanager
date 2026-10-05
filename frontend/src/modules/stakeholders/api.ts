@@ -48,6 +48,8 @@ const orgBase = (organizationId: string) => `/api/v1/orgs/${organizationId}/modu
 /** Every list endpoint's optional filters. */
 export interface RecordListFilters {
   include_archived?: boolean;
+  /** Project Stakeholder list only: also list org Stakeholders hidden from the project. */
+  include_hidden?: boolean;
 }
 
 /** Create payload: the editable fields plus the people pickers' values. */
@@ -103,7 +105,13 @@ function buildRecordApi<Rec, Version, Comment, Create, Update>(
 ): RecordApi<Rec, Version, Comment, Create, Update> {
   const url = (id: string, recordId?: string) => `${base(id)}/${segment}${recordId ? `/${recordId}` : ""}`;
   return {
-    list: (id, filters = {}) => api.get<Rec[]>(`${url(id)}${filters.include_archived ? "?include_archived=true" : ""}`),
+    list: (id, filters = {}) => {
+      const params = new URLSearchParams();
+      if (filters.include_archived) params.set("include_archived", "true");
+      if (filters.include_hidden) params.set("include_hidden", "true");
+      const query = params.toString();
+      return api.get<Rec[]>(`${url(id)}${query ? `?${query}` : ""}`);
+    },
     create: (id, values) => api.post<Rec>(url(id), values),
     get: (id, recordId) => api.get<Rec>(url(id, recordId)),
     update: (id, recordId, values) => api.put<Rec>(url(id, recordId), values),
@@ -221,8 +229,18 @@ export const orgPersonaTypeApi = buildOrgTypeApi("persona-types");
 export const orgStakeholderApi = buildStakeholderApi(orgBase);
 
 /** Project-scoped Stakeholder endpoints (reads include the organisation's
- * stakeholders) plus the project type tier — `id` is a `project_id`. */
-export const projectStakeholderApi = { ...buildStakeholderApi(projectBase), ...buildProjectTypeCalls("stakeholder-types") };
+ * stakeholders, minus those hidden from the project), the visibility override
+ * and the project type tier — `id` is a `project_id`. */
+export const projectStakeholderApi = {
+  ...buildStakeholderApi(projectBase),
+  /** Hides an org stakeholder from the project (`hidden: true`) or re-shows one a parent project hides. */
+  setVisibility: (projectId: string, stakeholderId: string, hidden: boolean) =>
+    api.put<Stakeholder>(`${projectBase(projectId)}/stakeholders/${stakeholderId}/visibility`, { hidden }),
+  /** Removes the project's own override, reverting to the inherited (else visible) state. */
+  clearVisibility: (projectId: string, stakeholderId: string) =>
+    api.delete<Stakeholder>(`${projectBase(projectId)}/stakeholders/${stakeholderId}/visibility`),
+  ...buildProjectTypeCalls("stakeholder-types"),
+};
 
 /** Org-scoped Stakeholder type CRUD — `id` parameters are an `organization_id`. */
 export const orgStakeholderTypeApi = buildOrgTypeApi("stakeholder-types");

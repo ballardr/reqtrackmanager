@@ -10,8 +10,10 @@
  * ...`). Mirrors `PersonaDetailPage`, built from the same shared parts.
  *
  * An org stakeholder viewed inside a project is read-only here apart from
- * comments (the project API can't mutate it); a link leads to the org route
- * where the owner role can edit it.
+ * comments and its per-project visibility (the project API can't mutate the
+ * record itself); a link leads to the org route where the owner role can edit
+ * it. Hiding it from the project (`StakeholderVisibilityControl`) returns to the
+ * list, since a hidden stakeholder is no longer reachable from the project.
  *
  * Personal data: contact info is Confidential, so it sits behind the same
  * visibility as the record. "Delete permanently" (Phase 0 resolution 15) is
@@ -41,6 +43,7 @@ import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycle
 import { RelationshipsPanel } from "./RelationshipsPanel";
 import { RepresentationPanel } from "./RepresentationPanel";
 import { StakeholderFormModal } from "./StakeholderFormModal";
+import { StakeholderVisibilityControl } from "./StakeholderVisibilityControl";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderVersion } from "./types";
 import {
   GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
@@ -157,6 +160,31 @@ export function StakeholderDetailPage() {
     }
   }
 
+  async function hideFromProject() {
+    if (!projectId || !stakeholder) return;
+    try {
+      await projectStakeholderApi.setVisibility(projectId, stakeholder.id, true);
+      showToast(`${stakeholder.name} is hidden from this project.`);
+      navigate(listPath);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not hide this Stakeholder."), "error");
+    }
+  }
+
+  /** Drops the project's own "shown" override; if a parent project hides the
+   * stakeholder the project can no longer open it, so return to the list. */
+  async function resetVisibility() {
+    if (!projectId || !stakeholder) return;
+    try {
+      const updated = await projectStakeholderApi.clearVisibility(projectId, stakeholder.id);
+      showToast("Visibility reverted to the inherited setting.");
+      if (updated.project_hidden) navigate(listPath);
+      else setStakeholder(updated);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not revert this Stakeholder's visibility."), "error");
+    }
+  }
+
   async function erase() {
     if (!scopeId || !stakeholder) return;
     setErasing(false);
@@ -204,6 +232,10 @@ export function StakeholderDetailPage() {
             This is an organisation-wide Stakeholder shared by every project. Edit it from the{" "}
             <Link to={`/orgs/${stakeholder.organization_id}/modules/stakeholders/stakeholders/${stakeholder.id}`}>organisation view</Link>.
           </p>
+        )}
+
+        {readOnlyInProject && (
+          <StakeholderVisibilityControl stakeholder={stakeholder} onHide={hideFromProject} onReset={resetVisibility} />
         )}
 
         {stakeholder.description && <RecordField label="Description" value={stakeholder.description} />}

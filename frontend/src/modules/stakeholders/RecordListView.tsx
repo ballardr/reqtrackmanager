@@ -47,6 +47,7 @@ export function RecordListView<R extends ListedRecord, V>({
   columnsBeforeType,
   columnsAfterScope,
   toolbar,
+  extraFilters,
   includeArchived,
   onIncludeArchivedChange,
   onOpen,
@@ -74,6 +75,8 @@ export function RecordListView<R extends ListedRecord, V>({
   columnsAfterScope: DirectoryColumn<R>[];
   /** Extra controls beside the New button (e.g. "Add from org user"). */
   toolbar?: ReactNode;
+  /** Extra `FilterPanel` controls, after the archived toggle (e.g. "Show hidden"). */
+  extraFilters?: ReactNode;
   includeArchived: boolean;
   onIncludeArchivedChange: (next: boolean) => void;
   onOpen: (record: R) => void;
@@ -166,6 +169,7 @@ export function RecordListView<R extends ListedRecord, V>({
             </FilterField>
           )}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
+          {extraFilters}
         </FilterPanel>
       </div>
 

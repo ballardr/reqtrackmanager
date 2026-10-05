@@ -14,6 +14,7 @@ sidebar_position: 29
 ## By design
 
 - **A Need is project-only.** There is no organisation-level Need, and no organisation Stakeholder or Persona can hold a Need that spans projects.
+- **Only Stakeholders can be hidden per project.** An organisation Persona is always visible to every project; a project adjusts how much it counts with a weight override instead.
 - **Relationship status isn't shown.** A relationship lists the target's name but not its status, since each module owns its own statuses. Open the target to see it.
 - **Pain Point and Decision links aren't carried in a project export yet.** A project export includes relationships to Requirements, but relationships to Pain Points and Decisions are exported and then skipped on import with a warning for each, because those modules' own records aren't part of the export yet.
 - **No field-level restriction.** A Need's text and a Stakeholder's contact details are visible to everyone who can view the module in that project. A Persona never grants permissions.

@@ -394,8 +394,32 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
         ),
         McpToolDefinition(
             name="list_stakeholders",
-            description="Lists a project's Stakeholders, including its organisation's shared ones.", method="GET",
-            path_template=f"{_PROJECT_ROUTER_PREFIX}/stakeholders", params=[_PROJECT_ID_PARAM],
+            description=(
+                "Lists a project's Stakeholders, including its organisation's shared ones except those hidden from "
+                "the project (pass include_hidden=true to list those too, flagged by project_hidden)."
+            ),
+            method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/stakeholders",
+            params=[_PROJECT_ID_PARAM, {
+                "name": "include_hidden", "type": "boolean", "required": False, "in": "query",
+                "description": "Also list organisation Stakeholders hidden from this project.",
+            }],
+        ),
+        McpToolDefinition(
+            name="set_stakeholder_visibility",
+            description=(
+                "Hides an organisation Stakeholder from this project (hidden=true), or shows it again where an "
+                "ancestor project hides it (hidden=false). Only this project's override changes; the shared "
+                "Stakeholder, its links and needs are untouched."
+            ),
+            method="PUT", path_template=f"{stakeholder_path}/visibility",
+            params=[_PROJECT_ID_PARAM, _STAKEHOLDER_ID_PARAM,
+                    _body("hidden", "boolean", "True to hide from this project, false to show it.", required=True)],
+        ),
+        McpToolDefinition(
+            name="reset_stakeholder_visibility",
+            description="Removes this project's visibility override for an organisation Stakeholder, reverting to the inherited state.",
+            method="DELETE", path_template=f"{stakeholder_path}/visibility",
+            params=[_PROJECT_ID_PARAM, _STAKEHOLDER_ID_PARAM],
         ),
         McpToolDefinition(
             name="get_stakeholder", description="Fetches a single Stakeholder.", method="GET",
@@ -529,7 +553,8 @@ MODULE_DEFINITION = ModuleDefinition(
             role_key="stakeholder_owner", name="Stakeholder Owner",
             description=(
                 "Creates, edits, retires and permanently deletes project-scoped Stakeholders, manages their "
-                "Persona links, and manages the project's Stakeholder types."
+                "Persona links, manages the project's Stakeholder types, and hides organisation Stakeholders "
+                "from the project."
             ),
             scope="project", permissions=(STAKEHOLDER_MANAGE_PERMISSION,),
         ),

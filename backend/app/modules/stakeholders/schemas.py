@@ -287,7 +287,11 @@ class StakeholderUpdate(BaseModel):
 
 
 class StakeholderOut(BaseModel):
-    """A stakeholder merged with its current version."""
+    """A stakeholder merged with its current version. `project_hidden` and
+    `hidden_override` are populated only for an org stakeholder returned by the
+    project router: whether it is hidden from that project, and the project's
+    own override (`None` when it only inherits). `hidden_source` is the tier the
+    effective value came from (`project`, `ancestor_project`) or `None`."""
 
     id: UUID
     scope: StakeholderScope
@@ -322,6 +326,16 @@ class StakeholderOut(BaseModel):
 
     created_at: datetime
     updated_at: datetime
+
+    project_hidden: bool | None = None
+    hidden_override: bool | None = None
+    hidden_source: str | None = None
+
+
+class StakeholderVisibilitySet(BaseModel):
+    """Body of the project visibility override endpoint."""
+
+    hidden: bool
 
 
 class StakeholderVersionOut(BaseModel):

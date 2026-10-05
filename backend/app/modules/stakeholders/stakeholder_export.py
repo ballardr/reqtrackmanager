@@ -42,6 +42,7 @@ from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, Stake
 from app.modules.stakeholders.models import (
     Persona,
     ProjectStakeholderType,
+    ProjectStakeholderVisibility,
     Stakeholder,
     StakeholderFile,
     StakeholderTypeDefinition,
@@ -239,8 +240,8 @@ def import_org_data(
 
 
 def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], dict[UUID, FileAsset]]:
-    """Project-scoped stakeholders with their attachments and the project's
-    Stakeholder type rows."""
+    """Project-scoped stakeholders with their attachments, the project's
+    Stakeholder type rows and its visibility overrides of org stakeholders."""
     assets: dict[UUID, FileAsset] = {}
     stakeholders = list(db.scalars(
         select(Stakeholder).where(Stakeholder.project_id == project.id, Stakeholder.scope == StakeholderScope.PROJECT)
@@ -270,16 +271,27 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "org_type_name": org_type.name if org_type else None, "name_override": row.name_override,
             "display_order_override": row.display_order_override, "is_enabled": row.is_enabled,
         })
-    return {"project_stakeholder_types": types_json, "project_stakeholders": stakeholders_json}, assets
+    visibility_json = []
+    for row in db.scalars(select(ProjectStakeholderVisibility).where(ProjectStakeholderVisibility.project_id == project.id)):
+        target = db.get(Stakeholder, row.stakeholder_id)
+        if target is not None and target.scope == StakeholderScope.ORGANIZATION:
+            visibility_json.append({
+                "org_stakeholder_name": get_current_stakeholder_version(db, target.id).name, "hidden": row.hidden,
+            })
+    return {
+        "project_stakeholder_types": types_json, "project_stakeholders": stakeholders_json,
+        "project_stakeholder_visibility": visibility_json,
+    }, assets
 
 
 def import_project_data(
     db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes], current_user: User,
     users: UserResolver, warnings: BundleImportWarnings,
 ) -> None:
-    """Recreates the project's type rows and stakeholders (with attachments).
-    An org type named in the bundle that the target organisation lacks is
-    skipped with a warning. Runs after the Persona half."""
+    """Recreates the project's type rows, stakeholders (with attachments) and
+    visibility overrides. An org type or org stakeholder named in the bundle
+    that the target organisation lacks is skipped with a warning. Runs after
+    the Persona half."""
     organization_id = project.organization_id
     org_types = {
         t.name: t for t in db.scalars(select(StakeholderTypeDefinition).where(StakeholderTypeDefinition.organization_id == organization_id))
@@ -335,4 +347,18 @@ def import_project_data(
                 content_type=att.get("content_type") or "application/octet-stream", data=att_bytes,
             )
             db.add(StakeholderFile(stakeholder_id=stakeholder.id, file_id=asset.id, linked_by=uploader_id, created_at=datetime.now(UTC)))
+    db.flush()
+
+    org_stakeholder_ids = {
+        get_current_stakeholder_version(db, s.id).name: s.id
+        for s in db.scalars(select(Stakeholder).where(
+            Stakeholder.organization_id == organization_id, Stakeholder.scope == StakeholderScope.ORGANIZATION
+        ))
+    }
+    for v in data.get("project_stakeholder_visibility", []):
+        stakeholder_id = org_stakeholder_ids.get(v.get("org_stakeholder_name", ""))
+        if stakeholder_id is None:
+            warnings.add("A stakeholder visibility override was skipped — its stakeholder was not found in the target organisation.")
+            continue
+        db.add(ProjectStakeholderVisibility(project_id=project.id, stakeholder_id=stakeholder_id, hidden=v["hidden"]))
     db.flush()

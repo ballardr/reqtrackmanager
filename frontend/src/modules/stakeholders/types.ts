@@ -194,7 +194,21 @@ export interface CadenceHint {
   suggested_cadence: TargetCadence | null;
 }
 
-/** A stakeholder merged with its current version. */
+/** Which project supplied a Stakeholder's effective visibility (`Stakeholder.hidden_source`). */
+export type StakeholderHiddenSource = "project" | "ancestor_project";
+
+/** Named for `OverridePill`'s `defaultLabel` and the list's Visibility column
+ * (docs/ux-style-guide.md, "Pattern: platform default vs. override"). */
+export const STAKEHOLDER_HIDDEN_SOURCE_LABEL: Record<StakeholderHiddenSource, string> = {
+  project: "Hidden by this project",
+  ancestor_project: "Hidden by a parent project",
+};
+
+/** A stakeholder merged with its current version. `project_hidden`,
+ * `hidden_override` and `hidden_source` are only populated for an org
+ * stakeholder returned by the project-scoped endpoints: whether it is hidden
+ * from that project, the project's own override (null when it only inherits)
+ * and the project that supplied the effective value. */
 export interface Stakeholder {
   id: string;
   scope: StakeholderScope;
@@ -227,6 +241,9 @@ export interface Stakeholder {
   version_number: number;
   created_at: string;
   updated_at: string;
+  project_hidden: boolean | null;
+  hidden_override: boolean | null;
+  hidden_source: StakeholderHiddenSource | null;
 }
 
 export interface StakeholderVersion {

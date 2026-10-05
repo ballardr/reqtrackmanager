@@ -63,6 +63,7 @@ from app.modules.stakeholders.models import (
     ProjectPersonaType,
     ProjectPersonaWeight,
     ProjectStakeholderType,
+    ProjectStakeholderVisibility,
     Stakeholder,
     StakeholderComment,
     StakeholderCommentFile,
@@ -550,10 +551,75 @@ def transition_stakeholder(
     return new_version
 
 
+def resolve_stakeholder_visibility(db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, tuple[bool, str]]:
+    """Every org Stakeholder `project_id` has a visibility override for, own or
+    inherited, as `stakeholder_id -> (hidden, source)`. The nearest project's row
+    wins per stakeholder (`source` is `"project"` or `"ancestor_project"`), so a
+    child's `hidden=False` re-shows what its parent hid. Stakeholders absent from
+    the result are visible by default. Cycle-safe via `get_ancestor_chain`."""
+    nearest_first = [project_id, *(p.id for p in reversed(get_ancestor_chain(db, project_id)))]
+    depth = {pid: i for i, pid in enumerate(nearest_first)}
+    resolved: dict[uuid.UUID, tuple[int, bool]] = {}
+    for row in db.scalars(
+        select(ProjectStakeholderVisibility).where(ProjectStakeholderVisibility.project_id.in_(nearest_first))
+    ).all():
+        if row.stakeholder_id not in resolved or depth[row.project_id] < resolved[row.stakeholder_id][0]:
+            resolved[row.stakeholder_id] = (depth[row.project_id], row.hidden)
+    return {sid: (hidden, "project" if d == 0 else "ancestor_project") for sid, (d, hidden) in resolved.items()}
+
+
+def hidden_stakeholder_ids(db: Session, project_id: uuid.UUID) -> set[uuid.UUID]:
+    """The org Stakeholders that are effectively hidden from `project_id`."""
+    return {sid for sid, (hidden, _source) in resolve_stakeholder_visibility(db, project_id).items() if hidden}
+
+
+def set_project_stakeholder_visibility(
+    db: Session, project: Project, stakeholder: Stakeholder, hidden: bool
+) -> ProjectStakeholderVisibility:
+    """Creates or updates `project`'s visibility override for an org Stakeholder.
+
+    Raises:
+        ValueError: If `stakeholder` is not an org-scoped Stakeholder of the project's organisation.
+    """
+    if stakeholder.scope != StakeholderScope.ORGANIZATION or stakeholder.organization_id != project.organization_id:
+        raise ValueError("Only an organisation Stakeholder can be hidden; archive a project's own Stakeholder instead.")
+    row = db.scalar(
+        select(ProjectStakeholderVisibility).where(
+            ProjectStakeholderVisibility.project_id == project.id,
+            ProjectStakeholderVisibility.stakeholder_id == stakeholder.id,
+        )
+    )
+    if row is None:
+        row = ProjectStakeholderVisibility(project_id=project.id, stakeholder_id=stakeholder.id, hidden=hidden)
+        db.add(row)
+    else:
+        row.hidden = hidden
+    db.flush()
+    return row
+
+
+def clear_project_stakeholder_visibility(db: Session, project_id: uuid.UUID, stakeholder_id: uuid.UUID) -> bool:
+    """Removes a project's own override, reverting to the inherited/default
+    visibility. Returns whether one existed."""
+    row = db.scalar(
+        select(ProjectStakeholderVisibility).where(
+            ProjectStakeholderVisibility.project_id == project_id,
+            ProjectStakeholderVisibility.stakeholder_id == stakeholder_id,
+        )
+    )
+    if row is None:
+        return False
+    db.delete(row)
+    db.flush()
+    return True
+
+
 def list_project_visible_stakeholders(
-    db: Session, project: Project, *, include_archived: bool = False
+    db: Session, project: Project, *, include_archived: bool = False, include_hidden: bool = False
 ) -> list[Stakeholder]:
-    """The stakeholders a project can see: its own plus its organisation's."""
+    """The stakeholders a project can see: its own plus its organisation's,
+    minus org ones hidden from it (`include_hidden=True` keeps them, for the
+    manage UI)."""
     query = select(Stakeholder).where(
         or_(
             (Stakeholder.scope == StakeholderScope.PROJECT) & (Stakeholder.project_id == project.id),
@@ -563,7 +629,11 @@ def list_project_visible_stakeholders(
     )
     if not include_archived:
         query = query.where(Stakeholder.is_archived.is_(False))
-    return list(db.scalars(query.order_by(Stakeholder.created_at)).all())
+    stakeholders = list(db.scalars(query.order_by(Stakeholder.created_at)).all())
+    if include_hidden:
+        return stakeholders
+    hidden = hidden_stakeholder_ids(db, project.id)
+    return [s for s in stakeholders if s.id not in hidden]
 
 
 def find_stakeholder_for_user(

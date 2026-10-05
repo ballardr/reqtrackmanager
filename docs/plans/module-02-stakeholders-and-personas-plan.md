@@ -9,7 +9,7 @@ re-derive it, and does not need Module 1 for that purpose.
 **Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
 §10 "Module 2 — Stakeholders & Personas".
 
-**Status:** Phases 0, 1.1, 1.2, 2 and 3 complete (all 2026-10-05; Phase 0 had user
+**Status:** Phases 0, 1.1, 1.2, 2, 3 and 3b complete (all 2026-10-05; Phase 0 had user
 sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 4 is next. Phase 1 was split
 into 1.1 (Persona) and 1.2 (Stakeholder) so Module 1 Phase 11's dependency,
 which needs only Personas, unblocked first. Built ahead of the overview's §46 order because Module 1's
@@ -17,7 +17,7 @@ Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-6 / 10 phases complete. **Phases 0–3 and 7a are done, so the module can ship; Phase 4 (Engagements: data
+6 / 10 phases complete (plus the unnumbered Phase 3b, project stakeholder visibility). **Phases 0–3 and 7a are done, so the module can ship; Phase 4 (Engagements: data
 model, backend, erasure) is next, with 5, 6 and 7b after it.** The user asked for the docs phase to be pulled ahead of Phases 4–6
 (**Decided by: User**, 2026-10-05): Phase 7a documents what Phases 0–3 shipped, and Phase 7b extends the
 same section once Phases 4–6 land.
@@ -35,6 +35,7 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 1.2 | Stakeholder: data model, types, RBAC, UI | [x] Complete (2026-10-05) |
 | 2 | Stakeholder Needs (as first-class records) | [x] Complete (2026-10-05) |
 | 3 | Relationships + remaining frontend UI + MCP | [x] Complete (2026-10-05) |
+| 3b | Project stakeholder visibility (hide org stakeholders per project) | [x] Complete (2026-10-05) |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
 | 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
 | 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13's report hook |
@@ -491,6 +492,60 @@ later phases:
   table or `service.get_or_create_link_type`), and S3 can read `relationships.list_incoming`.
 - **Bundles** carry Requirement-targeted links; Pain Point/Decision-targeted ones are exported but
   skipped with a warning on import until those modules' own records travel in the bundle.
+
+## Phase 3b — Project stakeholder visibility (hide org stakeholders per project)
+
+**Why:** every org-scoped Stakeholder was visible to every project in the
+organisation, with no persistent way to opt a project out (only a per-request
+`include_org=false` list filter). A project that has no dealings with, say, a
+regulator had to look at them anyway, and could attach needs/relationships to
+them by mistake. **Risk addressed:** noise and mis-linking from an
+all-or-nothing org-wide share. **Outcome:** a project (with manage rights) can
+hide any org Stakeholder from itself, reversibly and without touching the
+shared record.
+
+**Decisions (all Decided by: Agent — revisit freely; the user asked only for
+"projects can hide org stakeholders"):**
+
+1. **Override-only table `ProjectStakeholderVisibility`** `(project_id,
+   stakeholder_id, hidden)`, unique per pair — the `ProjectPersonaWeight`
+   shape. No row means "inherit". Only org-scoped Stakeholders of the project's
+   own organisation can be given a row (a project's own stakeholder is
+   archived/erased instead).
+2. **Hierarchy (nested-projects check):** resolved per stakeholder, nearest
+   row wins up the ancestor chain (own → parent → … → root), cycle-safe via
+   `get_ancestor_chain`, always on. `hidden` is a boolean, not just "row
+   exists", so a child can re-show something its parent hid. This is the persona-weight
+   fallback rather than the Action-Type "own rows replace all ancestor rows"
+   fallback, because that variant would make hiding one more stakeholder in a
+   child silently un-hide everything the parent hid. No seeding hook (no rows
+   by default, so nothing to seed at roots). Own endpoints touch only the
+   project's own rows; the effective set is a read-path resolution.
+3. **Hidden means invisible to the project, non-destructively.** The shared
+   record, links and needs are untouched. A hidden Stakeholder is dropped from the
+   project's list (unless `include_hidden=true`, which the manage UI uses), 404s
+   from every project-scoped endpoint (`get_visible_stakeholder`, so new needs,
+   relationships and "represents" links cannot target it), and drops out of a
+   need's holder list and a Persona's represented-by list. Existing links stay
+   in the database, so un-hiding restores them exactly.
+4. **RBAC:** the project's Stakeholder manage permission (`stakeholder_owner`
+   or the FGAC `(stakeholder, manage)` grant) — the same gate as the Persona
+   weight override. Audit events `visibility_hidden` / `visibility_shown` /
+   `visibility_reset` (ids only; no personal data, per the Stakeholder erasure
+   rules).
+5. **Bundles:** exported in the project half (`project_stakeholder_visibility`,
+   org stakeholder by name), re-created on import with a warning if the target
+   org lacks that stakeholder. Relationship/need exports still carry hidden
+   holders' links so a bundle stays a full backup.
+6. **Reports (Phase 6)** must use `list_project_visible_stakeholders`, which is
+   hide-aware, rather than querying `Stakeholder` directly.
+
+**Deliverables:** model + migration 0062; `service` resolution + set/clear;
+`stakeholder_project_router` `PUT`/`DELETE .../stakeholders/{id}/visibility`
+and `include_hidden`; `StakeholderOut` `project_hidden`/`hidden_source`/
+`hidden_override`; two MCP tools; bundle export/import; frontend hide/show
+control on the project Stakeholders page; pytest, Playwright, Storybook; demo
+and e2e seeds; docs website + decisions log.
 
 ## Phase 4 — Engagements (+ research extras): data model, backend, erasure
 

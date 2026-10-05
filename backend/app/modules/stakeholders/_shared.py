@@ -48,6 +48,7 @@ from app.modules.stakeholders.service import (
     create_persona,
     get_current_persona_version,
     get_current_stakeholder_version,
+    hidden_stakeholder_ids,
     resolve_persona_type_refs,
     resolve_persona_weight_with_source,
     transition_persona,
@@ -302,12 +303,14 @@ def transition_persona_endpoint(
 
 
 def get_visible_stakeholder(db: Session, project: Project, stakeholder_id: uuid.UUID) -> Stakeholder:
-    """A Stakeholder `project` can see (its own, or its organisation's), else 404."""
+    """A Stakeholder `project` can see (its own, or its organisation's unless
+    hidden from the project), else 404."""
     stakeholder = db.get(Stakeholder, stakeholder_id)
     visible = stakeholder is not None and (
         (stakeholder.scope == StakeholderScope.PROJECT and stakeholder.project_id == project.id)
         or (stakeholder.scope == StakeholderScope.ORGANIZATION
-            and stakeholder.organization_id == project.organization_id)
+            and stakeholder.organization_id == project.organization_id
+            and stakeholder.id not in hidden_stakeholder_ids(db, project.id))
     )
     if not visible:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder not found.")

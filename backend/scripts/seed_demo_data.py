@@ -1425,6 +1425,16 @@ def create_stakeholder(
     return stakeholder
 
 
+def set_stakeholder_visibility(headers: dict, project_id: str, stakeholder_id: str, hidden: bool) -> dict:
+    """Hides an org Stakeholder from a project (`hidden=True`), or shows it again where a parent project hides it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/stakeholders/{stakeholder_id}/visibility",
+        json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def create_need(
     headers: dict, project_id: str, *, activate: bool = False, holders: tuple[tuple[str, str], ...] = (),
     requirement_ids: tuple[str, ...] = (), **fields,
@@ -2387,14 +2397,23 @@ def main() -> None:
         availability_constraints="Weekday mornings only.",
         influence_level_id=levels["influence"]["Medium"], interest_level_id=levels["interest"]["High"],
     )
+    stakeholder_harbour = create_stakeholder(
+        h_pm, org_id=org["id"], activate=True, name="Lee Harbour",
+        stakeholder_type_id=get_stakeholder_type_id(h_pm, org_id=org["id"], name="Regulator"),
+        role="Port authority liaison", organisation_group="Harbour Authority",
+        interests="Marine safety inspections of vessels.", target_cadence="yearly",
+        influence_level_id=levels["influence"]["Low"], interest_level_id=levels["interest"]["Low"],
+    )
+    set_stakeholder_visibility(h_pm, drone["id"], stakeholder_harbour["id"], True)
     print(f"  Stakeholders: {stakeholder_authority['name']!r} (org, Regulator, Active, High/Medium, quarterly),"
-          f" {stakeholder_fleet['name']!r} (Falcon-3, Customer, Active, Medium/High, monthly)")
+          f" {stakeholder_fleet['name']!r} (Falcon-3, Customer, Active, Medium/High, monthly),"
+          f" {stakeholder_harbour['name']!r} (org, Regulator, Active) — hidden from Falcon-3, which has no marine dealings")
 
     print("Seeding Stakeholder Needs (Module 2 Phase 2) — Falcon-3's fleet manager needs a trustworthy status display,"
           " which gave rise to its first requirement; the BVLOS Remote Pilot persona has the same need...")
     need_status_display = create_need(
         h_pm, drone["id"], activate=True, holders=(("stakeholder", stakeholder_fleet["id"]), ("persona", drone_operator_persona["id"])),
-        requirement_ids=(drone_reqs[0]["id"],), name="Trust the flight status at a glance",
+        requirement_ids=(flight_log_req["id"],), name="Trust the flight status at a glance",
         description="My pilots must be able to tell, in under a second, whether the redundant flight controllers agree.",
         rationale="Two incidents last year where a pilot misread a degraded-channel warning.",
     )
@@ -2403,16 +2422,16 @@ def main() -> None:
         description="Certification evidence should be traceable to the requirement it supports without a meeting.",
     )
     print(f"  Needs: {need_status_display['name']!r} (Active, held by Dana Whitfield and the BVLOS Remote Pilot persona,"
-          f" gave rise to {drone_reqs[0]['name']!r}), plus a Draft need held by Pat Okafor")
+          f" gave rise to {flight_log_req['name']!r}), plus a Draft need held by Pat Okafor")
 
     print("Seeding Stakeholder/Persona relationships (Module 2 Phase 3) — the Field Inspector persona experiences the"
           " re-keying Pain Point, the fleet manager provides the status-display requirement and was consulted on the"
           " single flight controller Decision, the regulator reviews that requirement...")
     for holder_kind, holder_id, kind, target_type, target_id in (
         ("persona", persona_inspector["id"], "experiences_pain_point", "pain_point", pp_accepted["id"]),
-        ("stakeholder", stakeholder_fleet["id"], "provides_requirement", "requirement", drone_reqs[0]["id"]),
+        ("stakeholder", stakeholder_fleet["id"], "provides_requirement", "requirement", flight_log_req["id"]),
         ("stakeholder", stakeholder_fleet["id"], "consulted_on_decision", "decision", single_fc_decision["id"]),
-        ("stakeholder", stakeholder_authority["id"], "reviews", "requirement", drone_reqs[0]["id"]),
+        ("stakeholder", stakeholder_authority["id"], "reviews", "requirement", flight_log_req["id"]),
     ):
         add_stakeholder_relationship(h_pm, drone["id"], holder_kind, holder_id, kind, target_type, target_id)
 
@@ -2452,8 +2471,9 @@ def main() -> None:
     print("  Stakeholders & Personas (enabled org-wide): 2 organisation Personas (Field Inspector — Active, weight 3;"
           " Compliance Auditor — Draft, unweighted) and 1 project Persona on Falcon-3 (BVLOS Remote Pilot — Active,"
           " weight 2), with a Falcon-3 weight override of 5 on Field Inspector that the Avionics sub-project inherits;"
-          " plus 1 organisation Stakeholder (Pat Okafor, Regulator — High influence/Medium interest, quarterly, represents"
-          " Compliance Auditor) and 1 Falcon-3 Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot)")
+          " plus 2 organisation Stakeholders (Pat Okafor, Regulator — High influence/Medium interest, quarterly, represents"
+          " Compliance Auditor; and Lee Harbour, hidden from Falcon-3 to show per-project visibility) and 1 Falcon-3"
+          " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot)")
 
 
 if __name__ == "__main__":

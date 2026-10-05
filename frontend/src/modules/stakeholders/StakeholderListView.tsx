@@ -7,17 +7,23 @@
  * Interest), its create form and the "Add from org user" action. Influence and
  * Interest show the org's level *names* (`scheme`); they are plain labels, the
  * grid position itself is only computed server-side.
+ *
+ * On the project page only (`onIncludeHiddenChange` given) a "Show hidden"
+ * filter lists the org stakeholders hidden from the project; their rows are
+ * not openable (the project API treats a hidden stakeholder as absent) and
+ * instead carry a Visibility cell stating who hid them and a "Show" action.
  */
 import { useState } from "react";
 
 import type { ScoringScheme } from "../../api/scoring";
 import type { OrgUser } from "../../api/types";
+import { FilterCheckbox } from "../../components/FilterPanel";
 import { toErrorMessage } from "../../context/ToastContext";
 import { RecordListView } from "./RecordListView";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import { StakeholderFromUserModal } from "./StakeholderFromUserModal";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues } from "./types";
-import { STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL } from "./types";
+import { STAKEHOLDER_HIDDEN_SOURCE_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL } from "./types";
 import { levelName } from "./useStakeholderScheme";
 
 export function StakeholderListView({
@@ -33,6 +39,9 @@ export function StakeholderListView({
   loadHint,
   includeArchived,
   onIncludeArchivedChange,
+  includeHidden = false,
+  onIncludeHiddenChange,
+  onShowHidden,
   onOpen,
   onCreate,
   onCreateFromUser,
@@ -50,6 +59,11 @@ export function StakeholderListView({
   loadHint: (influenceLevelId: string, interestLevelId: string) => Promise<CadenceHint>;
   includeArchived: boolean;
   onIncludeArchivedChange: (next: boolean) => void;
+  includeHidden?: boolean;
+  /** Offered on the project page only; omit where there is nothing to hide. */
+  onIncludeHiddenChange?: (next: boolean) => void;
+  /** Re-shows a hidden stakeholder in this project (the Visibility cell's "Show" action). */
+  onShowHidden?: (stakeholder: Stakeholder) => void;
   onOpen: (stakeholder: Stakeholder) => void;
   /** Resolves on success; a rejection keeps the modal open and shows its message. */
   onCreate: (values: StakeholderFieldValues) => Promise<void>;
@@ -79,15 +93,34 @@ export function StakeholderListView({
           { key: "cadence", label: "Cadence", render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },
           { key: "influence", label: "Influence", render: (s) => levelName(scheme, "influence", s.influence_level_id) },
           { key: "interest", label: "Interest", render: (s) => levelName(scheme, "interest", s.interest_level_id) },
+          ...(includeHidden && onShowHidden
+            ? [{
+                key: "visibility", label: "Visibility",
+                render: (s: Stakeholder) =>
+                  s.project_hidden && s.hidden_source ? (
+                    <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                      <span className="badge">{STAKEHOLDER_HIDDEN_SOURCE_LABEL[s.hidden_source]}</span>
+                      <button className="btn" aria-label={`Show ${s.name} in this project`} onClick={() => onShowHidden(s)}>
+                        Show
+                      </button>
+                    </span>
+                  ) : "—",
+              }]
+            : []),
         ]}
         toolbar={
           <button className="btn" onClick={() => setFromUserOpen(true)}>
             Add from org user
           </button>
         }
+        extraFilters={
+          onIncludeHiddenChange && (
+            <FilterCheckbox label="Show hidden" checked={includeHidden} onChange={onIncludeHiddenChange} />
+          )
+        }
         includeArchived={includeArchived}
         onIncludeArchivedChange={onIncludeArchivedChange}
-        onOpen={onOpen}
+        onOpen={(s) => { if (!s.project_hidden) onOpen(s); }}
         onCreate={onCreate}
         renderCreateModal={(props) => (
           <StakeholderFormModal {...props} typeOptions={typeOptions} scheme={scheme} loadHint={loadHint} />
