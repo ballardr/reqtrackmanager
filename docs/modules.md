@@ -791,7 +791,7 @@ knows these fields exist.
 
 ### 4d. Scoring schemes: configurable scoring matrices (Module 1 Phase 10)
 
-A module that scores something (Pain Points today; Risk, Module 3, next)
+A module that scores something (Pain Points and Stakeholders today; Risk, Module 3, next)
 registers a `ScoringSchemeDefinition` on `ModuleDefinition.scoring_schemes`
 instead of building its own matrix tables. Core owns storage, resolution,
 maths, API and UI; the module only declares keys and defaults.
@@ -824,7 +824,11 @@ flowchart LR
   audit-logged.
 - **Level references:** set `count_level_usage`/`reassign_level_usage`
   once your own rows reference levels, so core can block a delete or
-  reassign references to another level on the same axis.
+  reassign references to another level on the same axis. Stakeholders
+  (Module 2) is the first to do so: its versioned rows hold
+  `influence_level_id`/`interest_level_id`, the hooks count and move only
+  *current* versions, and a historic version's reference is cleared by the
+  foreign key's `ON DELETE SET NULL` instead of rewriting history.
 - **UI:** embed `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
   (project) in your own `orgAdminSections`/`projectAdminSections`, passing
   your scheme key. `ScoringLevelPicker`, `ScoringModelSwitcher` and

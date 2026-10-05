@@ -19,7 +19,7 @@ const ORG_USERS: OrgUser[] = [
   },
 ];
 
-function mockDetailApis(current: Persona, versions: unknown[] = []) {
+function mockDetailApis(current: Persona, versions: unknown[] = [], represented: unknown[] = []) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === "/api/v1/orgs/org-1/users") return ORG_USERS;
@@ -28,6 +28,7 @@ function mockDetailApis(current: Persona, versions: unknown[] = []) {
       return { members: ORG_USERS.filter((u) => u.display_name.toLowerCase().includes(q)), external: null };
     }
     if (path === `${PROJECT_BASE}/persona-types`) return [{ id: "type-primary", name: "Primary", display_order: 0, is_enabled: true, source: "org" }];
+    if (path.endsWith(`/personas/${PERSONA_ID}/stakeholders`)) return represented;
     if (path.endsWith(`/personas/${PERSONA_ID}`)) return current;
     if (path.endsWith("/versions")) return versions;
     if (path.endsWith("/comments")) return [];
@@ -208,6 +209,28 @@ export const VersionHistoryUsesLabels: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Version history" })).toBeInTheDocument());
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
     await expect(canvas.getAllByText("Draft").length).toBeGreaterThan(0);
+  },
+};
+
+export const RepresentedByListsStakeholdersAsLinks: Story = {
+  beforeEach: () =>
+    mockDetailApis(buildPersona(), [], [{ link_id: "l1", id: "stakeholder-1", name: "Pat Regulator", scope: "project" }]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() =>
+      expect(canvas.getByRole("link", { name: "Pat Regulator" })).toHaveAttribute(
+        "href", `/projects/${PROJECT_ID}/modules/stakeholders/stakeholders/stakeholder-1`,
+      ),
+    );
+    // Linking is owned from the Stakeholder side, so this end is read-only.
+    await expect(canvas.queryByRole("combobox", { name: "Persona to represent" })).not.toBeInTheDocument();
+  },
+};
+
+export const RepresentedByShowsAnEmptyState: Story = {
+  beforeEach: () => mockDetailApis(buildPersona()),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(within(canvasElement).getByText("No Stakeholder represents this Persona yet.")).toBeInTheDocument());
   },
 };
 

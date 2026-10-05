@@ -2,7 +2,9 @@
 Module: modules.stakeholders.models
 
 Data model for the Stakeholders & Personas module (docs/plans/module-02-
-stakeholders-and-personas-plan.md), Phase 1.1 (Persona):
+stakeholders-and-personas-plan.md), Phase 1.1 (Persona) and Phase 1.2
+(Stakeholder — see the second half of this file, which mirrors the Persona
+tables):
 
 - `Persona` / `PersonaVersion` — identity row plus temporal content
   snapshots, the same split `models.requirement.Requirement`/
@@ -49,7 +51,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
+from app.modules.stakeholders.enums import (
+    PersonaScope,
+    PersonaStatus,
+    StakeholderScope,
+    StakeholderStatus,
+    TargetCadence,
+)
 
 
 class PersonaTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
@@ -156,7 +164,10 @@ class PersonaVersion(UUIDPKMixin, Base):
         description: Free-text summary.
         org_type_id / project_type_id: The persona's type — an org type for
             an org persona, a project type row for a project persona; both
-            null when untyped (a CHECK forbids both being set).
+            null when untyped (a CHECK forbids both being set). `SET NULL` on
+            delete so the type tables can cascade-delete with their org/project
+            without the versions blocking it; in-use types are protected at the
+            service layer (`TypeVocabulary.delete_org_type`), not by the FK.
         role_title: Job title/role the persona represents.
         goals, needs, behaviours, context_environment, skills_proficiency,
         frequency_of_use, constraints: The §10 persona descriptive fields,
@@ -191,10 +202,10 @@ class PersonaVersion(UUIDPKMixin, Base):
     name: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
     org_type_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("persona_type_definitions.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("persona_type_definitions.id", ondelete="SET NULL"), nullable=True
     )
     project_type_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_persona_types.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("project_persona_types.id", ondelete="SET NULL"), nullable=True
     )
     role_title: Mapped[str] = mapped_column(String(300), default="")
     goals: Mapped[str] = mapped_column(Text, default="")
@@ -280,6 +291,221 @@ class PersonaFile(UUIDPKMixin, Base):
     __table_args__ = (UniqueConstraint("persona_id", "file_id"),)
 
     persona_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("personas.id", ondelete="CASCADE"))
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Stakeholder (Phase 1.2) --------------------------------------------------
+
+
+class StakeholderTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
+    """Organisation-scoped base Stakeholder type vocabulary (§10.2's list by
+    default). Same shape as `PersonaTypeDefinition`; see `TypeVocabulary`.
+
+    Attributes:
+        organization_id: The owning organisation.
+        name: Display name, unique per organisation.
+        sort_order: Display/picker order.
+        is_active: Soft-disable.
+    """
+
+    __tablename__ = "stakeholder_type_definitions"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_stakeholder_type_definitions_org_name"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ProjectStakeholderType(UUIDPKMixin, TimestampMixin, Base):
+    """A project's own view onto the Stakeholder type vocabulary (override of
+    one org type, or a project-local type). Same shape as `ProjectPersonaType`."""
+
+    __tablename__ = "project_stakeholder_types"
+    __table_args__ = (
+        UniqueConstraint("project_id", "org_type_id", name="uq_project_stakeholder_types_project_org_type"),
+        CheckConstraint(
+            "org_type_id IS NOT NULL OR name_override IS NOT NULL", name="ck_project_stakeholder_types_local_has_name"
+        ),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    org_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_type_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    name_override: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    display_order_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Stakeholder(UUIDPKMixin, TimestampMixin, Base):
+    """A Stakeholder's stable identity (organisation- or project-scoped).
+    Holds personal data about an identifiable person (Confidential), so unlike
+    a Persona it can be hard-deleted (`service.erase_stakeholder`).
+
+    Attributes:
+        scope: Which of `organization_id`/`project_id` is populated.
+        organization_id: Set (and `project_id` null) for an org stakeholder.
+        project_id: Set (and `organization_id` null) for a project stakeholder.
+        creator_id: Who created the record.
+        is_archived / archived_at / archived_by: Soft-delete.
+    """
+
+    __tablename__ = "stakeholders"
+    __table_args__ = (
+        CheckConstraint(
+            "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
+            "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
+            name="ck_stakeholders_scope_matches_owner",
+        ),
+    )
+
+    scope: Mapped[StakeholderScope] = mapped_column(str_enum(StakeholderScope, 20))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    # `passive_deletes` lets the DB's ON DELETE CASCADE remove versions when
+    # `service.erase_stakeholder` deletes the row, instead of the ORM trying to
+    # null the (NOT NULL) foreign key.
+    versions: Mapped[list[StakeholderVersion]] = relationship(
+        back_populates="stakeholder", order_by="StakeholderVersion.version_number", cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class StakeholderVersion(UUIDPKMixin, Base):
+    """One point-in-time snapshot of a Stakeholder's content (temporal shape
+    copied from `PersonaVersion`).
+
+    Attributes:
+        valid_from / valid_to: Effective interval; `valid_to` is null for
+            the current version.
+        name: Display name (personal data for a named individual).
+        description: Free-text summary.
+        org_type_id / project_type_id: The stakeholder's type (see
+            `PersonaVersion`); both null when untyped.
+        role: The stakeholder's role/job title.
+        organisation_group: The organisation or group they belong to.
+        interests, responsibilities, goals_needs, priorities, constraints,
+        workflows_scenarios: The §10.3 descriptive fields, free text.
+        contact_info: Contact/reference info — Confidential personal data.
+        target_cadence: Our goal for how often to engage (resolution 18);
+            null when not set.
+        availability_constraints: Their limit on engagement, free text.
+        influence_level_id / interest_level_id: Levels of the
+            `stakeholder` scoring scheme's axes (resolution 16). A plain FK
+            to core `scoring_levels`; `SET NULL` on delete so a deleted level
+            can't block on history (the scheme's usage hooks only manage
+            *current* versions).
+        status: Lifecycle state.
+        owner_id: The user responsible for the record.
+        user_id: The platform user this stakeholder is, if any
+            (resolution 13); descriptive only, grants no permissions.
+        change_note: Free-text reason for the change.
+        created_by / created_at: Who made this snapshot, and when.
+    """
+
+    __tablename__ = "stakeholder_versions"
+    __table_args__ = (
+        UniqueConstraint("stakeholder_id", "version_number"),
+        CheckConstraint(
+            "org_type_id IS NULL OR project_type_id IS NULL", name="ck_stakeholder_versions_one_type_reference"
+        ),
+        Index(
+            "ix_stakeholder_versions_current", "stakeholder_id", unique=False,
+            postgresql_where=sa_text("valid_to IS NULL"),
+        ),
+    )
+
+    stakeholder_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholders.id", ondelete="CASCADE")
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    name: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    org_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_type_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    project_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_stakeholder_types.id", ondelete="SET NULL"), nullable=True
+    )
+    role: Mapped[str] = mapped_column(String(300), default="")
+    organisation_group: Mapped[str] = mapped_column(String(300), default="")
+    interests: Mapped[str] = mapped_column(Text, default="")
+    responsibilities: Mapped[str] = mapped_column(Text, default="")
+    goals_needs: Mapped[str] = mapped_column(Text, default="")
+    priorities: Mapped[str] = mapped_column(Text, default="")
+    constraints: Mapped[str] = mapped_column(Text, default="")
+    workflows_scenarios: Mapped[str] = mapped_column(Text, default="")
+    contact_info: Mapped[str] = mapped_column(Text, default="")
+    target_cadence: Mapped[TargetCadence | None] = mapped_column(str_enum(TargetCadence, 20), nullable=True)
+    availability_constraints: Mapped[str] = mapped_column(Text, default="")
+    influence_level_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="SET NULL"), nullable=True
+    )
+    interest_level_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[StakeholderStatus] = mapped_column(str_enum(StakeholderStatus, 20), default=StakeholderStatus.DRAFT)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    change_note: Mapped[str] = mapped_column(Text, default="")
+
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    stakeholder: Mapped[Stakeholder] = relationship(back_populates="versions")
+
+
+class StakeholderComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion-thread comment on a `Stakeholder`."""
+
+    __tablename__ = "stakeholder_comments"
+
+    stakeholder_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholders.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StakeholderCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to a `StakeholderComment`."""
+
+    __tablename__ = "stakeholder_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class StakeholderFile(UUIDPKMixin, Base):
+    """Links a directly uploaded file to a `Stakeholder` (see `PersonaFile`)."""
+
+    __tablename__ = "stakeholder_files"
+    __table_args__ = (UniqueConstraint("stakeholder_id", "file_id"),)
+
+    stakeholder_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholders.id", ondelete="CASCADE")
+    )
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

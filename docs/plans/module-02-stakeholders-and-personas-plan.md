@@ -17,15 +17,16 @@ Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-2 / 9 phases complete. **Phase 1.2 (Stakeholder) is next.** Phase 1.1 (Persona,
-2026-10-05) unblocks Module 1 Phase 11. Phases 4–6 were added by the 2026-10-05
-Phase 0 addendum; the docs phase moved from 4 to 7.
+3 / 9 phases complete. **Phase 2 (Stakeholder Needs) is next.** Phase 1.1 (Persona,
+2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder, 2026-10-05) adds the
+Stakeholder artefact, its Influence × Interest scoring scheme and erasure. Phases 4–6
+were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: persona-modelling decision & open questions | [x] Complete (2026-10-05) |
 | 1.1 | Persona: data model, types, weight + override, RBAC, scoring-target hook, UI | [x] Complete (2026-10-05) |
-| 1.2 | Stakeholder: data model, types, RBAC, UI | [ ] Not started |
+| 1.2 | Stakeholder: data model, types, RBAC, UI | [x] Complete (2026-10-05) |
 | 2 | Stakeholder Needs (as first-class records) | [ ] Not started |
 | 3 | Relationships + remaining frontend UI + MCP | [ ] Not started |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
@@ -374,6 +375,21 @@ extracted as shared code, and does not copy it. Also (addendum 12, 13, 15,
 requirement rationale have no anchor beyond the requirement's own text.
 *Risk addressed:* lost intent behind requirements. *Outcome:* traceable
 stakeholder context.
+
+**Status: complete (2026-10-05).** Same module (`stakeholders`), new
+sub-component `stakeholder`. Account, deviations and review:
+`docs/decisions.md`'s "Module 2 Phase 1.2" entry. Left for later phases:
+
+- **Reuse for Phase 2:** `_attachments.AttachmentKit` (comments/files),
+  `RecordDiscussion`, `RecordLifecycleControls`, `RecordListView`,
+  `RepresentationPanel` (extend it for "has need" links) and
+  `service.get_or_create_*_link_type`'s pattern for a new link type.
+- **Phase 4 (Engagements)** reuses `erase_stakeholder`'s approach for
+  participant data and must remove its own links from `ArtefactLink` the same
+  way; S4's staleness rule reads `Stakeholder.target_cadence` and the
+  `grid_quadrant`/`suggest_cadence` helpers in `service.py`.
+- **Phase 3** still owns the remaining §10.5 relationships and MCP tools for
+  relationships; "represents Persona" shipped here with REST only (no MCP tool).
 
 ## Phase 2 — Stakeholder Needs (as first-class records)
 

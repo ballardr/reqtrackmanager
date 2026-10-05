@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { installCleanupHook, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
-
-const API_BASE_URL = "http://localhost:8000";
 
 /**
  * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
@@ -24,52 +23,6 @@ const API_BASE_URL = "http://localhost:8000";
  * module's project-scoped `persona_owner` role, so one persona can create,
  * activate and re-weight without any extra grant.
  */
-async function setUpOrg(page: import("@playwright/test").Page, label: string, withChildProject = false) {
-  const suffix = Date.now();
-  const orgName = `E2E ${label} Org ${suffix}`;
-  const adminEmail = `e2e-${label.toLowerCase()}-admin-${suffix}@example.com`;
-
-  const serverAdminToken = (
-    await (await page.request.post(`${API_BASE_URL}/api/v1/auth/login`, { data: { email: "admin@example.com", password: "ChangeMe123!" } })).json()
-  ).access_token;
-  const serverAdminHeaders = { Authorization: `Bearer ${serverAdminToken}` };
-
-  const org = await (await page.request.post(`${API_BASE_URL}/api/v1/orgs`, { headers: serverAdminHeaders, data: { name: orgName } })).json();
-  deleteOrgOnCleanup({ id: org.id });
-  await page.request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/users`, {
-    headers: serverAdminHeaders,
-    data: { email: adminEmail, display_name: `E2E ${label} Admin`, password: PASSWORD, role: "org_admin" },
-  });
-
-  await loginAs(page, adminEmail, PASSWORD);
-  const adminToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-  const adminHeaders = { Authorization: `Bearer ${adminToken}` };
-
-  const project = await (
-    await page.request.post(`${API_BASE_URL}/api/v1/projects`, {
-      headers: adminHeaders,
-      data: { organization_id: org.id, name: `E2E ${label} Project ${suffix}`, summary: "", can_be_parent: withChildProject },
-    })
-  ).json();
-  const child = withChildProject
-    ? await (
-        await page.request.post(`${API_BASE_URL}/api/v1/projects`, {
-          headers: adminHeaders,
-          data: { organization_id: org.id, name: `E2E ${label} Child ${suffix}`, summary: "", parent_project_id: project.id },
-        })
-      ).json()
-    : null;
-
-  await page.goto("/orgs");
-  await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-  await selectOrgAdminGroup(page, "Modules");
-  await setOrgModuleAvailability(page, "Stakeholders & Personas", "default_on");
-
-  return { suffix, org, project, child, adminHeaders };
-}
-
-const statusBadge = (page: import("@playwright/test").Page, label: string) => page.locator("span.badge", { hasText: new RegExp(`^${label}$`) });
-
 test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
   test("creates a project Persona, activates it, overrides its weight and resets it", async ({ page }) => {
     const { suffix, project } = await setUpOrg(page, "Persona");

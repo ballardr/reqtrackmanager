@@ -15,6 +15,7 @@ import { useState } from "react";
 
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
+import { TextAreaField, TextField } from "./RecordFormFields";
 import type { Persona, PersonaFieldValues } from "./types";
 
 const TEXT_FIELDS: { key: keyof PersonaFieldValues; label: string; rows: number }[] = [
@@ -77,26 +78,14 @@ export function PersonaFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.name}` : `New Persona (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Persona name" />
-        </label>
+        <TextField label="Name" ariaLabel="Persona name" value={name} onChange={setName} />
         <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Role / job title</span>
-          <input className="input" value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} aria-label="Role or job title" />
-        </label>
+        <TextField label="Role / job title" ariaLabel="Role or job title" value={roleTitle} onChange={setRoleTitle} />
         {TEXT_FIELDS.map((f) => (
-          <label key={f.key} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={f.rows}
-              value={fields[f.key] ?? ""}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              aria-label={f.label}
-            />
-          </label>
+          <TextAreaField
+            key={f.key} label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+            onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+          />
         ))}
         <label className="stack" style={{ gap: "0.25rem" }}>
           <span>Importance weight (optional)</span>
@@ -114,12 +103,7 @@ export function PersonaFormModal({
             Used when scoring against personas. Leave blank to weight every persona equally; must be greater than zero.
           </span>
         </label>
-        {initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Change note (optional)</span>
-            <input className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} aria-label="Change note" />
-          </label>
-        )}
+        {initial && <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />}
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel}>Cancel</button>

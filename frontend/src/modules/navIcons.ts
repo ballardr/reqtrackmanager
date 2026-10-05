@@ -32,6 +32,7 @@ import {
   Scale,
   ShieldCheck,
   Telescope,
+  UserRound,
   Users,
 } from "lucide-react";
 
@@ -45,6 +46,7 @@ const ICONS_BY_NAME: Record<string, LucideIcon> = {
   anchor: Anchor,
   "circle-help": CircleHelp,
   users: Users,
+  "user-round": UserRound,
 };
 
 /** The same generic fallback `nav_icon`'s own backend default resolves to

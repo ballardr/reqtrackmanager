@@ -18,7 +18,6 @@ the separate org-scoped `persona_type_admin` role.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -27,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
 from app.models.user import User
+from app.modules.stakeholders import _attachments as att
 from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
 from app.modules.stakeholders.models import (
     Persona,
@@ -48,9 +48,7 @@ from app.modules.stakeholders.service import (
     resolve_persona_weight_with_source,
     transition_persona,
 )
-from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
-from app.services.files import delete_file, upload_file
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_org_roles, get_effective_permissions, permission_satisfied, user_satisfies_module_role
 
@@ -160,155 +158,61 @@ def validate_people(db: Session, organization_id: uuid.UUID, *user_ids: uuid.UUI
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Owner/champion must be a member of this organisation.")
 
 
-# --- Comments ----------------------------------------------------------------
+# --- Comments and files (shared kit, see `_attachments`) ---------------------
 
-
-def comment_to_out(db: Session, comment: PersonaComment) -> PersonaCommentOut:
-    """API shape for a comment, with author display name and attachments."""
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset).join(PersonaCommentFile, PersonaCommentFile.file_id == FileAsset.id)
-        .where(PersonaCommentFile.comment_id == comment.id)
-    ).all()
-    return PersonaCommentOut(
-        id=comment.id, persona_id=comment.persona_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user", body=comment.body,
-        created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
-
-
-def get_own_comment(db: Session, persona: Persona, comment_id: uuid.UUID, user: User, *, verb: str) -> PersonaComment:
-    """Loads a comment on `persona` that `user` authored.
-
-    Raises:
-        HTTPException: 404 if absent, 403 if authored by someone else.
-    """
-    comment = db.get(PersonaComment, comment_id)
-    if comment is None or comment.persona_id != persona.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
-    if comment.author_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, f"Only the comment's author may {verb}.")
-    return comment
+PERSONA_ATTACHMENTS = att.AttachmentKit(
+    artefact_type=PERSONA_ARTEFACT_TYPE, label="Persona", comment_model=PersonaComment,
+    comment_file_model=PersonaCommentFile, file_model=PersonaFile, fk="persona_id", comment_out=PersonaCommentOut,
+)
 
 
 def add_comment(db: Session, persona: Persona, user: User, body: str, **scope_ids) -> PersonaCommentOut:
     """Adds and audit-logs a comment."""
-    comment = PersonaComment(persona_id=persona.id, author_id=user.id, body=body)
-    db.add(comment)
-    db.flush()
-    log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="comment_added",
-              actor_id=user.id, detail={"comment_id": str(comment.id)}, **scope_ids)
-    db.commit()
-    db.refresh(comment)
-    return comment_to_out(db, comment)
+    return att.add_comment(db, PERSONA_ATTACHMENTS, persona, user, body, **scope_ids)
 
 
 def list_comments(db: Session, persona: Persona) -> list[PersonaCommentOut]:
     """Comments on a persona, oldest first."""
-    comments = db.scalars(
-        select(PersonaComment).where(PersonaComment.persona_id == persona.id).order_by(PersonaComment.created_at)
-    ).all()
-    return [comment_to_out(db, c) for c in comments]
+    return att.list_comments(db, PERSONA_ATTACHMENTS, persona)
 
 
 def edit_comment(db: Session, persona: Persona, comment_id: uuid.UUID, user: User, body: str, **scope_ids) -> PersonaCommentOut:
     """Author-only edit; audit-logged."""
-    comment = get_own_comment(db, persona, comment_id, user, verb="edit it")
-    comment.body = body
-    comment.edited_at = datetime.now(UTC)
-    log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="comment_edited",
-              actor_id=user.id, detail={"comment_id": str(comment.id)}, **scope_ids)
-    db.commit()
-    db.refresh(comment)
-    return comment_to_out(db, comment)
+    return att.edit_comment(db, PERSONA_ATTACHMENTS, persona, comment_id, user, body, **scope_ids)
 
 
 async def attach_to_comment(
     db: Session, persona: Persona, comment_id: uuid.UUID, user: User, file: UploadFile, *, organization_id: uuid.UUID,
     **scope_ids,
 ) -> FileAsset:
-    """Author-only comment attachment. Always an ordinary org upload; a
-    project persona's comment files authorize through the project hook, an
-    org persona's through org membership."""
-    comment = get_own_comment(db, persona, comment_id, user, verb="attach a file to it")
-    data = await file.read()
-    asset = upload_file(
-        db, organization_id=organization_id, uploaded_by=user.id, filename=file.filename or "file",
-        content_type=file.content_type or "application/octet-stream", data=data,
-        is_org_resource=persona.scope == PersonaScope.ORGANIZATION,
+    """Author-only comment attachment (see `_attachments.attach_to_comment`)."""
+    return await att.attach_to_comment(
+        db, PERSONA_ATTACHMENTS, persona, comment_id, user, file, organization_id=organization_id, **scope_ids
     )
-    db.flush()
-    db.add(PersonaCommentFile(comment_id=comment.id, file_id=asset.id, uploaded_by=user.id))
-    log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="comment_file_attached",
-              actor_id=user.id, detail={"filename": asset.filename}, **scope_ids)
-    db.commit()
-    db.refresh(asset)
-    return asset
 
 
 def remove_comment_attachment(
     db: Session, persona: Persona, comment_id: uuid.UUID, file_id: uuid.UUID, user: User, **scope_ids
 ) -> None:
-    """Author-only removal of a comment attachment (deletes the file); audit-logged."""
-    comment = get_own_comment(db, persona, comment_id, user, verb="remove its attachments")
-    link = db.scalar(
-        select(PersonaCommentFile).where(PersonaCommentFile.comment_id == comment.id, PersonaCommentFile.file_id == file_id)
-    )
-    if link is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not attached to this comment.")
-    asset = db.get(FileAsset, file_id)
-    db.delete(link)
-    db.flush()
-    if asset is not None:
-        delete_file(db, asset)
-    log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="comment_file_removed",
-              actor_id=user.id, detail={"file_id": str(file_id)}, **scope_ids)
-    db.commit()
-
-
-# --- Direct files ------------------------------------------------------------
+    """Author-only removal of a comment attachment; audit-logged."""
+    att.remove_comment_attachment(db, PERSONA_ATTACHMENTS, persona, comment_id, file_id, user, **scope_ids)
 
 
 async def attach_file(
     db: Session, persona: Persona, user: User, file: UploadFile, *, organization_id: uuid.UUID, **scope_ids
 ) -> FileAsset:
     """Uploads and links a file to a persona (caller has checked manage)."""
-    data = await file.read()
-    asset = upload_file(
-        db, organization_id=organization_id, uploaded_by=user.id, filename=file.filename or "file",
-        content_type=file.content_type or "application/octet-stream", data=data,
-        is_org_resource=persona.scope == PersonaScope.ORGANIZATION,
-    )
-    db.flush()
-    db.add(PersonaFile(persona_id=persona.id, file_id=asset.id, linked_by=user.id, created_at=asset.created_at))
-    log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="file_attached",
-              actor_id=user.id, detail={"filename": asset.filename}, **scope_ids)
-    db.commit()
-    db.refresh(asset)
-    return asset
+    return await att.attach_file(db, PERSONA_ATTACHMENTS, persona, user, file, organization_id=organization_id, **scope_ids)
 
 
 def list_files(db: Session, persona: Persona) -> list[FileAsset]:
     """Files directly attached to a persona."""
-    return list(db.scalars(
-        select(FileAsset).join(PersonaFile, PersonaFile.file_id == FileAsset.id).where(PersonaFile.persona_id == persona.id)
-    ).all())
+    return att.list_files(db, PERSONA_ATTACHMENTS, persona)
 
 
 def unlink_file(db: Session, persona: Persona, file_id: uuid.UUID, user: User, **scope_ids) -> None:
     """Unlinks and deletes a directly attached file (caller has checked manage)."""
-    link = db.scalar(select(PersonaFile).where(PersonaFile.persona_id == persona.id, PersonaFile.file_id == file_id))
-    if link is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not attached to this Persona.")
-    asset = db.get(FileAsset, file_id)
-    db.delete(link)
-    db.flush()
-    if asset is not None:
-        delete_file(db, asset)
-    log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="file_unlinked",
-              actor_id=user.id, detail={"file_id": str(file_id)}, **scope_ids)
-    db.commit()
+    att.unlink_file(db, PERSONA_ATTACHMENTS, persona, file_id, user, **scope_ids)
 
 
 def get_org_type(db: Session, organization_id: uuid.UUID, type_id: uuid.UUID) -> PersonaTypeDefinition:

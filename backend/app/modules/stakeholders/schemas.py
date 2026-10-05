@@ -3,11 +3,12 @@ Module: modules.stakeholders.schemas
 
 Pydantic request/response schemas for the Stakeholders & Personas module's
 org- and project-scoped routers (Phase 1.1: Persona, persona types, weight
-overrides, comments).
+overrides, comments; Phase 1.2: Stakeholder, its representation links and the
+cadence hint). Type-vocabulary and file schemas are shared by both artefacts.
 
-`PersonaUpdate` is partial: only fields present in the request body change,
-so a nullable field (weight, owner, champion, type) can be cleared by sending
-an explicit `null`.
+`PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the
+request body change, so a nullable field (weight, owner, champion, type,
+cadence, levels) can be cleared by sending an explicit `null`.
 """
 
 from __future__ import annotations
@@ -18,7 +19,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
+from app.modules.stakeholders.enums import (
+    PersonaScope,
+    PersonaStatus,
+    StakeholderScope,
+    StakeholderStatus,
+    TargetCadence,
+)
 from app.schemas.file import FileAssetOut
 
 # A positive, finite importance weight (`inf` would poison a weighted roll-up).
@@ -217,3 +224,173 @@ class ProjectTypeOut(BaseModel):
     name_override: str | None
     display_order_override: int | None
     is_enabled: bool
+
+
+# --- Stakeholder (Phase 1.2) --------------------------------------------------
+
+
+class StakeholderCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=300)
+    description: str = ""
+    stakeholder_type_id: UUID | None = None
+    role: str = Field(default="", max_length=300)
+    organisation_group: str = Field(default="", max_length=300)
+    interests: str = ""
+    responsibilities: str = ""
+    goals_needs: str = ""
+    priorities: str = ""
+    constraints: str = ""
+    workflows_scenarios: str = ""
+    contact_info: str = ""
+    target_cadence: TargetCadence | None = None
+    availability_constraints: str = ""
+    influence_level_id: UUID | None = None
+    interest_level_id: UUID | None = None
+    owner_id: UUID | None = None
+    user_id: UUID | None = None
+
+
+class StakeholderFromUserCreate(BaseModel):
+    """"Create stakeholder from org user" (resolution 13): name and contact
+    info are prefilled from the user; the rest is optional."""
+
+    user_id: UUID
+    stakeholder_type_id: UUID | None = None
+    role: str = Field(default="", max_length=300)
+    organisation_group: str = Field(default="", max_length=300)
+    target_cadence: TargetCadence | None = None
+
+
+class StakeholderUpdate(BaseModel):
+    """Partial update; `status` is not editable here — use the lifecycle endpoints."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = None
+    stakeholder_type_id: UUID | None = None
+    role: str | None = Field(default=None, max_length=300)
+    organisation_group: str | None = Field(default=None, max_length=300)
+    interests: str | None = None
+    responsibilities: str | None = None
+    goals_needs: str | None = None
+    priorities: str | None = None
+    constraints: str | None = None
+    workflows_scenarios: str | None = None
+    contact_info: str | None = None
+    target_cadence: TargetCadence | None = None
+    availability_constraints: str | None = None
+    influence_level_id: UUID | None = None
+    interest_level_id: UUID | None = None
+    owner_id: UUID | None = None
+    user_id: UUID | None = None
+    change_note: str = ""
+
+
+class StakeholderOut(BaseModel):
+    """A stakeholder merged with its current version."""
+
+    id: UUID
+    scope: StakeholderScope
+    organization_id: UUID | None
+    project_id: UUID | None
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    archived_by: UUID | None
+
+    name: str
+    description: str
+    stakeholder_type_id: UUID | None
+    stakeholder_type_name: str | None
+    role: str
+    organisation_group: str
+    interests: str
+    responsibilities: str
+    goals_needs: str
+    priorities: str
+    constraints: str
+    workflows_scenarios: str
+    contact_info: str
+    target_cadence: TargetCadence | None
+    availability_constraints: str
+    influence_level_id: UUID | None
+    interest_level_id: UUID | None
+    status: StakeholderStatus
+    owner_id: UUID | None
+    user_id: UUID | None
+    version_number: int
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class StakeholderVersionOut(BaseModel):
+    """One historical snapshot (contact info is deliberately omitted from the
+    history listing; it is Confidential and the current value is on the record)."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    stakeholder_id: UUID
+    version_number: int
+    valid_from: datetime
+    valid_to: datetime | None
+    name: str
+    description: str
+    org_type_id: UUID | None
+    project_type_id: UUID | None
+    role: str
+    organisation_group: str
+    target_cadence: TargetCadence | None
+    influence_level_id: UUID | None
+    interest_level_id: UUID | None
+    status: StakeholderStatus
+    owner_id: UUID | None
+    user_id: UUID | None
+    change_note: str
+    created_by: UUID
+    created_at: datetime
+
+
+class StakeholderCommentOut(BaseModel):
+    id: UUID
+    stakeholder_id: UUID
+    author_id: UUID
+    author_display_name: str
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+    attachments: list[FileAssetOut] = []
+
+
+class CadenceHintOut(BaseModel):
+    """The power/interest read-out for a pair of levels (resolution 21):
+    `quadrant` is `None` unless both levels are set; `suggested_cadence` is a
+    hint only and never applied automatically."""
+
+    quadrant: Literal["manage_closely", "keep_satisfied", "keep_informed", "monitor"] | None
+    suggested_cadence: TargetCadence | None
+
+
+class RepresentedPersonaOut(BaseModel):
+    """One "represents" link, seen from either end: the linked record's id
+    and display name, its scope, and the link's own id (for removal)."""
+
+    link_id: UUID
+    id: UUID
+    name: str
+    scope: Literal["organization", "project"]
+
+
+class RepresentsCreate(BaseModel):
+    persona_id: UUID
+
+
+# These schemas are identical for every artefact in this module; Stakeholder
+# reuses the Persona ones under its own names.
+StakeholderTypeCreate = PersonaTypeCreate
+StakeholderTypeUpdate = PersonaTypeUpdate
+StakeholderTypeOut = PersonaTypeOut
+
+StakeholderTransitionRequest = PersonaTransitionRequest
+StakeholderCommentCreate = PersonaCommentCreate
+StakeholderCommentUpdate = PersonaCommentUpdate

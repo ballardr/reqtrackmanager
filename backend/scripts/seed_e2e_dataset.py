@@ -328,6 +328,42 @@ def set_persona_weight_override(headers: dict, project_id: str, persona_id: str,
     return r.json()
 
 
+# Stakeholders (Phase 1.2) — enabled with the rest of the module on Gamma only.
+# Fixed names a spec may rely on; the stakeholder Playwright spec itself builds
+# its own disposable org rather than depending on these.
+STAKEHOLDER_ORG_NAME = "E2E Safety Regulator"
+STAKEHOLDER_PROJECT_NAME = "E2E Plant Manager"
+
+
+def create_stakeholder(
+    headers: dict, *, org_id: str | None = None, project_id: str | None = None, activate: bool = False,
+    represents: tuple[str, ...] = (), **fields,
+) -> dict:
+    """Creates an org- or project-scoped Stakeholder (exactly one of `org_id`/`project_id`), optionally activating it
+    and linking it to the given Persona ids."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/stakeholders", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    stakeholder = r.json()
+    if activate:
+        r = httpx.post(f"{base}/stakeholders/{stakeholder['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        stakeholder = r.json()
+    for persona_id in represents:
+        r = httpx.post(
+            f"{base}/stakeholders/{stakeholder['id']}/personas", json={"persona_id": persona_id}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+    return stakeholder
+
+
+def get_stakeholder_levels(headers: dict, org_id: str) -> dict[str, dict[str, str]]:
+    """`{axis: {level name: level id}}` of the org's `stakeholder` scoring scheme."""
+    r = httpx.get(f"{BASE}/orgs/{org_id}/scoring-schemes/stakeholder", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
+
+
 def seed_project_content(headers: dict, project: dict, req_count: int) -> list[dict]:
     """Adds two components, two categories, and `req_count` requirements to a project."""
     hw = create_component(headers, project["id"], "Hardware", "HW")
@@ -495,6 +531,21 @@ def main() -> None:
     )
     set_persona_weight_override(h_g, gamma3["id"], field_inspector["id"], 5.0)
 
+    print("Seeding Stakeholders on Gamma: an org Stakeholder (rated, with a cadence, representing the org Field"
+          " Inspector persona) and a project Stakeholder on the Gamma-3 hierarchy parent...")
+    levels = get_stakeholder_levels(h_g, gamma["id"])
+    create_stakeholder(
+        h_g, org_id=gamma["id"], activate=True, represents=(field_inspector["id"],), name=STAKEHOLDER_ORG_NAME,
+        role="Safety regulator", organisation_group="National Safety Board", interests="Compliance evidence.",
+        contact_info="regulator@e2e.example.com", target_cadence="quarterly",
+        influence_level_id=levels["influence"]["High"], interest_level_id=levels["interest"]["Medium"],
+    )
+    create_stakeholder(
+        h_g, project_id=gamma3["id"], activate=True, name=STAKEHOLDER_PROJECT_NAME, role="Plant manager",
+        goals_needs="Keep the line running.", target_cadence="monthly",
+        influence_level_id=levels["influence"]["Medium"], interest_level_id=levels["interest"]["High"],
+    )
+
     print("Assigning project-scoped roles...")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a["user_id"], "stakeholder")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a2["user_id"], "stakeholder")
@@ -604,6 +655,8 @@ def main() -> None:
           f" (Active, weight 3) and {PERSONA_ORG_UNWEIGHTED_NAME!r} (Draft, unweighted); project persona"
           f" {PERSONA_PROJECT_NAME!r} on {GAMMA3_NAME!r}; Gamma-3's weight override of 5 on {PERSONA_ORG_WEIGHTED_NAME!r}"
           f" is inherited by {GAMMA4_NAME!r}.")
+    print(f"Stakeholders on Gamma: org {STAKEHOLDER_ORG_NAME!r} (Active, High/Medium, quarterly, represents"
+          f" {PERSONA_ORG_WEIGHTED_NAME!r}) and project {STAKEHOLDER_PROJECT_NAME!r} on {GAMMA3_NAME!r} (Active, monthly).")
 
 
 if __name__ == "__main__":
