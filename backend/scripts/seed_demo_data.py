@@ -1343,6 +1343,48 @@ def create_project_open_question_relationship(
     return r.json()
 
 
+# --- Stakeholders & Personas helpers (docs/plans/module-02-stakeholders-and-
+# personas-plan.md Phase 1.1 — Persona) --------------------------------------
+
+
+def create_org_persona(headers: dict, org_id: str, **fields) -> dict:
+    r = httpx.post(f"{BASE}/orgs/{org_id}/modules/stakeholders/personas", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_persona(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(f"{BASE}/projects/{project_id}/modules/stakeholders/personas", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def activate_org_persona(headers: dict, org_id: str, persona_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/stakeholders/personas/{persona_id}/activate", json={}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def activate_project_persona(headers: dict, project_id: str, persona_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/activate", json={}, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_project_persona_weight_override(headers: dict, project_id: str, persona_id: str, weight: float) -> dict:
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/weight", json={"weight": weight},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -2212,6 +2254,38 @@ def main() -> None:
     )
     print(f"  Withdrawn: {oq_offline_ui['question']!r}")
 
+    print("Seeding Stakeholders & Personas (Module 2 Phase 1.1) — enabling the module, then two org personas (one"
+          " weighted, one not) and a project persona on Falcon-3, plus a Falcon-3 weight override that its"
+          " Avionics sub-project inherits...")
+    enable_module(h_pm, org["id"], "stakeholders")
+    persona_inspector = create_org_persona(
+        h_pm, org["id"], name="Field Inspector", role_title="Utility field inspector",
+        description="Walks infrastructure corridors capturing inspection findings.",
+        goals="Capture every finding once, at the point of inspection, without re-keying.",
+        needs="Offline-first data capture; a degraded-connectivity indicator that is hard to miss.",
+        behaviours="Works in short bursts between sites; avoids anything needing a signal.",
+        context_environment="Outdoors, gloves on, often no network coverage.",
+        skills_proficiency="Expert in the infrastructure, comfortable but not enthusiastic with software.",
+        frequency_of_use="Daily", constraints="Intermittent connectivity; one hand often occupied.", weight=3.0,
+    )
+    activate_org_persona(h_pm, org["id"], persona_inspector["id"])
+    persona_auditor = create_org_persona(
+        h_pm, org["id"], name="Compliance Auditor", role_title="Regulatory auditor",
+        description="Reviews certification evidence on behalf of the regulator; not yet validated with a real auditor.",
+        goals="Verify evidence quickly without having to chase the engineering team.",
+    )
+    drone_operator_persona = create_project_persona(
+        h_pm, drone["id"], name="BVLOS Remote Pilot", role_title="Remote pilot",
+        description="Flies Falcon-3 beyond visual line of sight from an operations centre.",
+        goals="Keep every flight within the certified envelope.", needs="Unambiguous status for the redundant"
+        " flight controllers.", frequency_of_use="Several flights per shift", weight=2.0,
+    )
+    activate_project_persona(h_pm, drone["id"], drone_operator_persona["id"])
+    set_project_persona_weight_override(h_pm, drone["id"], persona_inspector["id"], 5.0)
+    print(f"  Personas: {persona_inspector['name']!r} (org, Active, weight 3), {persona_auditor['name']!r} (org,"
+          f" Draft, unweighted), {drone_operator_persona['name']!r} (Falcon-3, Active, weight 2); Falcon-3 weights"
+          f" {persona_inspector['name']!r} at 5, which Falcon-3 Avionics Subsystem inherits")
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -2245,6 +2319,9 @@ def main() -> None:
           " linked to the org Strategy via a real 'Supports' relationship) and 1 project Guiding Principle (Active)"
           " on Falcon-3; and 2 Open Questions on Falcon-3 (one Ready for Decision, one Withdrawn — the 'resolved by"
           " Decision' relationship stays reserved pending Module 4's own Phase 7, see docs/decisions.md)")
+    print("  Stakeholders & Personas (enabled org-wide): 2 organisation Personas (Field Inspector — Active, weight 3;"
+          " Compliance Auditor — Draft, unweighted) and 1 project Persona on Falcon-3 (BVLOS Remote Pilot — Active,"
+          " weight 2), with a Falcon-3 weight override of 5 on Field Inspector that the Avionics sub-project inherits")
 
 
 if __name__ == "__main__":

@@ -347,6 +347,7 @@ class ModuleDefinition:
     roles: tuple[ModuleRoleDefinition, ...] = ()  # module-contributed RBAC roles
     sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
+    scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     models_import_path: str | None = None       # dotted path to your ORM models module
@@ -853,6 +854,29 @@ flowchart TD
     NAV --> TierB
 ```
 
+
+### 4e. Scoring targets: records another module scores against (Module 2 Phase 1.1)
+
+A module that scores *per something another module owns* (Pain Points per
+Persona) can't import that module. The owner declares
+`scoring_target_providers[artefact_type] = (db, project_id) -> [ScoringTarget]`
+and the scorer calls `registry.get_scoring_targets(db, project_id, type)`.
+
+```mermaid
+flowchart LR
+    SC["Scoring module"] -->|"get_scoring_targets(db, project, 'persona')"| REG[registry]
+    REG -->|"module disabled for project"| EMPTY["[]  → score against everything"]
+    REG -->|"enabled"| PROV["owner's provider<br/>id · label · weight · is_active"]
+```
+
+- `ScoringTarget(id, label, weight, is_active)`: `weight` is the resolved
+  importance for that project (`None` = equal weighting); `is_active` is
+  false for records that shouldn't be scored (Personas: anything but
+  Active).
+- The scorer stores `target_id` as a plain id, never a foreign key, and must
+  tolerate a target disappearing or the owner being disabled.
+- The provider does its own sub-component and tenancy checks; the caller has
+  already authorised the project.
 ### Tier A — installed (the primary path)
 
 A first-party module ships default-exported route components and registers

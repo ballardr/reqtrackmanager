@@ -346,26 +346,6 @@ export interface FutureStateComment {
   attachments: import("../../api/types").FileAsset[];
 }
 
-// --- Generic artefact comment shape (Phase 7.2) -----------------------------
-//
-// `ArtefactCommentsSection.tsx` (renamed from Phase 7.1's `StrategyComments
-// Section.tsx`, **Decided by: Agent** — see that component's own docstring)
-// is typed against this structural shape rather than `StrategyComment`/
-// `FutureStateComment` specifically, since both already satisfy it exactly
-// (every field but the identity foreign key, which the shared component
-// never reads) and CLAUDE.md's UX-style-guide reuse rule asks for the
-// existing implementation to be generalised and have its call site updated,
-// not duplicated a second time now that a second artefact type needs it.
-export interface ArtefactComment {
-  id: string;
-  author_id: string;
-  author_display_name: string;
-  body: string;
-  created_at: string;
-  edited_at: string | null;
-  attachments: import("../../api/types").FileAsset[];
-}
-
 // --- Pain Point (Phase 7.3) --------------------------------------------------
 //
 // Project-scoped only (source overview §6 — unlike Strategy/Future State/

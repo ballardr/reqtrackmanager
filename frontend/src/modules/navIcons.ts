@@ -32,6 +32,7 @@ import {
   Scale,
   ShieldCheck,
   Telescope,
+  Users,
 } from "lucide-react";
 
 const ICONS_BY_NAME: Record<string, LucideIcon> = {
@@ -43,6 +44,7 @@ const ICONS_BY_NAME: Record<string, LucideIcon> = {
   "alert-triangle": AlertTriangle,
   anchor: Anchor,
   "circle-help": CircleHelp,
+  users: Users,
 };
 
 /** The same generic fallback `nav_icon`'s own backend default resolves to

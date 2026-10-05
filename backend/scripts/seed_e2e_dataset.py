@@ -291,6 +291,43 @@ def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_sta
     return r.json()
 
 
+# Stakeholders & Personas (docs/plans/module-02-stakeholders-and-personas-plan.md
+# Phase 1.1). The module is default-off, so it is enabled for Gamma only —
+# Alpha/Beta keep the nav and module list the existing specs were written
+# against. Fixed names the persona specs may rely on; the persona Playwright
+# spec itself builds its own disposable org rather than depending on these.
+PERSONA_ORG_WEIGHTED_NAME = "E2E Field Inspector"
+PERSONA_ORG_UNWEIGHTED_NAME = "E2E Compliance Auditor"
+PERSONA_PROJECT_NAME = "E2E Hierarchy Operator"
+
+
+def enable_module(headers: dict, org_id: str, module_key: str) -> None:
+    r = httpx.put(f"{BASE}/orgs/{org_id}/modules/{module_key}", json={"enabled": True}, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
+def create_persona(headers: dict, *, org_id: str | None = None, project_id: str | None = None, activate: bool = False, **fields) -> dict:
+    """Creates an org- or project-scoped Persona (exactly one of `org_id`/`project_id`), optionally activating it."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/personas", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    persona = r.json()
+    if activate:
+        r = httpx.post(f"{base}/personas/{persona['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        persona = r.json()
+    return persona
+
+
+def set_persona_weight_override(headers: dict, project_id: str, persona_id: str, weight: float) -> dict:
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/weight",
+        json={"weight": weight}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def seed_project_content(headers: dict, project: dict, req_count: int) -> list[dict]:
     """Adds two components, two categories, and `req_count` requirements to a project."""
     hw = create_component(headers, project["id"], "Hardware", "HW")
@@ -437,6 +474,27 @@ def main() -> None:
     print(f"Creating {FGAC_STANDARD_NAME!r} (compliance standard for Alpha, role-management.spec.ts's entity-picker fixture)...")
     fgac_standard = create_compliance_standard(h_ab, alpha["id"], reference=FGAC_STANDARD_REFERENCE, name=FGAC_STANDARD_NAME)
 
+    print("Seeding Stakeholders & Personas on Gamma (module enabled for Gamma only): two org personas (one weighted,"
+          " one not), a project persona on the Gamma-3 hierarchy parent, and a weight override there that"
+          " Gamma-4 inherits...")
+    enable_module(h_g, gamma["id"], "stakeholders")
+    field_inspector = create_persona(
+        h_g, org_id=gamma["id"], activate=True, name=PERSONA_ORG_WEIGHTED_NAME, role_title="Field inspector",
+        goals="Finish each inspection in one visit.", needs="Offline access to instrument manuals.",
+        behaviours="Works in short bursts between sites.", context_environment="Outdoors, gloves on.",
+        skills_proficiency="Expert with the instruments, novice with software.", frequency_of_use="Daily",
+        constraints="No reliable network.", weight=3.0,
+    )
+    create_persona(
+        h_g, org_id=gamma["id"], name=PERSONA_ORG_UNWEIGHTED_NAME, role_title="Compliance auditor",
+        goals="Verify evidence without chasing the team.",
+    )
+    create_persona(
+        h_g, project_id=gamma3["id"], activate=True, name=PERSONA_PROJECT_NAME, role_title="Line operator",
+        goals="Keep the pipeline running.", weight=1.5,
+    )
+    set_persona_weight_override(h_g, gamma3["id"], field_inspector["id"], 5.0)
+
     print("Assigning project-scoped roles...")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a["user_id"], "stakeholder")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a2["user_id"], "stakeholder")
@@ -542,6 +600,10 @@ def main() -> None:
           f"'E2E Review Action', comment attachment on {alpha1_reqs[5]['unique_code']} — one of each project-files origin.")
     print(f"Compliance standard {FGAC_STANDARD_NAME!r} (id {fgac_standard['id']}) on Alpha — Role Management page's"
           " entity-scope picker fixture.")
+    print(f"Personas on Gamma (Stakeholders & Personas enabled for Gamma only): org personas {PERSONA_ORG_WEIGHTED_NAME!r}"
+          f" (Active, weight 3) and {PERSONA_ORG_UNWEIGHTED_NAME!r} (Draft, unweighted); project persona"
+          f" {PERSONA_PROJECT_NAME!r} on {GAMMA3_NAME!r}; Gamma-3's weight override of 5 on {PERSONA_ORG_WEIGHTED_NAME!r}"
+          f" is inherited by {GAMMA4_NAME!r}.")
 
 
 if __name__ == "__main__":

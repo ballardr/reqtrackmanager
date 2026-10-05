@@ -1123,6 +1123,30 @@ class ScoringSchemeDefinition:
 
 
 @dataclass(frozen=True)
+class ScoringTarget:
+    """One record a module offers as something another module scores
+    against (e.g. a Persona, for per-persona Pain Point scoring), returned
+    by a `ModuleDefinition.scoring_target_providers` callable.
+
+    Attributes:
+        id: The target record's id (the scoring module stores it as a plain
+            `target_id`, never an FK, since it can't import the owning
+            module).
+        label: Display name.
+        weight: The target's resolved importance for the requesting project,
+            or `None` when none is set (the scoring module then weights
+            every target equally).
+        is_active: Whether the target is still current (`False` for a
+            retired/archived record, which scoring should skip).
+    """
+
+    id: uuid.UUID
+    label: str
+    weight: float | None
+    is_active: bool
+
+
+@dataclass(frozen=True)
 class RegisteredScoringScheme:
     """A scoring scheme paired with the key of the module that registered
     it — the module key drives enablement gating and `admin_role_key`
@@ -1543,6 +1567,15 @@ class ModuleDefinition:
             scoring-matrix mechanism (`app.services.scoring`). Merged by
             `get_all_registered_scoring_schemes` (below). Empty for a module
             that scores nothing.
+        scoring_target_providers: Module 2 (Stakeholders & Personas)
+            Phase 1.1 — maps one of this module's own `artefact_types` to a
+            callable `(db, project_id) -> list[ScoringTarget]` listing the
+            records of that type a project can be scored against, with
+            weights. Lets one module (Context & Strategy) score against
+            another's records (Personas) without importing it; read via
+            `get_scoring_targets` (below), which returns `[]` when the
+            owning module is disabled for the project. Empty for a module
+            offering no scoring targets.
     """
 
     key: str
@@ -1577,6 +1610,9 @@ class ModuleDefinition:
     entity_scopes: dict[str, EntityScopeDefinition] = field(default_factory=dict)
     sub_components: tuple[ModuleSubComponentDefinition, ...] = field(default=())
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = field(default=())
+    scoring_target_providers: dict[str, Callable[[Session, uuid.UUID], list[ScoringTarget]]] = field(
+        default_factory=dict
+    )
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -2912,6 +2948,34 @@ def get_all_registered_scoring_schemes() -> dict[str, RegisteredScoringScheme]:
                 continue
             schemes[scheme.key] = RegisteredScoringScheme(module_key=definition.key, scheme=scheme)
     return schemes
+
+
+def get_scoring_targets(db: Session, project_id: uuid.UUID, target_type: str) -> list[ScoringTarget]:
+    """Lists the records of artefact type `target_type` that `project_id`
+    can be scored against (Module 2 Phase 1.1), via the owning module's
+    `scoring_target_providers` entry.
+
+    Returns `[]` — never raises — when no module provides `target_type` or
+    the owning module is disabled for the project, so a scoring module
+    degrades to "score against everything" rather than breaking when the
+    provider is switched off.
+
+    Args:
+        db: An active database session.
+        project_id: The project being scored in.
+        target_type: A registered artefact type, e.g. `"persona"`.
+
+    Returns:
+        The provider's `ScoringTarget`s, or `[]`.
+    """
+    for definition in get_module_registry().values():
+        provider = definition.scoring_target_providers.get(target_type)
+        if provider is None:
+            continue
+        if not is_module_enabled_for_project(db, project_id, definition.key):
+            return []
+        return provider(db, project_id)
+    return []
 
 
 def get_subtype_providers() -> dict[str, Callable[[Session, uuid.UUID], list[str]]]:

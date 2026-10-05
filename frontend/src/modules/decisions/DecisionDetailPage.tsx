@@ -32,13 +32,13 @@ import { Pencil } from "lucide-react";
 
 import type { OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
+import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
-import { DecisionCommentsSection } from "./DecisionCommentsSection";
 import { DecisionFormModal } from "./DecisionFormModal";
 import { DecisionRelationshipsSection } from "./DecisionRelationshipsSection";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
@@ -201,7 +201,7 @@ export function DecisionDetailPage() {
         </div>
 
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <DecisionCommentsSection
+          <ArtefactCommentsSection
             comments={comments ?? []}
             currentUserId={user?.id}
             onPost={async (body) => {

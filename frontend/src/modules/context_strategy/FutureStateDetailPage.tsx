@@ -30,13 +30,13 @@ import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
 import type { FileAsset } from "../../api/types";
+import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgFutureStateApi, projectFutureStateApi } from "./api";
-import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FutureStateRelationshipsSection } from "./FutureStateRelationshipsSection";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";

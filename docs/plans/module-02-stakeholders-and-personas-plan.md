@@ -17,17 +17,21 @@ Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-1 / 6 phases complete. **Phase 1.1 (Persona) is next.** It unblocks Module 1
-Phase 11.
+2 / 9 phases complete. **Phase 1.2 (Stakeholder) is next.** Phase 1.1 (Persona,
+2026-10-05) unblocks Module 1 Phase 11. Phases 4–6 were added by the 2026-10-05
+Phase 0 addendum; the docs phase moved from 4 to 7.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: persona-modelling decision & open questions | [x] Complete (2026-10-05) |
-| 1.1 | Persona: data model, types, weight + override, RBAC, scoring-target hook, UI | [ ] Not started |
+| 1.1 | Persona: data model, types, weight + override, RBAC, scoring-target hook, UI | [x] Complete (2026-10-05) |
 | 1.2 | Stakeholder: data model, types, RBAC, UI | [ ] Not started |
 | 2 | Stakeholder Needs (as first-class records) | [ ] Not started |
 | 3 | Relationships + remaining frontend UI + MCP | [ ] Not started |
-| 4 | Docs website coverage | [ ] Not started — depends on Phase 3 shipping |
+| 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
+| 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
+| 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13's report hook |
+| 7 | Docs website coverage | [ ] Not started — depends on Phases 3, 5 and 6 |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -198,10 +202,114 @@ flowchart LR
     through the API or seeds. **Decided by: Agent**; revisit if the user
     prefers the original order.
 
+### Phase 0 addendum (2026-10-05) — people, research, reports
+
+```mermaid
+flowchart LR
+    U[Org user] -. optional user_id .-> ST[Stakeholder<br/>specific entity]
+    U -- champion --> PE[Persona<br/>generic archetype]
+    ST -- represents, many-to-many --> PE
+    RS[Engagement<br/>+ research extras] -- participant --> ST
+    RS -- covers --> PE
+    RS -- finding --> F[Pain Point / Need / Open Question]
+```
+
+12. **Stakeholder ↔ Persona is many-to-many** through the "represents"
+    `ArtefactLink`, and it moves from Phase 3 into Phase 1.2, since both
+    record types exist by then. **Decided by: User.**
+13. **Org users reach personas through a Stakeholder record, not a direct
+    link.** `Stakeholder.user_id` (nullable FK to core `users`) marks a
+    stakeholder who is also a platform user, and a "create stakeholder from
+    org user" action removes the friction. **Decided by: User** (the
+    Agent's proposal). *Why:* most people a persona describes have no
+    account, and two parallel person → persona paths would make every
+    report merge them.
+    - `Persona.champion_id` (nullable FK to `users`) is the colleague
+      accountable for keeping the persona accurate. **Decided by: User.**
+    - A persona is descriptive only and never grants permissions.
+      **Decided by: Agent.**
+    - A module FK into core `users` is allowed. The boundary only forbids
+      core depending on a module.
+14. *(Scope superseded by item 20: research is now the switchable extras on
+    always-on Engagements.)* **Research Sessions, a toggleable sub-component**
+    (`ModuleDefinition.sub_components`), generalised from focus groups to
+    interviews, usability tests and surveys. **Decided by: User.** Prompts
+    are called *session prompts*, so they don't collide with Module 1's Open
+    Questions. Findings link to the Pain Points, Needs and Open Questions
+    they raised or answered. Built after Phase 3, so Phase 1.1 isn't
+    delayed.
+15. **Personal data and erasure** (SOC 2, data classification and data
+    retention policies). Stakeholder contact info and research participant
+    data are Confidential customer data about identifiable people. The
+    retention policy's Known Gap 1 says nothing can hard-delete one person's
+    data inside a live org, so a Retired status doesn't satisfy disposal.
+    **Decided by: Agent.**
+    - Phase 1.2 adds hard delete for a Stakeholder: rows, versions,
+      comments, links and storage files, plus an audit event that holds no
+      personal data.
+    - Phase 4 adds the same for Engagement participant data, plus a
+      consent field and an optional retain-until date.
+    - Update the retention policy's Known Gap 1 to record the narrower
+      closure. The gap stays open for users and projects.
+16. **Stakeholder Influence and Interest levels** on the core scoring
+    matrix (Module 1 Phase 10). This module registers a `stakeholder`
+    scoring scheme with an Influence × Interest model, which drives the
+    power/interest grid. **Decided by: User.** Default levels: Low,
+    Medium, High on each axis. **Decided by: Agent.**
+17. **Reports S1–S5** (Phase 6), registered through Module 1 Phase 13's
+    generic report hook. **Decided by: User.** There is no bespoke reports
+    page. "Stakeholder register" and "per-persona pain profile" are left out
+    as duplicates of the list view and Module 1 R1. **Decided by: Agent.**
+
+### Phase 0 addendum 2 (2026-10-05) — engagement cadence and contact log
+
+18. **Two engagement fields on Stakeholder.** `target_cadence` (our goal)
+    has the values One-off, Ad hoc, Weekly, Monthly, Quarterly and Yearly,
+    with a label map. `availability_constraints` (their limit) is free
+    text. **Decided by: User.** *Why:* one merged field can't show the
+    risky gap of "we should talk monthly but they'll only agree to
+    quarterly".
+19. **One-off is a cadence value, not a flag**, and random session
+    participants are **anonymous**: a label plus a persona, with no
+    Stakeholder record. **Decided by: User** (the Agent's recommendation).
+    - Named one-off parties (a regulator consulted once, an auditor) are
+      Stakeholders with cadence One-off. They need a real record so they
+      can be linked to Requirements, Needs and Decisions.
+    - One-off and Ad hoc stakeholders are excluded from S4 staleness, and
+      the list can filter by cadence.
+    - *Why:* data minimisation, and a register that isn't cluttered with
+      one-time participants.
+20. **Engagements replace Research Sessions as the core record**
+    (supersedes addendum 14's sub-component scope). An Engagement holds a
+    date, a channel (email, call, meeting, workshop, interview, focus
+    group, usability test, survey), participants, notes and attachments,
+    and links to the Pain Points, Needs and Open Questions it raised or
+    answered. **Decided by: User** (the Agent's recommendation).
+    - The engagement log is **always on**. Only the research extras are a
+      toggleable sub-component: session prompts, findings and anonymous
+      participants.
+    - "Log contact" quick-adds one from a Stakeholder's page, e.g. for the
+      odd email.
+    - *Why:* "last contact" needs a single source. A separate contact log
+      would overlap with research sessions, and S4/S5 would have to merge
+      the two.
+21. **Cadence hint from the power/interest grid.** On the Stakeholder form,
+    the Influence/Interest ratings show a suggested cadence next to the
+    cadence field and never set it. Defaults: Manage closely → Monthly,
+    Keep satisfied → Quarterly, Keep informed → Quarterly, Monitor → Ad
+    hoc. **Decided by: User**; the default mapping is **Decided by:
+    Agent**, and can become org-configurable if asked for.
+22. **S4 measures against each stakeholder's own cadence**: overdue means
+    the last engagement is older than the target interval, or there has
+    never been one. It shows availability constraints next to overdue
+    items, so a gap the stakeholder caused is distinguishable from
+    neglect. **Decided by: Agent.**
+
 ## Phase 1.1 — Persona
 
 **Scope** (per Phase 0 resolutions 1–6, 8, 10, 11):
-- `Persona` table (scope discriminator, Q4 fields, nullable `weight`),
+- `Persona` table (scope discriminator, Q4 fields, nullable `weight`,
+  nullable `champion_id`),
   `PersonaVersion`, module-local comments and files.
 - Two-tier Persona types (`PersonaTypeDefinition`/`ProjectPersonaType`),
   seeded with Primary/Secondary/Negative on org creation.
@@ -227,6 +335,21 @@ weighted Persona records. *Risk addressed:* scoring against personas that
 don't exist, or Module 1 importing this module directly. *Outcome:* a
 persona list Module 1 reads through a generic hook.
 
+**Status: complete (2026-10-05).** Module key `stakeholders` (sub-component
+`persona`), package `backend/app/modules/stakeholders/`, frontend
+`frontend/src/modules/stakeholders/`. Account, deviations and review:
+`docs/decisions.md`'s "Module 2 Phase 1.1" entry. Left for later phases:
+
+- **Reuse for Phase 1.2:** `type_vocabulary.TypeVocabulary` (backend),
+  `components/TypeVocabularyPanels` and `components/ArtefactCommentsSection`
+  (frontend), `PersonaListView`'s shape for the Stakeholder list, and
+  `export.py`'s bundle pattern.
+- **Module 1 Phase 11** reads personas with
+  `app.modules.registry.get_scoring_targets(db, project_id, "persona")`
+  (`ScoringTarget(id, label, weight, is_active)`).
+- Relationships, `Represents Persona` and MCP relationship tools stay in
+  Phases 1.2/3; the docs website stays in Phase 7.
+
 ## Phase 1.2 — Stakeholder
 
 **Scope:** the same shape as Phase 1.1 for `Stakeholder` (§10.3 fields:
@@ -235,7 +358,17 @@ responsibilities, goals and needs, priorities, constraints, workflows/use
 scenarios, contact/reference info, scope, owner, status, history). Includes
 `StakeholderVersion`, two-tier Stakeholder types seeded from §10.2, RBAC,
 MCP, bundle hooks, frontend, seeds and tests. It reuses whatever Phase 1.1
-extracted as shared code, and does not copy it.
+extracted as shared code, and does not copy it. Also (addendum 12, 13, 15,
+16):
+- nullable `user_id`, plus a "create from org user" action;
+- the many-to-many "represents" link to Personas, with a panel on both
+  detail pages;
+- a `stakeholder` scoring scheme (Influence × Interest) with a level picker
+  on the form;
+- `target_cadence` and `availability_constraints` (addendum 2, items
+  18–19), plus the cadence hint (item 21);
+- hard delete (two-tier confirm), with a test proving that no rows,
+  versions, comments, links or storage files are left.
 
 **Why:** §10.1. Without an explicit stakeholder record, needs and
 requirement rationale have no anchor beyond the requirement's own text.
@@ -308,7 +441,89 @@ generalized `allow_ai_approvals` gate or (b) `APPROVAL_ACTION_ROUTE_EXTRA`
 after all, decide between (a)/(b) for it then, defaulting to (a) per the
 Compliance precedent absent a specific reason otherwise.
 
-## Phase 4 — Docs website coverage
+## Phase 4 — Engagements (+ research extras): data model, backend, erasure
+
+**Scope** (addendum 14, 15 and addendum 2, item 20):
+- `Engagement` registered artefact type (`engagement`), always on:
+  - fields: title, channel, date, facilitator/logged by, scope, summary,
+    notes, consent recorded, retain-until;
+  - participants: Stakeholders, via `ArtefactLink`;
+  - personas covered;
+  - links to Pain Points, Needs and Open Questions ("raised by",
+    "answered by");
+  - attachments (e.g. email exports).
+- A "last engaged" per stakeholder, derived from engagement dates, for S4.
+- Research extras sub-component (`ModuleDefinition.sub_components`):
+  - `EngagementPrompt`: ordered session prompts, each with response notes;
+  - `ResearchFinding`: a registered artefact with the same link types;
+  - anonymous participants: a label plus a persona.
+- RBAC, audit logging, write-enabled MCP tools, bundle hooks and seeds. The
+  seeds cover a quick email log, a focus group with anonymous participants,
+  and an overdue stakeholder.
+- Hard delete for an engagement, its participant data and its files.
+- Tests: the sub-component gate (extras hidden, core log still works),
+  RBAC, cross-org isolation, erasure completeness, the last-engaged
+  derivation, and finding links.
+
+**Why:** contacts and research are the evidence behind stakeholder claims,
+and the date of last contact drives staleness. *Risk addressed:* contact
+history kept in email inboxes; Pain Points and personas built on
+assumption; personal data with no disposal path. *Outcome:* one traceable
+log from contact to Pain Points and Needs.
+
+## Phase 5 — Engagements (+ research extras): frontend UI
+
+**Scope:** an engagement list, detail page and create form (as a layer);
+the "Log contact" quick-add on Stakeholder and Persona pages; an engagement
+timeline on the Stakeholder detail page; participant/persona pickers; the
+prompts editor, findings and anonymous participants when the extras are
+enabled; and the delete confirm. Use shared components and label maps.
+Playwright and Storybook.
+
+**Why:** a backend nobody can reach isn't done. *Risk addressed:* contacts
+recorded outside the tool. *Outcome:* contacts captured where they're
+traced.
+
+## Phase 6 — Reports (S1–S5)
+
+**Hard dependency:** Module 1 Phase 13's generic report-registration hook.
+Follow Module 1 Phase 12's pattern: one `collect_*` per report, reused by
+PDF, CSV, on-screen views and MCP.
+
+| # | Report | Content |
+|---|--------|---------|
+| S1 | **Power/interest grid** | Stakeholders on Influence × Interest, grouped into Manage closely, Keep satisfied, Keep informed and Monitor; unscored stakeholders listed separately. |
+| S2 | **Persona validation** | Each persona's evidence: linked real stakeholders, engagements covering it, anonymous participants, findings. Personas with none are flagged as assumptions, along with their scoring weight. |
+| S3 | **Need coverage** | Needs with no Requirement; Requirements tracing to no Need, Stakeholder or Persona. Interim until Module 7. |
+| S4 | **Engagement staleness** | Stakeholders whose last engagement is older than their own target cadence (or who have none), sorted by Influence, with availability constraints shown. One-off and Ad hoc are excluded. Personas with no engagement in N months. Needs Phase 4. |
+| S5 | **Engagement & research yield** | Engagements by channel and persona; findings, Pain Points and Needs raised by engagements versus none. The findings part needs the research extras. Needs Phase 4. |
+
+**Access control:** the same rules as Module 1 Phase 12: module enablement
+and FGAC read on project reports; org variants need the org-reports
+permission and exclude projects the caller can't read. S5's findings section is hidden
+when the research extras are off.
+
+**Reasoning:**
+- **S1** — *Why:* the standard stakeholder management view. *Risk:*
+  high-influence stakeholders get neglected. *Outcome:* engagement
+  priorities are explicit.
+- **S2** — *Why:* Module 1 weights Pain Point scores by persona. *Risk:*
+  unvalidated personas skew prioritisation. *Outcome:* assumption-only
+  personas are visible.
+- **S3** — *Why:* a Need exists to drive a Requirement. *Risk:* needs that
+  are never addressed, and requirements with no stakeholder basis.
+  *Outcome:* gaps are listed.
+- **S4** — *Why:* stakeholder views go stale. *Risk:* decisions based on
+  old input. *Outcome:* re-engagement is prompted.
+- **S5** — *Why:* research only matters if it feeds the backlog. *Risk:*
+  findings that are recorded but never acted on. *Outcome:* the research →
+  backlog yield is visible.
+
+**Tests:** one pytest per report (content, gaps, RBAC exclusion, org
+permission, cross-org isolation, sub-component gating), Playwright for
+downloads and the S1 grid, and Storybook.
+
+## Phase 7 — Docs website coverage
 
 Added 2026-09-21 at the user's explicit instruction, applied across every
 not-yet-built module plan (**Decided by: User**); the specific scope and
@@ -368,7 +583,11 @@ persona-vs-stakeholder distinction that is easy to under-explain if rushed).
   Stakeholder/Persona list view, a Stakeholder detail page showing its
   Needs and relationships, and a Persona detail page showing its weight.
 
-**Status:** not started — depends on Phase 3 (relationships + frontend)
+Also cover (addendum): user → stakeholder → persona, persona champions,
+Engagements and research extras, target cadence and the cadence hint, the
+power/interest grid, and reports S1–S5.
+
+**Status:** not started — depends on Phases 3, 5 and 6 (relationships + frontend)
 actually shipping; there is no real user-facing workflow to document
 accurately before then, the same reasoning Decision Management's own
 Phase 6 and Compliance's docs-site page both used. Not a blocker for any
@@ -385,3 +604,16 @@ other phase.
   *(depends on Module 10 Reporting's Engineering Change Impact report —
   this module only needs to expose enough relationship data for that
   report to consume later, not build the analysis itself.)*
+- *(Phase 0 addendum)* Stakeholders link to many Personas, and org users
+  reach Personas through an optional Stakeholder `user_id`. Personas have a
+  champion.
+- *(Phase 0 addendum)* Engagements log contacts and research (participants,
+  channel, notes, attachments) and link to Pain Points, Needs and Open
+  Questions. Research extras add prompts, findings and anonymous
+  participants. A Stakeholder's or engagement's personal data can be
+  hard-deleted.
+- *(Phase 0 addendum 2)* Stakeholders have a target cadence and
+  availability constraints, and S4 flags stakeholders overdue against
+  their own cadence.
+- *(Phase 0 addendum)* Reports S1–S5 are available through the generic
+  report hook.

@@ -9089,3 +9089,80 @@ tags is in [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeho
   personas and weights without importing Module 2. (Decided by: Agent.)
 - **Phase 1 is split**: 1.1 Persona, including its UI, which unblocks
   Module 1 Phase 11; 1.2 Stakeholder. (Decided by: Agent.)
+- **Addendum, same day: people, research and reports.**
+  - **Stakeholder ↔ Persona is many-to-many**, and it moves to Phase 1.2.
+    (Decided by: User.)
+  - **Org users reach personas through an optional `Stakeholder.user_id`**,
+    not a direct link, plus a `Persona.champion_id`. (Decided by: User; the
+    Agent's proposal.) *Why:* most people a persona describes have no
+    account, and two person → persona paths would split every report.
+  - **Research Sessions** (interviews, focus groups, usability tests,
+    surveys) are a toggleable sub-component with session prompts and
+    findings that link to Pain Points, Needs and Open Questions. (Decided
+    by: User.)
+  - **Hard delete for Stakeholders and Research Session personal data.**
+    Retirement alone fails the data-retention policy's disposal rule
+    (Known Gap 1). (Decided by: Agent.)
+  - **Influence × Interest on the core scoring matrix**, and reports S1–S5
+    through Module 1 Phase 13's report hook. (Decided by: User.)
+- **Addendum 2, same day: engagement cadence and contact log.**
+  - **Stakeholder gets `target_cadence` (our goal) and
+    `availability_constraints` (their limit)** as separate fields.
+    (Decided by: User.) *Why:* one field can't show "we should talk monthly
+    but they'll only agree to quarterly".
+  - **One-off is a cadence value, not a flag; random participants are
+    anonymous** (a label plus a persona, no Stakeholder record). (Decided
+    by: User.) *Why:* data minimisation, while named one-off parties can
+    still be linked to Requirements.
+  - **Always-on Engagements replace Research Sessions as the core record**,
+    with prompts, findings and anonymous participants as the switchable
+    research extras. (Decided by: User.) *Why:* "last contact" needs a
+    single source.
+  - **The power/interest quadrant suggests a cadence** (a hint, never set
+    automatically), and S4 measures against each stakeholder's own
+    cadence. (Hint: Decided by: User. Mapping and S4 rule: Decided by:
+    Agent.)
+
+## Module 14 (Product Feedback / Enhancement Requests) proposed (2026-10-05)
+
+Planning only. Plan: [module-14-product-feedback-plan.md](plans/module-14-product-feedback-plan.md).
+
+- **A new, independently toggleable module for enhancement requests**,
+  planned now and built after Modules 1 and 2. (Decided by: User.)
+- **A request is a solution, a Pain Point is a problem.** Requests with no
+  linked Pain Point get a warning, not a block. (Decided by: User.) *Why:*
+  ranking by demand alone rewards the loudest voice.
+- **In scope: demand aggregation with merge, ICE/RICE on the core scoring
+  matrix, and a close-the-loop list.** (Decided by: User.) ICE fits here
+  because requests are solutions, which is why it was rejected for Pain
+  Points.
+- **Out of scope: delivery tracking and a public submission portal.**
+  (Decided by: Agent.) *Why:* delivery belongs in Jira-like tools, and a
+  no-account portal is a large abuse and privacy surface.
+
+## Module 2 (Stakeholders & Personas) Phase 1.1 — Persona (2026-10-05)
+
+Built Persona end to end as a new `stakeholders` module (backend, bundle hooks, MCP tools, UI, seeds, tests). Plan: [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeholders-and-personas-plan.md). Unblocks Module 1 Phase 11.
+
+```mermaid
+flowchart LR
+    SC["Module 1 scoring<br/>(Phase 11)"] -->|"get_scoring_targets('persona')"| REG[registry hook]
+    REG -->|"scoring_target_providers"| PER[stakeholders module]
+    PER --> W["weight: project override →<br/>ancestor override → persona → equal"]
+```
+
+- **Module key is `stakeholders`**, one sub-component `persona` (Stakeholder joins in Phase 1.2). (Decided by: Agent.)
+- **`ModuleDefinition.scoring_target_providers` + `get_scoring_targets()`** are the generic hook from Phase 0 resolution 10. It returns `[]` when the owning module is disabled for the project, so scoring degrades to all-personas. (Decided by: Agent, as planned.)
+- **Only `Active` personas are `is_active` scoring targets**, so an unvetted draft can't skew a weighted roll-up. (Decided by: Agent.)
+- **A persona's own weight is versioned content** (on `PersonaVersion`), not on the identity row, so re-weighting appears in history; the per-project override is a separate row. The resolved weight also reports its *source* (`weight_source`) so the UI can name the tier, per the style guide's inherited-settings pattern. (Decided by: Agent.)
+- **Type is optional**, and a persona version references either an org type (org persona) or a project type row (project persona). The migration backfills the default Primary/Secondary/Negative types for existing organisations. (Decided by: Agent.)
+- **Lifecycle allows `Retired → Active`** (reactivation) and has no content lock, since there is no approval gate. (Decided by: Agent.)
+- **`org_persona_owner` carries no FGAC atom**; only the project role does. An org-level role's atoms apply to every project in the org, which would have let an org persona owner manage all project personas (caught by a test). (Decided by: Agent.)
+- **Bundles carry current content only** (no version history, comments or comment files); org-level files can't travel because `ModuleOrgBundleHooks.import_` receives no attachment bytes. (Decided by: Agent.)
+- **Two extractions to shared components**, per the one-component-per-pattern rule, with every call site updated: `components/ArtefactCommentsSection` (was duplicated in `context_strategy` and `decisions`) and `components/TypeVocabularyPanels` (`OrgTypeVocabularyPanel`/`ProjectTypeVocabularyPanel`, the Pain Point type panels generalised; the Pain Point panels are now thin wrappers). Backend: `stakeholders/type_vocabulary.py` is the matching generic `TypeVocabulary`, which Phase 1.2 reuses for Stakeholder types. (Decided by: Agent.)
+- **An org persona opens inside a project** so its weight override stays reachable; there it is read-only apart from the override and comments. (Decided by: Agent.)
+- **Docs website not updated yet.** The plan sequences it as Phase 7 (needs Stakeholders, relationships and reports to document honestly). (Decided by: User, via the plan.)
+
+**Core-boundary checks.** No core file imports `modules/stakeholders/`. `Layout.tsx` is untouched; the nav entry comes from `ModuleFrontendManifest`, and `navIcons.ts` only gained a generic `users` icon in its open palette. `persona` is a registered artefact type, so no core enum/column needed a per-module value. No new project-scoped *definition* table needs an ancestor fallback: the type tables follow Pain Point's org-base design, and `ProjectPersonaWeight` is override-only and resolved through the ancestor chain (Phase 0 resolutions 3 and 5).
+
+**Review (identify → verify → remediate).** Found and fixed in this pass: an org-role atom leaking to project scope (above); non-finite weights (`inf` passes `> 0` and would poison a weighted roll-up) now rejected with `allow_inf_nan=False`, which also exposed a core bug — any 422 whose echoed input was `inf`/`nan` crashed JSON encoding into a 500 — fixed in `main.py`'s validation handler; comment edit and comment-attachment removal were not audit-logged (now are, and a test asserts every mutating action leaves an event); owner/champion must be members of the organisation (cross-tenant reference); persona type ids are validated against the persona's own organisation/project; every id lookup is scoped to its org/project and 404s across tenants. Personas hold no personal data (descriptive archetypes), so the retention policy's Known Gap 1 is unchanged. Tests: 34 backend (CRUD, scope, versions, lifecycle, types, weights, RBAC, FGAC, isolation, comments, files, hook, bundles, MCP manifest), Storybook for every new component, Playwright `modules/stakeholders/persona-lifecycle.spec.ts`.

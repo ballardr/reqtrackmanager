@@ -11,6 +11,7 @@ External dependencies: FastAPI, Starlette, Prometheus client.
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from contextlib import asynccontextmanager
 
@@ -161,7 +162,8 @@ async def redact_sensitive_validation_errors(request: Request, exc: RequestValid
     the attempted password back in the response body. FastAPI's default
     handler passes `exc.errors()` straight through, so this must be
     overridden rather than fixed at the schema level (Pydantic does not
-    otherwise redact `input` for plain `str` fields).
+    otherwise redact `input` for plain `str` fields). Also stringifies a
+    non-finite float `input`, which would otherwise crash JSON encoding.
     """
     errors = []
     for error in exc.errors():
@@ -169,6 +171,10 @@ async def redact_sensitive_validation_errors(request: Request, exc: RequestValid
         loc = error.get("loc", ())
         if any(str(part) in _SENSITIVE_FIELD_NAMES for part in loc):
             error["input"] = "***"
+        elif isinstance(error.get("input"), float) and not math.isfinite(error["input"]):
+            # `inf`/`nan` can't be JSON-encoded; echoing one back would turn a
+            # rejected value into a 500.
+            error["input"] = str(error["input"])
         errors.append(error)
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": jsonable_encoder(errors)})
 
