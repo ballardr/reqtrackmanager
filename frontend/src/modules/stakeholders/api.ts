@@ -2,8 +2,8 @@
  * Module: modules/stakeholders/api
  *
  * Thin wrappers over `api` (frontend/src/api/client.ts) for every endpoint
- * `backend/app/modules/stakeholders/` exposes, for both artefacts (Persona,
- * Stakeholder). The two share a shape — CRUD, versions, archive, lifecycle,
+ * `backend/app/modules/stakeholders/` exposes, for the three artefacts (Persona,
+ * Stakeholder, Need). They share a shape — CRUD, versions, archive, lifecycle,
  * comments, files — so `buildRecordApi` builds it once from a base URL and a
  * path segment; `buildTypeApi`/`buildProjectTypeCalls` do the same for the
  * two-tier type vocabulary. Each artefact then adds only what is its own
@@ -16,6 +16,14 @@ import type { FileAsset } from "../../api/types";
 import type {
   CadenceHint,
   EffectivePersonaType,
+  HeldNeed,
+  Need,
+  NeedComment,
+  NeedFieldValues,
+  NeedHolder,
+  NeedHolderKind,
+  NeedRequirement,
+  NeedVersion,
   Persona,
   PersonaComment,
   PersonaFieldValues,
@@ -55,6 +63,10 @@ export type StakeholderUpdateValues = Partial<StakeholderFieldValues> & {
   owner_id?: string | null;
   user_id?: string | null;
 };
+
+export type NeedCreateValues = Omit<NeedFieldValues, "change_note"> & { owner_id?: string | null };
+
+export type NeedUpdateValues = Partial<NeedFieldValues> & { owner_id?: string | null };
 
 /** The calls every record kind in this module has; what the shared detail
  * components (`RecordDiscussion`, `RecordLifecycleControls`) are written
@@ -210,5 +222,29 @@ export const projectStakeholderApi = { ...buildStakeholderApi(projectBase), ...b
 /** Org-scoped Stakeholder type CRUD — `id` parameters are an `organization_id`. */
 export const orgStakeholderTypeApi = buildOrgTypeApi("stakeholder-types");
 
-/** The shape both artefacts' APIs share, for components written against either. */
-export type { PersonaApi, StakeholderApi };
+type NeedApi = RecordApi<Need, NeedVersion, NeedComment, NeedCreateValues, NeedUpdateValues>;
+
+/** Project-scoped Stakeholder Need endpoints (`id` is a `project_id`), with the
+ * "has need" holders, the "gives rise to" Requirements, and the needs of a
+ * Stakeholder or Persona. A need has no org scope, so there is no org API. */
+export const projectNeedApi = {
+  ...buildRecordApi<Need, NeedVersion, NeedComment, NeedCreateValues, NeedUpdateValues>(projectBase, "needs"),
+  listHolders: (projectId: string, needId: string) => api.get<NeedHolder[]>(`${projectBase(projectId)}/needs/${needId}/holders`),
+  addHolder: (projectId: string, needId: string, kind: NeedHolderKind, id: string) =>
+    api.post<NeedHolder>(`${projectBase(projectId)}/needs/${needId}/holders`, { kind, id }),
+  removeHolder: (projectId: string, needId: string, kind: NeedHolderKind, id: string) =>
+    api.delete<void>(`${projectBase(projectId)}/needs/${needId}/holders/${kind}/${id}`),
+  listRequirements: (projectId: string, needId: string) =>
+    api.get<NeedRequirement[]>(`${projectBase(projectId)}/needs/${needId}/requirements`),
+  addRequirement: (projectId: string, needId: string, requirementId: string) =>
+    api.post<NeedRequirement>(`${projectBase(projectId)}/needs/${needId}/requirements`, { requirement_id: requirementId }),
+  removeRequirement: (projectId: string, needId: string, requirementId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/needs/${needId}/requirements/${requirementId}`),
+  listStakeholderNeeds: (projectId: string, stakeholderId: string) =>
+    api.get<HeldNeed[]>(`${projectBase(projectId)}/stakeholders/${stakeholderId}/needs`),
+  listPersonaNeeds: (projectId: string, personaId: string) =>
+    api.get<HeldNeed[]>(`${projectBase(projectId)}/personas/${personaId}/needs`),
+};
+
+/** The shape the artefacts' APIs share, for components written against any. */
+export type { NeedApi, PersonaApi, StakeholderApi };

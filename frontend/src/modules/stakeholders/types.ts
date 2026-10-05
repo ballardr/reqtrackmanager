@@ -284,3 +284,97 @@ export interface RepresentedLink {
   name: string;
   scope: "organization" | "project";
 }
+
+
+// --- Stakeholder Need (Phase 2) -----------------------------------------------
+
+export type NeedStatus = "draft" | "active" | "retired";
+
+export const NEED_STATUS_LABEL: Record<NeedStatus, string> = {
+  draft: "Draft",
+  active: "Active",
+  retired: "Retired",
+};
+
+export const NEED_STATUS_TONE: Record<NeedStatus, BadgeTone> = {
+  draft: "muted",
+  active: "accent",
+  retired: "muted",
+};
+
+/** A Stakeholder Need merged with its current version. Always project-scoped. */
+export interface Need {
+  id: string;
+  project_id: string;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+  name: string;
+  description: string;
+  rationale: string;
+  status: NeedStatus;
+  owner_id: string | null;
+  version_number: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NeedVersion {
+  id: string;
+  need_id: string;
+  version_number: number;
+  valid_from: string;
+  valid_to: string | null;
+  name: string;
+  status: NeedStatus;
+  change_note: string;
+  created_at: string;
+}
+
+/** The content fields the create/edit modal edits. */
+export interface NeedFieldValues {
+  name: string;
+  description: string;
+  rationale: string;
+  change_note: string;
+}
+
+export interface NeedComment {
+  id: string;
+  need_id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: import("../../api/types").FileAsset[];
+}
+
+/** Which kind of record has a need. */
+export type NeedHolderKind = "stakeholder" | "persona";
+
+/** One "has need" link seen from the need: the Stakeholder/Persona that has it. */
+export interface NeedHolder {
+  link_id: string;
+  kind: NeedHolderKind;
+  id: string;
+  name: string;
+  scope: "organization" | "project";
+}
+
+/** One "has need" link seen from a Stakeholder or Persona: the need. */
+export interface HeldNeed {
+  link_id: string;
+  id: string;
+  name: string;
+  status: NeedStatus;
+}
+
+/** One "gives rise to" link: the Requirement the need led to. */
+export interface NeedRequirement {
+  link_id: string;
+  id: string;
+  unique_code: string;
+  title: string;
+}

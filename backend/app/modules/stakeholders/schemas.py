@@ -4,7 +4,7 @@ Module: modules.stakeholders.schemas
 Pydantic request/response schemas for the Stakeholders & Personas module's
 org- and project-scoped routers (Phase 1.1: Persona, persona types, weight
 overrides, comments; Phase 1.2: Stakeholder, its representation links and the
-cadence hint). Type-vocabulary and file schemas are shared by both artefacts.
+cadence hint; Phase 2: Stakeholder Need and its links). Type-vocabulary and file schemas are shared by both artefacts.
 
 `PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the
 request body change, so a nullable field (weight, owner, champion, type,
@@ -20,6 +20,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.modules.stakeholders.enums import (
+    NeedStatus,
     PersonaScope,
     PersonaStatus,
     StakeholderScope,
@@ -394,3 +395,116 @@ StakeholderTypeOut = PersonaTypeOut
 StakeholderTransitionRequest = PersonaTransitionRequest
 StakeholderCommentCreate = PersonaCommentCreate
 StakeholderCommentUpdate = PersonaCommentUpdate
+
+
+# --- Stakeholder Need (Phase 2) -----------------------------------------------
+
+
+class NeedCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=300)
+    description: str = ""
+    rationale: str = ""
+    owner_id: UUID | None = None
+
+
+class NeedUpdate(BaseModel):
+    """Partial update; `status` is not editable here — use the lifecycle endpoints."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = None
+    rationale: str | None = None
+    owner_id: UUID | None = None
+    change_note: str = ""
+
+
+class NeedOut(BaseModel):
+    """A need merged with its current version."""
+
+    id: UUID
+    project_id: UUID
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    archived_by: UUID | None
+
+    name: str
+    description: str
+    rationale: str
+    status: NeedStatus
+    owner_id: UUID | None
+    version_number: int
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class NeedVersionOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    need_id: UUID
+    version_number: int
+    valid_from: datetime
+    valid_to: datetime | None
+    name: str
+    description: str
+    rationale: str
+    status: NeedStatus
+    owner_id: UUID | None
+    change_note: str
+    created_by: UUID
+    created_at: datetime
+
+
+class NeedCommentOut(BaseModel):
+    id: UUID
+    need_id: UUID
+    author_id: UUID
+    author_display_name: str
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+    attachments: list[FileAssetOut] = []
+
+
+class NeedHolderOut(BaseModel):
+    """One "has need" link seen from the need: the Stakeholder or Persona that
+    has it (`kind`), its id, display name and scope, and the link's own id."""
+
+    link_id: UUID
+    kind: Literal["stakeholder", "persona"]
+    id: UUID
+    name: str
+    scope: Literal["organization", "project"]
+
+
+class NeedHolderCreate(BaseModel):
+    kind: Literal["stakeholder", "persona"]
+    id: UUID
+
+
+class HeldNeedOut(BaseModel):
+    """One "has need" link seen from a Stakeholder or Persona: the need."""
+
+    link_id: UUID
+    id: UUID
+    name: str
+    status: NeedStatus
+
+
+class NeedRequirementOut(BaseModel):
+    """One "gives rise to" link: the Requirement (id, unique code, title)."""
+
+    link_id: UUID
+    id: UUID
+    unique_code: str
+    title: str
+
+
+class NeedRequirementCreate(BaseModel):
+    requirement_id: UUID
+
+
+NeedTransitionRequest = PersonaTransitionRequest
+NeedCommentCreate = PersonaCommentCreate
+NeedCommentUpdate = PersonaCommentUpdate

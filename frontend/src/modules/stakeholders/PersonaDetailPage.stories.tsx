@@ -29,6 +29,7 @@ function mockDetailApis(current: Persona, versions: unknown[] = [], represented:
     }
     if (path === `${PROJECT_BASE}/persona-types`) return [{ id: "type-primary", name: "Primary", display_order: 0, is_enabled: true, source: "org" }];
     if (path.endsWith(`/personas/${PERSONA_ID}/stakeholders`)) return represented;
+    if (path.endsWith(`/personas/${PERSONA_ID}/needs`)) return [];
     if (path.endsWith(`/personas/${PERSONA_ID}`)) return current;
     if (path.endsWith("/versions")) return versions;
     if (path.endsWith("/comments")) return [];

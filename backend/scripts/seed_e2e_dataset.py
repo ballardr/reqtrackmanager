@@ -333,6 +333,9 @@ def set_persona_weight_override(headers: dict, project_id: str, persona_id: str,
 # its own disposable org rather than depending on these.
 STAKEHOLDER_ORG_NAME = "E2E Safety Regulator"
 STAKEHOLDER_PROJECT_NAME = "E2E Plant Manager"
+# Stakeholder Needs (Phase 2) — one on the Gamma-3 hierarchy parent, held by the
+# project stakeholder; the need Playwright spec builds its own disposable data.
+NEED_PROJECT_NAME = "E2E Keep the line running"
 
 
 def create_stakeholder(
@@ -355,6 +358,29 @@ def create_stakeholder(
         )
         r.raise_for_status()
     return stakeholder
+
+
+def create_need(
+    headers: dict, project_id: str, *, activate: bool = False, holders: tuple[tuple[str, str], ...] = (),
+    requirement_ids: tuple[str, ...] = (), **fields,
+) -> dict:
+    """Creates a project Stakeholder Need, optionally activating it, linking the given `(kind, id)` Stakeholder/Persona
+    holders ("has need") and the given Requirement ids ("gives rise to")."""
+    base = f"{BASE}/projects/{project_id}/modules/stakeholders/needs"
+    r = httpx.post(base, json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    need = r.json()
+    if activate:
+        r = httpx.post(f"{base}/{need['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        need = r.json()
+    for kind, holder_id in holders:
+        r = httpx.post(f"{base}/{need['id']}/holders", json={"kind": kind, "id": holder_id}, headers=headers, timeout=30)
+        r.raise_for_status()
+    for requirement_id in requirement_ids:
+        r = httpx.post(f"{base}/{need['id']}/requirements", json={"requirement_id": requirement_id}, headers=headers, timeout=30)
+        r.raise_for_status()
+    return need
 
 
 def get_stakeholder_levels(headers: dict, org_id: str) -> dict[str, dict[str, str]]:
@@ -540,10 +566,17 @@ def main() -> None:
         contact_info="regulator@e2e.example.com", target_cadence="quarterly",
         influence_level_id=levels["influence"]["High"], interest_level_id=levels["interest"]["Medium"],
     )
-    create_stakeholder(
+    plant_manager = create_stakeholder(
         h_g, project_id=gamma3["id"], activate=True, name=STAKEHOLDER_PROJECT_NAME, role="Plant manager",
         goals_needs="Keep the line running.", target_cadence="monthly",
         influence_level_id=levels["influence"]["Medium"], interest_level_id=levels["interest"]["High"],
+    )
+
+    print("Seeding a Stakeholder Need on Gamma-3, held by the project Stakeholder and the org Field Inspector persona...")
+    create_need(
+        h_g, gamma3["id"], activate=True, holders=(("stakeholder", plant_manager["id"]), ("persona", field_inspector["id"])),
+        name=NEED_PROJECT_NAME, description="Unplanned stoppages must be diagnosed within minutes.",
+        rationale="Each stoppage costs an hour of line output.",
     )
 
     print("Assigning project-scoped roles...")

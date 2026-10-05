@@ -4,7 +4,7 @@ Module: modules.stakeholders.enums
 Enums for the Stakeholders & Personas module (docs/plans/module-02-
 stakeholders-and-personas-plan.md).
 
-Persona and Stakeholder each have their own scope/status enums rather than
+Persona, Stakeholder and Stakeholder Need each have their own status enums rather than
 reusing another artefact's: each artefact owns its vocabulary so a change to
 one lifecycle never silently changes another's (the same reasoning Context &
 Strategy's per-artefact enums follow).
@@ -65,3 +65,14 @@ class TargetCadence(str, enum.Enum):
     MONTHLY = "monthly"
     QUARTERLY = "quarterly"
     YEARLY = "yearly"
+
+
+class NeedStatus(str, enum.Enum):
+    """Stakeholder Need lifecycle (Phase 2): `Draft -> Active -> Retired`, no
+    approval gate (Phase 0 resolution 6); `RETIRED -> ACTIVE` is allowed (see
+    `service.NEED_ALLOWED_TRANSITIONS`). A Need has no scope enum: it is always
+    project-scoped (see `models.StakeholderNeed`)."""
+
+    DRAFT = "draft"
+    ACTIVE = "active"
+    RETIRED = "retired"

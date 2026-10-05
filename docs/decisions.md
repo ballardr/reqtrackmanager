@@ -9202,3 +9202,37 @@ flowchart LR
 - *Known limitation, unchanged:* contact info is readable by every member who can see the stakeholder (Phase 0 resolution 6: view is open to all project members); field-level restriction is not built.
 
 Tests: 36 backend tests for Stakeholder (CRUD, scope, versions, lifecycle, types, level validation, cadence-hint quadrants, level usage/reassignment, create-from-user, represents from both ends and tenancy filtering, erasure, RBAC, FGAC, gates, isolation, comments, files, audit, org deletion) plus bundle round-trips and the MCP manifest; Storybook for every new component (and the refactored Persona pages); Playwright `modules/stakeholders/stakeholder-lifecycle.spec.ts` (shared setup now in `helpers.ts`, also used by the Persona spec). Both seed scripts gain Stakeholders.
+
+## Module 2 (Stakeholders & Personas) Phase 2 — Stakeholder Needs (2026-10-05)
+
+Built Stakeholder Need end to end in the existing `stakeholders` module: backend, bundle hooks, MCP tools, UI, seeds, tests. Plan: [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeholders-and-personas-plan.md).
+
+```mermaid
+flowchart LR
+    ST[Stakeholder] -- "has need (ArtefactLink)" --> N[Stakeholder Need<br/>project-scoped]
+    PE[Persona] -- "has need (ArtefactLink)" --> N
+    N -- "gives rise to (ArtefactLink)" --> R[Requirement<br/>same project]
+    ST -. "direct link still valid" .-> R
+```
+
+- **A Need is project-scoped only: no `scope` column, no org router, no org bundle half.** It sits between a person and the project's own Requirements, so an org-level reading has nothing to link to; an org Stakeholder or Persona can still *have* a project's need. Phase 0 resolution 2's org/project scope was stated for Stakeholder and Persona. (Decided by: Agent.)
+- **Sub-component `stakeholder_need`** and one role, `stakeholder_need_owner` (project, carries the FGAC `(stakeholder_need, manage)` atom). No org role, since there is no org scope; a Stakeholder or Persona role confers nothing on Needs (tested). (Decided by: Agent, following Phases 1.1/1.2.)
+- **Nested-projects check (required for new project-scoped tables).** Needs are records, not a closed per-project definition vocabulary (the `ActionTypeDefinition` shape), and Phase 2 adds no config table, so no ancestor fallback applies and no root-only seeding hook exists. Checked explicitly here. (Decided by: Agent.)
+- **Fields are deliberately thin**: name, the need in the stakeholder's own words (`description`), `rationale`, status, owner. §10.4's point is the *wording* of the need, so priority/severity are left to the Requirement it gives rise to and to Module 1's scoring. No type vocabulary. (Decided by: Agent.)
+- **Links.** "Has need" runs Stakeholder/Persona → Need and "gives rise to" Need → Requirement, both typed `ArtefactLink`s with org link types created on first use. `service.get_or_create_link_type`/`link_type_id_if_exists` were extracted from the "Represents" helper and that helper now calls them, rather than a third copy. The holder must be visible to the need's project (its own or the org's); the Requirement must belong to the *same* project; anything else 404s. A Stakeholder/Persona's page lists only this project's needs, so an org-wide record shared by several projects never reveals another project's needs. REST only: MCP *link* tools stay in Phase 3, as for "represents". (Decided by: Agent.)
+- **The core "approved Requirement needs a change request to be linked" gate (platform review Phase 8) does not apply**: like Decisions' "Implements" links, module-owned links to a Requirement aren't gated by it. Recorded rather than silently skipped. (Decided by: Agent.)
+- **No erasure for Needs.** A Need is not itself personal data, so it keeps the archive path only; erasing a Stakeholder removes its "has need" links and leaves the Need (tested). A need's free text can still quote a person, so the project bundle is treated as Confidential like the Stakeholder half. (Decided by: Agent.)
+- **Shared code instead of copies.** Backend: the existing `AttachmentKit` (made to tolerate a record with no `organization_id`) and `apply_value_error_as_conflict`/`validate_people`. Frontend: `RecordListView` (its Type column/filter and Scope column are now optional), `RecordLifecycleControls`, `RecordDiscussion`, `RecordDetailParts`, `RecordFormFields`, `buildRecordApi`, and `RepresentationPanel` for all three link lists and the read-only "Needs" list (`HeldNeedsPanel`) on the Stakeholder and Persona pages. (Decided by: Agent.)
+- **Bundles**: needs travel in the *project* bundle with holders by name and scope, Requirements by unique code and attachments; the Persona and Stakeholder halves import first, and a holder or Requirement the target lacks is skipped with a warning. (Decided by: Agent.)
+- **Docs website not updated yet**, as Phases 1.1/1.2: the plan sequences it as Phase 7. (Decided by: User, via the plan.)
+
+**Core-boundary checks.** No core file imports `modules/stakeholders/`. The only core frontend file touched is `modules/navIcons.ts`'s open icon palette (a generic `target`), the same way Phases 1.1/1.2 added `users`/`user-round`; the "Needs" nav entry comes from `additional_nav_entries`. `stakeholder_need` is a registered artefact type, so no core enum/column/stylesheet needed a per-module value.
+
+**Review (identify → verify → remediate).**
+- *Tenancy:* every id lookup is scoped to the project and 404s across projects and organisations (tested for read, versions, comments, holders, requirements and files); owner must be an organisation member; holders and Requirements are validated against the need's own project (tested with a sibling project's records and another tenant's).
+- *Authorisation:* every mutation, including link changes and direct file upload, needs the owner role or the FGAC grant (tested); comments stay open to every member who can view; file download goes through the module's file-owner hook (tested).
+- *Audit:* every mutating action writes an event through `services/audit.py` (tested); events carry ids, never filenames' content beyond the shared kit's existing behaviour.
+- *Found and fixed while building:* `AttachmentKit` assumed every record has an `organization_id`, which a project-only record doesn't; it now reads it defensively.
+- *Known limitation:* a need's text is visible to every project member who can view the module (Phase 0 resolution 6); no field-level restriction.
+
+Tests: 17 backend tests for Needs (CRUD and versions, lifecycle and archive, holders from both ends, shared-org-holder filtering, holder and Requirement tenancy, erasing a linked Stakeholder, RBAC/FGAC/role isolation, module and sub-component gates, cross-tenant and sibling isolation, comments/files, org deletion, audit, registration) plus two bundle round-trips and the extended MCP manifest test; Storybook for every new component (and the extended Stakeholder/Persona pages); Playwright `modules/stakeholders/need-lifecycle.spec.ts`. Both seed scripts gain Needs.

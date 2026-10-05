@@ -1425,6 +1425,29 @@ def create_stakeholder(
     return stakeholder
 
 
+def create_need(
+    headers: dict, project_id: str, *, activate: bool = False, holders: tuple[tuple[str, str], ...] = (),
+    requirement_ids: tuple[str, ...] = (), **fields,
+) -> dict:
+    """Creates a project Stakeholder Need, optionally activating it, linking the given `(kind, id)` Stakeholder/Persona
+    holders ("has need") and the given Requirement ids ("gives rise to")."""
+    base = f"{BASE}/projects/{project_id}/modules/stakeholders/needs"
+    r = httpx.post(base, json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    need = r.json()
+    if activate:
+        r = httpx.post(f"{base}/{need['id']}/activate", json={}, headers=headers, timeout=30)
+        r.raise_for_status()
+        need = r.json()
+    for kind, holder_id in holders:
+        r = httpx.post(f"{base}/{need['id']}/holders", json={"kind": kind, "id": holder_id}, headers=headers, timeout=30)
+        r.raise_for_status()
+    for requirement_id in requirement_ids:
+        r = httpx.post(f"{base}/{need['id']}/requirements", json={"requirement_id": requirement_id}, headers=headers, timeout=30)
+        r.raise_for_status()
+    return need
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -2353,6 +2376,21 @@ def main() -> None:
     )
     print(f"  Stakeholders: {stakeholder_authority['name']!r} (org, Regulator, Active, High/Medium, quarterly),"
           f" {stakeholder_fleet['name']!r} (Falcon-3, Customer, Active, Medium/High, monthly)")
+
+    print("Seeding Stakeholder Needs (Module 2 Phase 2) — Falcon-3's fleet manager needs a trustworthy status display,"
+          " which gave rise to its first requirement; the BVLOS Remote Pilot persona has the same need...")
+    need_status_display = create_need(
+        h_pm, drone["id"], activate=True, holders=(("stakeholder", stakeholder_fleet["id"]), ("persona", drone_operator_persona["id"])),
+        requirement_ids=(drone_reqs[0]["id"],), name="Trust the flight status at a glance",
+        description="My pilots must be able to tell, in under a second, whether the redundant flight controllers agree.",
+        rationale="Two incidents last year where a pilot misread a degraded-channel warning.",
+    )
+    create_need(
+        h_pm, drone["id"], holders=(("stakeholder", stakeholder_authority["id"]),), name="Evidence without chasing engineers",
+        description="Certification evidence should be traceable to the requirement it supports without a meeting.",
+    )
+    print(f"  Needs: {need_status_display['name']!r} (Active, held by Dana Whitfield and the BVLOS Remote Pilot persona,"
+          f" gave rise to {drone_reqs[0]['name']!r}), plus a Draft need held by Pat Okafor")
 
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")

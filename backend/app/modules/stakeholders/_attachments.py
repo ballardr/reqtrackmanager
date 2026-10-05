@@ -6,8 +6,8 @@ module (Persona, Stakeholder). Each artefact has its own module-local tables
 (Phase 0 resolution 8), so the operations are parameterised by an
 `AttachmentKit` naming those tables rather than copied per artefact.
 
-All operations are scope-agnostic: an artefact is "org-scoped" exactly when its
-`organization_id` is set, which decides whether uploads are org shared
+All operations are scope-agnostic: an artefact is "org-scoped" exactly when it has
+an `organization_id` set (a project-only artefact such as a Need has none), which decides whether uploads are org shared
 resources. Callers pass the audit scope (`project_id=` / `organization_id=`) as
 `**scope_ids`, and are responsible for resolving/authorising the artefact and
 for any manage-role check on direct files.
@@ -140,7 +140,7 @@ async def attach_to_comment(
     asset = upload_file(
         db, organization_id=organization_id, uploaded_by=user.id, filename=file.filename or "file",
         content_type=file.content_type or "application/octet-stream", data=data,
-        is_org_resource=artefact.organization_id is not None,
+        is_org_resource=getattr(artefact, "organization_id", None) is not None,
     )
     db.flush()
     db.add(kit.comment_file_model(comment_id=comment.id, file_id=asset.id, uploaded_by=user.id))
@@ -182,7 +182,7 @@ async def attach_file(
     asset = upload_file(
         db, organization_id=organization_id, uploaded_by=user.id, filename=file.filename or "file",
         content_type=file.content_type or "application/octet-stream", data=data,
-        is_org_resource=artefact.organization_id is not None,
+        is_org_resource=getattr(artefact, "organization_id", None) is not None,
     )
     db.flush()
     db.add(kit.file_model(**{kit.fk: artefact.id, "file_id": asset.id, "linked_by": user.id, "created_at": asset.created_at}))

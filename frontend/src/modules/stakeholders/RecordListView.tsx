@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/RecordListView
  *
- * The list shared by every record kind in this module (Persona, Stakeholder),
+ * The list shared by every record kind in this module (Persona, Stakeholder, Need),
  * on both the project page and the organisation panel: the `DirectoryTable` +
  * `FilterPanel` + "New …" `Modal` shape every module artefact list uses, with
  * status and type filters and the standard archived toggle. What differs per
@@ -10,9 +10,10 @@
  *
  * Status, type and scope render through their label maps; status and type
  * badges are `FilterBadge`s because the same page filters on both (style
- * guide principle 10). The Name, Type, Scope and Status columns are fixed;
- * `columnsBeforeType` and `columnsAfterScope` slot the kind's own columns
- * around them.
+ * guide principle 10). The Name, Type, Scope and Status columns are fixed
+ * (Type and Scope are left out for a kind without them, e.g. a project-only
+ * Need: pass no `typeName`/`scopeLabels`); `columnsBeforeType` and
+ * `columnsAfterScope` slot the kind's own columns around them.
  */
 import { useState, type ReactNode } from "react";
 
@@ -27,7 +28,7 @@ export interface ListedRecord {
   id: string;
   name: string;
   status: string;
-  scope: string;
+  scope?: string;
 }
 
 export function RecordListView<R extends ListedRecord, V>({
@@ -63,8 +64,10 @@ export function RecordListView<R extends ListedRecord, V>({
   showScope: boolean;
   statusLabel: Record<string, string>;
   statusTone: Record<string, BadgeTone>;
-  scopeLabels: Record<string, string>;
-  typeName: (record: R) => string | null;
+  /** Omit for a kind that has no scope. */
+  scopeLabels?: Record<string, string>;
+  /** Omit for a kind that has no type: the Type column and filter are left out. */
+  typeName?: (record: R) => string | null;
   /** The text the search box matches against. */
   searchText: (record: R) => string;
   columnsBeforeType: DirectoryColumn<R>[];
@@ -85,10 +88,10 @@ export function RecordListView<R extends ListedRecord, V>({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const typeNames = Array.from(new Set(records.map(typeName).filter((n): n is string => !!n))).sort();
+  const typeNames = typeName ? Array.from(new Set(records.map(typeName).filter((n): n is string => !!n))).sort() : [];
   const filtered = records.filter((r) => {
     if (statusFilter && r.status !== statusFilter) return false;
-    if (typeFilter && typeName(r) !== typeFilter) return false;
+    if (typeFilter && typeName?.(r) !== typeFilter) return false;
     if (search && !searchText(r).toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -96,18 +99,22 @@ export function RecordListView<R extends ListedRecord, V>({
   const columns: DirectoryColumn<R>[] = [
     { key: "name", label: "Name", render: (r) => r.name },
     ...columnsBeforeType,
-    {
-      key: "type", label: "Type",
-      render: (r) => {
-        const name = typeName(r);
-        return name ? (
-          <FilterBadge active={typeFilter === name} onClick={() => setTypeFilter(typeFilter === name ? "" : name)}>
-            {name}
-          </FilterBadge>
-        ) : "—";
-      },
-    },
-    ...(showScope ? [{ key: "scope", label: "Scope", render: (r: R) => scopeLabels[r.scope] } as DirectoryColumn<R>] : []),
+    ...(typeName
+      ? [{
+          key: "type", label: "Type",
+          render: (r: R) => {
+            const name = typeName(r);
+            return name ? (
+              <FilterBadge active={typeFilter === name} onClick={() => setTypeFilter(typeFilter === name ? "" : name)}>
+                {name}
+              </FilterBadge>
+            ) : "—";
+          },
+        } as DirectoryColumn<R>]
+      : []),
+    ...(showScope && scopeLabels
+      ? [{ key: "scope", label: "Scope", render: (r: R) => (r.scope ? scopeLabels[r.scope] : "—") } as DirectoryColumn<R>]
+      : []),
     ...columnsAfterScope,
     {
       key: "status", label: "Status",
@@ -148,14 +155,16 @@ export function RecordListView<R extends ListedRecord, V>({
               ))}
             </select>
           </FilterField>
-          <FilterField label="Type">
-            <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-              <option value="">All types</option>
-              {typeNames.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </FilterField>
+          {typeName && (
+            <FilterField label="Type">
+              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="">All types</option>
+                {typeNames.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </FilterField>
+          )}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
         </FilterPanel>
       </div>

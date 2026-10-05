@@ -9,17 +9,19 @@ re-derive it, and does not need Module 1 for that purpose.
 **Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
 §10 "Module 2 — Stakeholders & Personas".
 
-**Status:** Phase 0 complete (2026-10-05, user sign-off obtained — see
-"Phase 0 resolutions" below). Phase 1 split into 1.1 (Persona) and 1.2
-(Stakeholder) so Module 1 Phase 11's dependency, which needs only Personas,
-unblocks first. Built ahead of the overview's §46 order because Module 1's
+**Status:** Phases 0, 1.1, 1.2 and 2 complete (all 2026-10-05; Phase 0 had user
+sign-off, see "Phase 0 resolutions" below); Phase 3 is next. Phase 1 was split
+into 1.1 (Persona) and 1.2 (Stakeholder) so Module 1 Phase 11's dependency,
+which needs only Personas, unblocked first. Built ahead of the overview's §46 order because Module 1's
 Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-3 / 9 phases complete. **Phase 2 (Stakeholder Needs) is next.** Phase 1.1 (Persona,
-2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder, 2026-10-05) adds the
-Stakeholder artefact, its Influence × Interest scoring scheme and erasure. Phases 4–6
+4 / 9 phases complete. **Phase 3 (Relationships + remaining frontend UI + MCP) is next.**
+Phase 1.1 (Persona, 2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder,
+2026-10-05) adds the Stakeholder artefact, its Influence × Interest scoring scheme and
+erasure; Phase 2 (Stakeholder Needs, 2026-10-05) adds the Need artefact and its "has need"
+and "gives rise to" links. Phases 4–6
 were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 
 | # | Phase | Status |
@@ -27,7 +29,7 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 0 | Exploratory: persona-modelling decision & open questions | [x] Complete (2026-10-05) |
 | 1.1 | Persona: data model, types, weight + override, RBAC, scoring-target hook, UI | [x] Complete (2026-10-05) |
 | 1.2 | Stakeholder: data model, types, RBAC, UI | [x] Complete (2026-10-05) |
-| 2 | Stakeholder Needs (as first-class records) | [ ] Not started |
+| 2 | Stakeholder Needs (as first-class records) | [x] Complete (2026-10-05) |
 | 3 | Relationships + remaining frontend UI + MCP | [ ] Not started |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
 | 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
@@ -406,6 +408,21 @@ with no intermediate: the *need* and the *requirement* are different
 statements at different levels of precision, and losing the need's own
 wording loses the original intent that justifies the requirement's exact
 threshold (why 30 seconds, not 10 or 60).
+
+**Status: complete (2026-10-05).** Same module (`stakeholders`), new
+sub-component `stakeholder_need`, project role `stakeholder_need_owner`.
+Deviation from Phase 0 resolution 2: a Need is **project-scoped only** (no org
+scope or router), since it links to the project's own Requirements
+(**Decided by: Agent**; revisit if org-level needs are wanted). Account,
+deviations and review: `docs/decisions.md`'s "Module 2 Phase 2" entry. Left for
+later phases:
+
+- **Phase 3** still owns the remaining §10.5 relationships (Experiences Pain
+  Point, Consulted on Decision, …) and the MCP *link* tools; the Need's two links
+  shipped here with REST only. Need CRUD/lifecycle MCP tools shipped here.
+- **Phase 4 (Engagements)** links findings to Needs through the same
+  `service.get_or_create_link_type` helper, and a Need appears in the S1–S5
+  reports through `list_holder_needs`/`list_need_holders`.
 
 ## Phase 3 — Relationships + remaining frontend UI + MCP
 

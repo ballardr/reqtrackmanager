@@ -2,7 +2,7 @@
  * Module: modules/stakeholders/StakeholderDetailPage
  *
  * A single Stakeholder's detail: fields, lifecycle, owner, Influence/Interest
- * position and engagement cadence, the Personas they represent, version
+ * position and engagement cadence, the Personas they represent, their needs, version
  * history, attachments, comments, and permanent deletion. One scope-aware
  * component serving three routes (`module.ts`): a project stakeholder and an
  * org stakeholder opened *from a project* (both `/projects/:projectId/...`),
@@ -32,8 +32,9 @@ import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import {
-  orgPersonaApi, orgStakeholderApi, orgStakeholderTypeApi, projectPersonaApi, projectStakeholderApi,
+  orgPersonaApi, orgStakeholderApi, orgStakeholderTypeApi, projectNeedApi, projectPersonaApi, projectStakeholderApi,
 } from "./api";
+import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "./RecordDetailParts";
 import { RecordDiscussion } from "./RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
@@ -266,6 +267,8 @@ export function StakeholderDetailPage() {
                 }
           }
         />
+
+        <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
 
         {!readOnlyInProject && (
           <RecordLifecycleControls

@@ -19,6 +19,9 @@ and Phase 1.2 (Stakeholder — second half of this file):
   Influence × Interest grid read-out (`grid_quadrant`, `suggest_cadence`),
   the Stakeholder → Persona "represents" links, and `erase_stakeholder`
   (hard delete of one person's data, Phase 0 resolution 15).
+- Stakeholder Need (Phase 2, last section): project-scoped CRUD/lifecycle, the
+  "has need" links from Stakeholders/Personas and the "gives rise to" links to
+  Requirements.
 
 Design decisions:
 - No content lock: with no approval gate (Phase 0 resolution 6) a persona
@@ -46,6 +49,7 @@ from app.models.scoring import ScoringLevel
 from app.models.user import User
 from app.modules.registry import ScoringTarget, is_module_subcomponent_enabled
 from app.modules.stakeholders.enums import (
+    NeedStatus,
     PersonaScope,
     PersonaStatus,
     StakeholderScope,
@@ -63,6 +67,8 @@ from app.modules.stakeholders.models import (
     StakeholderComment,
     StakeholderCommentFile,
     StakeholderFile,
+    StakeholderNeed,
+    StakeholderNeedVersion,
     StakeholderTypeDefinition,
     StakeholderVersion,
 )
@@ -76,6 +82,7 @@ from app.services.relationships import create_link, delete_link, get_all_links, 
 STAKEHOLDERS_MODULE_KEY = "stakeholders"
 PERSONA_ARTEFACT_TYPE = "persona"
 STAKEHOLDER_ARTEFACT_TYPE = "stakeholder"
+NEED_ARTEFACT_TYPE = "stakeholder_need"
 
 # §10.2 names no persona categories, so these are Agent defaults (Phase 0
 # resolution 3); all are org-editable.
@@ -215,14 +222,14 @@ def apply_persona_new_version(
     return new_version
 
 
-def archive_record(db: Session, record: Persona | Stakeholder, actor: User) -> None:
-    """Soft-archives a persona or stakeholder."""
+def archive_record(db: Session, record: Persona | Stakeholder | StakeholderNeed, actor: User) -> None:
+    """Soft-archives a persona, stakeholder or need."""
     record.is_archived = True
     record.archived_at = datetime.now(UTC)
     record.archived_by = actor.id
 
 
-def unarchive_record(db: Session, record: Persona | Stakeholder) -> None:
+def unarchive_record(db: Session, record: Persona | Stakeholder | StakeholderNeed) -> None:
     """Reverses `archive_record`."""
     record.is_archived = False
     record.archived_at = None
@@ -629,14 +636,16 @@ def suggest_cadence(quadrant: GridQuadrant | None) -> TargetCadence | None:
 # --- Represents Persona ------------------------------------------------------
 
 
-def _get_or_create_represents_link_type(db: Session, organization_id: uuid.UUID) -> RequirementLinkTypeDefinition:
-    """The org's "Represents"/"Is represented by" link type, created on first
-    use (the same convention Context & Strategy and Decisions follow for their
-    own link types)."""
+def get_or_create_link_type(
+    db: Session, organization_id: uuid.UUID, forward_name: str, reverse_name: str
+) -> RequirementLinkTypeDefinition:
+    """The org's link type named `forward_name`/`reverse_name`, created on
+    first use (the same convention Context & Strategy and Decisions follow for
+    their own link types)."""
     link_type = db.scalar(
         select(RequirementLinkTypeDefinition).where(
             RequirementLinkTypeDefinition.organization_id == organization_id,
-            RequirementLinkTypeDefinition.forward_name == _REPRESENTS_FORWARD,
+            RequirementLinkTypeDefinition.forward_name == forward_name,
         )
     )
     if link_type is not None:
@@ -646,21 +655,31 @@ def _get_or_create_represents_link_type(db: Session, organization_id: uuid.UUID)
         .where(RequirementLinkTypeDefinition.organization_id == organization_id)
     )
     link_type = RequirementLinkTypeDefinition(
-        organization_id=organization_id, forward_name=_REPRESENTS_FORWARD, reverse_name=_REPRESENTS_REVERSE,
-        sort_order=count,
+        organization_id=organization_id, forward_name=forward_name, reverse_name=reverse_name, sort_order=count,
     )
     db.add(link_type)
     db.flush()
     return link_type
 
 
-def _represents_type_id(db: Session, organization_id: uuid.UUID) -> uuid.UUID | None:
+def link_type_id_if_exists(db: Session, organization_id: uuid.UUID, forward_name: str) -> uuid.UUID | None:
+    """The id of the org's link type named `forward_name`, or `None` when it has
+    not been created yet (so there can be no such links to list)."""
     return db.scalar(
         select(RequirementLinkTypeDefinition.id).where(
             RequirementLinkTypeDefinition.organization_id == organization_id,
-            RequirementLinkTypeDefinition.forward_name == _REPRESENTS_FORWARD,
+            RequirementLinkTypeDefinition.forward_name == forward_name,
         )
     )
+
+
+def _get_or_create_represents_link_type(db: Session, organization_id: uuid.UUID) -> RequirementLinkTypeDefinition:
+    """The org's "Represents"/"Is represented by" link type."""
+    return get_or_create_link_type(db, organization_id, _REPRESENTS_FORWARD, _REPRESENTS_REVERSE)
+
+
+def _represents_type_id(db: Session, organization_id: uuid.UUID) -> uuid.UUID | None:
+    return link_type_id_if_exists(db, organization_id, _REPRESENTS_FORWARD)
 
 
 def persona_visible_to_stakeholder(stakeholder: Stakeholder, persona: Persona, organization_id: uuid.UUID) -> bool:
@@ -769,3 +788,215 @@ def resolve_stakeholder_file_project_id(db: Session, file_id: uuid.UUID) -> uuid
     from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_ATTACHMENTS
 
     return resolve_file_project_id(db, STAKEHOLDER_ATTACHMENTS, Stakeholder, file_id)
+
+
+# =============================================================================
+# Stakeholder Need (Phase 2)
+# =============================================================================
+
+NEED_CONTENT_FIELDS: tuple[str, ...] = ("name", "description", "rationale", "status", "owner_id")
+
+NEED_ALLOWED_TRANSITIONS: dict[NeedStatus, frozenset[NeedStatus]] = {
+    NeedStatus.DRAFT: frozenset({NeedStatus.ACTIVE, NeedStatus.RETIRED}),
+    NeedStatus.ACTIVE: frozenset({NeedStatus.RETIRED}),
+    NeedStatus.RETIRED: frozenset({NeedStatus.ACTIVE}),
+}
+
+# §10.5's relationship names for the Need's two link directions.
+HAS_NEED_FORWARD = "Has need"
+HAS_NEED_REVERSE = "Is need of"
+GIVES_RISE_TO_FORWARD = "Gives rise to"
+GIVES_RISE_TO_REVERSE = "Arises from"
+
+
+def get_current_need_version(db: Session, need_id: uuid.UUID) -> StakeholderNeedVersion:
+    """Returns the current (`valid_to IS NULL`) version of a need.
+
+    Raises:
+        ValueError: If none exists (a data-integrity bug).
+    """
+    version = db.scalar(
+        select(StakeholderNeedVersion).where(
+            StakeholderNeedVersion.need_id == need_id, StakeholderNeedVersion.valid_to.is_(None)
+        )
+    )
+    if version is None:
+        raise ValueError(f"Stakeholder Need {need_id} has no current version.")
+    return version
+
+
+def create_need(db: Session, *, project_id: uuid.UUID, creator: User, **content: Any) -> StakeholderNeed:
+    """Creates a need and its version 1 in `DRAFT`.
+
+    Args:
+        project_id: The owning project.
+        creator: The acting user.
+        **content: Any `NEED_CONTENT_FIELDS` except `status`; `name` is required.
+    """
+    need = StakeholderNeed(project_id=project_id, creator_id=creator.id)
+    db.add(need)
+    db.flush()
+    now = datetime.now(UTC)
+    content = {k: v for k, v in content.items() if k in NEED_CONTENT_FIELDS and k != "status"}
+    db.add(StakeholderNeedVersion(
+        need_id=need.id, version_number=1, valid_from=now, valid_to=None, status=NeedStatus.DRAFT,
+        change_note="Initial creation.", created_by=creator.id, created_at=now, **content,
+    ))
+    db.flush()
+    return need
+
+
+def apply_need_new_version(
+    db: Session, need: StakeholderNeed, current_version: StakeholderNeedVersion, actor: User, *,
+    changes: dict[str, Any], change_note: str = "",
+) -> StakeholderNeedVersion:
+    """Closes `current_version` and inserts a new one with `changes` applied
+    over the carried-forward content (a key present in `changes` is applied
+    even when `None`, so the owner can be cleared)."""
+    now = datetime.now(UTC)
+    current_version.valid_to = now
+    values = {f: getattr(current_version, f) for f in NEED_CONTENT_FIELDS}
+    values.update({k: v for k, v in changes.items() if k in NEED_CONTENT_FIELDS})
+    new_version = StakeholderNeedVersion(
+        need_id=need.id, version_number=current_version.version_number + 1, valid_from=now, valid_to=None,
+        change_note=change_note, created_by=actor.id, created_at=now, **values,
+    )
+    db.add(new_version)
+    db.flush()
+    return new_version
+
+
+def transition_need(
+    db: Session, need: StakeholderNeed, current_version: StakeholderNeedVersion, new_status: NeedStatus,
+    actor: User, *, action: str, comment: str | None = None,
+) -> StakeholderNeedVersion:
+    """Applies a lifecycle transition as a new version and audit-logs it.
+
+    Raises:
+        ValueError: If `new_status` is not reachable from the current status.
+    """
+    if new_status not in NEED_ALLOWED_TRANSITIONS[current_version.status]:
+        raise ValueError(
+            f"Cannot move a Stakeholder Need from '{current_version.status.value}' to '{new_status.value}'."
+        )
+    new_version = apply_need_new_version(
+        db, need, current_version, actor, changes={"status": new_status}, change_note=comment or "",
+    )
+    log_event(
+        db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action=action, actor_id=actor.id,
+        project_id=need.project_id, detail={"comment": comment} if comment else None,
+    )
+    return new_version
+
+
+def list_project_needs(db: Session, project_id: uuid.UUID, *, include_archived: bool = False) -> list[StakeholderNeed]:
+    """The project's needs, oldest first."""
+    query = select(StakeholderNeed).where(StakeholderNeed.project_id == project_id)
+    if not include_archived:
+        query = query.where(StakeholderNeed.is_archived.is_(False))
+    return list(db.scalars(query.order_by(StakeholderNeed.created_at)).all())
+
+
+def resolve_need_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
+    """The project owning a file attached to a need (or its comment); `None`
+    for an unknown file."""
+    from app.modules.stakeholders._attachments import resolve_file_project_id
+    from app.modules.stakeholders._need_shared import NEED_ATTACHMENTS
+
+    return resolve_file_project_id(db, NEED_ATTACHMENTS, StakeholderNeed, file_id)
+
+
+# --- Need links --------------------------------------------------------------
+
+# Kinds of record that can have a need.
+NEED_HOLDER_TYPES = (STAKEHOLDER_ARTEFACT_TYPE, PERSONA_ARTEFACT_TYPE)
+
+
+def add_has_need_link(
+    db: Session, holder_type: str, holder_id: uuid.UUID, need: StakeholderNeed, actor: User, *,
+    organization_id: uuid.UUID,
+) -> Any:
+    """Records that a Stakeholder or Persona has `need`. The caller has loaded
+    both records and checked the holder is visible to the need's project.
+
+    Raises:
+        ValueError: If `holder_type` is not a Stakeholder/Persona or the link exists.
+    """
+    if holder_type not in NEED_HOLDER_TYPES:
+        raise ValueError("Only a Stakeholder or a Persona can have a need.")
+    link_type = get_or_create_link_type(db, organization_id, HAS_NEED_FORWARD, HAS_NEED_REVERSE)
+    if get_link_between(
+        db, source_type=holder_type, source_id=holder_id, target_type=NEED_ARTEFACT_TYPE, target_id=need.id,
+        link_type_id=link_type.id,
+    ) is not None:
+        raise ValueError("That record already has this need.")
+    return create_link(
+        db, source_type=holder_type, source_id=holder_id, target_type=NEED_ARTEFACT_TYPE, target_id=need.id,
+        link_type_id=link_type.id, created_by=actor.id,
+    )
+
+
+def list_need_holders(db: Session, need: StakeholderNeed, organization_id: uuid.UUID) -> list[tuple[Any, str, Any]]:
+    """`(link, holder_type, record)` for every Stakeholder/Persona that has `need`."""
+    type_id = link_type_id_if_exists(db, organization_id, HAS_NEED_FORWARD)
+    if type_id is None:
+        return []
+    models = {STAKEHOLDER_ARTEFACT_TYPE: Stakeholder, PERSONA_ARTEFACT_TYPE: Persona}
+    rows = []
+    for link in get_all_links(db, NEED_ARTEFACT_TYPE, need.id):
+        if link.target_id == need.id and link.link_type_id == type_id and link.source_type in models:
+            record = db.get(models[link.source_type], link.source_id)
+            if record is not None:
+                rows.append((link, link.source_type, record))
+    return rows
+
+
+def list_holder_needs(
+    db: Session, holder_type: str, holder_id: uuid.UUID, organization_id: uuid.UUID, project_id: uuid.UUID
+) -> list[tuple[Any, StakeholderNeed]]:
+    """`(link, need)` for every need of this project that the Stakeholder/Persona
+    has (needs of other projects are never shown, since a record can be shared
+    org-wide)."""
+    type_id = link_type_id_if_exists(db, organization_id, HAS_NEED_FORWARD)
+    if type_id is None:
+        return []
+    rows = []
+    for link in get_all_links(db, holder_type, holder_id):
+        if link.source_id == holder_id and link.target_type == NEED_ARTEFACT_TYPE and link.link_type_id == type_id:
+            need = db.get(StakeholderNeed, link.target_id)
+            if need is not None and need.project_id == project_id:
+                rows.append((link, need))
+    return rows
+
+
+def add_gives_rise_to_link(
+    db: Session, need: StakeholderNeed, requirement_id: uuid.UUID, actor: User, *, organization_id: uuid.UUID
+) -> Any:
+    """Records that `need` gave rise to a Requirement (the caller has checked it
+    belongs to the need's project).
+
+    Raises:
+        ValueError: If the link already exists.
+    """
+    link_type = get_or_create_link_type(db, organization_id, GIVES_RISE_TO_FORWARD, GIVES_RISE_TO_REVERSE)
+    if get_link_between(
+        db, source_type=NEED_ARTEFACT_TYPE, source_id=need.id, target_type="requirement", target_id=requirement_id,
+        link_type_id=link_type.id,
+    ) is not None:
+        raise ValueError("This need already gave rise to that Requirement.")
+    return create_link(
+        db, source_type=NEED_ARTEFACT_TYPE, source_id=need.id, target_type="requirement", target_id=requirement_id,
+        link_type_id=link_type.id, created_by=actor.id,
+    )
+
+
+def list_need_requirement_links(db: Session, need: StakeholderNeed, organization_id: uuid.UUID) -> list[Any]:
+    """The "gives rise to" links from `need` to Requirements."""
+    type_id = link_type_id_if_exists(db, organization_id, GIVES_RISE_TO_FORWARD)
+    if type_id is None:
+        return []
+    return [
+        link for link in get_all_links(db, NEED_ARTEFACT_TYPE, need.id)
+        if link.source_id == need.id and link.target_type == "requirement" and link.link_type_id == type_id
+    ]
+

@@ -4,7 +4,7 @@ Module: modules.stakeholders.module
 Registers the Stakeholders & Personas module into the modular feature
 system's registry via `MODULE_DEFINITION` (docs/plans/module-02-stakeholders-
 and-personas-plan.md). Phase 1.1 delivers the Persona artefact, Phase 1.2 the
-Stakeholder artefact.
+Stakeholder artefact, Phase 2 the Stakeholder Need artefact.
 
 Registered contributions:
 - Roles (not additions to core enums): `persona_owner` (project) and
@@ -17,8 +17,10 @@ Registered contributions:
   `(stakeholder, manage)` atom), `org_stakeholder_owner` (org, no atom) and
   `stakeholder_type_admin` (org; also administers the `stakeholder` scoring
   scheme's levels and bands).
-- `artefact_types=("persona", "stakeholder")` so both are valid `ArtefactLink`
-  endpoints and get FGAC atoms.
+- `stakeholder_need_owner` (project; carries the FGAC `(stakeholder_need, manage)`
+  atom) for Stakeholder Needs, which are project-scoped only so have no org role.
+- `artefact_types=("persona", "stakeholder", "stakeholder_need")` so all three
+  are valid `ArtefactLink` endpoints and get FGAC atoms.
 - `scoring_schemes`: the Influence × Interest `stakeholder` scheme (`scoring.py`).
 - `scoring_target_providers["persona"]`: the generic hook Module 1's
   per-persona Pain Point scoring reads (Phase 0 resolution 10), so Context &
@@ -29,8 +31,8 @@ Registered contributions:
   `stakeholder_export.py` for Stakeholders, composed here — Personas first,
   since Stakeholders link to them) so both travel with an organisation/project
   export.
-- Two sub-components, `persona` and `stakeholder`, so a project can switch
-  either off without disabling the whole module.
+- Three sub-components, `persona`, `stakeholder` and `stakeholder_need`, so a
+  project can switch any off without disabling the whole module.
 
 `default_enabled=False`: an organisation opts in explicitly, matching the
 other new modules.
@@ -55,11 +57,13 @@ from app.modules.registry import (
     ModuleSubComponentDefinition,
 )
 from app.modules.stakeholders import export as persona_export
-from app.modules.stakeholders import stakeholder_export
+from app.modules.stakeholders import need_export, stakeholder_export
+from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
 from app.modules.stakeholders.service import (
+    NEED_ARTEFACT_TYPE,
     PERSONA_ARTEFACT_TYPE,
     PERSONA_TYPES,
     STAKEHOLDER_ARTEFACT_TYPE,
@@ -86,22 +90,31 @@ def get_router() -> APIRouter | None:
 def get_project_router() -> APIRouter | None:
     """The project-scoped router (Persona + Stakeholder routes); imported
     lazily like `get_router`."""
+    from app.modules.stakeholders.need_project_router import router as need_router
     from app.modules.stakeholders.project_router import router
     from app.modules.stakeholders.stakeholder_project_router import router as stakeholder_router
 
     combined = APIRouter()
     combined.include_router(router)
     combined.include_router(stakeholder_router)
+    combined.include_router(need_router)
     return combined
 
 
 def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     """`ModuleDefinition.resolve_file_owner_project_id`: the project owning a
-    file attached to a project-scoped persona or stakeholder (or its comment),
-    else `None`."""
-    from app.modules.stakeholders.service import resolve_persona_file_project_id, resolve_stakeholder_file_project_id
+    file attached to a project-scoped persona, stakeholder or need (or its
+    comment), else `None`."""
+    from app.modules.stakeholders.service import (
+        resolve_need_file_project_id,
+        resolve_persona_file_project_id,
+        resolve_stakeholder_file_project_id,
+    )
 
-    return resolve_persona_file_project_id(db, file_id) or resolve_stakeholder_file_project_id(db, file_id)
+    return (
+        resolve_persona_file_project_id(db, file_id) or resolve_stakeholder_file_project_id(db, file_id)
+        or resolve_need_file_project_id(db, file_id)
+    )
 
 
 def _seed_org_defaults(db: Session, organization_id: UUID) -> None:
@@ -123,24 +136,30 @@ def _import_org(db, org, data, users, warnings, resolutions) -> None:
 
 
 def _export_project(db: Session, project):
-    """Project bundle export: both halves' data and attachment assets merged."""
+    """Project bundle export: the three parts' data and attachment assets merged."""
     persona_data, persona_assets = persona_export.export_project_data(db, project)
     stakeholder_data, stakeholder_assets = stakeholder_export.export_project_data(db, project)
-    return {**persona_data, **stakeholder_data}, {**persona_assets, **stakeholder_assets}
+    need_data, need_assets = need_export.export_project_data(db, project)
+    return (
+        {**persona_data, **stakeholder_data, **need_data},
+        {**persona_assets, **stakeholder_assets, **need_assets},
+    )
 
 
 def _import_project(db, project, data, file_bytes_by_ref, current_user, users, warnings) -> None:
-    """Project bundle import: Personas first, since Stakeholders link to them."""
+    """Project bundle import: Personas, then Stakeholders (which link to them),
+    then Needs (which link to both)."""
     persona_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     stakeholder_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+    need_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
 
 
 def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUID]:
-    """`ModuleDefinition.artefact_ids_in_organization`: every persona and
-    stakeholder in the organisation, org-scoped or in one of its projects, for
-    org deletion's polymorphic cleanup."""
+    """`ModuleDefinition.artefact_ids_in_organization`: every persona,
+    stakeholder and need in the organisation, org-scoped or in one of its
+    projects, for org deletion's polymorphic cleanup."""
     from app.models.project import Project
-    from app.modules.stakeholders.models import Persona, Stakeholder
+    from app.modules.stakeholders.models import Persona, Stakeholder, StakeholderNeed
 
     project_ids = select(Project.id).where(Project.organization_id == organization_id)
     ids: set[UUID] = set()
@@ -148,6 +167,7 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
         ids |= set(db.scalars(select(model.id).where(
             or_(model.organization_id == organization_id, model.project_id.in_(project_ids))
         )).all())
+    ids |= set(db.scalars(select(StakeholderNeed.id).where(StakeholderNeed.project_id.in_(project_ids))).all())
     return ids
 
 
@@ -205,13 +225,25 @@ _STAKEHOLDER_FIELD_PARAMS = [
 ]
 
 
+_NEED_ID_PARAM = {
+    "name": "need_id", "type": "uuid", "required": True, "in": "path", "description": "The Stakeholder Need.",
+}
+
+_NEED_FIELD_PARAMS = [
+    _body("description", "string", "The need in the stakeholder's own words."),
+    _body("rationale", "string", "Why it matters, its source or evidence."),
+    _body("owner_id", "uuid", "User who owns this record."),
+]
+
+
 def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
-    """Persona and Stakeholder read and write tools (no approval-gated action
+    """Persona, Stakeholder and Stakeholder Need read and write tools (no approval-gated action
     exists, so no `require_ai_approvals_enabled` handling is needed). There is
     deliberately no MCP tool for erasing a stakeholder: irreversible deletion
     of personal data stays a human action in the UI."""
     persona_path = f"{_PROJECT_ROUTER_PREFIX}/personas/{{persona_id}}"
     stakeholder_path = f"{_PROJECT_ROUTER_PREFIX}/stakeholders/{{stakeholder_id}}"
+    need_path = f"{_PROJECT_ROUTER_PREFIX}/needs/{{need_id}}"
     return (
         McpToolDefinition(
             name="list_personas", description="Lists a project's Personas, including its organisation's shared ones.",
@@ -275,6 +307,37 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             method="POST", path_template=f"{stakeholder_path}/retire",
             params=[_PROJECT_ID_PARAM, _STAKEHOLDER_ID_PARAM, _body("comment", "string", "Optional comment.")],
         ),
+        McpToolDefinition(
+            name="list_stakeholder_needs", description="Lists a project's Stakeholder Needs.", method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/needs", params=[_PROJECT_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="get_stakeholder_need", description="Fetches a single Stakeholder Need.", method="GET",
+            path_template=need_path, params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="create_stakeholder_need", description="Creates a Stakeholder Need in Draft status.", method="POST",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/needs",
+            params=[_PROJECT_ID_PARAM, _body("name", "string", "Short title of the need.", required=True),
+                    *_NEED_FIELD_PARAMS],
+        ),
+        McpToolDefinition(
+            name="update_stakeholder_need",
+            description="Updates a Stakeholder Need; only the fields supplied change.", method="PUT",
+            path_template=need_path,
+            params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM, _body("name", "string", "Short title of the need."),
+                    *_NEED_FIELD_PARAMS, _body("change_note", "string", "Reason for the change.")],
+        ),
+        McpToolDefinition(
+            name="activate_stakeholder_need", description="Moves a Draft or Retired Stakeholder Need to Active.",
+            method="POST", path_template=f"{need_path}/activate",
+            params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM, _body("comment", "string", "Optional comment.")],
+        ),
+        McpToolDefinition(
+            name="retire_stakeholder_need", description="Moves a Draft or Active Stakeholder Need to Retired.",
+            method="POST", path_template=f"{need_path}/retire",
+            params=[_PROJECT_ID_PARAM, _NEED_ID_PARAM, _body("comment", "string", "Optional comment.")],
+        ),
     )
 
 
@@ -286,9 +349,10 @@ MODULE_DEFINITION = ModuleDefinition(
         "— and Stakeholders — the people and groups with an interest in the project, rated on Influence and "
         "Interest — at organisation or project level, with configurable types, a Draft/Active/Retired lifecycle "
         "and full version history. A Stakeholder can represent Personas; Personas are the targets Pain Points are "
-        "scored against."
+        "scored against. Stakeholder Needs record what a Stakeholder or Persona needs, separately from the "
+        "Requirements it gave rise to."
     ),
-    version="0.2.0",
+    version="0.3.0",
     default_enabled=False,
     implemented=True,
     get_router=get_router,
@@ -308,13 +372,19 @@ MODULE_DEFINITION = ModuleDefinition(
                 nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/stakeholders",
                 nav_icon="user-round",
             ),
+            ModuleNavEntry(
+                nav_label="Needs",
+                nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/needs",
+                nav_icon="target",
+            ),
         ),
     ),
-    artefact_types=(PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE),
+    artefact_types=(PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE),
     artefact_ids_in_organization=_artefact_ids_in_organization,
     sub_components=(
         ModuleSubComponentDefinition(key="persona", name="Personas", default_enabled=True),
         ModuleSubComponentDefinition(key="stakeholder", name="Stakeholders", default_enabled=True),
+        ModuleSubComponentDefinition(key="stakeholder_need", name="Stakeholder Needs", default_enabled=True),
     ),
     scoring_schemes=(STAKEHOLDER_SCORING_SCHEME,),
     scoring_target_providers={PERSONA_ARTEFACT_TYPE: persona_scoring_targets},
@@ -362,6 +432,14 @@ MODULE_DEFINITION = ModuleDefinition(
                 "levels, default model and rating bands."
             ),
             scope="org",
+        ),
+        ModuleRoleDefinition(
+            role_key="stakeholder_need_owner", name="Stakeholder Need Owner",
+            description=(
+                "Creates, edits and retires the project's Stakeholder Needs and links them to the Stakeholders and "
+                "Personas that have them and the Requirements they gave rise to."
+            ),
+            scope="project", permissions=(NEED_MANAGE_PERMISSION,),
         ),
     ),
     mcp_tools=_build_mcp_tools(),

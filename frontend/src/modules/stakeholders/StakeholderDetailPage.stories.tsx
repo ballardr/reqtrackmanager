@@ -6,7 +6,7 @@ import type { OrgUser } from "../../api/types";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildPersona, buildStakeholder, buildStakeholderScheme } from "./fixtures";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
-import type { CadenceHint, RepresentedLink, Stakeholder } from "./types";
+import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder } from "./types";
 
 const PROJECT_ID = "project-1";
 const STAKEHOLDER_ID = "stakeholder-1";
@@ -24,9 +24,10 @@ const HINT: CadenceHint = { quadrant: "manage_closely", suggested_cadence: "mont
 interface Mocks {
   versions?: unknown[];
   represents?: RepresentedLink[];
+  needs?: HeldNeed[];
 }
 
-function mockDetailApis(current: Stakeholder, { versions = [], represents = [] }: Mocks = {}) {
+function mockDetailApis(current: Stakeholder, { versions = [], represents = [], needs = [] }: Mocks = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === "/api/v1/orgs/org-1/users") return ORG_USERS;
@@ -36,6 +37,7 @@ function mockDetailApis(current: Stakeholder, { versions = [], represents = [] }
     if (path === `${PROJECT_BASE}/personas`) return [buildPersona(), buildPersona({ id: "persona-3", name: "Control Room Operator" })];
     if (path.startsWith(`${PROJECT_BASE}/stakeholders/cadence-hint`)) return HINT;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/personas`)) return represents;
+    if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/needs`)) return needs;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}`)) return current;
     if (path.endsWith("/versions")) return versions;
     if (path.endsWith("/comments")) return [];
@@ -224,6 +226,16 @@ export const EditOpensThePrefilledForm: Story = {
     const dialog = within(within(document.body).getByRole("dialog", { name: "Edit Pat Regulator" }));
     await expect(dialog.getByLabelText("Stakeholder name")).toHaveValue("Pat Regulator");
     await expect(dialog.getByLabelText("Target engagement cadence")).toHaveValue("quarterly");
+  },
+};
+
+export const ListsTheNeedsTheStakeholderHas: Story = {
+  beforeEach: () =>
+    mockDetailApis(buildStakeholder(), { needs: [{ link_id: "n1", id: "need-1", name: "Diagnose faults quickly", status: "active" }] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "Diagnose faults quickly (Active)" });
+    await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/needs/need-1`);
   },
 };
 

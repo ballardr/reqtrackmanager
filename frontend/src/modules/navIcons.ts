@@ -31,6 +31,7 @@ import {
   Puzzle,
   Scale,
   ShieldCheck,
+  Target,
   Telescope,
   UserRound,
   Users,
@@ -47,6 +48,7 @@ const ICONS_BY_NAME: Record<string, LucideIcon> = {
   "circle-help": CircleHelp,
   users: Users,
   "user-round": UserRound,
+  target: Target,
 };
 
 /** The same generic fallback `nav_icon`'s own backend default resolves to

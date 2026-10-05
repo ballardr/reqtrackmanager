@@ -3,11 +3,13 @@ import { createElement } from "react";
 import { ProjectScoringSettings } from "../../components/ProjectScoringSettings";
 import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
+import { NeedDetailPage } from "./NeedDetailPage";
 import { OrgPersonasPanel } from "./OrgPersonasPanel";
 import { OrgPersonaTypesPanel } from "./OrgPersonaTypesPanel";
 import { OrgStakeholdersPanel } from "./OrgStakeholdersPanel";
 import { OrgStakeholderTypesPanel } from "./OrgStakeholderTypesPanel";
 import { PersonaDetailPage } from "./PersonaDetailPage";
+import { ProjectNeedsPage } from "./ProjectNeedsPage";
 import { ProjectPersonasPage } from "./ProjectPersonasPage";
 import { ProjectPersonaTypesPanel } from "./ProjectPersonaTypesPanel";
 import { ProjectStakeholdersPage } from "./ProjectStakeholdersPage";
@@ -20,12 +22,13 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  *
  * The Stakeholders & Personas module's frontend registration (docs/plans/
  * module-02-stakeholders-and-personas-plan.md Phase 1.1 — Persona, Phase 1.2 —
- * Stakeholder), the mirror of `backend/app/modules/stakeholders/module.py`.
+ * Stakeholder, Phase 2 — Stakeholder Need), the mirror of `backend/app/modules/stakeholders/module.py`.
  * Auto-discovered by `modules/registry.ts` (`import.meta.glob('./*\/module.ts')`),
  * so no core file is edited to add it.
  *
  * - `routes` (project-scoped, gated on the project's enabled-modules list):
- *   the Persona and Stakeholder list and detail pages. A detail route is also
+ *   the Persona, Stakeholder and Need list and detail pages (a Need is
+ *   project-scoped only, so it has no global route or org panel). A detail route is also
  *   used for an org record opened from a project, so a persona's weight
  *   override stays reachable.
  * - `globalRoutes`: the org-scoped detail pages, for an org record opened from
@@ -48,6 +51,8 @@ export const moduleDefinition: TierAModuleDefinition = {
       path: "/projects/:projectId/modules/stakeholders/stakeholders/:stakeholderId",
       element: createElement(StakeholderDetailPage),
     },
+    { path: "/projects/:projectId/modules/stakeholders/needs", element: createElement(ProjectNeedsPage) },
+    { path: "/projects/:projectId/modules/stakeholders/needs/:needId", element: createElement(NeedDetailPage) },
   ],
   globalRoutes: [
     { path: "/orgs/:organizationId/modules/stakeholders/personas/:personaId", element: createElement(PersonaDetailPage) },

@@ -6,7 +6,7 @@
  * shape, and the `stakeholder` scoring scheme the Stakeholder form reads.
  */
 import type { ScoringScheme } from "../../api/scoring";
-import type { Persona, Stakeholder } from "./types";
+import type { Need, Persona, Stakeholder } from "./types";
 
 /** A complete project-scoped, active `Persona` with `overrides` applied. */
 export function buildPersona(overrides: Partial<Persona> = {}): Persona {
@@ -59,5 +59,17 @@ export function buildStakeholderScheme(): ScoringScheme {
     }],
     system_default_model_key: "influence_x_interest", default_model_key: "influence_x_interest",
     default_model_source: "system",
+  };
+}
+
+/** A complete, active `Need` of project-1 with `overrides` applied. */
+export function buildNeed(overrides: Partial<Need> = {}): Need {
+  return {
+    id: "need-1", project_id: "project-1", creator_id: "user-1", is_archived: false, archived_at: null,
+    archived_by: null, name: "Diagnose faults quickly",
+    description: "I need to find out what is wrong with a unit without a laptop.",
+    rationale: "Observed on site visits; each delay costs an hour.", status: "active", owner_id: null,
+    version_number: 1, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
+    ...overrides,
   };
 }

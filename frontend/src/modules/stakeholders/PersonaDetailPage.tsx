@@ -38,7 +38,8 @@ import { OverridePill } from "../../components/OverridePill";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { orgPersonaApi, orgPersonaTypeApi, projectPersonaApi } from "./api";
+import { orgPersonaApi, orgPersonaTypeApi, projectNeedApi, projectPersonaApi } from "./api";
+import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { PersonaFormModal } from "./PersonaFormModal";
 import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "./RecordDetailParts";
 import { RecordDiscussion } from "./RecordDiscussion";
@@ -253,6 +254,8 @@ export function PersonaDetailPage() {
           load={() => scopedApi.listStakeholders(scopeId, persona.id)}
           linkFor={(stakeholder) => `${projectId ? "/projects" : "/orgs"}/${scopeId}/modules/stakeholders/stakeholders/${stakeholder.id}`}
         />
+
+        <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listPersonaNeeds(projectId ?? "", persona.id)} />
 
         {!readOnlyInProject && (
           <RecordLifecycleControls

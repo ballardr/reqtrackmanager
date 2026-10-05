@@ -26,6 +26,8 @@ tables):
 - `PersonaComment` / `PersonaCommentFile` / `PersonaFile` — module-local
   comment and attachment tables (resolution 8), since extending the core
   `ReviewTargetType` enum would be a per-module edit to a core file.
+- `StakeholderNeed` and its version/comment/file tables (Phase 2, end of this
+  file) — a project-scoped record of one stakeholder or persona need.
 """
 
 from __future__ import annotations
@@ -52,6 +54,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.modules.stakeholders.enums import (
+    NeedStatus,
     PersonaScope,
     PersonaStatus,
     StakeholderScope,
@@ -505,6 +508,122 @@ class StakeholderFile(UUIDPKMixin, Base):
 
     stakeholder_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("stakeholders.id", ondelete="CASCADE")
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Stakeholder Need (Phase 2) -----------------------------------------------
+
+
+class StakeholderNeed(UUIDPKMixin, TimestampMixin, Base):
+    """A Stakeholder Need's stable identity. Always project-scoped (Phase 2,
+    Decided by: Agent): a need is the intermediate statement between a person
+    and the project's own Requirements, so it has no organisation-level reading.
+    The Stakeholders/Personas that have it, and the Requirements it gave rise
+    to, are `ArtefactLink`s.
+
+    Attributes:
+        project_id: The owning project.
+        creator_id: Who created the record.
+        is_archived / archived_at / archived_by: Soft-delete.
+    """
+
+    __tablename__ = "stakeholder_needs"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    versions: Mapped[list[StakeholderNeedVersion]] = relationship(
+        back_populates="need", order_by="StakeholderNeedVersion.version_number"
+    )
+
+
+class StakeholderNeedVersion(UUIDPKMixin, Base):
+    """One point-in-time snapshot of a Stakeholder Need's content (temporal
+    shape copied from `PersonaVersion`).
+
+    Attributes:
+        valid_from / valid_to: Effective interval; `valid_to` is null for the
+            current version.
+        name: Short title of the need.
+        description: The need in the stakeholder's own words (§10.4: kept
+            separate from the requirement that answers it).
+        rationale: Why it matters, its source or evidence.
+        status: Lifecycle state.
+        owner_id: The user responsible for the record.
+        change_note: Free-text reason for the change.
+        created_by / created_at: Who made this snapshot, and when.
+    """
+
+    __tablename__ = "stakeholder_need_versions"
+    __table_args__ = (
+        UniqueConstraint("need_id", "version_number"),
+        Index(
+            "ix_stakeholder_need_versions_current", "need_id", unique=False,
+            postgresql_where=sa_text("valid_to IS NULL"),
+        ),
+    )
+
+    need_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_needs.id", ondelete="CASCADE")
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    name: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[NeedStatus] = mapped_column(str_enum(NeedStatus, 20), default=NeedStatus.DRAFT)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    change_note: Mapped[str] = mapped_column(Text, default="")
+
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    need: Mapped[StakeholderNeed] = relationship(back_populates="versions")
+
+
+class StakeholderNeedComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion-thread comment on a `StakeholderNeed`."""
+
+    __tablename__ = "stakeholder_need_comments"
+
+    need_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_needs.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StakeholderNeedCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to a `StakeholderNeedComment`."""
+
+    __tablename__ = "stakeholder_need_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_need_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class StakeholderNeedFile(UUIDPKMixin, Base):
+    """Links a directly uploaded file to a `StakeholderNeed` (see `PersonaFile`)."""
+
+    __tablename__ = "stakeholder_need_files"
+    __table_args__ = (UniqueConstraint("need_id", "file_id"),)
+
+    need_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_needs.id", ondelete="CASCADE")
     )
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
