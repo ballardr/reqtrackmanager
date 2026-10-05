@@ -27,6 +27,12 @@ A Persona is a representative user archetype — a "Field Inspector", a "Complia
 
 An **organisation** Persona is one shared record: every project in the organisation can see and link to it, and edits are made once, from the organisation view. A **project** Persona belongs to one project. A project opening an organisation Persona sees it read-only, apart from the project's own weight override below.
 
+## Hiding an organisation Persona from a project
+
+A project can **hide** an organisation Persona it has no use for: open the Persona from that project and choose **Hide from this project**. It works exactly like [hiding a Stakeholder](./stakeholder.md#hiding-an-organisation-stakeholder-from-a-project), including the child-inherits-the-nearest-setting rule and **Show hidden** in the list's filters. Only that project's view changes; the shared Persona, its links and its weights are untouched.
+
+While hidden, the Persona is left out of the project's Personas list, can't be linked to a Need or relationship or chosen as a Persona a Stakeholder represents, and is not offered as a scoring target for the project. Links it already had stay recorded and reappear when it is shown again. A project's own Personas can't be hidden — archive them instead.
+
 ## Importance weight and the project override
 
 The weight says how much this Persona matters when something is scored per Persona. A Persona may have no weight, in which case every Persona counts equally.

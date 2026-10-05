@@ -55,7 +55,7 @@ from app.modules.stakeholders.schemas import (
     StakeholderTransitionRequest,
     StakeholderUpdate,
     StakeholderVersionOut,
-    StakeholderVisibilitySet,
+    VisibilitySet,
 )
 from app.modules.stakeholders.service import (
     STAKEHOLDER_ARTEFACT_TYPE,
@@ -65,6 +65,7 @@ from app.modules.stakeholders.service import (
     delete_represents_link,
     get_current_stakeholder_version,
     grid_quadrant,
+    hidden_persona_ids,
     hidden_stakeholder_ids,
     list_project_visible_stakeholders,
     list_represented_personas,
@@ -270,7 +271,7 @@ def _get_org_stakeholder(db: Session, project: Project, stakeholder_id: UUID) ->
 
 @router.put("/stakeholders/{stakeholder_id}/visibility", response_model=StakeholderOut)
 def set_project_stakeholder_visibility_endpoint(
-    project_id: UUID, stakeholder_id: UUID, payload: StakeholderVisibilitySet,
+    project_id: UUID, stakeholder_id: UUID, payload: VisibilitySet,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Hides an org stakeholder from this project (`hidden=true`) or, if a
@@ -400,13 +401,15 @@ def retire_project_stakeholder(
 def list_project_stakeholder_personas(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """The Personas this stakeholder represents that this project can see."""
+    """The Personas this stakeholder represents that this project can see
+    (its own and the organisation's, minus org ones hidden from the project)."""
     project = _project(db, project_id)
     stakeholder = get_visible_stakeholder(db, project, stakeholder_id)
+    hidden = hidden_persona_ids(db, project_id)
     return [
         sh.represents_to_out(db, link, p)
         for link, p in list_represented_personas(db, stakeholder, project.organization_id)
-        if (p.scope == PersonaScope.ORGANIZATION or p.project_id == project.id)
+        if (p.scope == PersonaScope.ORGANIZATION and p.id not in hidden) or p.project_id == project.id
     ]
 
 

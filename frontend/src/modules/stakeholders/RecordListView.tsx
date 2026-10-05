@@ -14,6 +14,12 @@
  * (Type and Scope are left out for a kind without them, e.g. a project-only
  * Need: pass no `typeName`/`scopeLabels`); `columnsBeforeType` and
  * `columnsAfterScope` slot the kind's own columns around them.
+ *
+ * Per-project visibility (Phase 3b): a page that lets the project hide org
+ * records passes `onIncludeHiddenChange` for a "Show hidden" filter and
+ * `onShowHidden`, which adds a Visibility column to a hidden row stating who
+ * hid it and offering "Show". A hidden row is not openable (the project API
+ * treats a hidden record as absent), so `onOpen` is skipped for it.
  */
 import { useState, type ReactNode } from "react";
 
@@ -22,6 +28,7 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { toErrorMessage } from "../../context/ToastContext";
+import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
 
 /** What the list needs of any record kind. */
 export interface ListedRecord {
@@ -29,6 +36,9 @@ export interface ListedRecord {
   name: string;
   status: string;
   scope?: string;
+  /** Set only by project endpoints, for an org record: whether the project hides it. */
+  project_hidden?: boolean | null;
+  hidden_source?: HiddenSource | null;
 }
 
 export function RecordListView<R extends ListedRecord, V>({
@@ -47,9 +57,11 @@ export function RecordListView<R extends ListedRecord, V>({
   columnsBeforeType,
   columnsAfterScope,
   toolbar,
-  extraFilters,
   includeArchived,
   onIncludeArchivedChange,
+  includeHidden = false,
+  onIncludeHiddenChange,
+  onShowHidden,
   onOpen,
   onCreate,
   renderCreateModal,
@@ -75,10 +87,13 @@ export function RecordListView<R extends ListedRecord, V>({
   columnsAfterScope: DirectoryColumn<R>[];
   /** Extra controls beside the New button (e.g. "Add from org user"). */
   toolbar?: ReactNode;
-  /** Extra `FilterPanel` controls, after the archived toggle (e.g. "Show hidden"). */
-  extraFilters?: ReactNode;
   includeArchived: boolean;
   onIncludeArchivedChange: (next: boolean) => void;
+  includeHidden?: boolean;
+  /** Offered on the project page only; omit where there is nothing to hide. */
+  onIncludeHiddenChange?: (next: boolean) => void;
+  /** Re-shows a hidden record in this project (the Visibility cell's "Show" action). */
+  onShowHidden?: (record: R) => void;
   onOpen: (record: R) => void;
   /** Resolves on success; a rejection keeps the modal open and shows its message. */
   onCreate: (values: V) => Promise<void>;
@@ -119,6 +134,20 @@ export function RecordListView<R extends ListedRecord, V>({
       ? [{ key: "scope", label: "Scope", render: (r: R) => (r.scope ? scopeLabels[r.scope] : "—") } as DirectoryColumn<R>]
       : []),
     ...columnsAfterScope,
+    ...(includeHidden && onShowHidden
+      ? [{
+          key: "visibility", label: "Visibility",
+          render: (r: R) =>
+            r.project_hidden && r.hidden_source ? (
+              <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                <span className="badge">{HIDDEN_SOURCE_LABEL[r.hidden_source]}</span>
+                <button className="btn" aria-label={`Show ${r.name} in this project`} onClick={() => onShowHidden(r)}>
+                  Show
+                </button>
+              </span>
+            ) : "—",
+        } as DirectoryColumn<R>]
+      : []),
     {
       key: "status", label: "Status",
       render: (r) => (
@@ -143,7 +172,7 @@ export function RecordListView<R extends ListedRecord, V>({
           columns={columns}
           rows={filtered}
           rowKey={(r) => r.id}
-          onRowClick={onOpen}
+          onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}
           emptyState={<p className="text-muted">{emptyText}</p>}
         />
         <FilterPanel
@@ -169,7 +198,9 @@ export function RecordListView<R extends ListedRecord, V>({
             </FilterField>
           )}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
-          {extraFilters}
+          {onIncludeHiddenChange && (
+            <FilterCheckbox label="Show hidden" checked={includeHidden} onChange={onIncludeHiddenChange} />
+          )}
         </FilterPanel>
       </div>
 

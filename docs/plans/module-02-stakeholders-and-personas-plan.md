@@ -35,7 +35,7 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 1.2 | Stakeholder: data model, types, RBAC, UI | [x] Complete (2026-10-05) |
 | 2 | Stakeholder Needs (as first-class records) | [x] Complete (2026-10-05) |
 | 3 | Relationships + remaining frontend UI + MCP | [x] Complete (2026-10-05) |
-| 3b | Project stakeholder visibility (hide org stakeholders per project) | [x] Complete (2026-10-05) |
+| 3b | Project visibility of org Stakeholders and Personas (hide per project) | [x] Complete (2026-10-05) |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
 | 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
 | 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13's report hook |
@@ -493,7 +493,7 @@ later phases:
 - **Bundles** carry Requirement-targeted links; Pain Point/Decision-targeted ones are exported but
   skipped with a warning on import until those modules' own records travel in the bundle.
 
-## Phase 3b — Project stakeholder visibility (hide org stakeholders per project)
+## Phase 3b — Project visibility of org Stakeholders and Personas (hide per project)
 
 **Why:** every org-scoped Stakeholder was visible to every project in the
 organisation, with no persistent way to opt a project out (only a per-request
@@ -539,6 +539,23 @@ shared record.
    holders' links so a bundle stays a full backup.
 6. **Reports (Phase 6)** must use `list_project_visible_stakeholders`, which is
    hide-aware, rather than querying `Stakeholder` directly.
+
+**Extended to Personas (2026-10-05, Decided by: User — "can org personas also be
+hidden per project"):** the same design, one shared implementation. A second
+override table `ProjectPersonaVisibility` (migration 0063, same shape and
+hierarchy rule) is resolved by the same `_resolve_visibility`/`_set_visibility`
+code, and `_shared.get_visible_persona` 404s a hidden persona, so needs,
+relationships, "represents" links and the persona's weight endpoints are covered
+in one place. Two persona-specific effects (**Decided by: Agent**): a hidden
+persona is dropped from `list_project_visible_personas`, which
+`persona_scoring_targets` is built on, so it stops being a scoring target for
+that project (Module 1 Phase 11 reads targets through the registry and needs no
+change; scores already recorded against it are not deleted); and the
+stakeholder-side "represents" list omits it, though the link can still be
+removed from the stakeholder. Frontend: `RecordVisibilityControl`,
+`RecordListView`'s "Show hidden"/Visibility column and `visibility.ts` are
+shared by both kinds. MCP gains `set_persona_visibility`,
+`reset_persona_visibility` and `include_hidden` on `list_personas`.
 
 **Deliverables:** model + migration 0062; `service` resolution + set/clear;
 `stakeholder_project_router` `PUT`/`DELETE .../stakeholders/{id}/visibility`

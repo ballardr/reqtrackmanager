@@ -29,7 +29,7 @@ from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
 from app.models.user import User
 from app.modules.stakeholders import _attachments as att
-from app.modules.stakeholders._shared import apply_value_error_as_conflict, validate_people
+from app.modules.stakeholders._shared import apply_value_error_as_conflict, validate_people, visibility_fields
 from app.modules.stakeholders.enums import StakeholderScope, StakeholderStatus
 from app.modules.stakeholders.models import (
     Persona,
@@ -90,12 +90,9 @@ def stakeholder_to_out(
     (project router) and the stakeholder is an org one, also resolves its
     visibility to that project (`project_hidden`, `hidden_override`,
     `hidden_source`)."""
-    hidden = override = source = None
+    hidden: dict[str, bool | str | None] = {}
     if project_id is not None and stakeholder.scope == StakeholderScope.ORGANIZATION:
-        visibility = resolve_stakeholder_visibility(db, project_id).get(stakeholder.id)
-        hidden = bool(visibility and visibility[0])
-        source = visibility[1] if visibility else None
-        override = visibility[0] if visibility and visibility[1] == "project" else None
+        hidden = visibility_fields(resolve_stakeholder_visibility(db, project_id), stakeholder.id)
     return StakeholderOut(
         id=stakeholder.id, scope=stakeholder.scope, organization_id=stakeholder.organization_id,
         project_id=stakeholder.project_id, creator_id=stakeholder.creator_id, is_archived=stakeholder.is_archived,
@@ -111,7 +108,7 @@ def stakeholder_to_out(
         availability_constraints=version.availability_constraints, influence_level_id=version.influence_level_id,
         interest_level_id=version.interest_level_id, status=version.status, owner_id=version.owner_id,
         user_id=version.user_id, version_number=version.version_number, created_at=stakeholder.created_at,
-        updated_at=stakeholder.updated_at, project_hidden=hidden, hidden_override=override, hidden_source=source,
+        updated_at=stakeholder.updated_at, **hidden,
     )
 
 

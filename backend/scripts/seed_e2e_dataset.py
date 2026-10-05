@@ -335,6 +335,7 @@ STAKEHOLDER_ORG_NAME = "E2E Safety Regulator"
 STAKEHOLDER_PROJECT_NAME = "E2E Plant Manager"
 # Phase 3b — an org stakeholder hidden from Gamma-3 (and so from its child Gamma-4).
 STAKEHOLDER_HIDDEN_NAME = "E2E Hidden Stakeholder"
+PERSONA_HIDDEN_NAME = "E2E Hidden Persona"
 # Stakeholder Needs (Phase 2) — one on the Gamma-3 hierarchy parent, held by the
 # project stakeholder; the need Playwright spec builds its own disposable data.
 NEED_PROJECT_NAME = "E2E Keep the line running"
@@ -360,6 +361,16 @@ def create_stakeholder(
         )
         r.raise_for_status()
     return stakeholder
+
+
+def set_persona_visibility(headers: dict, project_id: str, persona_id: str, hidden: bool) -> dict:
+    """Hides an org Persona from a project (`hidden=True`), or shows it again where a parent project hides it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/visibility",
+        json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
 
 def set_stakeholder_visibility(headers: dict, project_id: str, stakeholder_id: str, hidden: bool) -> dict:
@@ -581,6 +592,10 @@ def main() -> None:
         goals="Keep the pipeline running.", weight=1.5,
     )
     set_persona_weight_override(h_g, gamma3["id"], field_inspector["id"], 5.0)
+    hidden_persona = create_persona(
+        h_g, org_id=gamma["id"], activate=True, name=PERSONA_HIDDEN_NAME, role_title="Out-of-scope archetype",
+    )
+    set_persona_visibility(h_g, gamma3["id"], hidden_persona["id"], True)
 
     print("Seeding Stakeholders on Gamma: an org Stakeholder (rated, with a cadence, representing the org Field"
           " Inspector persona) and a project Stakeholder on the Gamma-3 hierarchy parent...")
@@ -724,7 +739,7 @@ def main() -> None:
     print(f"Personas on Gamma (Stakeholders & Personas enabled for Gamma only): org personas {PERSONA_ORG_WEIGHTED_NAME!r}"
           f" (Active, weight 3) and {PERSONA_ORG_UNWEIGHTED_NAME!r} (Draft, unweighted); project persona"
           f" {PERSONA_PROJECT_NAME!r} on {GAMMA3_NAME!r}; Gamma-3's weight override of 5 on {PERSONA_ORG_WEIGHTED_NAME!r}"
-          f" is inherited by {GAMMA4_NAME!r}.")
+          f" is inherited by {GAMMA4_NAME!r}; org {PERSONA_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")
     print(f"Stakeholders on Gamma: org {STAKEHOLDER_ORG_NAME!r} (Active, High/Medium, quarterly, represents"
           f" {PERSONA_ORG_WEIGHTED_NAME!r}) and project {STAKEHOLDER_PROJECT_NAME!r} on {GAMMA3_NAME!r} (Active, monthly);"
           f" org {STAKEHOLDER_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")

@@ -19,6 +19,7 @@ export function buildPersona(overrides: Partial<Persona> = {}): Persona {
     skills_proficiency: "Expert with the equipment.", frequency_of_use: "Daily", constraints: "No reliable network.",
     weight: 2, status: "active", owner_id: null, champion_id: null, version_number: 1,
     effective_weight: 2, weight_override: null, weight_source: "persona",
+    project_hidden: null, hidden_override: null, hidden_source: null,
     created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };

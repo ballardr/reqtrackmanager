@@ -44,6 +44,7 @@ from app.modules.stakeholders.models import (
     PersonaFile,
     PersonaTypeDefinition,
     ProjectPersonaType,
+    ProjectPersonaVisibility,
     ProjectPersonaWeight,
 )
 from app.modules.stakeholders.service import (
@@ -221,7 +222,15 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             target = db.get(Persona, w.persona_id)
             if target is not None and target.scope == PersonaScope.ORGANIZATION:
                 weights_json.append({"org_persona_name": get_current_persona_version(db, target.id).name, "weight": w.weight})
-    return {"project_persona_types": types_json, "project_personas": personas_json, "project_persona_weights": weights_json}, assets
+    visibility_json = []
+    for v in db.scalars(select(ProjectPersonaVisibility).where(ProjectPersonaVisibility.project_id == project.id)):
+        target = db.get(Persona, v.persona_id)
+        if target is not None and target.scope == PersonaScope.ORGANIZATION:
+            visibility_json.append({"org_persona_name": get_current_persona_version(db, target.id).name, "hidden": v.hidden})
+    return {
+        "project_persona_types": types_json, "project_personas": personas_json,
+        "project_persona_weights": weights_json, "project_persona_visibility": visibility_json,
+    }, assets
 
 
 def import_project_data(
@@ -229,7 +238,7 @@ def import_project_data(
     users: UserResolver, warnings: BundleImportWarnings,
 ) -> None:
     """`ModuleProjectBundleHooks.import_`: recreates the project's type rows,
-    personas (with attachments) and weight overrides. An org type or org
+    personas (with attachments), weight overrides and visibility overrides. An org type or org
     persona named in the bundle that the target organisation lacks is skipped
     with a warning."""
     organization_id = project.organization_id
@@ -295,6 +304,12 @@ def import_project_data(
             warnings.add("A persona weight override was skipped — its persona was not found in the target organisation.")
             continue
         db.add(ProjectPersonaWeight(project_id=project.id, persona_id=persona_id, weight=w["weight"]))
+    for v in data.get("project_persona_visibility", []):
+        persona_id = org_persona_ids.get(v.get("org_persona_name", ""))
+        if persona_id is None:
+            warnings.add("A persona visibility override was skipped — its persona was not found in the target organisation.")
+            continue
+        db.add(ProjectPersonaVisibility(project_id=project.id, persona_id=persona_id, hidden=v["hidden"]))
     db.flush()
 
 

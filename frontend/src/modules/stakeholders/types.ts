@@ -48,7 +48,9 @@ export const PERSONA_WEIGHT_SOURCE_LABEL: Record<PersonaWeightSource, string> = 
 };
 
 /** A persona merged with its current version. `effective_weight`,
- * `weight_override` and `weight_source` are only populated by the
+ * `weight_override`, `weight_source` and, for an org persona, `project_hidden`,
+ * `hidden_override` and `hidden_source` (whether the project hides it, its own
+ * override, and who supplied the effective value) are only populated by the
  * project-scoped endpoints. */
 export interface Persona {
   id: string;
@@ -79,6 +81,9 @@ export interface Persona {
   effective_weight: number | null;
   weight_override: number | null;
   weight_source: PersonaWeightSource | null;
+  project_hidden: boolean | null;
+  hidden_override: boolean | null;
+  hidden_source: HiddenSource | null;
   created_at: string;
   updated_at: string;
 }
@@ -194,12 +199,13 @@ export interface CadenceHint {
   suggested_cadence: TargetCadence | null;
 }
 
-/** Which project supplied a Stakeholder's effective visibility (`Stakeholder.hidden_source`). */
-export type StakeholderHiddenSource = "project" | "ancestor_project";
+/** Which project supplied an org Persona's or Stakeholder's effective
+ * visibility (`hidden_source`). */
+export type HiddenSource = "project" | "ancestor_project";
 
-/** Named for `OverridePill`'s `defaultLabel` and the list's Visibility column
- * (docs/ux-style-guide.md, "Pattern: platform default vs. override"). */
-export const STAKEHOLDER_HIDDEN_SOURCE_LABEL: Record<StakeholderHiddenSource, string> = {
+/** Named for the list's Visibility column (docs/ux-style-guide.md, "Pattern:
+ * platform default vs. override"). */
+export const HIDDEN_SOURCE_LABEL: Record<HiddenSource, string> = {
   project: "Hidden by this project",
   ancestor_project: "Hidden by a parent project",
 };
@@ -243,7 +249,7 @@ export interface Stakeholder {
   updated_at: string;
   project_hidden: boolean | null;
   hidden_override: boolean | null;
-  hidden_source: StakeholderHiddenSource | null;
+  hidden_source: HiddenSource | null;
 }
 
 export interface StakeholderVersion {

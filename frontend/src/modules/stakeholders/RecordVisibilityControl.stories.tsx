@@ -1,21 +1,24 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
-import { buildStakeholder } from "./fixtures";
-import { StakeholderVisibilityControl } from "./StakeholderVisibilityControl";
+import { buildPersona, buildStakeholder } from "./fixtures";
+import { RecordVisibilityControl } from "./RecordVisibilityControl";
 
 const ORG_STAKEHOLDER = buildStakeholder({
   scope: "organization", organization_id: "org-1", project_id: null, project_hidden: false,
 });
 
-const meta: Meta<typeof StakeholderVisibilityControl> = {
-  title: "Modules/Stakeholders/StakeholderVisibilityControl",
-  component: StakeholderVisibilityControl,
-  args: { stakeholder: ORG_STAKEHOLDER, onHide: fn(), onReset: fn() },
+const meta: Meta<typeof RecordVisibilityControl> = {
+  title: "Modules/Stakeholders/RecordVisibilityControl",
+  component: RecordVisibilityControl,
+  args: {
+    record: ORG_STAKEHOLDER, noun: "Stakeholder", consequence: "linking needs or relationships", onHide: fn(),
+    onReset: fn(),
+  },
 };
 export default meta;
 
-type Story = StoryObj<typeof StakeholderVisibilityControl>;
+type Story = StoryObj<typeof RecordVisibilityControl>;
 
 const dialog = () => within(within(document.body).getByRole("dialog"));
 
@@ -51,12 +54,22 @@ export const CancellingLeavesItVisible: Story = {
 };
 
 export const ShownDespiteParentCanBeReset: Story = {
-  args: { stakeholder: { ...ORG_STAKEHOLDER, hidden_override: false, hidden_source: "project" } },
+  args: { record: { ...ORG_STAKEHOLDER, hidden_override: false } },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByTestId("project-visibility")).toHaveTextContent("Shown, although a parent project hides it");
     await userEvent.click(canvas.getByRole("button", { name: "Use inherited value" }));
     await expect(args.onReset).toHaveBeenCalledTimes(1);
+  },
+};
+
+export const PersonaWordingNamesThePersona: Story = {
+  args: { record: buildPersona({ name: "Field Technician" }), noun: "Persona", consequence: "scoring or linking" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Hide from this project" }));
+    await expect(within(within(document.body).getByRole("dialog", { name: "Hide Field Technician from this project?" }))
+      .getByText(/Personas or be offered when scoring or linking/)).toBeInTheDocument();
   },
 };
 

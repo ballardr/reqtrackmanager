@@ -22,6 +22,7 @@ import { projectStakeholderApi } from "./api";
 import { StakeholderListView } from "./StakeholderListView";
 import type { EffectivePersonaType, Stakeholder } from "./types";
 import { useStakeholderScheme } from "./useStakeholderScheme";
+import { showRecordInProject } from "./visibility";
 
 export function ProjectStakeholdersPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -68,14 +69,10 @@ export function ProjectStakeholdersPage() {
       .catch(() => setOrgUsers([]));
   }, [projectId]);
 
-  /** Shows a hidden stakeholder again: drops this project's own hide, then, if a
-   * parent project still hides it, overrides that with an explicit "shown". */
   async function showHidden(stakeholder: Stakeholder) {
     if (!projectId) return;
     try {
-      let updated = stakeholder;
-      if (stakeholder.hidden_source === "project") updated = await projectStakeholderApi.clearVisibility(projectId, stakeholder.id);
-      if (updated.project_hidden) await projectStakeholderApi.setVisibility(projectId, stakeholder.id, false);
+      await showRecordInProject(projectStakeholderApi, projectId, stakeholder);
       showToast(`${stakeholder.name} is shown in this project again.`);
       reload();
     } catch (err) {

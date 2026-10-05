@@ -9,8 +9,11 @@
  * the org dashboard (`/orgs/:organizationId/...`).
  *
  * An org persona viewed inside a project is read-only here apart from the
- * weight override and comments (the project API can't mutate it); a link
- * leads to the org route where the owner role can edit it.
+ * weight override, its per-project visibility and comments (the project API
+ * can't mutate the record itself); a link leads to the org route where the
+ * owner role can edit it. Hiding it from the project (`RecordVisibilityControl`)
+ * returns to the list, since a hidden persona is no longer reachable from the
+ * project.
  *
  * Weight: the project route shows the *effective* weight with an
  * `OverridePill` naming the tier it came from ("Set on this project" /
@@ -30,7 +33,7 @@
  */
 import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
@@ -44,6 +47,7 @@ import { PersonaFormModal } from "./PersonaFormModal";
 import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "./RecordDetailParts";
 import { RecordDiscussion } from "./RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
+import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RelationshipsPanel } from "./RelationshipsPanel";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Persona, PersonaFieldValues, PersonaVersion } from "./types";
@@ -61,6 +65,7 @@ export function PersonaDetailPage() {
     personaId: string;
   }>();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const scopedApi = projectId ? projectPersonaApi : orgPersonaApi;
   const scopeId = projectId ?? organizationId;
@@ -122,6 +127,31 @@ export function PersonaDetailPage() {
     }
   }
 
+  async function hideFromProject() {
+    if (!projectId || !persona) return;
+    try {
+      await projectPersonaApi.setVisibility(projectId, persona.id, true);
+      showToast(`${persona.name} is hidden from this project.`);
+      navigate(backLink);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not hide this Persona."), "error");
+    }
+  }
+
+  /** Drops the project's own "shown" override; if a parent project hides the
+   * persona the project can no longer open it, so return to the list. */
+  async function resetVisibility() {
+    if (!projectId || !persona) return;
+    try {
+      const updated = await projectPersonaApi.clearVisibility(projectId, persona.id);
+      showToast("Visibility reverted to the inherited setting.");
+      if (updated.project_hidden) navigate(backLink);
+      else setPersona(updated);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not revert this Persona's visibility."), "error");
+    }
+  }
+
   async function saveEdit(values: PersonaFieldValues) {
     if (!scopeId || !persona) return;
     setFormError(null);
@@ -175,6 +205,13 @@ export function PersonaDetailPage() {
             <Link to={`/orgs/${persona.organization_id}/modules/stakeholders/personas/${persona.id}`}>organisation view</Link>;
             you can still set this project's weight below.
           </p>
+        )}
+
+        {readOnlyInProject && (
+          <RecordVisibilityControl
+            record={persona} noun="Persona" consequence="scoring or linking needs and relationships"
+            onHide={hideFromProject} onReset={resetVisibility}
+          />
         )}
 
         {persona.description && <RecordField label="Description" value={persona.description} />}

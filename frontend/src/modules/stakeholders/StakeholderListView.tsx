@@ -8,22 +8,20 @@
  * Interest show the org's level *names* (`scheme`); they are plain labels, the
  * grid position itself is only computed server-side.
  *
- * On the project page only (`onIncludeHiddenChange` given) a "Show hidden"
- * filter lists the org stakeholders hidden from the project; their rows are
- * not openable (the project API treats a hidden stakeholder as absent) and
- * instead carry a Visibility cell stating who hid them and a "Show" action.
+ * The project page's "Show hidden" filter and Visibility column are
+ * `RecordListView`'s; the `includeHidden`/`onIncludeHiddenChange`/`onShowHidden`
+ * props pass straight through.
  */
 import { useState } from "react";
 
 import type { ScoringScheme } from "../../api/scoring";
 import type { OrgUser } from "../../api/types";
-import { FilterCheckbox } from "../../components/FilterPanel";
 import { toErrorMessage } from "../../context/ToastContext";
 import { RecordListView } from "./RecordListView";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import { StakeholderFromUserModal } from "./StakeholderFromUserModal";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues } from "./types";
-import { STAKEHOLDER_HIDDEN_SOURCE_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL } from "./types";
+import { STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL } from "./types";
 import { levelName } from "./useStakeholderScheme";
 
 export function StakeholderListView({
@@ -93,34 +91,18 @@ export function StakeholderListView({
           { key: "cadence", label: "Cadence", render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },
           { key: "influence", label: "Influence", render: (s) => levelName(scheme, "influence", s.influence_level_id) },
           { key: "interest", label: "Interest", render: (s) => levelName(scheme, "interest", s.interest_level_id) },
-          ...(includeHidden && onShowHidden
-            ? [{
-                key: "visibility", label: "Visibility",
-                render: (s: Stakeholder) =>
-                  s.project_hidden && s.hidden_source ? (
-                    <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                      <span className="badge">{STAKEHOLDER_HIDDEN_SOURCE_LABEL[s.hidden_source]}</span>
-                      <button className="btn" aria-label={`Show ${s.name} in this project`} onClick={() => onShowHidden(s)}>
-                        Show
-                      </button>
-                    </span>
-                  ) : "—",
-              }]
-            : []),
         ]}
         toolbar={
           <button className="btn" onClick={() => setFromUserOpen(true)}>
             Add from org user
           </button>
         }
-        extraFilters={
-          onIncludeHiddenChange && (
-            <FilterCheckbox label="Show hidden" checked={includeHidden} onChange={onIncludeHiddenChange} />
-          )
-        }
         includeArchived={includeArchived}
         onIncludeArchivedChange={onIncludeArchivedChange}
-        onOpen={(s) => { if (!s.project_hidden) onOpen(s); }}
+        includeHidden={includeHidden}
+        onIncludeHiddenChange={onIncludeHiddenChange}
+        onShowHidden={onShowHidden}
+        onOpen={onOpen}
         onCreate={onCreate}
         renderCreateModal={(props) => (
           <StakeholderFormModal {...props} typeOptions={typeOptions} scheme={scheme} loadHint={loadHint} />

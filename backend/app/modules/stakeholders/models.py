@@ -23,9 +23,9 @@ tables):
 - `ProjectPersonaWeight` — a project's override of a persona's weight
   (resolution 5), resolved through the project hierarchy by
   `service.resolve_persona_weight`.
-- `ProjectStakeholderVisibility` — a project's override of whether one org
-  Stakeholder is visible to it (Phase 3b), resolved through the project
-  hierarchy by `service.resolve_hidden_stakeholder_ids`.
+- `ProjectPersonaVisibility` / `ProjectStakeholderVisibility` — a project's
+  override of whether one org Persona / Stakeholder is visible to it (Phase
+  3b), resolved through the project hierarchy by `service.resolve_visibility`.
 - `PersonaComment` / `PersonaCommentFile` / `PersonaFile` — module-local
   comment and attachment tables (resolution 8), since extending the core
   `ReviewTargetType` enum would be a per-module edit to a core file.
@@ -255,6 +255,31 @@ class ProjectPersonaWeight(UUIDPKMixin, TimestampMixin, Base):
     )
     persona_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("personas.id", ondelete="CASCADE"))
     weight: Mapped[float] = mapped_column(Float)
+
+
+class ProjectPersonaVisibility(UUIDPKMixin, TimestampMixin, Base):
+    """A project's override of whether one org Persona is visible to it (Phase
+    3b). Override-only: no row means "inherit" — from the nearest ancestor
+    project's row, else visible. `hidden=False` exists so a child can re-show
+    what its parent hid; hiding never alters the shared Persona. Same shape as
+    `ProjectStakeholderVisibility`.
+
+    Attributes:
+        project_id: The overriding project.
+        persona_id: The org-scoped Persona (the service rejects other scopes).
+        hidden: Whether the Persona is hidden from `project_id`.
+    """
+
+    __tablename__ = "project_persona_visibility"
+    __table_args__ = (
+        UniqueConstraint("project_id", "persona_id", name="uq_project_persona_visibility_project_persona"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    persona_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("personas.id", ondelete="CASCADE"))
+    hidden: Mapped[bool] = mapped_column(Boolean)
 
 
 class PersonaComment(UUIDPKMixin, TimestampMixin, Base):

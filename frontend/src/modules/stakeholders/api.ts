@@ -209,7 +209,8 @@ function buildStakeholderApi(base: (id: string) => string) {
 export const orgPersonaApi = buildPersonaApi(orgBase);
 
 /** Project-scoped Persona endpoints (reads include the organisation's
- * personas) plus the weight override and the project type tier — `id` is a
+ * personas, minus those hidden from the project) plus the weight and visibility
+ * overrides and the project type tier — `id` is a
  * `project_id`. */
 export const projectPersonaApi = {
   ...buildPersonaApi(projectBase),
@@ -219,6 +220,12 @@ export const projectPersonaApi = {
   clearWeightOverride(projectId: string, personaId: string) {
     return api.delete<Persona>(`${projectBase(projectId)}/personas/${personaId}/weight`);
   },
+  /** Hides an org persona from the project (`hidden: true`) or re-shows one a parent project hides. */
+  setVisibility: (projectId: string, personaId: string, hidden: boolean) =>
+    api.put<Persona>(`${projectBase(projectId)}/personas/${personaId}/visibility`, { hidden }),
+  /** Removes the project's own override, reverting to the inherited (else visible) state. */
+  clearVisibility: (projectId: string, personaId: string) =>
+    api.delete<Persona>(`${projectBase(projectId)}/personas/${personaId}/visibility`),
   ...buildProjectTypeCalls("persona-types"),
 };
 

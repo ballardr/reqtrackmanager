@@ -73,7 +73,7 @@ flowchart TD
     P -->|No| VIS["Visible"]
 ```
 
-Hiding needs the project's **Stakeholder Owner** role (or Project Manager, org admin or server admin), the same as editing a project Stakeholder. Each change is audit-logged without the Stakeholder's name.
+[Personas](./persona.md#hiding-an-organisation-persona-from-a-project) can be hidden from a project in the same way. Hiding needs the project's **Stakeholder Owner** role (or Project Manager, org admin or server admin), the same as editing a project Stakeholder. Each change is audit-logged without the Stakeholder's name.
 
 ## Lifecycle
 

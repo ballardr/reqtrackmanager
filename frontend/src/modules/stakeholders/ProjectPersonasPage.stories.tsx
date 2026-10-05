@@ -59,6 +59,74 @@ export const ListsProjectAndOrgPersonas: Story = {
   },
 };
 
+const ORG = { scope: "organization", organization_id: "org-1", project_id: null } as const;
+const HIDDEN_BY_PROJECT = buildPersona({
+  ...ORG, id: "persona-hidden", name: "Hidden Technician", project_hidden: true, hidden_override: true, hidden_source: "project",
+});
+const HIDDEN_BY_PARENT = buildPersona({
+  ...ORG, id: "persona-parent", name: "Parent-hidden Operator", project_hidden: true, hidden_override: null,
+  hidden_source: "ancestor_project",
+});
+
+/** The list mock honouring `include_hidden`: hidden personas only come back when asked for. */
+function mockListWithHidden() {
+  const visible = buildPersona({ ...ORG, id: "persona-visible", name: "Visible Persona", project_hidden: false });
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.startsWith(`${BASE}/personas`)) {
+      return path.includes("include_hidden=true") ? [visible, HIDDEN_BY_PROJECT, HIDDEN_BY_PARENT] : [visible];
+    }
+    if (path === `${BASE}/persona-types`) return TYPES;
+    throw new Error(`Unmocked GET: ${path}`);
+  });
+}
+
+export const HiddenPersonasAreOnlyListedOnRequest: Story = {
+  beforeEach: () => mockListWithHidden(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Visible Persona")).toBeInTheDocument());
+    await expect(canvas.queryByText("Hidden Technician")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByLabelText("Show hidden"));
+    await waitFor(() => expect(canvas.getByText("Hidden Technician")).toBeInTheDocument());
+    // Who hid each one goes through the label map; no raw enum value appears.
+    await expect(canvas.getByText("Hidden by this project")).toBeInTheDocument();
+    await expect(canvas.getByText("Hidden by a parent project")).toBeInTheDocument();
+    await expect(canvas.queryByText("ancestor_project")).not.toBeInTheDocument();
+  },
+};
+
+export const ShowingAProjectHiddenPersonaDropsTheOverride: Story = {
+  beforeEach: () => {
+    mockListWithHidden();
+    spyOn(api, "delete").mockResolvedValue(buildPersona({ ...ORG, id: "persona-hidden", project_hidden: false }));
+    spyOn(api, "put").mockResolvedValue(buildPersona());
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByLabelText("Show hidden"));
+    await userEvent.click(canvas.getByLabelText("Show hidden"));
+    await userEvent.click(await canvas.findByRole("button", { name: "Show Hidden Technician in this project" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`${BASE}/personas/persona-hidden/visibility`));
+    await expect(api.put).not.toHaveBeenCalled();
+  },
+};
+
+export const ShowingAParentHiddenPersonaOverridesIt: Story = {
+  beforeEach: () => {
+    mockListWithHidden();
+    spyOn(api, "delete").mockResolvedValue(buildPersona());
+    spyOn(api, "put").mockResolvedValue(buildPersona({ ...ORG, project_hidden: false, hidden_override: false }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByLabelText("Show hidden"));
+    await userEvent.click(canvas.getByLabelText("Show hidden"));
+    await userEvent.click(await canvas.findByRole("button", { name: "Show Parent-hidden Operator in this project" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/personas/persona-parent/visibility`, { hidden: false }));
+    await expect(api.delete).not.toHaveBeenCalled();
+  },
+};
+
 export const StatusBadgeFiltersTheList: Story = {
   beforeEach: () => mockPageApis([buildPersona(), buildPersona({ id: "persona-2", name: "Compliance Auditor", status: "draft" })]),
   play: async ({ canvasElement }) => {

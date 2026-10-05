@@ -186,6 +186,47 @@ export const OrgPersonaInProjectIsReadOnlyApartFromWeight: Story = {
   },
 };
 
+const ORG_IN_PROJECT = { scope: "organization", organization_id: "org-1", project_id: null, project_hidden: false } as const;
+
+export const OrgPersonaCanBeHiddenFromTheProject: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildPersona(ORG_IN_PROJECT));
+    spyOn(api, "put").mockResolvedValue(buildPersona({ ...ORG_IN_PROJECT, project_hidden: true, hidden_override: true, hidden_source: "project" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByTestId("project-visibility")).toHaveTextContent("Visible"));
+    await userEvent.click(canvas.getByRole("button", { name: "Hide from this project" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Hide Field Technician from this project?" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Hide" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}/visibility`, { hidden: true }),
+    );
+  },
+};
+
+export const ExplicitlyShownOrgPersonaCanRevertToInherited: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildPersona({ ...ORG_IN_PROJECT, hidden_override: false, hidden_source: "project" }));
+    spyOn(api, "delete").mockResolvedValue(buildPersona({ ...ORG_IN_PROJECT, project_hidden: true, hidden_source: "ancestor_project" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByTestId("project-visibility")).toHaveTextContent("Shown, although a parent project hides it"));
+    await userEvent.click(canvas.getByRole("button", { name: "Use inherited value" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}/visibility`));
+  },
+};
+
+export const ProjectPersonaHasNoVisibilityControl: Story = {
+  beforeEach: () => mockDetailApis(buildPersona()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Field Technician" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Hide from this project" })).not.toBeInTheDocument();
+  },
+};
+
 export const OwnerCanBeAssigned: Story = {
   beforeEach: () => {
     mockDetailApis(buildPersona());

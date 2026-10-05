@@ -6,6 +6,7 @@
  * Persona's own columns (Role, Weight) and its create form. The two callers
  * only differ in how they fetch, where a row navigates, and whether a Scope
  * column and the project's effective weight are shown, so those are props.
+ * The "Show hidden" filter and Visibility column are `RecordListView`'s.
  */
 import { PersonaFormModal } from "./PersonaFormModal";
 import { RecordListView } from "./RecordListView";
@@ -23,6 +24,9 @@ export function PersonaListView({
   typeOptions,
   includeArchived,
   onIncludeArchivedChange,
+  includeHidden,
+  onIncludeHiddenChange,
+  onShowHidden,
   onOpen,
   onCreate,
 }: {
@@ -37,6 +41,11 @@ export function PersonaListView({
   typeOptions: { value: string; label: string }[];
   includeArchived: boolean;
   onIncludeArchivedChange: (next: boolean) => void;
+  includeHidden?: boolean;
+  /** Offered on the project page only; omit where there is nothing to hide. */
+  onIncludeHiddenChange?: (next: boolean) => void;
+  /** Re-shows a hidden persona in this project (the Visibility cell's "Show" action). */
+  onShowHidden?: (persona: Persona) => void;
   onOpen: (persona: Persona) => void;
   /** Resolves on success; a rejection keeps the modal open and shows its message. */
   onCreate: (values: PersonaFieldValues) => Promise<void>;
@@ -67,6 +76,9 @@ export function PersonaListView({
       ]}
       includeArchived={includeArchived}
       onIncludeArchivedChange={onIncludeArchivedChange}
+      includeHidden={includeHidden}
+      onIncludeHiddenChange={onIncludeHiddenChange}
+      onShowHidden={onShowHidden}
       onOpen={onOpen}
       onCreate={onCreate}
       renderCreateModal={(props) => <PersonaFormModal {...props} typeOptions={typeOptions} />}

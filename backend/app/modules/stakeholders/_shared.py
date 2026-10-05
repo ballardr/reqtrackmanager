@@ -48,8 +48,10 @@ from app.modules.stakeholders.service import (
     create_persona,
     get_current_persona_version,
     get_current_stakeholder_version,
+    hidden_persona_ids,
     hidden_stakeholder_ids,
     resolve_persona_type_refs,
+    resolve_persona_visibility,
     resolve_persona_weight_with_source,
     transition_persona,
 )
@@ -62,15 +64,32 @@ PERSONA_MANAGE_PERMISSION = encode_permission(PERSONA_ARTEFACT_TYPE, PermissionL
 _OWNER_ROLE_KEY = {PersonaScope.ORGANIZATION: "org_persona_owner", PersonaScope.PROJECT: "persona_owner"}
 
 
+def visibility_fields(
+    visibility: dict[uuid.UUID, tuple[bool, str]], record_id: uuid.UUID
+) -> dict[str, bool | str | None]:
+    """The `project_hidden`/`hidden_override`/`hidden_source` output fields for an
+    org record, from a project's resolved visibility map (`service.resolve_*_visibility`).
+    `hidden_override` is the project's own override, `None` when it only inherits."""
+    entry = visibility.get(record_id)
+    return {
+        "project_hidden": bool(entry and entry[0]),
+        "hidden_override": entry[0] if entry and entry[1] == "project" else None,
+        "hidden_source": entry[1] if entry else None,
+    }
+
+
 def persona_to_out(db: Session, persona: Persona, version: PersonaVersion, *, project_id: uuid.UUID | None = None) -> PersonaOut:
     """Merges a persona with its current version. When `project_id` is given
     (project router), also resolves `effective_weight` and `weight_override`
-    for that project."""
+    for that project, and an org persona's visibility to it."""
     from app.modules.stakeholders.models import ProjectPersonaWeight
 
     type_ref = version.project_type_id or version.org_type_id
     effective_weight = override = weight_source = None
+    hidden: dict[str, bool | str | None] = {}
     if project_id is not None:
+        if persona.scope == PersonaScope.ORGANIZATION:
+            hidden = visibility_fields(resolve_persona_visibility(db, project_id), persona.id)
         effective_weight, weight_source = resolve_persona_weight_with_source(db, project_id, persona.id, version.weight)
         override = db.scalar(
             select(ProjectPersonaWeight.weight).where(
@@ -90,7 +109,7 @@ def persona_to_out(db: Session, persona: Persona, version: PersonaVersion, *, pr
         frequency_of_use=version.frequency_of_use, constraints=version.constraints, weight=version.weight,
         status=version.status, owner_id=version.owner_id, champion_id=version.champion_id,
         version_number=version.version_number, effective_weight=effective_weight, weight_override=override,
-        weight_source=weight_source,
+        weight_source=weight_source, **hidden,
         created_at=persona.created_at, updated_at=persona.updated_at,
     )
 
@@ -318,11 +337,13 @@ def get_visible_stakeholder(db: Session, project: Project, stakeholder_id: uuid.
 
 
 def get_visible_persona(db: Session, project: Project, persona_id: uuid.UUID) -> Persona:
-    """A Persona `project` can see (its own, or its organisation's), else 404."""
+    """A Persona `project` can see (its own, or its organisation's unless hidden
+    from the project), else 404."""
     persona = db.get(Persona, persona_id)
     visible = persona is not None and (
         (persona.scope == PersonaScope.PROJECT and persona.project_id == project.id)
-        or (persona.scope == PersonaScope.ORGANIZATION and persona.organization_id == project.organization_id)
+        or (persona.scope == PersonaScope.ORGANIZATION and persona.organization_id == project.organization_id
+            and persona.id not in hidden_persona_ids(db, project.id))
     )
     if not visible:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Persona not found.")

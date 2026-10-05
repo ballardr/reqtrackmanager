@@ -1425,6 +1425,16 @@ def create_stakeholder(
     return stakeholder
 
 
+def set_persona_visibility(headers: dict, project_id: str, persona_id: str, hidden: bool) -> dict:
+    """Hides an org Persona from a project (`hidden=True`), or shows it again where a parent project hides it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/visibility",
+        json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def set_stakeholder_visibility(headers: dict, project_id: str, stakeholder_id: str, hidden: bool) -> dict:
     """Hides an org Stakeholder from a project (`hidden=True`), or shows it again where a parent project hides it."""
     r = httpx.put(
@@ -2368,7 +2378,15 @@ def main() -> None:
     )
     activate_project_persona(h_pm, drone["id"], drone_operator_persona["id"])
     set_project_persona_weight_override(h_pm, drone["id"], persona_inspector["id"], 5.0)
-    print(f"  Personas: {persona_inspector['name']!r} (org, Active, weight 3), {persona_auditor['name']!r} (org,"
+    persona_harbour = create_org_persona(
+        h_pm, org["id"], name="Harbour Pilot", role_title="Marine pilot",
+        description="Guides vessels into port; relevant to the org's marine products, not to the drone programme.",
+        goals="Bring each vessel alongside safely.", weight=1.0,
+    )
+    activate_org_persona(h_pm, org["id"], persona_harbour["id"])
+    set_persona_visibility(h_pm, drone["id"], persona_harbour["id"], True)
+    print(f"  Personas: {persona_inspector['name']!r} (org, Active, weight 3), {persona_harbour['name']!r} (org, Active,"
+          f" hidden from Falcon-3), {persona_auditor['name']!r} (org,"
           f" Draft, unweighted), {drone_operator_persona['name']!r} (Falcon-3, Active, weight 2); Falcon-3 weights"
           f" {persona_inspector['name']!r} at 5, which Falcon-3 Avionics Subsystem inherits")
 
@@ -2468,9 +2486,9 @@ def main() -> None:
           " linked to the org Strategy via a real 'Supports' relationship) and 1 project Guiding Principle (Active)"
           " on Falcon-3; and 2 Open Questions on Falcon-3 (one Ready for Decision, one Withdrawn — the 'resolved by"
           " Decision' relationship stays reserved pending Module 4's own Phase 7, see docs/decisions.md)")
-    print("  Stakeholders & Personas (enabled org-wide): 2 organisation Personas (Field Inspector — Active, weight 3;"
-          " Compliance Auditor — Draft, unweighted) and 1 project Persona on Falcon-3 (BVLOS Remote Pilot — Active,"
-          " weight 2), with a Falcon-3 weight override of 5 on Field Inspector that the Avionics sub-project inherits;"
+    print("  Stakeholders & Personas (enabled org-wide): 3 organisation Personas (Field Inspector — Active, weight 3;"
+          " Compliance Auditor — Draft, unweighted; Harbour Pilot — Active, hidden from Falcon-3) and 1 project Persona on Falcon-3 (BVLOS Remote"
+          " Pilot — Active, weight 2), with a Falcon-3 weight override of 5 on Field Inspector that the Avionics sub-project inherits;"
           " plus 2 organisation Stakeholders (Pat Okafor, Regulator — High influence/Medium interest, quarterly, represents"
           " Compliance Auditor; and Lee Harbour, hidden from Falcon-3 to show per-project visibility) and 1 Falcon-3"
           " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot)")

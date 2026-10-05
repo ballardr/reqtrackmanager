@@ -8,7 +8,9 @@
  * project's effective weight; new personas created here are project-scoped.
  * The list/filter/create UI is the shared `PersonaListView`. Every row opens
  * inside this project (an org persona too), so its weight override stays
- * reachable; `PersonaDetailPage` makes an org persona read-only there.
+ * reachable; `PersonaDetailPage` makes an org persona read-only there and is
+ * where one is hidden from the project. "Show hidden" lists the org personas
+ * hidden from this project so they can be shown again.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -18,6 +20,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectPersonaApi } from "./api";
 import { PersonaListView } from "./PersonaListView";
 import type { EffectivePersonaType, Persona } from "./types";
+import { showRecordInProject } from "./visibility";
 
 export function ProjectPersonasPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -27,6 +30,7 @@ export function ProjectPersonasPage() {
   const [types, setTypes] = useState<EffectivePersonaType[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [includeHidden, setIncludeHidden] = useState(false);
 
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = () => setRefreshKey((k) => k + 1);
@@ -35,7 +39,7 @@ export function ProjectPersonasPage() {
     if (!projectId) return;
     let active = true;
     Promise.all([
-      projectPersonaApi.list(projectId, { include_archived: includeArchived }),
+      projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden }),
       projectPersonaApi.listTypes(projectId),
     ])
       .then(([list, typeList]) => {
@@ -50,7 +54,18 @@ export function ProjectPersonasPage() {
     return () => {
       active = false;
     };
-  }, [projectId, includeArchived, refreshKey]);
+  }, [projectId, includeArchived, includeHidden, refreshKey]);
+
+  async function showHidden(persona: Persona) {
+    if (!projectId) return;
+    try {
+      await showRecordInProject(projectPersonaApi, projectId, persona);
+      showToast(`${persona.name} is shown in this project again.`);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not show this Persona."), "error");
+    }
+  }
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -70,6 +85,9 @@ export function ProjectPersonasPage() {
         typeOptions={types.filter((t) => t.is_enabled).map((t) => ({ value: t.id, label: t.name }))}
         includeArchived={includeArchived}
         onIncludeArchivedChange={setIncludeArchived}
+        includeHidden={includeHidden}
+        onIncludeHiddenChange={setIncludeHidden}
+        onShowHidden={showHidden}
         onOpen={(p) => navigate(`/projects/${projectId}/modules/stakeholders/personas/${p.id}`)}
         onCreate={async (values) => {
           await projectPersonaApi.create(projectId, values);

@@ -12,6 +12,9 @@ and Phase 1.2 (Stakeholder — second half of this file):
 - Weight resolution (`resolve_persona_weight`): the project's own override,
   then the nearest ancestor project's, then the persona's own weight, then
   `None` (equal weighting).
+- Per-project visibility of org Personas and Stakeholders (Phase 3b):
+  `resolve_*_visibility`/`hidden_*_ids` (nearest ancestor override wins) and the
+  set/clear functions, one implementation bound per record kind.
 - `persona_scoring_targets`, this module's `scoring_target_providers` entry
   for Module 1's per-persona Pain Point scoring.
 - `resolve_persona_file_project_id`, the file-ownership hook.
@@ -61,6 +64,7 @@ from app.modules.stakeholders.models import (
     PersonaTypeDefinition,
     PersonaVersion,
     ProjectPersonaType,
+    ProjectPersonaVisibility,
     ProjectPersonaWeight,
     ProjectStakeholderType,
     ProjectStakeholderVisibility,
@@ -329,8 +333,12 @@ def clear_project_persona_weight(db: Session, project_id: uuid.UUID, persona_id:
     return True
 
 
-def list_project_visible_personas(db: Session, project: Project, *, include_archived: bool = False) -> list[Persona]:
-    """The personas a project can use: its own plus its organisation's."""
+def list_project_visible_personas(
+    db: Session, project: Project, *, include_archived: bool = False, include_hidden: bool = False
+) -> list[Persona]:
+    """The personas a project can use: its own plus its organisation's, minus
+    org ones hidden from it (`include_hidden=True` keeps them, for the manage
+    UI). Scoring targets are built from this, so a hidden persona is not scored."""
     query = select(Persona).where(
         or_(
             (Persona.scope == PersonaScope.PROJECT) & (Persona.project_id == project.id),
@@ -339,7 +347,11 @@ def list_project_visible_personas(db: Session, project: Project, *, include_arch
     )
     if not include_archived:
         query = query.where(Persona.is_archived.is_(False))
-    return list(db.scalars(query.order_by(Persona.created_at)).all())
+    personas = list(db.scalars(query.order_by(Persona.created_at)).all())
+    if include_hidden:
+        return personas
+    hidden = hidden_persona_ids(db, project.id)
+    return [p for p in personas if p.id not in hidden]
 
 
 def persona_scoring_targets(db: Session, project_id: uuid.UUID) -> list[ScoringTarget]:
@@ -551,46 +563,45 @@ def transition_stakeholder(
     return new_version
 
 
-def resolve_stakeholder_visibility(db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, tuple[bool, str]]:
-    """Every org Stakeholder `project_id` has a visibility override for, own or
-    inherited, as `stakeholder_id -> (hidden, source)`. The nearest project's row
-    wins per stakeholder (`source` is `"project"` or `"ancestor_project"`), so a
-    child's `hidden=False` re-shows what its parent hid. Stakeholders absent from
-    the result are visible by default. Cycle-safe via `get_ancestor_chain`."""
+# --- Per-project visibility (Phase 3b) ----------------------------------------
+# One implementation for the Persona and Stakeholder override tables
+# (`ProjectPersonaVisibility`, `ProjectStakeholderVisibility`), which differ
+# only in the record column; the public functions below bind each kind.
+
+
+def _resolve_visibility(
+    db: Session, project_id: uuid.UUID, override_model: Any, record_attr: str
+) -> dict[uuid.UUID, tuple[bool, str]]:
+    """Every org record `project_id` has a visibility override for, own or
+    inherited, as `record_id -> (hidden, source)`. The nearest project's row
+    wins per record (`source` is `"project"` or `"ancestor_project"`), so a
+    child's `hidden=False` re-shows what its parent hid. Records absent from the
+    result are visible by default. Cycle-safe via `get_ancestor_chain`."""
     nearest_first = [project_id, *(p.id for p in reversed(get_ancestor_chain(db, project_id)))]
     depth = {pid: i for i, pid in enumerate(nearest_first)}
     resolved: dict[uuid.UUID, tuple[int, bool]] = {}
-    for row in db.scalars(
-        select(ProjectStakeholderVisibility).where(ProjectStakeholderVisibility.project_id.in_(nearest_first))
-    ).all():
-        if row.stakeholder_id not in resolved or depth[row.project_id] < resolved[row.stakeholder_id][0]:
-            resolved[row.stakeholder_id] = (depth[row.project_id], row.hidden)
-    return {sid: (hidden, "project" if d == 0 else "ancestor_project") for sid, (d, hidden) in resolved.items()}
+    for row in db.scalars(select(override_model).where(override_model.project_id.in_(nearest_first))).all():
+        record_id = getattr(row, record_attr)
+        if record_id not in resolved or depth[row.project_id] < resolved[record_id][0]:
+            resolved[record_id] = (depth[row.project_id], row.hidden)
+    return {rid: (hidden, "project" if d == 0 else "ancestor_project") for rid, (d, hidden) in resolved.items()}
 
 
-def hidden_stakeholder_ids(db: Session, project_id: uuid.UUID) -> set[uuid.UUID]:
-    """The org Stakeholders that are effectively hidden from `project_id`."""
-    return {sid for sid, (hidden, _source) in resolve_stakeholder_visibility(db, project_id).items() if hidden}
-
-
-def set_project_stakeholder_visibility(
-    db: Session, project: Project, stakeholder: Stakeholder, hidden: bool
-) -> ProjectStakeholderVisibility:
-    """Creates or updates `project`'s visibility override for an org Stakeholder.
+def _set_visibility(
+    db: Session, project: Project, record: Any, hidden: bool, override_model: Any, record_attr: str,
+    org_scope: Any, noun: str,
+) -> Any:
+    """Creates or updates `project`'s override for an org record.
 
     Raises:
-        ValueError: If `stakeholder` is not an org-scoped Stakeholder of the project's organisation.
+        ValueError: If `record` is not an org-scoped `noun` of the project's organisation.
     """
-    if stakeholder.scope != StakeholderScope.ORGANIZATION or stakeholder.organization_id != project.organization_id:
-        raise ValueError("Only an organisation Stakeholder can be hidden; archive a project's own Stakeholder instead.")
-    row = db.scalar(
-        select(ProjectStakeholderVisibility).where(
-            ProjectStakeholderVisibility.project_id == project.id,
-            ProjectStakeholderVisibility.stakeholder_id == stakeholder.id,
-        )
-    )
+    if record.scope != org_scope or record.organization_id != project.organization_id:
+        raise ValueError(f"Only an organisation {noun} can be hidden; archive a project's own {noun} instead.")
+    record_column = getattr(override_model, record_attr)
+    row = db.scalar(select(override_model).where(override_model.project_id == project.id, record_column == record.id))
     if row is None:
-        row = ProjectStakeholderVisibility(project_id=project.id, stakeholder_id=stakeholder.id, hidden=hidden)
+        row = override_model(project_id=project.id, hidden=hidden, **{record_attr: record.id})
         db.add(row)
     else:
         row.hidden = hidden
@@ -598,20 +609,75 @@ def set_project_stakeholder_visibility(
     return row
 
 
-def clear_project_stakeholder_visibility(db: Session, project_id: uuid.UUID, stakeholder_id: uuid.UUID) -> bool:
-    """Removes a project's own override, reverting to the inherited/default
-    visibility. Returns whether one existed."""
-    row = db.scalar(
-        select(ProjectStakeholderVisibility).where(
-            ProjectStakeholderVisibility.project_id == project_id,
-            ProjectStakeholderVisibility.stakeholder_id == stakeholder_id,
-        )
-    )
+def _clear_visibility(
+    db: Session, project_id: uuid.UUID, record_id: uuid.UUID, override_model: Any, record_attr: str
+) -> bool:
+    """Removes a project's own override. Returns whether one existed."""
+    row = db.scalar(select(override_model).where(
+        override_model.project_id == project_id, getattr(override_model, record_attr) == record_id
+    ))
     if row is None:
         return False
     db.delete(row)
     db.flush()
     return True
+
+
+def resolve_stakeholder_visibility(db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, tuple[bool, str]]:
+    """Org Stakeholders `project_id` has an own or inherited override for; see `_resolve_visibility`."""
+    return _resolve_visibility(db, project_id, ProjectStakeholderVisibility, "stakeholder_id")
+
+
+def resolve_persona_visibility(db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, tuple[bool, str]]:
+    """Org Personas `project_id` has an own or inherited override for; see `_resolve_visibility`."""
+    return _resolve_visibility(db, project_id, ProjectPersonaVisibility, "persona_id")
+
+
+def hidden_stakeholder_ids(db: Session, project_id: uuid.UUID) -> set[uuid.UUID]:
+    """The org Stakeholders that are effectively hidden from `project_id`."""
+    return {rid for rid, (hidden, _source) in resolve_stakeholder_visibility(db, project_id).items() if hidden}
+
+
+def hidden_persona_ids(db: Session, project_id: uuid.UUID) -> set[uuid.UUID]:
+    """The org Personas that are effectively hidden from `project_id`."""
+    return {rid for rid, (hidden, _source) in resolve_persona_visibility(db, project_id).items() if hidden}
+
+
+def set_project_stakeholder_visibility(
+    db: Session, project: Project, stakeholder: Stakeholder, hidden: bool
+) -> ProjectStakeholderVisibility:
+    """Hides/shows an org Stakeholder for `project`.
+
+    Raises:
+        ValueError: If `stakeholder` is not an org-scoped Stakeholder of the project's organisation.
+    """
+    return _set_visibility(
+        db, project, stakeholder, hidden, ProjectStakeholderVisibility, "stakeholder_id",
+        StakeholderScope.ORGANIZATION, "Stakeholder",
+    )
+
+
+def set_project_persona_visibility(
+    db: Session, project: Project, persona: Persona, hidden: bool
+) -> ProjectPersonaVisibility:
+    """Hides/shows an org Persona for `project`.
+
+    Raises:
+        ValueError: If `persona` is not an org-scoped Persona of the project's organisation.
+    """
+    return _set_visibility(
+        db, project, persona, hidden, ProjectPersonaVisibility, "persona_id", PersonaScope.ORGANIZATION, "Persona",
+    )
+
+
+def clear_project_stakeholder_visibility(db: Session, project_id: uuid.UUID, stakeholder_id: uuid.UUID) -> bool:
+    """Removes a project's own Stakeholder override, reverting to the inherited/default visibility."""
+    return _clear_visibility(db, project_id, stakeholder_id, ProjectStakeholderVisibility, "stakeholder_id")
+
+
+def clear_project_persona_visibility(db: Session, project_id: uuid.UUID, persona_id: uuid.UUID) -> bool:
+    """Removes a project's own Persona override, reverting to the inherited/default visibility."""
+    return _clear_visibility(db, project_id, persona_id, ProjectPersonaVisibility, "persona_id")
 
 
 def list_project_visible_stakeholders(

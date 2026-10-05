@@ -12,7 +12,7 @@
  * An org stakeholder viewed inside a project is read-only here apart from
  * comments and its per-project visibility (the project API can't mutate the
  * record itself); a link leads to the org route where the owner role can edit
- * it. Hiding it from the project (`StakeholderVisibilityControl`) returns to the
+ * it. Hiding it from the project (`RecordVisibilityControl`) returns to the
  * list, since a hidden stakeholder is no longer reachable from the project.
  *
  * Personal data: contact info is Confidential, so it sits behind the same
@@ -40,10 +40,10 @@ import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "./RecordDetailParts";
 import { RecordDiscussion } from "./RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
+import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RelationshipsPanel } from "./RelationshipsPanel";
 import { RepresentationPanel } from "./RepresentationPanel";
 import { StakeholderFormModal } from "./StakeholderFormModal";
-import { StakeholderVisibilityControl } from "./StakeholderVisibilityControl";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderVersion } from "./types";
 import {
   GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
@@ -235,7 +235,10 @@ export function StakeholderDetailPage() {
         )}
 
         {readOnlyInProject && (
-          <StakeholderVisibilityControl stakeholder={stakeholder} onHide={hideFromProject} onReset={resetVisibility} />
+          <RecordVisibilityControl
+            record={stakeholder} noun="Stakeholder" consequence="linking needs or relationships"
+            onHide={hideFromProject} onReset={resetVisibility}
+          />
         )}
 
         {stakeholder.description && <RecordField label="Description" value={stakeholder.description} />}

@@ -4,7 +4,7 @@ sidebar_position: 28
 
 # AI assistant (MCP) integration
 
-Stakeholders & Personas contributes 38 tools to ReqTrackManager's [MCP server](../../api-integrations/ai-assistants-mcp/overview.md) — the same mechanism an AI assistant like Claude Code uses to read and update Requirements and the other modules' content. They register automatically when the module is enabled for an organisation. All are project-scoped.
+Stakeholders & Personas contributes 40 tools to ReqTrackManager's [MCP server](../../api-integrations/ai-assistants-mcp/overview.md) — the same mechanism an AI assistant like Claude Code uses to read and update Requirements and the other modules' content. They register automatically when the module is enabled for an organisation. All are project-scoped.
 
 Writes follow the usual MCP write mode: the server must have writes enabled, and the signed-in account's own role decides what it may change. There is no approval step in this module, so no tool needs the AI-approval opt-in that Decision Management's and Context & Strategy's approve tools need.
 
@@ -17,7 +17,7 @@ Writes follow the usual MCP write mode: the server must have writes enabled, and
 | Activate / retire | 6 | Moving a record between Draft, Active and Retired. |
 | Relationship reads | 8 | The relationship kinds, the records a relationship can point at, a Stakeholder's or Persona's relationships, who is related to a given Pain Point, Requirement or Decision, who a Stakeholder represents and who has a Need. |
 | Relationship changes | 10 | Adding and removing relationships, "represents" links, "has need" links and "gives rise to" links. |
-| Visibility | 2 | Hiding an organisation Stakeholder from the project (or showing it again) and reverting to the inherited setting. |
+| Visibility | 4 | Hiding an organisation Stakeholder or Persona from the project (or showing it again) and reverting to the inherited setting. |
 
 Every `remove_*` tool deletes only the link, never either record. There is deliberately **no tool to permanently delete a Stakeholder**: irreversible deletion of personal data stays a human action in the app. File and comment endpoints are not exposed.
 
@@ -27,7 +27,7 @@ Every `remove_*` tool deletes only the link, never either record. There is delib
 | --- | --- |
 | "Who are this project's Stakeholders?" / "Which Personas do we have?" | `list_stakeholders` / `list_personas` |
 | "What does Dana Whitfield need?" | `list_need_holders`, `list_stakeholder_needs` |
-| "Hide the supplier contact from this project." | `set_stakeholder_visibility` |
+| "Hide the supplier contact from this project." / "Hide the Harbour Pilot Persona from this project." | `set_stakeholder_visibility` / `set_persona_visibility` |
 | "Who experiences this Pain Point?" | `list_incoming_relationships` |
 | "Create a Persona for the remote pilot." | `create_persona` |
 | "Record that this Stakeholder was consulted on that Decision." | `add_stakeholder_relationship` (kind `consulted_on_decision`) |

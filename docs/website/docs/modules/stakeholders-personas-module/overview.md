@@ -50,7 +50,7 @@ The module defines seven roles of its own, rather than additions to the core rol
 
 | Record | Role | Scope | Grants |
 | --- | --- | --- | --- |
-| Persona | **Persona Owner** | Project | Creates, edits, retires and re-weights a project's Personas, and manages the project's Persona types. |
+| Persona | **Persona Owner** | Project | Creates, edits, retires and re-weights a project's Personas, manages the project's Persona types, and hides organisation Personas from the project. |
 | Persona | **Organisation Persona Owner** | Organisation | The same for organisation-wide Personas. |
 | Persona | **Persona Type Admin** | Organisation | Manages the organisation's shared Persona type vocabulary. |
 | Stakeholder | **Stakeholder Owner** | Project | Creates, edits, retires and permanently deletes a project's Stakeholders, manages their Persona links, manages the project's Stakeholder types, and hides organisation Stakeholders from the project. |

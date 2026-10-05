@@ -1,12 +1,12 @@
 /**
- * Module: modules/stakeholders/StakeholderVisibilityControl
+ * Module: modules/stakeholders/RecordVisibilityControl
  *
- * The "Visibility in this project" field on an organisation Stakeholder's
- * detail page when it is opened from a project: states whether this project
+ * The "Visibility in this project" field on an organisation Stakeholder's or
+ * Persona's detail page when it is opened from a project: states whether this project
  * has an override of its own (`OverridePill`, style guide "Pattern: platform
  * default vs. override") and offers "Hide from this project". Hiding is
  * reversible and non-destructive, so it is a tier-1 `ConfirmDialog` that says
- * what stays recorded. A hidden stakeholder never reaches this page (the
+ * what stays recorded. A hidden record never reaches this page (the
  * project API treats it as absent); it is shown again from the list's "Show
  * hidden" filter, so the only override seen here is an explicit "shown" that
  * beats a parent project's hide.
@@ -18,21 +18,26 @@ import { useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { OverridePill } from "../../components/OverridePill";
 import { RecordFieldGroup } from "./RecordDetailParts";
-import type { Stakeholder } from "./types";
 
-export function StakeholderVisibilityControl({
-  stakeholder,
+export function RecordVisibilityControl({
+  record,
+  noun,
+  consequence,
   onHide,
   onReset,
 }: {
-  stakeholder: Stakeholder;
-  /** Hides the stakeholder from the project; called once the dialog is confirmed. */
+  record: { name: string; hidden_override: boolean | null };
+  /** "Stakeholder" or "Persona", for the labels. */
+  noun: string;
+  /** What hiding stops, completing "It will no longer appear in this project's {noun}s or be offered when …". */
+  consequence: string;
+  /** Hides the record from the project; called once the dialog is confirmed. */
   onHide: () => void;
   /** Removes the project's own "shown" override, reverting to what a parent project decides. */
   onReset: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const shownDespiteParent = stakeholder.hidden_override === false;
+  const shownDespiteParent = record.hidden_override === false;
 
   return (
     <RecordFieldGroup label="Visibility in this project" gap="0.35rem">
@@ -56,11 +61,11 @@ export function StakeholderVisibilityControl({
 
       {confirming && (
         <ConfirmDialog
-          title={`Hide ${stakeholder.name} from this project?`}
+          title={`Hide ${record.name} from this project?`}
           message={
-            "They will no longer appear in this project's Stakeholders or be offered when linking needs or " +
-            "relationships. Nothing is deleted: existing links stay recorded and reappear if you show them " +
-            "again from the list's \"Show hidden\" filter."
+            `It will no longer appear in this project's ${noun}s or be offered when ${consequence}. Nothing is ` +
+            "deleted: existing links stay recorded and reappear if you show it again from the list's " +
+            "\"Show hidden\" filter."
           }
           confirmLabel="Hide"
           onConfirm={() => { setConfirming(false); onHide(); }}

@@ -75,7 +75,10 @@ class PersonaOut(BaseModel):
     """A persona merged with its current version. `effective_weight` and
     `weight_override`/`weight_source` are populated only by the project router:
     the resolved weight for that project, the project's own override (if any),
-    and the tier the resolved weight came from."""
+    and the tier the resolved weight came from. `project_hidden`,
+    `hidden_override` and `hidden_source` are likewise project-router-only, for an
+    org persona: whether it is hidden from the project, the project's own
+    override (`None` when it only inherits) and the tier the value came from."""
 
     id: UUID
     scope: PersonaScope
@@ -107,6 +110,10 @@ class PersonaOut(BaseModel):
     effective_weight: float | None = None
     weight_override: float | None = None
     weight_source: Literal["project", "ancestor_project", "persona", "none"] | None = None
+
+    project_hidden: bool | None = None
+    hidden_override: bool | None = None
+    hidden_source: str | None = None
 
     created_at: datetime
     updated_at: datetime
@@ -332,8 +339,8 @@ class StakeholderOut(BaseModel):
     hidden_source: str | None = None
 
 
-class StakeholderVisibilitySet(BaseModel):
-    """Body of the project visibility override endpoint."""
+class VisibilitySet(BaseModel):
+    """Body of a project's Persona/Stakeholder visibility override endpoint."""
 
     hidden: bool
 

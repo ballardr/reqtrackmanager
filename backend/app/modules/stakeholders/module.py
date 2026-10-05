@@ -363,8 +363,33 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     need_path = f"{_PROJECT_ROUTER_PREFIX}/needs/{{need_id}}"
     return _build_link_mcp_tools() + (
         McpToolDefinition(
-            name="list_personas", description="Lists a project's Personas, including its organisation's shared ones.",
-            method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/personas", params=[_PROJECT_ID_PARAM],
+            name="list_personas",
+            description=(
+                "Lists a project's Personas, including its organisation's shared ones except those hidden from the "
+                "project (pass include_hidden=true to list those too, flagged by project_hidden)."
+            ),
+            method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/personas",
+            params=[_PROJECT_ID_PARAM, {
+                "name": "include_hidden", "type": "boolean", "required": False, "in": "query",
+                "description": "Also list organisation Personas hidden from this project.",
+            }],
+        ),
+        McpToolDefinition(
+            name="set_persona_visibility",
+            description=(
+                "Hides an organisation Persona from this project (hidden=true), or shows it again where an ancestor "
+                "project hides it (hidden=false). A hidden Persona is no longer scored or linkable here. Only this "
+                "project's override changes; the shared Persona and its links are untouched."
+            ),
+            method="PUT", path_template=f"{persona_path}/visibility",
+            params=[_PROJECT_ID_PARAM, _PERSONA_ID_PARAM,
+                    _body("hidden", "boolean", "True to hide from this project, false to show it.", required=True)],
+        ),
+        McpToolDefinition(
+            name="reset_persona_visibility",
+            description="Removes this project's visibility override for an organisation Persona, reverting to the inherited state.",
+            method="DELETE", path_template=f"{persona_path}/visibility",
+            params=[_PROJECT_ID_PARAM, _PERSONA_ID_PARAM],
         ),
         McpToolDefinition(
             name="get_persona", description="Fetches a single Persona.", method="GET",
@@ -534,7 +559,10 @@ MODULE_DEFINITION = ModuleDefinition(
     roles=(
         ModuleRoleDefinition(
             role_key="persona_owner", name="Persona Owner",
-            description="Creates, edits, retires and re-weights project-scoped Personas and manages the project's Persona types.",
+            description=(
+                "Creates, edits, retires and re-weights project-scoped Personas, manages the project's Persona "
+                "types, and hides organisation Personas from the project."
+            ),
             scope="project", permissions=(PERSONA_MANAGE_PERMISSION,),
         ),
         ModuleRoleDefinition(

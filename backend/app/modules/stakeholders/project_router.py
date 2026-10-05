@@ -5,14 +5,17 @@ Project-scoped API for the Stakeholders & Personas module (Phase 1.1), mounted
 at `/api/v1/projects/{project_id}/modules/stakeholders`: project-scoped
 Persona CRUD/lifecycle/comments/files, the project's Persona type vocabulary
 (effective list plus rename/reorder/disable/add) and the per-project weight
-override.
+override and the per-project visibility override of an org persona.
 
 Reads (`GET /personas`, `GET /personas/{id}`) return the project's own
 personas *and* the organisation's live org-scoped ones (Phase 0 resolution
 2), each with the project's `effective_weight`. Every mutation targets a
 project-scoped persona only; an org persona is edited through the org router.
-The weight override is the one exception: a project may override the weight of
-any persona it can see.
+The weight override and the visibility override are the exceptions: a project
+may override the weight of any persona it can see, and hide an org persona from
+itself (Phase 3b; nearest ancestor project's setting wins). A hidden persona is
+absent from the project's list and 404s here, so it cannot be scored or linked;
+`include_hidden=true` lists it for the manage UI.
 
 RBAC mirrors the org router: sub-component enablement to view,
 `_shared.require_persona_manage` (project persona owner role or FGAC grant) to
@@ -47,14 +50,17 @@ from app.modules.stakeholders.schemas import (
     ProjectTypeCreate,
     ProjectTypeOut,
     ProjectTypeOverrideUpdate,
+    VisibilitySet,
 )
 from app.modules.stakeholders.service import (
     PERSONA_ARTEFACT_TYPE,
     PERSONA_TYPES,
     archive_persona,
+    clear_project_persona_visibility,
     clear_project_persona_weight,
     get_current_persona_version,
     list_project_visible_personas,
+    set_project_persona_visibility,
     set_project_persona_weight,
     unarchive_persona,
 )
@@ -81,15 +87,15 @@ def _get(db: Session, project_id: UUID, persona_id: UUID) -> Persona:
 
 
 def _get_visible(db: Session, project: Project, persona_id: UUID) -> Persona:
-    """A persona this project can read: its own, or its organisation's."""
-    persona = db.get(Persona, persona_id)
-    visible = persona is not None and (
-        (persona.scope == PersonaScope.PROJECT and persona.project_id == project.id)
-        or (persona.scope == PersonaScope.ORGANIZATION and persona.organization_id == project.organization_id)
+    """A persona this project can read: its own, or its organisation's unless hidden from it."""
+    return sh.get_visible_persona(db, project, persona_id)
+
+
+def _get_org_persona(db: Session, project: Project, persona_id: UUID) -> Persona:
+    """An org persona of the project's organisation, hidden or not (404 otherwise)."""
+    return sh.get_persona_in_scope(
+        db, PersonaScope.ORGANIZATION, organization_id=project.organization_id, persona_id=persona_id
     )
-    if not visible:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Persona not found.")
-    return persona
 
 
 def _require_manage(db: Session, user: User, project: Project) -> None:
@@ -185,12 +191,16 @@ def create_project_persona(
 
 @router.get("/personas", response_model=list[PersonaOut])
 def list_project_personas(
-    project_id: UUID, include_archived: bool = False, include_org: bool = True,
+    project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """The project's personas, plus the organisation's unless `include_org=false`."""
+    """The project's personas, plus the organisation's unless `include_org=false`.
+    Org personas hidden from the project are left out unless `include_hidden=true`
+    (the manage UI), where they carry `project_hidden`."""
     project = _project(db, project_id)
-    personas = list_project_visible_personas(db, project, include_archived=include_archived)
+    personas = list_project_visible_personas(
+        db, project, include_archived=include_archived, include_hidden=include_hidden
+    )
     if not include_org:
         personas = [p for p in personas if p.scope == PersonaScope.PROJECT]
     return [_out(db, p, project_id) for p in personas]
@@ -311,6 +321,43 @@ def clear_project_persona_weight_endpoint(
     _require_manage(db, current_user, project)
     if clear_project_persona_weight(db, project_id, persona.id):
         log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="weight_override_cleared",
+                  actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    return _out(db, persona, project_id)
+
+
+# --- Visibility override (hide an org persona from this project) ------------
+
+
+@router.put("/personas/{persona_id}/visibility", response_model=PersonaOut)
+def set_project_persona_visibility_endpoint(
+    project_id: UUID, persona_id: UUID, payload: VisibilitySet,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Hides an org persona from this project (`hidden=true`) or, if a parent
+    project hides it, shows it again here (`hidden=false`). Writes only this
+    project's override; the shared persona, its links and weights are untouched."""
+    project = _project(db, project_id)
+    persona = _get_org_persona(db, project, persona_id)
+    _require_manage(db, current_user, project)
+    sh.apply_value_error_as_conflict(set_project_persona_visibility, db, project, persona, payload.hidden)
+    log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id,
+              action="visibility_hidden" if payload.hidden else "visibility_shown", actor_id=current_user.id,
+              project_id=project_id)
+    db.commit()
+    return _out(db, persona, project_id)
+
+
+@router.delete("/personas/{persona_id}/visibility", response_model=PersonaOut)
+def clear_project_persona_visibility_endpoint(
+    project_id: UUID, persona_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Removes this project's own override, reverting to the inherited (else visible) state."""
+    project = _project(db, project_id)
+    persona = _get_org_persona(db, project, persona_id)
+    _require_manage(db, current_user, project)
+    if clear_project_persona_visibility(db, project_id, persona.id):
+        log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="visibility_reset",
                   actor_id=current_user.id, project_id=project_id)
     db.commit()
     return _out(db, persona, project_id)
