@@ -96,6 +96,7 @@ Full fields and a lifecycle diagram live on each artefact's own page (linked bel
 - [Guiding Principle](./guiding-principle.md) — fields, lifecycle, roles, and relationships for a Guiding Principle.
 - [Open Question](./open-question.md) — fields, lifecycle, roles, and relationships for an Open Question.
 - [Relationships and types](./relationships-and-types.md) — the bird's-eye view across all five artefact types at once, and the reserved Decision-target relationships not yet built.
+- [Reports](./reports.md) — the nine reports (R1–R9), where to find them, and how to export them.
 - [AI assistant (MCP) integration](./mcp-integration.md) — the tools an AI assistant can call against this module's content.
 - [Known limitations](./known-limitations.md) — what this module deliberately doesn't do yet.
 

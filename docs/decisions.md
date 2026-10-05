@@ -9639,3 +9639,103 @@ test files, the Compliance report tests, the Context & Strategy suite and the
 MCP manifest tests pass; `ruff check` is clean.
 
 **Known gaps:** no UI (Phase 13); report endpoints are not paginated.
+
+## Module 1 (Context & Strategy) Phase 13 — Reports UI (2026-10-06)
+
+One Reports destination in core, driven entirely by the backend catalogue, with
+per-module views registered declaratively. No new table or endpoint; one field
+added to R1's JSON (`data.groups[].bands`).
+
+What was built (core, no module import):
+- `ReportCatalogue` is a "Report" picker over the catalogue entries and the
+  selected report, run by `ReportRunner` (generated `ReportParamsForm`, debounced
+  re-run, `ReportViewer` or a registered view, PDF/CSV through the shared
+  `ReportExportButton`, optional branding template). The selection is the
+  `?report=` search parameter. The project `ReportsPage` and a new core "Reports"
+  group on `OrgOverviewPage` both use it.
+- `TierAModuleDefinition.reportViews: Record<reportKey, {component, ownedParams?}>`
+  and `getReportView` are the only module-facing additions. Context & Strategy
+  registers R1 and R4; every other report is rendered generically.
+
+Decisions:
+- **Org reports live in a core "Reports" group on Org Overview**, present only
+  when the org catalogue lists something for the caller. (Decided by: User.)
+- **The requirement report is a presentation-only first entry in the same
+  picker** (the unchanged panel, extracted to `RequirementReportPanel`); it is
+  not a backend catalogue entry. With no catalogue reports the picker is hidden
+  and the page is what it was. (Decided by: User, over the plan's recommendation.)
+- **`reportViews` entries are objects with `ownedParams`**, not bare components,
+  so a view can own a parameter's control (R1's model and roll-up switchers) and
+  core hides it from the generic form instead of drawing two controls. Modules 2
+  and 14's Phase 6 plans were not re-read; the shape should be recorded in
+  Module 10's plan. (Decided by: Agent.)
+- **Generic parameter labels and choices are humanised**, since core has no label
+  map for a module's vocabulary (style guide Principle 12 applies where a label
+  map exists). A module needing exact wording owns the parameter in its view; R1
+  does, using `PAIN_POINT_ROLLUP_LABEL`. (Decided by: Agent.)
+- **Downloads send exactly what is on screen**, plus the branding template for
+  PDF only, never for CSV. (Decided by: Agent, following the style guide's
+  "export must respect the page's current filter state".)
+- **R1 matrix bands come from the first contributing project** because a model
+  group can span projects. Exact for a project report; an org report across
+  projects with different band overrides shows one project's colours. (Decided
+  by: Agent; documented in `ScoredGroup`.)
+- **No new frontend report list.** Nothing in core names a report or module; the
+  catalogue already reflects module and sub-component enablement and the org role.
+
+**Follow-up: Project picker on organisation reports (Decided by: User).** A
+framework-level optional `project_id` query on organisation report routes narrows
+the run to one project. It filters the already-computed scope, so it can never
+widen it: a project outside the caller's scope (another organisation's, or one
+they cannot read under a `readable_projects` report) is a 404 with no existence
+leak, and `all_org_projects` is unchanged. The catalogue exposes
+`supports_project_filter`; MCP is unaffected (org routes are not tools). Tested
+in `test_org_report_project_filter_narrows_within_scope_and_never_widens`
+(admin, restricted viewer, outsider project, unknown and malformed ids).
+**The picker's list comes from the catalogue, not a general project list:** each
+organisation catalogue entry carries `projects`, the projects in that report's
+scope for the caller (`scope_projects`, so a `readable_projects` report omits a
+project an org admin holds no role on, while `all_org_projects` offers all) with
+the module and declared sub-component enabled. So the picker never offers a
+project the route would 404 on (tested, including the sub-component case).
+(Decided by: User for the fix; Decided by: Agent for carrying the list on the
+catalogue entry.)
+
+**Review (identify → verify → remediate)** — touches access control and
+aggregated reads on the UI side:
+1. *UI gate treated as a boundary.* The Reports group and picker are hidden from
+   the catalogue, but that is presentation only: access is still enforced per
+   route by Phase 12b (org role 403, project membership, module and
+   sub-component 404). Verified end to end: a project member without
+   `org_reports_viewer` sees no group and no picker at the deep link, and gains
+   the group when granted the role.
+2. *Injection.* Cells, notes and titles render as React text; no
+   `dangerouslySetInnerHTML`. Hrefs use server ids only. Download filenames come
+   from the report's declared slug, never report data.
+3. *Cross-tenant template.* The branding picker lists the owning organisation's
+   templates; the backend rejects another organisation's id (Phase 12b, 400).
+4. *Stale or superseded responses.* A re-run supersedes an in-flight one and a
+   failed run cannot overwrite a newer result (`cancelled` guard).
+5. *Boundary.* Core imports nothing from `modules/context_strategy/`; the views
+   are reached through `reportViews`. The new `ReportRunner` story registers a
+   neutral fixture module to prove resolution is by registry.
+6. **Found and fixed (existing):** `ReportsPage` had no error handling on its
+   project load; a failure left a permanent spinner. It now toasts the error.
+
+**Verification:** Storybook for `ReportViewer`, `ReportParamsForm`,
+`ReportRunner` and `ReportCatalogue` (synthetic module-neutral fixtures), both
+module views, and the extended `ReportsPage` and `OrgOverviewPage` stories (full
+suite: 196 files, 1,504 tests pass); `tsc -b` clean, no new ESLint warnings;
+Playwright `reports-ui.spec.ts` (8 tests) plus the requirement-report,
+project-admin-templates, org-overview and Compliance report specs pass; the
+Context & Strategy report tests (32) pass with the new `bands` assertion;
+`ruff check` clean; the docs site builds.
+
+**Docs website:** new `modules/context-strategy-module/reports` page and a
+pointer in Reports and export. Phase 14 adds scoring depth, a data-flow diagram
+and screenshots. The Mermaid diagram on the new page could not be parsed
+headlessly (mermaid needs a DOM); it is a plain flowchart.
+
+**Known gaps:** no screenshots yet (Phase 14); `RequirementReportPanel` has no
+story of its own (covered through `ReportsPage`); seed scripts were not
+re-checked for report content (Phase 14).

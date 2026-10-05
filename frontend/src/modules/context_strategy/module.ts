@@ -6,11 +6,13 @@ import type { TierAModuleDefinition } from "../types";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
 import { GuidingPrincipleDetailPage } from "./GuidingPrincipleDetailPage";
 import { OpenQuestionDetailPage } from "./OpenQuestionDetailPage";
+import { OpenQuestionRegisterReportView } from "./OpenQuestionRegisterReportView";
 import { OrgFutureStatesPanel } from "./OrgFutureStatesPanel";
 import { OrgGuidingPrinciplesPanel } from "./OrgGuidingPrinciplesPanel";
 import { OrgPainPointTypesPanel } from "./OrgPainPointTypesPanel";
 import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
 import { PainPointDetailPage } from "./PainPointDetailPage";
+import { PainPointPrioritisationReportView } from "./PainPointPrioritisationReportView";
 import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
 import { ProjectGuidingPrinciplesPage } from "./ProjectGuidingPrinciplesPage";
 import { ProjectOpenQuestionsPage } from "./ProjectOpenQuestionsPage";
@@ -186,6 +188,10 @@ export const moduleDefinition: TierAModuleDefinition = {
       element: createElement(GuidingPrincipleDetailPage),
     },
   ],
+  reportViews: {
+    r1: { component: PainPointPrioritisationReportView, ownedParams: ["model_key", "rollup"] },
+    r4: { component: OpenQuestionRegisterReportView },
+  },
   orgOverviewSections: [
     {
       key: "context-strategy-org-strategies",

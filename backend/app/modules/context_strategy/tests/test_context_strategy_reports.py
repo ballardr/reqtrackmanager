@@ -180,6 +180,21 @@ def _grant_org_role(client, org_admin_token, org_id, user_id, role_key) -> None:
 # --- R1: Pain Point prioritisation ------------------------------------------------
 
 
+def test_r1_group_data_carries_axis_levels_and_bands_for_the_matrix_view(client, admin_token):
+    """The on-screen matrix needs each group's levels and rating bands (not just item rows)."""
+    _, project, token = _setup(client, admin_token, "R1 Bands Co")
+    pid = project["id"]
+    levels = _levels(client, token, pid)
+    _scored_pain_point(client, token, pid, levels, "Major constant", "Major", "Constant", "High")
+
+    group = _report(client, token, pid, "pain-point-prioritisation")["data"]["groups"][0]
+
+    assert [lvl["weight"] for lvl in group["severity_levels"]] == sorted(lvl["weight"] for lvl in group["severity_levels"])
+    assert group["frequency_levels"]
+    assert group["bands"], "the model's effective rating bands are included"
+    assert set(group["bands"][0]) == {"label", "min_score", "tone"}
+
+
 def test_r1_ranks_and_segregates_blockers_unscored_and_intentional(client, admin_token):
     _, project, token = _setup(client, admin_token, "R1 Rank Co")
     pid = project["id"]

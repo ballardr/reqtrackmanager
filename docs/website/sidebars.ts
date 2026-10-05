@@ -128,6 +128,7 @@ const sidebars: SidebarsConfig = {
             'modules/context-strategy-module/guiding-principle',
             'modules/context-strategy-module/open-question',
             'modules/context-strategy-module/relationships-and-types',
+            'modules/context-strategy-module/reports',
             'modules/context-strategy-module/mcp-integration',
             'modules/context-strategy-module/known-limitations',
           ],

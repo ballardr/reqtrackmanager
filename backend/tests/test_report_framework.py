@@ -300,6 +300,55 @@ def test_readable_scope_excludes_unreadable_projects_but_all_org_scope_does_not(
     assert "Covers 2 project(s) in this organisation." in _get(probe, viewer, _org_url(org["id"], "probe-everything")).json()["notes"]
 
 
+def test_org_report_project_filter_narrows_within_scope_and_never_widens(client, admin_token, probe):
+    org, project_a, admin = _setup(client, admin_token, "Filter Co")
+    project_b = create_project(client, admin, org["id"], "Filter Co B")
+    user_id, viewer = _member(client, admin, org["id"], project_a["id"], "filter-viewer@example.com")
+    _grant_viewer(client, admin, org["id"], user_id)
+    url = _org_url(org["id"])
+
+    assert _get(probe, admin, url).json()["data"]["projects"] == ["Filter Co A", "Filter Co B"]
+    assert _get(probe, admin, url, project_id=project_b["id"]).json()["data"]["projects"] == ["Filter Co B"]
+    # The viewer can read only A under the default scope: B is outside it, so the filter cannot reach it.
+    assert _get(probe, viewer, url, project_id=project_a["id"]).json()["data"]["projects"] == ["Filter Co A"]
+    _get(probe, viewer, url, project_id=project_b["id"], expect=404)
+    _get(probe, admin, url, project_id="00000000-0000-0000-0000-000000000000", expect=404)
+    _get(probe, admin, url, project_id="not-a-uuid", expect=422)
+    # An explicit all-projects scope still lets a viewer filter to a project they hold no role on.
+    everything = _get(probe, viewer, _org_url(org["id"], "probe-everything"), project_id=project_b["id"])
+    assert everything.json()["data"]["projects"] == ["Filter Co B"]
+    # Another organisation's project is never in scope.
+    org2, project2, _ = _setup(client, admin_token, "Filter Other")
+    _get(probe, admin, url, project_id=project2["id"], expect=404)
+
+
+def test_org_catalogue_lists_only_projects_the_report_can_be_narrowed_to(client, admin_token, probe):
+    """The picker's list is exactly what the route accepts: no project the filter would 404 on."""
+    org, project_a, admin = _setup(client, admin_token, "Pick Co")
+    create_project(client, admin, org["id"], "Pick Co B")
+    create_org_user(client, admin, org["id"], "pick-owner@example.com", role="project_creator")
+    owner = login(client, "pick-owner@example.com", "Password123!")
+    private = create_project(client, owner, org["id"], "Pick Co Private")
+    url = f"/api/v1/orgs/{org['id']}/report-catalogue"
+
+    def listed(token, slug):
+        entries = _probe_entries(client.get(url, headers=auth_headers(token)).json())
+        return [p["name"] for p in entries[slug]["projects"]]
+
+    # Readable scope: an org admin with no role on the private project is not offered it, and the route agrees.
+    assert listed(admin, "probe-all") == ["Pick Co A", "Pick Co B"]
+    _get(probe, admin, _org_url(org["id"]), project_id=private["id"], expect=404)
+    # An explicit all-projects scope offers every project, and the route accepts each.
+    assert listed(admin, "probe-everything") == ["Pick Co A", "Pick Co B", "Pick Co Private"]
+    _get(probe, admin, _org_url(org["id"], "probe-everything"), project_id=private["id"])
+    # A project where the sub-component is switched off is not offered.
+    off = client.put(
+        f"/api/v1/projects/{project_a['id']}/modules/{KEY}/subcomponents/alpha", json={"enabled": False}, headers=auth_headers(admin),
+    )
+    assert off.status_code == 200, off.text
+    assert "Pick Co A" not in listed(admin, "probe-all")
+
+
 def test_org_admin_without_project_roles_sees_no_projects_in_readable_scope(client, admin_token, probe):
     org, _, token = _setup(client, admin_token, "Admin Co")
     create_org_user(client, token, org["id"], "owner@example.com", role="project_creator")
@@ -401,6 +450,7 @@ def test_project_catalogue_lists_enabled_reports_with_parameters(client, admin_t
     assert list(entries) == ["probe-all", "probe-everything", "probe-project-only"]  # beta off, invalid excluded
     entry = entries["probe-all"]
     assert entry["scope"] == "project" and entry["supports_include_children"] is True
+    assert entry["supports_project_filter"] is False
     assert entry["path"] == _project_url(project["id"]) and entry["formats"] == ["json", "pdf", "csv"]
     assert entry["module_name"] == "Report Probe"
     params = {p["name"]: p for p in entry["params"]}
@@ -422,6 +472,8 @@ def test_org_catalogue_lists_only_reports_the_caller_may_run(client, admin_token
     entries = _probe_entries(client.get(url, headers=auth_headers(member)).json())
     assert list(entries) == ["probe-all", "probe-everything"]  # project-only and beta-gated ones are absent
     assert entries["probe-all"]["scope"] == "organization" and entries["probe-all"]["supports_include_children"] is False
+    assert entries["probe-all"]["supports_project_filter"] is True
+    assert [p["name"] for p in entries["probe-all"]["projects"]] == ["OrgCat Co A"]
     assert entries["probe-all"]["path"] == _org_url(org["id"])
 
     _, _, outsider = _setup(client, admin_token, "OrgCat Other")

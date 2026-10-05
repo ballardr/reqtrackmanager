@@ -982,6 +982,28 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
 - **Not built yet:** rich cells (Compliance's multi-line narrative), richer
   section kinds (matrices) and row caps; add them when a second consumer needs
   them.
+- **On-screen UI is core too (Phase 13).** The project Reports page and Org
+  Overview's "Reports" group list whatever the catalogue returns and run it with
+  the shared `ReportRunner` (parameter form from the declaration, `ReportViewer`,
+  PDF/CSV). A module needs no UI for a report whose table form is enough. To draw
+  something richer, register a view on the frontend
+  `TierAModuleDefinition.reportViews`:
+
+```ts
+reportViews: {
+  r1: { component: PainPointPrioritisationReportView, ownedParams: ["model_key", "rollup"] },
+}
+```
+
+  Organisation-level reports also accept a framework-level `project_id` query
+  (shown as a "Project" picker, flagged by `supports_project_filter`; the
+  entry's `projects` lists exactly the projects it accepts for that caller) that narrows the run to one project already in the report's scope;
+  a project outside it is a 404, so it can never widen access.
+
+  `component` receives `{entry, result, scope, values, onValueChange}`;
+  `ownedParams` are parameters the view draws its own controls for, hidden from
+  the generic form. Compose `ReportSummary`/`ReportSectionTable` from
+  `components/ReportViewer` for the parts a table already serves.
 
 ### Tier A — installed (the primary path)
 

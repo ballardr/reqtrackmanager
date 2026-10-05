@@ -61,7 +61,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-**18 / 20 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–12 and 12b are done (12b, the core report framework, shipped 2026-10-06). Phase 13 (shared Reports UI, built on 12b's catalogue endpoints) is next.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
+**19 / 20 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–13 and 12b are done (13, the shared Reports UI, shipped 2026-10-06). Phase 14 (docs website depth + seeds verification) is next.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
 split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
 note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
 module's last phase, shipped the same day — see "Phase 8 notes" below.
@@ -86,8 +86,8 @@ module's last phase, shipped the same day — see "Phase 8 notes" below.
 | 11 | Per-persona Pain Point scoring + intentional flag | [x] Complete (2026-10-05) |
 | 12 | Report generation backend (R1–R9) | [x] Complete (2026-10-05) |
 | 12b | Core report framework (extracted from Phase 12) | [x] Complete (2026-10-06) — see "Phase 12b notes" |
-| 13 | Reports UI (shared core UI + per-module views) | [ ] Not started — builds on 12b (now shipped) |
-| 14 | Docs website + seeds verification | [ ] Not started |
+| 13 | Reports UI (shared core UI + per-module views) | [x] Complete (2026-10-06) — see "Phase 13 notes" |
+| 14 | Docs website + seeds verification | [ ] Not started — a first Reports page exists (Phase 13); Phase 14 adds scoring/diagram/screenshots and the seed check |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -3779,6 +3779,69 @@ a bespoke per-module report page (the "fifth one-off pattern" the style
 guide warns about), a core-imports-module violation, or a structure Module
 10 has to throw away. *Outcome:* one Reports destination; adding a report is
 a backend declaration, plus a custom view only when a table isn't enough.
+
+## Phase 13 notes (2026-10-06)
+
+**Shipped.** Core: `api/reports.ts`, `hooks/useReportCatalogue.ts`,
+`components/ReportViewer` (plus the composable `ReportSummary`/
+`ReportSectionTable`), `ReportParamsForm`, `ReportRunner`, `ReportCatalogue`,
+`RequirementReportPanel` (the existing requirement report, extracted from
+`ReportsPage` unchanged) and `utils/humanise.ts`. `ReportsPage` is now the
+picker over the requirement report plus the project catalogue;
+`OrgOverviewPage` gains a core **Reports** group fed by the org catalogue.
+`TierAModuleDefinition.reportViews` (`modules/types.ts`) and `getReportView`
+(`modules/registry.ts`) are the registration point; Context & Strategy
+registers `r1` (`PainPointPrioritisationReportView`: shared
+`ScoringMatrixChart` + `ScoringModelSwitcher` + ranked list) and `r4`
+(`OpenQuestionRegisterReportView`: ageing table with overdue/unowned
+flagged). R2, R3, R5–R9 use the generic `ReportViewer`. One backend
+addition: R1's `data.groups[]` now carries `bands` so the matrix can colour
+its cells. Tests: Storybook for every new component and view, Playwright
+`reports-ui.spec.ts` (picker/deep link, R1 and R4 views and switchers, PDF and
+CSV download of every catalogue report, template pass-through, module- and
+sub-component-disabled projects, org group gated by `org_reports_viewer`),
+one backend test for the new `bands` field. Docs website: new
+`context-strategy-module/reports` page and a pointer from Reports and export.
+
+**Open questions, resolved:**
+1. *Where org reports live:* a core "Reports" group on Org Overview, shown only
+   when the org catalogue lists a report for the caller. (**Decided by: User**,
+   recommendation followed.)
+2. *Requirement report in the catalogue:* listed as a presentation-only first
+   entry in the same picker, rendering the unchanged `RequirementReportPanel`;
+   it is not a backend catalogue entry. (**Decided by: User**, over this plan's
+   recommendation to keep it separate.)
+3. *Shape for Modules 2 and 14:* `reportViews` is keyed by report key and is an
+   object, not a bare component: `{component, ownedParams?}`. `ownedParams`
+   lets a view draw its own control for a parameter (R1's model switcher) while
+   core hides it from the generic form. Modules 2/14's Phase 6 plans were not
+   re-read; record this shape in Module 10's plan when that is written.
+   (**Decided by: Agent**.)
+
+**Deviations from the plan text:** `reportViews` is `Record<key, ReportViewDef>`
+rather than `Record<key, Component>` (above). Downloads reuse the shared
+`ReportExportButton` and send the on-screen values (CSV never carries the
+branding template). Parameter choice values are humanised in core because core
+has no label map for a module's vocabulary; a module that needs exact wording
+owns that parameter in its view (R1 does, with `PAIN_POINT_ROLLUP_LABEL`).
+
+**Follow-up (2026-10-06, Decided by: User):** organisation reports gained a
+"Project" picker. Backend: a framework-level optional `project_id` query on
+every organisation report route narrows `ctx.projects` to one project already in
+the caller's scope (404 otherwise, never widening, including under
+`all_org_projects`); the catalogue flags it with `supports_project_filter`.
+The org catalogue entry carries `projects` (the projects in that report's scope
+for the caller with the module/sub-component enabled), so the picker never offers
+one the route would 404 on. Frontend: `ReportParamsForm` renders the picker from
+that list; R1/R4 drop their Project
+column when narrowed, and R1 then reads that project's own scoring scheme.
+Tests: backend `test_org_report_project_filter_narrows_within_scope_and_never_widens`,
+Storybook for the form, runner and R1 view, and the org step in `reports-ui.spec.ts`.
+
+**Known limits:** R1 matrix bands come from the first contributing project, so
+an organisation report over projects with different band overrides shows one
+project's colours. No Storybook story exists for the extracted
+`RequirementReportPanel` on its own (`ReportsPage`'s stories cover it).
 
 ## Phase 14 — Docs website + seeds verification
 

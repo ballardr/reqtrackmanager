@@ -2,7 +2,9 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
+import type { ReportCatalogueEntry } from "../api/reports";
 import type { ProjectReportConfig, ReportTemplate } from "../api/types";
+import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
 import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportsPage } from "./ReportsPage";
 
@@ -25,8 +27,10 @@ const template: ReportTemplate = {
   appendices: [], chapters_per_component: false,
 };
 
-function mockReportsApis(opts: { templates?: ReportTemplate[]; resources?: unknown[] } = {}) {
+function mockReportsApis(opts: { templates?: ReportTemplate[]; resources?: unknown[]; catalogue?: ReportCatalogueEntry[] } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/report-catalogue")) return opts.catalogue ?? [];
+    if (path.includes("/modules/")) return buildReportResult();
     if (path.includes("/components")) return [];
     if (path.includes("/categories")) return [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform" });
@@ -126,6 +130,31 @@ export const NoTemplatesHidesTemplatePicker: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Template & layout section" }));
     await waitFor(() => expect(canvas.getByText("Chapter layout")).toBeInTheDocument());
     await expect(canvas.queryByLabelText("Report template")).not.toBeInTheDocument();
+  },
+};
+
+/** Module 1 Phase 13 — catalogue reports are offered in the same picker as the requirement report
+ * (which stays first and the default); picking one runs it. */
+export const CatalogueReportsAppearBesideTheRequirementReport: Story = {
+  beforeEach: () => mockReportsApis({ catalogue: [buildReportCatalogueEntry()] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText("Report")).toBeInTheDocument());
+    await expect(canvas.getByLabelText("Report")).toHaveValue("requirements");
+    await expect(canvas.getByRole("button", { name: "Generate PDF" })).toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Report"), "fixture-report");
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Generate PDF" })).not.toBeInTheDocument();
+  },
+};
+
+/** With no catalogue reports (module off) there is no picker: the page is the requirement report alone. */
+export const NoCatalogueReportsHidesThePicker: Story = {
+  beforeEach: () => mockReportsApis({ catalogue: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Generate PDF" })).toBeInTheDocument());
+    await expect(canvas.queryByLabelText("Report")).not.toBeInTheDocument();
   },
 };
 

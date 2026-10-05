@@ -518,6 +518,11 @@ def _route_signature(path_param: str, definition: ReportDefinition, *, project_l
     ]
     if project_level:
         params.append(P("include_children", P.POSITIONAL_OR_KEYWORD, annotation=bool, default=Query(False)))
+    else:
+        params.append(P(
+            "project_id", P.POSITIONAL_OR_KEYWORD, annotation=UUID | None,
+            default=Query(None, description="Narrow the report to this one project (must be in its scope)."),
+        ))
     params.append(P("report_template_id", P.POSITIONAL_OR_KEYWORD, annotation=UUID | None, default=Query(None)))
     for param in definition.params:
         bounds = {"ge": param.minimum, "le": param.maximum} if param.type == "integer" else {}
@@ -576,12 +581,18 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         organization = db.get(Organization, organization_id)
         params = validated_params(live, kw)
         branding = _branding_for(db, organization, kw["report_template_id"])
+        projects = scope_projects(
+            db, current_user, definition=live, organization=organization, root_project=None, include_children=False,
+        )
+        if kw["project_id"] is not None:
+            # Narrowing only: the project must already be in the caller's scope, so this can never widen it.
+            projects = [p for p in projects if p.id == kw["project_id"]]
+            if not projects:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "That project is not covered by this report.")
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=None, params=params,
             all_org_projects=live.org_scope == "all_org_projects",
-            projects=scope_projects(
-                db, current_user, definition=live, organization=organization, root_project=None, include_children=False,
-            ),
+            projects=projects,
         )
         return _respond(live.collector(db, ctx), live, kw["format"], organization.name, branding)
 
@@ -589,7 +600,8 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
     scope = "every project in the organisation" if definition.org_scope == "all_org_projects" else "projects the caller can read"
     endpoint.__doc__ = (
         f"{definition.title} across the organisation: {definition.description} Needs the module role "
-        f"`{definition.org_role_key}` (org admins hold module roles by default) and covers {scope}."
+        f"`{definition.org_role_key}` (org admins hold module roles by default) and covers {scope}; `project_id` "
+        "narrows it to one project in that scope."
     )
     return endpoint
 
@@ -694,12 +706,23 @@ class ReportParamOut(BaseModel):
     description: str = ""
 
 
+class ReportProjectOut(BaseModel):
+    """A project an organisation-wide report can be narrowed to."""
+
+    id: UUID
+    name: str
+
+
 class ReportCatalogueEntryOut(BaseModel):
     """One report the caller can run.
 
     `path` is the report's route with the project or organisation id already
     substituted; `supports_include_children` is true for project-level
-    entries.
+    entries and `supports_project_filter` for organisation-level ones (the
+    optional `project_id` query narrows the run to one project in scope).
+    For those, `projects` lists exactly the projects the caller may pick: in
+    the report's scope for this caller, with the module (and declared
+    sub-component) enabled, so the picker never offers one the route would 404.
     """
 
     module_key: str
@@ -712,6 +735,8 @@ class ReportCatalogueEntryOut(BaseModel):
     path: str
     formats: list[str]
     supports_include_children: bool
+    supports_project_filter: bool
+    projects: list[ReportProjectOut] = []
     params: list[ReportParamOut]
 
 
@@ -723,12 +748,16 @@ def _param_out(param: ReportParamDefinition) -> ReportParamOut:
     )
 
 
-def _entry(module_key: str, definition: ReportDefinition, *, scope: Literal["project", "organization"], path: str) -> ReportCatalogueEntryOut:
+def _entry(
+    module_key: str, definition: ReportDefinition, *, scope: Literal["project", "organization"], path: str,
+    projects: Sequence[Project] = (),
+) -> ReportCatalogueEntryOut:
     module = get_module(module_key)
     return ReportCatalogueEntryOut(
         module_key=module_key, module_name=module.name if module else module_key, key=definition.key,
         slug=definition.slug, title=definition.title, description=definition.description, scope=scope, path=path,
-        formats=list(REPORT_FORMATS), supports_include_children=scope == "project",
+        formats=list(REPORT_FORMATS), supports_include_children=scope == "project", supports_project_filter=scope == "organization",
+        projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects],
         params=[_param_out(p) for p in definition.params],
     )
 
@@ -772,6 +801,8 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
         Entries in registry order.
     """
     entries: list[ReportCatalogueEntryOut] = []
+    organization = db.get(Organization, organization_id)
+    scoped: dict[str, list[Project]] = {}  # per `org_scope`: the scope does not depend on the report
     for module_key, definition in get_all_reports():
         module = get_module(module_key)
         if not definition.org_level or module is None or not is_module_enabled(db, organization_id, module_key):
@@ -788,7 +819,16 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
         if router is None:
             continue
         path = f"{router.prefix}/reports/{definition.slug}".replace("{organization_id}", str(organization_id))
-        entries.append(_entry(module_key, definition, scope="organization", path=path))
+        if definition.org_scope not in scoped:
+            scoped[definition.org_scope] = scope_projects(
+                db, user, definition=definition, organization=organization, root_project=None, include_children=False,
+            )
+        pickable = [
+            p for p in scoped[definition.org_scope]
+            if is_module_enabled_for_project(db, p.id, module_key)
+            and (not definition.subcomponent or is_module_subcomponent_enabled(db, p.id, module_key, definition.subcomponent))
+        ]
+        entries.append(_entry(module_key, definition, scope="organization", path=path, projects=pickable))
     return entries
 
 
@@ -799,6 +839,7 @@ __all__ = [
     "ReportFormat",
     "ReportOut",
     "ReportParamOut",
+    "ReportProjectOut",
     "ReportResult",
     "ReportRouters",
     "ReportSection",

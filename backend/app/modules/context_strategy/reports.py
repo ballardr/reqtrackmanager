@@ -107,6 +107,7 @@ from app.modules.context_strategy.pain_point_scores import (
 from app.modules.registry import ReportDefinition, ReportParamDefinition, get_artefact_summary
 from app.services import relationships
 from app.services.report_framework import ReportContext, ReportResult, ReportSection, build_report_routers
+from app.services.scoring import resolve_effective_bands
 
 STRATEGY_TYPE = "strategy"
 FUTURE_STATE_TYPE = "future_state"
@@ -225,6 +226,15 @@ class LevelRef:
 
 
 @dataclass
+class BandRef:
+    """A rating band as the on-screen matrix colours cells with it."""
+
+    label: str
+    min_score: float
+    tone: str
+
+
+@dataclass
 class PersonaScoreRow:
     """One persona's (or the all-personas) score of a Pain Point."""
 
@@ -290,6 +300,9 @@ class ScoredGroup:
     severity_levels: list[LevelRef]
     frequency_levels: list[LevelRef]
     items: list[RankedPainPoint]
+    # Taken from the first contributing project; an organisation report over
+    # projects that override the bands differently shows that project's.
+    bands: list[BandRef] = field(default_factory=list)
 
 
 def _persona_rows(ctx: ScoringContext, summary: PainPointScoringSummary) -> list[PersonaScoreRow]:
@@ -373,6 +386,8 @@ def _score_pain_points(
                 severity_levels=[LevelRef(lvl.name, float(lvl.weight)) for lvl in ctx.levels_by_axis.get("severity", [])],
                 frequency_levels=[LevelRef(lvl.name, float(lvl.weight)) for lvl in ctx.levels_by_axis.get("frequency", [])],
                 items=[],
+                bands=[BandRef(b.label, float(b.min_score), b.tone) for b in resolve_effective_bands(
+                    db, project.organization_id, ctx.scheme, model.key, project.id)[0]],
             )
         summaries = build_pain_point_scoring(db, ctx, pain_points, model, _rollup(req))
         for pp, summary in zip(pain_points, summaries, strict=True):
@@ -428,7 +443,8 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
         req: The request (`model_key`, `rollup` apply).
 
     Returns:
-        The report; `data` is `{"rollup", "groups": list[ScoredGroup]}`.
+        The report; `data` is `{"rollup", "groups": list[ScoredGroup]}` (each
+        group carries its axis levels and rating bands for the matrix view).
     """
     groups = _score_pain_points(db, req, OPEN_PAIN_POINT_STATUSES)
     eligible = len(req.eligible(db, "pain_point"))
