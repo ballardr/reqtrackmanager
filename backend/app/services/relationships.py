@@ -128,6 +128,22 @@ def get_links_to_many(db: Session, target_type: str, target_ids: Sequence[uuid.U
     )
 
 
+def get_links_from_many(db: Session, source_type: str, source_ids: Sequence[uuid.UUID]) -> list[ArtefactLink]:
+    """Returns every `ArtefactLink` row sourced from any of `source_ids`
+    (same `source_type`) in one query — the mirror of `get_links_to_many`.
+    Returns an empty list for an empty `source_ids`, without issuing a
+    query."""
+    if not source_ids:
+        return []
+    return list(
+        db.scalars(
+            select(ArtefactLink).where(
+                ArtefactLink.source_type == source_type, ArtefactLink.source_id.in_(source_ids)
+            )
+        ).all()
+    )
+
+
 def get_link_between(
     db: Session,
     *,

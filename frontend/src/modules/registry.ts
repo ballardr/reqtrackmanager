@@ -1,4 +1,4 @@
-import type { TierAModuleDefinition } from "./types";
+import type { ReportViewDef, TierAModuleDefinition } from "./types";
 
 /**
  * Module: modules/registry
@@ -64,4 +64,10 @@ export const installedModules: TierAModuleDefinition[] = Object.values(moduleFil
  * module at all). */
 export function getInstalledModule(key: string): TierAModuleDefinition | undefined {
   return installedModules.find((module) => module.key === key);
+}
+
+/** Looks up a module's custom view for one of its reports, or `undefined`
+ * when the report has none and the generic `ReportViewer` applies. */
+export function getReportView(moduleKey: string, reportKey: string): ReportViewDef | undefined {
+  return getInstalledModule(moduleKey)?.reportViews?.[reportKey];
 }

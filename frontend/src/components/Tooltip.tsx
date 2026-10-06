@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 
 const VIEWPORT_MARGIN_PX = 8;
 const VERTICAL_GAP_PX = 6.4; // 0.4rem
+// A pointer-following bubble sits below the cursor by roughly the cursor's own height, so it never covers what is being pointed at.
+const POINTER_OFFSET_PX = 20;
 
 /**
  * A lightweight hover/focus tooltip for icon-only controls, replacing
@@ -32,6 +34,14 @@ const VERTICAL_GAP_PX = 6.4; // 0.4rem
  * `title={label}` too, redundant but harmless) on the actual interactive
  * element themselves.
  *
+ * `followPointer` is for wide hover targets (a whole table row or stat cell
+ * made clickable by a stretched link), where centring on the trigger would
+ * put the bubble away from the cursor: the bubble then sits just below the
+ * pointer, centred on it, and tracks it while it moves over the target.
+ * It still stays inside the viewport (clamped horizontally, flipped above the
+ * pointer when there is no room below), and a keyboard focus (no pointer)
+ * falls back to the trigger-centred placement.
+ *
  * `className`/`style` are applied to the wrapping span itself (merged with
  * its own default `tooltip-trigger` class), not the child. They matter for
  * a `position: fixed` child like the nav-rail collapse toggle: that button
@@ -46,9 +56,10 @@ const VERTICAL_GAP_PX = 6.4; // 0.4rem
  * on-screen box and measurement is accurate again.
  */
 export function Tooltip({
-  label, children, className, style,
-}: { label: string; children: ReactNode; className?: string; style?: CSSProperties }) {
+  label, children, className, style, followPointer = false,
+}: { label: string; children: ReactNode; className?: string; style?: CSSProperties; followPointer?: boolean }) {
   const [visible, setVisible] = useState(false);
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
   const bubbleRef = useRef<HTMLSpanElement>(null);
@@ -61,26 +72,43 @@ export function Tooltip({
       const triggerRect = trigger.getBoundingClientRect();
       const bubbleRect = bubble.getBoundingClientRect();
 
-      let left = triggerRect.left + triggerRect.width / 2 - bubbleRect.width / 2;
+      const anchorX = followPointer && pointer ? pointer.x : triggerRect.left + triggerRect.width / 2;
+      let left = anchorX - bubbleRect.width / 2;
       left = Math.max(VIEWPORT_MARGIN_PX, Math.min(left, window.innerWidth - bubbleRect.width - VIEWPORT_MARGIN_PX));
 
-      const spaceAbove = triggerRect.top - bubbleRect.height - VERTICAL_GAP_PX;
-      const top = spaceAbove < VIEWPORT_MARGIN_PX ? triggerRect.bottom + VERTICAL_GAP_PX : spaceAbove;
+      let top: number;
+      if (followPointer && pointer) {
+        // Below the cursor; flip above it when the bubble would leave the viewport.
+        const below = pointer.y + POINTER_OFFSET_PX;
+        top = below + bubbleRect.height + VIEWPORT_MARGIN_PX > window.innerHeight
+          ? Math.max(VIEWPORT_MARGIN_PX, pointer.y - bubbleRect.height - VERTICAL_GAP_PX)
+          : below;
+      } else {
+        const spaceAbove = triggerRect.top - bubbleRect.height - VERTICAL_GAP_PX;
+        top = spaceAbove < VIEWPORT_MARGIN_PX ? triggerRect.bottom + VERTICAL_GAP_PX : spaceAbove;
+      }
 
       setPosition({ top, left });
     }
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [visible]);
+  }, [visible, followPointer, pointer]);
 
   return (
     <span
       ref={triggerRef}
       className={className ? `tooltip-trigger ${className}` : "tooltip-trigger"}
       style={style}
-      onMouseEnter={() => setVisible(true)}
-      onMouseLeave={() => setVisible(false)}
+      onMouseEnter={(e) => {
+        if (followPointer) setPointer({ x: e.clientX, y: e.clientY });
+        setVisible(true);
+      }}
+      onMouseMove={followPointer ? (e) => setPointer({ x: e.clientX, y: e.clientY }) : undefined}
+      onMouseLeave={() => {
+        setVisible(false);
+        setPointer(null);
+      }}
       onFocus={() => setVisible(true)}
       onBlur={() => setVisible(false)}
     >

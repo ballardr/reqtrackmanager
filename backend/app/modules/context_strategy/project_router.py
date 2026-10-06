@@ -161,6 +161,16 @@ from app.modules.context_strategy.models import (
     StrategyCommentFile,
     StrategyFile,
 )
+from app.modules.context_strategy.pain_point_scores import (
+    PainPointScoringSummary,
+    RollupMethod,
+    ScoreEntryInput,
+    build_pain_point_scoring,
+    load_scoring_context,
+    resolve_model,
+    set_pain_point_scores,
+)
+from app.modules.context_strategy.reports import REPORT_ROUTERS
 from app.modules.context_strategy.schemas import (
     ContextStrategyLinkOut,
     EffectivePainPointTypeOut,
@@ -198,11 +208,18 @@ from app.modules.context_strategy.schemas import (
     PainPointCreate,
     PainPointLinkCreate,
     PainPointOut,
+    PainPointScoreEntryOut,
+    PainPointScoresOut,
+    PainPointScoresUpdate,
+    PainPointScoringListOut,
+    PainPointScoringSummaryOut,
     PainPointTransitionRequest,
     PainPointUpdate,
     ProjectPainPointTypeCreate,
     ProjectPainPointTypeOut,
     ProjectPainPointTypeOverrideUpdate,
+    ScoreOut,
+    ScoringTargetOut,
     StrategyCommentCreate,
     StrategyCommentOut,
     StrategyCommentUpdate,
@@ -1382,6 +1399,7 @@ def create_project_pain_point(
         db, project_id=project_id, pain_point_type=pain_point_type, creator=current_user, title=payload.title,
         description=payload.description, source=payload.source, impact=payload.impact, evidence=payload.evidence,
         priority=payload.priority, date_identified=payload.date_identified,
+        is_intentional=payload.is_intentional,
     )
     log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="created",
               actor_id=current_user.id, project_id=project_id, detail={"title": payload.title})
@@ -1440,6 +1458,7 @@ def update_project_pain_point(
         db, pain_point, pain_point_type=pain_point_type, title=payload.title, description=payload.description,
         source=payload.source, impact=payload.impact, evidence=payload.evidence, priority=payload.priority,
         owner_id=payload.owner_id, owner_id_explicitly_set=True, date_identified=payload.date_identified,
+        is_intentional=payload.is_intentional,
     )
     log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="updated",
               actor_id=current_user.id, project_id=project_id)
@@ -1479,6 +1498,129 @@ def unarchive_project_pain_point(
               actor_id=current_user.id, project_id=project_id)
     db.commit()
     return pain_point_to_out(db, pain_point)
+
+
+# --- Pain Point scoring (Phase 11) ---------------------------------------------
+
+
+def _score_out(score) -> ScoreOut | None:
+    """Maps a `services.scoring.ScoreResult` (or `None`) to its API shape."""
+    if score is None:
+        return None
+    return ScoreOut(
+        raw=float(score.raw), normalised=score.normalised,
+        band_label=score.band.label if score.band else None, band_tone=score.band.tone if score.band else None,
+    )
+
+
+def _scoring_summary_out(summary: PainPointScoringSummary) -> PainPointScoringSummaryOut:
+    """Maps a roll-up to its API shape."""
+    return PainPointScoringSummaryOut(
+        pain_point_id=summary.pain_point_id, scope=summary.scope, score=_score_out(summary.score),
+        counted=summary.counted, is_blocker=summary.is_blocker, blocker_labels=summary.blocker_labels,
+        personas_degraded=summary.personas_degraded,
+        entries=[
+            PainPointScoreEntryOut(
+                target_id=e.row.target_id, target_type=e.row.target_type, label=e.label, weight=e.weight,
+                status=e.target_status.value, severity_level_id=e.row.severity_level_id,
+                frequency_level_id=e.row.frequency_level_id, confidence_level_id=e.row.confidence_level_id,
+                score=_score_out(e.score), is_blocker=e.is_blocker,
+            )
+            for e in summary.entries
+        ],
+    )
+
+
+def _parse_rollup(value: str) -> RollupMethod:
+    """Parses the `rollup` query parameter, 400 on an unknown method."""
+    try:
+        return RollupMethod(value)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown roll-up method '{value}'.") from exc
+
+
+@router.get("/pain-point-scores", response_model=PainPointScoringListOut)
+def list_project_pain_point_scores(
+    project_id: UUID, model_key: str | None = None, rollup: str = RollupMethod.WEIGHTED_AVERAGE.value,
+    include_archived: bool = False,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Every Pain Point's roll-up under one scoring model and persona
+    roll-up method (both chosen when viewing; the model defaults to the
+    project's resolved default). Read-only, so open to any project member
+    who can see Pain Points."""
+    project = db.get(Project, project_id)
+    method = _parse_rollup(rollup)
+    ctx = load_scoring_context(db, project)
+    model = resolve_model(ctx, model_key)
+    query = select(PainPoint).where(PainPoint.project_id == project_id)
+    if not include_archived:
+        query = query.where(PainPoint.is_archived.is_(False))
+    pain_points = list(db.scalars(query.order_by(PainPoint.created_at)).all())
+    summaries = build_pain_point_scoring(db, ctx, pain_points, model, method)
+    return PainPointScoringListOut(
+        model_key=model.key, model_source=ctx.default_model_source if model.key == ctx.default_model_key else "chosen",
+        rollup=method.value, items=[_scoring_summary_out(s) for s in summaries],
+    )
+
+
+@router.get("/pain-points/{pain_point_id}/scores", response_model=PainPointScoresOut)
+def get_project_pain_point_scores(
+    project_id: UUID, pain_point_id: UUID, model_key: str | None = None,
+    rollup: str = RollupMethod.WEIGHTED_AVERAGE.value,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """A Pain Point's per-persona scores and roll-up, plus the personas it
+    can be scored against."""
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    return _scores_out(db, pain_point, model_key, _parse_rollup(rollup))
+
+
+def _scores_out(db: Session, pain_point: PainPoint, model_key: str | None, method: RollupMethod) -> PainPointScoresOut:
+    """Builds the single-Pain-Point scoring response."""
+    project = db.get(Project, pain_point.project_id)
+    ctx = load_scoring_context(db, project)
+    model = resolve_model(ctx, model_key)
+    summary = build_pain_point_scoring(db, ctx, [pain_point], model, method)[0]
+    return PainPointScoresOut(
+        **_scoring_summary_out(summary).model_dump(),
+        model_key=model.key, model_source=ctx.default_model_source if model.key == ctx.default_model_key else "chosen",
+        rollup=method.value,
+        available_targets=[
+            ScoringTargetOut(id=t.id, label=t.label, weight=t.weight, is_active=t.is_active)
+            for t in ctx.targets.values()
+        ],
+    )
+
+
+@router.put("/pain-points/{pain_point_id}/scores", response_model=PainPointScoresOut)
+def set_project_pain_point_scores(
+    project_id: UUID, pain_point_id: UUID, payload: PainPointScoresUpdate,
+    model_key: str | None = None, rollup: str = RollupMethod.WEIGHTED_AVERAGE.value,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Replaces a Pain Point's score set. Manager-only (prioritisation is
+    a triage-tier action, unlike broad Pain Point creation); 409 once the
+    Pain Point has reached a terminal outcome. Returns the new roll-up under
+    the requested model and method."""
+    project = db.get(Project, project_id)
+    pain_point = _get_pain_point(db, project_id, pain_point_id)
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    if is_pain_point_locked(pain_point):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This Pain Point has reached a terminal outcome; its scores can no longer be edited.",
+        )
+    method = _parse_rollup(rollup)
+    ctx = load_scoring_context(db, project)
+    resolve_model(ctx, model_key)  # validate before writing
+    set_pain_point_scores(
+        db, ctx, pain_point,
+        [ScoreEntryInput(e.target_id, e.severity_level_id, e.frequency_level_id, e.confidence_level_id)
+         for e in payload.scores],
+        current_user,
+    )
+    db.commit()
+    return _scores_out(db, pain_point, model_key, method)
 
 
 # --- Pain Point lifecycle (branching) -----------------------------------------
@@ -2985,3 +3127,7 @@ def create_project_open_question_relationship(
     return context_strategy_link_to_out(
         db, link, viewpoint_type=OPEN_QUESTION_ARTEFACT_TYPE, viewpoint_id=open_question.id,
     )
+
+
+# Phases 12/12b: reports (core `services.report_framework`, declared in `reports.py`).
+router.include_router(REPORT_ROUTERS.project)

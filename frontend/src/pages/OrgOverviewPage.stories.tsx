@@ -2,9 +2,11 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
+import type { ReportCatalogueEntry } from "../api/reports";
 import type { OrgModule, OrgOverviewStats, Organization } from "../api/types";
 import { installedModules } from "../modules/registry";
-import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgOverviewPage } from "./OrgOverviewPage";
 
 const ORG_ID = "org-1";
@@ -27,9 +29,16 @@ const scopedStats: OrgOverviewStats = {
 };
 
 function mockOrgOverviewApis(
-  overrides: { org?: Organization; stats?: OrgOverviewStats; modules?: OrgModule[]; myOrgs?: Organization[] } = {}
+  overrides: {
+    org?: Organization; stats?: OrgOverviewStats; modules?: OrgModule[]; myOrgs?: Organization[];
+    /** Organisation-wide reports the caller can run (the core "Reports" group's catalogue). */
+    reports?: ReportCatalogueEntry[];
+  } = {}
 ) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === `/api/v1/orgs/${ORG_ID}/report-catalogue`) return overrides.reports ?? [];
+    if (path.includes("/reports/")) return buildReportResult({ title: "Org fixture report", scope_label: "Acme Corp" });
+    if (path.includes("/report-templates")) return [];
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/overview-stats")) return overrides.stats ?? fullTotalStats;
     if (path.includes("/modules")) return overrides.modules ?? [];
@@ -91,6 +100,7 @@ const meta: Meta<typeof OrgOverviewPage> = {
   decorators: [
     withStatefulAuth(buildUser({ id: "user-1", is_server_admin: false })),
     withRouter(`/orgs/${ORG_ID}/overview`, "/orgs/:orgId/overview/:group?"),
+    withToast(),
   ],
 };
 export default meta;
@@ -167,6 +177,35 @@ export const ModuleSectionHiddenWhenModuleDisabled: Story = {
     // Phase 27c — with the module disabled, "Overview" is once again the
     // only group, so the menu-strip chrome is hidden entirely.
     await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
+  },
+};
+
+const orgReport = buildReportCatalogueEntry({
+  scope: "organization", supports_include_children: false, params: [],
+  path: `/api/v1/orgs/${ORG_ID}/modules/fixture_report_module/reports/fixture-report`,
+});
+
+/** Module 1 Phase 13 — the core "Reports" group appears only when the
+ * organisation catalogue lists a report the caller can run, and lists it
+ * generically (no module is named here). */
+export const ReportsGroupListsOrganisationReports: Story = {
+  beforeEach: () => mockOrgOverviewApis({ reports: [orgReport] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reports" })).toHaveAttribute("href", `/orgs/${ORG_ID}/overview/reports`));
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await expect(canvas.getByText(/Acme Corp · generated/)).toBeInTheDocument();
+  },
+};
+
+/** No runnable org report (module off, or no org report role): no Reports group at all. */
+export const ReportsGroupHiddenWithoutOrganisationReports: Story = {
+  beforeEach: () => mockOrgOverviewApis({ reports: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Reports" })).not.toBeInTheDocument();
   },
 };
 

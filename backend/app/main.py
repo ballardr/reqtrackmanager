@@ -39,6 +39,7 @@ from app.routers import (
     orgs,
     pats,
     projects,
+    report_catalogue,
     reports,
     requirements,
     reviews,
@@ -247,6 +248,7 @@ app.include_router(projects.router)
 app.include_router(requirements.router)
 app.include_router(change_requests.router)
 app.include_router(reports.router)
+app.include_router(report_catalogue.router)
 app.include_router(files.router)
 app.include_router(custom_fields.router)
 app.include_router(action_types.router)

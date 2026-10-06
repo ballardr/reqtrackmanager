@@ -117,7 +117,9 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
 
     await expect(page.getByRole("heading", { name: "DEC-001" })).toBeVisible();
-    await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+    // Scoped to the detail header: the list page's own "Draft" badges and
+    // Status filter option can still be in the DOM while the route swaps.
+    await expect(page.getByRole("heading", { name: "DEC-001" }).locator("..").getByText("Draft", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Propose" }).click();
     await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Submit for review" }).click();

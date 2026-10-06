@@ -8,13 +8,13 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 
 | A project's Pain Points |
 | --- |
-| Falcon-3's Pain Points, filterable by status — Addressed, Rejected, and Duplicate in this example |
-| ![Pain Points list for the Falcon-3 project showing three Pain Points in Addressed, Rejected, and Duplicate status, with type and priority columns](../../../static/img/screenshots/pain-point-list.png) |
+| Falcon-3's Pain Points with their scores, filterable by status — including Addressed, Rejected, Duplicate, Blocker and Intentional examples |
+| ![Pain Points list for the Falcon-3 project showing seven Pain Points with status and score columns, a Blocker badge, and an Intentional badge](../../../static/img/screenshots/pain-point-list.png) |
 
-| An Addressed Pain Point, with a real "Is duplicated by" relationship |
+| An Addressed Pain Point with its persona scores |
 | --- |
-| Falcon-3's "field inspectors re-key paper reports" Pain Point — description, source, impact, evidence, and a Duplicate-of relationship from another Pain Point |
-| ![Detail view of an Addressed Pain Point for the Falcon-3 project, showing its description, source, impact, evidence, and an "Is duplicated by" relationship from another Pain Point](../../../static/img/screenshots/pain-point-detail.png) |
+| Falcon-3's "field inspectors re-key paper reports" Pain Point — description, source, impact, evidence, and the Scoring section (relationships, including the Duplicate-of link from another Pain Point, sit below it) |
+| ![Detail view of an Addressed Pain Point for the Falcon-3 project, showing its description, source, impact, evidence, and a Scoring section with a model selector and a persona score](../../../static/img/screenshots/pain-point-detail.png) |
 
 ## Fields
 
@@ -29,6 +29,7 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 | `priority` | `low` / `medium` / `high`. |
 | `owner_id` | Who owns this Pain Point, if assigned. |
 | `date_identified` | Defaults to today if omitted at creation. |
+| `is_intentional` | Marks a **deliberate limitation** (for example, a restriction in a lower product tier that drives upgrades). It is still scored, but isn't something to fix, so the list can hide it. |
 | `status` | Lifecycle state, below. |
 
 ## Lifecycle
@@ -55,7 +56,7 @@ A genuinely **branching** lifecycle, unlike Strategy/Future State/Guiding Princi
 | Role | Scope | Grants |
 | --- | --- | --- |
 | **Pain Point Manager** | Project | Triages, classifies, and decides Pain Points (reject/accept/address/close), and manages the project's own Pain Point type overrides. A single elevated role, not an owner/approver pair — this artefact names one "Pain Point Manager / Project Manager" tier rather than a two-tier split. |
-| **Pain Point Type Admin** | Organisation | Manages the organisation's shared Pain Point type vocabulary and its [scoring configuration](#scoring-configuration) (below). |
+| **Pain Point Type Admin** | Organisation | Manages the organisation's shared Pain Point type vocabulary and its [scoring configuration](./pain-point-scoring.md#configuring-scoring). |
 
 ## Relationships
 
@@ -95,34 +96,9 @@ flowchart TD
 
 Guiding Principle, by contrast, has no type field or configurable vocabulary at all — see [Known limitations](./known-limitations.md).
 
-## Scoring configuration
+## Scoring
 
-Pain Points are prioritised on three inputs rather than a single Low/Medium/High priority — **Severity** (how badly the problem affects a persona; its top level, **Blocker**, means "unusable for this persona"), **Frequency** (how often they hit it) and **Confidence** (how sure you are of the other two). A **scoring model** combines them by multiplying the chosen levels' weights:
-
-| Model | Inputs |
-| --- | --- |
-| Severity × Frequency | Severity, Frequency |
-| Severity × Confidence | Severity, Confidence |
-| Severity × Frequency × Confidence | all three (the module default) |
-
-**Rating bands** (Low/Medium/High/Critical by default) label a score by where it sits as a percentage of the model's maximum, so they keep working if you change level weights.
-
-| Setting | Organisation (**Org Management → Pain Point Scoring**) | Project (**Project Admin → Pain Point Scoring**) |
-| --- | --- | --- |
-| Levels per input (name, weight, guidance) | Edit, add, delete (at least two per input; deleting an in-use level asks where to move its scores) | Read-only |
-| Default model | Set, or reset to the module default | Override, or use the inherited value |
-| Rating bands per model | Set, or reset to the module defaults | Override, or use the inherited value |
-
-A project that hasn't overridden a setting inherits it, and the page says where from:
-
-```mermaid
-flowchart LR
-    P["This project"] -->|not set| A["Nearest parent project<br/>that set it"]
-    A -->|none| O["Organisation"]
-    O -->|not set| M["Module default"]
-```
-
-Organisation changes need the **Pain Point Type Admin** role or org admin; project overrides need project manager/administrator (or org admin). Anyone viewing scores can still switch model. Scoring individual Pain Points per persona isn't available yet — see [Known limitations](./known-limitations.md).
+Pain Points are prioritised per persona on Severity, Frequency and Confidence rather than a single Low/Medium/High priority, and the **Score** column ranks the list. See [Pain Point scoring](./pain-point-scoring.md) for the levels, models, roll-ups, the Blocker badge, intentional limitations, and how to configure them.
 
 ## Where this fits
 

@@ -15,6 +15,7 @@ export function MetricTile({ label, value, to }: { label: string; value: string 
     <Link
       to={to}
       className="card stack"
+      data-stat-entry
       style={{ alignItems: "center", textAlign: "center", textDecoration: "none", color: "inherit" }}
     >
       <div style={{ fontSize: "1.8rem", fontWeight: 700 }}>{value}</div>

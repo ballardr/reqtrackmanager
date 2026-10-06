@@ -4,9 +4,9 @@ sidebar_position: 21
 
 # AI assistant (MCP) integration
 
-Context & Strategy contributes 62 tools to ReqTrackManager's [MCP server](../../api-integrations/ai-assistants-mcp/overview.md) — the same mechanism an AI assistant like Claude Code or VS Code Copilot Chat uses to read and update Requirements, Decisions, and everything else in ReqTrackManager. These register automatically the moment the module is enabled for an organisation, with no MCP-server-specific code shipped for it — the same module-contributed-tools mechanism [Compliance](../compliance-module/mcp-integration.md) and [Decision Management](../decision-management-module/mcp-integration.md) already use.
+Context & Strategy contributes 74 tools to ReqTrackManager's [MCP server](../../api-integrations/ai-assistants-mcp/overview.md) — the same mechanism an AI assistant like Claude Code or VS Code Copilot Chat uses to read and update Requirements, Decisions, and everything else in ReqTrackManager. These register automatically the moment the module is enabled for an organisation, with no MCP-server-specific code shipped for it — the same module-contributed-tools mechanism [Compliance](../compliance-module/mcp-integration.md) and [Decision Management](../decision-management-module/mcp-integration.md) already use.
 
-All 62 tools are project-scoped — there is no org-scoped equivalent, even for Strategy/Future State/Guiding Principle's organisation-level records, since the approval gate below needs a specific project to check against and this module's MCP surface stays project-only throughout rather than special-casing an org-only variant of it.
+All 74 tools are project-scoped — there is no org-scoped equivalent, even for Strategy/Future State/Guiding Principle's organisation-level records, since the approval gate below needs a specific project to check against and this module's MCP surface stays project-only throughout rather than special-casing an org-only variant of it.
 
 ## What's covered
 
@@ -16,6 +16,8 @@ All 62 tools are project-scoped — there is no org-scoped equivalent, even for 
 | Create / update content | 10 | Creating a new record (Draft status) or replacing an existing one's content, for each of the five artefact types. |
 | Relationships and supersessions | 8 | Creating a typed or untyped relationship from an artefact to another, and recording a supersession (Strategy, Future State, and Guiding Principle only — Pain Point and Open Question have no supersession concept). |
 | Plain lifecycle transitions | 24 | Every non-decisive status change — propose, submit for review, send back, activate, retire, triage, reject, mark duplicate, accept, address, close, investigate, mark ready for decision, withdraw. None of these require the AI-approval opt-in below, since none of them constitute a final approval or resolution. |
+| Pain Point scoring | 3 | `list_pain_point_scores` (every Pain Point's rolled-up score and Blocker flag under a model), `get_pain_point_scores`, and `set_pain_point_scores` (replace a Pain Point's per-persona scores). |
+| Reports | 9 | One read-only `get_…_report` tool per [report](./reports.md) (R1–R9), returning the JSON the Reports page shows. Organisation-wide variants aren't exposed. |
 | Approve / decide (gated) | 5 | `approve_strategy`, `approve_future_state`, `activate_guiding_principle`, `retire_guiding_principle`, `resolve_open_question` — see below. |
 
 File upload and comment endpoints are not exposed through MCP at all — the same posture Decision Management already takes toward its own comment/file endpoints, and (for file upload specifically) the same `multipart/form-data` constraint that mechanism can't express regardless.
@@ -30,6 +32,8 @@ File upload and comment endpoints are not exposed through MCP at all — the sam
 | "What Pain Points have been raised on this project?" | `list_pain_points` |
 | "What Guiding Principles apply to this project?" | `list_guiding_principles` |
 | "What Open Questions are still unresolved?" | `list_open_questions` |
+| "Which Pain Points should we fix first?" | `get_pain_point_prioritisation_report` (other reports: `get_strategy_cascade_report`, `get_summary_report`, …) |
+| "How is this Pain Point scored?" | `get_pain_point_scores` |
 | "What does this Strategy link to?" | `list_strategy_relationships` (and the equivalent for the other four artefact types) |
 
 ## What you can ask it to do (write mode)
@@ -37,6 +41,7 @@ File upload and comment endpoints are not exposed through MCP at all — the sam
 | You ask | Tool it maps to |
 | --- | --- |
 | "Create a Strategy for..." / "Update this Strategy's rationale..." | `create_strategy` / `update_strategy` (and the equivalent create/update pair for the other four artefact types) |
+| "Score this Pain Point for the BVLOS pilot persona." | `set_pain_point_scores` |
 | "Link this Pain Point to the Strategy it's driving." | `create_pain_point_relationship` (kind: `drives_strategy`) |
 | "Move this Pain Point to Triaged." / "Accept it." / "Address it." / "Close it." | `triage_pain_point` / `accept_pain_point` / `address_pain_point` / `close_pain_point` |
 | "Investigate this Open Question." / "Mark it ready for a decision." | `investigate_open_question` / `mark_open_question_ready_for_decision` |

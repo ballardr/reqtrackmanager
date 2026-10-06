@@ -9318,3 +9318,526 @@ Tests: 11 backend tests in `test_persona_visibility.py` (basics, scope/tenancy, 
 CI's Playwright run failed three tests: `org-overview.spec.ts` "ResourceMenu chrome is hidden with compliance disabled…" and two `standard-applicability-defaults.spec.ts` tests. Root cause was one test, not three. The org-overview spec toggled Compliance off in the shared seed org Gamma and expected the Overview `ResourceMenu` to have a single group; but the E2E seed enables Stakeholders & Personas on Gamma (Module 2), whose org overview sections add groups, so `.resource-menu-nav` stayed (expected 0, received 1). The test then failed *before* its restore step, leaving Compliance "off" in Gamma: its retry read `off` as the starting state, and the later compliance specs, which create standards in Gamma, could not. It passed locally only because the long-lived local database had been seeded before the module was enabled on Gamma.
 
 Fix (**Decided by: Agent**): the spec now runs in a disposable org (module-free apart from Compliance, deleted by `deleteOrgOnCleanup`), so it neither depends on which modules a seed org has nor can leave shared state mutated if it fails. Verified twice back to back. A fresh-DB local reproduction was not done; the cause is established from the CI log (the `Expected: 0 / Received: 1` failure, the retry reading `off`, and the module's `orgOverviewSections`).
+
+
+## Module 1 (Context & Strategy) Phase 11 — per-persona Pain Point scoring and the intentional flag (2026-10-05)
+
+Pain Points can now be rated per persona on Severity, Frequency and
+Confidence, and rolled up under a model and persona roll-up chosen when
+viewing; deliberate tier limitations are flagged `is_intentional`. New:
+`PainPointScore` table and `pain_points.is_intentional` (module migration
+0064); `pain_point_scores.py` (validation, roll-up maths); three project
+endpoints (`GET .../pain-point-scores`, `GET`/`PUT .../pain-points/{id}/
+scores`); the scheme's `count_level_usage`/`reassign_level_usage` hooks;
+three MCP tools (`list_pain_point_scores`, `get_pain_point_scores`,
+`set_pain_point_scores`) plus `is_intentional` on create/update; a scoring
+panel on the detail page, Score/Blocker columns, a model/roll-up switcher
+and a "Hide intentional limitations" filter on the list; both seed scripts.
+Personas are read only through `registry.get_scoring_targets`, never by
+importing Module 2.
+
+Decisions (the Phase 9 rules are in the plan; these are the build-time
+calls):
+- **Scoring is manager-tier** (`pain_point_manager`, 409 once the Pain
+  Point is locked); reads are open to anyone who can see Pain Points.
+  (Decided by: Agent.) *Why:* creating a Pain Point is deliberately broad,
+  but ranking drives prioritisation.
+- **A persona with no weight among weighted personas gets the mean of the
+  set weights**; if none are weighted, all are equal. (Decided by: Agent.)
+  *Why:* a missing weight should neither dominate nor drop out.
+- **Retired personas stay visible but are skipped by the roll-up and the
+  Blocker flag; a persona the provider no longer lists (deleted, hidden,
+  Module 2 off) is "unavailable": it still counts, unweighted and
+  unlabelled, and the response says `personas_degraded`.** (Decided by:
+  Agent, implementing the plan's "degrades to all-personas display".)
+- **A retired persona can't be newly scored; entries with no level chosen
+  are dropped** rather than stored as empty rows. (Decided by: Agent.)
+- **`is_intentional` on update is `null` = unchanged**, so owner assignment
+  and other partial edits can't reset it. (Decided by: Agent.)
+- **The `intentional_in`/`removed_by` Tier relationships are not built**;
+  they stay reserved until Module 13, the same way Phase 6 handled Decision
+  targets. (Decided by: User, Phase 9 Q9/Q10.)
+- **No org bundle export of scores.** Context & Strategy has no bundle hooks
+  at all yet, so nothing exports Pain Points; when it gets them, scores must
+  map levels by axis + name (Phase 10 note). (Decided by: Agent.)
+- **Nested projects:** `pain_point_scores` rows belong to one Pain Point and
+  so to one project; the model and bands they are read under already resolve
+  project → ancestor → org via Phase 10, so no new fallback is needed.
+  (Decided by: Agent, per `CLAUDE.md`'s checklist.)
+- **Module boundary:** `PainPointScore.target_type`/`target_id` are a plain
+  pair validated against the persona provider, not an FK or enum; levels are
+  FKs into core's `scoring_levels`. No core file changed.
+
+**Security review (identify → verify → remediate; this adds an authorization-
+gated write path, audit logging and cross-tenant references):**
+- *Identified:* (1) level ids from another org or axis; (2) persona ids from
+  another project/org; (3) concurrent saves of one Pain Point colliding on
+  the partial unique indexes, or a level deleted mid-save, surfacing as a
+  500; (4) an unbounded score list; (5) rescoring a locked Pain Point.
+- *Remediated/verified:* (1) levels must belong to the project's org and the
+  entry's axis (400); (2) personas must be in the project's provider list,
+  which does its own tenancy check (400); (3) integrity errors on flush
+  return 409; (4) `scores` is capped at 500 entries (422); (5) 409 on a
+  locked Pain Point. Every real change is audit-logged once
+  (`pain_point`/`scored`, ids and counts only, no free text); reads and
+  writes 404 with the module or sub-component off; non-managers get 403 on
+  write. Covered by `test_context_strategy_pain_point_scoring.py`.
+
+**Verification:** 18 new backend tests (roll-up maths for all three methods,
+1-of-N scored, Blocker surviving an average, input gaps, retired and
+unavailable personas incl. Module 2 off, RBAC, lock, audit, parameters,
+payload cap, level-usage reassignment); the `context_strategy`,
+`stakeholders` and core scoring-matrix suites pass together (301 tests);
+Storybook for the new/changed components (61 tests across the Pain Point
+stories); a new Playwright spec, `pain-point-persona-scoring.spec.ts`
+(scoring per persona, roll-up/Blocker, list re-ranking across models,
+intentional flag), passing in serial and 4-way parallel repeats. Both seed
+scripts were run end to end against a scratch database and local backend.
+The live test stack was not reseeded, so the full Playwright suite has not
+been re-run against the new Gamma seed data (Context & Strategy is now
+enabled for Gamma, as Stakeholders & Personas already was). Two early spec
+runs right after the container rebuild hit a transient 403 enabling the
+module as a brand-new org admin; it did not recur across 14 later runs.
+
+**Known gaps:** the docs website covers the new behaviour in prose only
+(screenshots and the R1–R9 reports are Phase 12–14 work); the Tier
+relationships wait for Module 13.
+
+## Module 1 (Context & Strategy) Phase 12 — report backend R1–R9 (2026-10-05)
+
+The nine Context & Strategy reports now exist as a backend: one `collect_*`
+function each in `modules/context_strategy/reports.py` returning a
+`ReportResult`, which `report_render.py` turns into PDF or CSV and
+`report_router.py` serves as JSON, PDF or CSV (`GET .../reports/<slug>?format=`).
+Project routes cover all nine reports; organisation routes cover R1, R3, R4,
+R8 and R9. Nine read-only MCP tools (`get_<slug>_report`) call the project
+routes. R1 and R9 are built on Phase 11's `build_pain_point_scoring`, so
+scoring maths exists in one place. No new table or migration. Phases 13–14
+(UI, docs site, seed verification) are untouched.
+
+Decisions (the report list, formats, model/roll-up choice and access rules
+are the plan's Phase 9; these are the build-time calls):
+- **Org-wide access is a new org-scoped module role, `org_reports_viewer`,
+  not a new permission atom.** (Decided by: Agent, implementing Phase 9 Q12
+  "a dedicated module-registered permission, org admins by default".)
+  *Why:* the FGAC vocabulary (`services/permissions.py`) is
+  artefact-type × level plus a hand-maintained administrative list, so a
+  module-specific atom would need a core edit; a module role composes with
+  org admin automatically, is assignable in the existing role UI, and
+  mirrors `pain_point_type_admin`. *Risk:* it is not a first-class atom, so
+  custom roles can't carry it. Revisit if FGAC gains module-registered
+  administrative atoms.
+- **A report covers only projects the caller holds a project role on**
+  (`readable_projects`). (Decided by: Agent, per Phase 9 Q12 "still filtered
+  to projects the caller can read".) Org admin alone is not enough, matching
+  `rbac.require_project_view`; server admins get nothing extra. Child
+  projects are added only with `include_children` and only if readable.
+- **"Open" Pain Points are Submitted, Triaged and Accepted.** (Decided by:
+  Agent.) Addressed means fixed; Rejected, Duplicate and Closed are
+  finished. They would only add noise to a fix ranking.
+- **Org-wide R1/R9 group by the model actually applied** (the project's
+  resolved default unless `model_key` is given) and never rank across
+  models. (Decided by: User, Phase 9 Q3.) Empty groups are omitted.
+- **R1's matrix point is the worst counted persona** (highest
+  Severity × Frequency), independent of the chosen model. (Decided by:
+  Agent.) *Why:* the matrix is fixed to Severity vs Frequency, so it must
+  not move when the user switches model, and one point per Pain Point needs
+  a rule that can't average a Blocker away.
+- **R9's churn-risk rule:** a counted persona at or above 80% of the top
+  Severity level. (Decided by: Agent.) The plan said only "high-severity".
+  Tier columns are empty and the report says so until Module 13 exists.
+- **Cross-artefact gap checks count only artefacts inside the readable
+  scope.** (Decided by: Agent.) *Why:* a link to a Requirement or Decision in
+  a project the caller can't read must neither be shown nor silently hide a
+  gap. The cost is that a gap list can over-report; it can't leak. Decisions
+  are resolved through `registry.get_artefact_summary`, never by importing
+  Module 4, so R6's Decision counts stay 0 until Module 4 Phase 7 links them.
+- **Organisation-scoped Strategies, Future States and Guiding Principles
+  appear in project reports** (R2 parents, R6/R7 rows) because every org
+  member can already read them. R7 labels their scope "Organisation".
+  (Decided by: Agent.)
+- **CSV is the first section only; PDF carries all sections.** (Decided by:
+  User for "PDF + CSV, CSV = main table"; the section order is Agent.)
+- **MCP covers project routes only.** (Decided by: Agent.) The existing
+  rule, enforced by `test_context_strategy_org_scoped_endpoints_have_no_mcp_tools`,
+  is that every tool path is project-scoped, and an org-wide aggregate has
+  no project to gate on.
+- **Report reads are not audit-logged**, following `modules.compliance.reports`.
+  (Decided by: Agent.) The SOC 2 data-classification policy asks for
+  exports to be handled as Confidential, not for each read to be logged;
+  every field is already available to the same caller via the JSON
+  endpoints, and nothing Restricted (files, secrets) is included.
+- **Core addition:** `services.relationships.get_links_from_many`, the
+  mirror of `get_links_to_many`, so reports don't issue one query per item.
+
+**Review (identify → verify → remediate), per the change-management policy:**
+the change adds a role and aggregated read paths.
+1. *Leak across projects/tenants via an aggregate.* Verified by tests: an org
+   viewer on one of two projects sees only that project's items; a second
+   organisation's admin gets none of the first's data and 403/404 on its
+   routes; a member of a parent only doesn't gain its child with
+   `include_children`.
+2. *Role escalation.* `org_reports_viewer` grants no project access and no
+   write; project-only reports aren't routed at org level (404, tested).
+3. *Injection.* CSV formula cells are prefixed (tested); PDF text is
+   XML-escaped (a `<b>` title test); sort/filter inputs are typed query
+   parameters (`rollup` and `model_key` rejected with 400, `stale_months`
+   bounded).
+4. **Found and fixed: any export whose project or organisation name held a
+   character outside Latin-1 (an em dash, CJK) returned 500.**
+   `services.downloads.filename_safe` fed such names straight into the
+   `Content-Disposition` header, which Starlette encodes as Latin-1 and
+   which clients mis-decode if it isn't ASCII. It is shared by the
+   requirement, project and org exports and the Compliance reports, so it
+   was fixed once: anything outside printable ASCII becomes `_`. Covered by
+   `tests/test_downloads_filename.py` and a report test.
+
+**Verification:** 31 new report tests (one or more per report, model and
+roll-up switching, 1-of-N personas, Blocker surviving an average,
+intentional segregation, input gaps, finished/archived exclusion, role gate,
+unreadable-project exclusion, cross-org isolation, child projects, disabled
+module and sub-component, PDF/CSV output, an empty project in every format
+for all nine reports) and a unit test for `filename_safe`. The full
+`context_strategy` suite (173 tests, before the filename fix) and the MCP
+manifest test (now 74 tools) pass; `ruff check` is clean for the backend.
+
+**Known gaps:** no UI yet (Phase 13), so none of this is user-visible; R6's
+Decision counts and R9's tier columns are placeholders until Modules 4
+Phase 7 and 13; report endpoints aren't paginated (a very large
+organisation-wide R1 returns every open Pain Point).
+
+**Superseded in part (2026-10-06):** this entry records the renderer, result
+shapes, scope rule and route plumbing as module-local. On review they are
+module-neutral and Modules 2 and 14 (and later 7 and 3) will need them, so
+**Phase 12b** extracts them into a core report framework and re-points this
+module onto it. The collectors, label maps, `org_reports_viewer` role and all
+report maths stay in this module. (Decided by: User, to extract; scope Decided
+by: Agent.) See the plan's "Phase 12b".
+
+**Addendum (2026-10-06):** the shared layer also has to come from the existing
+requirement-report code (`services/reports.py`: branding, cover page, footer,
+Markdown renderer, image resolution, escaping), not only from Phase 12's
+renderer, so every report type gets the same document shell and org branding.
+Phase 12b's scope was widened accordingly (item 3b); requirement-report output
+must not change. (Decided by: User, to share; scope Decided by: Agent.)
+
+
+## Module 1 (Context & Strategy) Phase 12b — core report framework (2026-10-06)
+
+The module-neutral half of Phase 12 now lives in core and Context & Strategy
+declares its reports against it. Adding a report to a module is a `collect_*`
+function plus one `ReportDefinition` on `ModuleDefinition.reports`; routes,
+`?format=json|pdf|csv`, access gating, typed parameters, MCP tools, the
+catalogue and the branded PDF come from core. No table or migration.
+
+What moved:
+- `services/report_framework.py` (new): `ReportSection`/`ReportResult`,
+  `ReportContext` (with a cached per-sub-component `eligible`),
+  `readable_projects`/`scope_projects`, `render_csv`/`render_pdf`, `ReportOut`,
+  `build_report_routers`, `report_mcp_tools`, the catalogue builders.
+- `services/report_document.py` (new): the shell extracted from
+  `services/reports.py` — `ReportBranding`/`resolve_branding`, cover/title,
+  footer + A4 build (`build_pdf`, page size is a parameter), the Markdown
+  renderer, `resolve_report_images` (with its organisation-ownership check),
+  `safe` (ReportLab escaping), `styled_table`. `services/reports.py` keeps
+  only requirement-specific code and its output is unchanged (its four test
+  files pass untouched). Compliance's reports now use the same `safe`,
+  `styled_table`, title block and PDF build instead of private copies.
+- `routers/report_catalogue.py` (new): `GET /projects/{id}/report-catalogue`
+  (project member) and `GET /orgs/{id}/report-catalogue` (org member, listing
+  only reports whose role the caller holds).
+- `registry.py`: `ReportParamDefinition`, `ReportDefinition`,
+  `ModuleDefinition.reports`, `validate_report_definitions`,
+  `get_module_reports`, `get_all_reports`.
+- Deleted from Context & Strategy: `report_render.py`, `report_router.py`,
+  `_shared.require_org_reports_role`, `_REPORT_QUERY_PARAMS`. Collectors,
+  `labels.py`, the `org_reports_viewer` role and all report maths stay.
+
+Decisions:
+- **The scope policy is a declared field, `org_scope`** (`readable_projects`
+  default, or `all_org_projects`), never hard-coded, so Compliance's "manager
+  sees every project" rule can be expressed later without weakening the
+  stricter default. (Decided by: Agent, from the plan's Compliance review.) No
+  shipped report uses `all_org_projects` yet.
+- **An organisation-wide report must declare an `org_role_key`** (an org-scoped
+  role of its own module); `org_level` without one, or a role on a report with
+  no organisation variant, is rejected. (Decided by: Agent.) *Why:* an
+  aggregate across projects should never be gated by project access alone.
+- **Registry-dependent validation happens lazily, fail-closed.** Routers are
+  built at import, before the registry exists, so structural checks (duplicate
+  slug, malformed parameters) run in `build_report_routers` and the registry
+  checks (unknown sub-component, role not org-scoped) in `get_module_reports`.
+  A route for a report that fails the latter answers 404, is not catalogued,
+  and `build_mcp_tool_manifest` drops its MCP tool. (Decided by: Agent.)
+- **Parameters are declared and become the route signature**, so FastAPI
+  validates types/bounds (422) and OpenAPI is accurate; `choices` are checked
+  in core (400); unknown query parameters are still ignored. Phase 12's
+  universal parameters (every endpoint accepted `model_key`, `rollup`,
+  `stale_months`, `since`) are now per report: R8 declares all four because it
+  re-runs the others; R3–R6 no longer accept them (ignored if sent). (Decided
+  by: Agent.)
+- **Template branding only** (plan open question 1): `report_template_id`
+  applies accent colour, cover page, logo and footer; a template's intro,
+  chapters and appendices stay requirement-report content. Without a template
+  a module report is unbranded as before. (Decided by: Agent, recommendation
+  in the plan; confirm with the user.)
+- **Compliance migration depth** (open question 5): only shared primitives
+  (`safe`, `styled_table`, title block, PDF build) were repointed; its
+  collectors, narrative cells and routes are not migrated. Rich cells,
+  section kinds (open question 2) and row caps (open question 3) are not
+  built: no consumer needs them yet. (Decided by: Agent.)
+- **Not done, flagged:** no Decision register report (open question 4); no
+  `uuid`-typed parameter is used by any shipped report (it is supported and
+  tested via the probe module).
+- **Docs website:** no change. Nothing user-visible moved (requirement-report
+  output is identical; the module reports have no UI until Phase 13, and the
+  catalogue endpoints are consumed by that UI). Phase 13 owns the site update.
+  (Decided by: Agent.)
+
+**Review (identify → verify → remediate)** — touches access control and
+aggregated reads:
+1. *Org gate bypass.* The org route runs `require_org_module_enabled` (org
+   membership, module on) then the definition's `org_role_key`
+   (`user_satisfies_module_role`); a role declared at project scope is rejected
+   at validation. Tested: member 403, org admin and role holder 200, project-only
+   slug 404, foreign organisation 404.
+2. *Scope widening.* `readable_projects` moved unchanged; `all_org_projects` is
+   only reachable for an organisation run of a definition that declares it, and
+   still requires the role. Tested: a role holder on one of two projects gets
+   one project under the default and both under `all_org_projects`; an org
+   admin with no project role gets none under the default; a second
+   organisation's admin gets 404 on both routes.
+3. *Template cross-tenant read.* `report_template_id` is loaded with an
+   organisation-ownership check (`load_report_template`); another
+   organisation's template, an unknown id and a malformed id give 400/400/422
+   (tested). The logo is read from the report's own organisation only.
+4. *Injection.* CSV cells go through `csv_safe` and PDF cells through the single
+   `safe` (a probe collector returns `=HYPERLINK(...)` and
+   `<img src="file:///etc/passwd">` in notes, cells and section notes; tested for
+   CSV and PDF). The codebase's third and fourth copies of the escaping helper
+   are gone.
+5. *Fail-open registration.* An invalid declaration could have been served.
+   Verified it is not (404, no catalogue entry); **found and fixed:** the MCP
+   manifest still advertised a tool for a report that failed registry
+   validation. `build_mcp_tool_manifest` now excludes it (tested).
+6. *Phase 12 guarantees.* Re-run unchanged: the 23 Context & Strategy report
+   tests (cross-project leakage, role escalation, CSV/PDF injection), the MCP
+   manifest (74 tools), `test_downloads_filename.py`.
+7. **Found and fixed (existing bug):** two Phase 12 report tests failed whenever
+   the host's local date differed from the UTC date (they used `date.today()`
+   while the reports use the UTC date), e.g. between midnight and 11:00 in
+   AEDT. They now use the UTC date.
+
+**Verification:** `tests/test_report_framework.py` (17 tests, against a
+synthetic non-Context & Strategy module): registry validation, parameter
+typing/choices/bounds, OpenAPI and MCP derivation, project and org gates,
+sub-component gating, readable vs all-projects scope, child projects,
+cross-organisation isolation, JSON shape, CSV/PDF output and injection,
+template branding and rejection, both catalogues, and an AST check that core
+report files import nothing from a specific module. The four requirement-report
+test files, the Compliance report tests, the Context & Strategy suite and the
+MCP manifest tests pass; `ruff check` is clean.
+
+**Known gaps:** no UI (Phase 13); report endpoints are not paginated.
+
+## Module 1 (Context & Strategy) Phase 13 — Reports UI (2026-10-06)
+
+One Reports destination in core, driven entirely by the backend catalogue, with
+per-module views registered declaratively. No new table or endpoint; one field
+added to R1's JSON (`data.groups[].bands`).
+
+What was built (core, no module import):
+- `ReportCatalogue` is a "Report" picker over the catalogue entries and the
+  selected report, run by `ReportRunner` (generated `ReportParamsForm`, debounced
+  re-run, `ReportViewer` or a registered view, PDF/CSV through the shared
+  `ReportExportButton`, optional branding template). The selection is the
+  `?report=` search parameter. The project `ReportsPage` and a new core "Reports"
+  group on `OrgOverviewPage` both use it.
+- `TierAModuleDefinition.reportViews: Record<reportKey, {component, ownedParams?}>`
+  and `getReportView` are the only module-facing additions. Context & Strategy
+  registers R1 and R4; every other report is rendered generically.
+
+Decisions:
+- **Org reports live in a core "Reports" group on Org Overview**, present only
+  when the org catalogue lists something for the caller. (Decided by: User.)
+- **The requirement report is a presentation-only first entry in the same
+  picker** (the unchanged panel, extracted to `RequirementReportPanel`); it is
+  not a backend catalogue entry. With no catalogue reports the picker is hidden
+  and the page is what it was. (Decided by: User, over the plan's recommendation.)
+- **`reportViews` entries are objects with `ownedParams`**, not bare components,
+  so a view can own a parameter's control (R1's model and roll-up switchers) and
+  core hides it from the generic form instead of drawing two controls. Modules 2
+  and 14's Phase 6 plans were not re-read; the shape should be recorded in
+  Module 10's plan. (Decided by: Agent.)
+- **Generic parameter labels and choices are humanised**, since core has no label
+  map for a module's vocabulary (style guide Principle 12 applies where a label
+  map exists). A module needing exact wording owns the parameter in its view; R1
+  does, using `PAIN_POINT_ROLLUP_LABEL`. (Decided by: Agent.)
+- **Downloads send exactly what is on screen**, plus the branding template for
+  PDF only, never for CSV. (Decided by: Agent, following the style guide's
+  "export must respect the page's current filter state".)
+- **R1 matrix bands come from the first contributing project** because a model
+  group can span projects. Exact for a project report; an org report across
+  projects with different band overrides shows one project's colours. (Decided
+  by: Agent; documented in `ScoredGroup`.)
+- **No new frontend report list.** Nothing in core names a report or module; the
+  catalogue already reflects module and sub-component enablement and the org role.
+
+**Follow-up: Project picker on organisation reports (Decided by: User).** A
+framework-level optional `project_id` query on organisation report routes narrows
+the run to one project. It filters the already-computed scope, so it can never
+widen it: a project outside the caller's scope (another organisation's, or one
+they cannot read under a `readable_projects` report) is a 404 with no existence
+leak, and `all_org_projects` is unchanged. The catalogue exposes
+`supports_project_filter`; MCP is unaffected (org routes are not tools). Tested
+in `test_org_report_project_filter_narrows_within_scope_and_never_widens`
+(admin, restricted viewer, outsider project, unknown and malformed ids).
+**The picker's list comes from the catalogue, not a general project list:** each
+organisation catalogue entry carries `projects`, the projects in that report's
+scope for the caller (`scope_projects`, so a `readable_projects` report omits a
+project an org admin holds no role on, while `all_org_projects` offers all) with
+the module and declared sub-component enabled. So the picker never offers a
+project the route would 404 on (tested, including the sub-component case).
+(Decided by: User for the fix; Decided by: Agent for carrying the list on the
+catalogue entry.)
+
+**Review (identify → verify → remediate)** — touches access control and
+aggregated reads on the UI side:
+1. *UI gate treated as a boundary.* The Reports group and picker are hidden from
+   the catalogue, but that is presentation only: access is still enforced per
+   route by Phase 12b (org role 403, project membership, module and
+   sub-component 404). Verified end to end: a project member without
+   `org_reports_viewer` sees no group and no picker at the deep link, and gains
+   the group when granted the role.
+2. *Injection.* Cells, notes and titles render as React text; no
+   `dangerouslySetInnerHTML`. Hrefs use server ids only. Download filenames come
+   from the report's declared slug, never report data.
+3. *Cross-tenant template.* The branding picker lists the owning organisation's
+   templates; the backend rejects another organisation's id (Phase 12b, 400).
+4. *Stale or superseded responses.* A re-run supersedes an in-flight one and a
+   failed run cannot overwrite a newer result (`cancelled` guard).
+5. *Boundary.* Core imports nothing from `modules/context_strategy/`; the views
+   are reached through `reportViews`. The new `ReportRunner` story registers a
+   neutral fixture module to prove resolution is by registry.
+6. **Found and fixed (existing):** `ReportsPage` had no error handling on its
+   project load; a failure left a permanent spinner. It now toasts the error.
+
+**Verification:** Storybook for `ReportViewer`, `ReportParamsForm`,
+`ReportRunner` and `ReportCatalogue` (synthetic module-neutral fixtures), both
+module views, and the extended `ReportsPage` and `OrgOverviewPage` stories (full
+suite: 196 files, 1,504 tests pass); `tsc -b` clean, no new ESLint warnings;
+Playwright `reports-ui.spec.ts` (8 tests) plus the requirement-report,
+project-admin-templates, org-overview and Compliance report specs pass; the
+Context & Strategy report tests (32) pass with the new `bands` assertion;
+`ruff check` clean; the docs site builds.
+
+**Docs website:** new `modules/context-strategy-module/reports` page and a
+pointer in Reports and export. Phase 14 adds scoring depth, a data-flow diagram
+and screenshots. The Mermaid diagram on the new page could not be parsed
+headlessly (mermaid needs a DOM); it is a plain flowchart.
+
+**Known gaps:** no screenshots yet (Phase 14); `RequirementReportPanel` has no
+story of its own (covered through `ReportsPage`); seed scripts were not
+re-checked for report content (Phase 14).
+
+## Module 1 (Context & Strategy) Phase 14 — docs website depth + seed verification (2026-10-06)
+
+**Shipped.** Docs site: new `pain-point-scoring` page (inputs, models, roll-ups
+with a worked example, Blockers, intentional limitations, degraded personas,
+configuration, permissions, automation) and `report-reference` page (R1–R9 and
+their gap tables); `reports` rewritten around generating, finding, options,
+export, API/MCP access and permissions; scoring sections moved out of
+`pain-point` into the new page; MCP page corrected (74 tools, was 62);
+known-limitations corrected. Eleven new screenshots plus refreshed Pain Point
+list/detail, all captured at 1440×900 from the demo dataset. Mermaid diagrams
+verified rendering in a browser (no parse errors); build clean.
+
+**Decisions:**
+- *The user rejected the first, thinner docs pass* ("does not cover the report
+  generation or per-persona pain points… there must be screenshots").
+  **Decided by: User.** Scoring and report generation each got a dedicated page
+  rather than sections inside existing ones.
+- *Report parameters declare their own labels.* `ReportParamDefinition` gains
+  `label` and `choice_labels` (validated: keys must be among `choices`), carried
+  through the catalogue to the generated form. Found while capturing R9: the
+  generic form showed a free-text "Model key" box and "Sxf" style choices.
+  `model_key` now declares its choices (the scheme's models) and labels.
+  **Decided by: Agent** (found-issue fix, per the fix-don't-defer rule).
+  Generic, no module-specific code in core.
+- *Demo seed extended* so every report's main table is non-empty and R2/R4/R5
+  show a gap: a Draft Future State with a passed target date and no success
+  measures, an open and overdue Open Question, and a Pain Point → Requirement
+  `motivates_requirement` link. R7's stale list stays empty (versions can't be
+  back-dated through the API) and R6 shows principles as never applied.
+  **Decided by: Agent.**
+- *E2E seed left as is.* It covers R1, R3 and R9 (scored Pain Points); the other
+  reports are empty there. Playwright specs depend on fixed counts, and
+  `reports-ui.spec.ts` builds its own data. **Decided by: Agent.**
+
+**Review (identify → verify → remediate):** the label change touches no
+authorization, only presentation metadata, and the catalogue still lists only
+reports the caller may run. Verified: an unknown `model_key` is rejected 400 by
+the framework (new test), where it was previously unchecked free text. Found and
+fixed: the R9/R8 free-text model box; the stale known-limitations line; the MCP
+tool count.
+
+**Verification:** `test_report_framework.py` and the Context & Strategy report
+and MCP tests pass (new: label/choice-label catalogue and validation, labelled
+scoring parameters and the 400 on an unknown model); `ruff check` clean;
+Storybook `ReportParamsForm` (new `UsesDeclaredLabels` story) and report stories
+pass; Playwright `reports-ui.spec.ts` 28/28 with a new test that R9 offers a
+labelled "Scoring model" select; both seed scripts run clean on a fresh
+`reqtrack_test` and every report returns 200 with content.
+
+**Environment note:** the stack's `reqtrack_test` database predated Phase 11's
+seed content, so it was dropped and recreated (user-approved) and both seeds
+re-run. The seed script is baked into the backend image, so an edited script
+must be rebuilt or `docker cp`'d before it runs.
+
+## Stat blocks: budget, grid layout and a shared geometry check (2026-10-06)
+
+**Problem.** The summary report (R8) put ~25 figures, labelled "<Report>: <measure>", into `StatBar` (flex-wrap, per-item `border-left`): ragged rows, stray dividers, two-line labels, no hierarchy, and the same figures repeated in a table. It was the third stat block to go wrong (org overview, compliance dashboard), each time fixed locally and judged by eye. **Raised by: User** ("review… fix… make sure this never happens again").
+
+**Review.** A separate read-only reviewer agent (dataviz skill + the style guide) diagnosed it; its code claims were checked against the code before acting. Findings that mattered: `StatBar` itself was defective for any wrapping content (flex has no columns); `StatCard`'s inline `minWidth: 220` overflowed a 375px container; the collector knew which measures were gaps but the metric shape could not say so.
+
+**Decisions** (all **Decided by: Agent**, implementing the user's request):
+- *`StatBar` is a CSS grid* (`auto-fit`, box-shadow dividers clipped by the container, no media queries) and gains a *grouped* layout (`groups`): one card per source with measure/value rows. Extends the shared component rather than adding a new one.
+- *Metric shape.* `ReportMetric(label, value, gap=False, group=None)`; plain `(label, value)` pairs still work. R1–R7/R9 mark their gap measures; R8 emits short labels with `group` = source report title. `ReportSection.screen=False` keeps the flat headline table for CSV/PDF only. PDF/CSV output is unchanged.
+- *Gap figures are flagged in words* ("Needs attention", screen-reader text) plus the warning tone; zero is muted.
+- *Prevention is automated, not documentary.* `frontend/src/testing/statBlockGeometry.ts` (`statBlockViolations`: no overflow, equal-height rows, aligned columns, labels ≤ 3 lines) runs in Storybook worst-case stories (25 entries, long labels, 375/720/1200px, grouped and flat, `StatCard` grids) and in Playwright via `expectTidyStatBlocks` at 375/720/1024/1440px on R1, R8, org overview and the compliance dashboard. A mutation check (restoring the old flex-wrap CSS) made the stories fail with "21 distinct column edges… (ragged columns)", so the guard demonstrably bites. The style guide gains the budget/layout rules.
+- *Not done:* a lint/stylelint rule against `flex-wrap` + borders (brittle, low value beside the geometry tests); a runtime `console.error` for >8 flat entries (the story check covers it). A `CLAUDE.md` bullet was suggested by the reviewer and left for the user to decide.
+
+**Found and fixed along the way:** `StatCard`/`.grid-metrics` overflow below ~440px; a collision-prone `Date.now()` suffix in `reports-ui.spec.ts` setup (parallel workers starting in the same millisecond shared an admin email and one was refused "Insufficient organisation permissions"; now has a random part); `expectTidyStatBlocks` polls because a resize re-renders responsive chrome over a few frames.
+
+**Review (identify → verify → remediate):** presentation and test code only; no authorization, secrets or data-retention paths touched, and report access checks are unchanged. The new metric fields are non-sensitive display metadata.
+
+**Verification:** full Storybook suite 196 files / 1,522 tests pass; backend `test_report_framework.py` and the Context & Strategy report tests pass (new: gap flags per report, grouped R8 metrics, headline table export-only); `ruff` clean; changed frontend files lint-clean (the repo's 101 pre-existing ESLint warnings are in other files); Playwright `reports-ui.spec.ts` 30/30, `org-overview.spec.ts` 22/22, `org-compliance-view.spec.ts` incl. the new width check; docs site builds; R8/R1/R2/R4/R9 and org screenshots recaptured.
+
+## Context & Strategy docs screenshots redone (2026-10-06)
+
+The first set was cropped to a fixed 1220px-wide window (clipped sidebar-toggle artifact, tables cut off mid-row, no app chrome), unlike the 1440×900 standard in `docs/plans/docs-website-plan.md`, and R3/R5/R6/R7 and the PDF export had no image. **Raised by: User.** All were recaptured at 1440px wide with the full app chrome and a viewport height fitted to the content (never cropped mid-table; capped at 1500px), plus new R3, R5, R6, R7 and an exported-PDF page (branded, rendered from the real PDF) and its CSV. **Decided by: Agent.** Doc fix found in the process: the reports page claimed the PDF carries "summary figures"; it carries the notes and every table, not the on-screen figure tiles (R8's PDF opens with a Headline figures table). Corrected.
+
+## `StatGroups` promoted to a standard component (2026-10-06)
+
+The grouped-card layout of the R8 summary report was liked and made a first-class element. **Raised by: User.** It is now its own component, `components/StatGroups.tsx` (previously a `groups` mode inside `StatBar`, which is flat-only again), with its own Storybook stories (default, no-gaps, desktop/tablet/phone worst cases, long labels, light/dark), a shared `utils/needsAttention.ts`, and a named "Pattern: stat blocks" section in `docs/ux-style-guide.md` with a choose-the-shape decision diagram (`MetricTile` grid, `StatGroups`, `StatBar`, `StatCard` grid), the layout rules and the geometry-check requirement; the earlier stat paragraph under the drill-down pattern is replaced by a pointer to it. **Decided by: Agent** (shape of the extraction). Not adopted at other call sites: the compliance dashboard's tiles are individually linked (`MetricTile`), which `StatGroups` rows are not.
+
+## Report figures link to what they count (2026-10-06)
+
+**Raised by: User** ("click on pain points that are new and it takes me to a page for that — only valid for projects"; then "at org level, a pop-up listing projects with numbers, click to go to the project page").
+
+**Shipped.** `StatBar`/`StatGroups` items take `to` (page) or `onActivate` (in place); the label holds a stretched real link/button (`StatFigureLabel`) named "<label>: <value>". Backend: `ReportMetric.link` (`ReportLink`: `module` page + filters, or `report` + gap section), validated on serialisation (`ReportLinkOut`: slug-shaped target, simple query values, no scheme/host/traversal/markup); Context & Strategy gives each figure a filtered list link where the list can show exactly the counted set, else the gap table; R8 passes source links through; figures with nowhere honest to go stay unlinked. Project reports link straight to the page; **organisation reports** open `ReportFigureProjectsDialog`, fed by a new generic endpoint `GET …/reports/<slug>/by-project` (same collector once per in-scope project, same access/scope as the report, ≤200 projects, `breakdown_path` on the catalogue entry). The list pages (Pain Point, Open Question, Future State, Guiding Principle) seed their filters once from the URL (`useInitialSearchParams`) and show them as visible, clearable `FilterPanel` controls (new: Open only, Blockers only, Scoring, Only intentional, Overdue, Unowned, On the roadmap, Target date passed, Without success measures).
+
+**Decisions:**
+- *Links are route-neutral data from the module, resolved to URLs by core* (`utils/reportLinks`), so no collector hard-codes UI routes and core imports nothing from a module. **Decided by: Agent.**
+- *Relationship-derived gaps (no Requirement, no parent Strategy, never applied, churn risk, stale) link to the report's own gap table* (`?section=` scrolls to it), because the list pages do not load the links/scores those conditions need and a list that cannot show the counted set would mislead; adding that data to the list APIs was judged out of proportion. **Decided by: Agent.**
+- *Organisation breakdown is server-side and one request*, not N client requests: one permission check, one consistent snapshot, same scope rules as the report. **Decided by: Agent.**
+- *Org-wide figures never link to a page directly; only projects do.* **Decided by: User.**
+- *Filters live in page state, seeded once from the URL; the URL is not rewritten.* Keeps the pages' existing behaviour and avoids a history entry per tick. **Decided by: Agent.**
+
+**Review (identify → verify → remediate):** the breakdown endpoint touches access control and aggregated reads. Verified: it repeats the org route's module-enabled and `org_reports_viewer` checks and uses `scope_projects`, so a viewer with a role on one project sees one project, another organisation's admin gets 404, a user without the role 403 (new tests); it never accepts a project id, so it cannot widen scope; it is not audit-logged, like the report. Links are validated server-side and rendered through React Router (no `dangerouslySetInnerHTML`, no raw hrefs from data); an unknown filter value in a URL is ignored, not trusted. Found and fixed: the "Scored and not scored" option truncated in the narrow filter panel (now "Any scoring"); the new "Not scored" filter option collided with the table badge text in an existing story (scoped).
+
+**Verification:** backend `test_report_framework.py` (21) and the Context & Strategy report tests (incl. link shapes, link validation, per-project breakdown) pass, `ruff` clean; full Storybook suite 198 files / 1,533 tests pass (new stories: linked `StatBar`/`StatGroups`, `ReportViewer` figure actions, `ReportFigureProjectsDialog`, `ReportRunner` project and organisation clicks, URL-seeded filters on all four list pages, three of which had no stories before); Playwright `reports-ui.spec.ts` 32/32 including click-through from the project summary to the filtered Pain Point and Open Question lists, to a scrolled gap table, and from an organisation figure through the dialog to a project's list; docs site builds. Four existing `react-hooks/set-state-in-effect` ESLint warnings remain on the list pages' existing load effects.
+
+**Addendum (same day): figure tooltips.** Linked figures show a tooltip on hover and keyboard focus saying where they lead (`StatFigureAction.hint`, via the shared `Tooltip`): `Opens the pain points list, filtered to "Blockers"`, `Opens the … report at the table that lists these`, or, for organisation figures, `Shows which projects make up "Blockers"`. The text is derived client-side from the link (`describeReportLink`), not sent by the backend. The control's accessible name stays `<label>: <value>`. **Raised by: User**; wording **Decided by: Agent**. Covered by Storybook (`StatBar`, `ReportRunner`) and `reports-ui.spec.ts`.
+
+**Addendum (same day): tooltip placement.** The figure tooltip was centred on the label, but the hover target is the whole cell, so with the pointer over the number it appeared away from the cursor and covered the row above. `Tooltip` gains `followPointer` (used by `StatFigureLabel`): the bubble sits just below the pointer, centred on it, tracks it, is clamped inside the viewport, flips above the pointer near the bottom edge, and falls back to the trigger-centred placement on keyboard focus. Default `Tooltip` behaviour is unchanged. **Raised by: User**; **Decided by: Agent.** My first Storybook assertions for this passed vacuously (`fireEvent.mouseEnter` never triggered the handler, so the bubble stayed at the origin and trivially satisfied the clamp/flip checks); they now use `userEvent.pointer` with coordinates and assert the bubble is actually shown and placed. `reports-ui.spec.ts` checks, with a real mouse over the number, that the bubble is on the pointer horizontally and just below it.

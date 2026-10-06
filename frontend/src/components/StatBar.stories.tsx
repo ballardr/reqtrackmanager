@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 
-import { StatBar, StatBarEntry } from "./StatBar";
+import { withRouter } from "../testing/storybook-helpers";
+import { statBlockViolations } from "../testing/statBlockGeometry";
+import { StatBar, StatBarEntry, type StatBarItem } from "./StatBar";
 
 const meta: Meta<typeof StatBar> = {
   title: "Components/StatBar",
@@ -51,3 +53,82 @@ export const WithContributedEntry: Story = {
 
 export const LightTheme: Story = { ...Default, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...Default, globals: { theme: "dark" } };
+
+/** Worst-case fixtures: these are what the summary report once dumped into one bar. */
+const longLabel = "Pain Point coverage and ageing: Accepted with no motivated Requirement";
+const manyItems: StatBarItem[] = Array.from({ length: 25 }, (_, i) => ({
+  key: `m${i}`,
+  label: i % 3 === 0 ? "Accepted, no Requirement" : `Measure ${i + 1}`,
+  value: i * 7,
+  gap: i % 4 === 0,
+}));
+/** Pins the geometry at the widths the app is used at; a viewport media query could not do this inside a story,
+ * so the container is sized directly (the layouts size to their container, with no viewport media queries). */
+const atWidth = (width: number) => (Story: () => React.JSX.Element) => (
+  <div style={{ width, maxWidth: "100%", boxSizing: "border-box" }}>
+    <Story />
+  </div>
+);
+const tidy = async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+  await expect(statBlockViolations(canvasElement)).toEqual([]);
+};
+
+/** More entries than the flat budget still lay out in aligned, equal-height columns (budget-length labels). */
+export const TwentyFiveEntriesStayTidy: Story = { args: { items: manyItems }, play: tidy, decorators: [atWidth(1200)] };
+export const TwentyFiveEntriesNarrow: Story = { args: { items: manyItems }, play: tidy, decorators: [atWidth(375)] };
+export const FlatBudgetOnPhone: Story = {
+  args: { items: manyItems.slice(0, 8), children: <StatBarEntry label="Overall org compliance" value="33%" /> },
+  play: tidy,
+  decorators: [atWidth(375)],
+};
+
+/** A non-zero gap figure is flagged in words as well as colour; a zero gap is not. */
+export const GapFiguresAreFlaggedInWords: Story = {
+  args: {
+    items: [
+      { key: "a", label: "Overdue", value: 2, gap: true },
+      { key: "b", label: "Unowned", value: 0, gap: true },
+      { key: "c", label: "Total", value: 9 },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByText("Needs attention")).toHaveLength(1);
+  },
+};
+
+/** The guard has teeth: a 70-character label in a flat bar is a violation (group the block instead), so the
+ * assertion every other story runs would fail on the layout that made the summary report unreadable. */
+export const GuardRejectsLongLabelsInAFlatBar: Story = {
+  args: { items: [{ key: "x", label: longLabel, value: 1 }, ...manyItems.slice(0, 6)] },
+  decorators: [atWidth(1200)],
+  play: async ({ canvasElement }) => {
+    const violations = statBlockViolations(canvasElement);
+    await expect(violations.some((v) => v.includes("wraps onto"))).toBe(true);
+  },
+};
+
+/** A figure with `to` is a link (the whole cell); one with `onActivate` is a button; both are named "<label>: <value>". */
+export const LinkedAndActionFigures: Story = {
+  decorators: [withRouter("/")],
+  args: {
+    items: [
+      { key: "a", label: "Blockers", value: 3, gap: true, to: "/projects/p1/modules/context_strategy/pain-points?blocker=1", hint: "Opens the pain points list, filtered to \"Blockers\"" },
+      { key: "b", label: "Scored", value: 2, onActivate: fn() },
+      { key: "c", label: "Plain total", value: 9 },
+    ],
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const link = canvas.getByRole("link", { name: "Blockers: 3" });
+    await expect(link).toHaveAttribute("href", "/projects/p1/modules/context_strategy/pain-points?blocker=1");
+    // The hint is a tooltip on hover (and keyboard focus), not part of the control's own name.
+    await userEvent.hover(link);
+    await expect(within(canvasElement.ownerDocument.body).getByRole("tooltip", { name: /filtered to "Blockers"/ })).toBeVisible();
+    await userEvent.unhover(link);
+    await userEvent.click(canvas.getByRole("button", { name: "Scored: 2" }));
+    await expect(args.items![1].onActivate).toHaveBeenCalledTimes(1);
+    await expect(canvas.queryByRole("link", { name: /Plain total/ })).not.toBeInTheDocument();
+    await expect(statBlockViolations(canvasElement)).toEqual([]);
+  },
+};

@@ -18,12 +18,19 @@ Design decisions:
 - Org-level configuration is gated by the existing `pain_point_type_admin`
   role (plus org admins) — the same people who manage the Pain Point type
   vocabulary (Decided by: Agent).
-- `count_level_usage`/`reassign_level_usage` stay unset until Phase 11 adds
-  `PainPointScore`, the first table to reference levels.
+- `count_level_usage`/`reassign_level_usage` count and move `PainPointScore`
+  references (Phase 11), so deleting an in-use level forces a reassignment
+  instead of leaving a score pointing at nothing.
 """
 
 from __future__ import annotations
 
+import uuid
+
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.orm import Session
+
+from app.modules.context_strategy.models import PainPointScore
 from app.modules.registry import (
     ScoringAxisDefinition,
     ScoringBandDefault,
@@ -33,6 +40,24 @@ from app.modules.registry import (
 )
 
 PAIN_POINT_SCORING_SCHEME_KEY = "pain_point"
+_LEVEL_COLUMNS = ("severity_level_id", "frequency_level_id", "confidence_level_id")
+
+
+def count_level_usage(db: Session, level_id: uuid.UUID) -> int:
+    """`ScoringSchemeDefinition.count_level_usage`: the number of Pain Point
+    score rows referencing `level_id` on any axis."""
+    clause = or_(*(getattr(PainPointScore, c) == level_id for c in _LEVEL_COLUMNS))
+    return db.scalar(select(func.count(PainPointScore.id)).where(clause)) or 0
+
+
+def reassign_level_usage(db: Session, from_level_id: uuid.UUID, to_level_id: uuid.UUID) -> None:
+    """`ScoringSchemeDefinition.reassign_level_usage`: moves every Pain Point
+    score reference from one level to another (same axis, checked by core)."""
+    for column in _LEVEL_COLUMNS:
+        db.execute(
+            update(PainPointScore).where(getattr(PainPointScore, column) == from_level_id)
+            .values({column: to_level_id})
+        )
 
 
 def _bands(medium: float, high: float, critical: float) -> tuple[ScoringBandDefault, ...]:
@@ -97,4 +122,6 @@ PAIN_POINT_SCORING_SCHEME = ScoringSchemeDefinition(
     ),
     default_model_key="sxfxc",
     admin_role_key="pain_point_type_admin",
+    count_level_usage=count_level_usage,
+    reassign_level_usage=reassign_level_usage,
 )

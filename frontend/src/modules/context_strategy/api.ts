@@ -53,6 +53,10 @@ import type {
   PainPointComment,
   PainPointFieldValues,
   PainPointLinkKind,
+  PainPointRollup,
+  PainPointScoreInput,
+  PainPointScores,
+  PainPointScoringList,
   PainPointTypeDefinition,
   ProjectPainPointType,
   Strategy,
@@ -319,6 +323,16 @@ export const orgFutureStateApi = buildFutureStateApi(orgBase);
 // objects instead, mirroring `modules/decisions/api.ts`'s own flat-function
 // shape for a project-scoped-only artefact.
 
+/** Builds the `?model_key=&rollup=` query string for the scoring endpoints. */
+function scoringQuery(params: { model_key?: string; rollup?: string; include_archived?: boolean }): string {
+  const query = new URLSearchParams();
+  if (params.model_key) query.set("model_key", params.model_key);
+  if (params.rollup) query.set("rollup", params.rollup);
+  if (params.include_archived) query.set("include_archived", "true");
+  const text = query.toString();
+  return text ? `?${text}` : "";
+}
+
 export interface PainPointListFilters {
   include_archived?: boolean;
 }
@@ -381,6 +395,22 @@ export const projectPainPointApi = {
   },
   update(projectId: string, painPointId: string, values: PainPointFieldValues & { owner_id: string | null }) {
     return api.put<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}`, values);
+  },
+  // --- Per-persona scoring (Phase 11) ---------------------------------------
+  listScores(projectId: string, params: { model_key?: string; rollup?: PainPointRollup; include_archived?: boolean } = {}) {
+    return api.get<PainPointScoringList>(`${projectBase(projectId)}/pain-point-scores${scoringQuery(params)}`);
+  },
+  getScores(projectId: string, painPointId: string, params: { model_key?: string; rollup?: PainPointRollup } = {}) {
+    return api.get<PainPointScores>(`${projectBase(projectId)}/pain-points/${painPointId}/scores${scoringQuery(params)}`);
+  },
+  /** Replaces the whole score set; the response is the roll-up under `params`. */
+  setScores(
+    projectId: string, painPointId: string, scores: PainPointScoreInput[],
+    params: { model_key?: string; rollup?: PainPointRollup } = {},
+  ) {
+    return api.put<PainPointScores>(
+      `${projectBase(projectId)}/pain-points/${painPointId}/scores${scoringQuery(params)}`, { scores },
+    );
   },
   archive(projectId: string, painPointId: string) {
     return api.post<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}/archive`);

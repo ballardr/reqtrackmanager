@@ -4,9 +4,11 @@ import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Organization, OrgModule, OrgOverviewStats } from "../api/types";
 import { EntitySwitcher } from "../components/EntitySwitcher";
+import { ReportCatalogue } from "../components/ReportCatalogue";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
 import { StatBar, type StatBarItem } from "../components/StatBar";
+import { useReportCatalogue } from "../hooks/useReportCatalogue";
 import { getInstalledModule, installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { formatFileSize } from "../utils/formatFileSize";
@@ -15,6 +17,12 @@ import { formatFileSize } from "../utils/formatFileSize";
  * this core page, not by any module, so it can never collide with a real
  * module section key. */
 const OVERVIEW_GROUP_KEY = "overview";
+
+/** The core "Reports" group (Module 1 Phase 13): the organisation-wide
+ * reports from the backend catalogue, shown only when the caller can run at
+ * least one. Contributed by this page, not a module, so it can never collide
+ * with a module section key. */
+const REPORTS_GROUP_KEY = "reports";
 
 /**
  * "Organisation Overview" (compliance-module-plan.md Phase 19) — a new
@@ -57,6 +65,7 @@ export function OrgOverviewPage() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [stats, setStats] = useState<OrgOverviewStats | null>(null);
   const [modules, setModules] = useState<OrgModule[]>([]);
+  const reportCatalogue = useReportCatalogue("organization", orgId);
 
   useEffect(() => {
     if (!orgId) return;
@@ -88,7 +97,7 @@ export function OrgOverviewPage() {
   );
 
   if (!orgId) return null;
-  if (!org || !stats) return <Spinner />;
+  if (!org || !stats || reportCatalogue.loading) return <Spinner />;
 
   // Same "filter installed modules to this org's actually-enabled set"
   // pattern `OrgAdminPage.tsx` already uses for `orgAdminSections` —
@@ -99,6 +108,7 @@ export function OrgOverviewPage() {
     .filter((m) => enabledModuleKeys.has(m.key))
     .flatMap((m) => m.orgOverviewSections ?? []);
 
+  const hasReports = reportCatalogue.entries.length > 0;
   const groups: ResourceMenuGroupDef<string>[] = [
     { key: OVERVIEW_GROUP_KEY, label: "Overview", href: `/orgs/${orgId}/overview` },
     ...moduleSections.map((section) => ({
@@ -106,9 +116,11 @@ export function OrgOverviewPage() {
       label: section.label,
       href: `/orgs/${orgId}/overview/${section.key}`,
     })),
+    ...(hasReports ? [{ key: REPORTS_GROUP_KEY, label: "Reports", href: `/orgs/${orgId}/overview/${REPORTS_GROUP_KEY}` }] : []),
   ];
   const activeModuleSection = moduleSections.find((s) => s.key === groupParam);
-  const active = activeModuleSection?.key ?? OVERVIEW_GROUP_KEY;
+  const showingReports = hasReports && groupParam === REPORTS_GROUP_KEY;
+  const active = showingReports ? REPORTS_GROUP_KEY : (activeModuleSection?.key ?? OVERVIEW_GROUP_KEY);
 
   const statItems: StatBarItem[] = [
     { key: "projects", label: "Projects", value: stats.project_count },
@@ -129,7 +141,9 @@ export function OrgOverviewPage() {
       </div>
 
       <ResourceMenu ariaLabel="Organisation overview sections" groups={groups} active={active}>
-        {activeModuleSection ? (
+        {showingReports ? (
+          <ReportCatalogue entries={reportCatalogue.entries} scope={{ kind: "organization", id: orgId }} organizationId={orgId} />
+        ) : activeModuleSection ? (
           activeModuleSection.render({ orgId })
         ) : (
           <div className="stack">

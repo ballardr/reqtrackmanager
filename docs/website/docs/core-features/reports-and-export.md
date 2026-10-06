@@ -13,6 +13,8 @@ A project's **Reports** page generates a PDF or CSV export of its requirements, 
 | Filtered PDF/CSV export with a selectable organisation branding template |
 | ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
 
+A project's Reports page can also offer reports from enabled modules (for example [Context & Strategy's](../modules/context-strategy-module/reports.md)) in the same **Report** picker, with *Requirements report* listed first. When no module report applies, the picker is hidden and the page is the requirements report alone.
+
 ## Report content
 
 **Project Admin → Report Setup** sets the report's introduction and body/appendix chapters, in Markdown or a WYSIWYG rich-text editor — saved per project and reused on every report generated for it, rather than typed fresh each time. A project that leaves any of these blank falls back to that field's organisation-wide default (**Organisation admin → Templates & reports → Report Defaults**), field by field; the Report Setup tab shows "(organisation default)" wherever that's happening. Every one of these editors — including a report template's own content — has an **Insert image** button: pick from the organisation's already-uploaded images, or upload a new one on the spot, and it's included in the generated PDF as its own paragraph.

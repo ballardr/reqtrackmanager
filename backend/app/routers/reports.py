@@ -10,14 +10,13 @@ collection, and a single parameterized endpoint leaves one place for a
 future report-type/template parameter to land. Supports custom Markdown
 sections (R-G-01, R-G-02), requirement filters (R-G-03), organisation
 shared resource files rendered as additional report sections (R-G-04), and
-images embedded in those Markdown sections via `_resolve_report_images`
+images embedded in those Markdown sections via `report_document.resolve_report_images`
 (see its docstring for the tenant-isolation check it performs before any
 image reaches the PDF).
 """
 
 from __future__ import annotations
 
-import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -26,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.file import FileAsset
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword
 from app.models.user import User
@@ -34,8 +33,8 @@ from app.schemas.report import ReportRequest
 from app.services.downloads import filename_safe
 from app.services.files import read_file
 from app.services.rbac import require_project_view
+from app.services.report_document import load_report_template, resolve_branding, resolve_report_images
 from app.services.reports import (
-    ReportBranding,
     ReportRequirementRow,
     default_chapters_per_component,
     generate_csv_report,
@@ -108,59 +107,6 @@ def _chapters_markdown(chapters: list[dict]) -> str:
     return "\n\n".join(f"# {c['title']}\n\n{c['body']}" for c in chapters if c.get("title"))
 
 
-_ATTACHMENT_REF = re.compile(r"attachment:([0-9a-fA-F-]{36})")
-
-
-def _resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: str) -> dict[str, bytes]:
-    """Scans one or more Markdown strings for `attachment:<uuid>` image
-    references (inserted via the report content editor's attachment panel,
-    `RichTextEditor`'s "Insert image") and resolves each to its bytes.
-
-    Every resolved reference is checked against `organization_id` *and*
-    restricted to `is_org_resource=True` assets before its bytes are read.
-    Org scoping alone isn't enough: within a multi-project org, a direct
-    (non-shared) `FileAsset` — most importantly a requirement attachment —
-    is gated by *project*-level access in its own right
-    (`routers/files.py::download_file` requires `get_effective_project_roles`
-    for exactly that reason), which report content is never itself scoped
-    to check. Without this restriction, a user with report-edit rights on
-    Project A could hand-type `attachment:<id>` for a requirement
-    attachment belonging to Project B in the same org — one they may have
-    no project-level access to at all — and have its bytes embedded into
-    Project A's report. Org shared resources have no such finer-grained
-    gate (any org member can already see them, `orgs.py::list_org_resources`),
-    matching what the attachment picker UI actually offers (org shared
-    resources only, never a raw requirement-attachment id) — so this isn't
-    a functional restriction on the real feature, only on hand-crafted
-    references that were never a legitimate use of it. A reference that
-    doesn't resolve — wrong org, not a shared resource, not found, not
-    actually an image content type — is simply left out of the returned
-    mapping; `_markdown_to_flowables` already treats a missing entry as
-    "skip this image" rather than an error, so a bad reference never breaks
-    report generation.
-    """
-    resolved: dict[str, bytes] = {}
-    for text in markdown_texts:
-        for match in _ATTACHMENT_REF.finditer(text):
-            ref = match.group(0)
-            if ref in resolved:
-                continue
-            try:
-                file_id = UUID(match.group(1))
-            except ValueError:
-                continue
-            asset = db.get(FileAsset, file_id)
-            if (
-                asset is None
-                or asset.organization_id != organization_id
-                or not asset.is_org_resource
-                or not asset.content_type.startswith("image/")
-            ):
-                continue
-            resolved[ref] = read_file(asset)
-    return resolved
-
-
 @router.post("")
 def generate_report(
     project_id: UUID, payload: ReportRequest,
@@ -196,8 +142,8 @@ def generate_report(
 
     template = None
     if payload.report_template_id is not None:
-        template = db.get(ReportTemplate, payload.report_template_id)
-        if template is None or template.organization_id != project.organization_id:
+        template = load_report_template(db, project.organization_id, payload.report_template_id)
+        if template is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this project's organisation.")
 
     report_config = resolve_report_config_with_template(project, org, template)
@@ -208,17 +154,7 @@ def generate_report(
     post_markdown = payload.post_markdown or _chapters_markdown([c.model_dump() for c in report_config.appendices])
     post_markdown = f"{post_markdown}\n\n{resource_markdown}".strip()
 
-    branding = None
-    if template is not None:
-        logo_bytes = None
-        if template.include_logo:
-            logo_asset = db.get(FileAsset, org.logo_file_id) if org and org.logo_file_id else None
-            if logo_asset is not None:
-                logo_bytes = read_file(logo_asset)
-        branding = ReportBranding(
-            accent_color_hex=template.accent_color_hex, include_cover_page=template.include_cover_page,
-            footer_text=template.footer_text, logo_bytes=logo_bytes,
-        )
+    branding = resolve_branding(db, org, template)
 
     # Precedence: an explicit per-generation choice always wins; failing
     # that, a selected template's own setting; failing that (no template),
@@ -231,7 +167,7 @@ def generate_report(
     else:
         chapters_per_component = default_chapters_per_component(rows)
 
-    images = _resolve_report_images(db, project.organization_id, pre_markdown, post_markdown)
+    images = resolve_report_images(db, project.organization_id, pre_markdown, post_markdown)
     pdf_bytes = generate_pdf_report(
         project_name=project.name, pre_markdown=pre_markdown, rows=rows, post_markdown=post_markdown,
         branding=branding, images=images, chapters_per_component=chapters_per_component,

@@ -9,7 +9,7 @@ rather than say something like Jira". **Decided by: User.**
 
 **Status:** Proposed, not started. Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
-Module 1 (Pain Point links, report hook from its Phase 13) and Module 2
+Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
 artefacts simply aren't offered.
 
@@ -26,7 +26,7 @@ Phase 1.2 and Module 1 Phase 13 have shipped.
 | 3 | ICE/RICE scoring on the core scoring matrix | [ ] Not started |
 | 4 | Relationships + close-the-loop | [ ] Not started |
 | 5 | Frontend UI | [ ] Not started |
-| 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phase 13's report hook |
+| 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06, see `docs/modules.md` §4g |
 | 7 | Docs website coverage | [ ] Not started |
 
 ## Where it fits
@@ -129,7 +129,8 @@ flowchart LR
   dialog, demand panel, scoring switcher, link panels, and the
   close-the-loop panel. Shared components and label maps; Playwright and
   Storybook.
-- **Phase 6 — Reports**, registered through Module 1 Phase 13's hook:
+- **Phase 6 — Reports**, registered as `ReportDefinition`s through Module 1
+  Phase 12b's core report framework (and shown by Phase 13's Reports page):
 
   | # | Report | Content |
   |---|--------|---------|

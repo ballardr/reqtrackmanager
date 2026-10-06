@@ -10,6 +10,11 @@
  * priority filter (Future State has no `priority` field — see `types.ts`'s
  * own docstring) and minus the target-date column here (shown in the full
  * detail page, not worth a list column of its own for a nullable field).
+ *
+ * Filters can be pre-set from the URL (a report figure links here, e.g.
+ * `?roadmap=1&target_passed=1`): `status`, `roadmap=1` (still expected to
+ * arrive), `target_passed=1` (target date passed while not Active) and
+ * `no_measures=1`. They only seed the state; each is a visible filter control.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -20,22 +25,27 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
-import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
+import { FUTURE_STATE_ROADMAP_STATUSES, FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
 
 export function ProjectFutureStatesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<FutureStateStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState<FutureStateStatus | "">(() => oneOf(initial.get("status"), Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]));
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [roadmapOnly, setRoadmapOnly] = useState(initial.get("roadmap") === "1");
+  const [targetPassedOnly, setTargetPassedOnly] = useState(initial.get("target_passed") === "1");
+  const [noMeasuresOnly, setNoMeasuresOnly] = useState(initial.get("no_measures") === "1");
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -64,7 +74,11 @@ export function ProjectFutureStatesPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureStates === null || project === null) return <Spinner />;
 
+  const today = new Date().toISOString().slice(0, 10); // UTC, like the report's reference date
   const filtered = futureStates.filter((fs) => {
+    if (roadmapOnly && !FUTURE_STATE_ROADMAP_STATUSES.includes(fs.status)) return false;
+    if (targetPassedOnly && !(fs.target_date !== null && fs.target_date < today && fs.status !== "active")) return false;
+    if (noMeasuresOnly && fs.success_measures.trim() !== "") return false;
     if (statusFilter && fs.status !== statusFilter) return false;
     if (search && !fs.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -107,6 +121,9 @@ export function ProjectFutureStatesPage() {
               ))}
             </select>
           </FilterField>
+          <FilterCheckbox label="On the roadmap only" checked={roadmapOnly} onChange={setRoadmapOnly} />
+          <FilterCheckbox label="Target date passed" checked={targetPassedOnly} onChange={setTargetPassedOnly} />
+          <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

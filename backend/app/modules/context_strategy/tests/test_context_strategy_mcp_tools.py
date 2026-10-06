@@ -31,13 +31,13 @@ def _by_local_name() -> dict[str, object]:
 
 
 def test_context_strategy_mcp_tools_resolve_against_the_real_registry():
-    """All 62 declared tools resolve — no tool is silently excluded by
+    """All 74 declared tools resolve — no tool is silently excluded by
     `build_mcp_tool_manifest`'s mechanical verification (a wrong path
     template, an unmatched route, or a mismatched method would exclude a
     tool rather than error, so this count is the actual regression guard —
     see that function's own docstring)."""
     by_name = _by_local_name()
-    assert len(by_name) == 62
+    assert len(by_name) == 74
 
 
 def test_context_strategy_read_only_tools_are_get_and_non_mutating():
@@ -45,9 +45,12 @@ def test_context_strategy_read_only_tools_are_get_and_non_mutating():
     for name in (
         "list_strategies", "get_strategy", "list_future_states", "get_future_state",
         "list_pain_points", "get_pain_point", "list_guiding_principles", "get_guiding_principle",
-        "list_open_questions", "get_open_question",
+        "list_open_questions", "get_open_question", "list_pain_point_scores", "get_pain_point_scores",
         "list_strategy_relationships", "list_future_state_relationships", "list_pain_point_relationships",
         "list_guiding_principle_relationships", "list_open_question_relationships",
+        "get_pain_point_prioritisation_report", "get_strategy_cascade_report", "get_pain_point_coverage_report",
+        "get_open_question_register_report", "get_future_state_roadmap_report", "get_guiding_principle_usage_report",
+        "get_strategy_change_history_report", "get_summary_report", "get_upgrade_drivers_report",
     ):
         tool = by_name[name]
         assert tool.method == "GET", name
@@ -66,7 +69,11 @@ def test_context_strategy_create_tools_have_the_expected_shape():
 
     create_pain_point = by_name["create_pain_point"]
     assert create_pain_point.path_template == "/api/v1/projects/{project_id}/modules/context_strategy/pain-points"
-    assert {"pain_point_type_id", "title"} <= {p["name"] for p in create_pain_point.params}
+    assert {"pain_point_type_id", "title", "is_intentional"} <= {p["name"] for p in create_pain_point.params}
+
+    set_scores = by_name["set_pain_point_scores"]
+    assert set_scores.method == "PUT" and set_scores.mutates is True
+    assert {"project_id", "pain_point_id", "scores"} == {p["name"] for p in set_scores.params}
 
 
 def test_context_strategy_relationship_tools_resolve_to_the_right_paths():

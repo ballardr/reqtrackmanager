@@ -51,7 +51,7 @@ import logging
 import os
 import re
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     from app.models.project import Project
     from app.models.user import User
     from app.services.bundle_common import BundleImportWarnings, UserResolver
+    from app.services.report_framework import ReportContext, ReportResult
 
 logger = logging.getLogger(__name__)
 
@@ -863,9 +864,22 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
                 for method in methods:
                     routes_by_path_and_method[(path, method.upper())] = route
 
+        # A report that failed registry validation (unknown sub-component or role) answers 404 and is
+        # not catalogued; its generated MCP tool (`report_mcp_tools`) must not be offered either.
+        invalid_report_paths = {
+            f"/reports/{r.slug}" for r in definition.reports
+        } - {f"/reports/{r.slug}" for r in get_module_reports(definition.key)}
+
         for tool in definition.mcp_tools:
             full_name = f"{definition.key}_{tool.name}"
             declared_method = tool.method.upper()
+
+            if any(tool.path_template.endswith(path) for path in invalid_report_paths):
+                logger.warning(
+                    "Module %r's MCP tool %r targets a report that failed validation; excluding",
+                    definition.key, tool.name,
+                )
+                continue
 
             if not any(tool.path_template.startswith(p) for p in router_prefixes):
                 logger.warning(
@@ -1191,6 +1205,101 @@ class RegisteredScoringScheme:
 
     module_key: str
     scheme: ScoringSchemeDefinition
+
+
+# --- Reports (Module 1 Phase 12b — core report framework) ---------------------------------------
+
+REPORT_PARAM_TYPES: frozenset[str] = frozenset({"string", "integer", "boolean", "date", "uuid"})
+REPORT_ORG_SCOPES: frozenset[str] = frozenset({"readable_projects", "all_org_projects"})
+# Query names the framework owns; a declared parameter may not shadow one.
+RESERVED_REPORT_PARAM_NAMES: frozenset[str] = frozenset({
+    "format", "include_children", "report_template_id", "project_id", "organization_id", "current_user", "db",
+    "request",
+})
+_REPORT_SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+_REPORT_PARAM_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+
+
+@dataclass(frozen=True)
+class ReportParamDefinition:
+    """One typed query parameter of a report.
+
+    Core validates the query value from this declaration (so a collector only
+    ever sees a clean value) and derives the OpenAPI parameter and the MCP tool
+    parameter from it.
+
+    Attributes:
+        name: Query parameter name (`[a-z][a-z0-9_]*`, not in
+            `RESERVED_REPORT_PARAM_NAMES`).
+        type: One of `REPORT_PARAM_TYPES`.
+        default: Value used when the parameter is absent (`None` = no value).
+            Must itself satisfy `type`, `choices` and the bounds.
+        choices: Allowed values (`string`/`integer` only); a value outside the
+            set is rejected with 400.
+        minimum: Inclusive lower bound (`integer` only); violation is 422.
+        maximum: Inclusive upper bound (`integer` only); violation is 422.
+        description: One line shown in the catalogue, OpenAPI and MCP.
+        label: Human label for the generated form control; empty falls back
+            to a humanised `name`.
+        choice_labels: Human labels keyed by choice value, for the generated
+            select; a choice without one falls back to its humanised value.
+            Keys must be among `choices`.
+    """
+
+    name: str
+    type: Literal["string", "integer", "boolean", "date", "uuid"]
+    default: Any = None
+    choices: tuple[Any, ...] | None = None
+    minimum: int | None = None
+    maximum: int | None = None
+    description: str = ""
+    label: str = ""
+    choice_labels: Mapping[Any, str] | None = None
+
+
+@dataclass(frozen=True)
+class ReportDefinition:
+    """Declares one report a module contributes (see docs/modules.md,
+    "Reports"). Core generates the routes (`?format=json|pdf|csv`), access
+    gating, parameter validation, MCP tool and catalogue entry from this; the
+    module supplies only the `collector`.
+
+    Attributes:
+        key: Short stable key, unique within the module (e.g. `"r1"`).
+        slug: URL segment under the module's `/reports/` prefix
+            (`[a-z][a-z0-9-]*`), unique within the module.
+        title: Display title.
+        description: One line shown in the catalogue and to MCP clients.
+        subcomponent: A key of the module's own `sub_components` that must be
+            enabled for the report to be offered, or `None` when only the
+            module itself must be enabled (the collector then reports
+            `eligible_projects` itself).
+        org_level: Whether an organisation-wide variant exists.
+        org_role_key: The org-scoped `ModuleRoleDefinition.role_key` of this
+            module a caller must hold to run the organisation-wide variant.
+            Required when `org_level` (an aggregate across projects is never
+            gated by project access alone).
+        org_scope: Which projects an organisation-wide run covers:
+            `"readable_projects"` (the default, only projects the caller holds
+            a project role on) or `"all_org_projects"` (every project in the
+            organisation, for a role whose purpose is cross-project oversight).
+            The wider choice is explicit and only meaningful with an
+            `org_role_key`.
+        params: Typed query parameters (see `ReportParamDefinition`).
+        collector: `(db, ReportContext) -> ReportResult`. Must treat
+            `ctx.projects` as the whole in-scope set and never widen it.
+    """
+
+    key: str
+    slug: str
+    title: str
+    description: str
+    collector: Callable[[Session, ReportContext], ReportResult]
+    subcomponent: str | None = None
+    org_level: bool = False
+    org_role_key: str | None = None
+    org_scope: Literal["readable_projects", "all_org_projects"] = "readable_projects"
+    params: tuple[ReportParamDefinition, ...] = field(default=())
 
 
 @dataclass(frozen=True)
@@ -1621,6 +1730,13 @@ class ModuleDefinition:
             `list_artefact_summaries` (below), which return `None`/`[]` when
             the owning module is disabled for the project. Empty for a module
             whose records nothing else links to.
+        reports: Module 1 Phase 12b — the reports this module contributes, each
+            a `ReportDefinition`. The module mounts the routers built by
+            `app.services.report_framework.build_report_routers` and may
+            expose the MCP tools from `report_mcp_tools`; the core catalogue
+            endpoints list them via `get_module_reports`. Definitions that fail
+            `validate_report_definitions` are excluded and logged. Empty for a
+            module with no reports.
     """
 
     key: str
@@ -1659,6 +1775,7 @@ class ModuleDefinition:
         default_factory=dict
     )
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = field(default_factory=dict)
+    reports: tuple[ReportDefinition, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -2994,6 +3111,137 @@ def get_all_registered_scoring_schemes() -> dict[str, RegisteredScoringScheme]:
                 continue
             schemes[scheme.key] = RegisteredScoringScheme(module_key=definition.key, scheme=scheme)
     return schemes
+
+
+def _report_param_problem(param: ReportParamDefinition) -> str | None:
+    """Why `param` is not a valid declaration, or `None` when it is."""
+    if not _REPORT_PARAM_NAME_PATTERN.match(param.name) or param.name in RESERVED_REPORT_PARAM_NAMES:
+        return f"parameter name '{param.name}' is invalid or reserved"
+    if param.type not in REPORT_PARAM_TYPES:
+        return f"parameter '{param.name}' has unknown type '{param.type}'"
+    if param.choices is not None and param.type not in ("string", "integer"):
+        return f"parameter '{param.name}' declares choices on a {param.type} parameter"
+    if (param.minimum is not None or param.maximum is not None) and param.type != "integer":
+        return f"parameter '{param.name}' declares bounds on a {param.type} parameter"
+    if param.choices is not None and not param.choices:
+        return f"parameter '{param.name}' declares an empty choice set"
+    if param.minimum is not None and param.maximum is not None and param.minimum > param.maximum:
+        return f"parameter '{param.name}' has minimum above maximum"
+    if param.choice_labels and not set(param.choice_labels) <= set(param.choices or ()):
+        return f"parameter '{param.name}' labels a value that is not one of its choices"
+    default = param.default
+    if default is not None:
+        if param.type == "integer" and (isinstance(default, bool) or not isinstance(default, int)):
+            return f"parameter '{param.name}' default is not an integer"
+        if param.type == "string" and not isinstance(default, str):
+            return f"parameter '{param.name}' default is not a string"
+        if param.type == "boolean" and not isinstance(default, bool):
+            return f"parameter '{param.name}' default is not a boolean"
+        if param.choices is not None and default not in param.choices:
+            return f"parameter '{param.name}' default is not one of its choices"
+        if param.minimum is not None and param.type == "integer" and default < param.minimum:
+            return f"parameter '{param.name}' default is below its minimum"
+        if param.maximum is not None and param.type == "integer" and default > param.maximum:
+            return f"parameter '{param.name}' default is above its maximum"
+    return None
+
+
+def validate_report_definitions(
+    definitions: Iterable[ReportDefinition],
+    *,
+    subcomponent_keys: Collection[str] | None = None,
+    org_role_keys: Collection[str] | None = None,
+) -> tuple[list[ReportDefinition], list[str]]:
+    """Splits report declarations into the valid ones and a list of problems.
+
+    A report is excluded (never partially served) when its key or slug repeats
+    an earlier one, its slug or parameters are malformed, `org_level` has no
+    `org_role_key`, or `org_scope` is unknown. When the registry facts are
+    supplied it is also excluded for naming a sub-component the module does not
+    declare, or an `org_role_key` that is not one of the module's org-scoped
+    roles; callers that run before the registry exists (router construction)
+    omit them and rely on `get_module_reports` for those two checks.
+
+    Args:
+        definitions: The module's declarations, in order (earlier wins).
+        subcomponent_keys: The module's `sub_components` keys, or `None` to skip
+            that check.
+        org_role_keys: The keys of the module's `"org"`-scoped roles, or `None`
+            to skip that check.
+
+    Returns:
+        `(valid definitions in declaration order, human-readable problems)`.
+    """
+    valid: list[ReportDefinition] = []
+    problems: list[str] = []
+    seen_keys: set[str] = set()
+    seen_slugs: set[str] = set()
+    for report in definitions:
+        problem: str | None = None
+        if report.key in seen_keys or report.slug in seen_slugs:
+            problem = "duplicate key or slug"
+        elif not _REPORT_SLUG_PATTERN.match(report.slug) or not report.key.strip():
+            problem = "invalid key or slug"
+        elif report.org_scope not in REPORT_ORG_SCOPES:
+            problem = f"unknown org_scope '{report.org_scope}'"
+        elif report.org_level and not report.org_role_key:
+            problem = "org_level without an org_role_key"
+        elif report.org_role_key and not report.org_level:
+            problem = "org_role_key on a report with no organisation-wide variant"
+        elif subcomponent_keys is not None and report.subcomponent and report.subcomponent not in subcomponent_keys:
+            problem = f"unknown sub-component '{report.subcomponent}'"
+        elif org_role_keys is not None and report.org_role_key and report.org_role_key not in org_role_keys:
+            problem = f"'{report.org_role_key}' is not an org-scoped role of this module"
+        else:
+            names = [p.name for p in report.params]
+            if len(set(names)) != len(names):
+                problem = "duplicate parameter name"
+            else:
+                problem = next((m for m in (_report_param_problem(p) for p in report.params) if m), None)
+        if problem is not None:
+            problems.append(f"report '{report.slug}': {problem}")
+            continue
+        seen_keys.add(report.key)
+        seen_slugs.add(report.slug)
+        valid.append(report)
+    return valid, problems
+
+
+_logged_report_problems: set[str] = set()
+
+
+def get_module_reports(module_key: str) -> tuple[ReportDefinition, ...]:
+    """The validated `reports` of one registered module (Module 1 Phase 12b).
+
+    Invalid declarations are excluded and logged once per process. Returns an
+    empty tuple for an unknown module.
+
+    Args:
+        module_key: The module's registry key.
+
+    Returns:
+        The module's valid `ReportDefinition`s in declaration order.
+    """
+    definition = get_module(module_key)
+    if definition is None or not definition.reports:
+        return ()
+    valid, problems = validate_report_definitions(
+        definition.reports,
+        subcomponent_keys={s.key for s in definition.sub_components},
+        org_role_keys={r.role_key for r in definition.roles if r.scope == "org"},
+    )
+    for problem in problems:
+        message = f"Module {module_key!r}: {problem}; excluding it"
+        if message not in _logged_report_problems:
+            _logged_report_problems.add(message)
+            logger.error(message)
+    return tuple(valid)
+
+
+def get_all_reports() -> list[tuple[str, ReportDefinition]]:
+    """Every valid report across the registry as `(module_key, definition)`,
+    in registry order then declaration order (Module 1 Phase 12b)."""
+    return [(key, report) for key in get_module_registry() for report in get_module_reports(key)]
 
 
 def get_scoring_targets(db: Session, project_id: uuid.UUID, target_type: str) -> list[ScoringTarget]:

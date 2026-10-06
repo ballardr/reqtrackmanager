@@ -426,23 +426,26 @@ select.input {
    confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
    grid once a module contributes headline tiles). */
 .grid-metrics {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* `min(100%, 220px)` lets a track shrink below 220px in a narrow container instead of overflowing it. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
-/* `StatBar` (components/StatBar.tsx, Phase 27b) — a compact, table-like row
-   of labelled numbers for a page's top-level, always-visible stats header
-   (currently: `OrgOverviewPage.tsx` only). One shared border/background for
-   the whole row rather than repeating `.card`'s full chrome per tile, since
-   a small set of numbers meant to be scanned at a glance doesn't need that
-   much weight per value. Deliberately distinct from `.grid.grid-metrics`
-   (`StatCard`/`MetricTile`), which stays correct for grouped/paged stat
-   blocks elsewhere (docs/ux-style-guide.md's "Pattern: project-like
-   drill-down entities" addendum) — see that document for which of the two
-   shapes applies where. */
+/* `StatBar` (components/StatBar.tsx) — a compact block of labelled numbers.
+   Flat layout: a CSS grid of equal-width columns, never `flex-wrap` plus
+   per-item borders (that produced ragged rows and stray dividers once the
+   entries wrapped). Dividers are box-shadows drawn by each cell on its right
+   and bottom edge; the container's `overflow: hidden` clips the outer ones,
+   so only inner dividers show whatever the column count. No media queries:
+   `auto-fit` sizes to the container, which also suits narrow panes. The
+   `.stat-groups` / `.stat-group*` (components/StatGroups.tsx) is the grouped-card
+   layout for blocks beyond the flat budget. See docs/ux-style-guide.md
+   ("Pattern: stat blocks") for which applies where. */
 .stat-bar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  align-items: stretch;
   margin: 0;
+  overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -452,13 +455,10 @@ select.input {
 .stat-bar-item {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 0.15rem;
   padding: 0.6rem 1.1rem;
-  border-left: 1px solid var(--color-border);
-}
-
-.stat-bar-item:first-child {
-  border-left: none;
+  box-shadow: 1px 0 0 var(--color-border), 0 1px 0 var(--color-border);
 }
 
 .stat-bar-item dt,
@@ -470,24 +470,162 @@ select.input {
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-text-muted);
+  overflow-wrap: anywhere;
 }
 
 .stat-bar-value {
   font-size: 1.3rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 720px) {
-  .stat-bar {
-    flex-direction: column;
-  }
-  .stat-bar-item {
-    border-left: none;
-    border-top: 1px solid var(--color-border);
-  }
-  .stat-bar-item:first-child {
-    border-top: none;
-  }
+.stat-bar-flag {
+  margin-top: 0.15rem;
+}
+
+.stat-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: 1rem;
+}
+
+.stat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.stat-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.5rem;
+}
+
+.stat-group-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.stat-group-rows {
+  margin: 0;
+}
+
+.stat-group-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.stat-group-row:first-child {
+  border-top: none;
+}
+
+.stat-group-row dt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.stat-group-row dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A stat figure that links (`to` on StatBar/StatGroups items): the label holds the
+   real <a>, stretched over the whole cell/row by its ::after so the number is
+   clickable too, while the accessible name stays "<label>: <value>". The cell
+   tints on hover and the link shows the standard focus ring over the whole cell. */
+.stat-linked {
+  position: relative;
+}
+
+.stat-linked:hover {
+  background: var(--color-surface-alt);
+}
+
+.stat-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.stat-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.stat-link:hover {
+  text-decoration: underline;
+}
+
+/* The in-place variant is a <button>: strip the button chrome so it reads as the same label. */
+.stat-link--button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stat-link:focus-visible {
+  outline: none;
+}
+
+.stat-link:focus-visible::after {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.figure-projects-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.figure-projects-row:first-child {
+  border-top: none;
+}
+
+.figure-projects-link {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.5rem;
+  color: inherit;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+a.figure-projects-link:hover {
+  background: var(--color-surface-alt);
+}
+
+.report-section {
+  scroll-margin-top: 4.5rem; /* clear the sticky app header when a figure links to a section */
+}
+
+/* Text for assistive technology only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .stack {

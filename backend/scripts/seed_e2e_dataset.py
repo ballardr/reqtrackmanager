@@ -319,6 +319,51 @@ def create_persona(headers: dict, *, org_id: str | None = None, project_id: str 
     return persona
 
 
+# Per-persona Pain Point scoring (docs/plans/module-01-context-and-strategy-plan.md Phase 11). Context &
+# Strategy is default-off, so it is enabled for Gamma only. Fixed titles a spec may rely on; the scoring
+# Playwright spec itself builds its own disposable org rather than depending on these.
+PAIN_POINT_MULTI_PERSONA_NAME = "E2E Scored Across Personas"
+PAIN_POINT_ALL_PERSONAS_NAME = "E2E Scored For All Personas"
+PAIN_POINT_INTENTIONAL_NAME = "E2E Intentional Limitation"
+PAIN_POINT_UNSCORED_NAME = "E2E Unscored Pain Point"
+
+
+def create_pain_point(headers: dict, project_id: str, type_id: str, title: str, **fields) -> dict:
+    """Creates a Pain Point in `project_id` (Submitted)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points",
+        json={"pain_point_type_id": type_id, "title": title, **fields}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_pain_point_scores(headers: dict, project_id: str, pain_point_id: str, scores: list[dict]) -> dict:
+    """Replaces a Pain Point's scores; each entry's levels are given by name via `score_entry`."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/scores",
+        json={"scores": scores}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def pain_point_levels(headers: dict, project_id: str) -> dict[str, dict[str, str]]:
+    """The org's Pain Point scoring levels as `{axis_key: {level_name: level_id}}`."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/scoring-schemes/pain_point", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
+
+
+def score_entry(levels: dict[str, dict[str, str]], target_id: str | None = None, **chosen: str) -> dict:
+    """One score row from level names (`severity="Major"`, ...); `target_id=None` = all personas."""
+    return {
+        "target_id": target_id,
+        **{f"{axis}_level_id": levels[axis][chosen[axis]] if axis in chosen else None
+           for axis in ("severity", "frequency", "confidence")},
+    }
+
+
 def set_persona_weight_override(headers: dict, project_id: str, persona_id: str, weight: float) -> dict:
     r = httpx.put(
         f"{BASE}/projects/{project_id}/modules/stakeholders/personas/{persona_id}/weight",
@@ -587,7 +632,7 @@ def main() -> None:
         h_g, org_id=gamma["id"], name=PERSONA_ORG_UNWEIGHTED_NAME, role_title="Compliance auditor",
         goals="Verify evidence without chasing the team.",
     )
-    create_persona(
+    line_operator = create_persona(
         h_g, project_id=gamma3["id"], activate=True, name=PERSONA_PROJECT_NAME, role_title="Line operator",
         goals="Keep the pipeline running.", weight=1.5,
     )
@@ -596,6 +641,37 @@ def main() -> None:
         h_g, org_id=gamma["id"], activate=True, name=PERSONA_HIDDEN_NAME, role_title="Out-of-scope archetype",
     )
     set_persona_visibility(h_g, gamma3["id"], hidden_persona["id"], True)
+
+    print("Seeding per-persona Pain Point scoring on Gamma-3 (Context & Strategy enabled for Gamma only): one Pain"
+          " Point scored across two weighted personas, one scored for all personas, one intentional, one unscored...")
+    enable_module(h_g, gamma["id"], "context_strategy")
+    pp_types = httpx.get(
+        f"{BASE}/projects/{gamma3['id']}/modules/context_strategy/pain-point-types", headers=h_g, timeout=30,
+    ).json()
+    pp_type_id = next(t["id"] for t in pp_types if t["name"] == "Operator")
+    pp_levels = pain_point_levels(h_g, gamma3["id"])
+    multi = create_pain_point(
+        h_g, gamma3["id"], pp_type_id, PAIN_POINT_MULTI_PERSONA_NAME, description="Hits personas differently.",
+        priority="high", date_identified="2026-09-01",
+    )
+    set_pain_point_scores(h_g, gamma3["id"], multi["id"], [
+        score_entry(pp_levels, field_inspector["id"], severity="Major", frequency="Constant", confidence="High"),
+        score_entry(pp_levels, line_operator["id"], severity="Blocker", frequency="Rare", confidence="Medium"),
+    ])
+    everyone = create_pain_point(
+        h_g, gamma3["id"], pp_type_id, PAIN_POINT_ALL_PERSONAS_NAME, priority="medium", date_identified="2026-09-02",
+    )
+    set_pain_point_scores(h_g, gamma3["id"], everyone["id"], [
+        score_entry(pp_levels, None, severity="Moderate", frequency="Frequent", confidence="Medium"),
+    ])
+    intentional = create_pain_point(
+        h_g, gamma3["id"], pp_type_id, PAIN_POINT_INTENTIONAL_NAME, priority="low", date_identified="2026-09-03",
+        is_intentional=True,
+    )
+    set_pain_point_scores(h_g, gamma3["id"], intentional["id"], [
+        score_entry(pp_levels, line_operator["id"], severity="Major", frequency="Constant", confidence="High"),
+    ])
+    create_pain_point(h_g, gamma3["id"], pp_type_id, PAIN_POINT_UNSCORED_NAME, priority="medium", date_identified="2026-09-04")
 
     print("Seeding Stakeholders on Gamma: an org Stakeholder (rated, with a cadence, representing the org Field"
           " Inspector persona) and a project Stakeholder on the Gamma-3 hierarchy parent...")
@@ -740,6 +816,10 @@ def main() -> None:
           f" (Active, weight 3) and {PERSONA_ORG_UNWEIGHTED_NAME!r} (Draft, unweighted); project persona"
           f" {PERSONA_PROJECT_NAME!r} on {GAMMA3_NAME!r}; Gamma-3's weight override of 5 on {PERSONA_ORG_WEIGHTED_NAME!r}"
           f" is inherited by {GAMMA4_NAME!r}; org {PERSONA_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")
+    print(f"Pain Points on {GAMMA3_NAME!r} (Context & Strategy enabled for Gamma only): {PAIN_POINT_MULTI_PERSONA_NAME!r}"
+          f" (scored by {PERSONA_ORG_WEIGHTED_NAME!r} and {PERSONA_PROJECT_NAME!r}, a Blocker for the latter),"
+          f" {PAIN_POINT_ALL_PERSONAS_NAME!r} (all personas), {PAIN_POINT_INTENTIONAL_NAME!r} (intentional) and"
+          f" {PAIN_POINT_UNSCORED_NAME!r} (unscored).")
     print(f"Stakeholders on Gamma: org {STAKEHOLDER_ORG_NAME!r} (Active, High/Medium, quarterly, represents"
           f" {PERSONA_ORG_WEIGHTED_NAME!r}) and project {STAKEHOLDER_PROJECT_NAME!r} on {GAMMA3_NAME!r} (Active, monthly);"
           f" org {STAKEHOLDER_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")

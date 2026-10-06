@@ -1173,6 +1173,7 @@ def create_pain_point(
     evidence: str = "",
     priority: PainPointPriority = PainPointPriority.MEDIUM,
     date_identified: date | None = None,
+    is_intentional: bool = False,
 ) -> PainPoint:
     """Creates a Pain Point in `SUBMITTED` status (§6.5's broad-creation
     model — any project member, not just a `pain_point_manager`).
@@ -1190,7 +1191,7 @@ def create_pain_point(
     pain_point = PainPoint(
         project_id=project_id, pain_point_type_id=pain_point_type.id, creator_id=creator.id,
         title=title, description=description, source=source, impact=impact, evidence=evidence,
-        priority=priority, status=PainPointStatus.SUBMITTED,
+        priority=priority, status=PainPointStatus.SUBMITTED, is_intentional=is_intentional,
         date_identified=date_identified if date_identified is not None else date.today(),
     )
     db.add(pain_point)
@@ -1212,6 +1213,7 @@ def update_pain_point(
     owner_id: uuid.UUID | None = None,
     owner_id_explicitly_set: bool = False,
     date_identified: date | None = None,
+    is_intentional: bool | None = None,
 ) -> PainPoint:
     """Mutates `pain_point`'s content fields directly (no version snapshot
     — see module docstring). Any field left `None` (and not explicitly
@@ -1240,6 +1242,8 @@ def update_pain_point(
         pain_point.owner_id = owner_id
     if date_identified is not None:
         pain_point.date_identified = date_identified
+    if is_intentional is not None:
+        pain_point.is_intentional = is_intentional
     db.flush()
     return pain_point
 

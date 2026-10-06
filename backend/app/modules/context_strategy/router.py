@@ -100,6 +100,7 @@ from app.modules.context_strategy.models import (
     StrategyCommentFile,
     StrategyFile,
 )
+from app.modules.context_strategy.reports import REPORT_ROUTERS
 from app.modules.context_strategy.schemas import (
     ContextStrategyLinkOut,
     FutureStateCommentCreate,
@@ -1870,3 +1871,7 @@ def create_org_guiding_principle_supersession(
     return context_strategy_link_to_out(
         db, link, viewpoint_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, viewpoint_id=new_guiding_principle.id,
     )
+
+
+# Phases 12/12b: reports (core `services.report_framework`, declared in `reports.py`).
+router.include_router(REPORT_ROUTERS.org)

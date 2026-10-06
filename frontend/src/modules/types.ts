@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
+
+import type { ReportCatalogueEntry, ReportResult, ReportRunValues } from "../api/reports";
+import type { ReportFigureActionResolver } from "../components/ReportViewer";
 
 /**
  * One route a Tier A ("installed") module contributes — a plain React
@@ -229,6 +232,36 @@ export interface RequirementLinkPickerTabDef {
 }
 
 /**
+ * Props a module's custom report view receives (Module 1 Phase 13). The shared
+ * `ReportRunner` runs the report, owns loading/error/empty states, the
+ * parameter form and downloads, and hands the view only the collected
+ * `result` plus enough context to render it. Rendering a table of
+ * `result.sections` needs no view at all (`ReportViewer` is the fallback).
+ */
+export interface ReportViewProps {
+  entry: ReportCatalogueEntry;
+  result: ReportResult;
+  /** What the report ran against: a project or an organisation. */
+  scope: { kind: "project" | "organization"; id: string };
+  /** The current run-time values (declared parameters plus `include_children`). */
+  values: ReportRunValues;
+  /** Changes one value and re-runs the report; only meaningful for a name in `ReportViewDef.ownedParams`. */
+  onValueChange: (name: string, value: string | number | boolean | null) => void;
+  /** What clicking a headline figure does; forward it to `ReportSummary` so figures link like the generic view's. */
+  figureAction?: ReportFigureActionResolver;
+}
+
+/**
+ * One custom on-screen view for a module's report, keyed by the backend
+ * `ReportDefinition.key` in `TierAModuleDefinition.reportViews`.
+ */
+export interface ReportViewDef {
+  component: ComponentType<ReportViewProps>;
+  /** Declared parameters the view draws its own controls for (e.g. a scoring-model switcher); the shared parameter form hides them so one parameter never has two controls. */
+  ownedParams?: string[];
+}
+
+/**
  * A first-party (or npm-installed third-party) Tier A module's frontend
  * registration — the module ships its own route components and registers
  * them here, the same way this file's own first-party pages are declared
@@ -361,4 +394,11 @@ export interface TierAModuleDefinition {
    * the frontend counterpart of the backend's `artefact_summary_providers`).
    * Omitted for a module whose records nothing else links to. */
   artefactPaths?: Record<string, (projectId: string, id: string) => string>;
+  /** Custom on-screen views for this module's reports, keyed by the backend
+   * `ReportDefinition.key` (Module 1 Phase 13). The Reports pages list every
+   * report from the backend catalogue and render `ReportViewer` (a generic
+   * table view) for any report with no entry here, so a module adds a view
+   * only where a table genuinely fails the reader. Core resolves it through
+   * `getReportView` in `registry.ts` and never imports a module's view. */
+  reportViews?: Record<string, ReportViewDef>;
 }

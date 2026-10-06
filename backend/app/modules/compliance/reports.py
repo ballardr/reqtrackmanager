@@ -123,11 +123,9 @@ contents* are never embedded (only an evidence row's own metadata/title),
 so no Restricted-classified attachment payload is pulled into a report
 body. All requirement/free-text fields are escaped via `_safe` before
 reaching a ReportLab `Paragraph`, for the identical SSRF/markup-injection
-reason `app.services.reports._safe`'s own docstring documents — duplicated
-here (a five-line function) rather than importing that module's private
-helper, so this file stays self-contained the same way `project_router.py`
-calling `app.services.files.upload_file` directly does not also reach into
-that module's private internals.
+reason `app.services.report_document.safe`'s own docstring documents. The
+document shell (title block, A4 build, accent table) is also
+`app.services.report_document`'s, shared with every report.
 """
 
 from __future__ import annotations
@@ -137,13 +135,12 @@ import io
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import PageBreak, Paragraph, Spacer, Table
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -188,17 +185,16 @@ from app.modules.compliance.service import (
 from app.services import relationships
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.csv_safety import csv_safe
+from app.services.report_document import STYLES, build_pdf, safe, styled_table, title_flowables
 
-_styles = getSampleStyleSheet()
+_styles = STYLES
 _ACCENT = colors.HexColor(DEFAULT_ACCENT_COLOR_HEX)
 
 
 def _safe(text: str | None) -> str:
-    """Escapes `&`/`<`/`>` before handing text to a ReportLab `Paragraph` —
-    see this module's own docstring for why this is a deliberate, small
-    duplication of `app.services.reports._safe` rather than an import of
-    that module's private helper."""
-    return _xml_escape(text or "")
+    """Escapes `&`/`<`/`>` before handing text to a ReportLab `Paragraph`
+    (`report_document.safe`, tolerating `None`)."""
+    return safe(text or "")
 
 
 def _fmt_date(value: date | None) -> str:
@@ -691,14 +687,7 @@ def _p(text: str) -> Paragraph:
 
 
 def _styled_table(data: list[list], col_widths: list[float]) -> Table:
-    table = Table(data, repeatRows=1, colWidths=col_widths)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    return table
+    return styled_table(data, col_widths=col_widths, accent_color=_ACCENT)
 
 
 def _narrative_requirement_paragraph(row: ComplianceReportRequirementRow) -> Paragraph:
@@ -787,12 +776,7 @@ def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceRe
     the last three omitted entirely when empty, rather than printing an
     empty heading with nothing under it.
     """
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
-    story: list = [
-        Paragraph(_safe(f"{project_name} — Compliance Report"), _styles["Title"]),
-        Spacer(1, 0.5 * cm),
-    ]
+    story: list = title_flowables(f"{project_name} — Compliance Report", None)
 
     if not data.requirement_rows:
         story.append(Paragraph(_project_report_empty_message(data), _styles["BodyText"]))
@@ -852,8 +836,7 @@ def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceRe
             rows.append([_p(m.from_label), _p(m.relationship_type), _p(m.to_label), _p(m.notes)])
         story.append(_styled_table(rows, [5.5 * cm, 2.5 * cm, 5.5 * cm, 4 * cm]))
 
-    doc.build(story)
-    return buffer.getvalue()
+    return build_pdf(story, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
 
 
 def generate_project_compliance_csv(data: ProjectComplianceReportData) -> bytes:
@@ -1093,12 +1076,7 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
     appendices across every project — the same drill-downs the Org
     Compliance Dashboard offers interactively (`OrgComplianceDashboard.tsx`),
     reproduced here as a static, exportable snapshot for audit preparation."""
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
-    story: list = [
-        Paragraph(_safe(f"{org_name} — Organisation Compliance Report"), _styles["Title"]),
-        Spacer(1, 0.5 * cm),
-    ]
+    story: list = title_flowables(f"{org_name} — Organisation Compliance Report", None)
 
     if not data.assignment_rows:
         story.append(Paragraph(_org_report_empty_message(data), _styles["BodyText"]))
@@ -1147,8 +1125,7 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
         [4 * cm, 6 * cm, 3 * cm, 4 * cm],
     )
 
-    doc.build(story)
-    return buffer.getvalue()
+    return build_pdf(story, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
 
 
 def generate_org_compliance_csv(data: OrgComplianceReportData) -> bytes:

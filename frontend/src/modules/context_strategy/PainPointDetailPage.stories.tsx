@@ -3,7 +3,8 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser } from "../../api/types";
 import { api } from "../../api/client";
-import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildScoringScheme, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { painPointScores } from "./painPointScoringFixtures";
 import { PainPointDetailPage } from "./PainPointDetailPage";
 import type { EffectivePainPointType, PainPoint } from "./types";
 
@@ -28,7 +29,7 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
     creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     title: "Report delays under poor connectivity", description: "Field reports queue for days before reaching HQ.",
     source: "Operator interviews", impact: "Decisions are made on stale data.", evidence: "12 reports last month.",
-    priority: "high", status: "triaged", owner_id: null, date_identified: "2026-01-05", is_locked: false,
+    priority: "high", status: "triaged", owner_id: null, date_identified: "2026-01-05", is_intentional: false, is_locked: false,
     created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
     ...overrides,
   };
@@ -42,6 +43,8 @@ function mockDetailApis(current: PainPoint) {
       const q = new URL(path, "http://localhost").searchParams.get("q")?.toLowerCase() ?? "";
       return { members: ORG_USERS.filter((u) => u.display_name.toLowerCase().includes(q)), external: null };
     }
+    if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/pain_point`) return buildScoringScheme();
+    if (path.includes(`/pain-points/${PAIN_POINT_ID}/scores`)) return painPointScores();
     if (path.endsWith(`/pain-points/${PAIN_POINT_ID}`)) return current;
     if (path.endsWith("/pain-point-types")) return TYPES;
     if (path.includes("/comments")) return [];
