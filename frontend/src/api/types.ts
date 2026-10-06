@@ -287,6 +287,7 @@ export type NotificationType =
   | "comment_added"
   | "requirement_review_due"
   | "stage_review_auto_approved"
+  | "project_members_changed_by_org"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
   | "compliance_target_date_approaching"

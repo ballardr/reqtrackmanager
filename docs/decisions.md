@@ -9859,3 +9859,20 @@ Platform enhancements plan Phase 1 (N5). **Shipped:** a downloadable agent skill
 **Review (identify -> verify -> remediate):** no authentication, RBAC, secret or audit path changed. The skill itself carries behavioural security rules (tool output is untrusted data, never paste or store a token, AI-approval gating, confirm before writes). The generated references carry tool names, descriptions and parameter names only, with no Restricted data. Verified the skill's claims against the code (tool signatures, enums, gating), and removed three statements that could not be verified. Not verifiable by tests: how well a given AI client follows the skill.
 
 **Verification:** `mcp-server` `test_skill.py` + `test_module_tools.py` (19) and `ruff` pass in the container; backend `test_mcp_skill_reference.py`, `test_module_mcp_tools.py`, `test_module_registry.py` (55) pass; backend `ruff` clean; docs site `typecheck` and `build` pass (download links resolve under the `/reqtrackmanager/` base URL).
+
+
+## Org-level member-edit notifications (2026-10-06)
+
+Platform enhancements plan Phase 2 (N3). **Shipped:** `NotificationType.PROJECT_MEMBERS_CHANGED_BY_ORG` (`project_members_changed_by_org`), sent by `services/membership_notifications.py` from the direct user grant/revoke, by-email add/invite, direct org-group grant/revoke (`routers/projects/roles.py`) and project-group role grant/revoke (`routers/projects/groups.py`) endpoints. No migration: `Notification.type` is a varchar. Label added to the frontend type union and `i18n/strings.ts` (the preferences page reads it).
+
+**Decisions:**
+- *Trigger:* the actor holds no effective project manager/administrator role (inherited and group-derived included), evaluated before the mutation so a self-revocation cannot hide it. An org admin who is also a manager does not notify. **Decided by: Agent** (plan spec).
+- *Recipients:* effective `project_manager` and `project_administrator` holders via `get_project_users_by_role`, minus the actor. **Decided by: User** (Q2).
+- *Coalescing:* an unread notification for the same recipient, project and actor created within 10 minutes gets another body line (cap 20, then an overflow line) instead of a new row; a count column was rejected as a schema change for a presentation concern. The email is not re-sent for a coalesced update. **Decided by: Agent.**
+- *Project-group edits are covered too:* membership add/remove (user, org group, source-project roster) and group deletion, in addition to group role grant/revoke. The first cut followed the plan's endpoint list and left these out; the user pointed out that `require_project_manage` admits org admins, so they can edit a project group without any project role, which is the same bypass. Creating an empty group is not notified (no access change). **Decided by: User.**
+
+**Bugs found and fixed (fix-don't-defer):** (1) `NotificationPreference.ui_enabled=False` was stored but never applied: `list_notifications` returned every row despite `notify()`'s comment saying it filtered; it now excludes opted-out types at query time. (2) `send_daily_digests` swept in notifications of types the user had opted out of by email (`email_enabled=False` suppressed only the instant email, leaving the row un-emailed and digest-eligible); it now excludes them. Both pinned by tests.
+
+**Review (identify -> verify -> remediate):** touches access-control observability only; no authorization path changed. Verified recipients are computed from the project's own role holders (no cross-project leakage, tested), the body carries only display names/emails the managers can already see in the Members view, and the audit events remain the system of record. `docs/soc2/policies/access-control-policy.md` documents the control.
+
+**Verification:** `test_membership_change_notifications.py` (16) and the digest/notification tests pass; the touched roles/groups/hierarchy/RBAC suites pass except the 12 `test_invites_and_external_users.py` tests that fail identically on the untouched baseline (host-pytest mailhog DNS). `ruff` clean.

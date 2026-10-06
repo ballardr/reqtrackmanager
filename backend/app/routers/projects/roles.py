@@ -34,6 +34,10 @@ from app.schemas.project import (
 )
 from app.services import engagement, invites
 from app.services.audit import log_event
+from app.services.membership_notifications import (
+    actor_bypasses_project_managers,
+    notify_managers_of_member_change,
+)
 from app.services.notifications import notify
 from app.services.rbac import (
     _descendant_org_group_ids,
@@ -62,6 +66,7 @@ def assign_project_role(
     needed at project-role scope (no `ProjectRole` value is non-delegable
     per Phase 0's own resolution)."""
     _require_user_in_org(db, payload.user_id, project.organization_id)  # C-U-02
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     existing = db.scalar(
         select(UserProjectRole).where(
             UserProjectRole.user_id == payload.user_id, UserProjectRole.project_id == project.id,
@@ -82,6 +87,11 @@ def assign_project_role(
                 body=f"You were granted the '{payload.role.value}' role.",
                 project_id=project.id, actor_id=current_user.id,
             )
+            if bypass:
+                notify_managers_of_member_change(
+                    db, project=project, actor=current_user, verb="Added", target=granted_user.display_name,
+                    role=payload.role,
+                )
         db.commit()
 
 
@@ -149,11 +159,14 @@ def assign_group_project_role(
     own `org_group_id` path, not `assign_project_role`'s single-user path)
     — a group grant potentially affects many users at once, and this
     codebase's existing group-membership endpoints don't notify on
-    group-level composition changes either.
+    group-level composition changes either. The project's managers are
+    notified when the actor is not one of them
+    (`services.membership_notifications`).
     """
     org_group = db.get(OrgGroup, payload.org_group_id)
     if org_group is None or org_group.organization_id != project.organization_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "org_group_id must belong to the project's organisation.")
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     existing = db.scalar(
         select(OrgGroupProjectRole).where(
             OrgGroupProjectRole.org_group_id == payload.org_group_id, OrgGroupProjectRole.project_id == project.id,
@@ -166,6 +179,11 @@ def assign_group_project_role(
             db, entity_type="org_group_project_role", entity_id=payload.org_group_id, action="granted",
             actor_id=current_user.id, project_id=project.id, detail={"role": payload.role.value},
         )
+        if bypass:
+            notify_managers_of_member_change(
+                db, project=project, actor=current_user, verb="Added", target=f"group {org_group.name}",
+                role=payload.role,
+            )
         db.commit()
 
 
@@ -196,6 +214,7 @@ def assign_project_role_by_email(
     role is granted once they complete signup.
     """
     email = payload.email.lower()
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     org = db.get(Organization, project.organization_id)
     existing_user = db.scalar(select(User).where(User.email == email))
 
@@ -238,6 +257,11 @@ def assign_project_role_by_email(
             body=f"You were granted the '{payload.role.value}' role.",
             project_id=project.id, actor_id=current_user.id,
         )
+        if bypass:
+            notify_managers_of_member_change(
+                db, project=project, actor=current_user, verb="Added", target=existing_user.display_name,
+                role=payload.role,
+            )
         db.commit()
         return AssignByEmailOut(outcome="added")
 
@@ -256,12 +280,20 @@ def assign_project_role_by_email(
             db, email=email, organization=org, project=project, project_role=payload.role,
             invited_by=current_user.id,
         )
+        if bypass:
+            notify_managers_of_member_change(
+                db, project=project, actor=current_user, verb="Added", target=email, role=payload.role,
+            )
         db.commit()
         return AssignByEmailOut(outcome="sso_provisioned")
 
     invites.create_pending_invite(
         db, email=email, organization=org, project=project, project_role=payload.role, invited_by=current_user.id,
     )
+    if bypass:
+        notify_managers_of_member_change(
+            db, project=project, actor=current_user, verb="Invited", target=email, role=payload.role,
+        )
     db.commit()
     return AssignByEmailOut(outcome="invited")
 
@@ -364,6 +396,7 @@ def revoke_project_role(
     this would over-block a safe removal for any manager who happens to
     also be a direct manager of a project they inherit that same role
     from."""
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     if role == ProjectRole.PROJECT_MANAGER:
         lock_project_for_update(db, project.id)
         managers = get_effective_project_managers(db, project.id)
@@ -386,6 +419,11 @@ def revoke_project_role(
             title=f"Your '{role.value}' role on {project.name} was revoked", project_id=project.id,
             actor_id=current_user.id,
         )
+        if bypass:
+            notify_managers_of_member_change(
+                db, project=project, actor=current_user, verb="Removed", target=revoked_user.display_name,
+                role=role,
+            )
     # Only clean up subscriptions/favourites if the user has no other role
     # (direct or group-derived) left granting them access to this project.
     if not get_effective_project_roles(db, user_id, project.id):
@@ -441,6 +479,7 @@ def revoke_group_project_role(
     org_group = db.get(OrgGroup, org_group_id)
     if org_group is None or org_group.organization_id != project.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation group not found.")
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     if role == ProjectRole.PROJECT_MANAGER:
         lock_project_for_update(db, project.id)
     removed = db.execute(
@@ -459,6 +498,10 @@ def revoke_group_project_role(
         db, entity_type="org_group_project_role", entity_id=org_group_id, action="revoked",
         actor_id=current_user.id, project_id=project.id, detail={"role": role.value},
     )
+    if bypass:
+        notify_managers_of_member_change(
+            db, project=project, actor=current_user, verb="Removed", target=f"group {org_group.name}", role=role,
+        )
     # Clean up subscriptions/favourites for every member of this group (direct
     # or via a nested subgroup, same descendant-expansion `_direct_project_
     # role_holder_ids` uses to resolve this mechanism) who has no other role

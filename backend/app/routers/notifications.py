@@ -50,8 +50,15 @@ def list_notifications(
     history without pulling the whole list up front. When `limit` is
     given, the total match count is returned in `X-Total-Count`, same
     convention as `list_requirements`.
+
+    Types the caller has opted out of in-app (`NotificationPreference.
+    ui_enabled` false) are excluded at query time; the rows are still
+    recorded (see `services.notifications.notify`).
     """
-    query = select(Notification).where(Notification.user_id == current_user.id)
+    ui_opted_out = select(NotificationPreference.type).where(
+        NotificationPreference.user_id == current_user.id, NotificationPreference.ui_enabled.is_(False)
+    )
+    query = select(Notification).where(Notification.user_id == current_user.id, Notification.type.not_in(ui_opted_out))
     if unread_only:
         query = query.where(Notification.read_at.is_(None))
     if search:

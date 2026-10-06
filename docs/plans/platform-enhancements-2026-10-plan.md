@@ -1,16 +1,16 @@
 # Platform Enhancements (October 2026) — Plan
 
-**Status:** Decisions Q1–Q9 answered by the user 2026-10-06. Phase 1 implemented; the rest is not. Written from eight user notes, each checked against the current code.
+**Status:** Decisions Q1–Q9 answered by the user 2026-10-06. Phases 1–2 implemented; the rest is not. Written from eight user notes, each checked against the current code.
 **Decision tags:** items marked **Decided by: User** were answered in the 2026-10-06 review (§3); everything else is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-1 / 10 phases complete (Phase 1 done 2026-10-06, awaiting commit). Phase 2 is next. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard).
+2 / 10 phases complete (Phases 1–2 done 2026-10-06, awaiting commit). Phase 3 is next. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard).
 
 | # | Phase | Note | Status |
 |---|-------|------|--------|
 | 1 | MCP agent skill + drift enforcement | N5 | [x] |
-| 2 | Org-level member-edit notifications | N3 | [ ] |
+| 2 | Org-level member-edit notifications | N3 | [x] |
 | 3 | Request-rate and DB read/write metrics | N2 | [ ] |
 | 4 | Personal project-nav ordering, "More", per-project override | N4 | [ ] |
 | 5 | Link-type direction field + link graph backend (+ MCP tool) | N1 | [ ] |
@@ -66,12 +66,14 @@ flowchart LR
 - **Docs website:** new "Agent skill" page under `api-integrations/ai-assistants-mcp/` with install steps and the download link; check `docs/mcp-server.md`'s tool counts against the live manifest (it does not yet list the Context & Strategy report tools) and fix any drift in the same change.
 - **Tests:** drift test above; zip build smoke test (contains `SKILL.md`, valid frontmatter).
 
-### Phase 2 — Notify project managers of org-level member edits (N3)
+### Phase 2 — Notify project managers of org-level member edits (N3) — DONE 2026-10-06
+
+**As built:** as specced, via `services/membership_notifications.py` (`actor_bypasses_project_managers` is evaluated before the mutation; recipients from `get_project_users_by_role` for manager and administrator). Coalescing keeps one body line per change (cap 20) instead of a count column. Also fixed two pre-existing notification-preference bugs found while testing the opt-out: the in-app opt-out (`ui_enabled=False`) was never applied by the list endpoint, and the daily digest included types the user had opted out of by email. See `docs/decisions.md`.
 
 **Why:** an org admin (or holder of an org-level grant permission) adding or removing a project member bypasses the project's own managers. A notification is a cheap detective control for privilege changes (SOC 2 access-control policy). **Outcome:** project managers learn of direct membership changes they did not make.
 
 - **Trigger rule (precise):** the actor passed the gate without holding a project manager/administrator role on that project (effective roles, including inherited and group-derived). A project manager editing their own project does not notify. Server admins get no bypass, as today. **Decided by: Agent.**
-- **Covered endpoints** (`routers/projects/roles.py`, `groups.py`): direct user grant/revoke, by-email add/invite, direct org-group role grant/revoke, project-group role grant/revoke. **Not covered:** changes to *membership inside an org group* (the intended mechanism, per the note).
+- **Covered endpoints** (`routers/projects/roles.py`, `groups.py`): direct user grant/revoke, by-email add/invite, direct org-group role grant/revoke, project-group role grant/revoke, and (added after user review, **Decided by: User**) project-group member add/remove and group deletion. **Not covered:** changes to *membership inside an org group* (the intended mechanism, per the note).
 - **Recipients:** effective `project_manager` holders (resolved through `get_effective_project_members_with_provenance`, so inherited managers count), minus the actor. No managers → no recipients; the existing audit event still records it.
 - **Content:** actor, target, role, add/remove, project link. New `NotificationType.PROJECT_MEMBERS_CHANGED_BY_ORG` (notification types are core by design) with a label added to its label map and the preferences page at the same time.
 - **Coalescing (pushback):** the add-members flow can issue one request per user, which would send a manager N notifications. Merge into an existing unread notification of the same type, project and actor created within 10 minutes (update its body with a count) instead of creating another. **Decided by: Agent.**

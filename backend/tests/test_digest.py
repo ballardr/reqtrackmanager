@@ -66,3 +66,27 @@ async def test_daily_digest_batches_notifications_and_marks_emailed(client, admi
             assert mock_send_again.await_count == 0
     finally:
         db.close()
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_skips_types_the_user_opted_out_of_by_email(client, admin_token):
+    """Regression: `email_enabled=False` suppressed the instant email but the
+    row (never emailed) was still swept into the daily digest."""
+    client.patch("/api/v1/auth/me/preferences", json={"email_digest_mode": "daily"}, headers=auth_headers(admin_token))
+    client.put(
+        "/api/v1/notifications/preferences/password_changed", json={"ui_enabled": True, "email_enabled": False},
+        headers=auth_headers(admin_token),
+    )
+    client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "ChangeMe123!", "new_password": "Second123!"},
+        headers=auth_headers(admin_token),
+    )
+
+    db = SessionLocal()
+    try:
+        with patch.object(notifications, "send_email_async", new=AsyncMock()) as mock_send:
+            await notifications.send_daily_digests(db)
+            assert mock_send.await_count == 0
+    finally:
+        db.close()

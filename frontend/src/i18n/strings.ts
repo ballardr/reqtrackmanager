@@ -37,6 +37,7 @@ const en = {
       comment_added: "New comment on a followed item",
       requirement_review_due: "{Requirement} review due",
       stage_review_auto_approved: "{Stage} review deadline passed — auto-approved",
+      project_members_changed_by_org: "Project members changed by someone who is not a project manager",
       compliance_required_action_due_soon: "Compliance required action due soon",
       compliance_required_action_overdue: "Compliance required action overdue",
       compliance_target_date_approaching: "Compliance target date approaching",
