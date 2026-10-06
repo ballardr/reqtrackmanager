@@ -933,6 +933,10 @@ jobs:
           cache-dependency-path: docs/website/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      # The agent-skill downloads are built from mcp-server/skill and backend/mcp_skill_reference, not committed.
+      - name: Build agent-skill downloads
+        working-directory: .
+        run: python3 mcp-server/scripts/build_skill_zip.py
       - run: npm run build
 
   docs-deploy:
@@ -969,6 +973,9 @@ jobs:
       # upload-artifact/download-artifact just to avoid it, the same
       # trade-off docker-build's own comment makes for its image builds.
       - run: npm ci
+      - name: Build agent-skill downloads
+        working-directory: .
+        run: python3 mcp-server/scripts/build_skill_zip.py
       - run: npm run build
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5

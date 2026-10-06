@@ -153,6 +153,7 @@ org-scoped endpoints above.
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -797,6 +798,10 @@ def _list_pain_point_summaries(db: Session, project_id: UUID) -> list[ArtefactSu
     return [_pain_point_summary(p) for p in rows]
 
 
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=CONTEXT_STRATEGY_MODULE_KEY,
     name="Context & Strategy",
@@ -1058,6 +1063,7 @@ MODULE_DEFINITION = ModuleDefinition(
             permissions=(_OPEN_QUESTION_RESOLVE_PERMISSION,),
         ),
     ),
+    mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=_build_mcp_tools(),
     scoring_schemes=(PAIN_POINT_SCORING_SCHEME,),
 )

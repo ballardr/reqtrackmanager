@@ -70,7 +70,7 @@ Two optional, non-sensitive HTTP headers on the MCP connection — `X-Default-Or
 
 Beyond the hand-written tools above, a backend module (plans/compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
 
-**Compliance (plans/compliance-module-plan.md Phase 6, extended through Phase 22, then reversed to write-enabled 2026-09-22) is the first module to use this**, contributing 78 tools total: 10 read-only tools (unchanged since Phase 6/7/8/9/10/11) plus 68 write tools added in the 2026-09-22 reversal — see [docs/decisions.md](decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry for the full rationale for why this module's MCP surface, previously described here as "deliberately read-only," no longer is.
+**Compliance (plans/compliance-module-plan.md Phase 6, extended through Phase 22, then reversed to write-enabled 2026-09-22) is the first module to use this**, contributing 76 tools total: 10 read-only tools (unchanged since Phase 6/7/8/9/10/11) plus 66 write tools added in the 2026-09-22 reversal — see [docs/decisions.md](decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry for the full rationale for why this module's MCP surface, previously described here as "deliberately read-only," no longer is.
 
 The 10 read-only tools:
 
@@ -89,7 +89,7 @@ The 10 read-only tools:
 
 The first three, plus both Phase 11 tools, take `organization_id` as a required parameter (`compliance_get_standard_version`/`compliance_list_requirements`/`compliance_list_requirement_mappings`/`compliance_get_standard_version_diff` also take `standard_id`/`version_id`, the latter two also a second version id and a `requirement_id` respectively) — Phase 4's scoping rule (see above): no implicit "current org," no cross-org aggregation. The five Phase 7/8/9/10 tools take `project_id` only, no `organization_id` at all — mirroring hand-written tools like `get_project(project_id)` — because they proxy to a *second*, project-scoped router the Compliance module registers (`get_project_router`, mounted at `/api/v1/projects/{project_id}/modules/compliance/...`) rather than its original org-scoped one; `build_mcp_tool_manifest` validates a tool's `path_template` against either of a module's two router prefixes, not just one.
 
-**The 68 write tools (2026-09-22), by area** — each subject to `MCP_WRITES_ENABLED` and the calling account's own RBAC role exactly like any other write tool, per [Write mode](#write-mode) above (full param lists are in `backend/app/modules/compliance/module.py`'s `mcp_tools`, not repeated here):
+**The 66 write tools (2026-09-22), by area** — each subject to `MCP_WRITES_ENABLED` and the calling account's own RBAC role exactly like any other write tool, per [Write mode](#write-mode) above (full param lists are in `backend/app/modules/compliance/module.py`'s `mcp_tools`, not repeated here):
 
 | Area | Tools |
 | --- | --- |
@@ -119,11 +119,30 @@ The first three, plus both Phase 11 tools, take `organization_id` as a required 
 
 **As of 2026-09-22, two more, gated tools also exist** — `decisions_approve_decision`/`decisions_reject_decision` — the user's explicit follow-up ("Yes, apply the same treatment") extending Compliance's own reversal to this module's architecturally-identical `approve_decision_endpoint`/`reject_decision_endpoint` (`project_router.py`; see `docs/decisions.md`'s "Decision Management MCP approval gate" entry, following on from "Compliance MCP write tools + generalized AI approval gate"). Both are declared but gated by the same generalized org+project `allow_ai_approvals` opt-in [Write mode](#write-mode) describes for `approve_requirement`/`decide_change_request`/`complete_requirement`/`compliance_approve_requirement`/`compliance_reject_requirement` above — calling either through MCP fails with the same "AI approval is not enabled..." error unless both flags are on, even though the tool itself now exists (the route no longer carries `APPROVAL_ACTION_ROUTE_EXTRA`; the gate moved from a hard manifest exclusion to a runtime check). `decisions_propose_decision`/`decisions_submit_decision_for_review` remain undeclared — this addendum's scope was only approve/reject, and neither of those two actions decides anything.
 
+**The other module tool sets** (current counts: Decision Management 9, Context & Strategy 74 including its nine reports, Stakeholders & Personas 40; 199 module tools in all) are not itemised here, because a hand-kept list drifts. The authoritative, generated list is the agent skill's `module-tools.md` (see [Agent skill](#agent-skill)).
+
 **How it works, briefly:** the backend's `GET /api/v1/system/modules/mcp-tools` (normal bearer-token authentication, no exemption) returns a manifest of every currently-registered module tool, already mechanically verified on the backend side — the registered tool name is always prefixed with its declaring module's key (e.g. `compliance_list_standards`), `mutates` is derived from HTTP method rather than declared by the module, and any tool that would resolve to an approval/decision-type action is excluded from the manifest entirely, the same "approval stays human-only" principle [Write mode](#write-mode) above already applies to this server's own hand-written tools. This server fetches that manifest **lazily and authenticated** — never at an unauthenticated boot-time call — using whichever connecting session's own already-presented token first triggers a refresh within a cache window (`MODULE_TOOLS_REFRESH_SECONDS`, default 600 seconds / 10 minutes); the result is cached in-process and reused across every session until the next refresh. Each declarative tool is a plain proxy call through the same `_call_backend` helper every hand-written tool above uses — no module's own code ever runs inside this process.
 
 **A mutating module tool is only registered when `MCP_WRITES_ENABLED=true`** — the same gate this server's own `create_requirement`/`update_requirement` already use, applied generically rather than per-tool.
 
 **Nothing to configure for the common case.** For a deployment with no module registered at all, the manifest is simply an empty list and this section has no visible effect. Once a module with tools is registered and enabled for at least one organisation — Compliance, described above, already is — its tools appear in this server's tool list automatically, within one refresh window (or immediately after this server restarts). `MODULE_TOOLS_REFRESH_SECONDS` is the only new environment variable this mechanism adds, and only needs changing if the default 10-minute cache window is too slow or too chatty for a given deployment.
+
+## Agent skill
+
+AI clients use this server better with workflow guidance than with the raw tool list alone. `mcp-server/skill/reqtrack-mcp/` is a [Claude Code skill](https://docs.claude.com/en/docs/claude-code/skills) (`SKILL.md` plus `references/`) covering tool order, scope parameters, write-mode and AI-approval gating, and treating tool output as untrusted data. Each module also contributes its own "how to use these tools" section (`ModuleDefinition.mcp_guidance`, a `mcp_guidance.md` file in the module).
+
+```mermaid
+flowchart LR
+    S["skill/reqtrack-mcp/SKILL.md<br/>(hand-written)"] --> Z["scripts/build_skill_zip.py"]
+    C["references/core-tools.md<br/>(generated: mcp-server/scripts/generate_skill_reference.py)"] --> Z
+    M["backend/mcp_skill_reference/module-tools.md<br/>(generated: backend/scripts/generate_mcp_module_tools_reference.py)"] --> Z
+    G["each module's mcp_guidance.md"] --> M
+    Z --> D["docs site downloads:<br/>reqtrack-mcp-skill.zip + reqtrack-mcp-instructions.md"]
+```
+
+**Drift is test-enforced.** Tools also appear implicitly (every module report becomes a tool), so a "remember to update the skill" rule alone would rot. `mcp-server/tests/test_skill.py` fails when a core tool is missing from SKILL.md or `core-tools.md` is stale; `backend/tests/test_mcp_skill_reference.py` fails when `module-tools.md` is stale or a module with tools has no `mcp_guidance`. After adding or changing any tool, run both generators (`python scripts/generate_skill_reference.py` in `mcp-server/`, `python scripts/generate_mcp_module_tools_reference.py` in `backend/`) and update SKILL.md or the module's `mcp_guidance.md` for any new workflow.
+
+The zip is built, not committed (`docs/website/static/downloads/` is gitignored): the docs CI job runs `python mcp-server/scripts/build_skill_zip.py` before the site build. To see the download link work in the local `docs` preview container, run that command once before `docker compose up --build docs`.
 
 ## Authentication model
 

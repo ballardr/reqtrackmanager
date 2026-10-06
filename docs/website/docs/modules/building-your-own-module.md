@@ -164,6 +164,8 @@ The manifest builder turns this into a real tool the MCP server can offer an AI 
 
 See [API & Integrations → AI assistants (MCP)](../api-integrations/ai-assistants-mcp/overview.md) for how a client actually calls these once registered.
 
+**Also write agent guidance.** If your module declares tools, set `mcp_guidance` on the `ModuleDefinition`: Markdown telling an AI agent how to use them (data model, lifecycle order, read and write workflows, which tools are approvals, gotchas). First-party modules keep it in a `mcp_guidance.md` beside `module.py`. It becomes your module's section in the [Agent skill](../api-integrations/ai-assistants-mcp/agent-skill.mdx); the per-tool parameter list is generated for you. A module with tools and no guidance fails the project's tests.
+
 ## Building a new module: a checklist
 
 **Decide how it will be discovered.** All three registry sources are gated and mounted identically once loaded — this only decides how your `ModuleDefinition` reaches the registry: shipped in this repository via a normal PR (no extra deployment configuration needed), an installable package, or a local directory (both of the latter two need the deployment operator's explicit opt-in — see [Third-party and federated modules](./third-party-and-federated-modules.md)).

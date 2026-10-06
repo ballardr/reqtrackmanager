@@ -241,6 +241,7 @@ document resolving the `MODULE_DEFINITION`/registry import cycle via
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -522,6 +523,10 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
     return ids
 
 
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=COMPLIANCE_MODULE_KEY,
     name="Compliance",
@@ -698,6 +703,7 @@ MODULE_DEFINITION = ModuleDefinition(
             ),
         ),
     ),
+    mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=(
         McpToolDefinition(
             name="list_standards",

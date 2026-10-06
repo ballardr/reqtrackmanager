@@ -40,6 +40,7 @@ other new modules.
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -507,6 +508,10 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     )
 
 
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=STAKEHOLDERS_MODULE_KEY,
     name="Stakeholders & Personas",
@@ -612,5 +617,6 @@ MODULE_DEFINITION = ModuleDefinition(
             scope="project", permissions=(NEED_MANAGE_PERMISSION,),
         ),
     ),
+    mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=_build_mcp_tools(),
 )

@@ -352,6 +352,7 @@ class ModuleDefinition:
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
+    mcp_guidance: str = ""  # agent usage guidance, required when mcp_tools is non-empty
     models_import_path: str | None = None       # dotted path to your ORM models module
     migrations_import_path: str | None = None   # dotted path to a module exposing run_migrations(connection)
     get_project_router: Callable[[], APIRouter | None] | None = None  # optional 2nd, project-scoped router
@@ -1583,6 +1584,8 @@ deliberately doesn't take on.
 
 ---
 
+**Agent guidance (required).** A module that contributes MCP tools must also set `mcp_guidance`, Markdown telling an AI agent how to use them: the data model and lifecycle order, the read and write workflows, which tools are approvals, and gotchas. Keep it in a `mcp_guidance.md` file next to `module.py` and load it, as the first-party modules do. It is embedded in the MCP agent skill's generated `module-tools.md` (see [mcp-server.md](mcp-server.md#agent-skill)); do not repeat parameter lists there, the generator adds them. `backend/tests/test_mcp_skill_reference.py` fails if a module with tools has no guidance, or if the generated reference is stale (run `python scripts/generate_mcp_module_tools_reference.py` from `backend/`).
+
 ## 7. Building a new module: a checklist
 
 **Decide how it will be discovered.** All three options below are gated and
@@ -1616,7 +1619,8 @@ reaches the registry:
    audit trail every core mutation already goes through.
 4. Assemble your `ModuleDefinition` (key, name, description, version,
    `default_enabled`, `get_router`, `roles`, `frontend_manifest`,
-   `mcp_tools`, `models_import_path`, `migrations_import_path`) and
+   `mcp_tools` plus the required `mcp_guidance` if you declare tools,
+   `models_import_path`, `migrations_import_path`) and
    register it via whichever discovery path you chose above.
 
 **Frontend (if you have a UI):**

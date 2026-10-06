@@ -1737,6 +1737,13 @@ class ModuleDefinition:
             endpoints list them via `get_module_reports`. Definitions that fail
             `validate_report_definitions` are excluded and logged. Empty for a
             module with no reports.
+        mcp_guidance: Hand-written Markdown telling an AI agent how to use this
+            module's MCP tools (typical workflows, lifecycle order, which tools
+            are gated, gotchas). Embedded per module in the agent skill's
+            generated `module-tools.md` (`backend/scripts/generate_mcp_module_
+            tools_reference.py`); a module that contributes MCP tools must
+            provide it (enforced by `backend/tests/test_mcp_skill_reference.py`).
+            Do not repeat per-tool parameter lists, which the generator adds.
     """
 
     key: str
@@ -1749,6 +1756,7 @@ class ModuleDefinition:
     roles: tuple[ModuleRoleDefinition, ...] = field(default=())
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = field(default=())
+    mcp_guidance: str = ""
     models_import_path: str | None = None
     migrations_dir: str | None = None
     migrations_import_path: str | None = None

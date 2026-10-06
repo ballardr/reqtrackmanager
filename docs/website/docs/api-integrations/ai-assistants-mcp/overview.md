@@ -12,13 +12,16 @@ Every tool call authenticates with the caller's own ReqTrackManager token — se
 
 ## What it can do
 
-Fifteen read tools, always available:
+Eighteen read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
 | `list_organizations` | Organisations the caller's account belongs to or administers |
 | `list_projects` | Projects the caller has a role on, optionally filtered by organisation or a name/summary search |
 | `get_project` | A single project's detail |
+| `list_permissions` | An organisation's full Fine-Grained Access Control permission vocabulary |
+| `list_custom_roles` | An organisation's custom roles (each role's own definition, never who holds it) |
+| `get_custom_role` | A single custom role's definition |
 | `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why |
@@ -69,11 +72,13 @@ Two optional HTTP headers on the MCP connection — `X-Default-Organization-Id` 
 
 ## Module-contributed tools
 
+Module tools are numerous (about 200 across Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas), so this page does not itemise them. The [Agent skill](./agent-skill.mdx) includes a generated, always-current list with usage guidance for each module.
+
 Beyond the tools above, a backend module can declare its own tools that this server registers automatically, without any module-specific code living in the MCP server itself — see [Modules → Building your own module](../../modules/building-your-own-module.md#module-contributed-mcp-tools) for the mechanism.
 
-**Compliance and Decision Management are the modules that use this so far.** Compliance's MCP surface was write-enabled 2026-09-22 (see [decisions.md](https://github.com/ballardr/reqtrackmanager/blob/main/docs/decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry); Decision Management's approve/reject actions got the identical gated treatment the same day, as an explicit follow-up (see that same doc's "Decision Management MCP approval gate" entry) — its other mutating actions remain undeclared.
+**Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas use this so far.** Compliance's MCP surface was write-enabled 2026-09-22 (see [decisions.md](https://github.com/ballardr/reqtrackmanager/blob/main/docs/decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry); Decision Management's approve/reject actions got the identical gated treatment the same day, as an explicit follow-up (see that same doc's "Decision Management MCP approval gate" entry) — its other mutating actions remain undeclared.
 
-Compliance contributes 78 tools: 10 read-only —
+Compliance contributes 76 tools: 10 read-only —
 
 | Tool | Purpose |
 | --- | --- |
@@ -88,7 +93,7 @@ Compliance contributes 78 tools: 10 read-only —
 | `compliance_list_requirement_mappings` | Lists the cross-standard/cross-version mapping links for one compliance requirement |
 | `compliance_get_standard_version_diff` | Computes the added/removed/modified/replaced/re-mapped requirement diff between two versions of a standard |
 
-— plus 68 write tools covering essentially every mutating compliance endpoint (standards/versions/requirements/required-actions/action-types/mapping-relationship-types CRUD, project assignment/migration, assessment, evidence, reviews, traceability links; full list in [Compliance module → AI assistant integration](../../modules/compliance-module/mcp-integration.md)), each gated the same as any other MCP write tool by write mode and the caller's own RBAC role. `compliance_approve_requirement`/`compliance_reject_requirement` are the one exception: they exist as tools but additionally require the target project's and its organisation's `allow_ai_approvals` opt-in (the same one `approve_requirement`/`decide_change_request`/`complete_requirement` above use, generalized for module reuse) — no longer a hard, no-opt-in-possible exclusion. Standard member/group role assignment and the two file-upload endpoints (`import_standard`, evidence file upload) still have no MCP tool — an RBAC role grant and a file upload respectively, neither of which this mechanism supports for any module.
+— plus 66 write tools covering essentially every mutating compliance endpoint (standards/versions/requirements/required-actions/action-types/mapping-relationship-types CRUD, project assignment/migration, assessment, evidence, reviews, traceability links; full list in [Compliance module → AI assistant integration](../../modules/compliance-module/mcp-integration.md)), each gated the same as any other MCP write tool by write mode and the caller's own RBAC role. `compliance_approve_requirement`/`compliance_reject_requirement` are the one exception: they exist as tools but additionally require the target project's and its organisation's `allow_ai_approvals` opt-in (the same one `approve_requirement`/`decide_change_request`/`complete_requirement` above use, generalized for module reuse) — no longer a hard, no-opt-in-possible exclusion. Standard member/group role assignment and the two file-upload endpoints (`import_standard`, evidence file upload) still have no MCP tool — an RBAC role grant and a file upload respectively, neither of which this mechanism supports for any module.
 
 Decision Management contributes nine tools: seven read-only —
 

@@ -171,6 +171,7 @@ const sidebars: SidebarsConfig = {
             'api-integrations/ai-assistants-mcp/setting-up-vs-code',
             'api-integrations/ai-assistants-mcp/setting-up-microsoft-copilot-studio',
             'api-integrations/ai-assistants-mcp/generic-mcp-clients',
+            'api-integrations/ai-assistants-mcp/agent-skill',
             'api-integrations/ai-assistants-mcp/deploying-for-remote-clients',
             'api-integrations/ai-assistants-mcp/known-limitations',
           ],

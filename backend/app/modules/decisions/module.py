@@ -115,6 +115,7 @@ to this module's own approval logic lands until then.
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -257,6 +258,10 @@ def _list_decision_summaries(db: Session, project_id: UUID) -> list[ArtefactSumm
     return [_decision_summary(d) for d in rows]
 
 
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=DECISIONS_MODULE_KEY,
     name="Decision Management",
@@ -314,6 +319,7 @@ MODULE_DEFINITION = ModuleDefinition(
             permissions=(DECISION_APPROVE_PERMISSION,),
         ),
     ),
+    mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=(
         McpToolDefinition(
             name="list_decision_types",
