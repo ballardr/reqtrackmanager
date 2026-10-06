@@ -104,7 +104,7 @@ test.describe("Context & Strategy: per-persona Pain Point scoring", () => {
 
       // Default model is S×F×C; the Blocker persona is named even though it carries little weight.
       const rollup = page.getByRole("group", { name: "Rolled-up score" });
-      await expect(rollup.getByText("Blocker")).toHaveAttribute("title", `Unusable for: ${personaNames.light}`);
+      await expect(rollup.getByText("Blocker", { exact: true })).toHaveAttribute("title", `Unusable for: ${personaNames.light}`);
       await expect(rollup.getByText("2 scores counted.")).toBeVisible();
     });
 
@@ -115,7 +115,7 @@ test.describe("Context & Strategy: per-persona Pain Point scoring", () => {
       await expect(rollup.getByText(/Critical · 13\.3/)).toBeVisible();
       await page.getByRole("combobox", { name: "Combine personas by" }).selectOption({ label: "Worst case" });
       await expect(rollup.getByText(/Critical · 16/)).toBeVisible();
-      await expect(rollup.getByText("Blocker")).toBeVisible(); // survives every roll-up
+      await expect(rollup.getByText("Blocker", { exact: true })).toBeVisible(); // survives every roll-up
     });
 
     await test.step("score the second Pain Point for all personas", async () => {
@@ -137,7 +137,7 @@ test.describe("Context & Strategy: per-persona Pain Point scoring", () => {
       await scoreHeader.click(); // ascending
       await scoreHeader.click(); // descending
       await expect.poll(order).toEqual([titles.across, titles.everyone]);
-      await expect(page.getByText("Blocker")).toBeVisible();
+      await expect(page.getByText("Blocker", { exact: true })).toBeVisible();
 
       // S×C: 2.125 of 5 for "across" against 3 of 5 for "everyone" flips the order.
       await page.getByRole("combobox", { name: "Scoring model" }).selectOption({ label: "Severity × Confidence" });
