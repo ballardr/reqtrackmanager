@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgOverviewGroup } from "../../e2e-workflows/helpers";
+import { expectTidyStatBlocks, loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgOverviewGroup } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
@@ -379,5 +379,14 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await page.getByRole("button", { name: "Export" }).click();
     await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     await reportRequestPromise;
+  });
+
+  test("the org dashboard's stat cards are tidy at phone, tablet, laptop and desktop widths", async ({ page }) => {
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.goto("/org-overview");
+    await page.getByRole("link", { name: ORG_NAMES.alpha }).click(); // this persona administers two organisations
+    await selectOrgOverviewGroup(page, "Compliance dashboard");
+    await expect(page.locator(".grid-metrics").first()).toBeVisible();
+    await expectTidyStatBlocks(page);
   });
 });

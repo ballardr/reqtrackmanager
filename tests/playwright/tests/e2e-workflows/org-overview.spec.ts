@@ -6,6 +6,7 @@ import {
   installCleanupHook,
   loginAs,
   logout,
+  expectTidyStatBlocks,
   onCleanup,
   ORG_NAMES,
   PASSWORD,
@@ -147,6 +148,7 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     // which is unrelated to the `ResourceMenu` group chrome this asserts on.
     await expect(page.locator(".resource-menu-nav")).toHaveCount(0);
     await expect(page.locator(".stat-bar")).toBeVisible();
+    await expectTidyStatBlocks(page);
 
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
@@ -158,5 +160,6 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     await expect(overviewLink).toBeVisible();
     await expect(overviewLink).toHaveAttribute("aria-current", "page");
     await expect(page.locator(".stat-bar")).toBeVisible();
+    await expectTidyStatBlocks(page);
   });
 });

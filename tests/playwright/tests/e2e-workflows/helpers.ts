@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 
 import { type APIRequestContext, type Locator, type Page, expect, test } from "@playwright/test";
 
+import { statBlockViolations } from "../../../../frontend/src/testing/statBlockGeometry";
+
 /**
  * Personas seeded by backend/scripts/seed_e2e_dataset.py (see
  * docs/e2e-workflows.md for the full persona/workflow catalogue). Run the
@@ -599,3 +601,33 @@ export async function searchChangeRequests(page: Page, text: string): Promise<vo
   await page.getByPlaceholder(/^Search by name, reason or /).fill(text);
 }
 
+
+/** Stat-block widths checked by `expectTidyStatBlocks`: phone, tablet, laptop, desktop. */
+export const STAT_BLOCK_WIDTHS = [375, 720, 1024, 1440] as const;
+
+/**
+ * Asserts every stat block on the page (flat/grouped `StatBar`, `.grid-metrics`
+ * grids of `StatCard`/`MetricTile`) is tidy at phone, tablet, laptop and
+ * desktop widths: no horizontal overflow, aligned equal-height columns, no
+ * label swamping its number. It runs the same `statBlockViolations` the
+ * Storybook stories run (`frontend/src/testing/statBlockGeometry.ts`), against
+ * the real page and real data. Every spec that shows a stats block should call
+ * it, so a stat layout cannot regress to ragged rows unnoticed.
+ *
+ * Restores the original viewport afterwards.
+ */
+export async function expectTidyStatBlocks(page: Page): Promise<void> {
+  const original = page.viewportSize() ?? { width: 1280, height: 720 };
+  try {
+    for (const width of STAT_BLOCK_WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      // Polled, not read once: a resize re-renders responsive chrome (nav rail, resource menu) over a few frames,
+      // and a mid-reflow reading is not the settled layout. A real defect stays wrong and still fails.
+      await expect
+        .poll(() => page.evaluate(statBlockViolations, undefined), { message: `stat blocks at ${width}px`, timeout: 5_000 })
+        .toEqual([]);
+    }
+  } finally {
+    await page.setViewportSize(original);
+  }
+}

@@ -49,6 +49,22 @@ export const ChangesReportValues: Story = {
   },
 };
 
+/** Declared labels win over the humanised identifier, for the control and for each choice. */
+export const UsesDeclaredLabels: Story = {
+  args: {
+    params: [{
+      name: "model_key", type: "string", default: null, choices: ["sxf", "sxc"], minimum: null, maximum: null,
+      description: "", label: "Scoring model", choice_labels: { sxf: "Severity × Frequency" },
+    }],
+    values: {},
+  },
+  play: async ({ canvasElement }) => {
+    const select = within(canvasElement).getByLabelText("Scoring model");
+    await expect(within(select).getByRole("option", { name: "Severity × Frequency" })).toBeInTheDocument();
+    await expect(within(select).getByRole("option", { name: "Sxc" })).toBeInTheDocument();
+  },
+};
+
 /** A parameter a custom view draws its own control for is not drawn twice. */
 export const HidesParametersOwnedByAView: Story = {
   args: { hidden: ["rollup", "stale_months"] },

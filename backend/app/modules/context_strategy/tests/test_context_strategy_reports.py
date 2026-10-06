@@ -489,6 +489,16 @@ def test_r8_project_summary_includes_gaps_and_org_summary_is_org_level_only(clie
     assert keys[0] == "headline" and "r1_blockers" in keys and "r4_unowned" in keys and "r2_no_parent" in keys
     assert {"r1", "r2", "r3", "r4", "r5", "r6", "r7", "r9"} == set(report["data"]["included"])
 
+    # Figures arrive grouped by source report with short labels (no "<Report>: " prefix) and gap flags, so the
+    # screen can lay out ~25 numbers as per-report groups; the flat headline table is kept for the exports only.
+    metrics = report["metrics"]
+    assert all(m["group"] and ": " not in m["label"] for m in metrics)
+    blockers = next(m for m in metrics if m["label"] == "Blockers")
+    assert blockers["group"] == "Pain Point prioritisation" and blockers["gap"] is True and blockers["value"] == 1
+    assert next(m for m in metrics if m["label"] == "Project Strategies")["gap"] is False
+    assert _section(report, "headline")["screen"] is False
+    assert "Blockers" in _report(client, token, pid, "summary", format="csv").text
+
     org_report = _org_report(client, token, org["id"], "summary")
     org_keys = {s["key"] for s in org_report["sections"]}
     assert "r1_blockers" in org_keys and not any(k.startswith(("r2_", "r5_", "r6_", "r7_")) for k in org_keys)
@@ -649,3 +659,35 @@ def test_download_filename_survives_a_non_ascii_project_name(client, admin_token
         resp = _report(client, token, project["id"], "summary", format=fmt)
         assert resp.status_code == 200
         assert f".{fmt}" in resp.headers["content-disposition"]
+
+
+@pytest.mark.parametrize("slug", ["pain-point-prioritisation", "summary", "upgrade-drivers"])
+def test_scoring_report_parameters_declare_labelled_choices(client, admin_token, slug):
+    """The model/roll-up/stale parameters carry form labels and choice labels (so the Reports form shows a
+    "Scoring model" select, not a free-text "Model key" box), and a model outside the scheme is rejected."""
+    _, project, token = _setup(client, admin_token, f"Labels {slug[:8]} Co")
+    catalogue = client.get(f"/api/v1/projects/{project['id']}/report-catalogue", headers=auth_headers(token)).json()
+    params = {p["name"]: p for p in next(e for e in catalogue if e["slug"] == slug)["params"]}
+    assert params["model_key"]["label"] == "Scoring model"
+    assert params["model_key"]["choices"] == ["sxf", "sxc", "sxfxc"]
+    assert params["model_key"]["choice_labels"]["sxf"] == "Severity × Frequency"
+    assert params["rollup"]["label"] == "Combine personas by"
+    assert params["rollup"]["choice_labels"]["average"] == "Plain average"
+    assert _report(client, token, project["id"], slug, expect=400, model_key="bogus")
+
+
+def test_every_report_flags_its_gap_measures(client, admin_token):
+    """A measure that is a problem to fix when non-zero is marked `gap`, so the screen can flag it; totals are not."""
+    _, project, token = _setup(client, admin_token, "Gap Flags Co")
+    expected = {
+        "pain-point-prioritisation": {"Not scored", "Blockers"}, "strategy-cascade": {
+            "Strategies with no organisation parent", "Active Strategies with no Requirement", "Future States with no Strategy",
+        },
+        "pain-point-coverage": {"Accepted with no Requirement"}, "open-question-register": {"Overdue", "Unowned"},
+        "future-state-roadmap": {"Target date passed", "Without success measures"},
+        "guiding-principle-usage": {"Never applied"}, "strategy-change-history": {"Active items not revised recently"},
+        "upgrade-drivers": {"Churn risks"},
+    }
+    for slug, gaps in expected.items():
+        flagged = {m["label"] for m in _report(client, token, project["id"], slug)["metrics"] if m["gap"]}
+        assert flagged == gaps, slug

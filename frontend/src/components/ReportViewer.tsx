@@ -17,6 +17,7 @@
  */
 import type { ReportResult, ReportSection } from "../api/reports";
 import { StatBar } from "./StatBar";
+import { StatGroups, type StatGroup } from "./StatGroups";
 
 /** Explains that no in-scope project has the feature on; shown instead of empty tables. */
 export function ReportNothingToReport() {
@@ -28,11 +29,30 @@ export function ReportNothingToReport() {
 }
 
 /**
- * A report's caveat notes and headline metrics.
+ * Groups figures that carry a `group` (a pack combining several reports) by
+ * that heading, in first-seen order; `undefined` when none do.
+ */
+function groupMetrics(metrics: ReportResult["metrics"]): StatGroup[] | undefined {
+  if (!metrics.some((m) => m.group)) return undefined;
+  const groups = new Map<string, StatGroup>();
+  for (const m of metrics) {
+    const title = m.group ?? "";
+    const group = groups.get(title) ?? { key: title, title, items: [] };
+    group.items.push({ key: m.label, label: m.label, value: m.value, gap: m.gap });
+    groups.set(title, group);
+  }
+  return [...groups.values()];
+}
+
+/**
+ * A report's caveat notes and headline metrics: a flat `StatBar`, or a
+ * `StatGroups` card per group when the figures come grouped. A figure flagged `gap` is marked
+ * when non-zero.
  *
  * @param result The collected report.
  */
 export function ReportSummary({ result }: { result: ReportResult }) {
+  const groups = groupMetrics(result.metrics);
   return (
     <>
       {result.notes.length > 0 && (
@@ -42,9 +62,12 @@ export function ReportSummary({ result }: { result: ReportResult }) {
           ))}
         </ul>
       )}
-      {result.metrics.length > 0 && (
-        <StatBar items={result.metrics.map((m) => ({ key: m.label, label: m.label, value: m.value }))} />
-      )}
+      {result.metrics.length > 0 &&
+        (groups ? (
+          <StatGroups groups={groups} />
+        ) : (
+          <StatBar items={result.metrics.map((m) => ({ key: m.label, label: m.label, value: m.value, gap: m.gap }))} />
+        ))}
     </>
   );
 }
@@ -112,7 +135,7 @@ export function ReportViewer({ result }: { result: ReportResult }) {
   return (
     <div className="stack">
       <ReportSummary result={result} />
-      {result.sections.map((section) => (
+      {result.sections.filter((section) => section.screen !== false).map((section) => (
         <ReportSectionTable key={section.key} section={section} />
       ))}
     </div>

@@ -1239,6 +1239,11 @@ class ReportParamDefinition:
         minimum: Inclusive lower bound (`integer` only); violation is 422.
         maximum: Inclusive upper bound (`integer` only); violation is 422.
         description: One line shown in the catalogue, OpenAPI and MCP.
+        label: Human label for the generated form control; empty falls back
+            to a humanised `name`.
+        choice_labels: Human labels keyed by choice value, for the generated
+            select; a choice without one falls back to its humanised value.
+            Keys must be among `choices`.
     """
 
     name: str
@@ -1248,6 +1253,8 @@ class ReportParamDefinition:
     minimum: int | None = None
     maximum: int | None = None
     description: str = ""
+    label: str = ""
+    choice_labels: Mapping[Any, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -3120,6 +3127,8 @@ def _report_param_problem(param: ReportParamDefinition) -> str | None:
         return f"parameter '{param.name}' declares an empty choice set"
     if param.minimum is not None and param.maximum is not None and param.minimum > param.maximum:
         return f"parameter '{param.name}' has minimum above maximum"
+    if param.choice_labels and not set(param.choice_labels) <= set(param.choices or ()):
+        return f"parameter '{param.name}' labels a value that is not one of its choices"
     default = param.default
     if default is not None:
         if param.type == "integer" and (isinstance(default, bool) or not isinstance(default, int)):

@@ -21,6 +21,10 @@ export interface ReportParam {
   minimum: number | null;
   maximum: number | null;
   description: string;
+  /** Declared control label; empty falls back to a humanised `name`. */
+  label?: string;
+  /** Declared labels keyed by choice value; a choice without one is humanised. */
+  choice_labels?: Record<string, string> | null;
 }
 
 /** One runnable report (`ReportCatalogueEntryOut`). */
@@ -52,6 +56,18 @@ export interface ReportSection {
   note: string;
   /** Lists problems to fix. */
   gap: boolean;
+  /** `false` for a table that only exists for the PDF/CSV exports; the screen skips it. */
+  screen?: boolean;
+}
+
+/** One headline figure (`ReportMetricOut`). */
+export interface ReportMetric {
+  label: string;
+  value: number | string;
+  /** A non-zero value is a problem to fix. */
+  gap?: boolean;
+  /** Heading the figure sits under in a pack that combines several reports. */
+  group?: string | null;
 }
 
 /** A collected report as JSON (`ReportOut`); `data` is report-specific. */
@@ -62,7 +78,7 @@ export interface ReportResult<TData = unknown> {
   generated_at: string;
   notes: string[];
   sections: ReportSection[];
-  metrics: { label: string; value: number | string }[];
+  metrics: ReportMetric[];
   data: TData;
   /** In-scope projects with the report's sub-component enabled; 0 = nothing to report on. */
   eligible_projects: number;

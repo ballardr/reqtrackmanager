@@ -8,13 +8,13 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 
 | A project's Pain Points |
 | --- |
-| Falcon-3's Pain Points, filterable by status — Addressed, Rejected, and Duplicate in this example |
-| ![Pain Points list for the Falcon-3 project showing three Pain Points in Addressed, Rejected, and Duplicate status, with type and priority columns](../../../static/img/screenshots/pain-point-list.png) |
+| Falcon-3's Pain Points with their scores, filterable by status — including Addressed, Rejected, Duplicate, Blocker and Intentional examples |
+| ![Pain Points list for the Falcon-3 project showing seven Pain Points with status and score columns, a Blocker badge, and an Intentional badge](../../../static/img/screenshots/pain-point-list.png) |
 
-| An Addressed Pain Point, with a real "Is duplicated by" relationship |
+| An Addressed Pain Point with its persona scores |
 | --- |
-| Falcon-3's "field inspectors re-key paper reports" Pain Point — description, source, impact, evidence, and a Duplicate-of relationship from another Pain Point |
-| ![Detail view of an Addressed Pain Point for the Falcon-3 project, showing its description, source, impact, evidence, and an "Is duplicated by" relationship from another Pain Point](../../../static/img/screenshots/pain-point-detail.png) |
+| Falcon-3's "field inspectors re-key paper reports" Pain Point — description, source, impact, evidence, and the Scoring section (relationships, including the Duplicate-of link from another Pain Point, sit below it) |
+| ![Detail view of an Addressed Pain Point for the Falcon-3 project, showing its description, source, impact, evidence, and a Scoring section with a model selector and a persona score](../../../static/img/screenshots/pain-point-detail.png) |
 
 ## Fields
 
@@ -56,7 +56,7 @@ A genuinely **branching** lifecycle, unlike Strategy/Future State/Guiding Princi
 | Role | Scope | Grants |
 | --- | --- | --- |
 | **Pain Point Manager** | Project | Triages, classifies, and decides Pain Points (reject/accept/address/close), and manages the project's own Pain Point type overrides. A single elevated role, not an owner/approver pair — this artefact names one "Pain Point Manager / Project Manager" tier rather than a two-tier split. |
-| **Pain Point Type Admin** | Organisation | Manages the organisation's shared Pain Point type vocabulary and its [scoring configuration](#scoring-configuration) (below). |
+| **Pain Point Type Admin** | Organisation | Manages the organisation's shared Pain Point type vocabulary and its [scoring configuration](./pain-point-scoring.md#configuring-scoring). |
 
 ## Relationships
 
@@ -96,60 +96,9 @@ flowchart TD
 
 Guiding Principle, by contrast, has no type field or configurable vocabulary at all — see [Known limitations](./known-limitations.md).
 
-## Scoring configuration
+## Scoring
 
-Pain Points are prioritised on three inputs rather than a single Low/Medium/High priority — **Severity** (how badly the problem affects a persona; its top level, **Blocker**, means "unusable for this persona"), **Frequency** (how often they hit it) and **Confidence** (how sure you are of the other two). A **scoring model** combines them by multiplying the chosen levels' weights:
-
-| Model | Inputs |
-| --- | --- |
-| Severity × Frequency | Severity, Frequency |
-| Severity × Confidence | Severity, Confidence |
-| Severity × Frequency × Confidence | all three (the module default) |
-
-**Rating bands** (Low/Medium/High/Critical by default) label a score by where it sits as a percentage of the model's maximum, so they keep working if you change level weights.
-
-| Setting | Organisation (**Org Management → Pain Point Scoring**) | Project (**Project Admin → Pain Point Scoring**) |
-| --- | --- | --- |
-| Levels per input (name, weight, guidance) | Edit, add, delete (at least two per input; deleting an in-use level asks where to move its scores) | Read-only |
-| Default model | Set, or reset to the module default | Override, or use the inherited value |
-| Rating bands per model | Set, or reset to the module defaults | Override, or use the inherited value |
-
-A project that hasn't overridden a setting inherits it, and the page says where from:
-
-```mermaid
-flowchart LR
-    P["This project"] -->|not set| A["Nearest parent project<br/>that set it"]
-    A -->|none| O["Organisation"]
-    O -->|not set| M["Module default"]
-```
-
-Organisation changes need the **Pain Point Type Admin** role or org admin; project overrides need project manager/administrator (or org admin). Anyone viewing scores can still switch model.
-
-## Scoring a Pain Point
-
-Impact differs by persona, so a Pain Point is scored on its detail page either **for all personas together** or **for each persona separately** (the second option appears when the [Stakeholders & Personas](../stakeholders-personas-module/overview.md) module is on). For each, pick a Severity, Frequency and Confidence level; leave an input blank if you don't know it. Saving scores is for Pain Point Managers; anyone who can see the Pain Point can read them.
-
-The model and how personas combine are chosen **when viewing**, on both the detail page and the list, so you can compare rankings without changing any data:
-
-| Combine personas by | Result |
-| --- | --- |
-| Weighted average (default) | Each scored persona's score, weighted by its importance (equal if none is set). |
-| Worst case | The highest persona score. |
-| Plain average | Every scored persona counts the same. |
-
-```mermaid
-flowchart LR
-    S["Each persona's<br/>Severity · Frequency · Confidence"] --> M["Chosen model<br/>(for example Severity × Frequency)"]
-    M --> R["Per-persona score"]
-    R --> C["Chosen roll-up"]
-    C --> O["One score + rating band"]
-    S -->|any persona at the top Severity level| B["Blocker badge"]
-```
-
-- **Unscored personas are left out, not counted as zero.** If only one of five personas is scored, the Pain Point shows that persona's score. A persona missing an input the chosen model needs is "Not scored" under that model.
-- **The Blocker badge always shows** when any counted persona rates Severity at its top level, whatever model or roll-up is chosen, so one blocked persona can't be averaged away.
-- **Retired personas** stay visible but aren't counted. If a persona has since been deleted, hidden, or the Personas module is off, its scores still count, without a name or weight, and the page says so.
-- The list's **Score** column sorts, and switching the model re-ranks it. Tick **Hide intentional limitations** to take deliberate restrictions out of the list.
+Pain Points are prioritised per persona on Severity, Frequency and Confidence rather than a single Low/Medium/High priority, and the **Score** column ranks the list. See [Pain Point scoring](./pain-point-scoring.md) for the levels, models, roll-ups, the Blocker badge, intentional limitations, and how to configure them.
 
 ## Where this fits
 

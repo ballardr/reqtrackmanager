@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
 import { buildReportResult } from "../testing/reportFixtures";
+import { statBlockViolations } from "../testing/statBlockGeometry";
 import { ReportViewer } from "./ReportViewer";
 
 const meta: Meta<typeof ReportViewer> = {
@@ -54,3 +55,32 @@ export const NothingToReportOn: Story = {
 
 export const LightTheme: Story = { ...SectionsMetricsAndGapBadge, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...SectionsMetricsAndGapBadge, globals: { theme: "dark" } };
+
+/** A pack's figures arrive with a `group`: one card per source report, gap figures flagged, and a section marked
+ * `screen: false` (the flat export-only table) is not shown. */
+export const GroupedPackFigures: Story = {
+  args: {
+    result: buildReportResult({
+      metrics: [
+        { label: "Open Pain Points (excluding intentional)", value: 3, group: "Pain Point prioritisation" },
+        { label: "Blockers", value: 1, gap: true, group: "Pain Point prioritisation" },
+        { label: "Not scored", value: 0, gap: true, group: "Pain Point prioritisation" },
+        { label: "Overdue", value: 2, gap: true, group: "Open Question register" },
+        { label: "Versions in range", value: 29, group: "Strategy change history" },
+      ],
+      sections: [
+        { key: "headline", title: "Headline figures", columns: ["Report"], rows: [["x"]], note: "", gap: false, screen: false },
+        { key: "items", title: "Items", columns: ["Name"], rows: [["Alpha"]], note: "", gap: false },
+      ],
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const pp = within(canvas.getByRole("region", { name: "Pain Point prioritisation" }));
+    await expect(pp.getByText("Blockers")).toBeInTheDocument();
+    await expect(pp.getByText("Needs attention · 1")).toBeInTheDocument();
+    await expect(canvas.queryByRole("region", { name: "Headline figures" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument();
+    await expect(statBlockViolations(canvasElement)).toEqual([]);
+  },
+};

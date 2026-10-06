@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
+import { statBlockViolations } from "../testing/statBlockGeometry";
 import { StatCard } from "./StatCard";
 
 const meta: Meta<typeof StatCard> = {
@@ -44,3 +45,22 @@ export const WithDrillDown: Story = {
     await expect(canvas.getByText("Beta")).toBeInTheDocument();
   },
 };
+
+/** A `.grid.grid-metrics` of nine cards (the compliance dashboard's shape) is tidy at every width, including a
+ * phone-width container narrower than two 220px minimums. */
+const grid = (width: number): Story => ({
+  render: () => (
+    <div style={{ width, maxWidth: "100%" }}>
+      <div className="grid grid-metrics">
+        {Array.from({ length: 9 }, (_, i) => (
+          <StatCard key={i} label={i % 2 ? "Projects with outstanding compliance actions" : "Projects"} value={i * 11} />
+        ))}
+      </div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    await expect(statBlockViolations(canvasElement)).toEqual([]);
+  },
+});
+export const GridDesktop: Story = grid(1200);
+export const GridPhone: Story = grid(375);

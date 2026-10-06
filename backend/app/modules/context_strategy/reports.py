@@ -104,9 +104,17 @@ from app.modules.context_strategy.pain_point_scores import (
     load_scoring_context,
     resolve_model,
 )
+from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.registry import ReportDefinition, ReportParamDefinition, get_artefact_summary
 from app.services import relationships
-from app.services.report_framework import ReportContext, ReportResult, ReportSection, build_report_routers
+from app.services.report_framework import (
+    ReportContext,
+    ReportMetric,
+    ReportResult,
+    ReportSection,
+    build_report_routers,
+    normalise_metrics,
+)
 from app.services.scoring import resolve_effective_bands
 
 STRATEGY_TYPE = "strategy"
@@ -491,8 +499,9 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
                        "Confidence", "Score (0–100)", "Band", "Blocker"], breakdown),
     ]
     result.metrics = [
-        ("Open Pain Points (excluding intentional)", open_count), ("Scored", scored),
-        ("Not scored", len(unscored)), ("Blockers", len(blockers)), ("Intentional limitations", len(intentional)),
+        ReportMetric("Open Pain Points (excluding intentional)", open_count), ReportMetric("Scored", scored),
+        ReportMetric("Not scored", len(unscored), gap=True), ReportMetric("Blockers", len(blockers), gap=True),
+        ReportMetric("Intentional limitations", len(intentional)),
     ]
     result.data = {"rollup": _rollup(req).value, "groups": groups}
     return result
@@ -559,7 +568,7 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
         ReportSection("drivers", "Intentional limitations", columns, rows),
         ReportSection("churn", "Churn risks", columns, churn_rows, gap=True),
     ]
-    result.metrics = [("Intentional limitations", len(rows)), ("Churn risks", len(churn_rows))]
+    result.metrics = [ReportMetric("Intentional limitations", len(rows)), ReportMetric("Churn risks", len(churn_rows), gap=True)]
     result.data = {"rollup": _rollup(req).value, "groups": groups}
     return result
 
@@ -699,8 +708,10 @@ def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
                        for fs in fs_no_strategy], gap=True),
     ]
     result.metrics = [
-        ("Project Strategies", len(project_strategies)), ("Strategies with no organisation parent", len(no_parent)),
-        ("Active Strategies with no Requirement", len(no_requirement)), ("Future States with no Strategy", len(fs_no_strategy)),
+        ReportMetric("Project Strategies", len(project_strategies)),
+        ReportMetric("Strategies with no organisation parent", len(no_parent), gap=True),
+        ReportMetric("Active Strategies with no Requirement", len(no_requirement), gap=True),
+        ReportMetric("Future States with no Strategy", len(fs_no_strategy), gap=True),
     ]
     result.data = {"tree": tree}
     return result
@@ -814,9 +825,11 @@ def collect_pain_point_coverage(db: Session, req: ReportContext) -> ReportResult
         ReportSection("ageing", "Age of open Pain Points", ["Pain point", "Project", "Status", "Identified", "Age (days)"], age_rows),
     ]
     result.metrics = [
-        ("Pain Points", len(pain_points)), ("Accepted", len(accepted)),
-        ("Accepted with no Requirement", len(uncovered)),
-        ("Oldest open Pain Point (days)", max((req.today - p.date_identified).days for p in open_pps) if open_pps else 0),
+        ReportMetric("Pain Points", len(pain_points)), ReportMetric("Accepted", len(accepted)),
+        ReportMetric("Accepted with no Requirement", len(uncovered), gap=True),
+        ReportMetric(
+            "Oldest open Pain Point (days)", max((req.today - p.date_identified).days for p in open_pps) if open_pps else 0,
+        ),
     ]
     result.data = {"accepted_without_requirement": [p.id for p in uncovered]}
     return result
@@ -888,8 +901,8 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
         ReportSection("by_owner", "By owner", ["Owner", "Open"], [[o, str(n)] for o, n in sorted(by_owner.items())]),
     ]
     result.metrics = [
-        ("Open Questions", len(items)), ("Overdue", sum(i.is_overdue for i in items)),
-        ("Unowned", sum(i.owner is None for i in items)),
+        ReportMetric("Open Questions", len(items)), ReportMetric("Overdue", sum(i.is_overdue for i in items), gap=True),
+        ReportMetric("Unowned", sum(i.owner is None for i in items), gap=True),
     ]
     result.data = {"items": items}
     return result
@@ -950,8 +963,9 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
                       note="Without success measures nobody can tell whether the Future State has been reached."),
     ]
     result.metrics = [
-        ("Future States on the roadmap", len(items)), ("Target date passed", sum(i["is_overdue"] for i in items)),
-        ("Without success measures", sum(not i["has_success_measures"] for i in items)),
+        ReportMetric("Future States on the roadmap", len(items)),
+        ReportMetric("Target date passed", sum(i["is_overdue"] for i in items), gap=True),
+        ReportMetric("Without success measures", sum(not i["has_success_measures"] for i in items), gap=True),
     ]
     result.data = {"items": items}
     return result
@@ -1029,7 +1043,10 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
         ReportSection("unused", "Never applied", columns, [row(i) for i in items if not i["applied"]], gap=True,
                       note="Apply these to a Decision or Requirement, or retire them."),
     ]
-    result.metrics = [("Active Guiding Principles", len(items)), ("Never applied", sum(not i["applied"] for i in items))]
+    result.metrics = [
+        ReportMetric("Active Guiding Principles", len(items)),
+        ReportMetric("Never applied", sum(not i["applied"] for i in items), gap=True),
+    ]
     result.data = {"items": items}
     return result
 
@@ -1120,7 +1137,10 @@ def collect_change_history(db: Session, req: ReportContext) -> ReportResult:
         ReportSection("stale", f"Active, not revised in {req.params["stale_months"]} months", columns, [row(e) for e in stale],
                       gap=True, note="Review each: confirm it still holds, or revise or retire it."),
     ]
-    result.metrics = [("Versions in range", len(entries)), ("Active items not revised recently", len(stale))]
+    result.metrics = [
+        ReportMetric("Versions in range", len(entries)),
+        ReportMetric("Active items not revised recently", len(stale), gap=True),
+    ]
     result.data = {"items": entries}
     return result
 
@@ -1148,8 +1168,10 @@ def collect_summary_pack(db: Session, req: ReportContext) -> ReportResult:
     result = _result(req, "r8", "Context & Strategy summary", eligible=len(results), notes=[
         "Headline figures first, then the gaps each report found. Open the individual reports for the full picture.",
     ])
-    headline = [[r.title, name, str(value)] for r in results for name, value in r.metrics]
-    result.sections = [ReportSection("headline", "Headline figures", ["Report", "Measure", "Value"], headline)]
+    packed = [(r.title, m) for r in results for m in normalise_metrics(r.metrics)]
+    headline = [[title, m.label, str(m.value)] for title, m in packed]
+    # The figures show on screen as grouped tiles; this flat table is the CSV export (`sections[0]`) and PDF form.
+    result.sections = [ReportSection("headline", "Headline figures", ["Report", "Measure", "Value"], headline, screen=False)]
     for r in results:
         for section in r.sections:
             if section.gap:
@@ -1157,7 +1179,7 @@ def collect_summary_pack(db: Session, req: ReportContext) -> ReportResult:
                     f"{r.key}_{section.key}", f"{r.title}: {section.title}", section.columns, section.rows,
                     note=section.note, gap=True,
                 ))
-    result.metrics = [(f"{r.title}: {name}", value) for r in results for name, value in r.metrics]
+    result.metrics = [ReportMetric(m.label, m.value, gap=m.gap, group=title) for title, m in packed]
     result.data = {"included": [r.key for r in results]}
     return result
 
@@ -1166,20 +1188,26 @@ def collect_summary_pack(db: Session, req: ReportContext) -> ReportResult:
 
 _ORG_ROLE = "org_reports_viewer"
 _MODEL_KEY = ReportParamDefinition(
-    "model_key", "string",
+    "model_key", "string", choices=tuple(m.key for m in PAIN_POINT_SCORING_SCHEME.models),
+    choice_labels={m.key: m.label for m in PAIN_POINT_SCORING_SCHEME.models}, label="Scoring model",
     description="Scoring model: sxf (Severity x Frequency), sxc (Severity x Confidence) or sxfxc; "
                 "defaults to the project's configured default.",
 )
 _ROLLUP = ReportParamDefinition(
     "rollup", "string", default=RollupMethod.WEIGHTED_AVERAGE.value, choices=tuple(m.value for m in RollupMethod),
+    choice_labels={
+        RollupMethod.WEIGHTED_AVERAGE.value: "Weighted average", RollupMethod.WORST_CASE.value: "Worst case",
+        RollupMethod.AVERAGE.value: "Plain average",
+    },
+    label="Combine personas by",
     description="How per-persona scores combine: weighted_average (default), worst_case or average.",
 )
 _STALE_MONTHS = ReportParamDefinition(
-    "stale_months", "integer", default=6, minimum=1, maximum=120,
+    "stale_months", "integer", default=6, minimum=1, maximum=120, label="Stale after (months)",
     description="Change history only: months without a revision before an Active item is stale (default 6).",
 )
 _SINCE = ReportParamDefinition(
-    "since", "date", description="Change history only: earliest version date to include.",
+    "since", "date", label="Changes since", description="Change history only: earliest version date to include.",
 )
 
 REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (

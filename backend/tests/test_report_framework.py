@@ -70,7 +70,10 @@ def _collect(db, ctx: ReportContext) -> ReportResult:
 
 
 _PARAMS = (
-    ReportParamDefinition("mode", "string", default="a", choices=("a", "b"), description="Mode."),
+    ReportParamDefinition(
+        "mode", "string", default="a", choices=("a", "b"), description="Mode.", label="Run mode",
+        choice_labels={"a": "Alpha"},
+    ),
     ReportParamDefinition("limit", "integer", default=3, minimum=1, maximum=5),
     ReportParamDefinition("flag", "boolean"),
     ReportParamDefinition("day", "date"),
@@ -206,6 +209,9 @@ def test_validate_report_definitions_reports_each_problem():
         "invalid key or slug": bad(slug="Bad Slug"),
         "is invalid or reserved": bad(params=(ReportParamDefinition("format", "string"),)),
         "default is not one of its choices": bad(params=(ReportParamDefinition("x", "string", default="z", choices=("a",)),)),
+        "labels a value that is not one of its choices": bad(
+            params=(ReportParamDefinition("x", "string", choices=("a",), choice_labels={"z": "Zed"}),),
+        ),
         "declares bounds on a string": bad(params=(ReportParamDefinition("x", "string", minimum=1),)),
         "duplicate parameter name": bad(params=(ReportParamDefinition("x", "string"), ReportParamDefinition("x", "string"))),
         "default is above its maximum": bad(params=(ReportParamDefinition("x", "integer", default=9, maximum=5),)),
@@ -392,7 +398,8 @@ def test_json_shape_and_pdf_csv_files(client, admin_token, probe):
     body = _get(probe, token, _project_url(project["id"])).json()
     assert set(body) == {"key", "title", "scope_label", "generated_at", "notes", "sections", "metrics", "data", "eligible_projects"}
     assert body["sections"][0]["rows"] == [["Format Co A", FORMULA]]
-    assert body["metrics"] == [{"label": "Projects", "value": 1}]
+    # A plain (label, value) pair is normalised: not a gap, no group.
+    assert body["metrics"] == [{"label": "Projects", "value": 1, "gap": False, "group": None}]
 
     csv_resp = _get(probe, token, _project_url(project["id"]), format="csv")
     assert csv_resp.headers["content-type"].startswith("text/csv")
@@ -456,6 +463,9 @@ def test_project_catalogue_lists_enabled_reports_with_parameters(client, admin_t
     params = {p["name"]: p for p in entry["params"]}
     assert params["mode"]["choices"] == ["a", "b"] and params["limit"]["minimum"] == 1 and params["limit"]["maximum"] == 5
     assert params["day"]["type"] == "date"
+    # Form labels are declared, not derived: a label and per-choice labels reach the catalogue.
+    assert params["mode"]["label"] == "Run mode" and params["mode"]["choice_labels"] == {"a": "Alpha"}
+    assert params["limit"]["label"] == "" and params["limit"]["choice_labels"] is None
 
     _, outsider = _member(client, token, org["id"], None, "cat_outsider@example.com")
     assert client.get(f"/api/v1/projects/{project['id']}/report-catalogue", headers=auth_headers(outsider)).status_code == 403

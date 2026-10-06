@@ -1,8 +1,9 @@
+import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, logout, PASSWORD } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, expectTidyStatBlocks, installCleanupHook, loginAs, logout, PASSWORD } from "../../e2e-workflows/helpers";
 
 const API_BASE_URL = "http://localhost:8000";
 const CS = "context_strategy";
@@ -32,7 +33,9 @@ async function api(request: APIRequestContext, email: string, password = PASSWOR
  * Question. Leaves the page logged in as the org admin.
  */
 async function setup(page: Page, request: APIRequestContext) {
-  const suffix = Date.now();
+  // Date.now() alone collides when parallel workers start in the same millisecond (same admin email, so the
+  // second test logs in as the first test's user and is refused); the random part makes each setup unique.
+  const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
   const adminEmail = `e2e-reports-ui-${suffix}@example.com`;
   const serverHeaders = await api(request, "admin@example.com", "ChangeMe123!");
   const org = await (await request.post(`${API_BASE_URL}/api/v1/orgs`, {
@@ -140,6 +143,40 @@ test.describe("Context & Strategy: Reports UI", () => {
     await expect(row.getByText("Overdue", { exact: true })).toBeVisible();
     await expect(row.getByText("Unowned", { exact: true })).toBeVisible();
     await expect(row.getByText("High", { exact: true })).toBeVisible();
+  });
+
+  test("the summary pack lays its figures out as one tidy card per report, at every width", async ({ page, request }) => {
+    const { project } = await setup(page, request);
+    await page.goto(`/projects/${project.id}/reports?report=summary`);
+
+    // One card per source report, short measure names (no "<Report>: " prefix), gap figures flagged in words.
+    // The pack collects every report, so allow longer than the default for its first render.
+    const prioritisation = page.getByRole("region", { name: "Pain Point prioritisation", exact: true });
+    await expect(prioritisation).toBeVisible({ timeout: 20_000 });
+    await expect(prioritisation.getByText("Blockers", { exact: true })).toBeVisible();
+    await expect(prioritisation.getByText("Needs attention · 1")).toBeVisible();
+    await expect(page.locator(".stat-group-row dt").filter({ hasText: ": " })).toHaveCount(0); // no "<Report>: " prefix
+    // The flat export-only table is not repeated on screen.
+    await expect(page.getByRole("region", { name: "Headline figures" })).toHaveCount(0);
+
+    await expectTidyStatBlocks(page);
+  });
+
+  test("a report's flat headline figures are tidy at every width", async ({ page, request }) => {
+    const { project } = await setup(page, request);
+    await page.goto(`/projects/${project.id}/reports?report=pain-point-prioritisation`);
+    await expect(page.getByRole("table", { name: "Ranked Pain Points" })).toBeVisible();
+    await expectTidyStatBlocks(page);
+  });
+
+  test("a generic report offers the scoring model as a labelled select, not a free-text key", async ({ page, request }) => {
+    const { project } = await setup(page, request);
+    await page.goto(`/projects/${project.id}/reports?report=upgrade-drivers`);
+    const model = page.getByRole("combobox", { name: "Scoring model" });
+    await expect(model).toBeVisible();
+    await expect(model.getByRole("option", { name: "Severity × Frequency", exact: true })).toBeAttached();
+    await expect(page.getByRole("combobox", { name: "Combine personas by" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Model key" })).toHaveCount(0);
   });
 
   test("a generic report renders from its sections with no custom view", async ({ page, request }) => {

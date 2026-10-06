@@ -153,6 +153,8 @@ Action Types and Mapping Types, by contrast, are a fixed pair of org-wide vocabu
 
 **Two components rendered interchangeably in the same grid must share the exact same internal layout, not just the same outer card chrome (Phase 38).** `StatCard` and `MetricTile` both render in `OrgComplianceDashboard.tsx`'s top `.grid.grid-metrics` grid, side by side — but `StatCard` put its label above the value, left-aligned, while `MetricTile` puts the value above the label, centred. Each was internally consistent on its own, but next to each other in the same row the grid read as visually broken (found in live review, not caught by either component's own isolated Storybook story). Fixed by making `StatCard` match `MetricTile`'s value-above-label, centred layout exactly. The general rule: when auditing a grid/row for visual consistency, check the actual rendered page with more than one component type in it — a single component's own story in isolation cannot catch a cross-component mismatch like this.
 
+**Stat blocks follow one pattern, not a local layout per page.** See [Pattern: stat blocks](#pattern-stat-blocks) — the budget, the grid layout rule, the three components, and the geometry check every stat block must pass. (Three stat blocks went ragged in turn — org overview, compliance dashboard, the R8 summary report — because each was fixed locally and judged by eye.)
+
 ## Pattern: expandable nav-rail group
 
 A project-like drill-down entity's own `Layout.tsx` nav-rail section (see "Pattern: project-like drill-down entities" above) is, by default, a flat list of `NavRailLink`s — Overview, then one entry per fixed child section. That's the wrong shape once one of those entries is itself a *collection* the entity owns many of (Standards' own Versions, and the next entity with a similar many-child collection) — flattening straight to the collection's own list page means every visit to a specific child has to go through that list first, even when the caller already knows which one they want (e.g. arriving from a stat tile, a search result, or a bookmark).
@@ -422,6 +424,34 @@ Project Admin's Members section and Org Admin's "Manage users" modal both render
 `LoginBrandHeader` (`frontend/src/components/LoginBrandHeader.tsx`) — a logo image (when set) plus a centered title — sits above the sign-in form on both pre-auth login surfaces: `OrgLoginPage.tsx` (org-specific branding, resolved server-side from the org's slug) and `LoginPage.tsx` (platform-default branding, since there's no org context to resolve against before authenticating — same `default_logo_file_id`/`default_header_title` fields `BrandingContext.tsx`'s own platform fallback already reads). Use this component for any future pre-auth/unauthenticated page that needs the deployment's branding shown before a user has signed in.
 
 **Deliberately not the same component as `Layout.tsx`'s header-bar logo**, even though both ultimately render "a logo plus a title." The nav-bar version is a small inline horizontal lockup inside an app-chrome header bar, resolved via the full `BrandingContext`/`useBranding()` (org-vs-platform-vs-built-in-fallback resolution, live accent-colour side effects) — a fundamentally different visual treatment and a different data-resolution path than a centered stacked block on a bare pre-auth card with no `BrandingProvider` in scope. Don't merge these into one parameterised component just because they're both "logo + title" — the resolution logic and layout genuinely differ, unlike, say, the tile-vs-list `ViewToggle` cases above where the same underlying toggle idea really was being reimplemented per page.
+
+## Pattern: stat blocks
+
+A block of labelled numbers is one of three shapes. Pick by what the figures are, not by what the nearest page did.
+
+```mermaid
+flowchart TD
+    A[Figures to show] --> B{"Must each figure<br/>link to a list?"}
+    B -->|yes| C["MetricTile grid<br/>(.grid.grid-metrics)"]
+    B -->|no| D{"More than 8 figures,<br/>labels over ~28 chars,<br/>or several sources?"}
+    D -->|yes| E["StatGroups<br/>(one card per source)"]
+    D -->|no| F{"Page's own always-visible<br/>header row?"}
+    F -->|yes| G[StatBar]
+    F -->|no| H["StatCard grid<br/>(.grid.grid-metrics)"]
+```
+
+| Component | Use for | Shape |
+| --- | --- | --- |
+| `StatBar` (`components/StatBar.tsx`) | A page's top-level, always-visible header (`OrgOverviewPage.tsx`), or a report's few headline figures. At most 8 entries, labels of about 28 characters or fewer. | One bordered row; equal-width grid columns; dividers drawn by the grid. |
+| `StatGroups` (`components/StatGroups.tsx`) | Many figures, wordy labels, or figures from several sources: the R8 summary report is the reference. | A grid of cards, one per source: heading, "Needs attention · n" or "No gaps" badge, then measure-name / value rows. |
+| `StatCard` / `MetricTile` in `.grid.grid-metrics` | Grouped or paged stat blocks inside a `ResourceMenu` group (`OrgComplianceDashboard.tsx`). `MetricTile` when each figure links to a filtered list; `StatCard` for a plain number. | Equal-size centred tiles, value above label. |
+
+**Rules**
+- **CSS grid, never `flex-wrap` plus per-item borders.** Flex sizes cells by content, so wrap points, column edges and dividers land wherever the text happens to measure. `StatBar` is `repeat(auto-fit, minmax(…, 1fr))` with box-shadow dividers clipped by the container; `StatGroups` is `repeat(auto-fill, minmax(min(100%, 17rem), 1fr))`; `.grid-metrics` is `minmax(min(100%, 220px), 1fr)` so a track can shrink in a narrow container instead of overflowing it. No viewport media queries: a stat block follows its container.
+- **Short labels, no repeated prefix.** A report that combines others sets `group` on each metric (`ReportMetric` in `services/report_framework.py`), not a "<Report>: " prefix baked into the label; `ReportSummary` then renders a `StatGroups`. The flat export-only table stays in the CSV/PDF (`ReportSection.screen = False`).
+- **Gap figures are flagged in words, not colour alone.** A metric that is a problem to fix when non-zero is marked `gap`; a non-zero gap shows a "Needs attention" pill (with screen-reader text), a zero gap is muted, an informational figure stays plain. The same convention appears on the gap tables ("Needs attention · n" / "None").
+- **Labels wrap, never truncate**: a clipped label loses information. If a label wraps past three lines the block is in the wrong component.
+- **Every stat block ships a worst-case story and an e2e check.** The story renders many entries, long labels and a 375px container and ends with `expect(statBlockViolations(canvasElement)).toEqual([])` (`frontend/src/testing/statBlockGeometry.ts`: no horizontal overflow, equal-height rows, aligned column edges, labels of at most three lines). The Playwright spec for any page showing a stat block calls `expectTidyStatBlocks(page)` (`tests/playwright/tests/e2e-workflows/helpers.ts`), which runs the same check at 375/720/1024/1440px against real data. A new stat layout is not done until both pass.
 
 ## Pattern: report export trigger
 

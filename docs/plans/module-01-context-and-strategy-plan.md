@@ -61,7 +61,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-**19 / 20 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below). Phases 9–13 and 12b are done (13, the shared Reports UI, shipped 2026-10-06). Phase 14 (docs website depth + seeds verification) is next.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
+**20 / 20 phases complete — reopened 2026-10-04 for the Reporting extension (Phases 9–14, see "Reporting extension" below); Phase 14 (docs website depth + seeds verification) shipped 2026-10-06.** Original scope (Phases 0–8) was 13/13 complete on 2026-09-29. Phase 7
 split into five per-artefact sub-phases, 2026-09-29 — see that phase's own
 note; all five shipped 2026-09-29. Phase 8 (docs website coverage), the
 module's last phase, shipped the same day — see "Phase 8 notes" below.
@@ -87,7 +87,7 @@ module's last phase, shipped the same day — see "Phase 8 notes" below.
 | 12 | Report generation backend (R1–R9) | [x] Complete (2026-10-05) |
 | 12b | Core report framework (extracted from Phase 12) | [x] Complete (2026-10-06) — see "Phase 12b notes" |
 | 13 | Reports UI (shared core UI + per-module views) | [x] Complete (2026-10-06) — see "Phase 13 notes" |
-| 14 | Docs website + seeds verification | [ ] Not started — a first Reports page exists (Phase 13); Phase 14 adds scoring/diagram/screenshots and the seed check |
+| 14 | Docs website + seeds verification | [x] Complete (2026-10-06) — see "Phase 14 notes" |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -3845,6 +3845,8 @@ project's colours. No Storybook story exists for the extracted
 
 ## Phase 14 — Docs website + seeds verification
 
+**Status:** [x] Complete (2026-10-06) — see "Phase 14 notes" below.
+
 Document per-persona scoring (inputs, models, roll-ups, Blocker badge,
 "no persona = all personas"), intentional pain points, and R1–R9 on the
 module's docs-site pages. Include a Mermaid data-flow diagram and
@@ -3854,6 +3856,27 @@ scripts and confirm every report has realistic, non-empty content.
 **Reasoning:** *Why:* the docs site is a separate published artifact.
 *Risk addressed:* inconsistent scoring because the levels aren't
 explained. *Outcome:* users score consistently and read reports correctly.
+
+## Phase 14 notes (2026-10-06)
+
+**Shipped.** Docs site pages `pain-point-scoring` and `report-reference` (new),
+`reports` (rewritten), plus corrections to `pain-point`, `overview`,
+`mcp-integration` (74 tools) and `known-limitations`; eleven new screenshots and
+a refreshed Pain Point list/detail; Mermaid diagrams checked in a browser.
+Demo seed extended so R2/R4/R5 demonstrate their gaps and R3 shows a linked
+Requirement. A found UI defect was fixed: report parameters can now declare a
+`label` and `choice_labels`, so R8/R9 offer a labelled "Scoring model" select
+instead of a free-text "Model key" box. Full detail and the review:
+`docs/decisions.md`'s "Module 1 (Context & Strategy) Phase 14" entry.
+
+**Decisions:** the dedicated scoring and report-generation pages followed the
+user's rejection of a thinner first pass (**Decided by: User**); parameter
+labels, the seed additions and leaving the e2e seed unchanged are
+**Decided by: Agent**.
+
+**Known limits:** R7's stale list is empty in the demo data (versions can't be
+back-dated through the API); the e2e seed has report content for R1, R3 and R9
+only.
 
 ## Acceptance criteria (from overview §48, Context & Strategy subset)
 

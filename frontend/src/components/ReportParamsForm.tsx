@@ -12,9 +12,11 @@
  * Controlled and stateless: values live in the caller (`ReportRunner`); an
  * empty value means "use the server default". Parameters a custom report view
  * draws its own control for are passed in `hidden` so none has two controls.
- * Choice values are humanised ("weighted_average" -> "Weighted average")
- * because core has no label map for a module's own vocabulary; a module that
- * needs exact wording owns the parameter in its view instead.
+ * Control and choice labels use the report's declared `label`/`choice_labels`
+ * and otherwise fall back to humanising the identifier ("weighted_average" ->
+ * "Weighted average"), because core has no label map for a module's own
+ * vocabulary; a module that needs exact wording either declares the labels or
+ * owns the parameter in its view.
  */
 import type { ReportParam, ReportRunValues } from "../api/reports";
 import { humanise } from "../utils/humanise";
@@ -76,7 +78,7 @@ function ParamControl({
   value: ReportRunValues[string];
   onChange: (value: string | number | boolean | null) => void;
 }) {
-  const label = humanise(param.name);
+  const label = param.label || humanise(param.name);
   const help = param.description || undefined;
   if (param.type === "boolean") {
     return (
@@ -92,7 +94,7 @@ function ParamControl({
         label={label}
         value={value === undefined || value === null ? "" : String(value)}
         onChange={(next) => onChange(next === "" ? null : next)}
-        options={param.choices.map((c) => ({ value: String(c), label: humanise(c) }))}
+        options={param.choices.map((c) => ({ value: String(c), label: param.choice_labels?.[String(c)] ?? humanise(c) }))}
         placeholder="Default"
       />
     );

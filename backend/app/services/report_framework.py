@@ -56,7 +56,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -129,6 +129,9 @@ class ReportSection:
         note: Optional one-line explanation printed under the heading.
         gap: Whether this table lists problems to fix (a summary pack can
             re-list every report's gap tables).
+        screen: Whether the on-screen view shows this table. `False` keeps a
+            table that only exists for the exports (a flat form of figures the
+            screen already shows as tiles); PDF and CSV always include it.
     """
 
     key: str
@@ -137,6 +140,32 @@ class ReportSection:
     rows: list[list[str]]
     note: str = ""
     gap: bool = False
+    screen: bool = True
+
+
+class ReportMetric(NamedTuple):
+    """One headline figure of a report.
+
+    Attributes:
+        label: Short measure name ("Overdue"), without the report's title.
+        value: The figure.
+        gap: Whether a non-zero value is a problem to fix (the same sense as
+            `ReportSection.gap`), so the screen can flag it. Informational
+            totals leave this `False`.
+        group: Optional heading the figure belongs under; a pack combining
+            several reports sets it to each source report's title so the screen
+            can group the figures instead of listing them flat.
+    """
+
+    label: str
+    value: int | str
+    gap: bool = False
+    group: str | None = None
+
+
+def normalise_metrics(metrics: Sequence[ReportMetric | tuple[str, int | str]]) -> list[ReportMetric]:
+    """Returns `metrics` as `ReportMetric`s, accepting plain `(label, value)` pairs."""
+    return [m if isinstance(m, ReportMetric) else ReportMetric(*m) for m in metrics]
 
 
 @dataclass
@@ -150,7 +179,7 @@ class ReportResult:
         generated_at: When it was collected.
         notes: Caveats shown at the top (scope, model, reserved features).
         sections: The tables; `sections[0]` is the CSV export.
-        metrics: `(label, value)` headline figures.
+        metrics: Headline figures: `ReportMetric`s, or plain `(label, value)` pairs.
         data: Report-specific structured data for on-screen views.
         eligible_projects: How many in-scope projects have the report's
             sub-component enabled (0 = nothing to report on).
@@ -162,7 +191,7 @@ class ReportResult:
     generated_at: datetime
     notes: list[str]
     sections: list[ReportSection]
-    metrics: list[tuple[str, int | str]] = field(default_factory=list)
+    metrics: list[ReportMetric | tuple[str, int | str]] = field(default_factory=list)
     data: Any = None
     eligible_projects: int = 0
 
@@ -379,13 +408,16 @@ class ReportSectionOut(BaseModel):
     rows: list[list[str]]
     note: str = ""
     gap: bool = False
+    screen: bool = True
 
 
 class ReportMetricOut(BaseModel):
-    """One headline figure."""
+    """One headline figure (see `ReportMetric`)."""
 
     label: str
     value: int | str
+    gap: bool = False
+    group: str | None = None
 
 
 class ReportOut(BaseModel):
@@ -409,7 +441,7 @@ def to_out(result: ReportResult) -> ReportOut:
         key=result.key, title=result.title, scope_label=result.scope_label,
         generated_at=result.generated_at.isoformat(), notes=result.notes,
         sections=[ReportSectionOut(**jsonable_encoder(s)) for s in result.sections],
-        metrics=[ReportMetricOut(label=name, value=value) for name, value in result.metrics],
+        metrics=[ReportMetricOut(**m._asdict()) for m in normalise_metrics(result.metrics)],
         data=jsonable_encoder(result.data), eligible_projects=result.eligible_projects,
     )
 
@@ -704,6 +736,8 @@ class ReportParamOut(BaseModel):
     minimum: int | None = None
     maximum: int | None = None
     description: str = ""
+    label: str = ""
+    choice_labels: dict[str, str] | None = None
 
 
 class ReportProjectOut(BaseModel):
@@ -744,7 +778,8 @@ def _param_out(param: ReportParamDefinition) -> ReportParamOut:
     return ReportParamOut(
         name=param.name, type=param.type, default=param.default,
         choices=list(param.choices) if param.choices is not None else None,
-        minimum=param.minimum, maximum=param.maximum, description=param.description,
+        minimum=param.minimum, maximum=param.maximum, description=param.description, label=param.label,
+        choice_labels={str(k): v for k, v in param.choice_labels.items()} if param.choice_labels else None,
     )
 
 
@@ -837,6 +872,7 @@ __all__ = [
     "ReportCatalogueEntryOut",
     "ReportContext",
     "ReportFormat",
+    "ReportMetric",
     "ReportOut",
     "ReportParamOut",
     "ReportProjectOut",
@@ -844,6 +880,7 @@ __all__ = [
     "ReportRouters",
     "ReportSection",
     "build_report_routers",
+    "normalise_metrics",
     "organization_catalogue",
     "project_catalogue",
     "readable_projects",

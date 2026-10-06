@@ -2232,6 +2232,14 @@ def main() -> None:
         approval_comment="Approved — this is the future state the dual-redundant flight controller Decision and"
         " the Falcon-3 Strategy above are both driving toward.",
     )
+    # A Draft Future State whose target date has already passed and which names no success measures, so the
+    # roadmap report (R5) demonstrates both of its gap lists.
+    create_project_future_state(
+        h_pm, drone["id"], title="Falcon-3 type-certified in the home market",
+        current_state="Certification test campaign planned but not yet scheduled with the regulator.",
+        desired_state="Falcon-3 holds a home-market type certificate covering the single-controller airframe.",
+        target_date=(date.today() - timedelta(days=45)).isoformat(),
+    )
     create_org_strategy_relationship(
         h_pm, org["id"], org_strategy["id"], kind="defines_future_state", target_id=org_future_state["id"],
     )
@@ -2377,6 +2385,15 @@ def main() -> None:
     )
     print(f"  Withdrawn: {oq_offline_ui['question']!r}")
 
+    # Still open, past its due date and unowned, so the register report (R4) demonstrates its Overdue and
+    # Unowned gap lists.
+    create_open_question(
+        h_pm, drone["id"], question="Which destination markets require Remote ID broadcast at launch?",
+        context="Sales has quoted two markets that have not yet confirmed their Remote ID rules.",
+        evidence="", priority="medium", due_date=(date.today() - timedelta(days=12)).isoformat(),
+    )
+    print("  Open and overdue: 'Which destination markets require Remote ID broadcast at launch?'")
+
     print("Seeding Stakeholders & Personas (Module 2 Phase 1.1) — enabling the module, then two org personas (one"
           " weighted, one not) and a project persona on Falcon-3, plus a Falcon-3 weight override that its"
           " Avionics sub-project inherits...")
@@ -2449,6 +2466,10 @@ def main() -> None:
     set_pain_point_scores(h_pm, drone["id"], pp_all_personas["id"], [
         score_entry(pp_levels, None, severity="Moderate", frequency="Occasional", confidence="Low"),
     ])
+    create_project_pain_point_relationship(
+        h_pm, drone["id"], pp_all_personas["id"], kind="motivates_requirement",
+        target_id=drone_reqs["Log all flight-critical state transitions to onboard non-volatile storage"]["id"],
+    )
     pp_intentional = create_pain_point(
         h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Market"]["id"],
         title="Standard tier limits flights to line-of-sight", priority="low", date_identified="2026-09-08",
@@ -2556,14 +2577,15 @@ def main() -> None:
           " and an OTA-signing decision left in Draft")
     print("  Context & Strategy (enabled org-wide): 1 organisation Strategy (Active) and 1 project Strategy on"
           " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win;"
-          " 1 organisation Future State and 1 project Future State on Falcon-3 (both Active), each linked to the"
+          " 1 organisation Future State and 1 Active project Future State on Falcon-3 (plus a Draft one with a"
+          " passed target date and no success measures), each Active one linked to the"
           " Strategy it elaborates via a real 'Defines' relationship (Module 1 Phase 6); 7 Pain Points on Falcon-3"
           " (Accepted->Addressed, Rejected with a real 'Drives' link back to the Falcon-3 Strategy, and Duplicate"
           " with a real 'Duplicate of' link to the canonical Pain Point, plus four demonstrating per-persona"
           " scoring: scored across personas with a BVLOS-pilot Blocker, scored for all personas, an intentional"
           " limitation, and one unscored; Falcon-3 defaults to the Severity x Frequency model); 1 organisation Guiding Principle (Active,"
           " linked to the org Strategy via a real 'Supports' relationship) and 1 project Guiding Principle (Active)"
-          " on Falcon-3; and 2 Open Questions on Falcon-3 (one Ready for Decision, one Withdrawn — the 'resolved by"
+          " on Falcon-3; and 3 Open Questions on Falcon-3 (one Ready for Decision, one Withdrawn, one open and overdue — the 'resolved by"
           " Decision' relationship stays reserved pending Module 4's own Phase 7, see docs/decisions.md)")
     print("  Stakeholders & Personas (enabled org-wide): 3 organisation Personas (Field Inspector — Active, weight 3;"
           " Compliance Auditor — Draft, unweighted; Harbour Pilot — Active, hidden from Falcon-3) and 1 project Persona on Falcon-3 (BVLOS Remote"

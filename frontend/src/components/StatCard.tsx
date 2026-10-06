@@ -27,7 +27,7 @@ import type { ReactNode } from "react";
  */
 export function StatCard({ label, value, children }: { label: string; value: string | number; children?: ReactNode }) {
   return (
-    <div className="card stack" style={{ minWidth: 220, alignItems: "center", textAlign: "center" }}>
+    <div className="card stack" style={{ alignItems: "center", textAlign: "center" }} data-stat-entry>
       <span style={{ fontSize: "1.8rem", fontWeight: 700 }}>{value}</span>
       <span className="text-muted">{label}</span>
       {children}

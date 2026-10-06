@@ -9739,3 +9739,84 @@ headlessly (mermaid needs a DOM); it is a plain flowchart.
 **Known gaps:** no screenshots yet (Phase 14); `RequirementReportPanel` has no
 story of its own (covered through `ReportsPage`); seed scripts were not
 re-checked for report content (Phase 14).
+
+## Module 1 (Context & Strategy) Phase 14 — docs website depth + seed verification (2026-10-06)
+
+**Shipped.** Docs site: new `pain-point-scoring` page (inputs, models, roll-ups
+with a worked example, Blockers, intentional limitations, degraded personas,
+configuration, permissions, automation) and `report-reference` page (R1–R9 and
+their gap tables); `reports` rewritten around generating, finding, options,
+export, API/MCP access and permissions; scoring sections moved out of
+`pain-point` into the new page; MCP page corrected (74 tools, was 62);
+known-limitations corrected. Eleven new screenshots plus refreshed Pain Point
+list/detail, all captured at 1440×900 from the demo dataset. Mermaid diagrams
+verified rendering in a browser (no parse errors); build clean.
+
+**Decisions:**
+- *The user rejected the first, thinner docs pass* ("does not cover the report
+  generation or per-persona pain points… there must be screenshots").
+  **Decided by: User.** Scoring and report generation each got a dedicated page
+  rather than sections inside existing ones.
+- *Report parameters declare their own labels.* `ReportParamDefinition` gains
+  `label` and `choice_labels` (validated: keys must be among `choices`), carried
+  through the catalogue to the generated form. Found while capturing R9: the
+  generic form showed a free-text "Model key" box and "Sxf" style choices.
+  `model_key` now declares its choices (the scheme's models) and labels.
+  **Decided by: Agent** (found-issue fix, per the fix-don't-defer rule).
+  Generic, no module-specific code in core.
+- *Demo seed extended* so every report's main table is non-empty and R2/R4/R5
+  show a gap: a Draft Future State with a passed target date and no success
+  measures, an open and overdue Open Question, and a Pain Point → Requirement
+  `motivates_requirement` link. R7's stale list stays empty (versions can't be
+  back-dated through the API) and R6 shows principles as never applied.
+  **Decided by: Agent.**
+- *E2E seed left as is.* It covers R1, R3 and R9 (scored Pain Points); the other
+  reports are empty there. Playwright specs depend on fixed counts, and
+  `reports-ui.spec.ts` builds its own data. **Decided by: Agent.**
+
+**Review (identify → verify → remediate):** the label change touches no
+authorization, only presentation metadata, and the catalogue still lists only
+reports the caller may run. Verified: an unknown `model_key` is rejected 400 by
+the framework (new test), where it was previously unchecked free text. Found and
+fixed: the R9/R8 free-text model box; the stale known-limitations line; the MCP
+tool count.
+
+**Verification:** `test_report_framework.py` and the Context & Strategy report
+and MCP tests pass (new: label/choice-label catalogue and validation, labelled
+scoring parameters and the 400 on an unknown model); `ruff check` clean;
+Storybook `ReportParamsForm` (new `UsesDeclaredLabels` story) and report stories
+pass; Playwright `reports-ui.spec.ts` 28/28 with a new test that R9 offers a
+labelled "Scoring model" select; both seed scripts run clean on a fresh
+`reqtrack_test` and every report returns 200 with content.
+
+**Environment note:** the stack's `reqtrack_test` database predated Phase 11's
+seed content, so it was dropped and recreated (user-approved) and both seeds
+re-run. The seed script is baked into the backend image, so an edited script
+must be rebuilt or `docker cp`'d before it runs.
+
+## Stat blocks: budget, grid layout and a shared geometry check (2026-10-06)
+
+**Problem.** The summary report (R8) put ~25 figures, labelled "<Report>: <measure>", into `StatBar` (flex-wrap, per-item `border-left`): ragged rows, stray dividers, two-line labels, no hierarchy, and the same figures repeated in a table. It was the third stat block to go wrong (org overview, compliance dashboard), each time fixed locally and judged by eye. **Raised by: User** ("review… fix… make sure this never happens again").
+
+**Review.** A separate read-only reviewer agent (dataviz skill + the style guide) diagnosed it; its code claims were checked against the code before acting. Findings that mattered: `StatBar` itself was defective for any wrapping content (flex has no columns); `StatCard`'s inline `minWidth: 220` overflowed a 375px container; the collector knew which measures were gaps but the metric shape could not say so.
+
+**Decisions** (all **Decided by: Agent**, implementing the user's request):
+- *`StatBar` is a CSS grid* (`auto-fit`, box-shadow dividers clipped by the container, no media queries) and gains a *grouped* layout (`groups`): one card per source with measure/value rows. Extends the shared component rather than adding a new one.
+- *Metric shape.* `ReportMetric(label, value, gap=False, group=None)`; plain `(label, value)` pairs still work. R1–R7/R9 mark their gap measures; R8 emits short labels with `group` = source report title. `ReportSection.screen=False` keeps the flat headline table for CSV/PDF only. PDF/CSV output is unchanged.
+- *Gap figures are flagged in words* ("Needs attention", screen-reader text) plus the warning tone; zero is muted.
+- *Prevention is automated, not documentary.* `frontend/src/testing/statBlockGeometry.ts` (`statBlockViolations`: no overflow, equal-height rows, aligned columns, labels ≤ 3 lines) runs in Storybook worst-case stories (25 entries, long labels, 375/720/1200px, grouped and flat, `StatCard` grids) and in Playwright via `expectTidyStatBlocks` at 375/720/1024/1440px on R1, R8, org overview and the compliance dashboard. A mutation check (restoring the old flex-wrap CSS) made the stories fail with "21 distinct column edges… (ragged columns)", so the guard demonstrably bites. The style guide gains the budget/layout rules.
+- *Not done:* a lint/stylelint rule against `flex-wrap` + borders (brittle, low value beside the geometry tests); a runtime `console.error` for >8 flat entries (the story check covers it). A `CLAUDE.md` bullet was suggested by the reviewer and left for the user to decide.
+
+**Found and fixed along the way:** `StatCard`/`.grid-metrics` overflow below ~440px; a collision-prone `Date.now()` suffix in `reports-ui.spec.ts` setup (parallel workers starting in the same millisecond shared an admin email and one was refused "Insufficient organisation permissions"; now has a random part); `expectTidyStatBlocks` polls because a resize re-renders responsive chrome over a few frames.
+
+**Review (identify → verify → remediate):** presentation and test code only; no authorization, secrets or data-retention paths touched, and report access checks are unchanged. The new metric fields are non-sensitive display metadata.
+
+**Verification:** full Storybook suite 196 files / 1,522 tests pass; backend `test_report_framework.py` and the Context & Strategy report tests pass (new: gap flags per report, grouped R8 metrics, headline table export-only); `ruff` clean; changed frontend files lint-clean (the repo's 101 pre-existing ESLint warnings are in other files); Playwright `reports-ui.spec.ts` 30/30, `org-overview.spec.ts` 22/22, `org-compliance-view.spec.ts` incl. the new width check; docs site builds; R8/R1/R2/R4/R9 and org screenshots recaptured.
+
+## Context & Strategy docs screenshots redone (2026-10-06)
+
+The first set was cropped to a fixed 1220px-wide window (clipped sidebar-toggle artifact, tables cut off mid-row, no app chrome), unlike the 1440×900 standard in `docs/plans/docs-website-plan.md`, and R3/R5/R6/R7 and the PDF export had no image. **Raised by: User.** All were recaptured at 1440px wide with the full app chrome and a viewport height fitted to the content (never cropped mid-table; capped at 1500px), plus new R3, R5, R6, R7 and an exported-PDF page (branded, rendered from the real PDF) and its CSV. **Decided by: Agent.** Doc fix found in the process: the reports page claimed the PDF carries "summary figures"; it carries the notes and every table, not the on-screen figure tiles (R8's PDF opens with a Headline figures table). Corrected.
+
+## `StatGroups` promoted to a standard component (2026-10-06)
+
+The grouped-card layout of the R8 summary report was liked and made a first-class element. **Raised by: User.** It is now its own component, `components/StatGroups.tsx` (previously a `groups` mode inside `StatBar`, which is flat-only again), with its own Storybook stories (default, no-gaps, desktop/tablet/phone worst cases, long labels, light/dark), a shared `utils/needsAttention.ts`, and a named "Pattern: stat blocks" section in `docs/ux-style-guide.md` with a choose-the-shape decision diagram (`MetricTile` grid, `StatGroups`, `StatBar`, `StatCard` grid), the layout rules and the geometry-check requirement; the earlier stat paragraph under the drill-down pattern is replaced by a pointer to it. **Decided by: Agent** (shape of the extraction). Not adopted at other call sites: the compliance dashboard's tiles are individually linked (`MetricTile`), which `StatGroups` rows are not.

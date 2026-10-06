@@ -10,8 +10,8 @@ For example, an organisation records a Strategy ("lead the market in autonomous 
 
 | A project's Pain Points |
 | --- |
-| Falcon-3's Pain Points, filterable by status — Accepted, Rejected, and Duplicate in this example |
-| ![Pain Points list for the Falcon-3 project showing three Pain Points in Addressed, Rejected, and Duplicate status, with type and priority columns](../../../static/img/screenshots/pain-point-list.png) |
+| Falcon-3's Pain Points, scored per persona and filterable by status |
+| ![Pain Points list for the Falcon-3 project showing seven Pain Points with status and score columns, a Blocker badge, and an Intentional badge](../../../static/img/screenshots/pain-point-list.png) |
 
 ## The five artefact types
 
@@ -93,10 +93,12 @@ Full fields and a lifecycle diagram live on each artefact's own page (linked bel
 - [Strategy](./strategy.md) — fields, lifecycle, roles, and relationships for a Strategy.
 - [Future State](./future-state.md) — fields, lifecycle, roles, and relationships for a Future State.
 - [Pain Point](./pain-point.md) — fields, lifecycle, roles, relationships, and the Pain Point type vocabulary.
+- [Pain Point scoring](./pain-point-scoring.md) — scoring Pain Points per persona on Severity, Frequency and Confidence, how the scores roll up, Blockers, and intentional limitations.
 - [Guiding Principle](./guiding-principle.md) — fields, lifecycle, roles, and relationships for a Guiding Principle.
 - [Open Question](./open-question.md) — fields, lifecycle, roles, and relationships for an Open Question.
 - [Relationships and types](./relationships-and-types.md) — the bird's-eye view across all five artefact types at once, and the reserved Decision-target relationships not yet built.
-- [Reports](./reports.md) — the nine reports (R1–R9), where to find them, and how to export them.
+- [Reports](./reports.md) — generating the nine reports (R1–R9), where to find them, their options, and exporting as PDF or CSV or over the API.
+- [Report reference](./report-reference.md) — what each report shows and how to act on its gap lists.
 - [AI assistant (MCP) integration](./mcp-integration.md) — the tools an AI assistant can call against this module's content.
 - [Known limitations](./known-limitations.md) — what this module deliberately doesn't do yet.
 
