@@ -430,9 +430,12 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
     return r.json()
 
 
-def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str) -> dict:
+def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none") -> dict:
+    """`flow` says where the link's target sits in a traceability chain: "forward_is_upstream",
+    "forward_is_downstream" or "none" (see `models.enums.LinkFlow`)."""
     r = httpx.post(
-        f"{BASE}/orgs/{org_id}/link-types", json={"forward_name": forward_name, "reverse_name": reverse_name},
+        f"{BASE}/orgs/{org_id}/link-types",
+        json={"forward_name": forward_name, "reverse_name": reverse_name, "flow": flow},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -1548,7 +1551,11 @@ def main() -> None:
     print("Adding a custom requirement link type...")
     # Beyond the 12 seeded defaults (C-G-09) — demonstrates that an
     # organisation can extend the link-type vocabulary with its own.
-    supersedes_link_type = create_link_type(h_pm, org["id"], forward_name="Supersedes", reverse_name="Is superseded by")
+    # `flow` makes the artefact link graph read it as upstream (the superseded one is older), unlike a
+    # custom type left at the default "none", which the graph shows as merely related.
+    supersedes_link_type = create_link_type(
+        h_pm, org["id"], forward_name="Supersedes", reverse_name="Is superseded by", flow="forward_is_upstream"
+    )
     default_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
     project_statuses = {s["name"]: s for s in httpx.get(f"{BASE}/orgs/{org['id']}/project-statuses", headers=h_pm, timeout=30).json()}
 
@@ -1604,6 +1611,12 @@ def main() -> None:
     create_requirement_link(h_pm, drone["id"], return_to_home_req["id"], gps_req["id"], default_link_types["Depends on"]["id"])
     create_requirement_link(h_pm, drone["id"], preflight_req["id"], gps_req["id"], default_link_types["Depends on"]["id"])
     create_requirement_link(h_pm, drone["id"], remote_id_req["id"], flight_log_req["id"], supersedes_link_type["id"])
+    # Multi-hop chain for the artefact link graph: remote ID needs a position fix (depends on GPS), and the
+    # return-to-home threshold derives from the flight-time requirement's margin (an upstream of an upstream
+    # when read from GPS at depth 2).
+    flight_time_req = drone_reqs["Provide a minimum flight time of 42 minutes at an 800g payload"]
+    create_requirement_link(h_pm, drone["id"], remote_id_req["id"], gps_req["id"], default_link_types["Depends on"]["id"])
+    create_requirement_link(h_pm, drone["id"], return_to_home_req["id"], flight_time_req["id"], default_link_types["Derives from"]["id"])
 
     print("Creating and linking requirement actions on Falcon-3 (review/test tasks)...")
     drone_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()}

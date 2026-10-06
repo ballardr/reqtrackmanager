@@ -13,7 +13,7 @@ installCleanupHook();
  * currently assigned to real projects 409s and opens a reassignment
  * picker, reassigning moves those projects, an unused status deletes
  * immediately with no prompt, and once a single status remains its delete
- * control is disabled outright. Link types get lighter add/rename/delete-
+ * control is disabled outright. Link types get lighter add/rename/direction/delete-
  * unused coverage — the identical shared reassignment/last-row-disabled
  * code path is already exercised end-to-end above (statuses) and unit-
  * tested directly against link types in OrgAdminPage.stories.tsx.
@@ -189,6 +189,20 @@ test.describe("org admin: project statuses and link types", () => {
       await inputWithValue(page, "E2E Precedes").fill("E2E Precedes v2");
       await page.getByRole("button", { name: "Rename" }).click();
       await expect(inputWithValue(page, "E2E Precedes v2")).toBeVisible();
+
+      // Direction: a new type is unclassified; setting it is saved at once
+      // (Toast) and survives a reload. Seeded "Derives from" is upstream.
+      const direction = page.getByRole("combobox", { name: "Direction: E2E Precedes v2" });
+      await expect(direction).toHaveValue("none");
+      await expect(page.getByRole("combobox", { name: "Direction: Derives from" })).toHaveValue("forward_is_upstream");
+      await direction.selectOption({ label: "Target is downstream" });
+      await expect(page.getByText("Link type direction updated.")).toBeVisible();
+      await page.reload();
+      await selectOrgAdminGroup(page, "Projects & workflow");
+      await ensureExpanded(page, "Link types");
+      await expect(page.getByRole("combobox", { name: "Direction: E2E Precedes v2" })).toHaveValue(
+        "forward_is_downstream"
+      );
 
       const row = inputWithValue(page, "E2E Precedes v2").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await row.getByTitle("Delete this link type").click();

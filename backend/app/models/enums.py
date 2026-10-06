@@ -233,6 +233,24 @@ class ArtefactType(str, enum.Enum):
     REQUIREMENT_ACTION = "requirement_action"
 
 
+class LinkFlow(str, enum.Enum):
+    """Which way a typed link points in a traceability chain
+    (`RequirementLinkTypeDefinition.flow`), read from the link's source to its
+    target using the type's `forward_name`.
+
+    NONE: no direction (symmetric, e.g. "Related to"); also every type an
+        organisation has not classified.
+    FORWARD_IS_UPSTREAM: the target is a source/origin of the link's source
+        (e.g. "Derives from").
+    FORWARD_IS_DOWNSTREAM: the target depends on or follows from the link's
+        source (e.g. "Is implemented by").
+    """
+
+    NONE = "none"
+    FORWARD_IS_UPSTREAM = "forward_is_upstream"
+    FORWARD_IS_DOWNSTREAM = "forward_is_downstream"
+
+
 class PermissionLevel(str, enum.Enum):
     """The four-tier taxonomy crossed with every registered artefact type
     (`app.modules.registry.get_all_registered_artefact_types`) to derive

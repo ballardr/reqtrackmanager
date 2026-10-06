@@ -166,13 +166,14 @@ def create_link_type(
     )
     link_type = RequirementLinkTypeDefinition(
         organization_id=organization_id, forward_name=payload.forward_name, reverse_name=payload.reverse_name,
-        sort_order=count,
+        sort_order=count, flow=payload.flow,
     )
     db.add(link_type)
     db.flush()
     log_event(db, entity_type="requirement_link_type_definition", entity_id=link_type.id, action="created",
               actor_id=current_user.id, organization_id=organization_id,
-              detail={"forward_name": link_type.forward_name, "reverse_name": link_type.reverse_name})
+              detail={"forward_name": link_type.forward_name, "reverse_name": link_type.reverse_name,
+                      "flow": link_type.flow.value})
     db.commit()
     db.refresh(link_type)
     return link_type
@@ -214,7 +215,8 @@ def rename_link_type(
     organization_id: UUID, link_type_id: UUID, payload: LinkTypeUpdate,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
-    """Renames both directional names of a link type at once. Every
+    """Renames both directional names of a link type at once, and (when
+    `flow` is given) changes its direction. Every
     `ArtefactLink.link_type_id` reference points at this row's id,
     never its names, so renaming has zero effect on any existing link
     using this type — see `services.definitions`' module docstring."""
@@ -232,8 +234,10 @@ def rename_link_type(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A link type with this forward name already exists.")
     link_type.forward_name = payload.forward_name
     link_type.reverse_name = payload.reverse_name
+    if payload.flow is not None:
+        link_type.flow = payload.flow
     log_event(db, entity_type="requirement_link_type_definition", entity_id=link_type.id, action="renamed",
-              actor_id=current_user.id, organization_id=organization_id)
+              actor_id=current_user.id, organization_id=organization_id, detail={"flow": link_type.flow.value})
     db.commit()
     db.refresh(link_type)
     return link_type

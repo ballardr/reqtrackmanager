@@ -30,6 +30,14 @@ Once a requirement is locked (Approved or Completed), the edit form disables its
 
 Requirements can be linked to each other with a typed, bidirectional relationship — e.g. "Derives from" / "Is the source of" — for real traceability between requirements, beyond the 12 seeded default link types (an organisation can define more from its admin page). A link between two approved requirements can itself be made to require a change request to add or remove, via a per-project setting, for teams that want link changes reviewed the same way content changes are.
 
+Each link type also has a **direction**, set by an organisation admin under **Admin → Projects & workflow → Link types**. Read with the forward name, "Target is upstream" means the target is where the source comes from ("Derives from"), "Target is downstream" means the target depends on the source ("Is implemented by"), and "No direction" suits symmetric types ("Related to"). Directions let traceability views and AI assistants (the `get_artefact_link_graph` tool) answer "where does this come from?" and "what depends on it?" instead of showing every link as merely related. The seeded types come pre-classified for new organisations where the direction is clear; existing organisations and any type you add start as "No direction" until you set one, and an unclassified type is still shown, just as related.
+
+```mermaid
+flowchart LR
+    U["Upstream: where it comes from"] --> T["This requirement"] --> D["Downstream: what depends on it"]
+    R["Related: no direction or unclassified"] --- T
+```
+
 If the [Decision Management module](../modules/decision-management-module/overview.md) is enabled, a requirement can also be linked to a Decision ("Implements"/"Affects") — see [Decision Management → Relationships and templates](../modules/decision-management-module/relationships-and-templates.md) — recording which formal decision produced or affects a given requirement, separately from requirement-to-requirement traceability above.
 
 If the [Context & Strategy module](../modules/context-strategy-module/overview.md) is enabled, a requirement can similarly be linked back to the Strategy that drives it, the Pain Point that motivated it, or the Guiding Principle it's informed by — see [Context & Strategy → Relationships and types](../modules/context-strategy-module/relationships-and-types.md) — giving a requirement's own reasoning an upstream trail beyond its own `reasoning` field.

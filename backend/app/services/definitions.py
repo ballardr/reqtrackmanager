@@ -45,6 +45,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.action_type import ActionTypeDefinition
+from app.models.enums import LinkFlow
 from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.services.audit import log_event
@@ -53,21 +54,23 @@ from app.services.audit import log_event
 
 DEFAULT_PROJECT_STATUSES: list[str] = ["Proposed", "Active", "Abandoned", "Completed"]
 
-# (forward_name, reverse_name) pairs. A symmetric relationship repeats the
-# same name in both positions (e.g. "Related to").
-DEFAULT_LINK_TYPES: list[tuple[str, str]] = [
-    ("Related to", "Related to"),
-    ("Derives from", "Is the source of"),
-    ("Satisfies", "Is satisfied by"),
-    ("Refines", "Is refined by"),
-    ("Depends on", "Is a dependency of"),
-    ("Conflicts with", "Conflicts with"),
-    ("Implements", "Is implemented by"),
-    ("Allocated to", "Has allocated"),
-    ("Verified by", "Verifies"),
-    ("Validated by", "Validates"),
-    ("Mitigates", "Is mitigated by"),
-    ("Equivalent to", "Equivalent to"),
+# (forward_name, reverse_name, flow) triples. A symmetric relationship repeats
+# the same name in both positions (e.g. "Related to"). `flow` says where the
+# target sits in a traceability chain relative to the source; types whose
+# direction is genuinely ambiguous stay `none` so an admin decides.
+DEFAULT_LINK_TYPES: list[tuple[str, str, LinkFlow]] = [
+    ("Related to", "Related to", LinkFlow.NONE),
+    ("Derives from", "Is the source of", LinkFlow.FORWARD_IS_UPSTREAM),
+    ("Satisfies", "Is satisfied by", LinkFlow.FORWARD_IS_UPSTREAM),
+    ("Refines", "Is refined by", LinkFlow.FORWARD_IS_UPSTREAM),
+    ("Depends on", "Is a dependency of", LinkFlow.FORWARD_IS_UPSTREAM),
+    ("Conflicts with", "Conflicts with", LinkFlow.NONE),
+    ("Implements", "Is implemented by", LinkFlow.FORWARD_IS_UPSTREAM),
+    ("Allocated to", "Has allocated", LinkFlow.FORWARD_IS_DOWNSTREAM),
+    ("Verified by", "Verifies", LinkFlow.FORWARD_IS_DOWNSTREAM),
+    ("Validated by", "Validates", LinkFlow.FORWARD_IS_DOWNSTREAM),
+    ("Mitigates", "Is mitigated by", LinkFlow.NONE),
+    ("Equivalent to", "Equivalent to", LinkFlow.NONE),
 ]
 
 DEFAULT_ACTION_TYPES: list[str] = ["Review", "Test"]
@@ -84,10 +87,10 @@ def seed_link_types(db: Session, organization_id: UUID) -> None:
     """Adds the 12 default `RequirementLinkTypeDefinition` rows for a newly
     created organisation (not committed/flushed — caller owns the
     transaction)."""
-    for i, (forward, reverse) in enumerate(DEFAULT_LINK_TYPES):
+    for i, (forward, reverse, flow) in enumerate(DEFAULT_LINK_TYPES):
         db.add(
             RequirementLinkTypeDefinition(
-                organization_id=organization_id, forward_name=forward, reverse_name=reverse, sort_order=i
+                organization_id=organization_id, forward_name=forward, reverse_name=reverse, sort_order=i, flow=flow
             )
         )
 

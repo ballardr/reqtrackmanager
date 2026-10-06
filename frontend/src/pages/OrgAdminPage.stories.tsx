@@ -1776,6 +1776,33 @@ export const LinkTypesAddAndRename: Story = {
   },
 };
 
+/** Setting a link type's direction PATCHes it immediately (names unchanged)
+ * and confirms with a Toast; the select shows the stored direction. */
+export const LinkTypesSetDirection: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      linkTypes: [buildLinkType({ id: "lt1", forward_name: "Derives from", reverse_name: "Is the source of", flow: "forward_is_upstream" })],
+    });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    const select = await canvas.findByRole("combobox", { name: "Direction: Derives from" });
+    await expect(select).toHaveValue("forward_is_upstream");
+    await expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "No direction", "Target is upstream", "Target is downstream",
+    ]);
+    await userEvent.selectOptions(select, "forward_is_downstream");
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/link-types/lt1`, {
+        forward_name: "Derives from", reverse_name: "Is the source of", flow: "forward_is_downstream",
+      })
+    );
+    await waitFor(() => expect(within(document.body).getByText("Link type direction updated.")).toBeInTheDocument());
+  },
+};
+
 /** Same minimum-one-remaining rule as project statuses, applied to link
  * types. */
 export const LinkTypesDeleteDisabledAtLastRow: Story = {

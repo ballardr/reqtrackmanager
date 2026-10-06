@@ -115,6 +115,7 @@ to this module's own approval logic lands until then.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
@@ -245,6 +246,19 @@ def _get_decision_summary(db: Session, decision_id: UUID) -> ArtefactSummary | N
     return None if decision is None else _decision_summary(decision)
 
 
+def _get_many_decision_summaries_in_project(
+    db: Session, project_id: UUID, decision_ids: Sequence[UUID]
+) -> list[ArtefactSummary]:
+    """`ArtefactSummaryProvider.get_many_in_project` for Decisions: the given
+    decisions that belong to `project_id`, in one query."""
+    from sqlalchemy import select
+
+    from app.modules.decisions.models import Decision
+
+    rows = db.scalars(select(Decision).where(Decision.id.in_(decision_ids), Decision.project_id == project_id)).all()
+    return [_decision_summary(d) for d in rows]
+
+
 def _list_decision_summaries(db: Session, project_id: UUID) -> list[ArtefactSummary]:
     """`ArtefactSummaryProvider.list_for_project` for Decisions (unarchived, by code)."""
     from sqlalchemy import select
@@ -290,8 +304,12 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_types=(DECISION_ARTEFACT_TYPE,),
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={
-        DECISION_ARTEFACT_TYPE: ArtefactSummaryProvider(get=_get_decision_summary, list_for_project=_list_decision_summaries),
+        DECISION_ARTEFACT_TYPE: ArtefactSummaryProvider(
+            get=_get_decision_summary, list_for_project=_list_decision_summaries,
+            get_many_in_project=_get_many_decision_summaries_in_project,
+        ),
     },
+    artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},
     roles=(
         ModuleRoleDefinition(
             role_key="decision_owner",

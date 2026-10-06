@@ -890,9 +890,11 @@ A module that relates its records to another module's (a Stakeholder
 "experiences" a Pain Point, is "consulted on" a Decision) can't import that
 module, but must still validate the target belongs to the same project, label it
 and offer a picker. The owner declares
-`artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project)`;
-callers use `registry.get_artefact_summary` / `list_artefact_summaries` /
-`has_artefact_summary_provider`. On the frontend the owner's
+`artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project, get_many_in_project)`
+(the batch lookup is optional) and a display name in
+`artefact_type_labels[artefact_type]`; callers use `registry.get_artefact_summary` /
+`list_artefact_summaries` / `has_artefact_summary_provider` /
+`get_artefact_summaries_in_project` / `get_artefact_type_label`. On the frontend the owner's
 `TierAModuleDefinition.artefactPaths[artefact_type] = (projectId, id) => route`
 lets `modules/artefactPaths.ts` link to the record's page. Core owns only
 `requirement`.
@@ -904,8 +906,22 @@ flowchart LR
     REG -->|"enabled"| PROV["owner's provider<br/>id · project_id · label · status · is_archived"]
 ```
 
-- `ArtefactSummary` carries the target's `project_id`, so the caller enforces
-  "same project as the request" without knowing the owner's tables.
+- `ArtefactSummary` carries the target's `project_id` (`None` for an org-owned
+  record, with `organization_id` set), so the caller enforces "same project as
+  the request" without knowing the owner's tables.
+- `get_many_in_project(db, project_id, ids)` returns only what that project may
+  see — its own records and, for a type with an org form, the org's records the
+  project has not hidden — in one query. The owner applies its own visibility
+  rules there; without it the registry falls back to `get` per id filtered to the
+  project. `get_artefact_summaries_in_project` adds the module/sub-component
+  enablement check (a sub-component whose `key` equals the artefact type) and
+  returns `None` when no module provides the type, so a caller can tell "cannot
+  show this kind" from "none visible".
+- Every first-party artefact type has a provider, enforced by
+  `tests/test_link_graph.py`: the core link graph (`services/link_graph.py`,
+  `GET /projects/{id}/artefacts/{type}/{id}/link-graph`) shows only types it can
+  resolve. A new module declaring `artefact_types` must also declare a provider
+  and a label.
 - A relationship kind whose target type has no provider (Design / System
   Element, until Module 6) is *declared but unavailable*: listed, never
   creatable. It goes live when the owner registers a provider.

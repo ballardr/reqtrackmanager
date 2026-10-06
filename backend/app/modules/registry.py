@@ -51,7 +51,7 @@ import logging
 import os
 import re
 import uuid
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -1169,17 +1169,22 @@ class ArtefactSummary:
     Attributes:
         id: The artefact's id.
         project_id: The project the artefact belongs to (links are validated
-            against the linking record's own project).
+            against the linking record's own project); `None` for a record
+            owned by an organisation rather than a project (an org-level
+            Persona, say), which therefore never matches a project check.
         label: Display name (a code plus title where the artefact has one).
         status: The artefact's lifecycle status as a plain string, or `None`.
         is_archived: Whether the artefact is archived.
+        organization_id: The owning organisation for an org-owned record,
+            else `None`.
     """
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    project_id: uuid.UUID | None
     label: str
     status: str | None = None
     is_archived: bool = False
+    organization_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -1191,10 +1196,20 @@ class ArtefactSummaryProvider:
             record does not exist.
         list_for_project: `(db, project_id) -> list[ArtefactSummary]`, the
             records a picker can offer for the project.
+        get_many_in_project: `(db, project_id, ids) -> list[ArtefactSummary]`,
+            optional batch lookup (one query, not one per id) that returns
+            only the records `project_id` may see: owned by that project, or
+            owned by its organisation and not hidden from it. The owning
+            module applies its own visibility rules here (e.g. per-project
+            hiding of an org Persona), so the artefact link graph can ask
+            "which of these are visible here" without knowing them. When
+            omitted, callers fall back to `get` per id and keep records
+            whose `project_id` equals the project.
     """
 
     get: Callable[[Session, uuid.UUID], ArtefactSummary | None]
     list_for_project: Callable[[Session, uuid.UUID], list[ArtefactSummary]]
+    get_many_in_project: Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], list[ArtefactSummary]] | None = None
 
 
 @dataclass(frozen=True)
@@ -1730,6 +1745,11 @@ class ModuleDefinition:
             `list_artefact_summaries` (below), which return `None`/`[]` when
             the owning module is disabled for the project. Empty for a module
             whose records nothing else links to.
+        artefact_type_labels: Maps one of this module's own `artefact_types` to
+            its singular display name (e.g. `"pain_point"` -> `"Pain point"`),
+            read via `get_artefact_type_label`. Lets core UI and API responses
+            name a record's kind without a closed per-module map in a core
+            file; a type left out gets a title-cased fallback.
         reports: Module 1 Phase 12b — the reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -1783,6 +1803,7 @@ class ModuleDefinition:
         default_factory=dict
     )
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = field(default_factory=dict)
+    artefact_type_labels: dict[str, str] = field(default_factory=dict)
     reports: tuple[ReportDefinition, ...] = field(default=())
 
 
@@ -3333,6 +3354,68 @@ def list_artefact_summaries(db: Session, project_id: uuid.UUID, artefact_type: s
     if not is_module_enabled_for_project(db, project_id, definition.key):
         return []
     return provider.list_for_project(db, project_id)
+
+
+_CORE_ARTEFACT_TYPE_LABELS = {"requirement": "Requirement", "requirement_action": "Action"}
+
+
+def get_artefact_type_label(artefact_type: str) -> str:
+    """The singular display name of `artefact_type`: a core type's built-in
+    label, else the owning module's `artefact_type_labels` entry, else the
+    type string title-cased (`"open_question"` -> `"Open question"`)."""
+    label = _CORE_ARTEFACT_TYPE_LABELS.get(artefact_type)
+    if label is not None:
+        return label
+    for definition in get_module_registry().values():
+        label = definition.artefact_type_labels.get(artefact_type)
+        if label is not None:
+            return label
+    return artefact_type.replace("_", " ").capitalize()
+
+
+def _artefact_type_enabled_for_project(
+    db: Session, definition: ModuleDefinition, artefact_type: str, project_id: uuid.UUID
+) -> bool:
+    """Whether the module owning `artefact_type` is enabled for the project —
+    and, where the module declares a sub-component keyed by the artefact type
+    itself (Context & Strategy's `"pain_point"`, Stakeholders' `"persona"`),
+    whether that sub-component is too."""
+    if any(sub.key == artefact_type for sub in definition.sub_components):
+        return is_module_subcomponent_enabled(db, project_id, definition.key, artefact_type)
+    return is_module_enabled_for_project(db, project_id, definition.key)
+
+
+def get_artefact_summaries_in_project(
+    db: Session, project_id: uuid.UUID, artefact_type: str, ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, ArtefactSummary] | None:
+    """The summaries of the `ids` of `artefact_type` that `project_id` may
+    see, via the owning module's provider (batch when it offers
+    `get_many_in_project`, else one `get` per id filtered to the project).
+
+    Args:
+        db: An active database session.
+        project_id: The project doing the looking.
+        artefact_type: A registered artefact type, e.g. `"decision"`.
+        ids: Record ids to look up.
+
+    Returns:
+        `{id: summary}` for the visible records — a missing id is absent,
+        so "not found", "other project's" and "hidden" look identical; `{}`
+        when the owning module (or sub-component) is disabled for the
+        project. `None` when no installed module provides `artefact_type`,
+        so a caller can tell "cannot show this kind yet" from "none visible".
+    """
+    found = _summary_provider_for(artefact_type)
+    if found is None:
+        return None
+    definition, provider = found
+    if not ids or not _artefact_type_enabled_for_project(db, definition, artefact_type, project_id):
+        return {}
+    if provider.get_many_in_project is not None:
+        summaries = provider.get_many_in_project(db, project_id, list(ids))
+    else:
+        summaries = [s for s in (provider.get(db, i) for i in ids) if s is not None and s.project_id == project_id]
+    return {s.id: s for s in summaries}
 
 
 def get_subtype_providers() -> dict[str, Callable[[Session, uuid.UUID], list[str]]]:

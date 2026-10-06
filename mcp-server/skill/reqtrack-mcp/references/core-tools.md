@@ -32,6 +32,12 @@ Approves or rejects a submitted (or in-review) change request.
 
 Parameters: `project_id` (string), `change_request_id*` (string), `approve*` (boolean), `note` (string)
 
+## `get_artefact_link_graph` (read)
+
+Gets what an artefact is linked to, out to a few hops: use it for impact analysis ("what depends on this?", "where does this come from?").
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `depth` (integer), `direction` (string)
+
 ## `get_change_request` (read)
 
 Gets a single change request's full current detail.

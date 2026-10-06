@@ -261,6 +261,7 @@ from app.modules.compliance.service import (
     COMPLIANCE_STANDARD_CONTENT_APPROVE_BASELINE_PERMISSION,
     COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION,
 )
+from app.modules.compliance.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
 from app.modules.registry import (
     EntityScopeDefinition,
     McpToolDefinition,
@@ -549,6 +550,8 @@ MODULE_DEFINITION = ModuleDefinition(
     validate_org_group_member_removal=_validate_org_group_member_removal,
     validate_org_group_deletion=_validate_org_group_deletion,
     artefact_types=_ARTEFACT_TYPES,
+    artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     entity_scopes={
         "standard": EntityScopeDefinition(

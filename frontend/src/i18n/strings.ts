@@ -1336,6 +1336,11 @@ const en = {
     newLinkType: "New link type",
     forwardName: "Forward name",
     reverseName: "Reverse name",
+    linkTypeFlowHint:
+      "Direction tells a {requirement}'s link graph where the target sits when read with the forward name: “Target is upstream” for “Derives from” (the target is where this one comes from), “Target is downstream” for “Is implemented by” (the target depends on this one), “No direction” for “Related to”. Unclassified types still show, as related.",
+    linkTypeFlowLabel: (name: string) => `Direction: ${name}`,
+    linkTypeFlowUpdated: "Link type direction updated.",
+    linkTypeFlowFailed: "Could not update the link type direction.",
     deleteLinkType: "Delete this link type",
     deleteReportTemplate: (name: string) => `Delete ${name}`,
     deleteResource: (name: string) => `Delete ${name}`,

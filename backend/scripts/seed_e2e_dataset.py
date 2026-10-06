@@ -214,9 +214,12 @@ def create_requirement(headers: dict, project_id: str, name: str, reasoning: str
     return r.json()
 
 
-def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str) -> dict:
+def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none") -> dict:
+    """`flow` says where the link's target sits in a traceability chain: "forward_is_upstream",
+    "forward_is_downstream" or "none" (see `models.enums.LinkFlow`)."""
     r = httpx.post(
-        f"{BASE}/orgs/{org_id}/link-types", json={"forward_name": forward_name, "reverse_name": reverse_name},
+        f"{BASE}/orgs/{org_id}/link-types",
+        json={"forward_name": forward_name, "reverse_name": reverse_name, "flow": flow},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -770,7 +773,9 @@ def main() -> None:
 
     print("Adding a custom link type and fixed requirement links/actions on Alpha-1, for the requirement-links "
           "and requirement-actions E2E specs...")
-    e2e_link_type = create_link_type(h_ab, alpha["id"], forward_name="E2E Supersedes", reverse_name="E2E Is superseded by")
+    e2e_link_type = create_link_type(
+        h_ab, alpha["id"], forward_name="E2E Supersedes", reverse_name="E2E Is superseded by", flow="forward_is_upstream",
+    )
     create_requirement_link(h_ab, alpha1["id"], alpha1_reqs[1]["id"], alpha1_reqs[0]["id"], e2e_link_type["id"])
     alpha1_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{alpha1['id']}/action-types", headers=h_ab, timeout=30).json()}
     e2e_review_action = create_and_link_action(

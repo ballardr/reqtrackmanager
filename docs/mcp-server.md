@@ -6,7 +6,7 @@ Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, default
 
 ## What it can do
 
-Eighteen read tools, always available:
+Nineteen read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
@@ -19,6 +19,7 @@ Eighteen read tools, always available:
 | `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why (C-A-09) |
+| `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream / downstream / related) for impact analysis; reports hidden and truncated results rather than hiding them |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes (C-R-03) |

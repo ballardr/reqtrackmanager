@@ -43,7 +43,7 @@ MCP_WRITES_ENABLED = os.environ.get("MCP_WRITES_ENABLED", "false").strip().lower
 
 READ_ONLY_TOOLS = {
     "list_organizations", "list_projects", "get_project",
-    "list_requirements", "get_requirement", "get_requirement_history",
+    "list_requirements", "get_requirement", "get_requirement_history", "get_artefact_link_graph",
     "list_change_requests", "get_change_request", "list_change_request_votes",
     "list_change_request_tasks", "list_change_request_comments",
     "list_requirement_comments", "list_notifications",
@@ -91,11 +91,21 @@ def test_health_check_is_reachable_without_auth():
 
 
 @pytest.mark.asyncio
-async def test_tools_are_discoverable():
+async def test_tools_are_discoverable(admin_token):
+    """The core tool set is exactly the expected one. Module-contributed tools are registered
+    lazily from the backend's manifest (and stay registered once any earlier request has loaded
+    them), so they are subtracted first: whether they are present depends on what ran before,
+    which is not what this test is about (their own contract is in `test_module_tools.py`)."""
+    manifest = httpx.get(
+        f"{REQTRACK_API_URL}/api/v1/system/modules/mcp-tools", headers={"Authorization": f"Bearer {admin_token}"},
+        timeout=30,
+    )
+    manifest.raise_for_status()
+    module_tools = {entry["name"] for entry in manifest.json()}
     async with _client(None) as client:
         tools = {t.name for t in await client.list_tools()}
     expected = READ_ONLY_TOOLS | (WRITE_TOOLS | APPROVAL_TOOLS if MCP_WRITES_ENABLED else set())
-    assert tools == expected
+    assert tools - module_tools == expected
 
 
 @pytest.mark.asyncio
@@ -181,6 +191,30 @@ async def test_full_tool_chain_returns_consistent_real_data(admin_token):
         )
         assert len(history.data) >= 1
         assert history.data[0]["version_number"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_artefact_link_graph_returns_the_root_and_validates_arguments(admin_token):
+    """The link graph of a real requirement contains that requirement as its
+    root, and bad arguments are rejected before any backend call."""
+    async with _client(admin_token) as client:
+        projects = (await client.call_tool("list_projects", {})).data
+        if not projects:
+            pytest.skip("No projects visible to the admin account — seed data hasn't been loaded.")
+        project = projects[0]
+        requirements = (await client.call_tool("list_requirements", {"project_id": project["id"]})).data
+        if not requirements:
+            pytest.skip(f"Project {project['name']!r} has no requirements to fetch.")
+        requirement = requirements[0]
+        args = {"project_id": project["id"], "artefact_type": "requirement", "artefact_id": requirement["id"]}
+
+        graph = (await client.call_tool("get_artefact_link_graph", args)).data
+
+        assert graph["root"]["id"] == requirement["id"] and graph["root"]["type"] == "requirement"
+        assert {"nodes", "edges", "truncated", "hidden_count", "unavailable_count"} <= set(graph)
+        for bad in ({"depth": 4}, {"direction": "sideways"}, {"artefact_type": "../x"}, {"artefact_id": "not-a-uuid"}):
+            with pytest.raises(ToolError):
+                await client.call_tool("get_artefact_link_graph", {**args, **bad})
 
 
 @pytest.mark.asyncio

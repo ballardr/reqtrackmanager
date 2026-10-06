@@ -39,7 +39,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.relationship import ArtefactLink
@@ -142,6 +142,28 @@ def get_links_from_many(db: Session, source_type: str, source_ids: Sequence[uuid
             )
         ).all()
     )
+
+
+def get_links_touching_many(
+    db: Session, frontier: dict[str, Sequence[uuid.UUID]], *, outgoing: bool = True, incoming: bool = True
+) -> list[ArtefactLink]:
+    """Returns every `ArtefactLink` row with an artefact of `frontier` (a
+    `{artefact_type: ids}` mapping, any mix of types) as its source
+    (`outgoing`) and/or its target (`incoming`), in one query — the batched
+    step a breadth-first traversal takes per level. A link between two
+    frontier artefacts is returned once. Empty when nothing is requested.
+    """
+    clauses = []
+    for artefact_type, ids in frontier.items():
+        if not ids:
+            continue
+        if outgoing:
+            clauses.append(and_(ArtefactLink.source_type == artefact_type, ArtefactLink.source_id.in_(ids)))
+        if incoming:
+            clauses.append(and_(ArtefactLink.target_type == artefact_type, ArtefactLink.target_id.in_(ids)))
+    if not clauses:
+        return []
+    return list(db.scalars(select(ArtefactLink).where(or_(*clauses)).order_by(ArtefactLink.created_at, ArtefactLink.id)).all())
 
 
 def get_link_between(

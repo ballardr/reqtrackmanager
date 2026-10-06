@@ -14,6 +14,7 @@ import type {
   EntityScope,
   ExternalUserPolicy,
   FileAsset,
+  LinkFlow,
   LinkTypeDefinition,
   MaterializeResult,
   MergeConflict,
@@ -49,6 +50,8 @@ import type { ModuleAvailability } from "../api/types";
 import {
   collapseProjectRoles,
   fromModuleAvailability,
+  LINK_FLOW_LABEL,
+  LINK_FLOW_VALUES,
   MODULE_AVAILABILITY_LABEL,
   ORG_ROLE_LABEL,
   PENDING_INVITE_STATUS_LABEL,
@@ -1221,6 +1224,18 @@ export function OrgAdminPage() {
   async function renameLinkType(id: string, forward: string, reverse: string) {
     await api.patch(`/api/v1/orgs/${orgId}/link-types/${id}`, { forward_name: forward, reverse_name: reverse });
     reload();
+  }
+
+  async function setLinkTypeFlow(item: LinkTypeDefinition, flow: LinkFlow) {
+    try {
+      await api.patch(`/api/v1/orgs/${orgId}/link-types/${item.id}`, {
+        forward_name: item.forward_name, reverse_name: item.reverse_name, flow,
+      });
+      showToast(strings.orgAdmin.linkTypeFlowUpdated);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.orgAdmin.linkTypeFlowFailed), "error");
+    }
   }
 
   async function deleteLinkType(id: string, reassignToId?: string) {
@@ -3257,6 +3272,7 @@ export function OrgAdminPage() {
 
             <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes}>
               <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypesHint}</p>
+              <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypeFlowHint}</p>
               <DefinitionList
                 items={linkTypes}
                 fields={[
@@ -3270,6 +3286,20 @@ export function OrgAdminPage() {
                 onDelete={deleteLinkType}
                 deleteLabel={strings.orgAdmin.deleteLinkType}
                 addLabel={strings.orgAdmin.newLinkType}
+                renderExtra={(item) => (
+                  <select
+                    key="flow"
+                    className="input"
+                    style={{ maxWidth: 180 }}
+                    aria-label={strings.orgAdmin.linkTypeFlowLabel(item.forward_name)}
+                    value={item.flow}
+                    onChange={(e) => setLinkTypeFlow(item, e.target.value as LinkFlow)}
+                  >
+                    {LINK_FLOW_VALUES.map((flow) => (
+                      <option key={flow} value={flow}>{LINK_FLOW_LABEL[flow]}</option>
+                    ))}
+                  </select>
+                )}
               />
             </CollapsibleSection>
           </div>

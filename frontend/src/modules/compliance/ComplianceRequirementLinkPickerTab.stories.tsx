@@ -62,7 +62,7 @@ export const CascadingPickerCreatesLink: Story = {
       },
     ];
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/link-types")) return [{ id: "lt-1", organization_id: "org-1", forward_name: "Derives from", reverse_name: "Is the source of", sort_order: 0 }];
+      if (path.endsWith("/link-types")) return [{ id: "lt-1", organization_id: "org-1", forward_name: "Derives from", reverse_name: "Is the source of", sort_order: 0, flow: "forward_is_upstream" }];
       // More specific paths (versions/requirements) must be checked before
       // the broader `/modules/compliance/standards` substring match below,
       // since `/standards/standard-1/versions` also contains that substring.
@@ -116,7 +116,7 @@ export const CreateFailureShowsInlineError: Story = {
       },
     ];
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/link-types")) return [{ id: "lt-1", organization_id: "org-1", forward_name: "Derives from", reverse_name: "Is the source of", sort_order: 0 }];
+      if (path.endsWith("/link-types")) return [{ id: "lt-1", organization_id: "org-1", forward_name: "Derives from", reverse_name: "Is the source of", sort_order: 0, flow: "forward_is_upstream" }];
       if (path.endsWith("/standards/standard-1/versions")) return versions;
       if (path.endsWith("/versions/version-1/requirements")) return requirements;
       if (path.includes("/modules/compliance/standards")) return standards;

@@ -12,7 +12,7 @@ Every tool call authenticates with the caller's own ReqTrackManager token — se
 
 ## What it can do
 
-Eighteen read tools, always available:
+Nineteen read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
@@ -25,6 +25,7 @@ Eighteen read tools, always available:
 | `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why |
+| `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream, downstream or related) for impact analysis; says when the result is partial |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes |

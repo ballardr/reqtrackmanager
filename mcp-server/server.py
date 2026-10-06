@@ -72,6 +72,7 @@ import html
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -569,6 +570,57 @@ async def get_requirement_history(project_id: str | None = None, *, requirement_
     pid = _require_project_id(project_id)
     rid = _require_uuid(requirement_id, "requirement_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/{rid}/history")
+    return response.json()
+
+
+@mcp.tool
+async def get_artefact_link_graph(
+    project_id: str | None = None,
+    *,
+    artefact_type: str,
+    artefact_id: str,
+    depth: int = 2,
+    direction: str = "both",
+) -> dict:
+    """Gets what an artefact is linked to, out to a few hops: use it for impact analysis ("what depends on this?", "where does this come from?").
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The root artefact's type, for example "requirement",
+            "requirement_action", "decision", "pain_point", "strategy",
+            "persona", "stakeholder_need" or "compliance_evidence".
+        artefact_id: The artefact's UUID (from the matching list tool).
+        depth: Hops to follow, 1 to 3 (default 2).
+        direction: Which stored link orientations to follow: "outgoing"
+            (the artefact is the link's source), "incoming" (it is the
+            target) or "both" (default).
+
+    Returns:
+        `root` and `nodes` (each with `type`, `type_label`, `id`, `label`,
+        `status`, `is_archived`, `depth`), and `edges`. Each edge goes from
+        the node nearer the root (`from_type`/`from_id`) to the other one
+        (`to_type`/`to_id`), with `phrase` (how the link reads from the
+        `from` side, null when untyped) and `flow`: "upstream" (the `to`
+        node is where the `from` node comes from), "downstream" (it depends
+        on the `from` node) or "related" (no direction, or the link type is
+        not classified). The result is partial when `truncated` is true (the
+        node cap was reached), `hidden_count` is above zero (linked records
+        the caller cannot see) or `unavailable_count` is above zero (linked
+        records of a kind that cannot be shown); say so rather than treating
+        the graph as complete.
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", artefact_type):
+        raise ValueError(f"'artefact_type' must be a lowercase artefact type such as 'requirement', got {artefact_type!r}.")
+    if not 1 <= depth <= 3:
+        raise ValueError(f"'depth' must be between 1 and 3, got {depth!r}.")
+    if direction not in ("outgoing", "incoming", "both"):
+        raise ValueError(f"'direction' must be 'outgoing', 'incoming' or 'both', got {direction!r}.")
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-graph",
+        params={"depth": depth, "direction": direction},
+    )
     return response.json()
 
 

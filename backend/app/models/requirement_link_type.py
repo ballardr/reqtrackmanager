@@ -20,7 +20,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.models.base import TimestampMixin, UUIDPKMixin
+from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.enums import LinkFlow
 
 
 class RequirementLinkTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
@@ -43,6 +44,9 @@ class RequirementLinkTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
         reverse_name: Display name for the link when read from its target
             requirement.
         sort_order: Display/picker order among the organisation's link types.
+        flow: Which way the link points in a traceability chain, so the link
+            graph can split a node's neighbours into upstream/downstream
+            (`models.enums.LinkFlow`); `none` until an admin classifies it.
     """
 
     __tablename__ = "requirement_link_type_definitions"
@@ -64,3 +68,4 @@ class RequirementLinkTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
     forward_name: Mapped[str] = mapped_column(String(100))
     reverse_name: Mapped[str] = mapped_column(String(100))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    flow: Mapped[LinkFlow] = mapped_column(str_enum(LinkFlow, 30), default=LinkFlow.NONE, server_default=LinkFlow.NONE.value)

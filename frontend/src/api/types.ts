@@ -957,7 +957,21 @@ export interface LinkTypeDefinition {
   forward_name: string;
   reverse_name: string;
   sort_order: number;
+  /** Which way the link points in a traceability chain; see `LINK_FLOW_LABEL`. */
+  flow: LinkFlow;
 }
+
+/** Where the target of a link of a given type sits relative to its source, read
+ * with the type's forward name: upstream = a source/origin of the source
+ * ("Derives from"), downstream = depends on or follows from it ("Is
+ * implemented by"), none = symmetric or not yet classified. */
+export type LinkFlow = "none" | "forward_is_upstream" | "forward_is_downstream";
+export const LINK_FLOW_LABEL: Record<LinkFlow, string> = {
+  none: "No direction",
+  forward_is_upstream: "Target is upstream",
+  forward_is_downstream: "Target is downstream",
+};
+export const LINK_FLOW_VALUES: LinkFlow[] = ["none", "forward_is_upstream", "forward_is_downstream"];
 
 /** Project-scoped requirement-action type (e.g. Review, Test) — project-
  * scoped rather than org-scoped, matching `CustomFieldDefinition`, per

@@ -72,6 +72,7 @@ from app.modules.stakeholders.service import (
     STAKEHOLDERS_MODULE_KEY,
     persona_scoring_targets,
 )
+from app.modules.stakeholders.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
 
 _PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}"
 
@@ -551,6 +552,8 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
     ),
     artefact_types=(PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE),
+    artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     sub_components=(
         ModuleSubComponentDefinition(key="persona", name="Personas", default_enabled=True),

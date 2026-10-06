@@ -454,7 +454,7 @@ export const CreateStepAttachFileAddLinkThenFinish: Story = {
       if (path.includes("/stages")) return stages;
       if (path.includes("custom-fields")) return [];
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
-      if (path.includes("/link-types")) return [{ id: "lt1", organization_id: "org-1", forward_name: "Depends on", reverse_name: "Depended on by", sort_order: 0 }];
+      if (path.includes("/link-types")) return [{ id: "lt1", organization_id: "org-1", forward_name: "Depends on", reverse_name: "Depended on by", sort_order: 0, flow: "none" }];
       if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) {
         return [buildRequirement({ id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1" })];
       }

@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.models.enums import LinkFlow
+
 
 class LinkTypeCreate(BaseModel):
     """Payload to create a new link type in an organisation. Both directional
@@ -21,16 +23,18 @@ class LinkTypeCreate(BaseModel):
 
     forward_name: str
     reverse_name: str
+    flow: LinkFlow = LinkFlow.NONE
 
 
 class LinkTypeUpdate(BaseModel):
     """Renames both directional names at once — see
     `services.definitions`' module docstring: renaming never disturbs any
     existing link using this type, since every reference points at the
-    row's id, never its names."""
+    row's id, never its names. `flow` left out keeps the current direction."""
 
     forward_name: str
     reverse_name: str
+    flow: LinkFlow | None = None
 
 
 class LinkTypeOut(BaseModel):
@@ -41,3 +45,4 @@ class LinkTypeOut(BaseModel):
     forward_name: str
     reverse_name: str
     sort_order: int
+    flow: LinkFlow

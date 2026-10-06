@@ -175,9 +175,8 @@ from app.modules.context_strategy.service import (
     PAIN_POINT_ARTEFACT_TYPE,
     STRATEGY_ARTEFACT_TYPE,
 )
+from app.modules.context_strategy.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
 from app.modules.registry import (
-    ArtefactSummary,
-    ArtefactSummaryProvider,
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
@@ -770,34 +769,6 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
     return ids
 
 
-def _pain_point_summary(point) -> ArtefactSummary:
-    return ArtefactSummary(
-        id=point.id, project_id=point.project_id, label=point.title, status=point.status.value,
-        is_archived=point.is_archived,
-    )
-
-
-def _get_pain_point_summary(db: Session, pain_point_id: UUID) -> ArtefactSummary | None:
-    """`ArtefactSummaryProvider.get` for Pain Points."""
-    from app.modules.context_strategy.models import PainPoint
-
-    point = db.get(PainPoint, pain_point_id)
-    return None if point is None else _pain_point_summary(point)
-
-
-def _list_pain_point_summaries(db: Session, project_id: UUID) -> list[ArtefactSummary]:
-    """`ArtefactSummaryProvider.list_for_project` for Pain Points (unarchived, by title)."""
-    from sqlalchemy import select
-
-    from app.modules.context_strategy.models import PainPoint
-
-    rows = db.scalars(
-        select(PainPoint).where(PainPoint.project_id == project_id, PainPoint.is_archived.is_(False))
-        .order_by(PainPoint.title)
-    ).all()
-    return [_pain_point_summary(p) for p in rows]
-
-
 # Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
 _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
 
@@ -881,11 +852,8 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     artefact_ids_in_organization=_artefact_ids_in_organization,
     reports=REPORT_DEFINITIONS,
-    artefact_summary_providers={
-        PAIN_POINT_ARTEFACT_TYPE: ArtefactSummaryProvider(
-            get=_get_pain_point_summary, list_for_project=_list_pain_point_summaries,
-        ),
-    },
+    artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    artefact_type_labels=ARTEFACT_TYPE_LABELS,
     # Module 0 (Platform Foundations) Phase 4: each of Context & Strategy's
     # five artefacts declares its own sub-component key only once its own
     # phase lands (Phase 1 registered "strategy", Phase 2 "future_state",

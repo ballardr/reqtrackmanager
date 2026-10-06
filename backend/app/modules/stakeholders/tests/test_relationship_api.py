@@ -394,7 +394,8 @@ def test_summary_providers_are_registered_by_their_own_modules_and_gated_by_enab
     )
 
     assert has_artefact_summary_provider("pain_point") and has_artefact_summary_provider("decision")
-    assert not has_artefact_summary_provider("design") and not has_artefact_summary_provider("stakeholder")
+    assert has_artefact_summary_provider("stakeholder")  # every first-party type has one (link graph)
+    assert not has_artefact_summary_provider("design") and not has_artefact_summary_provider("system_element")
 
     org, project, token = _setup(client, admin_token, "Rel Hook Co")
     point = _create_pain_point(client, token, org["id"], project["id"], "Hooked")
