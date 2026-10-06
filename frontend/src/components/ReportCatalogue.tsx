@@ -82,7 +82,10 @@ export function ReportCatalogue({
           </span>
         </div>
       )}
-      {extra ? extra.render() : entry && <ReportRunner key={entry.path} entry={entry} scope={scope} organizationId={organizationId} />}
+      {extra ? extra.render() : entry && <ReportRunner
+          key={entry.path} entry={entry} scope={scope} organizationId={organizationId}
+          focusSection={searchParams.get("section") ?? undefined}
+        />}
     </div>
   );
 }

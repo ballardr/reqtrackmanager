@@ -91,9 +91,10 @@ A **Blocker** badge shows whenever any counted persona rates Severity at the axi
 
 | The Pain Point list with the Score column |
 | --- |
-| Switching the model or roll-up re-ranks the list; **Hide intentional limitations** takes deliberate restrictions out |
+| Switching the model or roll-up re-ranks the list; the filters narrow it to open items, Blockers, scored or not scored, and in or out intentional limitations |
 | ![Pain Point list with a Score column showing bands such as Critical, Medium and Not scored, a Blocker badge, an Intentional badge, a scoring model and roll-up selector, and a Hide intentional limitations filter](../../../static/img/screenshots/pain-point-list.png) |
 
+- The filter panel can narrow the list to **Open only**, **Blockers only**, **Scoring** (scored or not scored), and **Hide** or **Only intentional limitations**. [Report figures](./reports.md#following-a-figure) open the list with these already applied.
 - **Not scored** means no persona has every input the chosen model needs. It is a gap, not a low priority: switch to a model whose inputs you have, or score it.
 - **Unscored personas are left out, not counted as zero.** If only one of five personas is scored, the Pain Point shows that persona's score.
 - A persona missing an input the chosen model needs is "Not scored" under that model only.

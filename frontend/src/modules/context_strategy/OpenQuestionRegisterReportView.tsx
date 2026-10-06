@@ -22,13 +22,13 @@ const REPLACED_SECTIONS = new Set(["open", "overdue", "unowned"]);
 /**
  * @param props The shared report view props (`ReportViewProps`).
  */
-export function OpenQuestionRegisterReportView({ result, scope, values }: ReportViewProps) {
+export function OpenQuestionRegisterReportView({ result, scope, values, figureAction }: ReportViewProps) {
   if (result.eligible_projects === 0) return <ReportNothingToReport />;
   const { items } = result.data as OpenQuestionRegisterData;
   const showProject = scope.kind === "organization" && !values.project_id;
   return (
     <div className="stack">
-      <ReportSummary result={result} />
+      <ReportSummary result={result} figureAction={figureAction} />
       <section className="stack" style={{ gap: "0.5rem" }} aria-label="Open Questions">
         <h3 style={{ margin: 0 }}>Open Questions</h3>
         {items.length === 0 ? (

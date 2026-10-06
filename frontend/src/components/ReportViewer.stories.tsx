@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
 import { buildReportResult } from "../testing/reportFixtures";
+import { withRouter } from "../testing/storybook-helpers";
 import { statBlockViolations } from "../testing/statBlockGeometry";
 import { ReportViewer } from "./ReportViewer";
 
@@ -82,5 +83,31 @@ export const GroupedPackFigures: Story = {
     await expect(canvas.queryByRole("region", { name: "Headline figures" })).not.toBeInTheDocument();
     await expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument();
     await expect(statBlockViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** The resolver decides what each figure does: linked figures become links, figures it declines stay plain numbers. */
+export const FiguresFollowTheFigureAction: Story = {
+  decorators: [withRouter("/")],
+  args: {
+    result: buildReportResult({
+      metrics: [
+        { label: "Blockers", value: 1, gap: true, link: { kind: "module", target: "pain-points", query: { blocker: "1" }, section: null } },
+        { label: "Versions in range", value: 29, link: null },
+      ],
+    }),
+    figureAction: (metric) => (metric.link ? { to: `/go/${metric.link.target}?blocker=1` } : undefined),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "Blockers: 1" })).toHaveAttribute("href", "/go/pain-points?blocker=1");
+    await expect(canvas.queryByRole("link", { name: /Versions in range/ })).not.toBeInTheDocument();
+  },
+};
+
+/** Every section carries an anchor id so a figure can link straight to its gap table. */
+export const SectionsAreAnchored: Story = {
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector("#report-section-gaps")).not.toBeNull();
   },
 };

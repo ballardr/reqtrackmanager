@@ -43,7 +43,12 @@ const meta: Meta<typeof ProjectPainPointsPage> = {
   title: "Modules/ContextStrategy/ProjectPainPointsPage",
   component: ProjectPainPointsPage,
   decorators: [
-    withRouter(`/projects/${PROJECT_ID}/modules/context_strategy/pain-points`, "/projects/:projectId/modules/context_strategy/pain-points"),
+    // `parameters.query` lets a story open the page the way a report figure's link does (`?open=1&blocker=1`).
+    (Story, context) =>
+      withRouter(
+        `/projects/${PROJECT_ID}/modules/context_strategy/pain-points${context.parameters.query ?? ""}`,
+        "/projects/:projectId/modules/context_strategy/pain-points",
+      )(Story, context),
     withToast(),
   ],
 };
@@ -83,7 +88,8 @@ export const ShowsScoresAndBlockerAndSorts: Story = {
     await waitFor(() => expect(canvas.getByText("Critical · 18")).toBeInTheDocument());
     await expect(canvas.getByText("Blocker")).toBeInTheDocument();
     await expect(canvas.getByText("Intentional")).toBeInTheDocument();
-    await expect(canvas.getByText("Not scored")).toBeInTheDocument();
+    // Scoped to the table: the Scoring filter's "Not scored" option has the same text.
+    await expect(within(canvas.getByRole("table", { name: "Pain Points" })).getByText("Not scored")).toBeInTheDocument();
 
     const titles = () => canvas.getAllByRole("button", { name: /problem/ }).map((b) => b.textContent?.replace("Intentional", ""));
     const scoreHeader = canvas.getByRole("button", { name: /Score/ });
@@ -137,3 +143,67 @@ export const OpenCreateModal: Story = {
 
 export const LightTheme: Story = { ...ListsPainPoints };
 export const DarkTheme: Story = { ...ListsPainPoints, globals: { theme: "dark" } };
+
+/** A report figure's link opens the list already filtered, and every pre-set filter is a visible control. */
+export const OpensPreFilteredFromAReportFigure: Story = {
+  parameters: { query: "?open=1&intentional=hide&blocker=1" },
+  beforeEach: () =>
+    mockPageApis(
+      [
+        painPoint({ id: "pp-block", title: "Blocking problem" }),
+        painPoint({ id: "pp-fine", title: "Fine problem" }),
+        painPoint({ id: "pp-int", title: "Intentional blocker", is_intentional: true }),
+        painPoint({ id: "pp-closed", title: "Closed blocker", status: "closed" }),
+      ],
+      [
+        scoringSummary({ pain_point_id: "pp-block", is_blocker: true, blocker_labels: ["Pilot"], counted: 1, score: scoreValue({ raw: 10 }) }),
+        scoringSummary({ pain_point_id: "pp-fine", counted: 1, score: scoreValue({ raw: 2 }) }),
+        scoringSummary({ pain_point_id: "pp-int", is_blocker: true, blocker_labels: ["Pilot"], counted: 1, score: scoreValue({ raw: 10 }) }),
+        scoringSummary({ pain_point_id: "pp-closed", is_blocker: true, blocker_labels: ["Pilot"], counted: 1, score: scoreValue({ raw: 10 }) }),
+      ],
+    ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Blocking problem")).toBeInTheDocument());
+    // Open, not intentional, and a Blocker: only the first survives.
+    await expect(canvas.queryByText("Fine problem")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Intentional blocker")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Closed blocker")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).toBeChecked();
+    await expect(canvas.getByRole("checkbox", { name: "Blockers only" })).toBeChecked();
+    await expect(canvas.getByRole("checkbox", { name: "Hide intentional limitations" })).toBeChecked();
+    // The seeded filters are ordinary controls: clearing one widens the list.
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Blockers only" }));
+    await expect(canvas.getByText("Fine problem")).toBeInTheDocument();
+  },
+};
+
+/** `intentional=only` and `scored=no` seed the other direction of the same controls. */
+export const OpensWithOnlyIntentionalAndUnscored: Story = {
+  parameters: { query: "?intentional=only&scored=no&status=submitted" },
+  beforeEach: () =>
+    mockPageApis(
+      [
+        painPoint({ id: "pp-a", title: "Intentional unscored", is_intentional: true }),
+        painPoint({ id: "pp-b", title: "Intentional scored", is_intentional: true }),
+        painPoint({ id: "pp-c", title: "Ordinary unscored" }),
+      ],
+      [scoringSummary({ pain_point_id: "pp-b", counted: 1, score: scoreValue({ raw: 4 }) })],
+    ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Intentional unscored")).toBeInTheDocument());
+    await expect(canvas.queryByText("Intentional scored")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Ordinary unscored")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("checkbox", { name: "Only intentional limitations" })).toBeChecked();
+  },
+};
+
+/** An unknown value in the URL is ignored rather than breaking the page or filtering everything out. */
+export const IgnoresUnknownFilterValues: Story = {
+  parameters: { query: "?status=bogus&priority=nope&scored=maybe&rollup=wat" },
+  beforeEach: () => mockPageApis([painPoint({ title: "Still listed" })]),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(within(canvasElement).getByText("Still listed")).toBeInTheDocument());
+  },
+};

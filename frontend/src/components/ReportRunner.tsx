@@ -26,16 +26,18 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-import { reportsApi, type ReportCatalogueEntry, type ReportResult, type ReportRunValues } from "../api/reports";
+import { reportsApi, type ReportCatalogueEntry, type ReportMetric, type ReportResult, type ReportRunValues } from "../api/reports";
 import { api } from "../api/client";
 import type { ReportTemplate } from "../api/types";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { getReportView } from "../modules/registry";
 import { downloadBlob } from "../utils/download";
+import { describeReportLink, reportLinkResolver } from "../utils/reportLinks";
 import { LabeledSelect } from "./LabeledSelect";
+import { ReportFigureProjectsDialog } from "./ReportFigureProjectsDialog";
 import { ReportExportButton } from "./ReportExportButton";
 import { ReportParamsForm } from "./ReportParamsForm";
-import { ReportViewer } from "./ReportViewer";
+import { ReportViewer, type ReportFigureActionResolver } from "./ReportViewer";
 import { Spinner } from "./Spinner";
 
 const RERUN_DELAY_MS = 300;
@@ -51,13 +53,15 @@ function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
  * @param entry The catalogue entry to run.
  * @param scope What it runs against: a project or an organisation, by id.
  * @param organizationId The owning organisation, for the branding template list.
+ * @param focusSection A section key to scroll to once the report has loaded (a figure's "see the gap table" link).
  */
 export function ReportRunner({
-  entry, scope, organizationId,
+  entry, scope, organizationId, focusSection,
 }: {
   entry: ReportCatalogueEntry;
   scope: { kind: "project" | "organization"; id: string };
   organizationId: string;
+  focusSection?: string;
 }) {
   const { showToast } = useToast();
   const [values, setValues] = useState<ReportRunValues>(() => initialValues(entry));
@@ -66,6 +70,7 @@ export function ReportRunner({
   const [settled, setSettled] = useState<{ signature: string; error: string | null } | null>(null);
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [templateId, setTemplateId] = useState("");
+  const [openedFigure, setOpenedFigure] = useState<{ metric: ReportMetric; values: ReportRunValues } | null>(null);
   const hasRun = useRef(false);
   const signature = JSON.stringify(values);
 
@@ -102,6 +107,17 @@ export function ReportRunner({
     };
   }, [organizationId]);
 
+  // Bring a linked-to gap table into view once its report has rendered (once per arrival, not per re-run).
+  const scrolled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusSection || result === null || scrolled.current === focusSection) return;
+    const target = document.getElementById(`report-section-${focusSection}`);
+    if (target) {
+      scrolled.current = focusSection;
+      target.scrollIntoView({ block: "start" });
+    }
+  }, [focusSection, result]);
+
   function setValue(name: string, value: string | number | boolean | null) {
     setValues((current) => ({ ...current, [name]: value }));
   }
@@ -119,6 +135,17 @@ export function ReportRunner({
   const busy = settled?.signature !== signature;
   const error = busy ? null : (settled?.error ?? null);
   const view = getReportView(entry.module_key, entry.key);
+  // Figures link to pages in a project report; an organisation report spans projects, so a figure opens a
+  // per-project list instead (and only if the server offers the breakdown).
+  const projectLinks = reportLinkResolver(scope, entry.module_key);
+  const figureAction: ReportFigureActionResolver | undefined = projectLinks
+    ? (metric) => (metric.link ? { to: projectLinks(metric.link), hint: describeReportLink(metric.link, metric.label) } : undefined)
+    : entry.breakdown_path
+      ? (metric) =>
+        metric.link
+          ? { onActivate: () => setOpenedFigure({ metric, values }), hint: `Shows which projects make up "${metric.label}"` }
+          : undefined
+      : undefined;
   const View = view?.component;
   return (
     <div className="stack">
@@ -156,11 +183,19 @@ export function ReportRunner({
             {result.scope_label} · generated {new Date(result.generated_at).toLocaleString()}
           </p>
           {View ? (
-            <View entry={entry} result={result} scope={scope} values={values} onValueChange={setValue} />
+            <View entry={entry} result={result} scope={scope} values={values} onValueChange={setValue} figureAction={figureAction} />
           ) : (
-            <ReportViewer result={result} />
+            <ReportViewer result={result} figureAction={figureAction} />
           )}
         </div>
+      )}
+      {openedFigure && (
+        <ReportFigureProjectsDialog
+          entry={entry}
+          values={openedFigure.values}
+          metric={openedFigure.metric}
+          onClose={() => setOpenedFigure(null)}
+        />
       )}
     </div>
   );

@@ -825,3 +825,12 @@ export interface OpenQuestionComment {
   edited_at: string | null;
   attachments: import("../../api/types").FileAsset[];
 }
+
+/** Pain Points still being worked (not rejected, duplicate, addressed or closed); mirrors the report's `OPEN_PAIN_POINT_STATUSES`. */
+export const PAIN_POINT_OPEN_STATUSES: readonly PainPointStatus[] = ["submitted", "triaged", "accepted"];
+
+/** Open Questions still unresolved; mirrors the report's `OPEN_QUESTION_OPEN_STATUSES`. */
+export const OPEN_QUESTION_OPEN_STATUSES: readonly OpenQuestionStatus[] = ["open", "investigating", "ready_for_decision"];
+
+/** Future States still expected to arrive (not superseded or retired); mirrors the report's `ROADMAP_FUTURE_STATE_STATUSES`. */
+export const FUTURE_STATE_ROADMAP_STATUSES: readonly FutureStateStatus[] = ["draft", "proposed", "under_review", "approved", "active"];

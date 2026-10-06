@@ -4,7 +4,7 @@ sidebar_position: 20.6
 
 # Report reference
 
-What each of the nine [reports](./reports.md) shows, which of its tables are gap lists, and what to do about a gap. Gap tables show a **Needs attention** count when they have rows. The figures in the screenshots come from the Falcon-3 demo project.
+What each of the nine [reports](./reports.md) shows, which of its tables are gap lists, and what to do about a gap. Gap tables show a **Needs attention** count when they have rows. Most headline figures are links to what they count; see [Following a figure](./reports.md#following-a-figure). The figures in the screenshots come from the Falcon-3 demo project.
 
 ```mermaid
 flowchart LR

@@ -109,6 +109,7 @@ from app.modules.registry import ReportDefinition, ReportParamDefinition, get_ar
 from app.services import relationships
 from app.services.report_framework import (
     ReportContext,
+    ReportLink,
     ReportMetric,
     ReportResult,
     ReportSection,
@@ -146,6 +147,35 @@ _PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 def _rollup(req: ReportContext) -> RollupMethod:
     """The persona roll-up method requested (the framework already rejected an unknown value)."""
     return RollupMethod(req.params["rollup"])
+
+
+def _page(path: str, **query: str) -> ReportLink:
+    """A link to one of this module's project list pages, pre-filtered by `query`.
+
+    The query keys are the filters the list pages read from the URL
+    (`ProjectPainPointsPage` and its siblings), so a figure's count and the list
+    it opens always describe the same set.
+    """
+    return ReportLink("module", path, query)
+
+
+def _gap_table(slug: str, section: str, **query: str) -> ReportLink:
+    """A link to another report's (or this one's) gap table, for gaps no list page can filter to.
+
+    Relationship-derived gaps (no Requirement, no parent Strategy, never applied) depend on links the
+    list pages do not load, so they open the report table that already lists exactly those items.
+    """
+    return ReportLink("report", slug, query, section)
+
+
+def _scoring_query(req: ReportContext) -> dict[str, str]:
+    """The model and roll-up the report was run with, so a linked list ranks the same way (defaults omitted)."""
+    query: dict[str, str] = {}
+    if req.params.get("model_key"):
+        query["model"] = req.params["model_key"]
+    if req.params.get("rollup") and req.params["rollup"] != RollupMethod.WEIGHTED_AVERAGE.value:
+        query["rollup"] = req.params["rollup"]
+    return query
 
 
 def _fmt_date(value: date | datetime | None) -> str:
@@ -498,10 +528,15 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
                       ["Model", "Pain point", "Project", "Persona", "Persona status", "Severity", "Frequency",
                        "Confidence", "Score (0–100)", "Band", "Blocker"], breakdown),
     ]
+    scoring = _scoring_query(req)
     result.metrics = [
-        ReportMetric("Open Pain Points (excluding intentional)", open_count), ReportMetric("Scored", scored),
-        ReportMetric("Not scored", len(unscored), gap=True), ReportMetric("Blockers", len(blockers), gap=True),
-        ReportMetric("Intentional limitations", len(intentional)),
+        ReportMetric("Open Pain Points (excluding intentional)", open_count, link=_page("pain-points", open="1", intentional="hide")),
+        ReportMetric("Scored", scored, link=_page("pain-points", open="1", intentional="hide", scored="yes", **scoring)),
+        ReportMetric("Not scored", len(unscored), gap=True,
+                     link=_page("pain-points", open="1", intentional="hide", scored="no", **scoring)),
+        ReportMetric("Blockers", len(blockers), gap=True,
+                     link=_page("pain-points", open="1", intentional="hide", blocker="1", **scoring)),
+        ReportMetric("Intentional limitations", len(intentional), link=_page("pain-points", open="1", intentional="only")),
     ]
     result.data = {"rollup": _rollup(req).value, "groups": groups}
     return result
@@ -568,7 +603,10 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
         ReportSection("drivers", "Intentional limitations", columns, rows),
         ReportSection("churn", "Churn risks", columns, churn_rows, gap=True),
     ]
-    result.metrics = [ReportMetric("Intentional limitations", len(rows)), ReportMetric("Churn risks", len(churn_rows), gap=True)]
+    result.metrics = [
+        ReportMetric("Intentional limitations", len(rows), link=_page("pain-points", open="1", intentional="only")),
+        ReportMetric("Churn risks", len(churn_rows), gap=True, link=_gap_table("upgrade-drivers", "churn", **_scoring_query(req))),
+    ]
     result.data = {"rollup": _rollup(req).value, "groups": groups}
     return result
 
@@ -708,10 +746,13 @@ def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
                        for fs in fs_no_strategy], gap=True),
     ]
     result.metrics = [
-        ReportMetric("Project Strategies", len(project_strategies)),
-        ReportMetric("Strategies with no organisation parent", len(no_parent), gap=True),
-        ReportMetric("Active Strategies with no Requirement", len(no_requirement), gap=True),
-        ReportMetric("Future States with no Strategy", len(fs_no_strategy), gap=True),
+        ReportMetric("Project Strategies", len(project_strategies), link=_page("strategies")),
+        ReportMetric("Strategies with no organisation parent", len(no_parent), gap=True,
+                     link=_gap_table("strategy-cascade", "no_parent")),
+        ReportMetric("Active Strategies with no Requirement", len(no_requirement), gap=True,
+                     link=_gap_table("strategy-cascade", "no_requirement")),
+        ReportMetric("Future States with no Strategy", len(fs_no_strategy), gap=True,
+                     link=_gap_table("strategy-cascade", "no_strategy")),
     ]
     result.data = {"tree": tree}
     return result
@@ -825,8 +866,9 @@ def collect_pain_point_coverage(db: Session, req: ReportContext) -> ReportResult
         ReportSection("ageing", "Age of open Pain Points", ["Pain point", "Project", "Status", "Identified", "Age (days)"], age_rows),
     ]
     result.metrics = [
-        ReportMetric("Pain Points", len(pain_points)), ReportMetric("Accepted", len(accepted)),
-        ReportMetric("Accepted with no Requirement", len(uncovered), gap=True),
+        ReportMetric("Pain Points", len(pain_points), link=_page("pain-points")),
+        ReportMetric("Accepted", len(accepted), link=_page("pain-points", status="accepted")),
+        ReportMetric("Accepted with no Requirement", len(uncovered), gap=True, link=_gap_table("pain-point-coverage", "uncovered")),
         ReportMetric(
             "Oldest open Pain Point (days)", max((req.today - p.date_identified).days for p in open_pps) if open_pps else 0,
         ),
@@ -901,8 +943,9 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
         ReportSection("by_owner", "By owner", ["Owner", "Open"], [[o, str(n)] for o, n in sorted(by_owner.items())]),
     ]
     result.metrics = [
-        ReportMetric("Open Questions", len(items)), ReportMetric("Overdue", sum(i.is_overdue for i in items), gap=True),
-        ReportMetric("Unowned", sum(i.owner is None for i in items), gap=True),
+        ReportMetric("Open Questions", len(items), link=_page("open-questions", open="1")),
+        ReportMetric("Overdue", sum(i.is_overdue for i in items), gap=True, link=_page("open-questions", open="1", overdue="1")),
+        ReportMetric("Unowned", sum(i.owner is None for i in items), gap=True, link=_page("open-questions", open="1", unowned="1")),
     ]
     result.data = {"items": items}
     return result
@@ -963,9 +1006,11 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
                       note="Without success measures nobody can tell whether the Future State has been reached."),
     ]
     result.metrics = [
-        ReportMetric("Future States on the roadmap", len(items)),
-        ReportMetric("Target date passed", sum(i["is_overdue"] for i in items), gap=True),
-        ReportMetric("Without success measures", sum(not i["has_success_measures"] for i in items), gap=True),
+        ReportMetric("Future States on the roadmap", len(items), link=_page("future-states", roadmap="1")),
+        ReportMetric("Target date passed", sum(i["is_overdue"] for i in items), gap=True,
+                     link=_page("future-states", roadmap="1", target_passed="1")),
+        ReportMetric("Without success measures", sum(not i["has_success_measures"] for i in items), gap=True,
+                     link=_page("future-states", roadmap="1", no_measures="1")),
     ]
     result.data = {"items": items}
     return result
@@ -1044,8 +1089,9 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
                       note="Apply these to a Decision or Requirement, or retire them."),
     ]
     result.metrics = [
-        ReportMetric("Active Guiding Principles", len(items)),
-        ReportMetric("Never applied", sum(not i["applied"] for i in items), gap=True),
+        ReportMetric("Active Guiding Principles", len(items), link=_page("guiding-principles", status="active")),
+        ReportMetric("Never applied", sum(not i["applied"] for i in items), gap=True,
+                     link=_gap_table("guiding-principle-usage", "unused")),
     ]
     result.data = {"items": items}
     return result
@@ -1139,7 +1185,8 @@ def collect_change_history(db: Session, req: ReportContext) -> ReportResult:
     ]
     result.metrics = [
         ReportMetric("Versions in range", len(entries)),
-        ReportMetric("Active items not revised recently", len(stale), gap=True),
+        ReportMetric("Active items not revised recently", len(stale), gap=True,
+                     link=_gap_table("strategy-change-history", "stale", stale_months=str(req.params["stale_months"]))),
     ]
     result.data = {"items": entries}
     return result
@@ -1179,7 +1226,7 @@ def collect_summary_pack(db: Session, req: ReportContext) -> ReportResult:
                     f"{r.key}_{section.key}", f"{r.title}: {section.title}", section.columns, section.rows,
                     note=section.note, gap=True,
                 ))
-    result.metrics = [ReportMetric(m.label, m.value, gap=m.gap, group=title) for title, m in packed]
+    result.metrics = [ReportMetric(m.label, m.value, gap=m.gap, group=title, link=m.link) for title, m in packed]
     result.data = {"included": [r.key for r in results]}
     return result
 

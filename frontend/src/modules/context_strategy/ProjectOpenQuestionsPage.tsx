@@ -14,6 +14,11 @@
  *
  * The list column shows `question` itself, not a separate `title` — Open
  * Question has no `title` field (see `types.ts`'s own docstring).
+ *
+ * Filters can be pre-set from the URL (a report figure links here, e.g.
+ * `?open=1&overdue=1`): `status`, `priority`, `open=1` (unresolved),
+ * `overdue=1` (due date passed) and `unowned=1`. They only seed the state;
+ * each is a visible control in the filter panel.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -24,23 +29,28 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
-import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
+import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQuestionStatus } from "./types";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [openQuestions, setOpenQuestions] = useState<OpenQuestion[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<OpenQuestionStatus | "">("");
-  const [priorityFilter, setPriorityFilter] = useState<OpenQuestionPriority | "">("");
+  const [statusFilter, setStatusFilter] = useState<OpenQuestionStatus | "">(() => oneOf(initial.get("status"), Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]));
+  const [priorityFilter, setPriorityFilter] = useState<OpenQuestionPriority | "">(() => oneOf(initial.get("priority"), Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]));
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
+  const [overdueOnly, setOverdueOnly] = useState(initial.get("overdue") === "1");
+  const [unownedOnly, setUnownedOnly] = useState(initial.get("unowned") === "1");
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -69,7 +79,11 @@ export function ProjectOpenQuestionsPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestions === null || project === null) return <Spinner />;
 
+  const today = new Date().toISOString().slice(0, 10); // UTC, like the report's reference date
   const filtered = openQuestions.filter((q) => {
+    if (openOnly && !OPEN_QUESTION_OPEN_STATUSES.includes(q.status)) return false;
+    if (overdueOnly && !(q.due_date !== null && q.due_date < today)) return false;
+    if (unownedOnly && q.owner_id !== null) return false;
     if (statusFilter && q.status !== statusFilter) return false;
     if (priorityFilter && q.priority !== priorityFilter) return false;
     if (search && !q.question.toLowerCase().includes(search.toLowerCase())) return false;
@@ -121,6 +135,9 @@ export function ProjectOpenQuestionsPage() {
               ))}
             </select>
           </FilterField>
+          <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
+          <FilterCheckbox label="Overdue only" checked={overdueOnly} onChange={setOverdueOnly} />
+          <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

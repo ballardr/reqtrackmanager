@@ -691,3 +691,55 @@ def test_every_report_flags_its_gap_measures(client, admin_token):
     for slug, gaps in expected.items():
         flagged = {m["label"] for m in _report(client, token, project["id"], slug)["metrics"] if m["gap"]}
         assert flagged == gaps, slug
+
+
+def test_headline_figures_link_to_filtered_pages_or_gap_tables(client, admin_token):
+    """Figures carry a route-neutral link: a pre-filtered list where the list pages can show exactly what was
+    counted, otherwise the gap table that already lists it; R8 passes each source report's links through."""
+    _, project, token = _setup(client, admin_token, "Links Co")
+    pid = project["id"]
+    pain = {m["label"]: m for m in _report(client, token, pid, "pain-point-prioritisation")["metrics"]}
+    assert pain["Blockers"]["link"] == {
+        "kind": "module", "target": "pain-points", "query": {"open": "1", "intentional": "hide", "blocker": "1"}, "section": None,
+    }
+    # The model and roll-up the report ran with ride along so the list ranks the same way.
+    scored = {m["label"]: m for m in _report(client, token, pid, "pain-point-prioritisation", model_key="sxc", rollup="worst_case")["metrics"]}
+    assert scored["Not scored"]["link"]["query"] == {
+        "open": "1", "intentional": "hide", "scored": "no", "model": "sxc", "rollup": "worst_case",
+    }
+    questions = {m["label"]: m for m in _report(client, token, pid, "open-question-register")["metrics"]}
+    assert questions["Overdue"]["link"]["query"] == {"open": "1", "overdue": "1"}
+    cascade = {m["label"]: m for m in _report(client, token, pid, "strategy-cascade")["metrics"]}
+    assert cascade["Future States with no Strategy"]["link"] == {
+        "kind": "report", "target": "strategy-cascade", "query": {}, "section": "no_strategy",
+    }
+    # Every figure with nowhere sensible to go is explicitly unlinked rather than linking somewhere misleading.
+    assert next(m for m in _report(client, token, pid, "strategy-change-history")["metrics"] if m["label"] == "Versions in range")["link"] is None
+    assert next(m for m in _report(client, token, pid, "pain-point-coverage")["metrics"] if m["label"].startswith("Oldest"))["link"] is None
+
+    summary = _report(client, token, pid, "summary")["metrics"]
+    assert {m["label"]: m["link"] for m in summary if m["group"] == "Open Question register"}["Unowned"]["query"] == {"open": "1", "unowned": "1"}
+    # Every link in every report is valid (serialisation would have failed otherwise) and every gap figure is linked.
+    assert all(m["link"] is not None for m in summary if m["gap"])
+
+
+def test_org_summary_breakdown_gives_each_project_its_own_figures(client, admin_token):
+    """Behind an organisation figure's "which projects?" list: per-project values equal each project's own report."""
+    org, project, token = _setup(client, admin_token, "Breakdown Summary Co")
+    other = create_project(client, token, org["id"], "Breakdown Summary Other")
+    pid, oid = project["id"], other["id"]
+    for target, n in ((pid, 2), (oid, 1)):
+        for i in range(n):
+            client.post(_cs(target) + "/open-questions", json={"question": f"Unowned {i}?", "priority": "high"}, headers=auth_headers(token))
+
+    resp = client.get(f"{_org(org['id'])}/reports/open-question-register/by-project", headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    by_project = {
+        p["project_name"]: {m["label"]: m for m in p["metrics"]} for p in resp.json()["projects"]
+    }
+    assert by_project["Breakdown Summary Co Project"]["Unowned"]["value"] == 2
+    assert by_project["Breakdown Summary Other"]["Unowned"]["value"] == 1
+    assert by_project["Breakdown Summary Other"]["Unowned"]["link"]["query"] == {"open": "1", "unowned": "1"}
+    # The organisation total is the sum of the projects, so the popup's numbers add up to the clicked figure.
+    org_total = next(m for m in _org_report(client, token, org["id"], "open-question-register")["metrics"] if m["label"] == "Unowned")
+    assert org_total["value"] == 3

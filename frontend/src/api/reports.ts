@@ -42,6 +42,8 @@ export interface ReportCatalogueEntry {
   supports_include_children: boolean;
   /** Organisation-level entries accept `project_id` to narrow the run to one project in scope. */
   supports_project_filter: boolean;
+  /** Organisation entries: the per-project figures endpoint (`ReportBreakdownOut`); `null` for project entries. */
+  breakdown_path: string | null;
   /** For organisation-level entries: exactly the projects the caller may narrow the report to. */
   projects: { id: string; name: string }[];
   params: ReportParam[];
@@ -60,6 +62,19 @@ export interface ReportSection {
   screen?: boolean;
 }
 
+/**
+ * Where a headline figure leads (`ReportLinkOut`): one of the module's own
+ * project pages (`module`, `target` = page path, `query` = its filters) or
+ * another report of the module (`report`, `target` = slug, `section` = a gap
+ * table to scroll to). Route-neutral; `utils/reportLinks` makes it a URL.
+ */
+export interface ReportLink {
+  kind: "module" | "report";
+  target: string;
+  query: Record<string, string>;
+  section: string | null;
+}
+
 /** One headline figure (`ReportMetricOut`). */
 export interface ReportMetric {
   label: string;
@@ -68,6 +83,8 @@ export interface ReportMetric {
   gap?: boolean;
   /** Heading the figure sits under in a pack that combines several reports. */
   group?: string | null;
+  /** Where clicking the figure leads; absent for figures with no sensible destination. */
+  link?: ReportLink | null;
 }
 
 /** A collected report as JSON (`ReportOut`); `data` is report-specific. */
@@ -82,6 +99,21 @@ export interface ReportResult<TData = unknown> {
   data: TData;
   /** In-scope projects with the report's sub-component enabled; 0 = nothing to report on. */
   eligible_projects: number;
+}
+
+/** One project's headline figures in an organisation report's breakdown (`ReportBreakdownProjectOut`). */
+export interface ReportBreakdownProject {
+  project_id: string;
+  project_name: string;
+  metrics: ReportMetric[];
+}
+
+/** An organisation report's figures per project (`ReportBreakdownOut`). */
+export interface ReportBreakdown {
+  generated_at: string;
+  projects: ReportBreakdownProject[];
+  /** More projects were in scope than were evaluated. */
+  truncated: boolean;
 }
 
 /** Run-time values for a report: declared parameters plus framework options. */
@@ -103,6 +135,11 @@ export const reportsApi = {
   /** Runs a report and returns it as JSON. */
   run: <TData = unknown>(entry: ReportCatalogueEntry, values: ReportRunValues) =>
     api.get<ReportResult<TData>>(`${entry.path}?${reportQuery("json", values)}`),
+  /** An organisation report's figures evaluated per project (for the "which projects?" list). */
+  breakdown: (entry: ReportCatalogueEntry, values: ReportRunValues) => {
+    if (!entry.breakdown_path) throw new Error("This report has no per-project breakdown.");
+    return api.get<ReportBreakdown>(`${entry.breakdown_path}?${reportQuery("json", values)}`);
+  },
   /** Runs a report and returns the PDF or CSV file. */
   download: (entry: ReportCatalogueEntry, format: "pdf" | "csv", values: ReportRunValues) =>
     api.getForBlob(`${entry.path}?${reportQuery(format, values)}`),

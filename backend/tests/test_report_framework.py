@@ -35,6 +35,9 @@ from app.modules.registry import (
 )
 from app.services.report_framework import (
     ReportContext,
+    ReportLink,
+    ReportLinkOut,
+    ReportMetric,
     ReportResult,
     ReportSection,
     build_report_routers,
@@ -399,7 +402,7 @@ def test_json_shape_and_pdf_csv_files(client, admin_token, probe):
     assert set(body) == {"key", "title", "scope_label", "generated_at", "notes", "sections", "metrics", "data", "eligible_projects"}
     assert body["sections"][0]["rows"] == [["Format Co A", FORMULA]]
     # A plain (label, value) pair is normalised: not a gap, no group.
-    assert body["metrics"] == [{"label": "Projects", "value": 1, "gap": False, "group": None}]
+    assert body["metrics"] == [{"label": "Projects", "value": 1, "gap": False, "group": None, "link": None}]
 
     csv_resp = _get(probe, token, _project_url(project["id"]), format="csv")
     assert csv_resp.headers["content-type"].startswith("text/csv")
@@ -502,3 +505,51 @@ def test_core_report_files_import_nothing_from_a_specific_module():
             names = [node.module or ""] if isinstance(node, ast.ImportFrom) else [a.name for a in node.names] if isinstance(node, ast.Import) else []
             for name in names:
                 assert not name.startswith("app.modules.") or name == "app.modules.registry", (relative, name)
+
+
+def test_org_breakdown_lists_each_in_scope_project_with_its_own_figures_and_never_widens(client, admin_token, probe):
+    """The per-project breakdown behind an organisation figure: one collector run per project in scope."""
+    org, project_a, admin = _setup(client, admin_token, "Breakdown Co")
+    create_project(client, admin, org["id"], "Breakdown Co B")
+    user_id, viewer = _member(client, admin, org["id"], project_a["id"], "breakdown-viewer@example.com")
+    _grant_viewer(client, admin, org["id"], user_id)
+    url = _org_url(org["id"]) + "/by-project"
+
+    body = _get(probe, admin, url).json()
+    assert [p["project_name"] for p in body["projects"]] == ["Breakdown Co A", "Breakdown Co B"]
+    assert all(p["metrics"] == [{"label": "Projects", "value": 1, "gap": False, "group": None, "link": None}] for p in body["projects"])
+    assert body["truncated"] is False
+    # Same scope rules as the report: a viewer holding a role on A only is shown A only.
+    assert [p["project_name"] for p in _get(probe, viewer, url).json()["projects"]] == ["Breakdown Co A"]
+    # The catalogue advertises the endpoint for org entries only.
+    org_entries = _probe_entries(client.get(f"/api/v1/orgs/{org['id']}/report-catalogue", headers=auth_headers(admin)).json())
+    assert org_entries["probe-all"]["breakdown_path"].endswith("/reports/probe-all/by-project")
+    project_entries = _probe_entries(client.get(f"/api/v1/projects/{project_a['id']}/report-catalogue", headers=auth_headers(admin)).json())
+    assert project_entries["probe-all"]["breakdown_path"] is None
+    # Another organisation's admin cannot see this organisation at all, and a user without the org role is refused,
+    # exactly as for the report itself.
+    org2, _, other_admin = _setup(client, admin_token, "Breakdown Other")
+    _get(probe, other_admin, url, expect=404)
+    _, outsider = _member(client, admin, org["id"], None, "breakdown-outsider@example.com")
+    _get(probe, outsider, url, expect=403)
+
+
+def test_report_figure_links_are_validated_and_serialised():
+    """A link is route-neutral and only slug-shaped: no scheme, host, traversal, markup or oversized query."""
+    ok = ReportLinkOut(kind="module", target="pain-points", query={"open": "1", "intentional": "hide"})
+    assert ok.model_dump() == {"kind": "module", "target": "pain-points", "query": {"open": "1", "intentional": "hide"}, "section": None}
+    assert ReportLinkOut(kind="report", target="pain-point-coverage", section="uncovered").section == "uncovered"
+    for bad in (
+        {"kind": "module", "target": "https://evil.example/x"},
+        {"kind": "module", "target": "../admin"},
+        {"kind": "module", "target": "/pain-points"},
+        {"kind": "module", "target": "Pain Points"},
+        {"kind": "module", "target": "pain-points", "query": {"open": "<script>"}},
+        {"kind": "module", "target": "pain-points", "query": {"Open": "1"}},
+        {"kind": "module", "target": "pain-points", "query": {"open": "x" * 65}},
+        {"kind": "report", "target": "r", "section": "a b"},
+        {"kind": "other", "target": "x"},
+    ):
+        with pytest.raises(ValueError):
+            ReportLinkOut(**bad)
+    assert ReportMetric("A", 1, link=ReportLink("module", "x")).link.target == "x"

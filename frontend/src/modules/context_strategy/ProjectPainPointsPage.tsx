@@ -21,6 +21,12 @@
  * dropdown and `PainPointFormModal`'s own type picker need it, and loading
  * it here (rather than inside the modal) avoids a load flash every time the
  * "New Pain Point" modal opens.
+ *
+ * Filters can be pre-set from the URL (a report figure links here, e.g.
+ * `?open=1&blocker=1`): `status`, `priority`, `open=1` (still being worked),
+ * `intentional=hide|only`, `blocker=1`, `scored=yes|no`, and `model` /
+ * `rollup` (the scoring the report ran with). They only seed the state; each
+ * is a visible control in the filter panel, so it can be changed or cleared.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -34,10 +40,13 @@ import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import { Spinner } from "../../components/Spinner";
 import { cycleSort, type SortState } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
 import { BlockerBadge, PainPointScoreBadge } from "./PainPointScoreBadges";
-import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_ROLLUP_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
+import {
+  PAIN_POINT_OPEN_STATUSES, PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_ROLLUP_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE,
+} from "./types";
 import type {
   EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointRollup,
   PainPointScoringList, PainPointScoringSummary, PainPointStatus,
@@ -49,20 +58,27 @@ export function ProjectPainPointsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [painPoints, setPainPoints] = useState<PainPoint[] | null>(null);
   const [types, setTypes] = useState<EffectivePainPointType[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<PainPointStatus | "">("");
-  const [priorityFilter, setPriorityFilter] = useState<PainPointPriority | "">("");
+  const [statusFilter, setStatusFilter] = useState<PainPointStatus | "">(() => oneOf(initial.get("status"), Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]));
+  const [priorityFilter, setPriorityFilter] = useState<PainPointPriority | "">(() => oneOf(initial.get("priority"), Object.keys(PAIN_POINT_PRIORITY_LABEL) as PainPointPriority[]));
   const [includeArchived, setIncludeArchived] = useState(false);
-  const [hideIntentional, setHideIntentional] = useState(false);
+  const [hideIntentional, setHideIntentional] = useState(initial.get("intentional") === "hide");
+  const [onlyIntentional, setOnlyIntentional] = useState(initial.get("intentional") === "only");
+  const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
+  const [blockersOnly, setBlockersOnly] = useState(initial.get("blocker") === "1");
+  const [scoredFilter, setScoredFilter] = useState<"" | "yes" | "no">(() => oneOf(initial.get("scored"), ["yes", "no"] as const));
 
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
-  const [model, setModel] = useState<string | null>(null);
-  const [rollup, setRollup] = useState<PainPointRollup>("weighted_average");
+  const [model, setModel] = useState<string | null>(initial.get("model"));
+  const [rollup, setRollup] = useState<PainPointRollup>(
+    () => oneOf(initial.get("rollup"), Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]) || "weighted_average",
+  );
   const [scoring, setScoring] = useState<PainPointScoringList | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
 
@@ -114,6 +130,10 @@ export function ProjectPainPointsPage() {
 
   const filtered = painPoints.filter((p) => {
     if (hideIntentional && p.is_intentional) return false;
+    if (onlyIntentional && !p.is_intentional) return false;
+    if (openOnly && !PAIN_POINT_OPEN_STATUSES.includes(p.status)) return false;
+    if (blockersOnly && !summaryById.get(p.id)?.is_blocker) return false;
+    if (scoredFilter && (scoreOf(p) !== null) !== (scoredFilter === "yes")) return false;
     if (statusFilter && p.status !== statusFilter) return false;
     if (priorityFilter && p.priority !== priorityFilter) return false;
     if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false;
@@ -207,7 +227,23 @@ export function ProjectPainPointsPage() {
               ))}
             </select>
           </FilterField>
-          <FilterCheckbox label="Hide intentional limitations" checked={hideIntentional} onChange={setHideIntentional} />
+          <FilterField label="Scoring">
+            <select className="input" value={scoredFilter} onChange={(e) => setScoredFilter(e.target.value as "" | "yes" | "no")}>
+              <option value="">Any scoring</option>
+              <option value="yes">Scored</option>
+              <option value="no">Not scored</option>
+            </select>
+          </FilterField>
+          <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
+          <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
+          <FilterCheckbox
+            label="Hide intentional limitations" checked={hideIntentional}
+            onChange={(next) => { setHideIntentional(next); if (next) setOnlyIntentional(false); }}
+          />
+          <FilterCheckbox
+            label="Only intentional limitations" checked={onlyIntentional}
+            onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
+          />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

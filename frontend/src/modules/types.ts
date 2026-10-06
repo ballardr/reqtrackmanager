@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 
 import type { ReportCatalogueEntry, ReportResult, ReportRunValues } from "../api/reports";
+import type { ReportFigureActionResolver } from "../components/ReportViewer";
 
 /**
  * One route a Tier A ("installed") module contributes — a plain React
@@ -246,6 +247,8 @@ export interface ReportViewProps {
   values: ReportRunValues;
   /** Changes one value and re-runs the report; only meaningful for a name in `ReportViewDef.ownedParams`. */
   onValueChange: (name: string, value: string | number | boolean | null) => void;
+  /** What clicking a headline figure does; forward it to `ReportSummary` so figures link like the generic view's. */
+  figureAction?: ReportFigureActionResolver;
 }
 
 /**

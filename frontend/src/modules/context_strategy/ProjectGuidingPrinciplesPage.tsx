@@ -19,6 +19,7 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { projectGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
@@ -28,12 +29,13 @@ export function ProjectGuidingPrinciplesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [guidingPrinciples, setGuidingPrinciples] = useState<GuidingPrinciple[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<GuidingPrincipleStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState<GuidingPrincipleStatus | "">(() => oneOf(initial.get("status"), Object.keys(GUIDING_PRINCIPLE_STATUS_LABEL) as GuidingPrincipleStatus[]));
   const [priorityFilter, setPriorityFilter] = useState<GuidingPrinciplePriority | "">("");
   const [includeArchived, setIncludeArchived] = useState(false);
 

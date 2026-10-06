@@ -30,6 +30,38 @@ flowchart LR
 
 Every report is generated when you open it, so it always reflects the data as of the **generated** time shown under the title; nothing is stored or cached. A report only ever includes what you are allowed to read, and links to artefacts in projects you can't read aren't counted.
 
+## Following a figure
+
+The headline figures are links. Click one to see exactly what it counted, instead of working it out from a table.
+
+| Hover a figure to see where it leads |
+| --- |
+| The whole row is the target and a tooltip says what it opens; a figure with nowhere sensible to go (an age in days, a count of versions) stays a plain number |
+| ![Summary report with the Blockers figure highlighted on hover and a tooltip reading Opens the pain points list, filtered to Blockers](../../../static/img/screenshots/cs-report-figure-hover.png) |
+
+| Where Blockers leads |
+| --- |
+| The Pain Points list opens already filtered; each pre-set filter is a normal control you can untick |
+| ![Pain Points list filtered to open Blockers, with Open only, Blockers only and Hide intentional limitations ticked in the filter panel](../../../static/img/screenshots/cs-figure-filtered-list.png) |
+
+- **In a project report,** a figure opens the module page it counts, with the same filters applied: for example *Overdue* opens the Open Questions list filtered to overdue, and *Blockers* opens the Pain Points list filtered to open Blockers.
+- **A gap no list can show** (for example Accepted Pain Points with no Requirement, which depends on relationships the lists don't load) opens the report's own gap table, scrolled into view.
+- **In an organisation report,** a figure spans several projects, so there is no single page to open. Clicking it shows a list of the projects with their own number for that figure, biggest first. Choose a project to open its page with the filter applied; projects with a zero are listed but not clickable. The numbers add up to the figure you clicked.
+
+| An organisation figure, by project |
+| --- |
+| Each project's own count; following one goes to that project's filtered list |
+| ![Blockers by project dialog listing Falcon-3 Inspection Drone with 1 and two other projects with 0](../../../static/img/screenshots/cs-org-figure-projects.png) |
+
+The filters a link applies are on the destination page as ordinary controls, so you can widen or change them. They are also readable in the address, so a filtered view can be bookmarked or shared: for example `…/pain-points?open=1&blocker=1`.
+
+| Page | Filters it accepts in the address |
+| --- | --- |
+| Pain Point | `status`, `priority`, `open=1`, `intentional=hide` or `only`, `blocker=1`, `scored=yes` or `no`, `model`, `rollup` |
+| Open Question | `status`, `priority`, `open=1`, `overdue=1`, `unowned=1` |
+| Future State | `status`, `roadmap=1`, `target_passed=1`, `no_measures=1` |
+| Guiding Principle | `status` |
+
 ## Finding a report
 
 - **One project:** the project's **Reports** page. A report is missing from the picker when the module (or the part of it the report needs, such as Open Questions) is turned off for the project, or you aren't a member of it.

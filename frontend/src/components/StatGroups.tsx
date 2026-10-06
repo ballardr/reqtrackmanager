@@ -19,10 +19,14 @@
  * filtered list. Columns are `repeat(auto-fill, minmax(min(100%, 17rem), 1fr))`
  * with no media queries, so it also works in a narrow pane; cards in a grid
  * row stretch to equal height, and labels wrap rather than truncate. See
- * docs/ux-style-guide.md ("Stat blocks") and `testing/statBlockGeometry.ts`.
+ * A figure with `to` (a page) or `onActivate` (an in-place action) makes its whole row
+ * interactive (stretched control on the label; see `StatFigureLabel`).
+ * See docs/ux-style-guide.md ("Stat blocks") and `testing/statBlockGeometry.ts`.
  */
 import { needsAttention } from "../utils/needsAttention";
 import type { StatBarItem } from "./StatBar";
+import { isInteractive } from "../utils/statFigureAction";
+import { StatFigureLabel } from "./StatFigureLabel";
 
 export interface StatGroup {
   key: string;
@@ -52,8 +56,10 @@ export function StatGroups({ groups }: { groups: StatGroup[] }) {
             </div>
             <dl className="stat-group-rows">
               {group.items.map((item, index) => (
-                <div key={`${index}-${item.label}`} className="stat-group-row" data-stat-entry>
-                  <dt>{item.label}</dt>
+                <div key={`${index}-${item.label}`} className={`stat-group-row${isInteractive(item) ? " stat-linked" : ""}`} data-stat-entry>
+                  <dt>
+                    <StatFigureLabel label={item.label} value={item.value} to={item.to} onActivate={item.onActivate} hint={item.hint} />
+                  </dt>
                   <dd className={item.gap && !needsAttention(item) ? "text-muted" : undefined}>
                     {needsAttention(item) ? (
                       <span className="badge badge--warning">

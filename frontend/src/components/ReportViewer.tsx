@@ -15,9 +15,18 @@
  * (`eligible_projects === 0`) shows an explicit empty state rather than a
  * wall of empty tables.
  */
-import type { ReportResult, ReportSection } from "../api/reports";
-import { StatBar } from "./StatBar";
+import type { ReportMetric, ReportResult, ReportSection } from "../api/reports";
+import { StatBar, type StatBarItem } from "./StatBar";
+import type { StatFigureAction } from "../utils/statFigureAction";
 import { StatGroups, type StatGroup } from "./StatGroups";
+
+/**
+ * Decides what clicking a headline figure does: open a page (`to`), act in
+ * place (`onActivate`, e.g. an organisation figure's per-project list), or
+ * nothing (`undefined`, a plain number). Supplied by `ReportRunner`, which
+ * knows the scope; the viewer only asks.
+ */
+export type ReportFigureActionResolver = (metric: ReportMetric) => StatFigureAction | undefined;
 
 /** Explains that no in-scope project has the feature on; shown instead of empty tables. */
 export function ReportNothingToReport() {
@@ -32,13 +41,13 @@ export function ReportNothingToReport() {
  * Groups figures that carry a `group` (a pack combining several reports) by
  * that heading, in first-seen order; `undefined` when none do.
  */
-function groupMetrics(metrics: ReportResult["metrics"]): StatGroup[] | undefined {
+function groupMetrics(metrics: ReportResult["metrics"], item: (m: ReportMetric) => StatBarItem): StatGroup[] | undefined {
   if (!metrics.some((m) => m.group)) return undefined;
   const groups = new Map<string, StatGroup>();
   for (const m of metrics) {
     const title = m.group ?? "";
     const group = groups.get(title) ?? { key: title, title, items: [] };
-    group.items.push({ key: m.label, label: m.label, value: m.value, gap: m.gap });
+    group.items.push(item(m));
     groups.set(title, group);
   }
   return [...groups.values()];
@@ -50,9 +59,11 @@ function groupMetrics(metrics: ReportResult["metrics"]): StatGroup[] | undefined
  * when non-zero.
  *
  * @param result The collected report.
+ * @param figureAction What clicking each figure does; omitted means plain numbers.
  */
-export function ReportSummary({ result }: { result: ReportResult }) {
-  const groups = groupMetrics(result.metrics);
+export function ReportSummary({ result, figureAction }: { result: ReportResult; figureAction?: ReportFigureActionResolver }) {
+  const toItem = (m: ReportMetric): StatBarItem => ({ key: m.label, label: m.label, value: m.value, gap: m.gap, ...figureAction?.(m) });
+  const groups = groupMetrics(result.metrics, toItem);
   return (
     <>
       {result.notes.length > 0 && (
@@ -66,7 +77,7 @@ export function ReportSummary({ result }: { result: ReportResult }) {
         (groups ? (
           <StatGroups groups={groups} />
         ) : (
-          <StatBar items={result.metrics.map((m) => ({ key: m.label, label: m.label, value: m.value, gap: m.gap }))} />
+          <StatBar items={result.metrics.map(toItem)} />
         ))}
     </>
   );
@@ -79,7 +90,7 @@ export function ReportSummary({ result }: { result: ReportResult }) {
  */
 export function ReportSectionTable({ section }: { section: ReportSection }) {
   return (
-    <section className="stack" style={{ gap: "0.5rem" }} aria-label={section.title}>
+    <section id={`report-section-${section.key}`} className="stack report-section" style={{ gap: "0.5rem" }} aria-label={section.title}>
       <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
         <h3 style={{ margin: 0 }}>{section.title}</h3>
         {section.gap && (
@@ -129,12 +140,13 @@ export function ReportSectionTable({ section }: { section: ReportSection }) {
  * The generic report view: summary, then every section as a table.
  *
  * @param result The collected report (JSON form).
+ * @param figureAction What clicking a headline figure does (see `ReportFigureActionResolver`).
  */
-export function ReportViewer({ result }: { result: ReportResult }) {
+export function ReportViewer({ result, figureAction }: { result: ReportResult; figureAction?: ReportFigureActionResolver }) {
   if (result.eligible_projects === 0) return <ReportNothingToReport />;
   return (
     <div className="stack">
-      <ReportSummary result={result} />
+      <ReportSummary result={result} figureAction={figureAction} />
       {result.sections.filter((section) => section.screen !== false).map((section) => (
         <ReportSectionTable key={section.key} section={section} />
       ))}

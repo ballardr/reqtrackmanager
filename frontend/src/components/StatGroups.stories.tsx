@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 
+import { withRouter } from "../testing/storybook-helpers";
 import { statBlockViolations } from "../testing/statBlockGeometry";
 import { StatGroups, type StatGroup } from "./StatGroups";
 
@@ -85,3 +86,31 @@ export const LongLabelsWrap: Story = {
 
 export const LightTheme: Story = { ...Default, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...Default, globals: { theme: "dark" } };
+
+/** A row with `to` links to a filtered page, a row with `onActivate` acts in place; the whole row is the target. */
+export const LinkedAndActionRows: Story = {
+  decorators: [withRouter("/")],
+  args: {
+    groups: [
+      {
+        key: "pp",
+        title: "Pain Point prioritisation",
+        items: [
+          { key: "b", label: "Blockers", value: 1, gap: true, to: "/projects/p1/modules/context_strategy/pain-points?open=1&blocker=1" },
+          { key: "n", label: "Not scored", value: 0, gap: true, onActivate: fn() },
+          { key: "t", label: "Oldest open (days)", value: 33 },
+        ],
+      },
+    ],
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "Blockers: 1" })).toHaveAttribute(
+      "href", "/projects/p1/modules/context_strategy/pain-points?open=1&blocker=1",
+    );
+    await userEvent.click(canvas.getByRole("button", { name: "Not scored: 0" }));
+    await expect(args.groups[0].items[1].onActivate).toHaveBeenCalledTimes(1);
+    await expect(canvas.queryByRole("link", { name: /Oldest open/ })).not.toBeInTheDocument();
+    await expect(statBlockViolations(canvasElement)).toEqual([]);
+  },
+};

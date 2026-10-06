@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 
+import { withRouter } from "../testing/storybook-helpers";
 import { statBlockViolations } from "../testing/statBlockGeometry";
 import { StatBar, StatBarEntry, type StatBarItem } from "./StatBar";
 
@@ -104,5 +105,30 @@ export const GuardRejectsLongLabelsInAFlatBar: Story = {
   play: async ({ canvasElement }) => {
     const violations = statBlockViolations(canvasElement);
     await expect(violations.some((v) => v.includes("wraps onto"))).toBe(true);
+  },
+};
+
+/** A figure with `to` is a link (the whole cell); one with `onActivate` is a button; both are named "<label>: <value>". */
+export const LinkedAndActionFigures: Story = {
+  decorators: [withRouter("/")],
+  args: {
+    items: [
+      { key: "a", label: "Blockers", value: 3, gap: true, to: "/projects/p1/modules/context_strategy/pain-points?blocker=1", hint: "Opens the pain points list, filtered to \"Blockers\"" },
+      { key: "b", label: "Scored", value: 2, onActivate: fn() },
+      { key: "c", label: "Plain total", value: 9 },
+    ],
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const link = canvas.getByRole("link", { name: "Blockers: 3" });
+    await expect(link).toHaveAttribute("href", "/projects/p1/modules/context_strategy/pain-points?blocker=1");
+    // The hint is a tooltip on hover (and keyboard focus), not part of the control's own name.
+    await userEvent.hover(link);
+    await expect(within(canvasElement.ownerDocument.body).getByRole("tooltip", { name: /filtered to "Blockers"/ })).toBeVisible();
+    await userEvent.unhover(link);
+    await userEvent.click(canvas.getByRole("button", { name: "Scored: 2" }));
+    await expect(args.items![1].onActivate).toHaveBeenCalledTimes(1);
+    await expect(canvas.queryByRole("link", { name: /Plain total/ })).not.toBeInTheDocument();
+    await expect(statBlockViolations(canvasElement)).toEqual([]);
   },
 };

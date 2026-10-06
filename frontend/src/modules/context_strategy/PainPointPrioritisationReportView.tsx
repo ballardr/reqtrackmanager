@@ -122,7 +122,7 @@ function GroupView({ group, showProject }: { group: ReportScoredGroup; showProje
 /**
  * @param props The shared report view props (`ReportViewProps`).
  */
-export function PainPointPrioritisationReportView({ result, scope, values, onValueChange }: ReportViewProps) {
+export function PainPointPrioritisationReportView({ result, scope, values, onValueChange, figureAction }: ReportViewProps) {
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
   const data = result.data as PainPointPrioritisationData;
   const projectId = scope.kind === "project" ? scope.id : typeof values.project_id === "string" ? values.project_id : null;
@@ -153,7 +153,7 @@ export function PainPointPrioritisationReportView({ result, scope, values, onVal
           onRollupChange={(next) => onValueChange("rollup", next)}
         />
       )}
-      <ReportSummary result={result} />
+      <ReportSummary result={result} figureAction={figureAction} />
       {data.groups.map((group) => (
         <GroupView key={group.model_key} group={group} showProject={scope.kind === "organization" && !projectId} />
       ))}

@@ -5,7 +5,7 @@ import { ApiError, api } from "../api/client";
 import type { ReportTemplate } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
-import { withToast } from "../testing/storybook-helpers";
+import { withRouter, withToast } from "../testing/storybook-helpers";
 import { ReportRunner } from "./ReportRunner";
 
 const entry = buildReportCatalogueEntry();
@@ -210,3 +210,63 @@ export const RegisteredViewReplacesGenericViewer: Story = {
 
 export const LightTheme: Story = { ...RunsWithDefaultsAndShowsResult, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...RunsWithDefaultsAndShowsResult, globals: { theme: "dark" } };
+
+const linkedResult = () =>
+  buildReportResult({
+    metrics: [
+      { label: "Blockers", value: 3, gap: true, link: { kind: "module", target: "pain-points", query: { blocker: "1" }, section: null } },
+      { label: "Oldest (days)", value: 33, link: null },
+    ],
+  });
+
+/** In a project report a linked figure is a link to the module page it counts; an unlinked figure stays plain. */
+export const ProjectFiguresLinkToFilteredPages: Story = {
+  decorators: [withRouter("/")],
+  beforeEach: () => mockRunApis({ result: linkedResult() }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "Blockers: 3" });
+    await expect(link).toHaveAttribute("href", "/projects/project-1/modules/fixture_report_module/pain-points?blocker=1");
+    await expect(canvas.queryByRole("link", { name: /Oldest/ })).not.toBeInTheDocument();
+    // Hovering says where it leads.
+    await userEvent.hover(link);
+    await expect(within(canvasElement.ownerDocument.body).getByRole("tooltip", { name: /Opens the pain points list, filtered to "Blockers"/ })).toBeVisible();
+  },
+};
+
+/** In an organisation report a figure opens the per-project list, and following a project goes to its page. */
+export const OrganisationFiguresOpenAProjectList: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      ...orgEntry,
+      breakdown_path: `${orgEntry.path}/by-project`,
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  decorators: [withRouter("/")],
+  beforeEach: () => {
+    const figure = linkedResult().metrics[0];
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/report-templates")) return [];
+      if (path.includes("/by-project")) {
+        return {
+          generated_at: "2026-10-06T09:30:00Z", truncated: false,
+          projects: [{ project_id: "p-1", project_name: "Atlas", metrics: [{ ...figure, value: 3 }] }],
+        };
+      }
+      return linkedResult();
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const figure = await canvas.findByRole("button", { name: "Blockers: 3" });
+    await userEvent.hover(figure);
+    await expect(within(canvasElement.ownerDocument.body).getByRole("tooltip", { name: /Shows which projects make up "Blockers"/ })).toBeVisible();
+    await userEvent.click(figure);
+    const dialog = within(canvasElement.ownerDocument.body);
+    await expect(await dialog.findByRole("dialog", { name: "Blockers by project" })).toBeInTheDocument();
+    await expect(await dialog.findByRole("link", { name: /Atlas/ })).toHaveAttribute(
+      "href", "/projects/p-1/modules/fixture_report_module/pain-points?blocker=1",
+    );
+  },
+};

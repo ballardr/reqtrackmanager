@@ -169,6 +169,68 @@ test.describe("Context & Strategy: Reports UI", () => {
     await expectTidyStatBlocks(page);
   });
 
+  test("a project report's figures open the filtered page they count, or the gap table that lists them", async ({ page, request }) => {
+    const { project, titles, question } = await setup(page, request);
+    const summary = `/projects/${project.id}/reports?report=summary`;
+
+    await test.step("Blockers opens the Pain Points list filtered to Blockers", async () => {
+      await page.goto(summary);
+      const card = page.getByRole("region", { name: "Pain Point prioritisation", exact: true });
+      const blockers = card.getByRole("link", { name: "Blockers: 1" });
+      // Hovering anywhere on the row (here its far right, over the number, not the label) says where the figure
+      // leads, with the tooltip next to the pointer rather than stranded over the label.
+      await blockers.waitFor({ timeout: 20_000 });
+      await card.evaluate((el) => el.scrollIntoView({ block: "start" })); // room below the pointer (it flips above near the bottom edge)
+      const row = await card.locator(".stat-group-row").filter({ hasText: "Blockers" }).boundingBox();
+      const pointer = { x: row!.x + row!.width - 16, y: row!.y + row!.height / 2 };
+      await page.mouse.move(pointer.x, pointer.y);
+      const tip = page.getByRole("tooltip", { name: /Opens the pain points list, filtered to "Blockers"/ });
+      await expect(tip).toBeVisible();
+      const bubble = (await tip.boundingBox())!;
+      expect(Math.abs(bubble.x + bubble.width / 2 - pointer.x)).toBeLessThanOrEqual(bubble.width / 2 + 1); // horizontally on the pointer (or clamped)
+      expect(bubble.y).toBeGreaterThanOrEqual(pointer.y); // below the pointer, not covering the row
+      expect(bubble.y - pointer.y).toBeLessThan(60); // and close to it
+      await blockers.click();
+      await expect(page).toHaveURL(/\/pain-points\?.*blocker=1/);
+      await expect(page.getByRole("table", { name: "Pain Points" })).toContainText(titles.blocker);
+      await expect(page.getByRole("table", { name: "Pain Points" })).not.toContainText(titles.major);
+      // The pre-set filter is an ordinary control that can be cleared.
+      await expect(page.getByRole("checkbox", { name: "Blockers only" })).toBeChecked();
+      await page.getByRole("checkbox", { name: "Blockers only" }).uncheck();
+      await expect(page.getByRole("table", { name: "Pain Points" })).toContainText(titles.major);
+    });
+
+    await test.step("Overdue opens the Open Questions list filtered to overdue", async () => {
+      await page.goto(summary);
+      await page.getByRole("region", { name: "Open Question register", exact: true }).getByRole("link", { name: "Overdue: 1" }).click({ timeout: 20_000 });
+      await expect(page).toHaveURL(/\/open-questions\?.*overdue=1/);
+      await expect(page.getByRole("table", { name: "Open Questions" })).toContainText(question);
+      await expect(page.getByRole("checkbox", { name: "Overdue only" })).toBeChecked();
+    });
+
+    await test.step("a relationship-derived gap opens its report's gap table", async () => {
+      await page.goto(summary);
+      await page.getByRole("region", { name: "Guiding Principle register and usage", exact: true })
+        .getByRole("link", { name: "Never applied: 0" }).click({ timeout: 20_000 });
+      await expect(page).toHaveURL(/report=guiding-principle-usage.*section=unused|section=unused.*report=guiding-principle-usage/);
+      await expect(page.getByRole("region", { name: "Never applied" })).toBeInViewport();
+    });
+  });
+
+  test("an organisation report's figure lists its projects, each opening that project's filtered page", async ({ page, request }) => {
+    const { org, project, titles } = await setup(page, request);
+    await page.goto(`/orgs/${org.id}/overview/reports?report=pain-point-prioritisation`);
+    await page.getByRole("button", { name: "Blockers: 1" }).click({ timeout: 20_000 });
+
+    const dialog = page.getByRole("dialog", { name: "Blockers by project" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("link", { name: new RegExp(project.name) })).toContainText("1");
+    await dialog.getByRole("link", { name: new RegExp(project.name) }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points\\?.*blocker=1`));
+    await expect(page.getByRole("table", { name: "Pain Points" })).toContainText(titles.blocker);
+  });
+
   test("a generic report offers the scoring model as a labelled select, not a free-text key", async ({ page, request }) => {
     const { project } = await setup(page, request);
     await page.goto(`/projects/${project.id}/reports?report=upgrade-drivers`);

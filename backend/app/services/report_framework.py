@@ -52,8 +52,9 @@ from __future__ import annotations
 import csv
 import inspect
 import io
+import re
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any, Literal, NamedTuple
@@ -61,7 +62,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
@@ -143,6 +144,33 @@ class ReportSection:
     screen: bool = True
 
 
+@dataclass(frozen=True)
+class ReportLink:
+    """Where a headline figure leads when clicked, as a route-neutral description.
+
+    The framework and the module name *what* to open; the frontend turns it
+    into a URL for the project (or narrowed organisation) being viewed, so no
+    UI route is hard-coded in a collector. Both kinds are validated when the
+    figure is serialised (`ReportLinkOut`): only slug-shaped paths and simple
+    query values are accepted, so a link can never carry a scheme, host, path
+    traversal or markup.
+
+    Attributes:
+        kind: `"module"` opens one of the module's own project pages (e.g. a
+            list pre-filtered by `query`); `"report"` opens another report of
+            the same module.
+        target: For `"module"`, the page path under the module's project mount
+            (`"pain-points"`); for `"report"`, the report's slug.
+        query: Page filters (module) or report parameters (report).
+        section: For `"report"`, the section key to scroll to (a gap table).
+    """
+
+    kind: Literal["module", "report"]
+    target: str
+    query: Mapping[str, str] = field(default_factory=dict)
+    section: str | None = None
+
+
 class ReportMetric(NamedTuple):
     """One headline figure of a report.
 
@@ -155,12 +183,15 @@ class ReportMetric(NamedTuple):
         group: Optional heading the figure belongs under; a pack combining
             several reports sets it to each source report's title so the screen
             can group the figures instead of listing them flat.
+        link: Optional destination the figure links to (a filtered list or a
+            gap table); `None` for figures with nowhere sensible to go.
     """
 
     label: str
     value: int | str
     gap: bool = False
     group: str | None = None
+    link: ReportLink | None = None
 
 
 def normalise_metrics(metrics: Sequence[ReportMetric | tuple[str, int | str]]) -> list[ReportMetric]:
@@ -411,6 +442,34 @@ class ReportSectionOut(BaseModel):
     screen: bool = True
 
 
+_LINK_TARGET = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
+_LINK_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
+_LINK_VALUE = re.compile(r"^[A-Za-z0-9_.,:-]{0,64}$")
+_LINK_SECTION = re.compile(r"^[a-z0-9_]+$")
+
+
+class ReportLinkOut(BaseModel):
+    """A figure's destination (see `ReportLink`); rejects anything but slug-shaped
+    targets and simple query values."""
+
+    kind: Literal["module", "report"]
+    target: str
+    query: dict[str, str] = {}
+    section: str | None = None
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> ReportLinkOut:
+        """Raises ValueError for a target, query or section outside the allowed shapes."""
+        if not _LINK_TARGET.match(self.target):
+            raise ValueError(f"Invalid report link target '{self.target}'.")
+        for key, value in self.query.items():
+            if not _LINK_KEY.match(key) or not _LINK_VALUE.match(value):
+                raise ValueError(f"Invalid report link query '{key}={value}'.")
+        if self.section is not None and not _LINK_SECTION.match(self.section):
+            raise ValueError(f"Invalid report link section '{self.section}'.")
+        return self
+
+
 class ReportMetricOut(BaseModel):
     """One headline figure (see `ReportMetric`)."""
 
@@ -418,6 +477,33 @@ class ReportMetricOut(BaseModel):
     value: int | str
     gap: bool = False
     group: str | None = None
+    link: ReportLinkOut | None = None
+
+
+MAX_BREAKDOWN_PROJECTS = 200
+
+
+class ReportBreakdownProjectOut(BaseModel):
+    """One project's headline figures within an organisation report's breakdown."""
+
+    project_id: UUID
+    project_name: str
+    metrics: list[ReportMetricOut]
+
+
+class ReportBreakdownOut(BaseModel):
+    """An organisation report's headline figures, per project.
+
+    Lets an organisation-wide figure open a "which projects?" list: the same
+    collector run once per in-scope project, so every number equals what that
+    project's own report (or the report narrowed to it) shows. `truncated` is
+    true when the scope had more than `MAX_BREAKDOWN_PROJECTS` projects and
+    only the first were evaluated.
+    """
+
+    generated_at: str
+    projects: list[ReportBreakdownProjectOut]
+    truncated: bool = False
 
 
 class ReportOut(BaseModel):
@@ -435,13 +521,23 @@ class ReportOut(BaseModel):
     eligible_projects: int
 
 
+def _metric_out(metric: ReportMetric) -> ReportMetricOut:
+    """Converts one figure to its JSON shape, validating its link."""
+    return ReportMetricOut(
+        label=metric.label, value=metric.value, gap=metric.gap, group=metric.group,
+        link=ReportLinkOut(
+            kind=metric.link.kind, target=metric.link.target, query=dict(metric.link.query), section=metric.link.section,
+        ) if metric.link else None,
+    )
+
+
 def to_out(result: ReportResult) -> ReportOut:
     """Converts a collected report to its JSON shape."""
     return ReportOut(
         key=result.key, title=result.title, scope_label=result.scope_label,
         generated_at=result.generated_at.isoformat(), notes=result.notes,
         sections=[ReportSectionOut(**jsonable_encoder(s)) for s in result.sections],
-        metrics=[ReportMetricOut(**m._asdict()) for m in normalise_metrics(result.metrics)],
+        metrics=[_metric_out(m) for m in normalise_metrics(result.metrics)],
         data=jsonable_encoder(result.data), eligible_projects=result.eligible_projects,
     )
 
@@ -638,6 +734,59 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
     return endpoint
 
 
+def _build_org_breakdown_route(module_key: str, definition: ReportDefinition) -> Callable[..., Any]:
+    """The organisation report's per-project figures (`.../reports/<slug>/by-project`).
+
+    Same access as the report itself (module enabled, org role held, scope =
+    the definition's declared scope); never widens it. Each in-scope project is
+    collected on its own, so a project whose sub-component is off is simply
+    absent. Not audit-logged, like the report itself.
+    """
+    dependency = require_org_module_enabled(module_key)
+
+    def endpoint(**kw: Any):
+        live = _live_definition(module_key, definition)
+        db: Session = kw["db"]
+        current_user: User = kw["current_user"]
+        organization_id: UUID = kw["organization_id"]
+        if not user_satisfies_module_role(
+            db, current_user, module_key, live.org_role_key, organization_id=organization_id, project_id=None,
+        ):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not hold the role required for organisation-wide reports.")
+        organization = db.get(Organization, organization_id)
+        params = validated_params(live, kw)
+        projects = scope_projects(
+            db, current_user, definition=live, organization=organization, root_project=None, include_children=False,
+        )
+        rows: list[ReportBreakdownProjectOut] = []
+        for project in projects[:MAX_BREAKDOWN_PROJECTS]:
+            ctx = ReportContext(
+                module_key=module_key, organization=organization, root_project=None, params=params,
+                all_org_projects=live.org_scope == "all_org_projects", projects=[project],
+            )
+            result = live.collector(db, ctx)
+            if result.eligible_projects == 0:
+                continue
+            rows.append(ReportBreakdownProjectOut(
+                project_id=project.id, project_name=project.name,
+                metrics=[_metric_out(m) for m in normalise_metrics(result.metrics)],
+            ))
+        return ReportBreakdownOut(
+            generated_at=datetime.now(UTC).isoformat(), projects=rows, truncated=len(projects) > MAX_BREAKDOWN_PROJECTS,
+        )
+
+    full = _route_signature("organization_id", definition, project_level=False, dependency=dependency)
+    endpoint.__signature__ = full.replace(  # type: ignore[attr-defined]
+        parameters=[p for p in full.parameters.values() if p.name not in ("format", "project_id", "report_template_id")],
+    )
+    endpoint.__doc__ = (
+        f"{definition.title} headline figures per project: the organisation report's figures evaluated for each "
+        f"project in its scope, so a figure can be broken down by project. Needs the module role "
+        f"`{definition.org_role_key}`; covers at most {MAX_BREAKDOWN_PROJECTS} projects."
+    )
+    return endpoint
+
+
 def build_report_routers(module_key: str, definitions: Sequence[ReportDefinition]) -> ReportRouters:
     """Generates a module's report routes from its declarations.
 
@@ -666,6 +815,11 @@ def build_report_routers(module_key: str, definitions: Sequence[ReportDefinition
             routers.org.add_api_route(
                 f"/{definition.slug}", _build_org_route(module_key, definition), methods=["GET"], response_model=None,
                 name=f"org_report_{definition.key}", summary=f"{definition.title} (organisation-wide)", responses=ok,
+            )
+            routers.org.add_api_route(
+                f"/{definition.slug}/by-project", _build_org_breakdown_route(module_key, definition), methods=["GET"],
+                response_model=ReportBreakdownOut, name=f"org_report_breakdown_{definition.key}",
+                summary=f"{definition.title} (organisation-wide, per project)",
             )
     return routers
 
@@ -752,7 +906,8 @@ class ReportCatalogueEntryOut(BaseModel):
 
     `path` is the report's route with the project or organisation id already
     substituted; `supports_include_children` is true for project-level
-    entries and `supports_project_filter` for organisation-level ones (the
+    entries and `supports_project_filter` for organisation-level ones, which also carry
+    `breakdown_path` (the per-project figures; see `ReportBreakdownOut`) (the
     optional `project_id` query narrows the run to one project in scope).
     For those, `projects` lists exactly the projects the caller may pick: in
     the report's scope for this caller, with the module (and declared
@@ -770,6 +925,7 @@ class ReportCatalogueEntryOut(BaseModel):
     formats: list[str]
     supports_include_children: bool
     supports_project_filter: bool
+    breakdown_path: str | None = None
     projects: list[ReportProjectOut] = []
     params: list[ReportParamOut]
 
@@ -792,6 +948,7 @@ def _entry(
         module_key=module_key, module_name=module.name if module else module_key, key=definition.key,
         slug=definition.slug, title=definition.title, description=definition.description, scope=scope, path=path,
         formats=list(REPORT_FORMATS), supports_include_children=scope == "project", supports_project_filter=scope == "organization",
+        breakdown_path=f"{path}/by-project" if scope == "organization" else None,
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects],
         params=[_param_out(p) for p in definition.params],
     )
@@ -869,9 +1026,12 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
 
 __all__ = [
     "REPORT_FORMATS",
+    "ReportBreakdownOut",
+    "ReportBreakdownProjectOut",
     "ReportCatalogueEntryOut",
     "ReportContext",
     "ReportFormat",
+    "ReportLink",
     "ReportMetric",
     "ReportOut",
     "ReportParamOut",

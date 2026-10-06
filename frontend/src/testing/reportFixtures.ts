@@ -22,6 +22,7 @@ export function buildReportCatalogueEntry(overrides: Partial<ReportCatalogueEntr
     formats: ["json", "pdf", "csv"],
     supports_include_children: true,
     supports_project_filter: false,
+    breakdown_path: null,
     projects: [],
     params: [
       { name: "rollup", type: "string", default: "weighted_average", choices: ["weighted_average", "worst_case"], minimum: null, maximum: null, description: "How values combine." },

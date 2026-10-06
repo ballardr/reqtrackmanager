@@ -10,7 +10,9 @@
  * bigger or wordier is a `StatGroups` (`components/StatGroups.tsx`).
  *
  * A figure flagged `gap` is a problem to fix when non-zero: it is marked with
- * a "Needs attention" pill (never colour alone). Design decisions: no media
+ * a "Needs attention" pill (never colour alone). A figure with `to` is a link
+ * (the whole cell, via a stretched link on its label) to the page it counts.
+ * Design decisions: no media
  * queries (the grid sizes to its container, so it also works in a narrow
  * pane); labels wrap rather than truncate, because a clipped label loses
  * information. See docs/ux-style-guide.md ("Stat blocks") and
@@ -20,6 +22,8 @@
 import type { ReactNode } from "react";
 
 import { needsAttention } from "../utils/needsAttention";
+import { isInteractive, type StatFigureAction } from "../utils/statFigureAction";
+import { StatFigureLabel } from "./StatFigureLabel";
 
 export interface StatBarItem {
   key: string;
@@ -27,6 +31,12 @@ export interface StatBarItem {
   value: string | number;
   /** A non-zero value is a problem to fix; flagged on screen. */
   gap?: boolean;
+  /** In-app path the figure opens (typically a list filtered to what it counted); the whole cell is the link. */
+  to?: string;
+  /** Opens something in place instead (e.g. an organisation figure's per-project list); used when there is no `to`. */
+  onActivate?: () => void;
+  /** Tooltip text saying where the figure leads (shown on hover and keyboard focus). */
+  hint?: string;
 }
 
 /**
@@ -38,7 +48,7 @@ export function StatBar({ items, children }: { items?: StatBarItem[]; children?:
   return (
     <dl className="stat-bar" data-stat-block="flat">
       {items?.map((item, index) => (
-        <StatBarEntry key={`${index}-${item.key}`} label={item.label} value={item.value} gap={item.gap} />
+        <StatBarEntry key={`${index}-${item.key}`} label={item.label} value={item.value} gap={item.gap} to={item.to} onActivate={item.onActivate} hint={item.hint} />
       ))}
       {children}
     </dl>
@@ -50,11 +60,15 @@ export function StatBar({ items, children }: { items?: StatBarItem[]; children?:
  * `modules/compliance/ComplianceOrgOverviewTiles.tsx`) can render entries
  * that match the row's own styling exactly, rather than a module inventing
  * a second implementation of the same pair. */
-export function StatBarEntry({ label, value, gap }: { label: string; value: string | number; gap?: boolean }) {
+export function StatBarEntry({
+  label, value, gap, to, onActivate, hint,
+}: { label: string; value: string | number; gap?: boolean } & StatFigureAction) {
   const attention = needsAttention({ value, gap });
   return (
-    <div className="stat-bar-item" data-stat-entry>
-      <dt className="stat-bar-label">{label}</dt>
+    <div className={`stat-bar-item${isInteractive({ to, onActivate }) ? " stat-linked" : ""}`} data-stat-entry>
+      <dt className="stat-bar-label">
+        <StatFigureLabel label={label} value={value} to={to} onActivate={onActivate} hint={hint} />
+      </dt>
       <dd className="stat-bar-value">{value}</dd>
       {attention && <span className="badge badge--warning stat-bar-flag">Needs attention</span>}
     </div>
