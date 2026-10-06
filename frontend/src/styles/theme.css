@@ -933,6 +933,52 @@ a.figure-projects-link:hover {
   color: var(--color-primary-contrast) !important;
 }
 
+/* Project nav customisation (components/ProjectNavSection.tsx): the section label carries a
+   small "Customise navigation" icon button on its right; "More" is a `.nav-link` that is a
+   button (disclosure/popover trigger) rather than a route link, so it needs the native button
+   chrome reset; its expanded children are indented under it. */
+.nav-section-label-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-section-action {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 0.2rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.nav-section-action:hover,
+.nav-section-action:focus-visible {
+  background: var(--color-surface-alt);
+}
+
+.nav-link-button {
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-link-button-chevron {
+  margin-left: auto;
+  display: inline-flex;
+}
+
+.nav-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-left: 0.75rem;
+}
+
 /* Icon-only collapsed rail state: hide link labels, centre the icons,
    shrink the rail's own width (set inline via style, since it's driven by
    a JS-held boolean rather than a pure-CSS breakpoint). */

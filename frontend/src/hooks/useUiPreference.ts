@@ -1,3 +1,4 @@
+import type { UiPreferenceValue } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 
 /**
@@ -9,9 +10,11 @@ import { useAuth } from "../context/AuthContext";
  * their own dedicated field. `useAuth()`'s `user` is the single source of
  * truth; there's no separate local state to keep in sync with it, so a
  * change made anywhere is reflected everywhere this hook reads that same
- * key, instantly.
+ * key, instantly. Values may be any JSON (`UiPreferenceValue`); callers
+ * storing structured data must validate what they read, since the bag is
+ * open-ended and a stale or hand-edited value is possible.
  */
-export function useUiPreference<T extends string | boolean>(key: string, defaultValue: T): [T, (value: T) => void] {
+export function useUiPreference<T extends UiPreferenceValue>(key: string, defaultValue: T): [T, (value: T) => void] {
   const { user, setUiPreference } = useAuth();
   const stored = user?.ui_preferences[key];
   const value = (stored === undefined ? defaultValue : (stored as T));

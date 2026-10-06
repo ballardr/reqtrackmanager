@@ -338,8 +338,13 @@ export interface User {
    * that don't warrant their own dedicated field — e.g. per-list tile/list
    * view mode, keyed `view_mode:<page>`. Deliberately loosely typed so a
    * new preference of this kind never needs an API type change. */
-  ui_preferences: Record<string, string | boolean>;
+  ui_preferences: Record<string, UiPreferenceValue>;
 }
+
+/** Any JSON value a `ui_preferences` key can hold (the backend bag is open-ended JSON,
+ * size-bounded server-side) — scalars for toggles, objects/lists for structured layouts
+ * such as the per-user project nav order. */
+export type UiPreferenceValue = string | number | boolean | UiPreferenceValue[] | { [key: string]: UiPreferenceValue };
 
 export interface TwoFactorChallenge {
   requires_2fa: true;

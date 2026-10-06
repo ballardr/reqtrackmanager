@@ -64,6 +64,55 @@ def test_ui_preferences_are_shallow_merged_not_replaced(client, admin_token):
     assert resp.json()["ui_preferences"] == {"view_mode:projects": "tiles", "nav_rail_collapsed": True}
 
 
+def _patch_ui_preferences(client, token, prefs):
+    return client.patch("/api/v1/auth/me/preferences", json={"ui_preferences": prefs}, headers=auth_headers(token))
+
+
+def test_ui_preferences_accept_structured_json_values(client, admin_token):
+    """The per-user nav layout (`project_nav`) is an object of lists, so the bag must
+    round-trip nested JSON, not just strings/booleans."""
+    value = {"order": ["overview", "actions"], "more": ["actions"]}
+    resp = _patch_ui_preferences(client, admin_token, {"project_nav": value})
+    assert resp.status_code == 200
+    assert resp.json()["ui_preferences"]["project_nav"] == value
+
+
+def test_ui_preferences_null_value_removes_the_key(client, admin_token):
+    """A null removes its key (how a per-project nav override is dropped) and leaves
+    other keys alone; removing an absent key is a harmless no-op."""
+    _patch_ui_preferences(client, admin_token, {"keep": "me", "drop": "me"})
+    resp = _patch_ui_preferences(client, admin_token, {"drop": None, "never_existed": None})
+    assert resp.status_code == 200
+    assert resp.json()["ui_preferences"] == {"keep": "me"}
+
+
+def test_ui_preferences_rejects_too_many_keys_and_leaves_bag_unchanged(client, admin_token):
+    from app.services.ui_preferences import MAX_UI_PREFERENCE_KEYS
+
+    _patch_ui_preferences(client, admin_token, {"keep": "me"})
+    too_many = {f"k{i}": True for i in range(MAX_UI_PREFERENCE_KEYS)}  # + "keep" = limit + 1
+    resp = _patch_ui_preferences(client, admin_token, too_many)
+    assert resp.status_code == 422
+    assert client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["ui_preferences"] == {"keep": "me"}
+
+
+def test_ui_preferences_rejects_oversized_bag_even_across_many_small_patches(client, admin_token):
+    from app.services.ui_preferences import MAX_UI_PREFERENCES_BYTES
+
+    chunk = "x" * (MAX_UI_PREFERENCES_BYTES // 4)
+    statuses = [_patch_ui_preferences(client, admin_token, {f"blob{i}": chunk}).status_code for i in range(5)]
+    assert statuses[:3] == [200, 200, 200]
+    assert 422 in statuses[3:]
+
+
+def test_ui_preferences_rejects_empty_and_overlong_keys(client, admin_token):
+    from app.services.ui_preferences import MAX_UI_PREFERENCE_KEY_LENGTH
+
+    assert _patch_ui_preferences(client, admin_token, {"": True}).status_code == 422
+    assert _patch_ui_preferences(client, admin_token, {"k" * (MAX_UI_PREFERENCE_KEY_LENGTH + 1): True}).status_code == 422
+    assert _patch_ui_preferences(client, admin_token, {"k" * MAX_UI_PREFERENCE_KEY_LENGTH: True}).status_code == 200
+
+
 def test_display_name_change_blocked_once_locked(client, admin_token, org_id):
     from tests.conftest import create_org_user
 

@@ -14,7 +14,7 @@
  */
 import { ListChecks } from "lucide-react";
 
-import { NavRailLink } from "../../components/Layout";
+import { NavRailLink } from "../../components/NavRailLink";
 import { useComplianceNavVisibility } from "./useComplianceNavVisibility";
 
 export function ComplianceGlobalNavLink({ railCollapsed }: { railCollapsed: boolean }) {

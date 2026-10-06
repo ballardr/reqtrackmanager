@@ -413,6 +413,7 @@ export function withAuth(user: User | null, overrides: Partial<AuthContextValue>
     logout: () => {},
     refreshUser: async () => {},
     setUiPreference: () => {},
+    setUiPreferences: async () => {},
     ...overrides,
   };
   return (Story) => (

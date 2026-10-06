@@ -52,6 +52,7 @@ from app.services.files import upload_file
 from app.services.geoip import resolve_and_store_login_location
 from app.services.invites import consume_pending_invites
 from app.services.rbac import get_effective_org_roles, get_effective_project_roles, get_user_org_group_ids
+from app.services.ui_preferences import merge_ui_preferences
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 _native_backend = NativeAuthBackend()
@@ -330,7 +331,9 @@ def update_preferences(
     tile/list view mode). `ui_preferences` is shallow-merged into the
     existing bag by top-level key (a reassignment, not an in-place
     mutation, so SQLAlchemy's change-tracking picks it up) rather than
-    replaced wholesale, so setting one key never clobbers another.
+    replaced wholesale, so setting one key never clobbers another; a `null`
+    value removes its key, and the merged bag is size-bounded
+    (`services.ui_preferences`, 422 beyond the limits).
     """
     if payload.landing_preference is not None:
         current_user.landing_preference = payload.landing_preference
@@ -341,7 +344,10 @@ def update_preferences(
     if payload.email_digest_mode is not None:
         current_user.email_digest_mode = payload.email_digest_mode
     if payload.ui_preferences is not None:
-        current_user.ui_preferences = {**current_user.ui_preferences, **payload.ui_preferences}
+        try:
+            current_user.ui_preferences = merge_ui_preferences(current_user.ui_preferences, payload.ui_preferences)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     if payload.display_name is not None:
         if current_user.display_name_locked:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your display name has been locked by an organisation admin.")

@@ -66,7 +66,7 @@ export interface ProjectAdminSectionDef {
  * (`Layout.tsx` doesn't know which org/project is relevant to a global tab)
  * — `railCollapsed` is the only prop, purely so the module's own link can
  * render consistently with every other rail entry (`NavRailLink`, exported
- * from `components/Layout.tsx` for exactly this reuse). The module's
+ * from `components/NavRailLink.tsx` for exactly this reuse). The module's
  * `render` function owns *all* of its own visibility logic (e.g. Compliance
  * gates its link on its own `useComplianceNavVisibility()` hook) and
  * returns `null` when the tab shouldn't show at all — `Layout.tsx` invites

@@ -11,6 +11,7 @@
 import { useState, type ReactNode } from "react";
 
 import type { User } from "../api/types";
+import { applyUiPreferencePatch } from "../context/uiPreferencePatch";
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
 
 export function StatefulAuthProvider({
@@ -38,7 +39,9 @@ export function StatefulAuthProvider({
     logout: () => {},
     refreshUser: async () => {},
     setUiPreference: (key, uiValue) =>
-      setUser((current) => ({ ...current, ui_preferences: { ...current.ui_preferences, [key]: uiValue } })),
+      setUser((current) => ({ ...current, ui_preferences: applyUiPreferencePatch(current.ui_preferences, { [key]: uiValue }) })),
+    setUiPreferences: async (patch) =>
+      setUser((current) => ({ ...current, ui_preferences: applyUiPreferencePatch(current.ui_preferences, patch) })),
     ...overrides,
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

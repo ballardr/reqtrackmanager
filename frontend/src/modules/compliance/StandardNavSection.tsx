@@ -63,7 +63,7 @@ import { ChevronDown, ChevronRight, History, LayoutDashboard, ListChecks, Users 
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
-import { NavRailLink } from "../../components/Layout";
+import { NavRailLink } from "../../components/NavRailLink";
 import { useUiPreference } from "../../hooks/useUiPreference";
 import * as complianceApi from "./api";
 import { COMPLIANCE_STANDARD_VERSION_STATUS_LABEL, type ComplianceStandardVersion } from "./types";

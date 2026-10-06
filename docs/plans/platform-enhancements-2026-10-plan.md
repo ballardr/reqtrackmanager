@@ -1,25 +1,26 @@
 # Platform Enhancements (October 2026) — Plan
 
-**Status:** Decisions Q1–Q9 answered by the user 2026-10-06. Phases 1–3 implemented; the rest is not. Written from eight user notes, each checked against the current code.
+**Status:** Decisions Q1–Q9 answered by the user 2026-10-06. Phases 1–4 implemented; the rest is not. Written from eight user notes, each checked against the current code.
 **Decision tags:** items marked **Decided by: User** were answered in the 2026-10-06 review (§3); everything else is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-3 / 11 phases complete (Phases 1–3 done 2026-10-06, awaiting commit). Phase 4 is next. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 is the closing website-docs reconciliation and runs last.
+4 / 12 phases complete (Phases 1–4 done 2026-10-06, awaiting commit). Phase 5 is next. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
 
 | # | Phase | Note | Status |
 |---|-------|------|--------|
 | 1 | MCP agent skill + drift enforcement | N5 | [x] |
 | 2 | Org-level member-edit notifications | N3 | [x] |
 | 3 | Request-rate and DB read/write metrics | N2 | [x] |
-| 4 | Personal project-nav ordering, "More", per-project override | N4 | [ ] |
+| 4 | Personal project-nav ordering, "More", per-project override | N4 | [x] |
 | 5 | Link-type direction field + link graph backend (+ MCP tool) | N1 | [ ] |
 | 6 | Shared Links panel, detail-page aside, migration of existing sections | N1 | [ ] |
 | 7 | Trace tree and map views | N1 | [ ] |
 | 8 | Decision Management reports | N6 | [ ] |
 | 9 | Neutral report document model + DOCX export | N7 | [ ] |
 | 10 | Per-report-type content: template, project, org tiers + placeholders | N8 | [ ] |
-| 11 | Docs website reconciliation for the whole branch | all | [ ] |
+| 11 | Project Modules tab e2e coverage | N9 | [ ] |
+| 12 | Docs website reconciliation for the whole branch | all | [ ] |
 
 ## 1. Summary of the review (read this first)
 
@@ -93,7 +94,9 @@ flowchart LR
 - **Not doing:** a provisioned Grafana dashboard and `postgres_exporter` (Q6).
 - **Tests:** counter increments by operation for a known request; no table/SQL in label values; `/metrics` still renders under multiproc mode. Update `docs/solution-architecture.md`'s "Required metrics".
 
-### Phase 4 — Personal project-nav ordering (N4)
+### Phase 4 — Personal project-nav ordering (N4) — DONE 2026-10-06
+
+**As built:** as specced, in `components/ProjectNavSection.tsx`, `ProjectNavEditor.tsx` and `navigation/projectNav.ts`. Differences: `NavRailLink` moved to its own file; `AuthContext` gained a batch `setUiPreferences` (separate concurrent PATCHes are read-modify-write on one bag); `null` now deletes a preference key; "More" is an inline disclosure when expanded and a Popover when icon-only, where "Customise navigation" becomes its own row (the section label collapses to a divider there); pinned items can still be reordered, only not moved to More; stale-override pruning is client-side and best effort. See `docs/decisions.md`.
 
 **Why:** users use different parts of the product; a fixed order forces scrolling. **Outcome:** each user orders the Project nav section and moves rarely used items behind "More"; stored with the account, so it follows them across devices.
 
@@ -203,11 +206,21 @@ flowchart TD
 - **Order in a document:** intro, chapters, generated sections, appendices. Applies to PDF and DOCX; JSON and CSV are unaffected and the docs say so.
 - **Placeholders (Q4B, Decided by: User):** a fixed allow-list, `{{project_name}}`, `{{report_title}}`, `{{generated_on}}`, `{{organisation}}`, substituted by plain string replacement **before** the Markdown goes through the existing escaping, so substituted values are treated as ordinary user text. Unknown `{{…}}` stays literal text. Explicitly **not** a template engine (Jinja-style engines are a server-side template-injection risk). The editor lists the available placeholders and previews them.
 - **Editor surfaces (three, one shared component):** the template editor, Report Setup (project) and the org default settings all use one `ReportContentEditor` with a report-type selector (shared `Tabs`) reusing `ReportChapterListEditor`; the existing per-tier editors are replaced, not duplicated. The list of types comes from a generic org-level report-type listing built from the catalogue, so core never names a module's report.
-- **Tests:** migration preserves existing content at all three tiers and the project-summary fallback; full resolution chain including key vs "all reports", ancestor walk (cycle, cap, own-row-wins), cross-org rejection; unknown `report_key` rejected; placeholder substitution, unknown placeholder literal, hostile values stay escaped; module report PDF/DOCX include the right chapters; org/project/template deletion removes rows; Playwright for each of the three editors and inherited-value display; `seed_demo_data.py` and `seed_e2e_dataset.py` gain per-type content at each tier.
+- **Org bundle (export/import):** `services/org_export.py` already carries the org's branding files (logo, login background) as `files/` entries and re-uploads them on import, but nothing tests it, and its report-template export reads `intro`/`chapters`/`appendices` columns this phase drops. So: (a) export every `ReportContent` row of the org's templates, projects (inside each project's data) and the org tier, keyed by `report_key` and by template/project ref rather than raw ids, and re-create them on import (`import_org_bundle`, and `merge_org_bundle` for project/template rows only, since merge never touches the org profile); (b) any image a content row references travels in `files/` through the existing `import_bundled_file` path; (c) a regression test pins that logo and login-background bytes round-trip through an org export/import. Platform-level `ServerSettings` default logos are deliberately not exported (not org-owned). **Decided by: User** (2026-10-06: branding files go in org exports); the content-row part is **Agent**.
+- **Tests:** migration preserves existing content at all three tiers and the project-summary fallback; org bundle round-trips logo, login background and per-type content at all three tiers (merge import leaves the org profile untouched); full resolution chain including key vs "all reports", ancestor walk (cycle, cap, own-row-wins), cross-org rejection; unknown `report_key` rejected; placeholder substitution, unknown placeholder literal, hostile values stay escaped; module report PDF/DOCX include the right chapters; org/project/template deletion removes rows; Playwright for each of the three editors and inherited-value display; `seed_demo_data.py` and `seed_e2e_dataset.py` gain per-type content at each tier.
 
-### Phase 11 — Docs website reconciliation (all notes)
+### Phase 11 — Project Modules tab e2e coverage (N9)
 
-**Why:** each phase already updates its own website page (§4), but per-phase edits drift: a later phase renames or supersedes something an earlier page describes, and cross-cutting pages (overview, glossary, sidebar, observability, notifications) are only touched by whichever phase remembered. **Outcome:** `docs/website/` matches the shipped behaviour of every phase on this branch, verified in one closing pass. Runs after Phase 10, once the code is final. **Decided by: User** (requested as a final phase 2026-10-06).
+**Why:** the project-admin Modules tab (`/projects/{id}/admin/modules`, `ProjectAdminPage.tsx`) was not visible to a user after a deployment (likely a stale frontend; unconfirmed). The only spec touching it, `module-enablement-overrides.spec.ts`, tests override *behaviour* for Context & Strategy as an **org admin**; nothing asserts the tab appears, lists every registered module, or works for a project manager who is not an org admin. **Risk addressed:** the tab silently missing or empty, or a module absent from it, going unnoticed. **Outcome:** a small spec that fails if the Modules entry or any module row is missing. **Decided by: User** (requested 2026-10-06); scope **Decided by: Agent**.
+
+- **Spec (new, disposable org per the idempotency rule):** (a) as org admin, "Modules" is in the project-admin menu and `/admin/modules` renders one `.module-settings-row` per module returned by `GET /projects/{id}/modules` (compared by name, so a newly registered module is covered without editing the spec); (b) the same as a project-only `project_administrator` who is not an org admin (the endpoint is `require_project_view_or_manage`, a different gate from the org page); (c) a module the org has turned off shows its disabled switch and hint, one the org leaves on shows an enabled switch whose toggle round-trips with a Toast; (d) direct navigation to `/projects/{id}/admin/modules` lands on the tab, not the default group.
+- **Backend:** one pytest pinning `GET /projects/{id}/modules` for a project manager (non-org-admin) returning every registered module, and 404/403 for a non-member.
+- **Not testable here:** a stale frontend after deployment is an ops matter, not a product regression an e2e run can catch. The nav rail already shows the running version (`GET /api/v1/system/version`), which is how to tell. Not adding cache-busting work without evidence that is the cause.
+- **Storybook:** `ProjectAdminPage.stories.tsx` already has Modules-tab stories (from line ~1477); add one for the empty ("No modules are registered") state only if it is missing.
+
+### Phase 12 — Docs website reconciliation (all notes)
+
+**Why:** each phase already updates its own website page (§4), but per-phase edits drift: a later phase renames or supersedes something an earlier page describes, and cross-cutting pages (overview, glossary, sidebar, observability, notifications) are only touched by whichever phase remembered. **Outcome:** `docs/website/` matches the shipped behaviour of every phase on this branch, verified in one closing pass. Runs after Phase 11, once the code is final. **Decided by: User** (requested as a final phase 2026-10-06).
 
 ```mermaid
 flowchart LR
