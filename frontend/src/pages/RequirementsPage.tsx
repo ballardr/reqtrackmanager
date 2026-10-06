@@ -18,7 +18,7 @@ import type {
   RequirementLink,
   RequirementStatus,
 } from "../api/types";
-import { ENTITY_ACCENT_COLOR, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE } from "../api/types";
+import { ENTITY_ACCENT_COLOR, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE, linkTypesFor } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
@@ -386,7 +386,8 @@ export function RequirementsPage() {
         project ? api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${project.organization_id}/link-types`) : Promise.resolve([]),
       ]);
       setAllProjectRequirements(reqs);
-      setLinkTypes(defs);
+      // Only types that may join two requirements (a restricted or dedicated type would be refused).
+      setLinkTypes(linkTypesFor(defs, "requirement", "requirement"));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }

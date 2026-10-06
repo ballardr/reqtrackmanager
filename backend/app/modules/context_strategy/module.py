@@ -171,6 +171,7 @@ from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
     GUIDING_PRINCIPLE_ARTEFACT_TYPE,
+    LINK_TYPE_SEEDS,
     OPEN_QUESTION_ARTEFACT_TYPE,
     PAIN_POINT_ARTEFACT_TYPE,
     STRATEGY_ARTEFACT_TYPE,
@@ -854,6 +855,7 @@ MODULE_DEFINITION = ModuleDefinition(
     reports=REPORT_DEFINITIONS,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
+    link_type_seeds=LINK_TYPE_SEEDS,
     # Module 0 (Platform Foundations) Phase 4: each of Context & Strategy's
     # five artefacts declares its own sub-component key only once its own
     # phase lands (Phase 1 registered "strategy", Phase 2 "future_state",

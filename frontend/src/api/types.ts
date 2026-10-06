@@ -959,6 +959,69 @@ export interface LinkTypeDefinition {
   sort_order: number;
   /** Which way the link points in a traceability chain; see `LINK_FLOW_LABEL`. */
   flow: LinkFlow;
+  /** Artefact types a link of this type may start from; `null` = any. */
+  allowed_source_types: string[] | null;
+  /** Artefact types a link of this type may point at; `null` = any. */
+  allowed_target_types: string[] | null;
+  /** Fixed meaning with its own action (e.g. "Supersedes"); not offered as a general link. */
+  dedicated_endpoint: boolean;
+}
+
+/** The link types worth offering for a new link from `sourceType` to `targetType`: not a dedicated
+ * one (its own action makes those) and not one whose restriction excludes the pair. A convenience
+ * for pickers only; the server enforces the rules (the rules of the two artefact types included). */
+export function linkTypesFor(types: LinkTypeDefinition[], sourceType: string, targetType: string): LinkTypeDefinition[] {
+  return types.filter(
+    (t) =>
+      !t.dedicated_endpoint &&
+      (!t.allowed_source_types || t.allowed_source_types.includes(sourceType)) &&
+      (!t.allowed_target_types || t.allowed_target_types.includes(targetType)),
+  );
+}
+
+/** A registered artefact type with its display label (`GET /orgs/{id}/artefact-types`). */
+export interface ArtefactTypeOption {
+  type: string;
+  label: string;
+}
+
+/** One artefact type's rule: the link types it may use, or `null` = any link type. */
+export interface ArtefactLinkRule {
+  artefact_type: string;
+  label: string;
+  link_type_ids: string[] | null;
+}
+
+/** A link type assessed as the replacement when deleting one that is in use. */
+export interface LinkTypeCandidate {
+  id: string;
+  forward_name: string;
+  reverse_name: string;
+  flow: LinkFlow;
+  compatible: boolean;
+  reason: string | null;
+  flow_differs: boolean;
+}
+
+/** What depends on a link type (`GET .../link-types/{id}/usage`). */
+export interface LinkTypeUsage {
+  link_count: number;
+  /** `null` when there are too many links to resolve their projects. */
+  project_count: number | null;
+  pending_change_requests: number;
+  approved_requirement_links: number;
+  rule_artefact_types: ArtefactTypeOption[];
+  emptied_rule_artefact_types: ArtefactTypeOption[];
+  is_dedicated: boolean;
+  is_last: boolean;
+  candidates: LinkTypeCandidate[];
+}
+
+/** What a mode-based link type delete did. */
+export interface LinkTypeDeleteOutcome {
+  moved: number;
+  merged: number;
+  removed: number;
 }
 
 /** Where the target of a link of a given type sits relative to its source, read

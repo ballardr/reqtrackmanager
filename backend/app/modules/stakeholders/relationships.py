@@ -44,9 +44,20 @@ from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
-from app.modules.registry import ArtefactSummary, get_artefact_summary, has_artefact_summary_provider, list_artefact_summaries
+from app.modules.registry import (
+    ArtefactSummary,
+    LinkTypeSeed,
+    get_artefact_summary,
+    has_artefact_summary_provider,
+    list_artefact_summaries,
+)
 from app.modules.stakeholders.models import Persona, Stakeholder
 from app.modules.stakeholders.service import (
+    GIVES_RISE_TO_FORWARD,
+    GIVES_RISE_TO_REVERSE,
+    HAS_NEED_FORWARD,
+    HAS_NEED_REVERSE,
+    NEED_ARTEFACT_TYPE,
     PERSONA_ARTEFACT_TYPE,
     STAKEHOLDER_ARTEFACT_TYPE,
     get_or_create_link_type,
@@ -244,3 +255,29 @@ def find_link(db: Session, project: Project, holder_type: str, holder_id: uuid.U
 def remove_relationship(db: Session, link: Any) -> None:
     """Deletes a relationship link. The caller commits."""
     delete_link(db, link)
+
+
+LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
+    *(
+        LinkTypeSeed(
+            forward_name=kind.forward, reverse_name=kind.reverse,
+            allowed_source_types=kind.holder_types, allowed_target_types=kind.target_types,
+        )
+        for kind in RELATIONSHIP_KINDS
+    ),
+    LinkTypeSeed(
+        "Represents", "Is represented by",
+        allowed_source_types=(STAKEHOLDER_ARTEFACT_TYPE,), allowed_target_types=(PERSONA_ARTEFACT_TYPE,),
+    ),
+    LinkTypeSeed(
+        HAS_NEED_FORWARD, HAS_NEED_REVERSE,
+        allowed_source_types=_BOTH, allowed_target_types=(NEED_ARTEFACT_TYPE,),
+    ),
+    LinkTypeSeed(
+        GIVES_RISE_TO_FORWARD, GIVES_RISE_TO_REVERSE,
+        allowed_source_types=(NEED_ARTEFACT_TYPE,), allowed_target_types=(REQUIREMENT_TARGET,),
+    ),
+)
+"""Link types the Stakeholders module ships (`ModuleDefinition.link_type_seeds`),
+derived from the relationship-kind table plus the three bespoke ones, so the
+vocabulary has one definition."""

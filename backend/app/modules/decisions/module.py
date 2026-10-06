@@ -123,7 +123,12 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.modules.decisions.service import DECISION_APPROVE_PERMISSION, DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
+from app.modules.decisions.service import (
+    DECISION_APPROVE_PERMISSION,
+    DECISION_ARTEFACT_TYPE,
+    DECISION_TEMPLATE_PACKS,
+    LINK_TYPE_SEEDS,
+)
 from app.modules.registry import (
     ArtefactSummary,
     ArtefactSummaryProvider,
@@ -310,6 +315,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
     },
     artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},
+    link_type_seeds=LINK_TYPE_SEEDS,
     roles=(
         ModuleRoleDefinition(
             role_key="decision_owner",

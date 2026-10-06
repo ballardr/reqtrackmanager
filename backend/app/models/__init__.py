@@ -61,7 +61,11 @@ from app.models.requirement import (
     RequirementVersion,
 )
 from app.models.requirement_action import RequirementAction
-from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.models.requirement_link_type import (
+    ArtefactTypeLinkRule,
+    ArtefactTypeLinkRuleEntry,
+    RequirementLinkTypeDefinition,
+)
 from app.models.scoring import ScoringBand, ScoringLevel, ScoringModelDefault
 from app.models.sequence import ProjectSequenceCounter
 from app.models.server_role import UserServerRole
@@ -115,6 +119,8 @@ __all__ = [
     "BaselineItem",
     "Requirement",
     "RequirementKeyword",
+    "ArtefactTypeLinkRule",
+    "ArtefactTypeLinkRuleEntry",
     "RequirementLinkTypeDefinition",
     "RequirementAction",
     "RequirementReview",

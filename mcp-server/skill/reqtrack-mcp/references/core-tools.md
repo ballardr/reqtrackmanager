@@ -20,6 +20,12 @@ Marks an approved requirement completed (the same transition the UI's "Mark comp
 
 Parameters: `project_id` (string), `requirement_id*` (string)
 
+## `create_artefact_link` (write)
+
+Links an artefact to another record of the same project.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_type_id*` (string), `direction*` (string), `other_type*` (string), `other_id*` (string)
+
 ## `create_requirement` (write)
 
 Creates a new requirement. Always starts in "draft" status — there is no way to create one pre-approved, and no tool here can approve it afterward either; use the ReqTrackManager UI for that.
@@ -31,6 +37,12 @@ Parameters: `project_id` (string), `name*` (string), `component_id*` (string), `
 Approves or rejects a submitted (or in-review) change request.
 
 Parameters: `project_id` (string), `change_request_id*` (string), `approve*` (boolean), `note` (string)
+
+## `delete_artefact_link` (write)
+
+Removes a link touching an artefact. Irreversible: confirm with the user first.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_id*` (string)
 
 ## `get_artefact_link_graph` (read)
 
@@ -67,6 +79,12 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 Gets a requirement's full version history — every prior state it has been in.
 
 Parameters: `project_id` (string), `requirement_id*` (string)
+
+## `list_artefact_link_types` (read)
+
+Lists the link types usable from an artefact, and what can sit at the other end: use before `create_artefact_link`.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `other_type` (string)
 
 ## `list_change_request_comments` (read)
 

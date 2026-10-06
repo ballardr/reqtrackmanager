@@ -349,6 +349,7 @@ class ModuleDefinition:
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
+    link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
@@ -927,6 +928,45 @@ flowchart LR
   creatable. It goes live when the owner registers a provider.
 - The caller stores `target_id` in `ArtefactLink` as a plain id; the provider
   does not authorise, so the caller still checks the `(type, view)` permission.
+
+### 4f-bis. Link types: any artefact can link to any artefact (Platform enhancements Phase 5b)
+
+Any two registered artefact types in a project can be linked, so a module needs
+nothing to make its types linkable the day they register. Link types (the org's
+vocabulary of phrases) can restrict which artefact types they join, and an
+artefact type can restrict which link types it uses; both are enforced when a
+link is created (`services.relationships.create_link`), never retroactively. A
+module that wants meaningful vocabulary declares **seeds**:
+
+```python
+ModuleDefinition(
+    ...,
+    link_type_seeds=(
+        LinkTypeSeed("Addresses", "Is addressed by", LinkFlow.FORWARD_IS_UPSTREAM,
+                     allowed_source_types=("decision",), allowed_target_types=("pain_point",)),
+        LinkTypeSeed("Supersedes", "Is superseded by", dedicated_endpoint=True,
+                     allowed_source_types=("decision",), allowed_target_types=("decision",)),
+    ),
+)
+```
+
+- A seed is created for an organisation only when it has no link type with that
+  forward name, and only for modules enabled in it (on first use, when the org's
+  link types are listed, or when link types are requested for an artefact), so an
+  admin's edits are never overwritten. A type an admin deletes is recreated by the
+  next use; restrict a type rather than deleting it.
+- Seeds sharing a forward name across modules merge: restriction lists are unioned,
+  the first non-`none` flow wins, and a conflicting reverse phrase is dropped with a
+  warning. Core defaults (`services.definitions.DEFAULT_LINK_TYPES`) are unrestricted.
+- Use `services.link_types.ensure_org_link_type(db, org_id, forward_name, reverse_name)`
+  to fetch-or-create a type in your own code, never your own copy of the query.
+- `dedicated_endpoint=True` marks a type with a fixed meaning and its own action
+  (supersession flips a status): the generic link endpoints neither offer, create nor
+  delete it, and your own action passes `enforce_rules=False` to `create_link`.
+- A module declaring `artefact_types` also needs `artefact_summary_providers`,
+  `artefact_type_labels` (§4f) and, on the frontend, `artefactPaths`, so the type can
+  be shown and followed from a link; `tests/test_artefact_type_routes.py` and
+  `frontend/src/modules/registeredArtefactTypes.json` guard the last.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

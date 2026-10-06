@@ -380,6 +380,7 @@ def decide_change_request(
                         db, source_type=ArtefactType.REQUIREMENT, source_id=requirement.id,
                         target_type=ArtefactType.REQUIREMENT, target_id=target.id,
                         link_type_id=link_type.id, created_by=cr.creator_id,
+                        enforce_rules=False,  # validated when proposed; approval replays it
                     )
                     log_event(
                         db, entity_type="requirement_link", entity_id=link.id, action="created",

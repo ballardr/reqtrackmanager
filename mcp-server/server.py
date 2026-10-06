@@ -209,6 +209,12 @@ def _require_uuid(value: str, field_name: str) -> str:
         raise ValueError(f"{field_name!r} must be a valid UUID, got {value!r}.") from exc
 
 
+def _require_artefact_type(value: str, field_name: str = "artefact_type") -> str:
+    """Validates an artefact type string (lowercase, underscores) before it is put in a URL path."""
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", value):
+        raise ValueError(f"'{field_name}' must be a lowercase artefact type such as 'requirement', got {value!r}.")
+    return value
+
 def _default_scope() -> tuple[str | None, str | None]:
     """Reads this MCP connection's optional default-scope headers,
     `X-Default-Organization-Id`/`X-Default-Project-Id` — a convenience for a
@@ -611,8 +617,7 @@ async def get_artefact_link_graph(
     """
     pid = _require_project_id(project_id)
     aid = _require_uuid(artefact_id, "artefact_id")
-    if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", artefact_type):
-        raise ValueError(f"'artefact_type' must be a lowercase artefact type such as 'requirement', got {artefact_type!r}.")
+    _require_artefact_type(artefact_type)
     if not 1 <= depth <= 3:
         raise ValueError(f"'depth' must be between 1 and 3, got {depth!r}.")
     if direction not in ("outgoing", "incoming", "both"):
@@ -620,6 +625,51 @@ async def get_artefact_link_graph(
     response = await _call_backend(
         "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-graph",
         params={"depth": depth, "direction": direction},
+    )
+    return response.json()
+
+
+@mcp.tool
+async def list_artefact_link_types(
+    project_id: str | None = None,
+    *,
+    artefact_type: str,
+    artefact_id: str,
+    other_type: str | None = None,
+) -> list[dict]:
+    """Lists the link types usable from an artefact, and what can sit at the other end: use before `create_artefact_link`.
+
+    Link types are managed by the organisation, which can restrict what each
+    may join. Any two artefacts can be linked unless a restriction says
+    otherwise, so this list is the source of truth, not the artefact kinds
+    you expect to be related.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The artefact's type, for example "requirement",
+            "decision" or "pain_point".
+        artefact_id: The artefact's UUID (from the matching list tool).
+        other_type: Optional artefact type; only options that can reach it.
+
+    Returns:
+        One entry per usable way to link, each with `link_type_id`,
+        `direction` ("outgoing" when this artefact is the link's source,
+        "incoming" when it is the target; pass it unchanged to
+        `create_artefact_link`), `phrase` (how the link reads from this
+        artefact's side), `flow` and `other_types` (the artefact types, each
+        with `type` and `label`, that can sit at the other end). Link types
+        with a fixed meaning and their own action (such as "Supersedes") are
+        not listed.
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    params = {}
+    if other_type is not None:
+        _require_artefact_type(other_type, "other_type")
+        params["other_type"] = other_type
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-types", params=params
     )
     return response.json()
 
@@ -1052,6 +1102,90 @@ if MCP_WRITES_ENABLED:
         rid = _require_uuid(requirement_id, "requirement_id")
         response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements/{rid}/complete")
         return response.json()
+
+    @mcp.tool
+    async def create_artefact_link(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        link_type_id: str,
+        direction: str,
+        other_type: str,
+        other_id: str,
+    ) -> dict:
+        """Links an artefact to another record of the same project.
+
+        Call `list_artefact_link_types` first and use one of its entries'
+        `link_type_id` and `direction`; the other record's type must be one of
+        that entry's `other_types`. The backend enforces the organisation's
+        restrictions and your permissions, so a refused link is a rule, not
+        something to retry with another type. Linking changes traceability
+        only, never either record's status.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The artefact's type, for example "decision".
+            artefact_id: The artefact's UUID.
+            link_type_id: The link type's UUID (from `list_artefact_link_types`).
+            direction: "outgoing" if this artefact is the link's source,
+                "incoming" if it is the target (from `list_artefact_link_types`).
+            other_type: The other record's artefact type.
+            other_id: The other record's UUID.
+
+        Returns:
+            The created link: `id`, `link_type_id`, `phrase` (how it reads
+            from this artefact's side), `direction` and `other` (`type`,
+            `type_label`, `id`, `label`, `status`, `is_archived`).
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        _require_artefact_type(other_type, "other_type")
+        if direction not in ("outgoing", "incoming"):
+            raise ValueError(f"'direction' must be 'outgoing' or 'incoming', got {direction!r}.")
+        body = {
+            "link_type_id": _require_uuid(link_type_id, "link_type_id"),
+            "direction": direction,
+            "other_type": other_type,
+            "other_id": _require_uuid(other_id, "other_id"),
+        }
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/links", json=body
+        )
+        return response.json()
+
+    @mcp.tool
+    async def delete_artefact_link(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        link_id: str,
+    ) -> dict:
+        """Removes a link touching an artefact. Irreversible: confirm with the user first.
+
+        Fails if the link does not touch this artefact, belongs to a fixed-
+        meaning action (such as supersession) or, for an approved requirement
+        in a project that requires change requests for links, must go through
+        one.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The artefact's type, for example "decision".
+            artefact_id: The artefact's UUID.
+            link_id: The link's UUID (an edge `id` from `get_artefact_link_graph`
+                or the `id` returned by `create_artefact_link`).
+
+        Returns:
+            `{"deleted": true, "link_id": ...}`.
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        lid = _require_uuid(link_id, "link_id")
+        await _call_backend("DELETE", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/links/{lid}")
+        return {"deleted": True, "link_id": lid}
 
 
 # --- Module-contributed tools (compliance-module-plan.md Phase 4) ----------

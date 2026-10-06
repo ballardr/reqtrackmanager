@@ -48,6 +48,7 @@ from app.services.actions import get_requirement_action_in_project
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.link_types import LinkRuleError, validate_link_allowed
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
@@ -275,6 +276,13 @@ def create_change_request(
                     status.HTTP_400_BAD_REQUEST,
                     "proposed_link_type_id must be a link type defined in this project's organisation.",
                 )
+            try:
+                validate_link_allowed(
+                    db, link_type=link_type, source_type=ArtefactType.REQUIREMENT.value,
+                    target_type=ArtefactType.REQUIREMENT.value,
+                )
+            except LinkRuleError as exc:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
         else:
             if payload.proposed_link_id is None:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_link_id is required to remove a link.")

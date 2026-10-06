@@ -13,9 +13,11 @@ package layout.
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,14 +25,34 @@ from app.database import get_db
 from app.models.enums import OrgRole
 from app.models.project import Project
 from app.models.project_status import ProjectStatusDefinition
-from app.models.relationship import ArtefactLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
-from app.schemas.link_type import LinkTypeCreate, LinkTypeOut, LinkTypeUpdate
+from app.modules.registry import get_artefact_type_label
+from app.schemas.link_type import (
+    ArtefactLinkRuleOut,
+    ArtefactLinkRuleSet,
+    ArtefactTypeOut,
+    LinkTypeCandidateOut,
+    LinkTypeCreate,
+    LinkTypeDeleteOutcomeOut,
+    LinkTypeOut,
+    LinkTypeUpdate,
+    LinkTypeUsageOut,
+)
 from app.schemas.project import MoveDirection
 from app.schemas.project_status import ProjectStatusCreate, ProjectStatusOut, ProjectStatusUpdate
 from app.services.audit import log_event
 from app.services.definitions import delete_definition_with_reassignment
+from app.services.link_type_usage import compute_usage
+from app.services.link_type_usage import delete_link_type as delete_link_type_in_use
+from app.services.link_types import (
+    clear_artefact_rule,
+    ensure_org_seeds,
+    get_artefact_rules,
+    list_org_artefact_types,
+    normalise_artefact_types,
+    set_artefact_rule,
+)
 from app.services.ordering import move_ordered
 from app.services.rbac import require_org_role
 
@@ -150,7 +172,15 @@ def create_link_type(
     organization_id: UUID, payload: LinkTypeCreate,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
-    """Creates a new requirement link type for this organisation (C-G-09)."""
+    """Creates a new requirement link type for this organisation (C-G-09).
+
+    Raises:
+        HTTPException: 400 on a duplicate forward name, or 422 when a restriction
+            names an unknown artefact type.
+    """
+    allowed_source_types, allowed_target_types = _validated_restrictions(
+        payload.allowed_source_types, payload.allowed_target_types
+    )
     existing = db.scalar(
         select(RequirementLinkTypeDefinition.id).where(
             RequirementLinkTypeDefinition.organization_id == organization_id,
@@ -166,14 +196,16 @@ def create_link_type(
     )
     link_type = RequirementLinkTypeDefinition(
         organization_id=organization_id, forward_name=payload.forward_name, reverse_name=payload.reverse_name,
-        sort_order=count, flow=payload.flow,
+        sort_order=count, flow=payload.flow, allowed_source_types=allowed_source_types,
+        allowed_target_types=allowed_target_types,
     )
     db.add(link_type)
     db.flush()
     log_event(db, entity_type="requirement_link_type_definition", entity_id=link_type.id, action="created",
               actor_id=current_user.id, organization_id=organization_id,
               detail={"forward_name": link_type.forward_name, "reverse_name": link_type.reverse_name,
-                      "flow": link_type.flow.value})
+                      "flow": link_type.flow.value, "allowed_source_types": allowed_source_types,
+                      "allowed_target_types": allowed_target_types})
     db.commit()
     db.refresh(link_type)
     return link_type
@@ -187,7 +219,11 @@ def list_link_types(
 ):
     """Lists an organisation's requirement link types — any org member may
     need this to populate a requirement's "add link" form, so listing isn't
-    admin-only (only create/rename/move/delete are)."""
+    admin-only (only create/rename/move/delete are). Module-seeded link types
+    the organisation lacks are created first (`services.link_types.ensure_org_seeds`),
+    so the list is complete before anything has used them."""
+    ensure_org_seeds(db, organization_id)
+    db.commit()
     return db.scalars(
         select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == organization_id)
         .order_by(RequirementLinkTypeDefinition.sort_order)
@@ -236,44 +272,149 @@ def rename_link_type(
     link_type.reverse_name = payload.reverse_name
     if payload.flow is not None:
         link_type.flow = payload.flow
+    if "allowed_source_types" in payload.model_fields_set or "allowed_target_types" in payload.model_fields_set:
+        source_types, target_types = _validated_restrictions(
+            payload.allowed_source_types if "allowed_source_types" in payload.model_fields_set else link_type.allowed_source_types,
+            payload.allowed_target_types if "allowed_target_types" in payload.model_fields_set else link_type.allowed_target_types,
+        )
+        link_type.allowed_source_types = source_types
+        link_type.allowed_target_types = target_types
     log_event(db, entity_type="requirement_link_type_definition", entity_id=link_type.id, action="renamed",
-              actor_id=current_user.id, organization_id=organization_id, detail={"flow": link_type.flow.value})
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"flow": link_type.flow.value, "allowed_source_types": link_type.allowed_source_types,
+                      "allowed_target_types": link_type.allowed_target_types})
     db.commit()
     db.refresh(link_type)
     return link_type
 
 
-@router.delete("/{organization_id}/link-types/{link_type_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_link_type(
-    organization_id: UUID, link_type_id: UUID, reassign_to_id: UUID | None = Query(None),
+@router.get("/{organization_id}/link-types/{link_type_id}/usage", response_model=LinkTypeUsageOut)
+def get_link_type_usage(
+    organization_id: UUID, link_type_id: UUID,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
-    """Deletes a link type, applying the shared rename/delete/reassign
-    rules (§4.0): refuses to leave the organisation with zero link types
-    (409), and requires an explicit `reassign_to_id` to delete a type
-    that's currently in use by any `ArtefactLink` (409 naming the count
-    if omitted; bulk-reassigns then deletes if provided). Reassignment here
-    changes each affected link's asserted meaning, which is exactly why
-    it's the admin's explicit choice rather than an automatic cascade or
-    silent delete — see `services.definitions.delete_definition_with_reassignment`'s
-    docstring for the exact behaviour.
+    """What depends on a link type, for the delete-in-use dialog: link, project,
+    pending change request and approved-requirement counts, the artefact-type
+    rules naming it, and every other link type assessed as a replacement."""
+    usage = compute_usage(db, organization_id, link_type_id)
+    return LinkTypeUsageOut(
+        link_count=usage.link_count, project_count=usage.project_count,
+        pending_change_requests=usage.pending_change_requests,
+        approved_requirement_links=usage.approved_requirement_links,
+        rule_artefact_types=[ArtefactTypeOut(type=t, label=get_artefact_type_label(t)) for t in usage.rule_artefact_types],
+        emptied_rule_artefact_types=[
+            ArtefactTypeOut(type=t, label=get_artefact_type_label(t)) for t in usage.emptied_rule_artefact_types
+        ],
+        is_dedicated=usage.is_dedicated, is_last=usage.is_last,
+        candidates=[
+            LinkTypeCandidateOut(
+                id=c.link_type.id, forward_name=c.link_type.forward_name, reverse_name=c.link_type.reverse_name,
+                flow=c.link_type.flow, compatible=c.compatible, reason=c.reason, flow_differs=c.flow_differs,
+            )
+            for c in usage.candidates
+        ],
+    )
 
-    Filtering by `referencing_fk_column` alone (no `source_type`/
-    `target_type` filter) is still correct here: in this phase, only
-    requirement-to-requirement links ever have a non-null `link_type_id`
-    (untyped action links always have `link_type_id IS NULL`), so every
-    `ArtefactLink` row this reassigns/counts is, in practice, a
-    requirement-to-requirement traceability link — the same set the old
-    `RequirementLink`-scoped query returned.
+
+@router.delete("/{organization_id}/link-types/{link_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_link_type(
+    organization_id: UUID, link_type_id: UUID,
+    reassign_to_id: UUID | None = Query(None),
+    mode: Literal["reassign", "remove_links"] | None = Query(None),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Deletes a link type (`services.link_type_usage.delete_link_type`).
+
+    Refuses to leave the organisation with zero link types (409). An unused type
+    is deleted outright. A type in use needs `reassign_to_id` (convert the links
+    to another type, merging duplicates) or `mode=remove_links` (delete them too,
+    refused while pending change requests propose the type or when it would
+    empty an artefact-type rule); without either, 409 naming the count. Passing
+    `mode` explicitly returns 200 with what happened (`moved`/`merged`/`removed`);
+    the legacy forms return 204.
     """
-    delete_definition_with_reassignment(
-        db, definition_model=RequirementLinkTypeDefinition, scope_column=RequirementLinkTypeDefinition.organization_id,
-        scope_id=organization_id, item_id=link_type_id, reassign_to_id=reassign_to_id,
-        referencing_model=ArtefactLink, referencing_fk_column=ArtefactLink.link_type_id,
-        referencing_fk_name="link_type_id", entity_type="requirement_link_type_definition", noun="link type",
-        plural_noun="link(s)", reassign_verb="convert",
-        min_count_message="An organisation must always have at least one requirement link type.",
-        actor_id=current_user.id, organization_id=organization_id, project_id=None, name_attr="forward_name",
+    outcome = delete_link_type_in_use(
+        db, organization_id=organization_id, link_type_id=link_type_id, mode=mode,
+        reassign_to_id=reassign_to_id, actor_id=current_user.id,
     )
     db.commit()
+    if mode is not None:
+        return JSONResponse(
+            LinkTypeDeleteOutcomeOut(moved=outcome.moved, merged=outcome.merged, removed=outcome.removed).model_dump(),
+            status_code=status.HTTP_200_OK,
+        )
 
+
+def _validated_restrictions(
+    source_types: list[str] | None, target_types: list[str] | None
+) -> tuple[list[str] | None, list[str] | None]:
+    """Normalises a link type's source/target restrictions, or raises 422 naming the unknown type."""
+    try:
+        return (
+            normalise_artefact_types(source_types, field_name="allowed_source_types"),
+            normalise_artefact_types(target_types, field_name="allowed_target_types"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+
+@router.get("/{organization_id}/artefact-types", response_model=list[ArtefactTypeOut])
+def list_artefact_types(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+):
+    """The artefact types that exist in this organisation (core types plus those
+    of its enabled modules) with display labels, for link-type restriction and
+    rule pickers."""
+    return [ArtefactTypeOut(type=t, label=get_artefact_type_label(t)) for t in list_org_artefact_types(db, organization_id)]
+
+
+@router.get("/{organization_id}/artefact-link-rules", response_model=list[ArtefactLinkRuleOut])
+def list_artefact_link_rules(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Every artefact type of the organisation with the link types it may use
+    (`null` = any link type), for the link-type admin's "By artefact type" view."""
+    rules = get_artefact_rules(db, organization_id)
+    return [
+        ArtefactLinkRuleOut(
+            artefact_type=t, label=get_artefact_type_label(t),
+            link_type_ids=sorted(rules[t], key=str) if t in rules else None,
+        )
+        for t in list_org_artefact_types(db, organization_id)
+    ]
+
+
+@router.put("/{organization_id}/artefact-link-rules/{artefact_type}", response_model=ArtefactLinkRuleOut)
+def set_artefact_link_rule(
+    organization_id: UUID, artefact_type: str, payload: ArtefactLinkRuleSet,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Limits an artefact type to the given link types (a closed, non-empty list;
+    existing links are never changed). Enforced when links are created."""
+    try:
+        rule = set_artefact_rule(db, organization_id, artefact_type, payload.link_type_ids)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    log_event(db, entity_type="artefact_type_link_rule", entity_id=rule.id, action="updated",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"artefact_type": artefact_type, "link_type_ids": [str(i) for i in payload.link_type_ids]})
+    db.commit()
+    return ArtefactLinkRuleOut(
+        artefact_type=artefact_type, label=get_artefact_type_label(artefact_type),
+        link_type_ids=sorted((e.link_type_id for e in rule.allowed_link_types), key=str),
+    )
+
+
+@router.delete("/{organization_id}/artefact-link-rules/{artefact_type}", status_code=status.HTTP_204_NO_CONTENT)
+def clear_artefact_link_rule(
+    organization_id: UUID, artefact_type: str,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Removes an artefact type's rule, so it may use any link type again."""
+    if clear_artefact_rule(db, organization_id, artefact_type):
+        log_event(db, entity_type="artefact_type_link_rule", entity_id=organization_id, action="deleted",
+                  actor_id=current_user.id, organization_id=organization_id, detail={"artefact_type": artefact_type})
+    db.commit()

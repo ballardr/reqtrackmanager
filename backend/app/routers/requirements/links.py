@@ -23,6 +23,7 @@ from app.models.user import User
 from app.routers.requirements.core import _get_requirement_in_project, _require_edit_role
 from app.schemas.requirement import RequirementLinkCreate, RequirementLinkOut
 from app.services.audit import log_event
+from app.services.link_types import LinkRuleError
 from app.services.rbac import require_project_view
 from app.services.relationships import create_link as create_artefact_link
 from app.services.relationships import delete_link as delete_artefact_link
@@ -97,11 +98,14 @@ def create_link(
     link_type = db.get(RequirementLinkTypeDefinition, payload.link_type_id)
     if link_type is None or link_type.organization_id != project.organization_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "link_type_id must be a link type defined in this project's organisation.")
-    link = create_artefact_link(
-        db, source_type=ArtefactType.REQUIREMENT, source_id=requirement_id,
-        target_type=ArtefactType.REQUIREMENT, target_id=target.id,
-        link_type_id=payload.link_type_id, created_by=current_user.id,
-    )
+    try:
+        link = create_artefact_link(
+            db, source_type=ArtefactType.REQUIREMENT, source_id=requirement_id,
+            target_type=ArtefactType.REQUIREMENT, target_id=target.id,
+            link_type_id=payload.link_type_id, created_by=current_user.id,
+        )
+    except LinkRuleError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     log_event(db, entity_type="requirement_link", entity_id=link.id, action="created",
               actor_id=current_user.id, project_id=project_id,
               detail={"source_requirement_id": str(requirement_id), "target_requirement_id": str(target.id),

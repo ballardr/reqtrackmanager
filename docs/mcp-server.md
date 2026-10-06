@@ -6,7 +6,7 @@ Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, default
 
 ## What it can do
 
-Nineteen read tools, always available:
+Twenty read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
@@ -20,6 +20,7 @@ Nineteen read tools, always available:
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why (C-A-09) |
 | `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream / downstream / related) for impact analysis; reports hidden and truncated results rather than hiding them |
+| `list_artefact_link_types` | The link types usable from an artefact, with direction, wording and the kinds of record each can reach — the starting point for linking |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes (C-R-03) |
@@ -30,12 +31,14 @@ Nineteen read tools, always available:
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Plus five write tools, only when [write mode](#write-mode) is enabled:
+Plus seven write tools, only when [write mode](#write-mode) is enabled:
 
 | Tool | Purpose |
 | --- | --- |
 | `create_requirement` | Creates a new requirement (always starts in "draft") |
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+| `create_artefact_link` | Links an artefact to another record of the same project, from either end — subject to the organisation's link restrictions and the caller's own permissions |
+| `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `approve_requirement` | Approves a draft or reviewed requirement — **only when AI approval is enabled** for the project and its organisation |
 | `decide_change_request` | Approves or rejects a submitted change request — **only when AI approval is enabled** for the project and its organisation |
 | `complete_requirement` | Marks an approved requirement completed — **only when AI approval is enabled** for the project and its organisation |
@@ -46,7 +49,7 @@ A backend module can also contribute its own tools here, prefixed with that modu
 
 ## Write mode
 
-On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `docker-compose.yml` at the repo root both default it to `true`. When it's off, none of the five write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
+On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `docker-compose.yml` at the repo root both default it to `true`. When it's off, none of the seven write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
 
 **`create_requirement`/`update_requirement`: requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through either tool, regardless of what the calling account's own role could do directly via the API. Attempting to edit an already-approved (locked) requirement is rejected with a clear error telling the caller a change request is needed instead.
 

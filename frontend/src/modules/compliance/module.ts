@@ -150,8 +150,16 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  */
 const strings = t();
 
+/** Compliance's records have no pages of their own: each is managed from the project's Compliance page. */
+const projectCompliancePath = (projectId: string) => `/projects/${projectId}/modules/compliance`;
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "compliance",
+  artefactPaths: {
+    compliance_evidence: projectCompliancePath,
+    project_compliance_requirement: projectCompliancePath,
+    compliance_required_action_assessment: projectCompliancePath,
+  },
   routes: [
     { path: "/projects/:projectId/modules/compliance", element: createElement(ProjectCompliancePage) },
   ],

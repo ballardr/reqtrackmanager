@@ -24,6 +24,10 @@ foreign-key cascade can't do on its own:
   `ArtefactLink` endpoints are polymorphic UUIDs with no FK, and a link
   type still referenced made the org delete fail (found 2026-10-05). Module
   artefacts' comments/subscriptions are swept the same way.
+- Deleting the org's artefact-type link rules and their entries before its
+  link types: an entry's foreign key to a link type has no cascade (a deleted
+  type must never dangle in a rule), so the database cannot order the two
+  itself.
 - Deleting the org's projects explicitly, before the org row, so project-
   scoped rows never outlive the org-level definitions they reference
   (cascade order between the two isn't otherwise fixed).
@@ -58,7 +62,11 @@ from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
-from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.models.requirement_link_type import (
+    ArtefactTypeLinkRule,
+    ArtefactTypeLinkRuleEntry,
+    RequirementLinkTypeDefinition,
+)
 from app.modules.registry import get_module_artefact_ids_in_organization
 from app.services.files import delete_file
 
@@ -96,6 +104,10 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
     if artefact_ids:
         link_conditions += [ArtefactLink.source_id.in_(artefact_ids), ArtefactLink.target_id.in_(artefact_ids)]
     db.execute(ArtefactLink.__table__.delete().where(or_(*link_conditions)))
+
+    rule_ids = select(ArtefactTypeLinkRule.id).where(ArtefactTypeLinkRule.organization_id == organization_id)
+    db.execute(ArtefactTypeLinkRuleEntry.__table__.delete().where(ArtefactTypeLinkRuleEntry.rule_id.in_(rule_ids)))
+    db.execute(ArtefactTypeLinkRule.__table__.delete().where(ArtefactTypeLinkRule.organization_id == organization_id))
 
     # Organization.logo_file_id/login_background_file_id are self-referential
     # FKs to file_assets with no ondelete action (models/organization.py) —

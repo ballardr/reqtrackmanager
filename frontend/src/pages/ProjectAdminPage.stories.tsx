@@ -78,6 +78,8 @@ function mockProjectAdminApis(
     // `force_require_change_request_for_approved_links`, fetched via a bare
     // `GET /orgs/{id}` alongside the other org-scoped calls below.
     organization?: Organization;
+    stages?: ProjectStage[];
+    categories?: Category[];
   } = {}
 ) {
   const groupsForThisStory = overrides.groups ?? groups;
@@ -97,9 +99,9 @@ function mockProjectAdminApis(
     // Checked before the "/orgs/" + "/groups"/"/users" branches below,
     // which this bare org-detail path doesn't match (no further segment).
     if (path === `/api/v1/orgs/${project.organization_id}`) return organization;
-    if (path.includes("/stages")) return stages;
+    if (path.includes("/stages")) return overrides.stages ?? stages;
     if (path.includes("/components")) return components;
-    if (path.includes("/categories")) return categories;
+    if (path.includes("/categories")) return overrides.categories ?? categories;
     if (path.includes("/action-types")) return actionTypes;
     if (path.includes("/project-statuses")) return projectStatuses;
     // `ProjectMembersTable`'s own second data source (Phase D, follow-up UX
@@ -386,6 +388,58 @@ export const StagesTabAddAndTransition: Story = {
     await expect(stagesSection.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
     await userEvent.click(canvas.getByRole("button", { name: "Start review" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s1/transition?new_status=review`));
+  },
+};
+
+/** Deleting a stage always asks where its requirements go: the shared in-use dialog lists the other
+ * stages, confirm stays disabled until one is chosen, and the delete carries `reassign_to`. */
+export const StagesTabDeleteReassignsViaDialog: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      stages: [
+        ...stages,
+        { id: "s2", project_id: PROJECT_ID, name: "Design", status: "scoping", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
+      ],
+    });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Delete this stage" })).toHaveLength(2));
+    await userEvent.click(canvas.getAllByRole("button", { name: "Delete this stage" })[1]);
+
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Delete “Design”?" }));
+    const confirm = dialog.getByRole("button", { name: "Confirm delete" });
+    await expect(confirm).toBeDisabled();
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "Scoping");
+    await userEvent.click(confirm);
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s2?reassign_to=s1`));
+  },
+};
+
+/** The same dialog serves categories, listing the others as "Component / Category". */
+export const StructureTabDeleteCategoryReassignsViaDialog: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      categories: [
+        ...categories,
+        { id: "cat2", project_id: PROJECT_ID, component_id: "c1", name: "Logout", prefix: "OUT", sort_order: 1 },
+      ],
+    });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Logout")).toBeInTheDocument());
+    const row = canvas.getByDisplayValue("Logout").closest<HTMLElement>(".stack")!;
+    await userEvent.click(within(row).getByTitle("Delete this category"));
+
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Delete “Logout”?" }));
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "Authentication / Login");
+    await userEvent.click(dialog.getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/categories/cat2?reassign_to=cat1`));
   },
 };
 

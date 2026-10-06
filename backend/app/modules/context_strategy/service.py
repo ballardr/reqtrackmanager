@@ -243,7 +243,9 @@ from app.modules.context_strategy.models import (
     StrategyFile,
     StrategyVersion,
 )
+from app.modules.registry import LinkTypeSeed
 from app.services.audit import log_event
+from app.services.link_types import ensure_org_link_type
 from app.services.relationships import create_link, get_link_between
 
 # This module's own artefact-type string, registered on `ModuleDefinition.
@@ -1979,37 +1981,10 @@ def resolve_link_target_organization_id(db: Session, target_type: str, target_id
 def _get_or_create_cs_link_type(
     db: Session, organization_id: uuid.UUID, *, forward_name: str, reverse_name: str
 ) -> RequirementLinkTypeDefinition:
-    """This module's own copy of `modules.decisions.service._get_or_create_
-    link_type` — duplicated rather than imported (Decision Management's own
-    version is a private, underscore-prefixed helper not meant for reuse,
-    and importing it would be a cross-module import this codebase's Modular
-    Feature System Boundary rule forbids regardless). Matches this module's
-    own existing precedent of duplicating small per-module patterns rather
-    than sharing private helpers across modules (Phase 1's `StrategyComment`/
-    `StrategyCommentFile`/`StrategyFile` vs. Decision's `DecisionComment`/
-    `DecisionCommentFile`/`DecisionFile` — see that phase's own notes)."""
-    link_type = db.scalar(
-        select(RequirementLinkTypeDefinition).where(
-            RequirementLinkTypeDefinition.organization_id == organization_id,
-            RequirementLinkTypeDefinition.forward_name == forward_name,
-        )
-    )
-    if link_type is not None:
-        return link_type
-    from sqlalchemy import func
-
-    next_sort_order = db.scalar(
-        select(func.count())
-        .select_from(RequirementLinkTypeDefinition)
-        .where(RequirementLinkTypeDefinition.organization_id == organization_id)
-    )
-    link_type = RequirementLinkTypeDefinition(
-        organization_id=organization_id, forward_name=forward_name, reverse_name=reverse_name,
-        sort_order=next_sort_order,
-    )
-    db.add(link_type)
-    db.flush()
-    return link_type
+    """This organisation's link type identified by `forward_name`, created on
+    first use from the registered seed (`services.link_types.ensure_org_link_type`;
+    `reverse_name` is the fallback phrase for an unseeded name)."""
+    return ensure_org_link_type(db, organization_id, forward_name, reverse_name)
 
 
 def create_context_strategy_link(
@@ -2160,7 +2135,7 @@ def create_strategy_supersession(
     link = create_link(
         db, source_type=STRATEGY_ARTEFACT_TYPE, source_id=new_strategy.id,
         target_type=STRATEGY_ARTEFACT_TYPE, target_id=old_strategy.id,
-        link_type_id=link_type.id, created_by=actor.id,
+        link_type_id=link_type.id, created_by=actor.id, enforce_rules=False,  # fixed-semantic lifecycle step
     )
     old_current_version = get_current_version(db, old_strategy.id)
     new_version = supersede_strategy(db, old_strategy, old_current_version, actor, comment=comment)
@@ -2285,7 +2260,7 @@ def create_guiding_principle_supersession(
     link = create_link(
         db, source_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, source_id=new_guiding_principle.id,
         target_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, target_id=old_guiding_principle.id,
-        link_type_id=link_type.id, created_by=actor.id,
+        link_type_id=link_type.id, created_by=actor.id, enforce_rules=False,  # fixed-semantic lifecycle step
     )
     old_current_version = get_current_guiding_principle_version(db, old_guiding_principle.id)
     new_version = supersede_guiding_principle(db, old_guiding_principle, old_current_version, actor, comment=comment)
@@ -2362,7 +2337,7 @@ def create_future_state_supersession(
     link = create_link(
         db, source_type=FUTURE_STATE_ARTEFACT_TYPE, source_id=new_future_state.id,
         target_type=FUTURE_STATE_ARTEFACT_TYPE, target_id=old_future_state.id,
-        link_type_id=link_type.id, created_by=actor.id,
+        link_type_id=link_type.id, created_by=actor.id, enforce_rules=False,  # fixed-semantic lifecycle step
     )
     old_current_version = get_current_future_state_version(db, old_future_state.id)
     new_version = supersede_future_state(db, old_future_state, old_current_version, actor, comment=comment)
@@ -2409,3 +2384,42 @@ def create_open_question_link(
         source_organization_id=source_organization_id, target_type=target_type, target_id=target_id,
         forward_name=forward_name, reverse_name=reverse_name, actor_id=actor_id,
     )
+
+
+def _build_link_type_seeds() -> tuple[LinkTypeSeed, ...]:
+    """The link types the typed relationship kinds above use, as registry seeds
+    (`ModuleDefinition.link_type_seeds`), derived from the kind tables so the
+    vocabulary has one definition. Each kind's source and target type become
+    the seed's restriction; the registry unions seeds sharing a forward name
+    ("Drives" runs Pain Point -> Strategy and Strategy -> Requirement). The
+    "Supersedes" type is dedicated: its links flip a status through the
+    supersession endpoints, not the generic link ones."""
+    seeds: list[LinkTypeSeed] = []
+    by_source = (
+        (STRATEGY_ARTEFACT_TYPE, _STRATEGY_LINK_SPECS),
+        (PAIN_POINT_ARTEFACT_TYPE, _PAIN_POINT_LINK_SPECS),
+        (GUIDING_PRINCIPLE_ARTEFACT_TYPE, _GUIDING_PRINCIPLE_LINK_SPECS),
+        (FUTURE_STATE_ARTEFACT_TYPE, _FUTURE_STATE_LINK_SPECS),
+        (OPEN_QUESTION_ARTEFACT_TYPE, _OPEN_QUESTION_LINK_SPECS),
+    )
+    for source_type, specs in by_source:
+        for target_type, forward, reverse in specs.values():
+            if forward is None:  # untyped association: no link type
+                continue
+            seeds.append(
+                LinkTypeSeed(
+                    forward_name=forward, reverse_name=reverse or forward,
+                    allowed_source_types=(source_type,), allowed_target_types=(target_type,),
+                )
+            )
+    for artefact_type in (STRATEGY_ARTEFACT_TYPE, FUTURE_STATE_ARTEFACT_TYPE, GUIDING_PRINCIPLE_ARTEFACT_TYPE):
+        seeds.append(
+            LinkTypeSeed(
+                forward_name="Supersedes", reverse_name="Is superseded by",
+                allowed_source_types=(artefact_type,), allowed_target_types=(artefact_type,), dedicated_endpoint=True,
+            )
+        )
+    return tuple(seeds)
+
+
+LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = _build_link_type_seeds()

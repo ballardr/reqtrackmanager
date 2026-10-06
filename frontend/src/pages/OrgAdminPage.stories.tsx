@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { CustomRoleDefinition, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
@@ -40,6 +40,15 @@ const ssoConfig: OrgSsoConfig = {
 const groups: OrgGroup[] = [
   { id: "grp1", name: "Engineering", member_user_ids: ["user-1"], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
   { id: "grp2", name: "Platform", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
+];
+
+const defaultArtefactTypes: ArtefactTypeOption[] = [
+  { type: "requirement", label: "Requirement" },
+  { type: "decision", label: "Decision" },
+];
+const defaultArtefactRules: ArtefactLinkRule[] = [
+  { artefact_type: "requirement", label: "Requirement", link_type_ids: null },
+  { artefact_type: "decision", label: "Decision", link_type_ids: null },
 ];
 
 function mockOrgAdminApis(overrides: {
@@ -80,6 +89,9 @@ function mockOrgAdminApis(overrides: {
    * now genuinely called on every render of this page's normal header,
    * not just by stories that opt in to exercising it. */
   orgs?: Organization[];
+  /** Link types panel (Platform Enhancements Phase 5b): the artefact types the
+   * restriction pickers offer, and the "By artefact type" rules. */
+  artefactTypes?: ArtefactTypeOption[]; artefactRules?: ArtefactLinkRule[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -90,6 +102,8 @@ function mockOrgAdminApis(overrides: {
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path === "/api/v1/orgs?mine=true") return overrides.orgs ?? [];
     if (path.includes("/project-statuses")) return statuses;
+    if (path.includes("/artefact-types")) return overrides.artefactTypes ?? defaultArtefactTypes;
+    if (path.includes("/artefact-link-rules")) return overrides.artefactRules ?? defaultArtefactRules;
     if (path.includes("/link-types")) return types;
     // Phase A's org-only pending-invites list (follow-up UX batch).
     if (path.includes("/pending-invites")) return orgPendingInvites;
@@ -1729,9 +1743,9 @@ export const ProjectStatusesDeleteDisabledAtLastRow: Story = {
 };
 
 /** Deleting a status that's currently assigned to a project 409s; the UI
- * opens a reassignment picker showing the server's own in-use message
+ * opens the shared in-use dialog showing the server's own in-use message
  * instead of a generic confirm, per §4.0's contract. */
-export const ProjectStatusesDeleteInUseOpensReassignPicker: Story = {
+export const ProjectStatusesDeleteInUseOpensDialog: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
     spyOn(api, "delete").mockRejectedValue(new ApiError(409, "This status is used by 3 project(s). Pass reassign_to_id to move them to another status before deleting."));
@@ -1742,8 +1756,9 @@ export const ProjectStatusesDeleteInUseOpensReassignPicker: Story = {
     await waitFor(() => expect(canvas.getByDisplayValue("Proposed")).toBeInTheDocument());
     const row = canvas.getByDisplayValue("Proposed").closest<HTMLElement>(".stack")!;
     await userEvent.click(within(row).getByTitle("Delete this status"));
-    await waitFor(() => expect(canvas.getByText(/used by 3 project\(s\)/)).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Confirm delete" })).toBeDisabled();
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByText(/used by 3 project\(s\)/)).toBeInTheDocument();
+    await expect(dialog.getByRole("button", { name: "Confirm delete" })).toBeDisabled();
   },
 };
 

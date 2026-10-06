@@ -828,6 +828,7 @@ def apply_project_data(
                 db, source_type=ArtefactType.REQUIREMENT, source_id=source_id,
                 target_type=ArtefactType.REQUIREMENT, target_id=target_id, link_type_id=link_type_id,
                 created_by=users.resolve(link.get("created_by_email"), required=True, context="Requirement link creator"),
+                enforce_rules=False,  # replaying existing data, not a new user-chosen link
             )
         elif source_id and target_id:
             warnings.add(

@@ -62,6 +62,7 @@ from app.modules.stakeholders import need_export, relationship_export, stakehold
 from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
+from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
 from app.modules.stakeholders.service import (
     NEED_ARTEFACT_TYPE,
@@ -554,6 +555,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_types=(PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE),
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
+    link_type_seeds=LINK_TYPE_SEEDS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     sub_components=(
         ModuleSubComponentDefinition(key="persona", name="Personas", default_enabled=True),

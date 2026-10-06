@@ -81,6 +81,7 @@ from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_K
 from app.modules.stakeholders.type_vocabulary import TypeVocabulary
 from app.services.audit import log_event
 from app.services.files import delete_file
+from app.services.link_types import ensure_org_link_type
 from app.services.project_hierarchy import get_ancestor_chain
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
 
@@ -775,27 +776,10 @@ def suggest_cadence(quadrant: GridQuadrant | None) -> TargetCadence | None:
 def get_or_create_link_type(
     db: Session, organization_id: uuid.UUID, forward_name: str, reverse_name: str
 ) -> RequirementLinkTypeDefinition:
-    """The org's link type named `forward_name`/`reverse_name`, created on
-    first use (the same convention Context & Strategy and Decisions follow for
-    their own link types)."""
-    link_type = db.scalar(
-        select(RequirementLinkTypeDefinition).where(
-            RequirementLinkTypeDefinition.organization_id == organization_id,
-            RequirementLinkTypeDefinition.forward_name == forward_name,
-        )
-    )
-    if link_type is not None:
-        return link_type
-    count = db.scalar(
-        select(func.count()).select_from(RequirementLinkTypeDefinition)
-        .where(RequirementLinkTypeDefinition.organization_id == organization_id)
-    )
-    link_type = RequirementLinkTypeDefinition(
-        organization_id=organization_id, forward_name=forward_name, reverse_name=reverse_name, sort_order=count,
-    )
-    db.add(link_type)
-    db.flush()
-    return link_type
+    """The org's link type named `forward_name`, created on first use from the
+    registered seed (`services.link_types.ensure_org_link_type`; `reverse_name`
+    is the fallback phrase for an unseeded name)."""
+    return ensure_org_link_type(db, organization_id, forward_name, reverse_name)
 
 
 def link_type_id_if_exists(db: Session, organization_id: uuid.UUID, forward_name: str) -> uuid.UUID | None:

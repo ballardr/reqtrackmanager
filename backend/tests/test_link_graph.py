@@ -18,103 +18,16 @@ import pytest
 from sqlalchemy import event
 
 from app.database import SessionLocal, engine
-from app.models.enums import ArtefactType
 from app.models.requirement import Requirement
-from app.modules.decisions.models import Decision, DecisionTypeDefinition
 from app.modules.registry import (
     get_all_registered_artefact_types,
     get_artefact_summaries_in_project,
     get_artefact_type_label,
     get_module_registry,
 )
-from app.services import link_graph, relationships
-from tests.conftest import auth_headers, create_component_and_category, create_org_admin_in, create_project
-
-REQ = ArtefactType.REQUIREMENT.value
-ACTION = ArtefactType.REQUIREMENT_ACTION.value
-
-
-class World:
-    """One organisation with an admin and helpers to build artefacts and links in it."""
-
-    def __init__(self, client, admin_token, name: str, *, decisions: bool = False) -> None:
-        self.client = client
-        self.org, self.token = create_org_admin_in(client, admin_token, f"{name} {uuid.uuid4().hex[:6]}")
-        if decisions:
-            resp = client.put(
-                f"/api/v1/orgs/{self.org['id']}/modules/decisions", json={"enabled": True},
-                headers=auth_headers(self.token),
-            )
-            assert resp.status_code == 200, resp.text
-        self.user_id = uuid.UUID(client.get("/api/v1/auth/me", headers=auth_headers(self.token)).json()["id"])
-
-    def project(self, name: str = "P") -> dict:
-        project = create_project(self.client, self.token, self.org["id"], name)
-        project["component_id"], project["category_id"] = create_component_and_category(
-            self.client, self.token, project["id"]
-        )
-        return project
-
-    def requirement(self, project: dict, name: str = "Req") -> uuid.UUID:
-        resp = self.client.post(
-            f"/api/v1/projects/{project['id']}/requirements",
-            json={"name": name, "component_id": project["component_id"], "category_id": project["category_id"]},
-            headers=auth_headers(self.token),
-        )
-        assert resp.status_code == 201, resp.text
-        return uuid.UUID(resp.json()["id"])
-
-    def action(self, project: dict, title: str = "Act") -> uuid.UUID:
-        types = self.client.get(f"/api/v1/projects/{project['id']}/action-types", headers=auth_headers(self.token)).json()
-        resp = self.client.post(
-            f"/api/v1/projects/{project['id']}/actions", json={"title": title, "action_type_id": types[0]["id"]},
-            headers=auth_headers(self.token),
-        )
-        assert resp.status_code == 201, resp.text
-        return uuid.UUID(resp.json()["id"])
-
-    def decision(self, project: dict, code: str = "DEC-1") -> uuid.UUID:
-        db = SessionLocal()
-        try:
-            type_id = db.query(DecisionTypeDefinition.id).filter(
-                DecisionTypeDefinition.project_id == project["id"]
-            ).first()[0]
-            decision = Decision(
-                project_id=project["id"], unique_code=code, title=f"Decision {code}", decision_statement="S",
-                decision_type_id=type_id, owner_id=self.user_id, creator_id=self.user_id,
-            )
-            db.add(decision)
-            db.commit()
-            return decision.id
-        finally:
-            db.close()
-
-    def link_type(self, forward: str, reverse: str, flow: str = "none") -> uuid.UUID:
-        resp = self.client.post(
-            f"/api/v1/orgs/{self.org['id']}/link-types",
-            json={"forward_name": f"{forward} {uuid.uuid4().hex[:4]}", "reverse_name": reverse, "flow": flow},
-            headers=auth_headers(self.token),
-        )
-        assert resp.status_code == 201, resp.text
-        return uuid.UUID(resp.json()["id"])
-
-    def link(self, source: tuple[str, uuid.UUID], target: tuple[str, uuid.UUID], link_type_id=None) -> uuid.UUID:
-        db = SessionLocal()
-        try:
-            row = relationships.create_link(
-                db, source_type=source[0], source_id=source[1], target_type=target[0], target_id=target[1],
-                link_type_id=link_type_id, created_by=self.user_id,
-            )
-            db.commit()
-            return row.id
-        finally:
-            db.close()
-
-    def graph(self, project: dict, artefact: tuple[str, uuid.UUID], token=None, **params):
-        return self.client.get(
-            f"/api/v1/projects/{project['id']}/artefacts/{artefact[0]}/{artefact[1]}/link-graph", params=params,
-            headers=auth_headers(token or self.token),
-        )
+from app.services import link_graph
+from tests.conftest import auth_headers
+from tests.link_world import ACTION, REQ, World
 
 
 @pytest.fixture

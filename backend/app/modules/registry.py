@@ -62,6 +62,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.models.enums import LinkFlow
 
 if TYPE_CHECKING:
     from alembic.config import Config
@@ -1213,6 +1214,38 @@ class ArtefactSummaryProvider:
 
 
 @dataclass(frozen=True)
+class LinkTypeSeed:
+    """A link type a module wants to exist in every organisation, so its
+    artefact types can be linked meaningfully without a core edit
+    (`ModuleDefinition.link_type_seeds`).
+
+    Seeds describe, they do not gate: a type is created lazily when first
+    needed or listed (`services.link_types.ensure_org_link_type`) and **only
+    when the organisation has no type with that `forward_name`**, so an admin's
+    edit (renamed phrases, changed flow, a different restriction) is never
+    overwritten. Seeds that share a `forward_name` (several modules sharing
+    "Supersedes", or a legacy kind reusing "Drives") are merged: the restriction
+    lists are unioned and the phrases must agree.
+
+    Attributes:
+        forward_name / reverse_name: The phrase read from the source / target.
+        flow: Direction in a traceability chain (`LinkFlow`).
+        allowed_source_types / allowed_target_types: Artefact types the link
+            may run from / to; `None` = any.
+        dedicated_endpoint: The type has a fixed meaning with its own action
+            (e.g. "Supersedes" flips a status), so the generic link endpoints
+            neither offer nor delete it.
+    """
+
+    forward_name: str
+    reverse_name: str
+    flow: LinkFlow = LinkFlow.NONE
+    allowed_source_types: tuple[str, ...] | None = None
+    allowed_target_types: tuple[str, ...] | None = None
+    dedicated_endpoint: bool = False
+
+
+@dataclass(frozen=True)
 class RegisteredScoringScheme:
     """A scoring scheme paired with the key of the module that registered
     it — the module key drives enablement gating and `admin_role_key`
@@ -1757,6 +1790,14 @@ class ModuleDefinition:
             endpoints list them via `get_module_reports`. Definitions that fail
             `validate_report_definitions` are excluded and logged. Empty for a
             module with no reports.
+        link_type_seeds: Platform Enhancements Phase 5b — link types (`LinkTypeSeed`)
+            this module wants to exist, each with phrases, flow and an optional
+            source/target artefact-type restriction. Created lazily and only when
+            absent, so an organisation's edits are never overwritten; seeds sharing
+            a `forward_name` across modules are merged (`get_all_link_type_seeds`).
+            Any two artefact types can be linked by default, so a module needs
+            seeds only to ship meaningful vocabulary, never to make its types
+            linkable. Empty for a module with no vocabulary of its own.
         mcp_guidance: Hand-written Markdown telling an AI agent how to use this
             module's MCP tools (typical workflows, lifecycle order, which tools
             are gated, gotchas). Embedded per module in the agent skill's
@@ -1805,6 +1846,7 @@ class ModuleDefinition:
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = field(default_factory=dict)
     artefact_type_labels: dict[str, str] = field(default_factory=dict)
     reports: tuple[ReportDefinition, ...] = field(default=())
+    link_type_seeds: tuple[LinkTypeSeed, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -3371,6 +3413,66 @@ def get_artefact_type_label(artefact_type: str) -> str:
         if label is not None:
             return label
     return artefact_type.replace("_", " ").capitalize()
+
+
+def get_all_link_type_seeds() -> dict[str, LinkTypeSeed]:
+    """Every link type the platform and its modules want to exist, keyed by
+    `forward_name`: the core defaults (`services.definitions.DEFAULT_LINK_TYPES`,
+    unrestricted) plus each module's `link_type_seeds`.
+
+    Seeds sharing a `forward_name` are merged: restriction lists are unioned
+    (`None`, meaning any, absorbs the rest), `dedicated_endpoint` is true if any
+    says so, and the first non-`none` flow wins. A module seed whose phrases
+    disagree with an earlier one is dropped and logged rather than raising, so
+    one module's mistake cannot take down link creation for every module.
+
+    Returns:
+        `{forward_name: merged seed}`.
+    """
+    from app.services.definitions import DEFAULT_LINK_TYPES
+
+    merged: dict[str, LinkTypeSeed] = {
+        forward: LinkTypeSeed(forward_name=forward, reverse_name=reverse, flow=flow)
+        for forward, reverse, flow in DEFAULT_LINK_TYPES
+    }
+
+    def union(a: tuple[str, ...] | None, b: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        if a is None or b is None:
+            return None
+        return tuple(dict.fromkeys((*a, *b)))
+
+    for definition in get_module_registry().values():
+        for seed in definition.link_type_seeds:
+            existing = merged.get(seed.forward_name)
+            if existing is None:
+                merged[seed.forward_name] = seed
+                continue
+            if existing.reverse_name != seed.reverse_name:
+                logger.warning(
+                    "Module %r link type seed %r has reverse phrase %r, conflicting with %r; seed ignored.",
+                    definition.key, seed.forward_name, seed.reverse_name, existing.reverse_name,
+                )
+                continue
+            merged[seed.forward_name] = LinkTypeSeed(
+                forward_name=existing.forward_name, reverse_name=existing.reverse_name,
+                flow=existing.flow if existing.flow is not LinkFlow.NONE else seed.flow,
+                allowed_source_types=union(existing.allowed_source_types, seed.allowed_source_types),
+                allowed_target_types=union(existing.allowed_target_types, seed.allowed_target_types),
+                dedicated_endpoint=existing.dedicated_endpoint or seed.dedicated_endpoint,
+            )
+    return merged
+
+
+def get_link_type_seed_owners() -> dict[str, frozenset[str]]:
+    """`{forward_name: keys of the modules that declare a seed with it}`, so a
+    seed is only materialised for an organisation where one of its owning
+    modules is enabled (a core default has no owner and is seeded at
+    organisation creation instead)."""
+    owners: dict[str, set[str]] = {}
+    for definition in get_module_registry().values():
+        for seed in definition.link_type_seeds:
+            owners.setdefault(seed.forward_name, set()).add(definition.key)
+    return {name: frozenset(keys) for name, keys in owners.items()}
 
 
 def _artefact_type_enabled_for_project(

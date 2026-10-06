@@ -504,6 +504,26 @@ Tier 2 — irreversible, wide blast radius. The left panel is hypothetical, not 
 
 The other half of principle 7 — fired from one shared place, so a future mutation can't ship without it the way most of today's do.
 
+## Pattern: deleting something that is still in use
+
+A definition (a status, an action type, a link type, a scoring level) that other records still use cannot simply be deleted, and the answer is not a dead-end error or an inline row that appears under the item. One shared component, `DeleteInUseDialog` (`frontend/src/components/DeleteInUseDialog.tsx`, reached through `DefinitionList`), opens a `Modal` that says what depends on the item and offers the ways out; every vocabulary that routes through `DefinitionList` uses it, so a new vocabulary gets it for free.
+
+```mermaid
+flowchart TD
+    D["Delete"] --> P{"In use?<br/>(server answers 409)"}
+    P -->|"no"| Done["Deleted, Toast"]
+    P -->|"yes"| M["DeleteInUseDialog<br/>what depends on it"]
+    M --> R["Move everything to another one<br/>(unusable candidates disabled with the reason)"]
+    M --> X["Delete what uses it too<br/>(only where the vocabulary opts in)"]
+    R --> Done
+    X --> T2["Tier 2: type the name"] --> Done
+```
+
+- **Candidates that cannot take everything are shown disabled with the reason**, never silently left out, and a candidate whose meaning differs (a link type with another direction) shows a caution once chosen.
+- **Deleting what uses it is opt-in per vocabulary and always Tier 2** (type the exact name), with the count in the message; it is disabled with its reason while something blocks it.
+- A vocabulary needing more than the default dialog supplies its own content through `DefinitionList`'s `loadInUse` (link types: usage counts, assessed replacements, delete-the-links), rather than a new dialog.
+- Errors from either action stay in the dialog; success closes it and fires a Toast saying what happened (counts included).
+
 ## Pattern: wayfinding — a nav-rail entry to org administration
 
 Not an Azure/Entra-style tenant switcher — this app deliberately pools content (projects and everything under them) across every org a user belongs to, and that's the right call, not a gap to fix. A switcher pattern implies the whole app scopes to one org at a time, which would contradict that pooling. The actual, narrower gap: `/orgs` (the personal org directory, and the only path to org administration) has no entry point anywhere in the persistent chrome except for server admins drilling in through `/server/organisations`.

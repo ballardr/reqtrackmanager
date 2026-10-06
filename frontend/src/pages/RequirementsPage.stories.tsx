@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../api/client";
 import type { Category, Component, ProjectStage } from "../api/types";
 import {
-  buildFileAsset, buildProjectListItem, buildRequirement, buildRequirementLink, buildUser,
+  buildFileAsset, buildLinkType, buildProjectListItem, buildRequirement, buildRequirementLink, buildUser,
   withRouter, withStatefulAuth, withTerminology, withToast,
 } from "../testing/storybook-helpers";
 import { RequirementsPage } from "./RequirementsPage";
@@ -454,7 +454,7 @@ export const CreateStepAttachFileAddLinkThenFinish: Story = {
       if (path.includes("/stages")) return stages;
       if (path.includes("custom-fields")) return [];
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
-      if (path.includes("/link-types")) return [{ id: "lt1", organization_id: "org-1", forward_name: "Depends on", reverse_name: "Depended on by", sort_order: 0, flow: "none" }];
+      if (path.includes("/link-types")) return [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Depended on by" })];
       if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) {
         return [buildRequirement({ id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1" })];
       }

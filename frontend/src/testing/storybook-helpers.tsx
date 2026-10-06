@@ -142,7 +142,8 @@ export function buildProjectStatus(overrides: Partial<ProjectStatusDefinition> =
 export function buildLinkType(overrides: Partial<LinkTypeDefinition> = {}): LinkTypeDefinition {
   return {
     id: nextId("linktype"), organization_id: "org-1", forward_name: "Depends on",
-    reverse_name: "Is a dependency of", sort_order: 0, flow: "none", ...overrides,
+    reverse_name: "Is a dependency of", sort_order: 0, flow: "none",
+    allowed_source_types: null, allowed_target_types: null, dedicated_endpoint: false, ...overrides,
   };
 }
 

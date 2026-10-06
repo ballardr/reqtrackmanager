@@ -125,8 +125,12 @@ def _hop_flow(flow: LinkFlow, outgoing: bool) -> LinkGraphFlow:
     return LinkGraphFlow.UPSTREAM if neighbour_upstream else LinkGraphFlow.DOWNSTREAM
 
 
-class _Resolver:
-    """Resolves and authorises `(type, id)` pairs as visible nodes of one project, with caching."""
+class ArtefactResolver:
+    """Resolves and authorises `(type, id)` pairs as visible records of one project, with caching.
+
+    Shared by the link graph and link authoring so both apply the same
+    visibility rule: in the project (or an org record the owning module makes
+    visible there), module enabled, and the artefact type's `view` permission held."""
 
     _UNAVAILABLE = "unavailable"
 
@@ -158,6 +162,10 @@ class _Resolver:
         """The summary if `key` is a visible node, else `None`."""
         known = self._known.get(key)
         return known if isinstance(known, ArtefactSummary) else None
+
+    def holds(self, artefact_type: str, level: str) -> bool:
+        """Whether the user holds `level` (e.g. `"manage"`) on `artefact_type` in this project."""
+        return permission_satisfied(self._held, encode_permission(artefact_type, level))
 
     def is_unavailable(self, key: _Key) -> bool:
         """Whether `key`'s type cannot be displayed by any installed module."""
@@ -202,7 +210,7 @@ def build_link_graph(
     if root_type not in get_all_registered_artefact_types():
         return None
     depth = max(1, min(depth, MAX_DEPTH))
-    resolver = _Resolver(db, project, user_id)
+    resolver = ArtefactResolver(db, project, user_id)
     resolver.resolve({root_type: {root_id}})
     root_summary = resolver.visible((root_type, root_id))
     if root_summary is None:

@@ -10,8 +10,8 @@ installCleanupHook();
  * types are both org-wide definition lists sharing the same
  * add/rename/reorder/delete-with-reassignment contract (§4.0 of the
  * traceability plan). Covers, for project statuses: deleting a status
- * currently assigned to real projects 409s and opens a reassignment
- * picker, reassigning moves those projects, an unused status deletes
+ * currently assigned to real projects 409s and opens the in-use dialog,
+ * reassigning moves those projects, an unused status deletes
  * immediately with no prompt, and once a single status remains its delete
  * control is disabled outright. Link types get lighter add/rename/direction/delete-
  * unused coverage — the identical shared reassignment/last-row-disabled
@@ -128,9 +128,10 @@ test.describe("org admin: project statuses and link types", () => {
 
       const proposedRow = inputWithValue(page, "Proposed").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await proposedRow.getByTitle("Delete this status").click();
-      await expect(page.getByText(/used by \d+ project\(s\)/)).toBeVisible();
-      await page.getByText("Reassign existing items to").locator("xpath=..").getByRole("combobox").selectOption({ label: "Active (E2E)" });
-      await page.getByRole("button", { name: "Confirm delete" }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByText(/used by \d+ project\(s\)/)).toBeVisible();
+      await dialog.getByRole("combobox", { name: "Reassign existing items to" }).selectOption({ label: "Active (E2E)" });
+      await dialog.getByRole("button", { name: "Confirm delete" }).click();
       await expect(inputWithValue(page, "Proposed")).toHaveCount(0);
     });
 
@@ -162,7 +163,7 @@ test.describe("org admin: project statuses and link types", () => {
       const abandonedRow = inputWithValue(page, "Abandoned").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await abandonedRow.getByTitle("Delete this status").click();
       await expect(inputWithValue(page, "Abandoned")).toHaveCount(0);
-      await expect(page.getByText("Reassign existing items to")).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
 
       const completedRow = inputWithValue(page, "Completed").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await completedRow.getByTitle("Delete this status").click();
@@ -207,7 +208,7 @@ test.describe("org admin: project statuses and link types", () => {
       const row = inputWithValue(page, "E2E Precedes v2").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await row.getByTitle("Delete this link type").click();
       await expect(inputWithValue(page, "E2E Precedes v2")).toHaveCount(0);
-      await expect(page.getByText("Reassign existing items to")).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     });
   });
 });

@@ -30,6 +30,7 @@ import {
   REQUIREMENT_LEVEL_LABEL,
   REQUIREMENT_STATUS_LABEL,
   REQUIREMENT_STATUS_TONE,
+  linkTypesFor,
 } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { AssigneePicker } from "../components/AssigneePicker";
@@ -477,7 +478,10 @@ export function RequirementDetailPage() {
       try {
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
         setOrgUsers(users);
-        setLinkTypes(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${proj.organization_id}/link-types`));
+        // Only types that may join two requirements (a restricted or dedicated type would be refused).
+        setLinkTypes(
+          linkTypesFor(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${proj.organization_id}/link-types`), "requirement", "requirement"),
+        );
         // Platform review 2026-09, Phase 8 — `OrganizationOut.
         // force_require_change_request_for_approved_links` is readable by
         // any org member (unlike most other org policy toggles), so this

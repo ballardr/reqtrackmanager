@@ -41,6 +41,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { DefinitionList } from "../components/DefinitionList";
+import { DeleteInUseDialog } from "../components/DeleteInUseDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { EntitySwitcher } from "../components/EntitySwitcher";
@@ -224,12 +225,10 @@ export function ProjectAdminPage() {
   // half-typed rename after a reload.
   const [stageNameEdits, setStageNameEdits] = useState<Record<string, string>>({});
   const [deletingStageId, setDeletingStageId] = useState<string | null>(null);
-  const [reassignStageTo, setReassignStageTo] = useState("");
   const [componentEdits, setComponentEdits] = useState<Record<string, { name: string; prefix: string }>>({});
   const [deletingComponentId, setDeletingComponentId] = useState<string | null>(null);
   const [categoryEdits, setCategoryEdits] = useState<Record<string, { name: string; prefix: string }>>({});
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
-  const [reassignCategoryTo, setReassignCategoryTo] = useState("");
   const [structureError, setStructureError] = useState<string | null>(null);
 
   const [settingsName, setSettingsName] = useState("");
@@ -871,17 +870,11 @@ export function ProjectAdminPage() {
     }
   }
 
-  async function deleteStage(stageId: string) {
-    if (!reassignStageTo) return;
-    setStructureError(null);
-    try {
-      await api.delete(`/api/v1/projects/${projectId}/stages/${stageId}?reassign_to=${reassignStageTo}`);
-      setDeletingStageId(null);
-      setReassignStageTo("");
-      reload();
-    } catch (err) {
-      setStructureError(err instanceof Error ? err.message : strings.common.error);
-    }
+  /** Deletes a stage, moving everything targeting it to `reassignTo`. Throws on failure so
+   * `DeleteInUseDialog` can show the error in place. */
+  async function deleteStage(stageId: string, reassignTo: string) {
+    await api.delete(`/api/v1/projects/${projectId}/stages/${stageId}?reassign_to=${reassignTo}`);
+    reload();
   }
 
   async function renameComponent(componentId: string, name: string, prefix: string) {
@@ -925,17 +918,11 @@ export function ProjectAdminPage() {
     }
   }
 
-  async function deleteCategory(categoryId: string) {
-    if (!reassignCategoryTo) return;
-    setStructureError(null);
-    try {
-      await api.delete(`/api/v1/projects/${projectId}/categories/${categoryId}?reassign_to=${reassignCategoryTo}`);
-      setDeletingCategoryId(null);
-      setReassignCategoryTo("");
-      reload();
-    } catch (err) {
-      setStructureError(err instanceof Error ? err.message : strings.common.error);
-    }
+  /** Deletes a category, moving its requirements to `reassignTo`. Throws on failure so
+   * `DeleteInUseDialog` can show the error in place. */
+  async function deleteCategory(categoryId: string, reassignTo: string) {
+    await api.delete(`/api/v1/projects/${projectId}/categories/${categoryId}?reassign_to=${reassignTo}`);
+    reload();
   }
 
   async function addActionType(name: string) {
@@ -1896,23 +1883,6 @@ export function ProjectAdminPage() {
                 )}
               </div>
             )}
-            {deletingStageId === s.id && (
-              <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
-                <span>{strings.admin.reassignExistingTo}</span>
-                <select className="input" style={{ maxWidth: 220 }} value={reassignStageTo} onChange={(e) => setReassignStageTo(e.target.value)}>
-                  <option value="">—</option>
-                  {otherStages.map((other) => (
-                    <option key={other.id} value={other.id}>{other.name}</option>
-                  ))}
-                </select>
-                <button className="btn btn-danger" disabled={!reassignStageTo} onClick={() => deleteStage(s.id)}>
-                  {strings.admin.confirmDelete}
-                </button>
-                <button className="btn" onClick={() => { setDeletingStageId(null); setReassignStageTo(""); }}>
-                  {strings.common.cancel}
-                </button>
-              </div>
-            )}
           </div>
           );
         })}
@@ -2073,28 +2043,6 @@ export function ProjectAdminPage() {
                         </button>
                       </div>
                     </div>
-                    {deletingCategoryId === cat.id && (
-                      <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
-                        <span>{strings.admin.reassignExistingTo}</span>
-                        <select className="input" style={{ maxWidth: 260 }} value={reassignCategoryTo} onChange={(e) => setReassignCategoryTo(e.target.value)}>
-                          <option value="">—</option>
-                          {otherCategories.map((other) => {
-                            const otherComponent = components.find((comp) => comp.id === other.component_id);
-                            return (
-                              <option key={other.id} value={other.id}>
-                                {otherComponent ? `${otherComponent.name} / ` : ""}{other.name}
-                              </option>
-                            );
-                          })}
-                        </select>
-                        <button className="btn btn-danger" disabled={!reassignCategoryTo} onClick={() => deleteCategory(cat.id)}>
-                          {strings.admin.confirmDelete}
-                        </button>
-                        <button className="btn" onClick={() => { setDeletingCategoryId(null); setReassignCategoryTo(""); }}>
-                          {strings.common.cancel}
-                        </button>
-                      </div>
-                    )}
                   </div>
                   );
                 })}
@@ -2892,6 +2840,29 @@ export function ProjectAdminPage() {
             {section.render({ projectId: project.id })}
           </div>
         ))}
+      {deletingStageId && stages.some((st) => st.id === deletingStageId) && (
+        <DeleteInUseDialog
+          title={strings.admin.deleteInUseTitle(stages.find((st) => st.id === deletingStageId)!.name)}
+          summary={strings.admin.deleteStageReassignSummary}
+          candidates={stages.filter((other) => other.id !== deletingStageId).map((other) => ({ id: other.id, label: other.name }))}
+          onMove={(replacementId) => deleteStage(deletingStageId, replacementId)}
+          onClose={() => setDeletingStageId(null)}
+        />
+      )}
+      {deletingCategoryId && categories.some((cat) => cat.id === deletingCategoryId) && (
+        <DeleteInUseDialog
+          title={strings.admin.deleteInUseTitle(categories.find((cat) => cat.id === deletingCategoryId)!.name)}
+          summary={strings.admin.deleteCategoryReassignSummary}
+          candidates={categories
+            .filter((other) => other.id !== deletingCategoryId)
+            .map((other) => {
+              const otherComponent = components.find((comp) => comp.id === other.component_id);
+              return { id: other.id, label: `${otherComponent ? `${otherComponent.name} / ` : ""}${other.name}` };
+            })}
+          onMove={(replacementId) => deleteCategory(deletingCategoryId, replacementId)}
+          onClose={() => setDeletingCategoryId(null)}
+        />
+      )}
       </ResourceMenu>
     </div>
   );

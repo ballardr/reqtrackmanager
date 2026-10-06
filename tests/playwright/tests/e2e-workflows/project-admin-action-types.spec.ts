@@ -80,8 +80,8 @@ test.describe("project admin: action types", () => {
       const row = inputWithValue(page, "E2E Inspection v2").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await row.getByTitle("Delete this action type").click();
       await expect(inputWithValue(page, "E2E Inspection v2")).toHaveCount(0);
-      // A plain, unused delete never shows the reassignment picker.
-      await expect(page.getByText("Reassign existing items to")).toHaveCount(0);
+      // A plain, unused delete never opens the in-use dialog.
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     });
 
     await test.step("create an action of type Review, making it 'in use'", async () => {
@@ -93,14 +93,15 @@ test.describe("project admin: action types", () => {
       await expect(page.getByText("E2E Action Type Test")).toBeVisible();
     });
 
-    await test.step("deleting Review now 409s and opens the reassignment picker", async () => {
+    await test.step("deleting Review now 409s and opens the in-use dialog", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Fields & actions");
       const reviewRow = inputWithValue(page, "Review").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await reviewRow.getByTitle("Delete this action type").click();
-      await expect(page.getByText(/used by 1 action\(s\)/)).toBeVisible();
-      await page.getByText("Reassign existing items to").locator("xpath=..").getByRole("combobox").selectOption({ label: "Test" });
-      await page.getByRole("button", { name: "Confirm delete" }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByText(/used by 1 action\(s\)/)).toBeVisible();
+      await dialog.getByRole("combobox", { name: "Reassign existing items to" }).selectOption({ label: "Test" });
+      await dialog.getByRole("button", { name: "Confirm delete" }).click();
       await expect(inputWithValue(page, "Review")).toHaveCount(0);
     });
 

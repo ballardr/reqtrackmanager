@@ -14,8 +14,6 @@ import type {
   EntityScope,
   ExternalUserPolicy,
   FileAsset,
-  LinkFlow,
-  LinkTypeDefinition,
   MaterializeResult,
   MergeConflict,
   ModuleRoleDefinition,
@@ -50,8 +48,6 @@ import type { ModuleAvailability } from "../api/types";
 import {
   collapseProjectRoles,
   fromModuleAvailability,
-  LINK_FLOW_LABEL,
-  LINK_FLOW_VALUES,
   MODULE_AVAILABILITY_LABEL,
   ORG_ROLE_LABEL,
   PENDING_INVITE_STATUS_LABEL,
@@ -71,6 +67,7 @@ import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
+import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { Modal } from "../components/Modal";
 import { ModuleAvailabilitySelect, ModuleSettingsList } from "../components/ModuleSettingsList";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
@@ -282,7 +279,6 @@ export function OrgAdminPage() {
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDefinition[]>([]);
 
   // --- Requirement link types (C-G-09) ---------------------------------
-  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
 
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
@@ -624,10 +620,10 @@ export function OrgAdminPage() {
     // real message instead of leaving `org` unset and the page spinning
     // forever (its loading gate is just `if (!org) return <Spinner />`).
     let o: Organization, allG: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
-    let statuses: ProjectStatusDefinition[], linkTypeList: LinkTypeDefinition[];
+    let statuses: ProjectStatusDefinition[];
     let permissionsList: Permission[], customRoleList: CustomRoleDefinition[], entityScopeList: EntityScope[];
     try {
-      [o, allG, r, projects, templates, statuses, linkTypeList, permissionsList, customRoleList, entityScopeList] =
+      [o, allG, r, projects, templates, statuses, permissionsList, customRoleList, entityScopeList] =
         await Promise.all([
         api.get<Organization>(`/api/v1/orgs/${orgId}`),
         // Unpaginated — nested-group name resolution and the "add nested
@@ -640,7 +636,6 @@ export function OrgAdminPage() {
         api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${orgId}`),
         api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
         api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
-        api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${orgId}/link-types`),
         // Fine-Grained Access Control Phase 3 — open to any real org role
         // (backend `_VIEW_ROLES`), same tier as every other call in this
         // bundle, so it belongs here rather than the ORG_ADMIN-gated
@@ -681,7 +676,6 @@ export function OrgAdminPage() {
     setThisOrgVisibleProjects(projects.filter((p) => p.organization_id === orgId));
     setReportTemplates(templates);
     setProjectStatuses(statuses);
-    setLinkTypes(linkTypeList);
     setPermissions(permissionsList);
     setCustomRoles(customRoleList);
     setEntityScopes(entityScopeList);
@@ -1207,39 +1201,6 @@ export function OrgAdminPage() {
    * server's own count message rather than a generic one. */
   async function deleteProjectStatus(id: string, reassignToId?: string) {
     await api.delete(`/api/v1/orgs/${orgId}/project-statuses/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
-    reload();
-  }
-
-  async function addLinkType(forward: string, reverse: string) {
-    if (!orgId) return;
-    await api.post(`/api/v1/orgs/${orgId}/link-types`, { forward_name: forward, reverse_name: reverse });
-    reload();
-  }
-
-  async function moveLinkType(id: string, direction: "up" | "down") {
-    await api.post(`/api/v1/orgs/${orgId}/link-types/${id}/move`, { direction });
-    reload();
-  }
-
-  async function renameLinkType(id: string, forward: string, reverse: string) {
-    await api.patch(`/api/v1/orgs/${orgId}/link-types/${id}`, { forward_name: forward, reverse_name: reverse });
-    reload();
-  }
-
-  async function setLinkTypeFlow(item: LinkTypeDefinition, flow: LinkFlow) {
-    try {
-      await api.patch(`/api/v1/orgs/${orgId}/link-types/${item.id}`, {
-        forward_name: item.forward_name, reverse_name: item.reverse_name, flow,
-      });
-      showToast(strings.orgAdmin.linkTypeFlowUpdated);
-      reload();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.orgAdmin.linkTypeFlowFailed), "error");
-    }
-  }
-
-  async function deleteLinkType(id: string, reassignToId?: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/link-types/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
     reload();
   }
 
@@ -3271,36 +3232,7 @@ export function OrgAdminPage() {
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes}>
-              <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypesHint}</p>
-              <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypeFlowHint}</p>
-              <DefinitionList
-                items={linkTypes}
-                fields={[
-                  { key: "forward", getValue: (i) => i.forward_name, placeholder: strings.orgAdmin.forwardName, ariaLabel: strings.orgAdmin.forwardName, maxWidth: 200 },
-                  { key: "reverse", getValue: (i) => i.reverse_name, placeholder: strings.orgAdmin.reverseName, ariaLabel: strings.orgAdmin.reverseName, maxWidth: 200 },
-                ]}
-                getReassignLabel={(i) => i.forward_name}
-                onMove={moveLinkType}
-                onRename={(id, values) => renameLinkType(id, values.forward, values.reverse)}
-                onAdd={(values) => addLinkType(values.forward, values.reverse)}
-                onDelete={deleteLinkType}
-                deleteLabel={strings.orgAdmin.deleteLinkType}
-                addLabel={strings.orgAdmin.newLinkType}
-                renderExtra={(item) => (
-                  <select
-                    key="flow"
-                    className="input"
-                    style={{ maxWidth: 180 }}
-                    aria-label={strings.orgAdmin.linkTypeFlowLabel(item.forward_name)}
-                    value={item.flow}
-                    onChange={(e) => setLinkTypeFlow(item, e.target.value as LinkFlow)}
-                  >
-                    {LINK_FLOW_VALUES.map((flow) => (
-                      <option key={flow} value={flow}>{LINK_FLOW_LABEL[flow]}</option>
-                    ))}
-                  </select>
-                )}
-              />
+              <LinkTypesPanel orgId={org.id} />
             </CollapsibleSection>
           </div>
         )}

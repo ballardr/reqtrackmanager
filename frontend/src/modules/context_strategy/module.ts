@@ -139,7 +139,11 @@ const PAIN_POINT_SCORING_SCHEME = "pain_point";
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
   artefactPaths: {
+    strategy: (projectId, id) => `/projects/${projectId}/modules/context_strategy/strategies/${id}`,
+    future_state: (projectId, id) => `/projects/${projectId}/modules/context_strategy/future-states/${id}`,
     pain_point: (projectId, id) => `/projects/${projectId}/modules/context_strategy/pain-points/${id}`,
+    guiding_principle: (projectId, id) => `/projects/${projectId}/modules/context_strategy/guiding-principles/${id}`,
+    open_question: (projectId, id) => `/projects/${projectId}/modules/context_strategy/open-questions/${id}`,
   },
   routes: [
     { path: "/projects/:projectId/modules/context_strategy/strategies", element: createElement(ProjectStrategiesPage) },

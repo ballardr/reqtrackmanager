@@ -97,10 +97,10 @@ import enum
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtefactType, PermissionLevel
+from app.models.enums import ArtefactType, LinkFlow, PermissionLevel
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
@@ -114,7 +114,9 @@ from app.modules.decisions.models import (
     DecisionTemplateDefinition,
     DecisionTypeDefinition,
 )
+from app.modules.registry import LinkTypeSeed
 from app.services.audit import log_event
+from app.services.link_types import ensure_org_link_type
 from app.services.permissions import encode_permission
 from app.services.relationships import create_link, get_link_between, get_links_from
 
@@ -487,37 +489,11 @@ def _project_organization_id(db: Session, project_id: uuid.UUID) -> uuid.UUID:
 def _get_or_create_link_type(
     db: Session, organization_id: uuid.UUID, *, forward_name: str, reverse_name: str
 ) -> RequirementLinkTypeDefinition:
-    """Returns this organisation's link type identified by `forward_name`,
-    creating it on first use (see module docstring — deliberately lazy, no
-    core-file default-list edit or migration backfill needed). Generalised
-    from `create_supersession`'s original single-purpose helper so Phase 3's
-    Implements/Affects/Depends-on/Conflicts-with links reuse the exact same
-    fetch-or-create logic rather than duplicating it four more times —
-    `RequirementLinkTypeDefinition` is already a generic, org-shared
-    vocabulary table (see its own module docstring), not something to grow a
-    dedicated helper per link type."""
-    link_type = db.scalar(
-        select(RequirementLinkTypeDefinition).where(
-            RequirementLinkTypeDefinition.organization_id == organization_id,
-            RequirementLinkTypeDefinition.forward_name == forward_name,
-        )
-    )
-    if link_type is not None:
-        return link_type
-    next_sort_order = db.scalar(
-        select(func.count())
-        .select_from(RequirementLinkTypeDefinition)
-        .where(RequirementLinkTypeDefinition.organization_id == organization_id)
-    )
-    link_type = RequirementLinkTypeDefinition(
-        organization_id=organization_id,
-        forward_name=forward_name,
-        reverse_name=reverse_name,
-        sort_order=next_sort_order,
-    )
-    db.add(link_type)
-    db.flush()
-    return link_type
+    """This organisation's link type identified by `forward_name`, created on
+    first use from the registered seed (`services.link_types.ensure_org_link_type`;
+    `reverse_name` is the fallback phrase for an unseeded name). Deliberately
+    lazy: no core-file default-list edit or migration backfill is needed."""
+    return ensure_org_link_type(db, organization_id, forward_name, reverse_name)
 
 
 def _maybe_supersede(db: Session, *, new_decision: Decision, old_decision: Decision, actor_id: uuid.UUID) -> None:
@@ -639,7 +615,7 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
     link = create_link(
         db, source_type=DECISION_ARTEFACT_TYPE, source_id=new_decision.id,
         target_type=DECISION_ARTEFACT_TYPE, target_id=old_decision.id,
-        link_type_id=link_type.id, created_by=actor_id,
+        link_type_id=link_type.id, created_by=actor_id, enforce_rules=False,  # fixed-semantic lifecycle step
     )
     _maybe_supersede(db, new_decision=new_decision, old_decision=old_decision, actor_id=actor_id)
     return link
@@ -822,3 +798,43 @@ def resolve_decision_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
             return decision.project_id if decision is not None else None
 
     return None
+
+
+# Link types Decision Management ships (`ModuleDefinition.link_type_seeds`):
+# Decision <-> Pain Point / Open Question / Strategy / Guiding Principle /
+# Compliance requirement (Platform Enhancements Phase 5b), the Decision ->
+# Requirement "Affects", and the dedicated "Supersedes". "Implements",
+# "Depends on" and "Conflicts with" are core defaults. The target type strings
+# of other modules are plain names, not imports; a restriction naming a type
+# whose module is not installed simply matches nothing.
+LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
+    LinkTypeSeed(
+        "Addresses", "Is addressed by", LinkFlow.FORWARD_IS_UPSTREAM,
+        allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("pain_point",),
+    ),
+    LinkTypeSeed(
+        "Resolves", "Is resolved by", LinkFlow.FORWARD_IS_UPSTREAM,
+        allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("open_question",),
+    ),
+    LinkTypeSeed(
+        "Supports", "Is supported by", LinkFlow.FORWARD_IS_UPSTREAM,
+        allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("strategy",),
+    ),
+    LinkTypeSeed(
+        "Guided by", "Guides", LinkFlow.FORWARD_IS_UPSTREAM,
+        allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("guiding_principle",),
+    ),
+    LinkTypeSeed(
+        "Constrained by", "Constrains", LinkFlow.FORWARD_IS_UPSTREAM,
+        allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("project_compliance_requirement",),
+    ),
+    LinkTypeSeed(
+        AFFECTS_LINK_TYPE_FORWARD_NAME, AFFECTS_LINK_TYPE_REVERSE_NAME,
+        allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=(ArtefactType.REQUIREMENT.value,),
+    ),
+    LinkTypeSeed(
+        SUPERSEDES_LINK_TYPE_FORWARD_NAME, SUPERSEDES_LINK_TYPE_REVERSE_NAME,
+        allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=(DECISION_ARTEFACT_TYPE,),
+        dedicated_endpoint=True,
+    ),
+)

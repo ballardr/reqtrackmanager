@@ -699,6 +699,16 @@ const en = {
     deleteComponentHasCategoriesHint: "Delete or reassign this {component}'s {categories} first.",
     reassignExistingTo: "Reassign existing items to",
     confirmDelete: "Confirm delete",
+    deleteInUseTitle: (name: string) => `Delete “${name}”?`,
+    deleteStageReassignSummary: "Every {requirement} and pending {changeRequest} targeting this {stage} moves to the one you choose, with its full history.",
+    deleteCategoryReassignSummary: "Every {requirement} in this {category} moves to the one you choose.",
+    deleteInUseMoveHeading: "Move what uses it to another one",
+    deleteInUseMoveHint: "Everything that uses it is switched to the one you choose, then it is deleted.",
+    deleteInUseNoCandidates: "There is nothing to move them to — create another first.",
+    deleteInUseCandidateBlocked: (label: string, reason: string) => `${label} (cannot be used: ${reason})`,
+    deleteInUseRemoveHeading: "Or delete what uses it too",
+    deleteInUseRemoveButton: "Delete the links too…",
+    deleteInUseRemoveBlockedPrefix: "Not available: ",
     actionTypes: "Action types",
     newActionType: "New action type",
     deleteActionType: "Delete this action type",
@@ -1342,6 +1352,56 @@ const en = {
     linkTypeFlowUpdated: "Link type direction updated.",
     linkTypeFlowFailed: "Could not update the link type direction.",
     deleteLinkType: "Delete this link type",
+    linkTypeRestrictionHint:
+      "Any two kinds of record can be linked unless a link type is restricted. “Can link from” and “Can link to” limit which kinds of record a link type may join, read from the forward name (for example “Addresses” from Decision to Pain point). Leave both on “Any artefact” for no restriction. Restrictions apply when a link is made; existing links are never changed.",
+    anyArtefact: "Any artefact",
+    linkTypeCanLinkFrom: "Can link from",
+    linkTypeCanLinkTo: "Can link to",
+    linkTypeCanLinkFromLabel: (name: string) => `Can link from: ${name}`,
+    linkTypeCanLinkToLabel: (name: string) => `Can link to: ${name}`,
+    linkTypeRestrictionUpdated: "Link type restriction updated.",
+    linkTypeRestrictionFailed: "Could not update the link type restriction.",
+    linkTypeDedicatedNote: "Made with its own action (for example superseding), not as a general link.",
+    linkTypeAdded: "Link type added.",
+    linkTypeRenamed: "Link type renamed.",
+    linkTypeMoved: (moved: number, merged: number) =>
+      merged > 0
+        ? `Link type deleted: ${moved} link(s) moved, ${merged} merged into existing links.`
+        : `Link type deleted: ${moved} link(s) moved.`,
+    linkTypeLinksRemoved: (removed: number) => `Link type deleted along with ${removed} link(s).`,
+    linkTypeDeleted: "Link type deleted.",
+    linkTypesTab: "Link types",
+    linkTypesByArtefactTab: "By artefact type",
+    artefactRulesHint:
+      "Limit which link types an artefact type may use, for example a Requirement may only be linked with “Derives from” and “Implements”. A link must satisfy its link type's restriction and the rule of both artefact types it joins. Artefact types with no rule can use any link type. Rules apply when a link is made; existing links are never changed.",
+    artefactRuleLabel: (label: string) => `Link types allowed for ${label}`,
+    artefactRuleAny: "Any link type",
+    artefactRuleUpdated: "Link rule updated.",
+    artefactRuleRemoved: "Link rule removed.",
+    artefactRuleFailed: "Could not update the link rule.",
+    artefactRuleLastTypeHint: "A rule must allow at least one link type. Remove the rule to allow any.",
+    artefactRuleCustom: "Limited",
+    artefactRuleReset: "Allow any link type",
+    artefactRuleRemoveTitle: (label: string) => `Allow any link type for ${label}?`,
+    artefactRuleRemoveMessage: (label: string) =>
+      `${label} will be able to use any link type again. Existing links are not changed.`,
+    artefactRuleRemoveConfirm: "Remove rule",
+    linkTypeUsageLinks: (links: number, projects: number | null) =>
+      projects === null
+        ? `${links} link(s) use this link type.`
+        : `${links} link(s) in ${projects} project(s) use this link type.`,
+    linkTypeUsagePending: (n: number) =>
+      `${n} pending change request(s) propose this link type. Moving the links updates them; deleting the links is blocked until they are resolved.`,
+    linkTypeUsageApproved: (n: number) =>
+      `${n} of the links involve an approved requirement in a project that normally requires a change request for link changes.`,
+    linkTypeUsageRules: (labels: string) => `It is named in the link rule of: ${labels}.`,
+    linkTypeUsageEmptied: (labels: string) =>
+      `Deleting the links is blocked because it is the only link type allowed for: ${labels}.`,
+    linkTypeFlowDiffers: "Its direction differs, so this changes what the moved links mean.",
+    linkTypeRemoveDescription: (links: number) => `Permanently deletes ${links} link(s), then the link type.`,
+    linkTypeRemoveConfirmMessage: (name: string, links: number) =>
+      `This permanently deletes the “${name}” link type and its ${links} link(s). This cannot be undone.`,
+    linkTypeRemoveConfirmLabel: "Delete links and link type",
     deleteReportTemplate: (name: string) => `Delete ${name}`,
     deleteResource: (name: string) => `Delete ${name}`,
   },

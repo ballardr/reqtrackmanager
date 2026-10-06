@@ -54,10 +54,19 @@ def create_link(
     target_id: uuid.UUID,
     link_type_id: uuid.UUID | None,
     created_by: uuid.UUID,
+    enforce_rules: bool = True,
 ) -> ArtefactLink:
     """Creates and flushes a new `ArtefactLink` row. Does not commit — the
     caller commits once, alongside its own audit-log write, matching every
     other service function in this codebase's transaction convention.
+
+    A typed link is checked against the link type's own source/target
+    restriction and both ends' artefact-type rules
+    (`services.link_types.validate_link_allowed`), so every creator, legacy
+    typed endpoints and MCP included, goes through one check. `enforce_rules`
+    is false only for a fixed-semantic action (a "Supersedes" link that flips a
+    status) and for replaying already-validated data (project import,
+    approving a change request that was validated when proposed).
 
     Raises:
         ValueError: if `source_type`/`target_type` isn't a currently
@@ -74,6 +83,8 @@ def create_link(
             check for an existing row first (see
             `routers.requirements.link_action`'s pre-check for the
             established pattern).
+        services.link_types.LinkRuleError: (a `ValueError`) if a link type
+            restriction or artefact-type rule forbids this pair.
     """
     from app.modules.registry import get_all_registered_artefact_types
 
@@ -81,6 +92,13 @@ def create_link(
     for label, value in (("source_type", source_type), ("target_type", target_type)):
         if value not in valid_types:
             raise ValueError(f"{label} {value!r} is not a registered artefact type.")
+    if enforce_rules and link_type_id is not None:
+        from app.models.requirement_link_type import RequirementLinkTypeDefinition
+        from app.services.link_types import validate_link_allowed
+
+        link_type = db.get(RequirementLinkTypeDefinition, link_type_id)
+        if link_type is not None:
+            validate_link_allowed(db, link_type=link_type, source_type=source_type, target_type=target_type)
     link = ArtefactLink(
         source_type=source_type, source_id=source_id,
         target_type=target_type, target_id=target_id,

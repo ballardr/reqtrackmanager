@@ -430,12 +430,34 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
     return r.json()
 
 
-def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none") -> dict:
+def create_link_type(
+    headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
+    allowed_source_types: list[str] | None = None, allowed_target_types: list[str] | None = None,
+) -> dict:
     """`flow` says where the link's target sits in a traceability chain: "forward_is_upstream",
-    "forward_is_downstream" or "none" (see `models.enums.LinkFlow`)."""
+    "forward_is_downstream" or "none" (see `models.enums.LinkFlow`). `allowed_source_types` /
+    `allowed_target_types` restrict which artefact types the link may run from / to (`None` = any)."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/link-types",
-        json={"forward_name": forward_name, "reverse_name": reverse_name, "flow": flow},
+        json={
+            "forward_name": forward_name, "reverse_name": reverse_name, "flow": flow,
+            "allowed_source_types": allowed_source_types, "allowed_target_types": allowed_target_types,
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_artefact_link(
+    headers: dict, project_id: str, artefact_type: str, artefact_id: str, *, link_type_id: str, other_type: str,
+    other_id: str, direction: str = "outgoing",
+) -> dict:
+    """Links any two artefacts of a project through the generic endpoint, read from `artefact_id`'s side
+    (`direction` "outgoing" = it is the link's source)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/links",
+        json={"link_type_id": link_type_id, "direction": direction, "other_type": other_type, "other_id": other_id},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -1556,6 +1578,12 @@ def main() -> None:
     supersedes_link_type = create_link_type(
         h_pm, org["id"], forward_name="Supersedes", reverse_name="Is superseded by", flow="forward_is_upstream"
     )
+    # A restricted type: only a requirement may start it and only an action may be its target, so the link
+    # panel offers it just for that pair ("Can link from"/"Can link to" in Org Admin's Link types).
+    create_link_type(
+        h_pm, org["id"], forward_name="Is validated in simulation by", reverse_name="Validates in simulation",
+        flow="forward_is_downstream", allowed_source_types=["requirement"], allowed_target_types=["requirement_action"],
+    )
     default_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
     project_statuses = {s["name"]: s for s in httpx.get(f"{BASE}/orgs/{org['id']}/project-statuses", headers=h_pm, timeout=30).json()}
 
@@ -2325,6 +2353,20 @@ def main() -> None:
     print(f"  Duplicate: {pp_duplicate['title']!r} (real 'Duplicate of' relationship to the canonical Pain Point,"
           " not just the mandatory comment's own prose)")
 
+    print("Linking a Pain Point -> Decision -> Requirement chain on Falcon-3 through the generic link endpoint...")
+    # Decision-to-Pain-Point links have no per-module endpoint: the org's seeded "Addresses" type (Decision ->
+    # Pain point) is used from the Pain Point's side, and the core "Implements" type from the Requirement's
+    # side, so the chain can be authored (and read as a graph) from any of the three pages.
+    chain_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
+    create_artefact_link(
+        h_pm, drone["id"], "pain_point", pp_accepted["id"], link_type_id=chain_link_types["Addresses"]["id"],
+        other_type="decision", other_id=single_fc_decision["id"], direction="incoming",
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "requirement", gps_req["id"], link_type_id=chain_link_types["Implements"]["id"],
+        other_type="decision", other_id=single_fc_decision["id"], direction="incoming",
+    )
+
     print("Seeding Pain Point scoring config (Module 1 Phase 10) — org keeps the seeded Severity/Frequency/"
           "Confidence levels and module-default model; Falcon-3 overrides its default model to S×F...")
     set_project_scoring_default_model(h_pm, drone["id"], "pain_point", "sxf")
@@ -2587,7 +2629,10 @@ def main() -> None:
           " Falcon-3 Avionics Subsystem excepted)")
     print("  Decision Management (enabled org-wide): 3 Decisions on Falcon-3 — the single-flight-controller"
           " decision (Approved, then Superseded), the dual-redundant decision that supersedes it (Approved),"
-          " and an OTA-signing decision left in Draft")
+          " and an OTA-signing decision left in Draft; the single-flight-controller decision also addresses the"
+          " accepted Pain Point and implements the GPS requirement through the generic link endpoint (a Pain Point ->"
+          " Decision -> Requirement chain, readable as a link graph from any of the three), and the org has a"
+          " restricted link type ('Is validated in simulation by', requirement -> action only)")
     print("  Context & Strategy (enabled org-wide): 1 organisation Strategy (Active) and 1 project Strategy on"
           " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win;"
           " 1 organisation Future State and 1 Active project Future State on Falcon-3 (plus a Draft one with a"

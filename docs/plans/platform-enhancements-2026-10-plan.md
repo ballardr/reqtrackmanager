@@ -1,11 +1,11 @@
 # Platform Enhancements (October 2026) — Plan
 
-**Status:** Decisions Q1–Q13 answered by the user 2026-10-06. Phases 1–5 implemented; Phase 5b (link authoring, any-to-any with restrictions from both sides) added 2026-10-06 after a link-coverage audit; the rest is not implemented. Written from eight user notes, each checked against the current code.
+**Status:** Decisions Q1–Q13 answered by the user 2026-10-06. Phases 1–5b implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit); the rest is not implemented. Written from eight user notes, each checked against the current code.
 **Decision tags:** items marked **Decided by: User** were answered in the 2026-10-06 review (§3); everything else is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-5 / 14 phases complete (Phases 1–5 done 2026-10-06, awaiting commit). **Phase 5b is next, then 5c** (both must land before Phase 6: the shared panel's add row is built on them). Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
+6 / 14 phases complete (Phases 1–5b done 2026-10-06, awaiting commit). **Phase 5c is next** (it must land before Phase 6: the shared panel's add row is built on it). Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
 
 | # | Phase | Note | Status |
 |---|-------|------|--------|
@@ -14,7 +14,7 @@
 | 3 | Request-rate and DB read/write metrics | N2 | [x] |
 | 4 | Personal project-nav ordering, "More", per-project override | N4 | [x] |
 | 5 | Link-type direction field + link graph backend (+ MCP tool) | N1 | [x] |
-| 5b | Any-to-any linking, restrictions from both sides (per link type, per artefact type), delete-in-use dialog, generic link authoring, coverage guard | N1 | [ ] |
+| 5b | Any-to-any linking, restrictions from both sides (per link type, per artefact type), delete-in-use dialog, generic link authoring, coverage guard | N1 | [x] |
 | 5c | Project-level link types and rules, hide org types, org switch to forbid | N1 | [ ] |
 | 6 | Shared Links panel, detail-page aside, migration of existing sections | N1 | [ ] |
 | 7 | Trace tree and map views | N1 | [ ] |
@@ -138,7 +138,9 @@ flowchart TD
 - **MCP:** read-only `get_artefact_link_graph`, so AI clients get impact analysis. Phase 1's drift test then requires a skill update.
 - **Tests:** flow resolution for forward/reverse traversal of each `flow` value and untyped links; migration default; cross-project/cross-org isolation, disabled module, FGAC-denied node not leaked or traversed, depth/cap/`truncated`, cycles (A→B→A), self-links, symmetric link types, archived nodes, query count stays bounded (≤ 2 link queries per level).
 
-#### Phase 5b — Link authoring coverage (added 2026-10-06 after review)
+#### Phase 5b — Link authoring coverage (added 2026-10-06 after review) — DONE 2026-10-06
+
+**As built (differs from the spec below):** (1) `ArtefactTypeLinkRule` has no `project_id` yet; Phase 5c adds it in its own migration rather than shipping an unused foreign key (migration is `0066`). (2) The per-source kind enums and spec tables in Context & Strategy, Stakeholders and Decisions were **not deleted**: they remain the legacy typed endpoints' request shape until Phase 6 retires those UIs, and the seeds are *derived* from them so the vocabulary has one definition; the four duplicated lazy "get or create link type" helpers became one core `ensure_org_link_type`. (3) Legacy typed endpoints are checked by the same validator (only Supersedes, project-import replay and approving an already-validated change request pass `enforce_rules=False`). (4) Module seeds are also created when the org's link types are listed or the generic options are requested, for enabled modules, so pickers can offer them before first use. (5) The "frontend unit test" for artefact-type routes is a Storybook test backed by a fixture file that a backend test keeps equal to the registry; it found and fixed missing routes for actions, four Context & Strategy types and the three Compliance types. (6) The e2e dataset gained the restricted link type but not the Pain Point -> Decision -> Requirement chain (Alpha has no Decisions module); the demo dataset has both, and Phase 6's "links on every detail page" spec brings the chain into the e2e dataset. (7) The in-use dialog also replaced `ProjectAdminPage`'s inline stage and category reassign rows (same pattern, so no second implementation is left); a component's delete keeps its inline Tier-1 confirm because it moves nothing. See `docs/decisions.md`.
 
 **Why:** the user asked whether a Pain Point can be linked to a Decision and on to a Requirement. It cannot, and the audit below shows the gap is structural, not one missing option. Phase 6 would otherwise put a shared panel on pages that still have no way to add the links it displays. **Outcome:** any two artefacts that can meaningfully relate can be linked from the UI at either end; every artefact type is covered or explicitly exempt; a test stops a new module shipping an unlinkable type.
 
