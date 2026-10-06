@@ -43,7 +43,7 @@ Covers logging, monitoring, alerting, and backup operations for the ReqTrackMana
 - **Audit/login logging**: `backend/app/services/audit.py` (`log_event`), `backend/app/models/audit.py` (`AuditEvent`, `LoginEvent`).
 - **Sensitive-field redaction**: `backend/app/main.py`'s `redact_sensitive_validation_errors` exception handler strips password/secret values out of validation error responses before they can be logged or returned.
 - **Health checks**: every container in `docker-compose.yml` defines a health check; `backend`/`frontend` startup ordering depends on upstream health.
-- **Metrics**: `GET /metrics` (Prometheus format).
+- **Metrics**: `GET /metrics` (Prometheus format), including request counts (`http_requests_total`) and database statement counts by operation (`db_statements_total`). Metric labels are bounded and carry no ids, table names or SQL, so the unauthenticated endpoint exposes no Restricted data.
 - **Disk monitoring**: the disk-usage monitor (I-M-11) emails `DEPLOYMENT_NOTIFICATION_EMAIL` when usage crosses `DISK_USAGE_WARNING_THRESHOLD_PERCENT`.
 - **Log aggregation / tracing**: optional Loki (logs), Tempo (traces), and Grafana Alloy (shipping/correlation) stack, enabled via `docker compose --profile observability up -d` — see [deployment.md](../deployment.md) §Observability. Distributed tracing is wired but the backend does not yet emit OpenTelemetry spans itself (see Known Gaps).
 - **Backup tooling**: `scripts/backup.sh` (Postgres `pg_dump`, gzip'd, plus a tarball of local file storage when `STORAGE_BACKEND=local`) and `scripts/restore.sh`.
@@ -58,7 +58,7 @@ Covers logging, monitoring, alerting, and backup operations for the ReqTrackMana
 ## Known Gaps / Exceptions
 
 1. **Backups are not scheduled by the application** — `scripts/backup.sh` must be invoked by an operator-configured cron job/scheduler; nothing runs it automatically today.
-2. **No automated alerting rules exist on top of the raw metrics** — Prometheus/Grafana are wired for scraping and dashboards, but alert rules and an escalation path are a Company configuration task.
+2. **No automated alerting rules exist on top of the raw metrics** — Prometheus is wired for scraping (Grafana ships unprovisioned: no data sources or dashboards), but alert rules and an escalation path are a Company configuration task.
 3. **No distributed tracing is emitted yet** — the Tempo/Alloy pipeline is deployed and ready to receive traces, but the backend does not instrument requests with OpenTelemetry spans.
 4. **Grafana's bundled configuration enables anonymous viewer access**, appropriate only for local development — a production deployment of the observability stack must put Grafana behind the same authentication/reverse-proxy layer as the rest of the system (documented in [deployment.md](../deployment.md), but worth restating here as a control requirement, not just a deployment tip).
 

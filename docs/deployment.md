@@ -236,7 +236,17 @@ The modular feature system's frontend half also supports a genuinely third-party
 docker compose --profile observability up -d
 ```
 
-Adds Prometheus, Loki, Tempo, Grafana Alloy, and Grafana. In production, put Grafana behind the same authentication/reverse-proxy layer as the rest of the stack — the bundled Grafana config enables anonymous viewer access, which is appropriate for local development only. See the [README](../README.md#optional-observability-stack) for the exposed ports and pre-wired dashboards/scrape config.
+Adds Prometheus, Loki, Tempo, Grafana Alloy, and Grafana. In production, put Grafana behind the same authentication/reverse-proxy layer as the rest of the stack — the bundled Grafana config enables anonymous viewer access, which is appropriate for local development only. See the [README](../README.md#optional-observability-stack) for the exposed ports and scrape config. No Grafana data sources or dashboards are provisioned; add Prometheus (`http://prometheus:9090`), Loki and Tempo in Grafana yourself.
+
+Two counters cover traffic and database load (ready-to-paste PromQL; each replica is scraped separately, so `sum` across targets):
+
+| Figure | PromQL |
+|--------|--------|
+| API requests per minute | `sum(rate(http_requests_total[1m])) * 60` |
+| DB reads per 15 minutes | `sum(increase(db_statements_total{operation="select"}[15m]))` |
+| DB writes per 15 minutes | `sum(increase(db_statements_total{operation!="select",operation!="other"}[15m]))` |
+
+`db_statements_total` is labelled by `operation` only (`select`, `insert`, `update`, `delete`, `other`), never table names or SQL.
 
 ### Scaling the backend: worker processes and replicas
 

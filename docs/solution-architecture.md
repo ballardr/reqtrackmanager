@@ -649,6 +649,7 @@ The platform should expose and record the following metrics:
 - HTTP request rate, latency, and error rate for frontend and backend endpoints
 - backend CPU, memory, and container restart counts
 - database connection pool utilization and query latency
+- database statement counts by operation (`db_statements_total{operation}`, from a SQLAlchemy engine event in `app/metrics.py`; operation-only labels so no table names, ids or SQL reach the unauthenticated endpoint). Request rate comes from `http_requests_total`
 - requirement workflow metrics such as created, updated, approved, completed, and archived counts
 - change request metrics such as submitted, approved, rejected, and review duration
 - user activity metrics such as login attempts, active sessions, and failed authentication attempts

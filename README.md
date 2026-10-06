@@ -106,7 +106,7 @@ The full list of variables, defaults, and which are actually required is in [Con
 docker compose --profile observability up -d
 ```
 
-Adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, and Grafana (http://localhost:3300, anonymous viewer access enabled for local use — put it behind auth in production). Prometheus is pre-configured to scrape the backend's `/metrics` endpoint; Alloy ships container logs to Loki and exposes an OTLP receiver on `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry (not yet done — see decisions log).
+Adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, and Grafana (http://localhost:3300, anonymous viewer access enabled for local use — put it behind auth in production). Prometheus is pre-configured to scrape the backend's `/metrics` endpoint (including `http_requests_total` and `db_statements_total`; PromQL for requests/min and DB reads/writes per 15 min is in [deployment.md](docs/deployment.md#observability)); Grafana has no data sources or dashboards provisioned; Alloy ships container logs to Loki and exposes an OTLP receiver on `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry (not yet done — see decisions log).
 
 ## Configuration
 

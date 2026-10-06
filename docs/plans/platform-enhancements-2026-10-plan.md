@@ -1,17 +1,17 @@
 # Platform Enhancements (October 2026) — Plan
 
-**Status:** Decisions Q1–Q9 answered by the user 2026-10-06. Phases 1–2 implemented; the rest is not. Written from eight user notes, each checked against the current code.
+**Status:** Decisions Q1–Q9 answered by the user 2026-10-06. Phases 1–3 implemented; the rest is not. Written from eight user notes, each checked against the current code.
 **Decision tags:** items marked **Decided by: User** were answered in the 2026-10-06 review (§3); everything else is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-2 / 10 phases complete (Phases 1–2 done 2026-10-06, awaiting commit). Phase 3 is next. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard).
+3 / 11 phases complete (Phases 1–3 done 2026-10-06, awaiting commit). Phase 4 is next. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 is the closing website-docs reconciliation and runs last.
 
 | # | Phase | Note | Status |
 |---|-------|------|--------|
 | 1 | MCP agent skill + drift enforcement | N5 | [x] |
 | 2 | Org-level member-edit notifications | N3 | [x] |
-| 3 | Request-rate and DB read/write metrics | N2 | [ ] |
+| 3 | Request-rate and DB read/write metrics | N2 | [x] |
 | 4 | Personal project-nav ordering, "More", per-project override | N4 | [ ] |
 | 5 | Link-type direction field + link graph backend (+ MCP tool) | N1 | [ ] |
 | 6 | Shared Links panel, detail-page aside, migration of existing sections | N1 | [ ] |
@@ -19,6 +19,7 @@
 | 8 | Decision Management reports | N6 | [ ] |
 | 9 | Neutral report document model + DOCX export | N7 | [ ] |
 | 10 | Per-report-type content: template, project, org tiers + placeholders | N8 | [ ] |
+| 11 | Docs website reconciliation for the whole branch | all | [ ] |
 
 ## 1. Summary of the review (read this first)
 
@@ -80,7 +81,9 @@ flowchart LR
 - **Project nesting check:** no new project-scoped definition table; not applicable.
 - **Tests:** org admin triggers, project manager does not; each covered endpoint; group-internal change does not; inherited manager receives it; actor excluded; coalescing; preference opt-out; no cross-project leakage of recipients.
 
-### Phase 3 — Request-rate and DB read/write metrics (N2)
+### Phase 3 — Request-rate and DB read/write metrics (N2) — DONE 2026-10-06
+
+**As built:** as specced, minus the optional `db_rows_written_total` (`rowcount` is unreliable for batched inserts). Also corrected the "pre-wired dashboards" claim on the docs site and the system-operations policy, not only `docs/deployment.md`. See `docs/decisions.md`.
 
 **Why:** capacity and anomaly visibility (system operations policy). **Outcome:** both figures exposed as Prometheus metrics and documented with ready-to-paste queries. **Decided by: User** (Q6): counters only, no bundled dashboard.
 
@@ -201,6 +204,27 @@ flowchart TD
 - **Placeholders (Q4B, Decided by: User):** a fixed allow-list, `{{project_name}}`, `{{report_title}}`, `{{generated_on}}`, `{{organisation}}`, substituted by plain string replacement **before** the Markdown goes through the existing escaping, so substituted values are treated as ordinary user text. Unknown `{{…}}` stays literal text. Explicitly **not** a template engine (Jinja-style engines are a server-side template-injection risk). The editor lists the available placeholders and previews them.
 - **Editor surfaces (three, one shared component):** the template editor, Report Setup (project) and the org default settings all use one `ReportContentEditor` with a report-type selector (shared `Tabs`) reusing `ReportChapterListEditor`; the existing per-tier editors are replaced, not duplicated. The list of types comes from a generic org-level report-type listing built from the catalogue, so core never names a module's report.
 - **Tests:** migration preserves existing content at all three tiers and the project-summary fallback; full resolution chain including key vs "all reports", ancestor walk (cycle, cap, own-row-wins), cross-org rejection; unknown `report_key` rejected; placeholder substitution, unknown placeholder literal, hostile values stay escaped; module report PDF/DOCX include the right chapters; org/project/template deletion removes rows; Playwright for each of the three editors and inherited-value display; `seed_demo_data.py` and `seed_e2e_dataset.py` gain per-type content at each tier.
+
+### Phase 11 — Docs website reconciliation (all notes)
+
+**Why:** each phase already updates its own website page (§4), but per-phase edits drift: a later phase renames or supersedes something an earlier page describes, and cross-cutting pages (overview, glossary, sidebar, observability, notifications) are only touched by whichever phase remembered. **Outcome:** `docs/website/` matches the shipped behaviour of every phase on this branch, verified in one closing pass. Runs after Phase 10, once the code is final. **Decided by: User** (requested as a final phase 2026-10-06).
+
+```mermaid
+flowchart LR
+    A["Branch diff vs main"] --> B["Map each user-visible change to its website page"]
+    B --> C{"Page exists and is accurate?"}
+    C -->|"no"| D["Create or fix page"]
+    C -->|"yes"| E["Record 'checked, no change'"]
+    D --> F["Build site, check links and Mermaid"]
+    E --> F
+```
+
+- **Audit:** list every user-visible change from `git diff main --stat` (UI, API, MCP tools, config, metrics, notification types, report behaviour) against pages in `docs/website/docs/`; the judgement per item follows CLAUDE.md's "Docs Website Maintenance" (internal-only changes need no page).
+- **Expected touch points:** `core-features/notifications-and-email.md` (member-edit notification, Phase 2), `ai-assistants-mcp/` (agent skill, link-graph MCP tool), `installation-deployment/observability.md` (PromQL for request rate and DB reads/writes), project navigation and Links panel pages (Phases 4–7), `modules/decision-management-module/` (reports), `core-features/reports-and-export.md` (DOCX, per-type content, placeholders, child-project ancestor fallback behaviour change), plus `sidebars.ts`, `introduction/overview.md` and `reference/glossary.md` for new concepts.
+- **Screenshot review (whole site, not only touched pages):** the 65 files in `docs/website/static/img/screenshots/` (and the README copies in `docs/screenshots/`) predate this branch, so any screen the branch changed is stale wherever it appears, including on pages that otherwise need no text edit. Grep every page for each changed screen (the Links panel replacing the nine old link sections on requirement, change-request, decision and module pages; project nav ordering/"More" in the sidebar; report setup and template editors from Phase 10; notification list; Decision reports) and list each stale image in the audit table. Retake them per the site's screenshot standard (`docs/plans/docs-website-plan.md`: 1440-wide viewport, seeded demo dataset, real alt text, one-line caption). There is no capture script, so the audit table is the checklist; new or changed UI also needs the seed data to show it (Phase 6 multi-hop links, Phase 8 decisions), else the shot will look empty.
+- **Consistency:** terminology matches the UI label maps; every Mermaid diagram renders; no page describes a superseded state (Phase 10 replaces the old per-tier editors, so pages describing them are rewritten, not appended to).
+- **Verification:** `docs/website` builds with no broken-link or Mermaid warnings (warnings are fixed, not suppressed); the audit table (change → page → updated / no change needed) is recorded in `docs/decisions.md`.
+- **Tests:** no new product tests; the site build is the gate. Retaken screenshots replace the old files in place (same filename, so page references and README stay valid) and are checked visually before hand-back.
 
 ## 3. Decisions (all answered 2026-10-06)
 

@@ -3,7 +3,7 @@ Module: database
 
 Provides the SQLAlchemy engine, session factory, and declarative base used
 throughout the application. This module has no knowledge of any specific
-domain model; it only wires up connectivity.
+domain model; it only wires up connectivity (and DB statement metrics).
 
 External dependencies: SQLAlchemy, PostgreSQL (via psycopg2).
 """
@@ -14,10 +14,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import get_settings
+from app.metrics import instrument_engine
 
 settings = get_settings()
 
 engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
+instrument_engine(engine)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 

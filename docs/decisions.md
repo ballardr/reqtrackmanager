@@ -9876,3 +9876,20 @@ Platform enhancements plan Phase 2 (N3). **Shipped:** `NotificationType.PROJECT_
 **Review (identify -> verify -> remediate):** touches access-control observability only; no authorization path changed. Verified recipients are computed from the project's own role holders (no cross-project leakage, tested), the body carries only display names/emails the managers can already see in the Members view, and the audit events remain the system of record. `docs/soc2/policies/access-control-policy.md` documents the control.
 
 **Verification:** `test_membership_change_notifications.py` (16) and the digest/notification tests pass; the touched roles/groups/hierarchy/RBAC suites pass except the 12 `test_invites_and_external_users.py` tests that fail identically on the untouched baseline (host-pytest mailhog DNS). `ruff` clean.
+
+
+## Request-rate and DB read/write metrics (2026-10-06)
+
+Platform enhancements plan Phase 3 (N2). **Shipped:** `db_statements_total{operation}` (`select|insert|update|delete|other`) in `backend/app/metrics.py`, incremented from a SQLAlchemy `before_cursor_execute` listener attached in `app/database.py`. Requests/min needed no code (`http_requests_total` already exists); 15-minute figures are `increase(...[15m])`, a query window, not a metric. PromQL is in `docs/deployment.md` and the docs-site observability page; `docs/solution-architecture.md` "Required metrics" updated.
+
+**Decisions:**
+- *Counters only, no bundled dashboard, no `postgres_exporter`.* **Decided by: User** (Q6).
+- *Classified from the compiled statement construct (`Select`/`Insert`/`Update`/`Delete`), not SQL text*, so `WITH ... INSERT` is an insert. Raw/text SQL, DDL and the `/health` probe land in `other`. An `executemany` batch counts once. **Decided by: Agent** (plan spec).
+- *Operation is the only label*; all five series are created at import so `increase()` has a zero baseline. **Decided by: Agent** (plan spec).
+- *`db_rows_written_total` (optional in the plan) not built:* `rowcount` is unreliable for batched (insertmanyvalues) inserts, so the figure would mislead. **Decided by: Agent.**
+
+**Docs drift found and fixed:** `docs/deployment.md`, the docs-site observability page and the system-operations policy claimed Grafana ships "pre-wired dashboards" / data sources. `docker-compose.yml` provisions neither; the pages now say so and tell the reader to add the data sources.
+
+**Review (identify -> verify -> remediate):** touches system-operations monitoring only; no auth, RBAC, secret or audit path changed. Verified the unauthenticated `/metrics` output gains no table names, ids or SQL (test asserts the label set and that a created project's id is absent), the listener adds no query and cannot alter statement execution, and the live multi-worker container aggregates the new series (`/metrics` showed all five). No policy gap opened or closed.
+
+**Verification:** `test_db_statement_metrics.py` (12: series present, select on read, insert on create, label/leak check, classifier incl. CTE insert and `FOR UPDATE`) and `test_coverage_gaps.py` pass in the container; `ruff` clean.
