@@ -14,6 +14,7 @@ import type {
   Organization,
   PendingInvite,
   ProjectGroup,
+  ProjectLinkType,
   ProjectMemberSource,
   ProjectModuleEnablement,
   ProjectModuleSubComponent,
@@ -23,6 +24,7 @@ import type {
 import {
   buildActionType,
   buildProject,
+  buildProjectLinkType,
   buildProjectListItem,
   buildProjectStatus,
   buildUser,
@@ -72,6 +74,8 @@ function mockProjectAdminApis(
     // by `module_key`; defaults to `[]` per module, matching the real
     // `GET .../subcomponents` endpoint's own "no sub-components declared"
     // response).
+    // The "Link types" section of Fields & actions (`LinkTypesPanel`, project scope).
+    linkTypes?: ProjectLinkType[];
     projectModules?: ProjectModuleEnablement[];
     projectModuleSubComponents?: Record<string, ProjectModuleSubComponent[]>;
     // Platform review 2026-09, Phase 8 — the org's own
@@ -103,6 +107,9 @@ function mockProjectAdminApis(
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return overrides.categories ?? categories;
     if (path.includes("/action-types")) return actionTypes;
+    if (path.endsWith("/link-types")) return { locked: false, items: overrides.linkTypes ?? [buildProjectLinkType({ id: "lt-related", forward_name: "Related to", reverse_name: "Related to" })] };
+    if (path.endsWith("/artefact-types")) return [{ type: "requirement", label: "Requirement" }];
+    if (path.endsWith("/artefact-link-rules")) return [];
     if (path.includes("/project-statuses")) return projectStatuses;
     // `ProjectMembersTable`'s own second data source (Phase D, follow-up UX
     // batch, 2026-08-31) — checked before "/groups" below purely for
@@ -1662,3 +1669,27 @@ export const ModulesTabToggleSubComponent: Story = {
 
 export const LightTheme: Story = { ...OverviewTabSaveSettings, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...OverviewTabSaveSettings, globals: { theme: "dark" } };
+
+
+/** Project-level link types live in Fields & actions: the organisation's types are listed read-only with a
+ * Hide control, and this project's own types are added in the same row the organisation uses. */
+export const FieldsAndActionsShowsLinkTypes: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      linkTypes: [
+        buildProjectLinkType({ id: "lt-related", forward_name: "Related to", reverse_name: "Related to" }),
+        buildProjectLinkType({
+          id: "lt-own", forward_name: "Verifies", reverse_name: "Is verified by", scope: "project", owner_project_id: PROJECT_ID, editable: true,
+        }),
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("link", { name: "Fields & actions" }));
+    const available = within(await canvas.findByRole("region", { name: "Available to this project" }));
+    await expect(available.getByRole("button", { name: "Hide Related to in this project" })).toBeInTheDocument();
+    const own = within(canvas.getByRole("region", { name: "Link types of this project" }));
+    await expect(own.getByDisplayValue("Verifies")).toBeInTheDocument();
+    await expect(own.getByRole("button", { name: "New link type" })).toBeInTheDocument();
+  },
+};

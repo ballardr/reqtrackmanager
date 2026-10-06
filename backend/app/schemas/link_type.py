@@ -9,6 +9,7 @@ contract described in `services.definitions`' module docstring with
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -48,6 +49,7 @@ class LinkTypeOut(BaseModel):
 
     id: UUID
     organization_id: UUID
+    project_id: UUID | None = None
     forward_name: str
     reverse_name: str
     sort_order: int
@@ -102,11 +104,90 @@ class LinkTypeUsageOut(BaseModel):
     is_dedicated: bool
     is_last: bool
     candidates: list[LinkTypeCandidateOut]
+    moved_link_count: int
+    keep_available: bool = False
+    keep_project_count: int | None = None
+    unmanageable_project_count: int = 0
 
 
 class LinkTypeDeleteOutcomeOut(BaseModel):
-    """What a mode-based delete did."""
+    """What a mode-based delete did, including copies kept for other projects
+    (`copies_renamed` lists the names of those that had to be renamed)."""
 
     moved: int
     merged: int
     removed: int
+    copies_created: int = 0
+    copies_renamed: list[str] = []
+
+
+LinkTypeScope = Literal["organization", "project", "inherited"]
+
+
+class ProjectLinkTypeOut(BaseModel):
+    """A link type as one project sees it.
+
+    `scope` says where it comes from: `organization` (shared), `project` (this
+    project's own, editable) or `inherited` (an ancestor's local type). `owner_project_name`
+    is only given when the viewer can see that project. `hidden` is the effective state;
+    `hidden_here` is this project's own choice (`null` = none). A `shadowed_by_scope` type
+    is not offered because a same-named type takes precedence.
+    """
+
+    id: UUID
+    organization_id: UUID
+    project_id: UUID | None = None
+    forward_name: str
+    reverse_name: str
+    sort_order: int
+    flow: LinkFlow
+    allowed_source_types: list[str] | None = None
+    allowed_target_types: list[str] | None = None
+    dedicated_endpoint: bool = False
+    scope: LinkTypeScope
+    owner_project_id: UUID | None = None
+    owner_project_name: str | None = None
+    hidden: bool
+    hidden_here: bool | None = None
+    hidden_by_inherited: bool = False
+    shadowed_by_scope: LinkTypeScope | None = None
+    shadowed_by_name: str | None = None
+    editable: bool
+
+
+class ProjectLinkTypesOut(BaseModel):
+    """A project's link-type panel: the types it can reach, and whether the
+    organisation has locked customisation (then project-level types are dormant)."""
+
+    locked: bool
+    items: list[ProjectLinkTypeOut]
+
+
+class LinkTypeVisibilitySet(BaseModel):
+    """Hide (`true`), show (`false`), or clear this project's own choice (`null`)."""
+
+    hidden: bool | None
+
+
+class ProjectArtefactLinkRuleOut(ArtefactLinkRuleOut):
+    """An artefact type's rule as a project resolves it. `source` says which scope it
+    comes from (`null` when there is none, so any link type is allowed); `own` is true
+    when this project holds it (so it can be cleared to use the inherited one)."""
+
+    source: LinkTypeScope | None = None
+    source_project_name: str | None = None
+    own: bool = False
+
+
+class ProjectCustomisationOut(BaseModel):
+    """The organisation's project-customisation locks and what locking affects."""
+
+    locks: list[str]
+    local_link_type_count: int
+    local_link_type_project_count: int
+
+
+class ProjectCustomisationSet(BaseModel):
+    """Payload replacing the organisation's project-customisation locks."""
+
+    locks: list[str]

@@ -714,7 +714,7 @@ def create_decision_requirement_link(
     return create_link(
         db, source_type=DECISION_ARTEFACT_TYPE, source_id=decision.id,
         target_type=ArtefactType.REQUIREMENT.value, target_id=requirement.id,
-        link_type_id=link_type.id, created_by=actor_id,
+        link_type_id=link_type.id, created_by=actor_id, project_id=decision.project_id,
     )
 
 
@@ -764,7 +764,7 @@ def create_decision_decision_link(
     return create_link(
         db, source_type=DECISION_ARTEFACT_TYPE, source_id=source_decision.id,
         target_type=DECISION_ARTEFACT_TYPE, target_id=target_decision.id,
-        link_type_id=link_type.id, created_by=actor_id,
+        link_type_id=link_type.id, created_by=actor_id, project_id=source_decision.project_id,
     )
 
 

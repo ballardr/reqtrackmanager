@@ -23,6 +23,7 @@ from app.models.user import User
 from app.routers.requirements.core import _get_requirement_in_project, _require_edit_role
 from app.schemas.requirement import RequirementLinkCreate, RequirementLinkOut
 from app.services.audit import log_event
+from app.services.link_type_scope import UNAVAILABLE_MESSAGE, assert_link_type_usable
 from app.services.link_types import LinkRuleError
 from app.services.rbac import require_project_view
 from app.services.relationships import create_link as create_artefact_link
@@ -96,13 +97,15 @@ def create_link(
         )
     target = _get_requirement_in_project(db, project_id, payload.target_requirement_id)
     link_type = db.get(RequirementLinkTypeDefinition, payload.link_type_id)
-    if link_type is None or link_type.organization_id != project.organization_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "link_type_id must be a link type defined in this project's organisation.")
+    if link_type is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, UNAVAILABLE_MESSAGE)
     try:
+        assert_link_type_usable(db, project, link_type, enforce_offered=True)
         link = create_artefact_link(
             db, source_type=ArtefactType.REQUIREMENT, source_id=requirement_id,
             target_type=ArtefactType.REQUIREMENT, target_id=target.id,
             link_type_id=payload.link_type_id, created_by=current_user.id,
+            project_id=project_id, enforce_offered=True,
         )
     except LinkRuleError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

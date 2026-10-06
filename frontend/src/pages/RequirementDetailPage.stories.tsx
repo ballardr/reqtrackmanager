@@ -8,6 +8,7 @@ import {
   buildComment,
   buildFileAsset,
   buildLinkType,
+  projectLinkTypesPayload,
   buildProjectListItem,
   buildRequirement,
   buildRequirementAction,
@@ -93,7 +94,7 @@ function mockRequirementDetailApis(
     if (path.endsWith("/stages")) return [];
     if (path.endsWith("/activity")) return [];
     if (path.endsWith(`/requirements/${REQUIREMENT_ID}/links`)) return extra.links ?? [];
-    if (path.endsWith("/link-types")) return linkTypes;
+    if (path.endsWith("/link-types")) return projectLinkTypesPayload(linkTypes);
     if (path.endsWith(`/requirements/${REQUIREMENT_ID}/actions`)) return extra.linkedActions ?? [];
     if (path.endsWith("/action-types")) return actionTypes;
     if (path.endsWith(`/projects/${PROJECT_ID}/actions`)) return extra.projectActions ?? [];

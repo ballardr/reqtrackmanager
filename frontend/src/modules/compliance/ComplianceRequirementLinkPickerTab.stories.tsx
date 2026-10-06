@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import { buildLinkType, projectLinkTypesPayload, withToast } from "../../testing/storybook-helpers";
 import { ComplianceRequirementLinkPickerTab } from "./ComplianceRequirementLinkPickerTab";
 import type { ComplianceRequirement, ComplianceRequirementTraceabilityLink, ComplianceStandard, ComplianceStandardVersion } from "./types";
 
@@ -62,7 +62,7 @@ export const CascadingPickerCreatesLink: Story = {
       },
     ];
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/link-types")) return [{ id: "lt-1", organization_id: "org-1", forward_name: "Derives from", reverse_name: "Is the source of", sort_order: 0, flow: "forward_is_upstream" }];
+      if (path.endsWith("/link-types")) return projectLinkTypesPayload([buildLinkType({ id: "lt-1", forward_name: "Derives from", reverse_name: "Is the source of", flow: "forward_is_upstream" })]);
       // More specific paths (versions/requirements) must be checked before
       // the broader `/modules/compliance/standards` substring match below,
       // since `/standards/standard-1/versions` also contains that substring.
@@ -116,7 +116,7 @@ export const CreateFailureShowsInlineError: Story = {
       },
     ];
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/link-types")) return [{ id: "lt-1", organization_id: "org-1", forward_name: "Derives from", reverse_name: "Is the source of", sort_order: 0, flow: "forward_is_upstream" }];
+      if (path.endsWith("/link-types")) return projectLinkTypesPayload([buildLinkType({ id: "lt-1", forward_name: "Derives from", reverse_name: "Is the source of", flow: "forward_is_upstream" })]);
       if (path.endsWith("/standards/standard-1/versions")) return versions;
       if (path.endsWith("/versions/version-1/requirements")) return requirements;
       if (path.includes("/modules/compliance/standards")) return standards;

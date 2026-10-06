@@ -592,7 +592,7 @@ def test_move_converts_merges_duplicates_and_reports_counts(world):
     _legacy_link(world, project, a, c, related)  # the move would duplicate A -> C
     resp = _delete_type(world, depends, mode="reassign", reassign_to_id=related)
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"moved": 1, "merged": 1, "removed": 0}
+    assert resp.json() == {"moved": 1, "merged": 1, "removed": 0, "copies_created": 0, "copies_renamed": []}
     db = SessionLocal()
     try:
         assert db.get(ArtefactLink, uuid.UUID(keep)).link_type_id == uuid.UUID(related)
@@ -623,7 +623,7 @@ def test_remove_links_mode_deletes_links_with_one_audit_event_each(world):
     depends = types["Depends on"]["id"]
     first, second = _legacy_link(world, project, a, b, depends), _legacy_link(world, project, b, c, depends)
     resp = _delete_type(world, depends, mode="remove_links")
-    assert resp.status_code == 200 and resp.json() == {"moved": 0, "merged": 0, "removed": 2}
+    assert resp.status_code == 200 and resp.json() == {"moved": 0, "merged": 0, "removed": 2, "copies_created": 0, "copies_renamed": []}
     db = SessionLocal()
     try:
         assert db.get(ArtefactLink, uuid.UUID(first)) is None and db.get(ArtefactLink, uuid.UUID(second)) is None

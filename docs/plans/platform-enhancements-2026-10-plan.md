@@ -1,11 +1,11 @@
 # Platform Enhancements (October 2026) — Plan
 
-**Status:** Decisions Q1–Q13 answered by the user 2026-10-06. Phases 1–5b implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit); the rest is not implemented. Written from eight user notes, each checked against the current code.
+**Status:** Decisions Q1–Q13 answered by the user 2026-10-06. Phases 1–5c implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit; 5c: project-level link types, hiding, project rules and the org lock); the rest is not implemented. Written from eight user notes, each checked against the current code.
 **Decision tags:** items marked **Decided by: User** were answered in the 2026-10-06 review (§3); everything else is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-6 / 14 phases complete (Phases 1–5b done 2026-10-06, awaiting commit). **Phase 5c is next** (it must land before Phase 6: the shared panel's add row is built on it). Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
+7 / 14 phases complete (Phases 1–5c done 2026-10-06, awaiting commit). **Phase 6 is next** (its shared panel's add row is built on 5c's effective-type resolver and the `link-types` options endpoint). Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
 
 | # | Phase | Note | Status |
 |---|-------|------|--------|
@@ -15,7 +15,7 @@
 | 4 | Personal project-nav ordering, "More", per-project override | N4 | [x] |
 | 5 | Link-type direction field + link graph backend (+ MCP tool) | N1 | [x] |
 | 5b | Any-to-any linking, restrictions from both sides (per link type, per artefact type), delete-in-use dialog, generic link authoring, coverage guard | N1 | [x] |
-| 5c | Project-level link types and rules, hide org types, org switch to forbid | N1 | [ ] |
+| 5c | Project-level link types and rules, hide org types, org switch to forbid | N1 | [x] |
 | 6 | Shared Links panel, detail-page aside, migration of existing sections | N1 | [ ] |
 | 7 | Trace tree and map views | N1 | [ ] |
 | 8 | Decision Management reports | N6 | [ ] |
@@ -218,7 +218,9 @@ Result: *Pain Point —is addressed by→ Decision —implements→ Requirement*
 
 **Tests:** backend pytest for restriction validation and enforcement (service-level, so legacy endpoints and MCP are covered), generic create/delete (authorisation, cross-project, duplicate, hidden target, audit row, FGAC denial), orientation and phrase selection, seed creation without overwriting an edited type, `dedicated_endpoint` hidden, migration leaves existing types unrestricted, old typed endpoints behave identically; delete-in-use (usage counts; move with incompatible candidates disabled and explained; duplicates merged; remove-links behind type-the-name; pending change requests block removal and are repointed on move; rule substitution and empty-rule block; one transaction with per-link audit events; the unchanged 409 contract for other callers); Playwright for the link-type admin restriction selects, the "By artefact type" rules view, and the delete dialog in both modes (set, clear, label-mapped options); Storybook for the dialog and rules view; Storybook for the new admin fields; seeds gain a Pain Point → Decision → Requirement chain and one restricted type in both datasets; docs: `docs/modules.md` (new `link_type_seeds` field), `docs/solution-architecture.md`, website requirements/modules pages, `docs/decisions.md`.
 
-#### Phase 5c — Project-level link types, and an org switch to forbid them (added 2026-10-06)
+#### Phase 5c — Project-level link types, and an org switch to forbid them (added 2026-10-06) — DONE 2026-10-06
+
+**As built (differs from the spec below):** (1) Writes need `require_project_manage` (project managers, project administrators and org admins, as for Action Types) rather than `project_administrator` only; no stricter project-role dependency exists. (2) Legacy typed endpoints (Decisions, Context & Strategy, Stakeholders) now pass their project into `create_link`, so project and inherited rules apply to them too, not only the organisation's; they stay exempt from hiding. (3) `assert_link_type_usable` is called from `services.relationships.create_link` whenever a project is known (not as a separate call per router), and the usage/delete endpoints take `keep_in_projects`. (4) `ProjectLinkTypeOut` also carries `organization_id`/`sort_order`, so a project's picker data is a plain `LinkTypeDefinition`; the requirement, change-request and Compliance pickers load types from `GET /projects/{id}/link-types` (`api/linkTypes.ts`) instead of the organisation list. (5) The delete dialog's keep option defaults to ticked for organisation-wide types too, so an org admin deleting a type that projects use converts it to project-local copies unless they untick it (three existing e2e steps untick it). (6) A project bundle does not carry a project's local types. (7) Seeds: the demo dataset gains Falcon-3's own type and a hide; the e2e dataset gains two dedicated projects, Gamma-5 (parent: own type, hides "Mitigates") and Gamma-6 (child: link using the parent's type), and Beta forbids project-level link types, rather than a new organisation (an extra org would change counts other specs read). See `docs/decisions.md`.
 
 **Why:** an org-wide vocabulary suits a product firm that wants every project consistent, but a consultancy running each project independently needs project admins to define their own link types and drop the org ones they never use. Both are legitimate (Q11, **Decided by: User**), so the capability is per-org switchable. **Outcome:** a project admin can add link types for their project and hide org types from its pickers; an org admin can turn that off for the whole org, restoring a single unified vocabulary without deleting anything.
 

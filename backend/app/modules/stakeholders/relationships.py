@@ -175,7 +175,7 @@ def _link_type_ids(db: Session, organization_id: uuid.UUID) -> dict[uuid.UUID, R
 
 def add_relationship(
     db: Session, holder_type: str, holder_id: uuid.UUID, kind: RelationshipKind, summary: ArtefactSummary,
-    target_type: str, actor: User, *, organization_id: uuid.UUID,
+    target_type: str, actor: User, *, organization_id: uuid.UUID, project_id: uuid.UUID | None = None,
 ) -> Any:
     """Records that a Stakeholder/Persona has `kind` to the target. The caller
     has authorised the holder and resolved `summary` within the request's project.
@@ -198,7 +198,7 @@ def add_relationship(
         raise ValueError("That relationship already exists.")
     return create_link(
         db, source_type=holder_type, source_id=holder_id, target_type=target_type, target_id=summary.id,
-        link_type_id=link_type.id, created_by=actor.id,
+        link_type_id=link_type.id, created_by=actor.id, project_id=project_id,
     )
 
 

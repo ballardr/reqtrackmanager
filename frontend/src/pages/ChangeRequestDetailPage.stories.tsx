@@ -7,6 +7,7 @@ import {
   buildActionType,
   buildChangeRequest,
   buildLinkType,
+  projectLinkTypesPayload,
   buildProjectListItem,
   buildRequirement,
   buildRequirementAction,
@@ -55,7 +56,7 @@ function mockChangeRequestDetailApis(
     if (path.endsWith("/action-types")) return actionTypes;
     if (extra.linkedActionPreview && path.endsWith(`/actions/${extra.linkedActionPreview.id}`)) return extra.linkedActionPreview;
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
-    if (path.includes("/link-types")) return extra.linkTypes ?? [];
+    if (path.includes("/link-types")) return projectLinkTypesPayload(extra.linkTypes ?? []);
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });

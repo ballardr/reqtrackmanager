@@ -21,7 +21,7 @@ const meta: Meta<typeof ArtefactLinkRulesView> = {
   title: "Components/ArtefactLinkRulesView",
   component: ArtefactLinkRulesView,
   decorators: [withToast()],
-  args: { orgId: "org-1", linkTypes, rules, onChanged: fn(async () => {}) },
+  args: { scope: { kind: "organization", orgId: "org-1" }, linkTypes, rules, onChanged: fn(async () => {}) },
   beforeEach: () => {
     spyOn(api, "put").mockResolvedValue(undefined);
     spyOn(api, "delete").mockResolvedValue(undefined);

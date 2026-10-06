@@ -959,7 +959,15 @@ ModuleDefinition(
   the first non-`none` flow wins, and a conflicting reverse phrase is dropped with a
   warning. Core defaults (`services.definitions.DEFAULT_LINK_TYPES`) are unrestricted.
 - Use `services.link_types.ensure_org_link_type(db, org_id, forward_name, reverse_name)`
-  to fetch-or-create a type in your own code, never your own copy of the query.
+  to fetch-or-create a type in your own code, never your own copy of the query. It
+  returns the organisation-wide type; a project's own link types never replace it.
+- A project can also own link types (inherited by nested projects), hide
+  organisation-wide ones, and set its own artefact-type rules; an organisation can
+  switch that off. A module creating links should pass its project to
+  `relationships.create_link(..., project_id=...)` so the type is checked as usable
+  there and the project's rules apply; a type it picks for the user should also pass
+  `enforce_offered=True` (a hidden type is then refused). Never query link types
+  directly for a picker: use `services.link_type_scope.resolve_effective_link_types`.
 - `dedicated_endpoint=True` marks a type with a fixed meaning and its own action
   (supersession flips a status): the generic link endpoints neither offer, create nor
   delete it, and your own action passes `enforce_rules=False` to `create_link`.

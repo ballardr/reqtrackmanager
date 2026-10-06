@@ -24,6 +24,7 @@ from app.modules.compliance.models import ComplianceRequirement, ComplianceRequi
 from app.modules.compliance.project_router._shared import _require_view
 from app.modules.compliance.schemas import ComplianceRequirementTraceabilityLinkCreate, ComplianceRequirementTraceabilityLinkOut
 from app.services.audit import log_event
+from app.services.link_type_scope import UNAVAILABLE_MESSAGE, LinkRuleError, assert_link_type_usable
 from app.services.rbac import get_effective_project_roles
 
 router = APIRouter(tags=["compliance-project-traceability-links"])
@@ -113,8 +114,12 @@ def create_requirement_traceability_link(
     requirement = _get_core_requirement_in_project(db, project_id, requirement_id)
     _get_org_compliance_requirement_or_404(db, project.organization_id, payload.compliance_requirement_id)
     link_type = db.get(RequirementLinkTypeDefinition, payload.link_type_id)
-    if link_type is None or link_type.organization_id != project.organization_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "link_type_id must be a link type defined in this project's organisation.")
+    if link_type is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, UNAVAILABLE_MESSAGE)
+    try:
+        assert_link_type_usable(db, project, link_type, enforce_offered=True)
+    except LinkRuleError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     existing = db.scalar(
         select(ComplianceRequirementTraceabilityLink.id).where(
             ComplianceRequirementTraceabilityLink.requirement_id == requirement_id,

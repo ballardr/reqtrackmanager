@@ -22,7 +22,7 @@
  */
 import { useEffect, useState } from "react";
 
-import { api } from "../../api/client";
+import { loadOfferedLinkTypes } from "../../api/linkTypes";
 import type { LinkTypeDefinition } from "../../api/types";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useStrings } from "../../context/TerminologyContext";
@@ -51,9 +51,9 @@ export function ComplianceRequirementLinkPickerTab({ projectId, requirementId, o
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${organizationId}/link-types`).then(setLinkTypes);
+    void loadOfferedLinkTypes(projectId).then(setLinkTypes);
     void complianceApi.listStandards(organizationId).then(setStandards);
-  }, [organizationId]);
+  }, [organizationId, projectId]);
 
   useEffect(() => {
     setTargetVersionId("");

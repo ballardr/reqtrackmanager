@@ -271,15 +271,12 @@ def create_change_request(
             if target is None or target.project_id != project_id:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_link_target_requirement_id.")
             link_type = db.get(RequirementLinkTypeDefinition, payload.proposed_link_type_id)
-            if link_type is None or link_type.organization_id != project.organization_id:
-                raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST,
-                    "proposed_link_type_id must be a link type defined in this project's organisation.",
-                )
+            if link_type is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_link_type_id must be a link type available to this project.")
             try:
                 validate_link_allowed(
                     db, link_type=link_type, source_type=ArtefactType.REQUIREMENT.value,
-                    target_type=ArtefactType.REQUIREMENT.value,
+                    target_type=ArtefactType.REQUIREMENT.value, project_id=project.id, enforce_offered=True,
                 )
             except LinkRuleError as exc:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

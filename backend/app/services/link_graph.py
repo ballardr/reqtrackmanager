@@ -216,13 +216,10 @@ def build_link_graph(
     if root_summary is None:
         return None
 
-    link_types = {
-        t.id: t for t in db.scalars(
-            select(RequirementLinkTypeDefinition).where(
-                RequirementLinkTypeDefinition.organization_id == project.organization_id
-            )
-        ).all()
-    }
+    # Resolved by the ids the links reference, never "all the organisation's types": a
+    # link keeps displaying its phrase even when its type is no longer usable here
+    # (hidden, locked out, reparented), and no unrelated project's type is loaded.
+    link_types: dict[uuid.UUID, RequirementLinkTypeDefinition] = {}
     root = _node(root_summary, root_type, 0)
     walk = _Walk(nodes={(root_type, root_id): root})
     frontier: set[_Key] = {(root_type, root_id)}
@@ -244,6 +241,17 @@ def build_link_graph(
                 hops.append((link, source, target, True))
             if follow_in and target in frontier:
                 hops.append((link, target, source, False))
+
+        missing_types = {link.link_type_id for link, *_ in hops if link.link_type_id is not None} - link_types.keys()
+        if missing_types:
+            link_types.update(
+                (t.id, t) for t in db.scalars(
+                    select(RequirementLinkTypeDefinition).where(
+                        RequirementLinkTypeDefinition.organization_id == project.organization_id,
+                        RequirementLinkTypeDefinition.id.in_(missing_types),
+                    )
+                ).all()
+            )
 
         wanted: dict[str, set[uuid.UUID]] = defaultdict(set)
         for _link, _from, neighbour, _out in hops:

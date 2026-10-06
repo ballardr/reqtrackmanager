@@ -55,6 +55,8 @@ def create_link(
     link_type_id: uuid.UUID | None,
     created_by: uuid.UUID,
     enforce_rules: bool = True,
+    project_id: uuid.UUID | None = None,
+    enforce_offered: bool = False,
 ) -> ArtefactLink:
     """Creates and flushes a new `ArtefactLink` row. Does not commit — the
     caller commits once, alongside its own audit-log write, matching every
@@ -67,6 +69,14 @@ def create_link(
     is false only for a fixed-semantic action (a "Supersedes" link that flips a
     status) and for replaying already-validated data (project import,
     approving a change request that was validated when proposed).
+
+    `project_id` is the project the link is created in: with it the link type must
+    also be usable there (organisation-wide, or local to that project or an
+    ancestor, and not locked out; `services.link_type_scope.assert_link_type_usable`)
+    and project/ancestor artefact-type rules apply. Every creator that knows its
+    project passes it; omitting it checks the organisation-level rules only.
+    `enforce_offered` additionally rejects a type the project hides, for creators
+    where a user picked the type (fixed-semantic actions leave it false).
 
     Raises:
         ValueError: if `source_type`/`target_type` isn't a currently
@@ -98,7 +108,10 @@ def create_link(
 
         link_type = db.get(RequirementLinkTypeDefinition, link_type_id)
         if link_type is not None:
-            validate_link_allowed(db, link_type=link_type, source_type=source_type, target_type=target_type)
+            validate_link_allowed(
+                db, link_type=link_type, source_type=source_type, target_type=target_type,
+                project_id=project_id, enforce_offered=enforce_offered,
+            )
     link = ArtefactLink(
         source_type=source_type, source_id=source_id,
         target_type=target_type, target_id=target_id,

@@ -709,6 +709,7 @@ const en = {
     deleteInUseRemoveHeading: "Or delete what uses it too",
     deleteInUseRemoveButton: "Delete the links too…",
     deleteInUseRemoveBlockedPrefix: "Not available: ",
+    deleteInUseKeepButton: "Delete and keep it for the other projects",
     actionTypes: "Action types",
     newActionType: "New action type",
     deleteActionType: "Delete this action type",
@@ -1364,11 +1365,6 @@ const en = {
     linkTypeDedicatedNote: "Made with its own action (for example superseding), not as a general link.",
     linkTypeAdded: "Link type added.",
     linkTypeRenamed: "Link type renamed.",
-    linkTypeMoved: (moved: number, merged: number) =>
-      merged > 0
-        ? `Link type deleted: ${moved} link(s) moved, ${merged} merged into existing links.`
-        : `Link type deleted: ${moved} link(s) moved.`,
-    linkTypeLinksRemoved: (removed: number) => `Link type deleted along with ${removed} link(s).`,
     linkTypeDeleted: "Link type deleted.",
     linkTypesTab: "Link types",
     linkTypesByArtefactTab: "By artefact type",
@@ -1402,6 +1398,60 @@ const en = {
     linkTypeRemoveConfirmMessage: (name: string, links: number) =>
       `This permanently deletes the “${name}” link type and its ${links} link(s). This cannot be undone.`,
     linkTypeRemoveConfirmLabel: "Delete links and link type",
+    linkTypeKeepLabel: (projects: number) => `Keep this link type in the ${projects} other {project}(s) that use it`,
+    linkTypeKeepDescription:
+      "Each of those {projects} keeps its own copy, so their links read exactly as before. Only the links here are moved or removed.",
+    linkTypeKeepUnmanageable: (projects: number) =>
+      `${projects} other {project}(s) hold links of this type that you cannot manage. Keep the link type for them to delete it.`,
+    linkTypeDeleteOutcome: (outcome: { moved: number; merged: number; removed: number; copies_created: number; copies_renamed: string[] }) => {
+      const parts: string[] = [];
+      if (outcome.moved > 0) parts.push(`${outcome.moved} link(s) moved${outcome.merged > 0 ? `, ${outcome.merged} merged` : ""}`);
+      else if (outcome.merged > 0) parts.push(`${outcome.merged} link(s) merged`);
+      if (outcome.removed > 0) parts.push(`${outcome.removed} link(s) deleted`);
+      if (outcome.copies_created > 0) parts.push(`kept in ${outcome.copies_created} {project}(s)`);
+      if (outcome.copies_renamed.length > 0) parts.push(`renamed to avoid a clash: ${outcome.copies_renamed.join(", ")}`);
+      return parts.length > 0 ? `Link type deleted: ${parts.join("; ")}.` : "Link type deleted.";
+    },
+    linkTypeScopeOrganization: "Organisation",
+    linkTypeScopeProject: "This {project}",
+    linkTypeScopeInherited: "Parent {project}",
+    linkTypeInheritedFrom: (name: string) => `Inherited from ${name}`,
+    linkTypeHidden: "Hidden",
+    linkTypeHiddenByParent: "Hidden by a parent {project}",
+    linkTypeShadowed: (name: string) => `Not offered: “${name}” takes precedence`,
+    linkTypeHideLabel: (name: string) => `Hide ${name} in this {project}`,
+    linkTypeShowLabel: (name: string) => `Show ${name} in this {project}`,
+    linkTypeHide: "Hide",
+    linkTypeShow: "Show",
+    linkTypeVisibilityUpdated: "Link type visibility updated.",
+    linkTypeVisibilityFailed: "Could not update the link type visibility.",
+    projectLinkTypesHint:
+      "Organisation link types are shared by every {project}; hide the ones you never use. Link types you add here are available in this {project} and every {project} nested under it. Hiding removes a type from pickers only; existing links keep showing.",
+    projectLinkTypesAvailableHeading: "Available to this {project}",
+    projectLinkTypesOwnHeading: "Link types of this {project}",
+    projectLinkTypesLocked: "Your organisation uses one shared set of link types, so they cannot be changed here.",
+    projectLinkTypesRulesLocked: "Your organisation uses one shared set of link types, so these rules cannot be changed here.",
+    artefactRuleSourceOrganization: "Organisation rule",
+    artefactRuleSourceProject: "Set on this {project}",
+    artefactRuleSourceInherited: (name: string | null) => (name ? `Inherited from ${name}` : "Inherited from a parent {project}"),
+    artefactRuleUseInherited: "Use inherited rule",
+    artefactRuleUseInheritedTitle: (label: string) => `Use the inherited rule for ${label}?`,
+    artefactRuleUseInheritedMessage: (label: string) =>
+      `This {project}'s own rule for ${label} is removed, so the rule inherited from a parent {project} or the organisation applies again. Existing links are not changed.`,
+    artefactRuleProjectHint:
+      "Limit which link types an artefact type may use in this {project} and the {projects} nested under it. A rule set here replaces the inherited one entirely, so it can allow more as well as less.",
+    projectCustomisationHeading: "{Project} customisation",
+    projectCustomisationLinkTypes: "Let {projects} add their own link types and hide the organisation's",
+    projectCustomisationHint:
+      "Switch this off for one shared set of link types across the organisation. Nothing is deleted: link types, hiding and rules that {projects} have set are switched off and come back if you switch it on again.",
+    projectCustomisationAffected: (types: number, projects: number) =>
+      types === 0 ? "No {project} has its own link types yet." : `${types} {project}-level link type(s) in ${projects} {project}(s) are affected.`,
+    projectCustomisationLockTitle: "Switch off {project} link types?",
+    projectCustomisationLockMessage: (types: number, projects: number) =>
+      `Every {project} will use only the organisation's link types. ${types} {project}-level link type(s) in ${projects} {project}(s), and any hiding or rules set per {project}, stop applying (existing links keep showing). Nothing is deleted.`,
+    projectCustomisationLockConfirm: "Switch off",
+    projectCustomisationUpdated: "{Project} customisation updated.",
+    projectCustomisationFailed: "Could not update {project} customisation.",
     deleteReportTemplate: (name: string) => `Delete ${name}`,
     deleteResource: (name: string) => `Delete ${name}`,
   },

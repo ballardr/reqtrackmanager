@@ -29,7 +29,19 @@ export interface DeleteInUseRemoveOption {
   confirmText: string;
   confirmMessage: string;
   confirmLabel: string;
-  onRemove: () => Promise<void>;
+  /** @param keep Whether the "keep for other projects" box was ticked when confirmed. */
+  onRemove: (keep: boolean) => Promise<void>;
+}
+
+/** The option, for a vocabulary other projects inherit (link types), to leave the item behind
+ * for the projects that use it, as a copy owned by each, instead of taking it away from them. */
+export interface DeleteInUseKeepOption {
+  /** The checkbox label, naming how many projects use it. */
+  label: string;
+  /** What ticking it does, in words. */
+  description: string;
+  /** True when, with the box ticked, nothing else is left to move or remove, so the dialog offers a plain delete. */
+  nothingElseToMove: boolean;
 }
 
 /**
@@ -48,6 +60,10 @@ export function DeleteInUseDialog({
   candidates,
   onMove,
   remove,
+  keep,
+  onKeepChange,
+  onDeleteKeeping,
+  moveBlockedReason,
   onClose,
 }: {
   title: string;
@@ -56,10 +72,20 @@ export function DeleteInUseDialog({
   /** Further usage facts, one line each. */
   details?: string[];
   candidates: DeleteInUseCandidate[];
-  onMove: (replacementId: string) => Promise<void>;
+  /** @param keep Whether the "keep for other projects" box is ticked. */
+  onMove: (replacementId: string, keep: boolean) => Promise<void>;
   remove?: DeleteInUseRemoveOption;
+  /** Offered for a vocabulary other projects use; ticked by default. */
+  keep?: DeleteInUseKeepOption;
+  /** Called when the box is toggled, so the caller can reassess candidates against what would still move. */
+  onKeepChange?: (keep: boolean) => Promise<void>;
+  /** The plain delete offered when `keep.nothingElseToMove` and the box is ticked. */
+  onDeleteKeeping?: () => Promise<void>;
+  /** Why moving is unavailable (e.g. links held by projects the caller cannot manage); set to disable it. */
+  moveBlockedReason?: string;
   onClose: () => void;
 }) {
+  const [keepChecked, setKeepChecked] = useState(true);
   const [replacementId, setReplacementId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +106,23 @@ export function DeleteInUseDialog({
     }
   }
 
+  async function toggleKeep(next: boolean) {
+    setKeepChecked(next);
+    setReplacementId("");
+    if (!onKeepChange) return;
+    setBusy(true);
+    try {
+      await onKeepChange(next);
+    } catch (err) {
+      setError(toErrorMessage(err, strings.common.error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const keeping = keep !== undefined && keepChecked;
+  const justDelete = keeping && keep.nothingElseToMove && onDeleteKeeping !== undefined;
+
   return (
     <>
       <Modal title={title} onClose={onClose}>
@@ -97,6 +140,23 @@ export function DeleteInUseDialog({
               {error}
             </div>
           )}
+          {keep && (
+            <section className="stack" style={{ gap: "0.25rem" }}>
+              <label className="row" style={{ gap: "0.5rem" }}>
+                <input type="checkbox" checked={keepChecked} disabled={busy} onChange={(e) => void toggleKeep(e.target.checked)} />
+                <strong>{keep.label}</strong>
+              </label>
+              <span className="text-muted">{keep.description}</span>
+            </section>
+          )}
+          {justDelete && (
+            <div className="row">
+              <button className="btn btn-danger" disabled={busy} onClick={() => run(onDeleteKeeping)}>
+                {strings.admin.deleteInUseKeepButton}
+              </button>
+            </div>
+          )}
+          {!justDelete && (
           <section className="stack" style={{ gap: "0.5rem" }}>
             <strong>{strings.admin.deleteInUseMoveHeading}</strong>
             <span className="text-muted">{strings.admin.deleteInUseMoveHint}</span>
@@ -121,12 +181,19 @@ export function DeleteInUseDialog({
                 </select>
                 <button
                   className="btn btn-danger"
-                  disabled={!replacementId || busy}
-                  onClick={() => run(() => onMove(replacementId))}
+                  disabled={!replacementId || busy || moveBlockedReason !== undefined}
+                  title={moveBlockedReason ? `${strings.admin.deleteInUseRemoveBlockedPrefix}${moveBlockedReason}` : undefined}
+                  onClick={() => run(() => onMove(replacementId, keeping))}
                 >
                   {strings.admin.confirmDelete}
                 </button>
               </div>
+            )}
+            {moveBlockedReason && (
+              <span className="text-muted">
+                {strings.admin.deleteInUseRemoveBlockedPrefix}
+                {moveBlockedReason}
+              </span>
             )}
             {chosen?.warning && (
               <div role="status" className="text-muted">
@@ -134,7 +201,8 @@ export function DeleteInUseDialog({
               </div>
             )}
           </section>
-          {remove && (
+          )}
+          {remove && !justDelete && (
             <section className="stack" style={{ gap: "0.5rem" }}>
               <strong>{strings.admin.deleteInUseRemoveHeading}</strong>
               <span className="text-muted">{remove.description}</span>
@@ -169,7 +237,7 @@ export function DeleteInUseDialog({
           message={remove.confirmMessage}
           confirmLabel={remove.confirmLabel}
           requireTypedText={remove.confirmText}
-          onConfirm={() => run(remove.onRemove)}
+          onConfirm={() => run(() => remove.onRemove(keeping))}
           onCancel={() => setConfirmingRemove(false)}
         />
       )}

@@ -64,6 +64,7 @@ from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import (
     ArtefactTypeLinkRule,
     ArtefactTypeLinkRuleEntry,
+    ProjectLinkTypeVisibility,
     RequirementLinkTypeDefinition,
 )
 from app.models.scoring import ScoringBand, ScoringLevel, ScoringModelDefault
@@ -121,6 +122,7 @@ __all__ = [
     "RequirementKeyword",
     "ArtefactTypeLinkRule",
     "ArtefactTypeLinkRuleEntry",
+    "ProjectLinkTypeVisibility",
     "RequirementLinkTypeDefinition",
     "RequirementAction",
     "RequirementReview",

@@ -163,6 +163,14 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             active in order to render their own project's settings
             correctly — see docs/decisions.md's "Platform review 2026-09,
             Phase 8" entry.
+        project_customisation_locks: Keys (from `services.link_types.
+            PROJECT_CUSTOMISATION_LOCK_KEYS`, initially just `"link_types"`)
+            of the vocabularies projects may *not* customise in this
+            organisation, so every project sees the org's own set. Empty
+            (the default) means projects may customise everything. A list of
+            keys rather than a boolean per vocabulary so a later vocabulary
+            needs no new column; locking hides project-level rows, never
+            deletes them.
     """
 
     __tablename__ = "organizations"
@@ -176,6 +184,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
         str_enum(ExternalUserPolicy), default=ExternalUserPolicy.DISABLED
     )
     allow_relaxed_child_project_creation: Mapped[bool] = mapped_column(Boolean, default=True)
+    project_customisation_locks: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     logo_file_id: Mapped[uuid.UUID | None] = mapped_column(

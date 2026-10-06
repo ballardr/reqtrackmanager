@@ -116,6 +116,7 @@ from app.services.bundle_common import (
 )
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
+from app.services.link_type_scope import resolve_link_type_scope
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
 
@@ -221,12 +222,18 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     # `requirement_link_type_definitions` table means nothing on import
     # (`apply_project_data` looks this back up by `forward_name` within the
     # *target* organisation's own link types).
+    # Only the types the exported links reference are loaded (never every type the
+    # organisation has, which would include other projects' local types).
+    link_type_ids = {link.link_type_id for link in links if link.link_type_id is not None}
     link_type_forward_name_by_id = {
         lt.id: lt.forward_name
         for lt in db.scalars(
-            select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == project.organization_id)
+            select(RequirementLinkTypeDefinition).where(
+                RequirementLinkTypeDefinition.organization_id == project.organization_id,
+                RequirementLinkTypeDefinition.id.in_(link_type_ids),
+            )
         )
-    }
+    } if link_type_ids else {}
 
     attachments_by_req: dict[UUID, list[dict]] = {}
     file_assets_by_id: dict[UUID, FileAsset] = {}
@@ -813,11 +820,13 @@ def apply_project_data(
     # (e.g. it was a custom, non-default type the target org never defined)
     # is skipped with a warning rather than guessing a fallback type, which
     # would silently misrepresent the link's asserted meaning.
+    # Resolved among the types usable in the *target* project (organisation-wide, or
+    # local to it or an ancestor; the winner of a duplicate name), so a name can never
+    # land on a type the project cannot use.
     link_type_id_by_name = {
-        lt.forward_name: lt.id
-        for lt in db.scalars(
-            select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == organization_id)
-        )
+        scoped.link_type.forward_name: scoped.link_type.id
+        for scoped in resolve_link_type_scope(db, project)
+        if scoped.shadowed_by is None
     }
     for link in data.get("requirement_links", []):
         source_id = requirement_id_by_code.get(link["source_unique_code"])
@@ -833,8 +842,8 @@ def apply_project_data(
         elif source_id and target_id:
             warnings.add(
                 f"Requirement link {link.get('source_unique_code')} -> {link.get('target_unique_code')} "
-                f"references a link type ({link.get('link_type_forward_name')!r}) that doesn't exist in the "
-                "target organisation and was skipped."
+                f"references a link type ({link.get('link_type_forward_name')!r}) that isn't available to the "
+                "target project and was skipped."
             )
 
     def import_comment(c: dict, target_type: ReviewTargetType, target_id: UUID, uploaded_by_key: str) -> None:

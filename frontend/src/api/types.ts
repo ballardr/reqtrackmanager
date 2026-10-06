@@ -965,6 +965,52 @@ export interface LinkTypeDefinition {
   allowed_target_types: string[] | null;
   /** Fixed meaning with its own action (e.g. "Supersedes"); not offered as a general link. */
   dedicated_endpoint: boolean;
+  /** `null` for an organisation-wide type; the owning project's id for a project-level one. */
+  project_id?: string | null;
+}
+
+/** Where a link type comes from, relative to the project looking at it: `organization` (shared by
+ * every project), `project` (this project's own, editable) or `inherited` (an ancestor project's). */
+export type LinkTypeScope = "organization" | "project" | "inherited";
+export const LINK_TYPE_SCOPE_LABEL: Record<LinkTypeScope, string> = {
+  organization: "Organisation",
+  project: "This project",
+  inherited: "Parent project",
+};
+
+/** A link type as one project sees it (`GET /projects/{id}/link-types`). */
+export interface ProjectLinkType extends LinkTypeDefinition {
+  scope: LinkTypeScope;
+  owner_project_id: string | null;
+  /** Only given when the viewer can already see the owning project. */
+  owner_project_name: string | null;
+  /** Effective: hidden for this project (by its own choice or an ancestor's). */
+  hidden: boolean;
+  /** This project's own choice: `true` hidden, `false` shown, `null` none. */
+  hidden_here: boolean | null;
+  hidden_by_inherited: boolean;
+  /** Set when a same-named type takes precedence, so this one is not offered. */
+  shadowed_by_scope: LinkTypeScope | null;
+  shadowed_by_name: string | null;
+  editable: boolean;
+}
+
+/** A project's link-type panel data; `locked` when the organisation forbids project-level changes. */
+export interface ProjectLinkTypes {
+  locked: boolean;
+  items: ProjectLinkType[];
+}
+
+/** The types a project's pickers offer: not hidden, not shadowed. */
+export function offeredLinkTypes(items: ProjectLinkType[]): ProjectLinkType[] {
+  return items.filter((i) => !i.hidden && i.shadowed_by_scope === null);
+}
+
+/** The organisation's switches forbidding project-level customisation (`GET /orgs/{id}/project-customisation`). */
+export interface ProjectCustomisation {
+  locks: string[];
+  local_link_type_count: number;
+  local_link_type_project_count: number;
 }
 
 /** The link types worth offering for a new link from `sourceType` to `targetType`: not a dedicated
@@ -992,6 +1038,14 @@ export interface ArtefactLinkRule {
   link_type_ids: string[] | null;
 }
 
+/** A rule as a project resolves it: which scope it comes from (`null` = no rule, any link type),
+ * and whether the project itself holds it (so it can be cleared to use the inherited one). */
+export interface ProjectArtefactLinkRule extends ArtefactLinkRule {
+  source: LinkTypeScope | null;
+  source_project_name: string | null;
+  own: boolean;
+}
+
 /** A link type assessed as the replacement when deleting one that is in use. */
 export interface LinkTypeCandidate {
   id: string;
@@ -1015,6 +1069,13 @@ export interface LinkTypeUsage {
   is_dedicated: boolean;
   is_last: boolean;
   candidates: LinkTypeCandidate[];
+  /** Links the chosen mode would move or remove (the rest are kept by copy in other projects). */
+  moved_link_count: number;
+  /** Other projects hold links, so they could keep the type by copy. */
+  keep_available: boolean;
+  keep_project_count: number | null;
+  /** Projects holding links the caller cannot manage; blocks moving/removing without keeping. */
+  unmanageable_project_count: number;
 }
 
 /** What a mode-based link type delete did. */
@@ -1022,6 +1083,9 @@ export interface LinkTypeDeleteOutcome {
   moved: number;
   merged: number;
   removed: number;
+  copies_created: number;
+  /** Names of copies that had to be renamed because the name was taken. */
+  copies_renamed: string[];
 }
 
 /** Where the target of a link of a given type sits relative to its source, read

@@ -138,12 +138,16 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
         # the link's source in this export, since `link_rows` was queried by
         # `source_id`) — a plain informational column, not re-imported by
         # CSV import (which has no notion of links).
+        link_type_ids = {link.link_type_id for link in link_rows if link.link_type_id is not None}
         link_type_forward_name_by_id = {
             lt.id: lt.forward_name
             for lt in db.scalars(
-                select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == project.organization_id)
+                select(RequirementLinkTypeDefinition).where(
+                    RequirementLinkTypeDefinition.organization_id == project.organization_id,
+                    RequirementLinkTypeDefinition.id.in_(link_type_ids),
+                )
             )
-        }
+        } if link_type_ids else {}
         for link in link_rows:
             target_code = code_by_id.get(link.target_id, "?")
             type_name = link_type_forward_name_by_id.get(link.link_type_id, "?")

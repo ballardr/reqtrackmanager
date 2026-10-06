@@ -41,7 +41,7 @@ export const MoveToAnotherItem: Story = {
     await userEvent.selectOptions(select, "Related to");
     await expect(confirm).toBeEnabled();
     await userEvent.click(confirm);
-    await waitFor(() => expect(args.onMove).toHaveBeenCalledWith("related"));
+    await waitFor(() => expect(args.onMove).toHaveBeenCalledWith("related", false));
     await waitFor(() => expect(args.onClose).toHaveBeenCalled());
   },
 };
@@ -110,7 +110,7 @@ export const RemoveIsTier2TypeTheName: Story = {
     await userEvent.type(within(document.body).getByLabelText('Type "Depends on" to confirm'), "Depends on");
     await expect(confirm).toBeEnabled();
     await userEvent.click(confirm);
-    const onRemove = (args.remove as { onRemove: () => Promise<void> }).onRemove;
+    const onRemove = (args.remove as { onRemove: (keep: boolean) => Promise<void> }).onRemove;
     await waitFor(() => expect(onRemove).toHaveBeenCalled());
   },
 };
@@ -123,5 +123,62 @@ export const RemoveBlockedExplainsWhy: Story = {
     const dialog = within(await body().findByRole("dialog"));
     await expect(dialog.getByRole("button", { name: "Delete the links too…" })).toBeDisabled();
     await expect(dialog.getByText(/Not available: 2 pending change request/)).toBeInTheDocument();
+  },
+};
+
+const keepOption = {
+  label: "Keep this link type in the 3 other project(s) that use it",
+  description: "Each of those projects keeps its own copy, so their links read exactly as before.",
+  nothingElseToMove: false,
+};
+
+/** For a vocabulary other projects use, keeping it for them is offered and ticked by default; the move
+ * and the Tier-2 removal both receive the box's state, and toggling it asks the caller to reassess. */
+export const KeepForOtherProjectsIsTickedAndPassedOn: Story = {
+  args: {
+    keep: keepOption,
+    onKeepChange: fn(async () => {}),
+    remove: { ...remove, onRemove: fn(async () => {}) },
+  },
+  play: async ({ args }) => {
+    const dialog = within(await body().findByRole("dialog", { name: "Delete “Depends on”?" }));
+    const box = dialog.getByRole("checkbox", { name: keepOption.label });
+    await expect(box).toBeChecked();
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "Related to");
+    await userEvent.click(dialog.getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() => expect(args.onMove).toHaveBeenCalledWith("related", true));
+  },
+};
+
+export const UntickingKeepAsksToReassess: Story = {
+  args: { keep: keepOption, onKeepChange: fn(async () => {}) },
+  play: async ({ args }) => {
+    const dialog = within(await body().findByRole("dialog", { name: "Delete “Depends on”?" }));
+    await userEvent.click(dialog.getByRole("checkbox", { name: keepOption.label }));
+    await waitFor(() => expect(args.onKeepChange).toHaveBeenCalledWith(false));
+    await expect(dialog.getByRole("checkbox", { name: keepOption.label })).not.toBeChecked();
+  },
+};
+
+/** When keeping leaves nothing to move, the move/remove choices give way to a plain delete. */
+export const NothingElseToMoveOffersAPlainDelete: Story = {
+  args: { keep: { ...keepOption, nothingElseToMove: true }, onDeleteKeeping: fn(async () => {}) },
+  play: async ({ args }) => {
+    const dialog = within(await body().findByRole("dialog", { name: "Delete “Depends on”?" }));
+    await expect(dialog.queryByRole("combobox", { name: "Reassign existing items to" })).not.toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Delete and keep it for the other projects" }));
+    await waitFor(() => expect(args.onDeleteKeeping).toHaveBeenCalled());
+    await waitFor(() => expect(args.onClose).toHaveBeenCalled());
+  },
+};
+
+/** A reason moving is unavailable (links held by projects the caller cannot manage) disables the move and is stated. */
+export const MoveBlockedExplainsWhy: Story = {
+  args: { moveBlockedReason: "2 other project(s) hold links you cannot manage." },
+  play: async () => {
+    const dialog = within(await body().findByRole("dialog"));
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "Related to");
+    await expect(dialog.getByRole("button", { name: "Confirm delete" })).toBeDisabled();
+    await expect(dialog.getByText(/Not available:/)).toBeInTheDocument();
   },
 };

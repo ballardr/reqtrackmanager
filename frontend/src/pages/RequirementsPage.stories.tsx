@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../api/client";
 import type { Category, Component, ProjectStage } from "../api/types";
 import {
-  buildFileAsset, buildLinkType, buildProjectListItem, buildRequirement, buildRequirementLink, buildUser,
+  buildFileAsset, buildLinkType, buildProjectListItem, projectLinkTypesPayload, buildRequirement, buildRequirementLink, buildUser,
   withRouter, withStatefulAuth, withTerminology, withToast,
 } from "../testing/storybook-helpers";
 import { RequirementsPage } from "./RequirementsPage";
@@ -35,7 +35,7 @@ function mockRequirementsListApis(myRoles: "manager" | "member", opts: { compone
     if (path.includes("/stages")) return stages;
     if (path.includes("custom-fields")) return [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
-    if (path.includes("/link-types")) return [];
+    if (path.includes("/link-types")) return projectLinkTypesPayload();
     // The create modal's step 2 (attach files / add links) fetches the full,
     // unpaginated project requirements list — distinct from the paginated
     // main list, which goes through `api.getPage` below, not `api.get`.
@@ -416,7 +416,7 @@ export const CreateStepAddLinkDisabledWithNoEligibleTargets: Story = {
       if (path.includes("/stages")) return stages;
       if (path.includes("custom-fields")) return [];
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
-      if (path.includes("/link-types")) return [];
+      if (path.includes("/link-types")) return projectLinkTypesPayload();
       if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) return [buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Reset password via SMS" })];
       if (path.includes("/users")) return [];
       throw new Error(`unmocked path: ${path}`);
@@ -454,7 +454,7 @@ export const CreateStepAttachFileAddLinkThenFinish: Story = {
       if (path.includes("/stages")) return stages;
       if (path.includes("custom-fields")) return [];
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
-      if (path.includes("/link-types")) return [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Depended on by" })];
+      if (path.includes("/link-types")) return projectLinkTypesPayload([buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Depended on by" })]);
       if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) {
         return [buildRequirement({ id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1" })];
       }

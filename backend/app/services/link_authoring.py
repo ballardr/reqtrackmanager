@@ -48,6 +48,7 @@ from app.modules.registry import (
 )
 from app.services.audit import log_event
 from app.services.link_graph import ArtefactResolver
+from app.services.link_type_scope import UNAVAILABLE_MESSAGE, assert_link_type_usable
 from app.services.link_types import LinkRuleError, LinkTypeOption, list_usable_link_types
 from app.services.relationships import create_link, delete_link, get_link_between
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
@@ -92,8 +93,7 @@ def usable_options(
         The usable options (dedicated types are never offered).
     """
     return list_usable_link_types(
-        db, project.organization_id, artefact_type,
-        candidate_types=linkable_types_for_project(db, project), other_type=other_type,
+        db, project, artefact_type, candidate_types=linkable_types_for_project(db, project), other_type=other_type,
     )
 
 
@@ -168,8 +168,8 @@ def create_link_for_artefact(
 
     Raises:
         HTTPException: 404 an end is not a visible record of the project; 403
-            `manage` not held; 400 the link type is not usable (other organisation,
-            dedicated, a rule forbids the pair) or it is a self-link; 409 a
+            `manage` not held; 400 the link type is not usable (not available to the
+            project, hidden, dedicated, a rule forbids the pair) or it is a self-link; 409 a
             duplicate, or a change request is required for an approved requirement.
     """
     resolver = ArtefactResolver(db, project, user_id)
@@ -185,8 +185,12 @@ def create_link_for_artefact(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A record cannot be linked to itself.")
 
     link_type = db.get(RequirementLinkTypeDefinition, link_type_id)
-    if link_type is None or link_type.organization_id != project.organization_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "link_type_id must be a link type defined in this project's organisation.")
+    if link_type is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, UNAVAILABLE_MESSAGE)
+    try:
+        assert_link_type_usable(db, project, link_type, enforce_offered=True)
+    except LinkRuleError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if link_type.dedicated_endpoint:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -205,7 +209,7 @@ def create_link_for_artefact(
     try:
         link = create_link(
             db, source_type=source_type, source_id=source_id, target_type=target_type, target_id=target_id,
-            link_type_id=link_type.id, created_by=user_id,
+            link_type_id=link_type.id, created_by=user_id, project_id=project.id, enforce_offered=True,
         )
     except LinkRuleError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

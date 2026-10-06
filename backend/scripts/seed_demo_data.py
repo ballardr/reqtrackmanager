@@ -464,6 +464,27 @@ def create_artefact_link(
     return r.json()
 
 
+def create_project_link_type(
+    headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
+) -> dict:
+    """A link type local to one project (usable there and in every sub-project)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/link-types",
+        json={"forward_name": forward_name, "reverse_name": reverse_name, "flow": flow}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_link_type_visibility(headers: dict, project_id: str, link_type_id: str, hidden: bool) -> dict:
+    """Hides (or re-shows) a link type for a project and the sub-projects under it; links already using it keep showing."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/link-types/{link_type_id}/visibility", json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def create_requirement_link(headers: dict, project_id: str, requirement_id: str, target_requirement_id: str, link_type_id: str) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements/{requirement_id}/links",
@@ -2366,6 +2387,17 @@ def main() -> None:
         h_pm, drone["id"], "requirement", gps_req["id"], link_type_id=chain_link_types["Implements"]["id"],
         other_type="decision", other_id=single_fc_decision["id"], direction="incoming",
     )
+
+    print("Seeding a project-level link type on Falcon-3 (Phase 5c): \"Is verified by\" (a requirement is verified by"
+          " another), inherited by the Avionics sub-project, and Falcon-3 hides the organisation's \"Mitigates\"...")
+    verified_by = create_project_link_type(
+        h_pm, drone["id"], forward_name="Is verified by", reverse_name="Verifies", flow="forward_is_downstream",
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "requirement", gps_req["id"], link_type_id=verified_by["id"],
+        other_type="requirement", other_id=flight_time_req["id"],
+    )
+    set_link_type_visibility(h_pm, drone["id"], chain_link_types["Mitigates"]["id"], True)
 
     print("Seeding Pain Point scoring config (Module 1 Phase 10) — org keeps the seeded Severity/Frequency/"
           "Confidence levels and module-default model; Falcon-3 overrides its default model to S×F...")

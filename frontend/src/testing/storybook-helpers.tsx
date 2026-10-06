@@ -34,6 +34,8 @@ import type {
   Component,
   FileAsset,
   LinkTypeDefinition,
+  ProjectLinkType,
+  ProjectLinkTypes,
   Notification,
   Project,
   ProjectFile,
@@ -145,6 +147,20 @@ export function buildLinkType(overrides: Partial<LinkTypeDefinition> = {}): Link
     reverse_name: "Is a dependency of", sort_order: 0, flow: "none",
     allowed_source_types: null, allowed_target_types: null, dedicated_endpoint: false, ...overrides,
   };
+}
+
+/** A link type as a project sees it: organisation-wide by default, read-only, offered. */
+export function buildProjectLinkType(overrides: Partial<ProjectLinkType> = {}): ProjectLinkType {
+  return {
+    ...buildLinkType(), scope: "organization", owner_project_id: null, owner_project_name: null, hidden: false,
+    hidden_here: null, hidden_by_inherited: false, shadowed_by_scope: null, shadowed_by_name: null, editable: false,
+    ...overrides,
+  };
+}
+
+/** The body of `GET /projects/{id}/link-types` for these types (all organisation-wide, offered, unlocked). */
+export function projectLinkTypesPayload(types: LinkTypeDefinition[] = []): ProjectLinkTypes {
+  return { locked: false, items: types.map((t) => buildProjectLinkType(t)) };
 }
 
 export function buildActionType(overrides: Partial<ActionTypeDefinition> = {}): ActionTypeDefinition {

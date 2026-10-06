@@ -104,6 +104,7 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/project-statuses")) return statuses;
     if (path.includes("/artefact-types")) return overrides.artefactTypes ?? defaultArtefactTypes;
     if (path.includes("/artefact-link-rules")) return overrides.artefactRules ?? defaultArtefactRules;
+    if (path.endsWith("/project-customisation")) return { locks: [], local_link_type_count: 0, local_link_type_project_count: 0 };
     if (path.includes("/link-types")) return types;
     // Phase A's org-only pending-invites list (follow-up UX batch).
     if (path.includes("/pending-invites")) return orgPendingInvites;

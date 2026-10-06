@@ -217,6 +217,13 @@ flowchart LR
 
 *Known divergence:* `StatusPieChart` colours slices by position from a fixed cycle rather than by each status's own `*_TONE`, so the same status can change colour between charts. Bring it into line before reusing it for a new chart.
 
+
+## Pattern: one vocabulary panel for every scope
+
+*(New 2026-10-06 — Platform enhancements Phase 5c, project-level link types. Applies to any admin vocabulary an organisation defines and a project may extend, hide from, or have switched off.)*
+
+One shared component serves every scope the vocabulary lives at (`LinkTypesPanel` with a `scope`), never a per-page copy. A project's view lists what it reaches **read-only, each row saying where it comes from** (badge: Organisation / Inherited from the parent), above **its own rows in the same editable row** the organisation uses (create-as-a-layer). The only control on an inherited row is **Hide / Show**, which removes it from pickers and never from existing data (the row is labelled *Hidden*, or *Hidden by a parent project*). A same-named row that loses to a higher scope says so (*Not offered*). When the organisation forbids customisation the panel renders read-only with the reason, and the organisation's switch asks first (Tier 1), states how many project-level rows it affects, and deletes nothing. Deleting a row other scopes use goes through `DeleteInUseDialog` with its *Keep it for the projects that use it* option, ticked by default.
+
 ## Pattern: create panels, popovers, and one door for bulk
 
 *(The side-panel-for-entities half of this section is historical — see the revised Principle 3 and the new `Pattern: modal dialog for entity create/rename`, below, for the current rule. Left as-is here rather than rewritten, since it documents the reasoning and mockups from when it was current; the "one door for bulk" and Popover-for-small-forms parts are unaffected by the revision.)*

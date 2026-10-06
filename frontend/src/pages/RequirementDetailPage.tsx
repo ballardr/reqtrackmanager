@@ -23,6 +23,7 @@ import type {
   RequirementReviewOutcome,
   RequirementVersionEntry,
 } from "../api/types";
+import { loadOfferedLinkTypes } from "../api/linkTypes";
 import {
   ENTITY_ACCENT_COLOR,
   REQUIREMENT_ACTION_OUTCOME_LABEL,
@@ -476,12 +477,15 @@ export function RequirementDetailPage() {
       setOrganizationId(proj.organization_id);
       setProject(proj);
       try {
+        // Only types this project offers that may join two requirements (a hidden, restricted or dedicated type
+        // would be refused). Asked of the project, so it works for a member with no organisation role too.
+        setLinkTypes(linkTypesFor(await loadOfferedLinkTypes(projectId!), "requirement", "requirement"));
+      } catch {
+        // Nothing to offer in the Links card's type picker.
+      }
+      try {
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
         setOrgUsers(users);
-        // Only types that may join two requirements (a restricted or dedicated type would be refused).
-        setLinkTypes(
-          linkTypesFor(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${proj.organization_id}/link-types`), "requirement", "requirement"),
-        );
         // Platform review 2026-09, Phase 8 — `OrganizationOut.
         // force_require_change_request_for_approved_links` is readable by
         // any org member (unlike most other org policy toggles), so this
@@ -491,10 +495,7 @@ export function RequirementDetailPage() {
       } catch {
         // Org member directory isn't reachable for this user (e.g. no org
         // role) — fall back to the plain user-ID input rather than break
-        // the page. Link types are best-effort from the same call; the
-        // Links card below already handles an empty `linkTypes` list by
-        // simply having nothing to offer in its type picker.
-        // `orgForceLinksLocked` stays at its default (false) — see its
+        // the page. `orgForceLinksLocked` stays at its default (false) — see its
         // own state comment.
         setReviewerPickerUnavailable(true);
       }

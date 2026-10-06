@@ -250,6 +250,10 @@ test.describe("org admin: link type restrictions, artefact rules and deleting a 
       await rowOf(page, moveName).getByTitle("Delete this link type").click();
       const dialog = page.getByRole("dialog", { name: `Delete “${moveName}”?` });
       await expect(dialog.getByText(/1 link\(s\) in 1 project\(s\) use this link type/)).toBeVisible();
+      // Other projects use it, so keeping it for them is offered and ticked; this test wants the move path.
+      const keep = dialog.getByRole("checkbox", { name: "Keep this link type in the 1 other project(s) that use it" });
+      await expect(keep).toBeChecked();
+      await keep.uncheck();
       await expect(dialog.getByRole("option", { name: new RegExp(`${narrowName} \\(cannot be used: .*cannot start from a requirement`) })).toBeDisabled();
       await expect(dialog.getByRole("button", { name: "Confirm delete" })).toBeDisabled();
     });
@@ -268,12 +272,14 @@ test.describe("org admin: link type restrictions, artefact rules and deleting a 
 
     await test.step("deleting the links too needs the type's name typed, then removes them", async () => {
       await rowOf(page, removeName).getByTitle("Delete this link type").click();
+      // Keeping the type for the project that uses it is ticked by default; this step deletes the links.
+      await page.getByRole("dialog").getByRole("checkbox", { name: /^Keep this link type in the/ }).uncheck();
       await page.getByRole("dialog").getByRole("button", { name: "Delete the links too…" }).click();
       const confirm = page.getByRole("button", { name: "Delete links and link type" });
       await expect(confirm).toBeDisabled();
       await page.getByLabel(`Type "${removeName}" to confirm`).fill(removeName);
       await confirm.click();
-      await expect(page.getByText("Link type deleted along with 1 link(s).")).toBeVisible();
+      await expect(page.getByText("Link type deleted: 1 link(s) deleted.")).toBeVisible();
       await expect(inputWithValue(page, removeName)).toHaveCount(0);
       const links = await (
         await page.request.get(`${apiBaseUrl}/api/v1/projects/${project.id}/requirements/${ids[1]}/links`, { headers: world.headers })

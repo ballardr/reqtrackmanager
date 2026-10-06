@@ -1990,7 +1990,7 @@ def _get_or_create_cs_link_type(
 def create_context_strategy_link(
     db: Session, *, source_type: str, source_id: uuid.UUID, source_organization_id: uuid.UUID,
     target_type: str, target_id: uuid.UUID, forward_name: str | None, reverse_name: str | None,
-    actor_id: uuid.UUID,
+    actor_id: uuid.UUID, project_id: uuid.UUID | None = None,
 ) -> ArtefactLink:
     """The single generic relationship-creation dispatcher every `create_
     <source>_link` wrapper below calls.
@@ -2007,6 +2007,9 @@ def create_context_strategy_link(
             name pair for a *typed* relationship, or both `None` for an
             *untyped* "related to" association (see module docstring).
         actor_id: The user recording this relationship.
+        project_id: The source's project (`None` for an organisation-scoped
+            source), so project and ancestor artefact-type link rules apply
+            (`services.relationships.create_link`).
 
     Returns:
         The created `ArtefactLink`.
@@ -2037,7 +2040,7 @@ def create_context_strategy_link(
         raise ValueError("This relationship already exists.")
     return create_link(
         db, source_type=source_type, source_id=source_id, target_type=target_type, target_id=target_id,
-        link_type_id=link_type_id, created_by=actor_id,
+        link_type_id=link_type_id, created_by=actor_id, project_id=project_id,
     )
 
 
@@ -2090,6 +2093,7 @@ def create_strategy_link(
         db, source_type=STRATEGY_ARTEFACT_TYPE, source_id=strategy.id, source_organization_id=source_organization_id,
         target_type=target_type, target_id=target_id, forward_name=forward_name, reverse_name=reverse_name,
         actor_id=actor_id,
+        project_id=strategy.project_id,
     )
 
 
@@ -2189,6 +2193,7 @@ def create_pain_point_link(
         db, source_type=PAIN_POINT_ARTEFACT_TYPE, source_id=pain_point.id,
         source_organization_id=source_organization_id, target_type=target_type, target_id=target_id,
         forward_name=forward_name, reverse_name=reverse_name, actor_id=actor_id,
+        project_id=pain_point.project_id,
     )
 
 
@@ -2225,6 +2230,7 @@ def create_guiding_principle_link(
         db, source_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, source_id=guiding_principle.id,
         source_organization_id=source_organization_id, target_type=target_type, target_id=target_id,
         forward_name=forward_name, reverse_name=reverse_name, actor_id=actor_id,
+        project_id=guiding_principle.project_id,
     )
 
 
@@ -2306,6 +2312,7 @@ def create_future_state_link(
         db, source_type=FUTURE_STATE_ARTEFACT_TYPE, source_id=future_state.id,
         source_organization_id=source_organization_id, target_type=target_type, target_id=target_id,
         forward_name=forward_name, reverse_name=reverse_name, actor_id=actor_id,
+        project_id=future_state.project_id,
     )
 
 
@@ -2383,6 +2390,7 @@ def create_open_question_link(
         db, source_type=OPEN_QUESTION_ARTEFACT_TYPE, source_id=open_question.id,
         source_organization_id=source_organization_id, target_type=target_type, target_id=target_id,
         forward_name=forward_name, reverse_name=reverse_name, actor_id=actor_id,
+        project_id=open_question.project_id,
     )
 
 

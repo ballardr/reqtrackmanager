@@ -38,6 +38,8 @@ from app.schemas.link_type import (
     LinkTypeOut,
     LinkTypeUpdate,
     LinkTypeUsageOut,
+    ProjectCustomisationOut,
+    ProjectCustomisationSet,
 )
 from app.schemas.project import MoveDirection
 from app.schemas.project_status import ProjectStatusCreate, ProjectStatusOut, ProjectStatusUpdate
@@ -50,10 +52,10 @@ from app.services.link_types import (
     ensure_org_seeds,
     get_artefact_rules,
     list_org_artefact_types,
-    normalise_artefact_types,
     set_artefact_rule,
 )
 from app.services.ordering import move_ordered
+from app.services.project_link_types import get_lock_summary, set_customisation_locks, validated_restrictions
 from app.services.rbac import require_org_role
 
 router = APIRouter(tags=["organizations-taxonomies"])
@@ -178,12 +180,13 @@ def create_link_type(
         HTTPException: 400 on a duplicate forward name, or 422 when a restriction
             names an unknown artefact type.
     """
-    allowed_source_types, allowed_target_types = _validated_restrictions(
+    allowed_source_types, allowed_target_types = validated_restrictions(
         payload.allowed_source_types, payload.allowed_target_types
     )
     existing = db.scalar(
         select(RequirementLinkTypeDefinition.id).where(
             RequirementLinkTypeDefinition.organization_id == organization_id,
+            RequirementLinkTypeDefinition.project_id.is_(None),
             RequirementLinkTypeDefinition.forward_name == payload.forward_name,
         )
     )
@@ -191,7 +194,10 @@ def create_link_type(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A link type with this forward name already exists.")
     count = len(
         db.scalars(
-            select(RequirementLinkTypeDefinition.id).where(RequirementLinkTypeDefinition.organization_id == organization_id)
+            select(RequirementLinkTypeDefinition.id).where(
+                RequirementLinkTypeDefinition.organization_id == organization_id,
+                RequirementLinkTypeDefinition.project_id.is_(None),
+            )
         ).all()
     )
     link_type = RequirementLinkTypeDefinition(
@@ -217,16 +223,20 @@ def list_link_types(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
     db: Session = Depends(get_db),
 ):
-    """Lists an organisation's requirement link types — any org member may
-    need this to populate a requirement's "add link" form, so listing isn't
-    admin-only (only create/rename/move/delete are). Module-seeded link types
+    """Lists an organisation's organisation-wide requirement link types — any org
+    member may need this, so listing isn't admin-only (only create/rename/move/
+    delete are). Project-local types are never returned here (they could belong
+    to projects the caller cannot see); a project's own and inherited types come
+    from `GET /projects/{id}/link-types`. Module-seeded link types
     the organisation lacks are created first (`services.link_types.ensure_org_seeds`),
     so the list is complete before anything has used them."""
     ensure_org_seeds(db, organization_id)
     db.commit()
     return db.scalars(
-        select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == organization_id)
-        .order_by(RequirementLinkTypeDefinition.sort_order)
+        select(RequirementLinkTypeDefinition).where(
+            RequirementLinkTypeDefinition.organization_id == organization_id,
+            RequirementLinkTypeDefinition.project_id.is_(None),
+        ).order_by(RequirementLinkTypeDefinition.sort_order)
     ).all()
 
 
@@ -237,7 +247,8 @@ def move_link_type(
 ):
     """Moves a link type up/down in display order."""
     result = move_ordered(
-        db, RequirementLinkTypeDefinition, [RequirementLinkTypeDefinition.organization_id == organization_id],
+        db, RequirementLinkTypeDefinition,
+        [RequirementLinkTypeDefinition.organization_id == organization_id, RequirementLinkTypeDefinition.project_id.is_(None)],
         link_type_id, payload.direction,
     )
     log_event(db, entity_type="requirement_link_type_definition", entity_id=link_type_id, action="reordered",
@@ -257,11 +268,12 @@ def rename_link_type(
     never its names, so renaming has zero effect on any existing link
     using this type — see `services.definitions`' module docstring."""
     link_type = db.get(RequirementLinkTypeDefinition, link_type_id)
-    if link_type is None or link_type.organization_id != organization_id:
+    if link_type is None or link_type.organization_id != organization_id or link_type.project_id is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Link type not found.")
     existing = db.scalar(
         select(RequirementLinkTypeDefinition.id).where(
             RequirementLinkTypeDefinition.organization_id == organization_id,
+            RequirementLinkTypeDefinition.project_id.is_(None),
             RequirementLinkTypeDefinition.forward_name == payload.forward_name,
             RequirementLinkTypeDefinition.id != link_type_id,
         )
@@ -273,7 +285,7 @@ def rename_link_type(
     if payload.flow is not None:
         link_type.flow = payload.flow
     if "allowed_source_types" in payload.model_fields_set or "allowed_target_types" in payload.model_fields_set:
-        source_types, target_types = _validated_restrictions(
+        source_types, target_types = validated_restrictions(
             payload.allowed_source_types if "allowed_source_types" in payload.model_fields_set else link_type.allowed_source_types,
             payload.allowed_target_types if "allowed_target_types" in payload.model_fields_set else link_type.allowed_target_types,
         )
@@ -291,12 +303,14 @@ def rename_link_type(
 @router.get("/{organization_id}/link-types/{link_type_id}/usage", response_model=LinkTypeUsageOut)
 def get_link_type_usage(
     organization_id: UUID, link_type_id: UUID,
+    keep_in_projects: bool = Query(False, description="Assess as if projects using the type keep it by copy."),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
-    """What depends on a link type, for the delete-in-use dialog: link, project,
-    pending change request and approved-requirement counts, the artefact-type
-    rules naming it, and every other link type assessed as a replacement."""
-    usage = compute_usage(db, organization_id, link_type_id)
+    """What depends on an organisation-wide link type, for the delete-in-use dialog:
+    link, project, pending change request and approved-requirement counts, the
+    artefact-type rules naming it, whether projects could keep it by copy, and every
+    other organisation-wide link type assessed as a replacement."""
+    usage = compute_usage(db, organization_id, link_type_id, keep_in_projects=keep_in_projects)
     return LinkTypeUsageOut(
         link_count=usage.link_count, project_count=usage.project_count,
         pending_change_requests=usage.pending_change_requests,
@@ -313,6 +327,8 @@ def get_link_type_usage(
             )
             for c in usage.candidates
         ],
+        moved_link_count=usage.moved_link_count, keep_available=usage.keep_available,
+        keep_project_count=usage.keep_project_count, unmanageable_project_count=usage.unmanageable_project_count,
     )
 
 
@@ -321,41 +337,35 @@ def delete_link_type(
     organization_id: UUID, link_type_id: UUID,
     reassign_to_id: UUID | None = Query(None),
     mode: Literal["reassign", "remove_links"] | None = Query(None),
+    keep_in_projects: bool = Query(False),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
-    """Deletes a link type (`services.link_type_usage.delete_link_type`).
+    """Deletes an organisation-wide link type (`services.link_type_usage.delete_link_type`).
 
     Refuses to leave the organisation with zero link types (409). An unused type
     is deleted outright. A type in use needs `reassign_to_id` (convert the links
     to another type, merging duplicates) or `mode=remove_links` (delete them too,
     refused while pending change requests propose the type or when it would
     empty an artefact-type rule); without either, 409 naming the count. Passing
-    `mode` explicitly returns 200 with what happened (`moved`/`merged`/`removed`);
-    the legacy forms return 204.
+    `mode` or `keep_in_projects` explicitly returns 200 with what happened
+    (`moved`/`merged`/`removed`/`copies_created`/`copies_renamed`); the legacy forms
+    return 204. With `keep_in_projects`, each project that uses the type keeps it as
+    a local copy (the top-most using project of each branch; descendants inherit it)
+    and its links are repointed, so nothing they see changes.
     """
     outcome = delete_link_type_in_use(
         db, organization_id=organization_id, link_type_id=link_type_id, mode=mode,
-        reassign_to_id=reassign_to_id, actor_id=current_user.id,
+        reassign_to_id=reassign_to_id, actor=current_user, keep_in_projects=keep_in_projects,
     )
     db.commit()
-    if mode is not None:
+    if mode is not None or keep_in_projects:
         return JSONResponse(
-            LinkTypeDeleteOutcomeOut(moved=outcome.moved, merged=outcome.merged, removed=outcome.removed).model_dump(),
+            LinkTypeDeleteOutcomeOut(
+                moved=outcome.moved, merged=outcome.merged, removed=outcome.removed,
+                copies_created=outcome.copies_created, copies_renamed=outcome.copies_renamed,
+            ).model_dump(),
             status_code=status.HTTP_200_OK,
         )
-
-
-def _validated_restrictions(
-    source_types: list[str] | None, target_types: list[str] | None
-) -> tuple[list[str] | None, list[str] | None]:
-    """Normalises a link type's source/target restrictions, or raises 422 naming the unknown type."""
-    try:
-        return (
-            normalise_artefact_types(source_types, field_name="allowed_source_types"),
-            normalise_artefact_types(target_types, field_name="allowed_target_types"),
-        )
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
 
 @router.get("/{organization_id}/artefact-types", response_model=list[ArtefactTypeOut])
@@ -418,3 +428,40 @@ def clear_artefact_link_rule(
         log_event(db, entity_type="artefact_type_link_rule", entity_id=organization_id, action="deleted",
                   actor_id=current_user.id, organization_id=organization_id, detail={"artefact_type": artefact_type})
     db.commit()
+
+
+@router.get("/{organization_id}/project-customisation", response_model=ProjectCustomisationOut)
+def get_project_customisation(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+) -> ProjectCustomisationOut:
+    """Which vocabularies projects may not customise in this organisation, with the
+    number of project-local link types (and projects owning them) that locking would
+    leave dormant. Readable by any org member, since project admins need to know
+    whether their own link-type controls are available."""
+    summary = get_lock_summary(db, organization_id)
+    return ProjectCustomisationOut(
+        locks=summary.locks, local_link_type_count=summary.local_link_type_count,
+        local_link_type_project_count=summary.local_link_type_project_count,
+    )
+
+
+@router.put("/{organization_id}/project-customisation", response_model=ProjectCustomisationOut)
+def set_project_customisation(
+    organization_id: UUID, payload: ProjectCustomisationSet,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+) -> ProjectCustomisationOut:
+    """Replaces the organisation's project-customisation locks (`link_types` forbids
+    project-level link types, hiding and rules). Nothing is deleted: project-level rows
+    go dormant and come back when the lock is removed.
+
+    Raises:
+        HTTPException: 422 for an unknown lock key.
+    """
+    summary = set_customisation_locks(db, organization_id, payload.locks, current_user)
+    db.commit()
+    return ProjectCustomisationOut(
+        locks=summary.locks, local_link_type_count=summary.local_link_type_count,
+        local_link_type_project_count=summary.local_link_type_project_count,
+    )

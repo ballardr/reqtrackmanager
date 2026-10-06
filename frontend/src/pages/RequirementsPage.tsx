@@ -18,6 +18,7 @@ import type {
   RequirementLink,
   RequirementStatus,
 } from "../api/types";
+import { loadOfferedLinkTypes } from "../api/linkTypes";
 import { ENTITY_ACCENT_COLOR, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE, linkTypesFor } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
@@ -383,7 +384,7 @@ export function RequirementsPage() {
       setCreatedLinks([]);
       const [reqs, defs] = await Promise.all([
         api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`),
-        project ? api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${project.organization_id}/link-types`) : Promise.resolve([]),
+        loadOfferedLinkTypes(projectId),
       ]);
       setAllProjectRequirements(reqs);
       // Only types that may join two requirements (a restricted or dedicated type would be refused).

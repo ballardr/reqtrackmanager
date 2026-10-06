@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
+import { loadReachableLinkTypes } from "../api/linkTypes";
 import type {
   ActionTypeDefinition,
   ChangeableRequirementField,
@@ -133,14 +134,14 @@ export function ChangeRequestDetailPage() {
     try {
       const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
       setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`));
-      if (crData.kind === "add_link" || crData.kind === "remove_link") {
-        setLinkTypes(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${proj.organization_id}/link-types`));
-      } else {
-        setLinkTypes([]);
-      }
     } catch {
-      // No org role at all (rare) — reviewer names/link type names just
-      // fall back to raw ids.
+      // No org role at all (rare) — reviewer names just fall back to raw ids.
+    }
+    try {
+      // Every type the project can reach (a hidden one still names a proposed link), not just the organisation's.
+      setLinkTypes(crData.kind === "add_link" || crData.kind === "remove_link" ? await loadReachableLinkTypes(projectId) : []);
+    } catch {
+      // Link type names just fall back to a dash.
     }
   }
 

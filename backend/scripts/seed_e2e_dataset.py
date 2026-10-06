@@ -186,6 +186,13 @@ LINK_LOCK_PROJECT_NAME = "Epsilon-1 Link Lock Demo"
 # Gamma-4 (reverse, member-source). See docs/decisions.md's "Hierarchical
 # projects" entry. No other spec may depend on this pair's configuration.
 GAMMA3_NAME = "Gamma-3 Hierarchy Parent"
+# Phase 5c (docs/plans/platform-enhancements-2026-10-plan.md): a parent that owns a project-level link type, and a
+# child that uses it and inherits its hide of an organisation type. Kept apart from Gamma-3/4 so the hierarchy spec's
+# fixture stays untouched.
+LINK_TYPES_PARENT_NAME = "Gamma-5 Link Types Parent"
+LINK_TYPES_CHILD_NAME = "Gamma-6 Link Types Child"
+LINK_TYPES_PARENT_VERB = "E2E Parent verb"
+LINK_TYPES_HIDDEN_ORG_TYPE = "Mitigates"
 GAMMA4_NAME = "Gamma-4 Hierarchy Child"
 
 
@@ -227,6 +234,40 @@ def create_link_type(
             "forward_name": forward_name, "reverse_name": reverse_name, "flow": flow,
             "allowed_source_types": allowed_source_types, "allowed_target_types": allowed_target_types,
         },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_link_type(
+    headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
+) -> dict:
+    """A link type local to one project (usable there and in every nested project)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/link-types",
+        json={"forward_name": forward_name, "reverse_name": reverse_name, "flow": flow}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_link_type_visibility(headers: dict, project_id: str, link_type_id: str, hidden: bool) -> dict:
+    """Hides (or re-shows) a link type the project can reach, for that project and the ones nested under it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/link-types/{link_type_id}/visibility", json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_artefact_link(
+    headers: dict, project_id: str, source_type: str, source_id: str, link_type_id: str, target_type: str, target_id: str,
+) -> dict:
+    """A link between any two artefacts of a project through the generic link-authoring endpoint."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/artefacts/{source_type}/{source_id}/links",
+        json={"link_type_id": link_type_id, "direction": "outgoing", "other_type": target_type, "other_id": target_id},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -736,6 +777,28 @@ def main() -> None:
         h_g, gamma1["id"], "persona", field_inspector["id"], "affected_by_requirement", "requirement", gamma1_reqs[0]["id"],
     )
     seed_project_content(h_g, gamma2, 6)
+
+    print(f"Seeding project-level link types (Phase 5c): {LINK_TYPES_PARENT_NAME!r} owns {LINK_TYPES_PARENT_VERB!r} and hides"
+          f" the organisation's {LINK_TYPES_HIDDEN_ORG_TYPE!r}; its child {LINK_TYPES_CHILD_NAME!r} inherits both and links"
+          " two of its requirements with the parent's type. Beta forbids project-level link types (the org switch).")
+    gamma5 = create_project(h_g, gamma["id"], LINK_TYPES_PARENT_NAME, "E2E seed project — project-level link types parent.", can_be_parent=True)
+    gamma6 = create_project(
+        h_g, gamma["id"], LINK_TYPES_CHILD_NAME, "E2E seed project — project-level link types child.",
+        parent_project_id=gamma5["id"],
+    )
+    seed_project_content(h_g, gamma5, 2)
+    gamma6_reqs = seed_project_content(h_g, gamma6, 2)
+    parent_type = create_project_link_type(
+        h_g, gamma5["id"], forward_name=LINK_TYPES_PARENT_VERB, reverse_name="E2E Parent reverse", flow="forward_is_upstream",
+    )
+    create_artefact_link(h_g, gamma6["id"], "requirement", gamma6_reqs[0]["id"], parent_type["id"], "requirement", gamma6_reqs[1]["id"])
+    gamma_types = {t["forward_name"]: t for t in httpx.get(f"{BASE}/orgs/{gamma['id']}/link-types", headers=h_g, timeout=30).json()}
+    set_link_type_visibility(h_g, gamma5["id"], gamma_types[LINK_TYPES_HIDDEN_ORG_TYPE]["id"], True)
+    r = httpx.put(
+        f"{BASE}/orgs/{beta['id']}/project-customisation", json={"locks": ["link_types"]}, headers=h_ab, timeout=30,
+    )
+    r.raise_for_status()
+
     delta1_reqs = seed_project_content(h_ab, delta1, 3)
 
     print("Locking Delta-1's first requirement so terminology-coverage.spec.ts can reach its 'Make {changeRequest}' link"
@@ -824,6 +887,9 @@ def main() -> None:
           " stakeholder on Gamma-3 (direct, shows up as forward-inherited on Gamma-4)")
     print(f"\n{GAMMA3_NAME!r} (id {gamma3['id']}) mirror-all-inherits into {GAMMA4_NAME!r} (id {gamma4['id']});"
           f" {GAMMA3_NAME!r} also consumes members from {GAMMA4_NAME!r} (member-source) — fixed project-hierarchy.spec.ts fixture.")
+    print(f"\n{LINK_TYPES_PARENT_NAME!r} owns the project-level link type {LINK_TYPES_PARENT_VERB!r} and hides {LINK_TYPES_HIDDEN_ORG_TYPE!r};"
+          f" {LINK_TYPES_CHILD_NAME!r} inherits both and has a requirement link using the parent's type. E2E Beta Software"
+          " forbids project-level link types (its Link types panel is read-only on every Beta project).")
     print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
     print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")

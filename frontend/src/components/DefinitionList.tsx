@@ -3,7 +3,12 @@ import { useState, type ReactNode } from "react";
 
 import { ApiError } from "../api/client";
 import { t } from "../i18n/strings";
-import { DeleteInUseDialog, type DeleteInUseCandidate, type DeleteInUseRemoveOption } from "./DeleteInUseDialog";
+import {
+  DeleteInUseDialog,
+  type DeleteInUseCandidate,
+  type DeleteInUseKeepOption,
+  type DeleteInUseRemoveOption,
+} from "./DeleteInUseDialog";
 
 const strings = t();
 
@@ -31,6 +36,12 @@ export interface DeleteInUseConfig {
   details?: string[];
   candidates: DeleteInUseCandidate[];
   remove?: DeleteInUseRemoveOption;
+  /** Offer to leave the item behind for the other projects that use it (ticked by default). */
+  keep?: DeleteInUseKeepOption;
+  /** Reassesses the dialog for the box being ticked or not (candidates depend on what would still move). */
+  reload?: (keep: boolean) => Promise<DeleteInUseConfig>;
+  /** Why moving is unavailable; set to disable it. */
+  moveBlockedReason?: string;
 }
 
 export interface DefinitionListProps<T extends { id: string }> {
@@ -49,9 +60,10 @@ export interface DefinitionListProps<T extends { id: string }> {
    * in use, in which case it throws an `ApiError` with status 409 whose
    * message names the conflicting count. `DefinitionList` catches that
    * and opens `DeleteInUseDialog`, then calls this again with the chosen
-   * `reassignToId`.
+   * `reassignToId`. `keep` is true when the dialog's "keep for other
+   * projects" box was ticked (only vocabularies offering it, link types).
    */
-  onDelete: (id: string, reassignToId?: string) => Promise<void>;
+  onDelete: (id: string, reassignToId?: string, keep?: boolean) => Promise<void>;
   /**
    * Optional richer content for the in-use dialog, for a vocabulary whose
    * deletion has more to say or more choices than the default (link types:
@@ -247,8 +259,19 @@ export function DefinitionList<T extends { id: string }>({
               .filter((other) => other.id !== inUse.item.id)
               .map((other) => ({ id: other.id, label: getReassignLabel(other) }))
           }
-          onMove={(replacementId) => onDelete(inUse.item.id, replacementId)}
+          onMove={(replacementId, keep) => onDelete(inUse.item.id, replacementId, keep)}
           remove={inUse.config?.remove}
+          keep={inUse.config?.keep}
+          moveBlockedReason={inUse.config?.moveBlockedReason}
+          onKeepChange={
+            inUse.config?.reload
+              ? async (keep) => {
+                  const config = await inUse.config!.reload!(keep);
+                  setInUse((current) => (current ? { ...current, config } : current));
+                }
+              : undefined
+          }
+          onDeleteKeeping={inUse.config?.keep ? () => onDelete(inUse.item.id, undefined, true) : undefined}
           onClose={() => setInUse(null)}
         />
       )}

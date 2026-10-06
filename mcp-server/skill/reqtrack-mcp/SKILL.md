@@ -97,7 +97,7 @@ Artefacts (requirements, actions, module items) are connected by typed links. `g
 
 ### Creating and removing links
 
-Any two artefacts of a project can be linked unless the organisation has restricted a link type (which kinds of record it may join) or an artefact type (which link types it may use). So never assume two kinds of record cannot be related, and never pick a link type from memory.
+Any two artefacts of a project can be linked unless a link type is restricted (which kinds of record it may join) or an artefact type is (which link types it may use), by the organisation or by the project. A project can also add link types of its own (its child projects inherit them) and hide the organisation's, so the list differs per project: always read it for the project you are in. So never assume two kinds of record cannot be related, and never pick a link type from memory.
 
 1. `list_artefact_link_types` for the artefact (add `other_type` to narrow). Each entry gives `link_type_id`, `direction`, `phrase` (how the link reads from this artefact's side) and `other_types`. Choose the entry whose phrase says what the user means.
 2. Confirm the link with the user in words: "this decision *addresses* that pain point".

@@ -37,6 +37,7 @@ import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_R
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -2162,6 +2163,12 @@ export function ProjectAdminPage() {
           addLabel={strings.admin.newActionType}
         />
         </CollapsibleSection>
+
+        {project && (
+          <CollapsibleSection sectionKey="projectAdmin.fieldsActions.linkTypes" title={strings.orgAdmin.linkTypes} defaultCollapsed={false}>
+            <LinkTypesPanel scope={{ kind: "project", orgId: project.organization_id, projectId: project.id }} />
+          </CollapsibleSection>
+        )}
       </div>
       )}
 

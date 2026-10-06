@@ -3232,7 +3232,7 @@ export function OrgAdminPage() {
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes}>
-              <LinkTypesPanel orgId={org.id} />
+              <LinkTypesPanel scope={{ kind: "organization", orgId: org.id }} />
             </CollapsibleSection>
           </div>
         )}

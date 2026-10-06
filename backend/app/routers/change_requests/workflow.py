@@ -45,6 +45,7 @@ from app.schemas.change_request import ChangeRequestDecision, ChangeRequestOut
 from app.services import notifications, pubsub
 from app.services.actions import generate_unique_code as generate_action_unique_code
 from app.services.audit import log_event
+from app.services.link_type_scope import LinkRuleError, assert_link_type_usable
 from app.services.rbac import (
     get_effective_project_roles,
     get_project_member_user_ids,
@@ -57,6 +58,21 @@ from app.services.relationships import get_link_between as get_artefact_link_bet
 from app.services.requirements import apply_new_version, create_requirement, get_current_version
 
 router = APIRouter(tags=["change-requests-workflow"])
+
+
+def _link_type_still_usable(db: Session, project_id: UUID, link_type: RequirementLinkTypeDefinition) -> bool:
+    """Whether `link_type` can still be used in the project when an `ADD_LINK`
+    request is approved (not deleted, not locked out, not moved out of reach),
+    so approval never writes a link the project could no longer create. Hiding
+    is not rechecked: the request was validated when proposed."""
+    project = db.get(Project, project_id)
+    if project is None:
+        return False
+    try:
+        assert_link_type_usable(db, project, link_type)
+    except LinkRuleError:
+        return False
+    return True
 
 
 def _display_title(db: Session, cr: ChangeRequest, version: ChangeRequestVersion) -> str:
@@ -369,7 +385,10 @@ def decide_change_request(
             requirement = db.get(Requirement, cr.requirement_id)
             target = db.get(Requirement, version.proposed_link_target_requirement_id)
             link_type = db.get(RequirementLinkTypeDefinition, version.proposed_link_type_id)
-            if target is not None and target.project_id == project_id and link_type is not None:
+            if (
+                target is not None and target.project_id == project_id and link_type is not None
+                and _link_type_still_usable(db, project_id, link_type)
+            ):
                 existing = get_artefact_link_between(
                     db, source_type=ArtefactType.REQUIREMENT, source_id=requirement.id,
                     target_type=ArtefactType.REQUIREMENT, target_id=target.id,
