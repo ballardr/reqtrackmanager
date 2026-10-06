@@ -626,13 +626,17 @@ jobs:
       # The image tag's version MUST match tests/playwright/package-lock.json's
       # resolved `@playwright/test` version exactly — see the frontend job's
       # `container:` comment for why, and bump both together.
+      # The whole repo is mounted (not just tests/playwright) because
+      # e2e-workflows/helpers.ts imports the shared stat-block geometry
+      # assertion from frontend/src/testing/ — mounting only tests/playwright
+      # made that import resolve to /frontend/... and fail every spec.
       - name: Run Playwright E2E suite
         working-directory: tests/playwright
         run: |
           docker run --rm --network host \
             -e CI=true \
             -e PLAYWRIGHT_JUNIT_OUTPUT_NAME=playwright-report.xml \
-            -v "$PWD":/work -w /work \
+            -v "$(git rev-parse --show-toplevel)":/work -w /work/tests/playwright \
             mcr.microsoft.com/playwright:v1.62.1-noble \
             npx playwright test --reporter=list,junit
 
