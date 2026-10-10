@@ -166,6 +166,7 @@ def delete_link(
         or link.source_type != ArtefactType.REQUIREMENT
         or link.target_type != ArtefactType.REQUIREMENT
         or requirement_id not in (link.source_id, link.target_id)
+        or link.source_project_id is not None  # a cross-level link is removed through the generic endpoint
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
     log_event(db, entity_type="requirement_link", entity_id=link.id, action="deleted",

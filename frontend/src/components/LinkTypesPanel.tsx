@@ -4,9 +4,13 @@ import { api } from "../api/client";
 import {
   LINK_FLOW_LABEL,
   LINK_FLOW_VALUES,
+  LINK_NESTING_SCOPE_LABEL,
+  LINK_NESTING_SCOPE_VALUES,
   type ArtefactLinkRule,
   type ArtefactTypeOption,
   type LinkFlow,
+  type LinkNestingImpact,
+  type LinkNestingScope,
   type LinkTypeDefinition,
   type LinkTypeDeleteOutcome,
   type LinkTypeUsage,
@@ -79,6 +83,8 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
   const [tab, setTab] = useState<PanelTab>("types");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmingLock, setConfirmingLock] = useState(false);
+  // A narrowing of a type's nesting scope that would flag existing links, awaiting confirmation.
+  const [narrowing, setNarrowing] = useState<{ item: LinkTypeDefinition; scope: LinkNestingScope; flagged: number } | null>(null);
   const errorFallback = strings.common.error;
 
   // Bumped to refetch after any mutation.
@@ -153,6 +159,34 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
     } catch (err) {
       showToast(toErrorMessage(err, strings.orgAdmin.linkTypeFlowFailed), "error");
     }
+  }
+
+  async function applyNestingScope(item: LinkTypeDefinition, scope: LinkNestingScope) {
+    try {
+      await api.patch(`${base}/${item.id}`, { forward_name: item.forward_name, reverse_name: item.reverse_name, nesting_scope: scope });
+      showToast(strings.orgAdmin.linkTypeNestingUpdated);
+      await reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.orgAdmin.linkTypeNestingFailed), "error");
+    }
+  }
+
+  /** Saves a new nesting scope; narrowing it first asks how many existing cross-project links would be flagged and, if any, confirms. */
+  async function setNestingScope(item: LinkTypeDefinition, scope: LinkNestingScope) {
+    const narrower = LINK_NESTING_SCOPE_VALUES.indexOf(scope) < LINK_NESTING_SCOPE_VALUES.indexOf(item.nesting_scope);
+    if (narrower) {
+      try {
+        const impact = await api.get<LinkNestingImpact>(`${base}/${item.id}/nesting-impact?nesting_scope=${scope}`);
+        if (impact.flagged_link_count > 0) {
+          setNarrowing({ item, scope, flagged: impact.flagged_link_count });
+          return;
+        }
+      } catch (err) {
+        showToast(toErrorMessage(err, strings.orgAdmin.linkTypeNestingFailed), "error");
+        return;
+      }
+    }
+    await applyNestingScope(item, scope);
   }
 
   async function setRestriction(
@@ -319,7 +353,7 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
         item.dedicated_endpoint ? (
           <span className="text-muted">{strings.orgAdmin.linkTypeDedicatedNote}</span>
         ) : (
-          <div className="row" style={{ gap: "0.5rem" }}>
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
             <span className="text-muted">{strings.orgAdmin.linkTypeCanLinkFrom}</span>
             <div style={{ minWidth: 200 }}>
               <MultiSelectDropdown
@@ -335,6 +369,27 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
                 emptyLabel={strings.orgAdmin.anyArtefact}
                 options={restrictionOptions(item, "allowed_target_types")}
               />
+            </div>
+            <span className="text-muted">{strings.orgAdmin.linkTypeNesting}</span>
+            <div className="stack" style={{ gap: "0.125rem", maxWidth: 280 }}>
+              <select
+                className="input"
+                aria-label={strings.orgAdmin.linkTypeNestingLabel(item.forward_name)}
+                aria-describedby={`nesting-hint-${item.id}`}
+                value={item.nesting_scope}
+                onChange={(e) => void setNestingScope(item, e.target.value as LinkNestingScope)}
+              >
+                {LINK_NESTING_SCOPE_VALUES.map((value) => (
+                  <option key={value} value={value} disabled={value === "upstream_in_ancestor" && item.flow === "none"}>
+                    {LINK_NESTING_SCOPE_LABEL[value]}
+                  </option>
+                ))}
+              </select>
+              <span id={`nesting-hint-${item.id}`} className="text-muted">
+                {item.flow === "none" && item.nesting_scope !== "upstream_in_ancestor"
+                  ? `${strings.orgAdmin.linkTypeNestingExample[item.nesting_scope]} ${strings.orgAdmin.linkTypeNestingNeedsFlow}`
+                  : strings.orgAdmin.linkTypeNestingExample[item.nesting_scope]}
+              </span>
             </div>
           </div>
         )
@@ -377,6 +432,7 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
           )}
           <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypeFlowHint}</p>
           <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypeRestrictionHint}</p>
+          <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypeNestingHint}</p>
           {isProject ? (
             <>
               <section className="stack" aria-label={strings.orgAdmin.projectLinkTypesAvailableHeading}>
@@ -407,6 +463,19 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
             onChanged={reload}
           />
         </div>
+      )}
+      {narrowing && (
+        <ConfirmDialog
+          title={strings.orgAdmin.linkTypeNestingNarrowTitle}
+          message={strings.orgAdmin.linkTypeNestingNarrowMessage(narrowing.flagged)}
+          confirmLabel={strings.orgAdmin.linkTypeNestingNarrowConfirm}
+          onConfirm={() => {
+            const { item, scope } = narrowing;
+            setNarrowing(null);
+            void applyNestingScope(item, scope);
+          }}
+          onCancel={() => setNarrowing(null)}
+        />
       )}
       {confirmingLock && customisation && (
         <ConfirmDialog

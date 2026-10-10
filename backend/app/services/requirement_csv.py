@@ -126,7 +126,8 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
         link_rows = list(
             db.scalars(
                 select(ArtefactLink).where(
-                    ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids)
+                    ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids),
+                    ArtefactLink.source_project_id.is_(None),  # never another project's requirement code
                 )
             ).all()
         )

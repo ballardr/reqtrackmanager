@@ -54,9 +54,45 @@ flowchart TD
 
 An organisation that wants every project on the same vocabulary can switch off **Let projects add their own link types and hide the organisation's** (Admin → Projects & workflow → Link types). Asking first, it shows how many project-level link types it affects. Nothing is deleted: project link types, hiding and rules stop applying, project admins see the list read-only, and everything comes back if you switch it on again. Links already made keep showing either way.
 
+## Linking across nested projects
+
+When projects are nested, a record can be linked to one in a **parent or child project**, for example a pain point taken in at product level traced to the requirements below it. Each link type decides whether, and in which direction, that is allowed, with the **Across nested projects** setting under each link type (organisation admins under **Admin → Projects & workflow → Link types**, project admins for their project's own types):
+
+| Setting | Meaning |
+|---------|---------|
+| **Same project only** | Both records must be in one project. Turns cross-project linking off for this type. |
+| **Upstream end may be in a parent project** | Follows the link type's direction: the upstream record (for example a pain point for "Addresses") may be in the same or a parent project, never below. Needs a direction on the link type. |
+| **Either end may be in a parent project** | Either record may be in the parent. The default, and the only choice that fits a link type with no direction such as "Related to". |
+
+```mermaid
+flowchart TD
+    subgraph TOP["Product (parent project)"]
+        PP["Pain point: connector wear"]
+        DEC["Decision: use connector X"]
+    end
+    subgraph HW["Hardware board (child project)"]
+        RH["Requirement: board connector"]
+    end
+    subgraph SW["Software module (child project)"]
+        RS["Requirement: handle disconnect"]
+    end
+    PP -->|"is addressed by"| DEC
+    DEC -->|"implements"| RH
+    DEC -->|"implements"| RS
+    RH -. "link types with an upstream end refuse<br/>an upstream record below the downstream one" .-> PP
+    RH -. "sibling projects can't be linked" .- RS
+```
+
+- Only a project and its parents or children can be linked; siblings and unrelated projects can't, even through a shared parent. A record in a sibling never shows up in a project's link graph.
+- You need a role on **both** projects. A record in a project you can't open is reported as not found, and its project's name is never shown.
+- Each end follows its own project's rules: whether that kind of record is enabled there, your permissions there, the link types and rules that project offers, and the [change request rule for links](requirements-management.md#traceability-links).
+- A link type a child project defined can't be used on a link whose other end is in the parent. The parent's types and the organisation's can.
+- Narrowing a link type's setting never deletes a link already made: those links stay, marked as no longer permitted by their link type, and the admin is told how many first. If a project is moved so that the two projects are no longer parent and child, the link is hidden until they are again.
+- A project export doesn't include these links (it would carry another project's content), and says how many it left out.
+
 ## Linking records
 
-Records are linked from the links sections on their pages, and by API clients and AI assistants through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A page's own links section may offer fewer kinds of link than the general endpoint does. Both ends must be records of the same project that you can see, and you need permission to manage the kind of record you are linking from. A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
+Records are linked from the links sections on their pages, and by API clients and AI assistants through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A page's own links section may offer fewer kinds of link than the general endpoint does. Both ends must be records of the same project, or of a [parent or child project](#linking-across-nested-projects), that you can see, and you need permission to manage the kind of record you are linking from. A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
 
 ## Deleting a link type that is in use
 

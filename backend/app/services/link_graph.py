@@ -13,10 +13,15 @@ Responsibilities:
 
 Design decisions:
 - A node is shown only if it is in the requesting project (or an org record the
-  owning module makes visible there), its module/sub-component is enabled for
-  the project, and the caller holds the artefact type's `view` permission
+  owning module makes visible there) or in an ancestor/descendant project the
+  caller can open, its module/sub-component is enabled for *that* project, and
+  the caller holds the artefact type's `view` permission *in that project*
   (Fine-Grained Access Control). A failing node is counted in `hidden_count`
-  and never traversed through, so paths cannot reveal that it exists.
+  and never traversed through, so paths cannot reveal that it exists. Siblings
+  reached through a shared parent are outside the scope and count as hidden.
+- A cross-level link whose two projects are no longer in one ancestry line
+  (reparent, detach) is dormant: counted in `unavailable_count`, not traversed,
+  and shown again if the chain is restored.
 - Core types (`requirement`, `requirement_action`) are resolved here; every
   other type goes through its module's `artefact_summary_providers` entry, so
   core never imports a module.
@@ -26,7 +31,8 @@ Design decisions:
   `truncated`.
 
 Dependencies: `services.relationships` (link queries), `services.rbac`
-(effective permissions), `modules.registry` (providers, enablement, labels).
+(effective permissions), `services.link_nesting` (related projects, dormancy),
+`modules.registry` (providers, enablement, labels).
 """
 
 from __future__ import annotations
@@ -57,6 +63,7 @@ from app.schemas.link_graph import (
     LinkGraphNode,
     LinkGraphOut,
 )
+from app.services.link_nesting import RelatedProject, is_link_live, nesting_violation, related_projects
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, permission_satisfied
 from app.services.relationships import get_links_touching_many
@@ -82,15 +89,15 @@ class _Walk:
 
 
 def _core_summaries(
-    db: Session, project_id: uuid.UUID, artefact_type: str, ids: list[uuid.UUID]
+    db: Session, project_ids: list[uuid.UUID], artefact_type: str, ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, ArtefactSummary]:
-    """Summaries of the requirements / actions among `ids` that belong to `project_id`, in one query."""
+    """Summaries of the requirements / actions among `ids` that belong to any of `project_ids`, in one query."""
     if artefact_type == _REQUIREMENT:
         rows = db.execute(
             select(Requirement, RequirementVersion)
             .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
             .where(
-                Requirement.id.in_(ids), Requirement.project_id == project_id, RequirementVersion.valid_to.is_(None)
+                Requirement.id.in_(ids), Requirement.project_id.in_(project_ids), RequirementVersion.valid_to.is_(None)
             )
         ).all()
         return {
@@ -101,7 +108,7 @@ def _core_summaries(
             for r, v in rows
         }
     actions = db.scalars(
-        select(RequirementAction).where(RequirementAction.id.in_(ids), RequirementAction.project_id == project_id)
+        select(RequirementAction).where(RequirementAction.id.in_(ids), RequirementAction.project_id.in_(project_ids))
     ).all()
     return {
         a.id: ArtefactSummary(
@@ -110,6 +117,16 @@ def _core_summaries(
         )
         for a in actions
     }
+
+
+def _nesting_permitted(
+    link: ArtefactLink, link_type: RequirementLinkTypeDefinition, chain_cache: dict[uuid.UUID, list[uuid.UUID]]
+) -> bool:
+    """Whether a cross-level link still satisfies its type's nesting scope (it was valid when made;
+    the scope or flow may have been narrowed since)."""
+    assert link.source_project_id is not None and link.target_project_id is not None
+    source_is_above = link.source_project_id in chain_cache.get(link.target_project_id, [])
+    return nesting_violation(link_type, source_is_above=source_is_above) is None
 
 
 def _hop_flow(flow: LinkFlow, outgoing: bool) -> LinkGraphFlow:
@@ -126,32 +143,76 @@ def _hop_flow(flow: LinkFlow, outgoing: bool) -> LinkGraphFlow:
 
 
 class ArtefactResolver:
-    """Resolves and authorises `(type, id)` pairs as visible records of one project, with caching.
+    """Resolves and authorises `(type, id)` pairs as visible records, with caching.
 
     Shared by the link graph and link authoring so both apply the same
     visibility rule: in the project (or an org record the owning module makes
-    visible there), module enabled, and the artefact type's `view` permission held."""
+    visible there), module enabled, and the artefact type's `view` permission held.
+
+    With `include_related` the scope widens to the project's ancestors and
+    descendants that the user can open (`services.link_nesting.related_projects`):
+    a record there is visible only when *its own* project has the module enabled
+    and the user holds `view` on the type *in that project*. Organisation-owned
+    records are resolved from the request project only, so a related project can
+    never be used to reach one the request project hides."""
 
     _UNAVAILABLE = "unavailable"
 
-    def __init__(self, db: Session, project: Project, user_id: uuid.UUID) -> None:
+    def __init__(self, db: Session, project: Project, user_id: uuid.UUID, *, include_related: bool = False) -> None:
         self._db = db
         self._project = project
+        self._user_id = user_id
         self._held = get_effective_permissions(db, user_id, project_id=project.id)
+        self._held_by_project: dict[uuid.UUID, set[str]] = {project.id: self._held}
         self._known: dict[_Key, ArtefactSummary | None | str] = {}
+        self.related: list[RelatedProject] = []
+        self.related_truncated = False
+        if include_related:
+            self.related, self.related_truncated = related_projects(db, project, user_id)
+        self._scope: list[Project] = [project] + [r.project for r in self.related if r.project.id != project.id]
+        self._names: dict[uuid.UUID, str] = {r.project.id: r.project.name for r in self.related}
+        self._names.setdefault(project.id, project.name)
+
+    def _held_in(self, project_id: uuid.UUID) -> set[str]:
+        """The user's effective permissions in one scope project (cached)."""
+        if project_id not in self._held_by_project:
+            self._held_by_project[project_id] = get_effective_permissions(self._db, self._user_id, project_id=project_id)
+        return self._held_by_project[project_id]
+
+    def project_name(self, project_id: uuid.UUID | None) -> str | None:
+        """The name of a scope project (every one is a project the user can open), else `None`."""
+        return None if project_id is None else self._names.get(project_id)
 
     def resolve(self, wanted: dict[str, set[uuid.UUID]]) -> None:
-        """Looks up every not-yet-known id in `wanted` (grouped by type), one query per type."""
+        """Looks up every not-yet-known id in `wanted` (grouped by type), one query per type
+        for the core types and one per scope project for a module's."""
         for artefact_type, ids in wanted.items():
             todo = [i for i in ids if (artefact_type, i) not in self._known]
             if not todo:
                 continue
-            if not permission_satisfied(self._held, encode_permission(artefact_type, "view")):
-                found: dict[uuid.UUID, ArtefactSummary] | None = {}
+            view = encode_permission(artefact_type, "view")
+            viewable = [p for p in self._scope if permission_satisfied(self._held_in(p.id), view)]
+            found: dict[uuid.UUID, ArtefactSummary] | None = {}
+            if not viewable:
+                pass
             elif artefact_type in (_REQUIREMENT, _ACTION):
-                found = _core_summaries(self._db, self._project.id, artefact_type, todo)
+                found = _core_summaries(self._db, [p.id for p in viewable], artefact_type, todo)
             else:
-                found = get_artefact_summaries_in_project(self._db, self._project.id, artefact_type, todo)
+                found, remaining = {}, list(todo)
+                for scope_project in viewable:
+                    summaries = get_artefact_summaries_in_project(self._db, scope_project.id, artefact_type, remaining)
+                    if summaries is None:
+                        found = None
+                        break
+                    for i, summary in summaries.items():
+                        # An organisation-owned record (no project) is only ever taken from the
+                        # request project; elsewhere it must belong to the project that returned it.
+                        if scope_project.id != self._project.id and summary.project_id != scope_project.id:
+                            continue
+                        found[i] = summary
+                    remaining = [i for i in remaining if i not in found]
+                    if not remaining:
+                        break
             for i in todo:
                 if found is None:
                     self._known[(artefact_type, i)] = self._UNAVAILABLE
@@ -164,7 +225,7 @@ class ArtefactResolver:
         return known if isinstance(known, ArtefactSummary) else None
 
     def holds(self, artefact_type: str, level: str) -> bool:
-        """Whether the user holds `level` (e.g. `"manage"`) on `artefact_type` in this project."""
+        """Whether the user holds `level` (e.g. `"manage"`) on `artefact_type` in the request project."""
         return permission_satisfied(self._held, encode_permission(artefact_type, level))
 
     def is_unavailable(self, key: _Key) -> bool:
@@ -172,10 +233,11 @@ class ArtefactResolver:
         return self._known.get(key) == self._UNAVAILABLE
 
 
-def _node(summary: ArtefactSummary, artefact_type: str, depth: int) -> LinkGraphNode:
+def _node(resolver: ArtefactResolver, summary: ArtefactSummary, artefact_type: str, depth: int) -> LinkGraphNode:
     return LinkGraphNode(
         type=artefact_type, id=summary.id, type_label=get_artefact_type_label(artefact_type), label=summary.label,
-        status=summary.status, is_archived=summary.is_archived, depth=depth,
+        status=summary.status, is_archived=summary.is_archived, depth=depth, project_id=summary.project_id,
+        project_name=resolver.project_name(summary.project_id),
     )
 
 
@@ -210,17 +272,18 @@ def build_link_graph(
     if root_type not in get_all_registered_artefact_types():
         return None
     depth = max(1, min(depth, MAX_DEPTH))
-    resolver = ArtefactResolver(db, project, user_id)
+    resolver = ArtefactResolver(db, project, user_id, include_related=True)
     resolver.resolve({root_type: {root_id}})
     root_summary = resolver.visible((root_type, root_id))
     if root_summary is None:
         return None
+    chain_cache: dict[uuid.UUID, list[uuid.UUID]] = {}
 
     # Resolved by the ids the links reference, never "all the organisation's types": a
     # link keeps displaying its phrase even when its type is no longer usable here
     # (hidden, locked out, reparented), and no unrelated project's type is loaded.
     link_types: dict[uuid.UUID, RequirementLinkTypeDefinition] = {}
-    root = _node(root_summary, root_type, 0)
+    root = _node(resolver, root_summary, root_type, 0)
     walk = _Walk(nodes={(root_type, root_id): root})
     frontier: set[_Key] = {(root_type, root_id)}
     follow_out = direction in (LinkGraphDirection.OUTGOING, LinkGraphDirection.BOTH)
@@ -262,6 +325,9 @@ def build_link_graph(
         for link, from_key, to_key, outgoing in hops:
             if link.id in walk.edges:
                 continue
+            if not is_link_live(db, link, chain_cache):
+                walk.unavailable.add(to_key)
+                continue
             summary = resolver.visible(to_key)
             if summary is None:
                 (walk.unavailable if resolver.is_unavailable(to_key) else walk.hidden).add(to_key)
@@ -270,18 +336,22 @@ def build_link_graph(
                 if len(walk.nodes) >= MAX_NODES:
                     walk.truncated = True
                     continue
-                walk.nodes[to_key] = _node(summary, to_key[0], level)
+                walk.nodes[to_key] = _node(resolver, summary, to_key[0], level)
                 next_frontier.add(to_key)
             link_type = link_types.get(link.link_type_id) if link.link_type_id is not None else None
             phrase = None if link_type is None else (link_type.forward_name if outgoing else link_type.reverse_name)
+            cross = link.source_project_id is not None
             walk.edges[link.id] = LinkGraphEdge(
                 id=link.id, from_type=from_key[0], from_id=from_key[1], to_type=to_key[0], to_id=to_key[1],
                 link_type_id=link.link_type_id, phrase=phrase, outgoing=outgoing,
                 flow=LinkGraphFlow.RELATED if link_type is None else _hop_flow(link_type.flow, outgoing),
+                cross_project=cross,
+                nesting_permitted=not cross or link_type is None or _nesting_permitted(link, link_type, chain_cache),
             )
         frontier = next_frontier
 
     return LinkGraphOut(
-        root=root, nodes=list(walk.nodes.values()), edges=list(walk.edges.values()), truncated=walk.truncated,
+        root=root, nodes=list(walk.nodes.values()), edges=list(walk.edges.values()),
+        truncated=walk.truncated or resolver.related_truncated,
         hidden_count=len(walk.hidden), unavailable_count=len(walk.unavailable),
     )

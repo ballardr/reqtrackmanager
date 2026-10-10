@@ -1350,6 +1350,22 @@ const en = {
     linkTypeFlowHint:
       "Direction tells a {requirement}'s link graph where the target sits when read with the forward name: “Target is upstream” for “Derives from” (the target is where this one comes from), “Target is downstream” for “Is implemented by” (the target depends on this one), “No direction” for “Related to”. Unclassified types still show, as related.",
     linkTypeFlowLabel: (name: string) => `Direction: ${name}`,
+    linkTypeNestingHint:
+      "“Across nested projects” says whether a link type may join a record to one in a parent or child project, and which end may sit higher. “Same project only” turns it off for the type. “Upstream end may be in a parent project” follows the type's direction: a Pain point can sit in a parent project above the Decision that addresses it, never below. “Either end may be in a parent project” allows both. Siblings and unrelated projects can never be linked. Applies when a link is made; existing links are kept and flagged, never deleted.",
+    linkTypeNestingLabel: (name: string) => `Across nested projects: ${name}`,
+    linkTypeNesting: "Across nested projects",
+    linkTypeNestingExample: {
+      same_project: "Both records must be in one project.",
+      upstream_in_ancestor: "The upstream record (for example a Pain point) may be in a parent project, never below.",
+      ancestor_either_way: "Either record may be in a parent project.",
+    },
+    linkTypeNestingNeedsFlow: "Needs a direction: choose a direction for this link type to use this option.",
+    linkTypeNestingUpdated: "Link type nesting updated.",
+    linkTypeNestingFailed: "Could not update the link type nesting.",
+    linkTypeNestingNarrowTitle: "Narrow where this link type can be used?",
+    linkTypeNestingNarrowMessage: (flagged: number) =>
+      `${flagged} existing link(s) between a project and its parent or child will be flagged as no longer permitted by this link type. They are kept and still shown; nothing is deleted.`,
+    linkTypeNestingNarrowConfirm: "Narrow",
     linkTypeFlowUpdated: "Link type direction updated.",
     linkTypeFlowFailed: "Could not update the link type direction.",
     deleteLinkType: "Delete this link type",

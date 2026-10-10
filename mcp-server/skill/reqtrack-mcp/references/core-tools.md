@@ -22,9 +22,9 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 
 ## `create_artefact_link` (write)
 
-Links an artefact to another record of the same project.
+Links an artefact to another record of the same project, or of a parent or child project.
 
-Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_type_id*` (string), `direction*` (string), `other_type*` (string), `other_id*` (string)
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_type_id*` (string), `direction*` (string), `other_type*` (string), `other_id*` (string), `other_project_id` (string)
 
 ## `create_requirement` (write)
 
@@ -84,7 +84,7 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 
 Lists the link types usable from an artefact, and what can sit at the other end: use before `create_artefact_link`.
 
-Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `other_type` (string)
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `other_type` (string), `other_project_id` (string)
 
 ## `list_change_request_comments` (read)
 
@@ -115,6 +115,12 @@ Parameters: `project_id` (string), `status` (string)
 Lists an organisation's custom roles (Fine-Grained Access Control) — each role's own definition (name, description, scope, permission-atom set) only, never who currently holds it.
 
 Parameters: `organization_id` (string)
+
+## `list_link_candidate_projects` (read)
+
+Lists the projects a link made from this project may reach: itself, its parent projects and its child projects that the caller can open.
+
+Parameters: `project_id` (string)
 
 ## `list_my_reviews_due` (read)
 

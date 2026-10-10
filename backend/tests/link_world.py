@@ -58,21 +58,28 @@ class World:
 
     def generic_link(
         self, project: dict, artefact: tuple[str, uuid.UUID], link_type_id, other: tuple[str, uuid.UUID],
-        direction: str = "outgoing", token=None,
+        direction: str = "outgoing", token=None, other_project: dict | None = None,
     ):
-        """POSTs the generic link-authoring endpoint from `artefact`'s side."""
+        """POSTs the generic link-authoring endpoint from `artefact`'s side; `other_project` is the
+        ancestor/descendant project of the other end for a cross-level link."""
+        payload = {
+            "link_type_id": str(link_type_id), "direction": direction,
+            "other_type": other[0], "other_id": str(other[1]),
+        }
+        if other_project is not None:
+            payload["other_project_id"] = other_project["id"]
         return self.client.post(
             f"/api/v1/projects/{project['id']}/artefacts/{artefact[0]}/{artefact[1]}/links",
-            json={
-                "link_type_id": str(link_type_id), "direction": direction,
-                "other_type": other[0], "other_id": str(other[1]),
-            },
-            headers=auth_headers(token or self.token),
+            json=payload, headers=auth_headers(token or self.token),
         )
 
-    def project(self, name: str = "P") -> dict:
-        """Creates a project with a component and category (as `component_id`/`category_id`)."""
-        project = create_project(self.client, self.token, self.org["id"], name)
+    def project(self, name: str = "P", *, parent: dict | None = None) -> dict:
+        """Creates a project with a component and category (as `component_id`/`category_id`);
+        `parent` nests it under that project (which may then be a parent itself)."""
+        project = create_project(
+            self.client, self.token, self.org["id"], name,
+            parent_project_id=parent["id"] if parent else None, can_be_parent=True,
+        )
         project["component_id"], project["category_id"] = create_component_and_category(
             self.client, self.token, project["id"]
         )
@@ -102,9 +109,13 @@ class World:
         """Inserts a Decision directly (needs the Decisions module on) and returns its id."""
         db = SessionLocal()
         try:
-            type_id = db.query(DecisionTypeDefinition.id).filter(
-                DecisionTypeDefinition.project_id == project["id"]
-            ).first()[0]
+            # Decision types are seeded on root projects only; a nested project falls back to its ancestors'.
+            type_row = db.query(DecisionTypeDefinition.id).filter(
+                DecisionTypeDefinition.project_id.in_(
+                    [project["id"], *self._ancestor_ids(db, project["id"])]
+                )
+            ).first()
+            type_id = type_row[0]
             decision = Decision(
                 project_id=project["id"], unique_code=code, title=f"Decision {code}", decision_statement="S",
                 decision_type_id=type_id, owner_id=self.user_id, creator_id=self.user_id,
@@ -115,23 +126,38 @@ class World:
         finally:
             db.close()
 
-    def link_type(self, forward: str, reverse: str, flow: str = "none") -> uuid.UUID:
+    @staticmethod
+    def _ancestor_ids(db, project_id) -> list:
+        """Ids of a project's ancestors, nearest first."""
+        from app.services.project_hierarchy import get_project_chain_ids
+
+        return get_project_chain_ids(db, uuid.UUID(str(project_id)))[1:]
+
+    def link_type(
+        self, forward: str, reverse: str, flow: str = "none", nesting_scope: str | None = None
+    ) -> uuid.UUID:
         """Creates a uniquely named org link type and returns its id."""
+        payload = {"forward_name": f"{forward} {uuid.uuid4().hex[:4]}", "reverse_name": reverse, "flow": flow}
+        if nesting_scope is not None:
+            payload["nesting_scope"] = nesting_scope
         resp = self.client.post(
-            f"/api/v1/orgs/{self.org['id']}/link-types",
-            json={"forward_name": f"{forward} {uuid.uuid4().hex[:4]}", "reverse_name": reverse, "flow": flow},
-            headers=auth_headers(self.token),
+            f"/api/v1/orgs/{self.org['id']}/link-types", json=payload, headers=auth_headers(self.token),
         )
         assert resp.status_code == 201, resp.text
         return uuid.UUID(resp.json()["id"])
 
-    def link(self, source: tuple[str, uuid.UUID], target: tuple[str, uuid.UUID], link_type_id=None) -> uuid.UUID:
-        """Inserts an `ArtefactLink` directly, bypassing authoring rules, and returns its id."""
+    def link(
+        self, source: tuple[str, uuid.UUID], target: tuple[str, uuid.UUID], link_type_id=None,
+        source_project_id=None, target_project_id=None,
+    ) -> uuid.UUID:
+        """Inserts an `ArtefactLink` directly, bypassing authoring rules, and returns its id (give both
+        project ids to store it as a cross-level link)."""
         db = SessionLocal()
         try:
             row = relationships.create_link(
                 db, source_type=source[0], source_id=source[1], target_type=target[0], target_id=target[1],
-                link_type_id=link_type_id, created_by=self.user_id,
+                link_type_id=link_type_id, created_by=self.user_id, enforce_rules=source_project_id is None,
+                source_project_id=source_project_id, target_project_id=target_project_id,
             )
             db.commit()
             return row.id

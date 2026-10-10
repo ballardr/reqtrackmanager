@@ -193,6 +193,9 @@ LINK_TYPES_PARENT_NAME = "Gamma-5 Link Types Parent"
 LINK_TYPES_CHILD_NAME = "Gamma-6 Link Types Child"
 LINK_TYPES_PARENT_VERB = "E2E Parent verb"
 LINK_TYPES_HIDDEN_ORG_TYPE = "Mitigates"
+# Phase 5d: the same pair carries one cross-level link of each kind — a directional type (the upstream end must be
+# in the same or a parent project) and an either-way symmetric one ("Related to").
+NESTING_DIRECTIONAL_TYPE = "E2E Derives (nested)"
 GAMMA4_NAME = "Gamma-4 Hierarchy Child"
 
 
@@ -224,15 +227,19 @@ def create_requirement(headers: dict, project_id: str, name: str, reasoning: str
 def create_link_type(
     headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
     allowed_source_types: list[str] | None = None, allowed_target_types: list[str] | None = None,
+    nesting_scope: str = "ancestor_either_way",
 ) -> dict:
     """`flow` says where the link's target sits in a traceability chain: "forward_is_upstream",
     "forward_is_downstream" or "none" (see `models.enums.LinkFlow`). `allowed_source_types` /
-    `allowed_target_types` restrict which artefact types the link may run from / to (`None` = any)."""
+    `allowed_target_types` restrict which artefact types the link may run from / to (`None` = any).
+    `nesting_scope` says whether it may join a project and its parent/child ("same_project",
+    "upstream_in_ancestor" (needs a flow) or "ancestor_either_way")."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/link-types",
         json={
             "forward_name": forward_name, "reverse_name": reverse_name, "flow": flow,
             "allowed_source_types": allowed_source_types, "allowed_target_types": allowed_target_types,
+            "nesting_scope": nesting_scope,
         },
         headers=headers, timeout=30,
     )
@@ -263,12 +270,15 @@ def set_link_type_visibility(headers: dict, project_id: str, link_type_id: str, 
 
 def create_artefact_link(
     headers: dict, project_id: str, source_type: str, source_id: str, link_type_id: str, target_type: str, target_id: str,
+    other_project_id: str | None = None,
 ) -> dict:
-    """A link between any two artefacts of a project through the generic link-authoring endpoint."""
+    """A link between any two artefacts through the generic link-authoring endpoint; `other_project_id` is the
+    target's project when it is a parent or child of `project_id` (a cross-level link)."""
+    body = {"link_type_id": link_type_id, "direction": "outgoing", "other_type": target_type, "other_id": target_id}
+    if other_project_id is not None:
+        body["other_project_id"] = other_project_id
     r = httpx.post(
-        f"{BASE}/projects/{project_id}/artefacts/{source_type}/{source_id}/links",
-        json={"link_type_id": link_type_id, "direction": "outgoing", "other_type": target_type, "other_id": target_id},
-        headers=headers, timeout=30,
+        f"{BASE}/projects/{project_id}/artefacts/{source_type}/{source_id}/links", json=body, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -786,7 +796,7 @@ def main() -> None:
         h_g, gamma["id"], LINK_TYPES_CHILD_NAME, "E2E seed project — project-level link types child.",
         parent_project_id=gamma5["id"],
     )
-    seed_project_content(h_g, gamma5, 2)
+    gamma5_reqs = seed_project_content(h_g, gamma5, 2)
     gamma6_reqs = seed_project_content(h_g, gamma6, 2)
     parent_type = create_project_link_type(
         h_g, gamma5["id"], forward_name=LINK_TYPES_PARENT_VERB, reverse_name="E2E Parent reverse", flow="forward_is_upstream",
@@ -794,6 +804,20 @@ def main() -> None:
     create_artefact_link(h_g, gamma6["id"], "requirement", gamma6_reqs[0]["id"], parent_type["id"], "requirement", gamma6_reqs[1]["id"])
     gamma_types = {t["forward_name"]: t for t in httpx.get(f"{BASE}/orgs/{gamma['id']}/link-types", headers=h_g, timeout=30).json()}
     set_link_type_visibility(h_g, gamma5["id"], gamma_types[LINK_TYPES_HIDDEN_ORG_TYPE]["id"], True)
+    print("Seeding cross-level links (Phase 5d) between Gamma-6 (child) and Gamma-5 (parent): one with a directional type"
+          f" ({NESTING_DIRECTIONAL_TYPE!r}, the upstream end in the parent) and one either-way symmetric 'Related to'...")
+    directional = create_link_type(
+        h_g, gamma["id"], forward_name=NESTING_DIRECTIONAL_TYPE, reverse_name="E2E Is source of (nested)",
+        flow="forward_is_upstream", nesting_scope="upstream_in_ancestor",
+    )
+    create_artefact_link(
+        h_g, gamma6["id"], "requirement", gamma6_reqs[0]["id"], directional["id"], "requirement", gamma5_reqs[0]["id"],
+        other_project_id=gamma5["id"],
+    )
+    create_artefact_link(
+        h_g, gamma5["id"], "requirement", gamma5_reqs[1]["id"], gamma_types["Related to"]["id"], "requirement",
+        gamma6_reqs[1]["id"], other_project_id=gamma6["id"],
+    )
     r = httpx.put(
         f"{BASE}/orgs/{beta['id']}/project-customisation", json={"locks": ["link_types"]}, headers=h_ab, timeout=30,
     )

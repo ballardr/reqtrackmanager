@@ -35,7 +35,9 @@ class LinkGraphFlow(str, enum.Enum):
 
 
 class LinkGraphNode(BaseModel):
-    """One visible record in the graph."""
+    """One visible record in the graph. `project_id`/`project_name` say which project
+    it belongs to (always one the viewer can open; `None` for an organisation-owned
+    record), so a node from a parent or child project can be labelled."""
 
     type: str
     id: UUID
@@ -44,6 +46,8 @@ class LinkGraphNode(BaseModel):
     status: str | None
     is_archived: bool
     depth: int
+    project_id: UUID | None = None
+    project_name: str | None = None
 
 
 class LinkGraphEdge(BaseModel):
@@ -52,7 +56,9 @@ class LinkGraphEdge(BaseModel):
 
     `phrase` reads from the `from` node's side (the link type's forward name
     when `outgoing`, its reverse name otherwise); `None` for an untyped link.
-    `outgoing` is true when `from` is the link's stored source."""
+    `outgoing` is true when `from` is the link's stored source. `cross_project` marks
+    a link between a project and its ancestor/descendant; `nesting_permitted` is false
+    when such a link no longer satisfies its link type's nesting scope (kept, flagged)."""
 
     id: UUID
     from_type: str
@@ -63,6 +69,8 @@ class LinkGraphEdge(BaseModel):
     phrase: str | None
     flow: LinkGraphFlow
     outgoing: bool
+    cross_project: bool = False
+    nesting_permitted: bool = True
 
 
 class LinkGraphOut(BaseModel):

@@ -100,7 +100,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtefactType, LinkFlow, PermissionLevel
+from app.models.enums import ArtefactType, LinkFlow, LinkNestingScope, PermissionLevel
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
@@ -810,22 +810,27 @@ def resolve_decision_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
 LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
     LinkTypeSeed(
         "Addresses", "Is addressed by", LinkFlow.FORWARD_IS_UPSTREAM,
+        nesting_scope=LinkNestingScope.UPSTREAM_IN_ANCESTOR,
         allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("pain_point",),
     ),
     LinkTypeSeed(
         "Resolves", "Is resolved by", LinkFlow.FORWARD_IS_UPSTREAM,
+        nesting_scope=LinkNestingScope.UPSTREAM_IN_ANCESTOR,
         allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("open_question",),
     ),
     LinkTypeSeed(
         "Supports", "Is supported by", LinkFlow.FORWARD_IS_UPSTREAM,
+        nesting_scope=LinkNestingScope.UPSTREAM_IN_ANCESTOR,
         allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("strategy",),
     ),
     LinkTypeSeed(
         "Guided by", "Guides", LinkFlow.FORWARD_IS_UPSTREAM,
+        nesting_scope=LinkNestingScope.UPSTREAM_IN_ANCESTOR,
         allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("guiding_principle",),
     ),
     LinkTypeSeed(
         "Constrained by", "Constrains", LinkFlow.FORWARD_IS_UPSTREAM,
+        nesting_scope=LinkNestingScope.UPSTREAM_IN_ANCESTOR,
         allowed_source_types=(DECISION_ARTEFACT_TYPE,), allowed_target_types=("project_compliance_requirement",),
     ),
     LinkTypeSeed(

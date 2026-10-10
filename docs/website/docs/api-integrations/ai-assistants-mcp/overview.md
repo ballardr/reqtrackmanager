@@ -12,7 +12,7 @@ Every tool call authenticates with the caller's own ReqTrackManager token — se
 
 ## What it can do
 
-Twenty read tools, always available:
+Twenty-one read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
@@ -26,7 +26,8 @@ Twenty read tools, always available:
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why |
 | `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream, downstream or related) for impact analysis; says when the result is partial |
-| `list_artefact_link_types` | The link types usable from an artefact, with direction, wording and the kinds of record each can reach — the starting point for linking |
+| `list_artefact_link_types` | The link types usable from an artefact, with direction, wording and the kinds of record each can reach — the starting point for linking. Give it a parent or child project to see only the types that may join across them |
+| `list_link_candidate_projects` | The projects a link from this project may reach: itself, its parent projects and its child projects you can open |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes |

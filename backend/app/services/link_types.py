@@ -66,6 +66,7 @@ from app.services.link_type_scope import (
     resolve_effective_link_types,
     usable_type_ids,
 )
+from app.services.project_hierarchy import get_project_chain_ids
 
 
 def normalise_artefact_types(types: Iterable[str] | None, *, field_name: str) -> list[str] | None:
@@ -141,6 +142,7 @@ def ensure_org_link_type(
         link_type.allowed_source_types = list(seed.allowed_source_types) if seed.allowed_source_types else None
         link_type.allowed_target_types = list(seed.allowed_target_types) if seed.allowed_target_types else None
         link_type.dedicated_endpoint = seed.dedicated_endpoint
+        link_type.nesting_scope = seed.nesting_scope
     try:
         with db.begin_nested():
             db.add(link_type)
@@ -202,33 +204,63 @@ def validate_link_allowed(
     rules: dict[str, set[uuid.UUID]] | None = None,
     project_id: uuid.UUID | None = None,
     enforce_offered: bool = False,
+    source_project_id: uuid.UUID | None = None,
+    target_project_id: uuid.UUID | None = None,
 ) -> None:
     """Checks a link of `link_type` from `source_type` to `target_type` against
     the link type's own restriction and both ends' artefact-type rules, and,
     when `project_id` is given, that the project may use the type at all.
+
+    For a link between a project and its ancestor/descendant
+    (`source_project_id` != `target_project_id`) it also checks the type's nesting
+    scope (`services.link_nesting.check_nesting`), that the type is usable in the
+    ancestor-side project too, and resolves each end's artefact-type rules in that
+    end's own project.
 
     Args:
         db: Active session.
         link_type: The link type being used.
         source_type: The link's source artefact type.
         target_type: The link's target artefact type.
-        rules: Pre-loaded `get_artefact_rules` result, to avoid a query per call.
+        rules: Pre-loaded `get_artefact_rules` result, to avoid a query per call
+            (applied to both ends).
         project_id: The project the link is created in. Scopes the usability
             check (`services.link_type_scope.assert_link_type_usable`) and the
             rules (project and ancestor rules replace the organisation's).
             `None` checks the organisation-level rules only.
         enforce_offered: Also reject a type the project hides or that a
             same-named type shadows. Left false for fixed-semantic actions.
+        source_project_id / target_project_id: The projects the two ends belong
+            to, given only for a cross-level link. Omitted means both are
+            `project_id`.
 
     Raises:
-        LinkRuleError: If the type is not usable in the project, or any of the
-            three rules forbids it; the message says which.
+        LinkRuleError: If the type is not usable in the project, the projects are
+            not in one ancestry line or the type's nesting scope forbids the pair,
+            or any of the three rules forbids it; the message says which.
     """
+    from app.services.link_nesting import ancestor_side_project_id, check_nesting
+
+    cross = (
+        source_project_id is not None and target_project_id is not None and source_project_id != target_project_id
+    )
+    if cross:
+        check_nesting(db, link_type, source_project_id, target_project_id)
     if project_id is not None:
         project = db.get(Project, project_id)
         if project is None:
             raise LinkRuleError("Project not found.")
         assert_link_type_usable(db, project, link_type, enforce_offered=enforce_offered)
+        if cross:
+            # The type must also be in scope for the ancestor side (types are inherited
+            # downwards), so a descendant's local type can never join a link whose other
+            # end is above it.
+            higher_id = ancestor_side_project_id(db, source_project_id, target_project_id)
+            higher = db.get(Project, higher_id) if higher_id is not None else None
+            if higher is None:
+                raise LinkRuleError("Project not found.")
+            if higher.id != project.id:
+                assert_link_type_usable(db, higher, link_type)
     name = link_type.forward_name
     if link_type.allowed_source_types is not None and source_type not in link_type.allowed_source_types:
         raise LinkRuleError(
@@ -240,8 +272,16 @@ def validate_link_allowed(
             f'"{name}" links cannot point at a {get_artefact_type_label(target_type).lower()} '
             f"(allowed: {_labels(link_type.allowed_target_types)})."
         )
-    held = rules if rules is not None else get_artefact_rules(db, link_type.organization_id, project_id)
-    for artefact_type in dict.fromkeys((source_type, target_type)):
+    source_rules = rules if rules is not None else get_artefact_rules(
+        db, link_type.organization_id, source_project_id if cross else project_id
+    )
+    target_rules = rules if rules is not None else (
+        get_artefact_rules(db, link_type.organization_id, target_project_id) if cross else source_rules
+    )
+    ends = [(source_type, source_rules)]
+    if target_type != source_type or target_rules is not source_rules:
+        ends.append((target_type, target_rules))
+    for artefact_type, held in ends:
         permitted = held.get(artefact_type)
         if permitted is not None and link_type.id not in permitted:
             raise LinkRuleError(
@@ -281,6 +321,7 @@ def list_usable_link_types(
     *,
     candidate_types: Collection[str],
     other_type: str | None = None,
+    other_project: Project | None = None,
 ) -> list[LinkTypeOption]:
     """The link types usable from an artefact of `artefact_type` in `project`,
     with the orientation and the artefact types they can reach.
@@ -300,30 +341,57 @@ def list_usable_link_types(
         candidate_types: Artefact types that can exist at the other end (those
             whose module is enabled for the project).
         other_type: Narrow to options that can reach this type.
+        other_project: The project of the other end when it is an ancestor or
+            descendant of `project`; `None` for the same project. Narrows the
+            options to types in scope on the ancestor side whose nesting scope
+            permits each orientation, and applies the far end's artefact-type rules
+            from this project. `candidate_types` should then be the types enabled
+            there. An unrelated project yields no options.
 
     Returns:
         Options in precedence order (organisation-wide first, then local).
     """
-    rules = resolve_artefact_rules(db, project.organization_id, project.id)
+    from app.services.link_nesting import ProjectRelation, nesting_violation, project_relation
 
-    def permits(side_type: str, link_type: RequirementLinkTypeDefinition) -> bool:
+    rules = resolve_artefact_rules(db, project.organization_id, project.id)
+    cross = other_project is not None and other_project.id != project.id
+    relation: ProjectRelation | None = None
+    higher_chain: set[uuid.UUID] = set()
+    other_rules = rules
+    if cross:
+        assert other_project is not None
+        relation = project_relation(db, project.id, other_project.id)
+        if relation is None or other_project.organization_id != project.organization_id:
+            return []
+        higher = other_project if relation is ProjectRelation.ANCESTOR else project
+        higher_chain = set(get_project_chain_ids(db, higher.id))
+        other_rules = resolve_artefact_rules(db, project.organization_id, other_project.id)
+
+    def permits(side_rules: dict[str, set[uuid.UUID]], side_type: str, link_type: RequirementLinkTypeDefinition) -> bool:
         """Whether `side_type`'s rule (if any) lets it use `link_type`."""
-        permitted = rules.get(side_type)
+        permitted = side_rules.get(side_type)
         return permitted is None or link_type.id in permitted
 
     link_types = resolve_effective_link_types(db, project)
     options: list[LinkTypeOption] = []
     for link_type in link_types:
-        if link_type.dedicated_endpoint or not permits(artefact_type, link_type):
+        if link_type.dedicated_endpoint or not permits(rules, artefact_type, link_type):
             continue
+        if cross and link_type.project_id is not None and link_type.project_id not in higher_chain:
+            continue  # a descendant's local type is not in scope on the ancestor side
         reach: dict[bool, tuple[str, ...]] = {}
         for outgoing in (True, False):
             near = link_type.allowed_source_types if outgoing else link_type.allowed_target_types
             far = link_type.allowed_target_types if outgoing else link_type.allowed_source_types
             if near is not None and artefact_type not in near:
                 continue
+            if cross and nesting_violation(
+                link_type, source_is_above=(relation is ProjectRelation.DESCENDANT) if outgoing
+                else (relation is ProjectRelation.ANCESTOR),
+            ) is not None:
+                continue
             reach[outgoing] = tuple(
-                t for t in sorted(candidate_types) if (far is None or t in far) and permits(t, link_type)
+                t for t in sorted(candidate_types) if (far is None or t in far) and permits(other_rules, t, link_type)
             )
         for outgoing, others in reach.items():
             if not others or (other_type is not None and other_type not in others):

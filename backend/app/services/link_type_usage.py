@@ -66,6 +66,7 @@ from app.models.requirement_link_type import (
 from app.models.user import User
 from app.modules.registry import get_artefact_summary, get_artefact_type_label
 from app.services.audit import log_event
+from app.services.link_nesting import ancestor_side_project_id
 from app.services.link_type_scope import is_customisation_locked, resolve_link_type_scope
 from app.services.link_types import get_artefact_rules
 from app.services.rbac import can_manage_project_settings
@@ -352,13 +353,28 @@ def _copy_sites(parents: dict[uuid.UUID, uuid.UUID | None], affected: set[uuid.U
 
 
 def _link_projects(db: Session, links: list[ArtefactLink]) -> dict[uuid.UUID, uuid.UUID | None]:
-    """`{link id: project that holds it}` (the project of either end), best effort."""
+    """`{link id: project that holds it}`, best effort: the project of either end, or,
+    for a cross-level link, the ancestor-side project (a copy placed there is inherited
+    by the descendant side too)."""
     ends = {(link.source_type, link.source_id) for link in links} | {(link.target_type, link.target_id) for link in links}
     projects = _artefact_project_ids(db, ends)
-    return {
-        link.id: projects.get((link.source_type, link.source_id)) or projects.get((link.target_type, link.target_id))
-        for link in links
-    }
+    held: dict[uuid.UUID, uuid.UUID | None] = {}
+    for link in links:
+        if link.source_project_id is not None and link.target_project_id is not None:
+            held[link.id] = ancestor_side_project_id(db, link.source_project_id, link.target_project_id) or link.source_project_id
+        else:
+            held[link.id] = projects.get((link.source_type, link.source_id)) or projects.get((link.target_type, link.target_id))
+    return held
+
+
+def _touched_projects(links: list[ArtefactLink], link_projects: dict[uuid.UUID, uuid.UUID | None]) -> set[uuid.UUID]:
+    """Every project whose content `links` change: the holder of each, plus both ends'
+    projects of a cross-level link (so authority and counts cover the other end too)."""
+    touched = {link_projects[link.id] for link in links if link_projects.get(link.id) is not None}
+    for link in links:
+        if link.source_project_id is not None and link.target_project_id is not None:
+            touched.update((link.source_project_id, link.target_project_id))
+    return {p for p in touched if p is not None}
 
 
 def _unmanaged_projects(
@@ -408,8 +424,9 @@ def compute_usage(
     moved_links, link_projects = links, {}
     if len(links) <= MAX_PROJECT_SCAN:
         link_projects = _link_projects(db, links)
-        project_count = len({p for p in link_projects.values() if p is not None})
-        keep_projects = {p for p in link_projects.values() if p is not None and p != owner_id}
+        touched = _touched_projects(links, link_projects)
+        project_count = len(touched)
+        keep_projects = touched - {owner_id}
     locked = is_customisation_locked(db, organization_id)
     keep_allowed = not link_type.dedicated_endpoint and not (project is None and locked)
     if keep_in_projects and keep_allowed and keep_projects is not None:
@@ -420,7 +437,7 @@ def compute_usage(
     others = _scope_candidates(db, organization_id, link_type_id, project)
     unmanageable = 0
     if project is not None and actor is not None and keep_projects is not None:
-        needing = {link_projects[link.id] for link in moved_links if link_projects.get(link.id) is not None}
+        needing = _touched_projects(moved_links, link_projects)
         unmanageable = _unmanaged_projects(db, actor, needing - {project.id})
     return LinkTypeUsage(
         link_count=len(links), project_count=project_count,
@@ -520,7 +537,7 @@ def delete_link_type(
             "link type before deleting, or mode=remove_links to delete them.",
         )
     if project is not None and moved_links:
-        needing = {link_projects[link.id] for link in moved_links if link_projects.get(link.id) is not None}
+        needing = _touched_projects(moved_links, link_projects)
         unmanaged = _unmanaged_projects(db, actor, needing - {project.id})
         if unmanaged:
             raise HTTPException(
@@ -700,6 +717,7 @@ def _create_copies(
         copy = RequirementLinkTypeDefinition(
             organization_id=organization_id, project_id=site_id, forward_name=name,
             reverse_name=original.reverse_name, sort_order=own_count, flow=original.flow,
+            nesting_scope=original.nesting_scope,
             allowed_source_types=list(original.allowed_source_types) if original.allowed_source_types else None,
             allowed_target_types=list(original.allowed_target_types) if original.allowed_target_types else None,
         )

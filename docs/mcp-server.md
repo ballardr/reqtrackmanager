@@ -6,7 +6,7 @@ Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, default
 
 ## What it can do
 
-Twenty read tools, always available:
+Twenty-one read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
@@ -20,7 +20,8 @@ Twenty read tools, always available:
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why (C-A-09) |
 | `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream / downstream / related) for impact analysis; reports hidden and truncated results rather than hiding them |
-| `list_artefact_link_types` | The link types usable from an artefact, with direction, wording and the kinds of record each can reach — the starting point for linking |
+| `list_artefact_link_types` | The link types usable from an artefact, with direction, wording and the kinds of record each can reach — the starting point for linking. With `other_project_id` (a parent or child project) only the types whose nesting scope allows that pairing |
+| `list_link_candidate_projects` | The projects a link from this project may reach: itself, parent projects and child projects the caller can open (siblings and unrelated projects never appear) |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes (C-R-03) |
@@ -37,7 +38,7 @@ Plus seven write tools, only when [write mode](#write-mode) is enabled:
 | --- | --- |
 | `create_requirement` | Creates a new requirement (always starts in "draft") |
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
-| `create_artefact_link` | Links an artefact to another record of the same project, from either end — subject to the organisation's link restrictions and the caller's own permissions |
+| `create_artefact_link` | Links an artefact to another record of the same project, or of a parent or child project (`other_project_id`), from either end — subject to the organisation's link restrictions, each link type's nesting scope and the caller's own permissions |
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `approve_requirement` | Approves a draft or reviewed requirement — **only when AI approval is enabled** for the project and its organisation |
 | `decide_change_request` | Approves or rejects a submitted change request — **only when AI approval is enabled** for the project and its organisation |

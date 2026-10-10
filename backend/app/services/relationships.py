@@ -21,6 +21,13 @@ the established pattern this module's callers must keep following. This
 module's own responsibility ends at "store/query this relationship row
 generically"; it is not a second place tenant isolation is enforced.
 
+**Cross-level links** (a project and its ancestor/descendant,
+`ArtefactLink.source_project_id`/`target_project_id` set) are excluded from every
+reader here unless `include_cross_project=True`. Legacy readers load the other
+end by id and assume it shares their project, so default-deny at the query layer
+is what stops them showing an ancestor's artefact to someone who cannot open it;
+only the link graph, generic link authoring and link-type usage ask for them.
+
 `source_type`/`target_type` are plain strings, not the closed
 `app.models.enums.ArtefactType` enum (Module 0 Phase 3 revised the
 original Phase 1 design, under which a module extended that enum directly
@@ -57,6 +64,8 @@ def create_link(
     enforce_rules: bool = True,
     project_id: uuid.UUID | None = None,
     enforce_offered: bool = False,
+    source_project_id: uuid.UUID | None = None,
+    target_project_id: uuid.UUID | None = None,
 ) -> ArtefactLink:
     """Creates and flushes a new `ArtefactLink` row. Does not commit — the
     caller commits once, alongside its own audit-log write, matching every
@@ -77,6 +86,12 @@ def create_link(
     project passes it; omitting it checks the organisation-level rules only.
     `enforce_offered` additionally rejects a type the project hides, for creators
     where a user picked the type (fixed-semantic actions leave it false).
+
+    `source_project_id`/`target_project_id` are the projects the two ends belong to
+    and are given only by the generic authoring service for a link between a project
+    and its ancestor/descendant: when they differ the row is stored as a cross-level
+    link and the nesting check applies (`services.link_nesting`). Every other caller
+    omits them and gets an ordinary same-project link.
 
     Raises:
         ValueError: if `source_type`/`target_type` isn't a currently
@@ -111,65 +126,93 @@ def create_link(
             validate_link_allowed(
                 db, link_type=link_type, source_type=source_type, target_type=target_type,
                 project_id=project_id, enforce_offered=enforce_offered,
+                source_project_id=source_project_id, target_project_id=target_project_id,
             )
+    cross = source_project_id is not None and target_project_id is not None and source_project_id != target_project_id
     link = ArtefactLink(
         source_type=source_type, source_id=source_id,
         target_type=target_type, target_id=target_id,
         link_type_id=link_type_id, created_by=created_by,
+        source_project_id=source_project_id if cross else None,
+        target_project_id=target_project_id if cross else None,
     )
     db.add(link)
     db.flush()
     return link
 
 
-def get_links_from(db: Session, source_type: str, source_id: uuid.UUID) -> list[ArtefactLink]:
+def _same_project_only(include_cross_project: bool) -> list:
+    """The `where` clause that drops cross-level links unless they were asked for."""
+    return [] if include_cross_project else [ArtefactLink.source_project_id.is_(None)]
+
+
+def get_links_from(
+    db: Session, source_type: str, source_id: uuid.UUID, *, include_cross_project: bool = False
+) -> list[ArtefactLink]:
     """Returns every `ArtefactLink` row with the given artefact as its
-    source (i.e. "what does X link to")."""
-    return list(
-        db.scalars(
-            select(ArtefactLink).where(ArtefactLink.source_type == source_type, ArtefactLink.source_id == source_id)
-        ).all()
-    )
-
-
-def get_links_to(db: Session, target_type: str, target_id: uuid.UUID) -> list[ArtefactLink]:
-    """Returns every `ArtefactLink` row with the given artefact as its
-    target (i.e. "what links to X")."""
-    return list(
-        db.scalars(
-            select(ArtefactLink).where(ArtefactLink.target_type == target_type, ArtefactLink.target_id == target_id)
-        ).all()
-    )
-
-
-def get_links_to_many(db: Session, target_type: str, target_ids: Sequence[uuid.UUID]) -> list[ArtefactLink]:
-    """Returns every `ArtefactLink` row targeting any of `target_ids` (same
-    `target_type`) in one query — the bulk counterpart of `get_links_to`,
-    for callers building a report/export across many targets at once
-    instead of running one query per target. Returns an empty list for an
-    empty `target_ids`, without issuing a query."""
-    if not target_ids:
-        return []
+    source (i.e. "what does X link to"). Cross-level links are left out unless
+    `include_cross_project` (see this module's docstring)."""
     return list(
         db.scalars(
             select(ArtefactLink).where(
-                ArtefactLink.target_type == target_type, ArtefactLink.target_id.in_(target_ids)
+                ArtefactLink.source_type == source_type, ArtefactLink.source_id == source_id,
+                *_same_project_only(include_cross_project),
             )
         ).all()
     )
 
 
-def get_links_from_many(db: Session, source_type: str, source_ids: Sequence[uuid.UUID]) -> list[ArtefactLink]:
+def get_links_to(
+    db: Session, target_type: str, target_id: uuid.UUID, *, include_cross_project: bool = False
+) -> list[ArtefactLink]:
+    """Returns every `ArtefactLink` row with the given artefact as its
+    target (i.e. "what links to X"). Cross-level links are left out unless
+    `include_cross_project`."""
+    return list(
+        db.scalars(
+            select(ArtefactLink).where(
+                ArtefactLink.target_type == target_type, ArtefactLink.target_id == target_id,
+                *_same_project_only(include_cross_project),
+            )
+        ).all()
+    )
+
+
+def get_links_to_many(
+    db: Session, target_type: str, target_ids: Sequence[uuid.UUID], *, include_cross_project: bool = False
+) -> list[ArtefactLink]:
+    """Returns every `ArtefactLink` row targeting any of `target_ids` (same
+    `target_type`) in one query — the bulk counterpart of `get_links_to`,
+    for callers building a report/export across many targets at once
+    instead of running one query per target. Returns an empty list for an
+    empty `target_ids`, without issuing a query. Cross-level links are left out
+    unless `include_cross_project`."""
+    if not target_ids:
+        return []
+    return list(
+        db.scalars(
+            select(ArtefactLink).where(
+                ArtefactLink.target_type == target_type, ArtefactLink.target_id.in_(target_ids),
+                *_same_project_only(include_cross_project),
+            )
+        ).all()
+    )
+
+
+def get_links_from_many(
+    db: Session, source_type: str, source_ids: Sequence[uuid.UUID], *, include_cross_project: bool = False
+) -> list[ArtefactLink]:
     """Returns every `ArtefactLink` row sourced from any of `source_ids`
     (same `source_type`) in one query — the mirror of `get_links_to_many`.
     Returns an empty list for an empty `source_ids`, without issuing a
-    query."""
+    query. Cross-level links are left out unless `include_cross_project`."""
     if not source_ids:
         return []
     return list(
         db.scalars(
             select(ArtefactLink).where(
-                ArtefactLink.source_type == source_type, ArtefactLink.source_id.in_(source_ids)
+                ArtefactLink.source_type == source_type, ArtefactLink.source_id.in_(source_ids),
+                *_same_project_only(include_cross_project),
             )
         ).all()
     )
@@ -183,6 +226,8 @@ def get_links_touching_many(
     (`outgoing`) and/or its target (`incoming`), in one query — the batched
     step a breadth-first traversal takes per level. A link between two
     frontier artefacts is returned once. Empty when nothing is requested.
+    Cross-level links are included: this is the link graph's query, and the graph
+    authorises every end against its own project.
     """
     clauses = []
     for artefact_type, ids in frontier.items():
@@ -223,18 +268,21 @@ def get_link_between(
     )
 
 
-def get_all_links(db: Session, artefact_type: str, artefact_id: uuid.UUID) -> list[ArtefactLink]:
+def get_all_links(
+    db: Session, artefact_type: str, artefact_id: uuid.UUID, *, include_cross_project: bool = False
+) -> list[ArtefactLink]:
     """Returns every `ArtefactLink` row touching the given artefact, in
     either direction — the generic equivalent of
     `routers.requirements.list_links`'s old
     `(source_requirement_id == X) | (target_requirement_id == X)` query,
     now expressed once for any artefact type rather than re-derived per
-    caller."""
+    caller. Cross-level links are left out unless `include_cross_project`."""
     return list(
         db.scalars(
             select(ArtefactLink).where(
                 ((ArtefactLink.source_type == artefact_type) & (ArtefactLink.source_id == artefact_id))
-                | ((ArtefactLink.target_type == artefact_type) & (ArtefactLink.target_id == artefact_id))
+                | ((ArtefactLink.target_type == artefact_type) & (ArtefactLink.target_id == artefact_id)),
+                *_same_project_only(include_cross_project),
             )
         ).all()
     )

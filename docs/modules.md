@@ -918,6 +918,12 @@ flowchart LR
   enablement check (a sub-component whose `key` equals the artefact type) and
   returns `None` when no module provides the type, so a caller can tell "cannot
   show this kind" from "none visible".
+- The link graph also reaches the request project's parent and child projects the
+  caller can open (links across nesting), so it calls `get_many_in_project` once per
+  such project. A summary returned for a related project is accepted only if its
+  `project_id` is that project: an org-owned record (`project_id` `None`) is taken
+  from the request project alone, so a related project can never be used to reach one
+  the request project hides. Return only what the *given* project may see.
 - Every first-party artefact type has a provider, enforced by
   `tests/test_link_graph.py`: the core link graph (`services/link_graph.py`,
   `GET /projects/{id}/artefacts/{type}/{id}/link-graph`) shows only types it can
@@ -943,6 +949,7 @@ ModuleDefinition(
     ...,
     link_type_seeds=(
         LinkTypeSeed("Addresses", "Is addressed by", LinkFlow.FORWARD_IS_UPSTREAM,
+                     nesting_scope=LinkNestingScope.UPSTREAM_IN_ANCESTOR,
                      allowed_source_types=("decision",), allowed_target_types=("pain_point",)),
         LinkTypeSeed("Supersedes", "Is superseded by", dedicated_endpoint=True,
                      allowed_source_types=("decision",), allowed_target_types=("decision",)),
@@ -955,6 +962,11 @@ ModuleDefinition(
   link types are listed, or when link types are requested for an artefact), so an
   admin's edits are never overwritten. A type an admin deletes is recreated by the
   next use; restrict a type rather than deleting it.
+- `nesting_scope` says whether the type may join a project and its parent or child
+  project (default `ANCESTOR_EITHER_WAY`; `SAME_PROJECT` turns it off;
+  `UPSTREAM_IN_ANCESTOR` requires the upstream end, per `flow`, to be in the same or a
+  parent project, so it needs a `flow` other than `NONE`). Like the rest of the seed
+  it applies only when the type is created.
 - Seeds sharing a forward name across modules merge: restriction lists are unioned,
   the first non-`none` flow wins, and a conflicting reverse phrase is dropped with a
   warning. Core defaults (`services.definitions.DEFAULT_LINK_TYPES`) are unrestricted.

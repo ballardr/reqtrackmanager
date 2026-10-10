@@ -37,6 +37,7 @@ from app.schemas.link_type import ArtefactTypeOut
 from app.services.link_authoring import (
     create_link_for_artefact,
     delete_link_for_artefact,
+    related_project_or_404,
     require_visible_artefact,
     usable_options,
 )
@@ -100,6 +101,9 @@ def list_artefact_link_types(
     artefact_type: str,
     artefact_id: UUID,
     other_type: str | None = Query(None, description="Only options that can reach this artefact type."),
+    other_project_id: UUID | None = Query(
+        None, description="Only options usable with the other end in this ancestor or descendant project."
+    ),
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ) -> list[ArtefactLinkTypeOption]:
@@ -108,24 +112,32 @@ def list_artefact_link_types(
 
     Types a link-type restriction or either end's artefact-type rule rules out
     are left out, as are dedicated types (made with their own action). Missing
-    module-seeded types are created first.
+    module-seeded types are created first. With `other_project_id` (an ancestor or
+    descendant project) only types whose nesting scope permits that pairing are listed,
+    each with the orientation it can be used in.
 
     Raises:
-        HTTPException: 404 if the artefact is not a visible record of the project.
+        HTTPException: 404 if the artefact is not a visible record of the project, or
+            `other_project_id` is not a related project the caller can open.
     """
     project = _project_or_404(db, project_id)
     require_visible_artefact(db, project, current_user.id, artefact_type, artefact_id)
+    other_project = (
+        related_project_or_404(db, project, current_user.id, other_project_id)
+        if other_project_id is not None and other_project_id != project.id else None
+    )
     ensure_org_seeds(db, project.organization_id)
     db.commit()
     return [
         ArtefactLinkTypeOption(
             link_type_id=option.link_type.id, forward_name=option.link_type.forward_name,
             reverse_name=option.link_type.reverse_name, flow=option.link_type.flow,
+            nesting_scope=option.link_type.nesting_scope,
             direction=LinkOrientation.OUTGOING if option.outgoing else LinkOrientation.INCOMING,
             phrase=option.phrase,
             other_types=[ArtefactTypeOut(type=t, label=get_artefact_type_label(t)) for t in option.other_types],
         )
-        for option in usable_options(db, project, artefact_type, other_type)
+        for option in usable_options(db, project, artefact_type, other_type, other_project)
     ]
 
 
@@ -138,20 +150,23 @@ def create_artefact_link(
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ) -> ArtefactLinkOut:
-    """Links this artefact to another record of the project, from either end.
+    """Links this artefact to another record of the project, or of an ancestor or
+    descendant project (`other_project_id`), from either end.
 
     Raises:
-        HTTPException: 404 an end is not a visible record of the project; 403
+        HTTPException: 404 an end is not a visible record of its project, or
+            `other_project_id` is not a related project the caller can open; 403
             `manage` on this artefact type not held; 400 the link type is unusable
             here (other organisation, dedicated, or a link-type restriction or
-            artefact-type rule forbids the pair) or a self-link; 409 duplicate or
+            artefact-type rule or the type's nesting scope forbids the pair) or a self-link;
+            409 duplicate or
             a change request is required for an approved requirement.
     """
     project = _project_or_404(db, project_id)
     created = create_link_for_artefact(
         db, project=project, user_id=current_user.id, artefact_type=artefact_type, artefact_id=artefact_id,
         link_type_id=payload.link_type_id, outgoing=payload.direction is LinkOrientation.OUTGOING,
-        other_type=payload.other_type, other_id=payload.other_id,
+        other_type=payload.other_type, other_id=payload.other_id, other_project_id=payload.other_project_id,
     )
     db.commit()
     return ArtefactLinkOut(
@@ -161,6 +176,7 @@ def create_artefact_link(
         other=ArtefactLinkOtherEnd(
             type=created.other_type, id=created.other.id, type_label=get_artefact_type_label(created.other_type),
             label=created.other.label, status=created.other.status, is_archived=created.other.is_archived,
+            project_id=created.other.project_id,
         ),
     )
 

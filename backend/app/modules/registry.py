@@ -62,7 +62,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models.enums import LinkFlow
+from app.models.enums import LinkFlow, LinkNestingScope
 
 if TYPE_CHECKING:
     from alembic.config import Config
@@ -1235,6 +1235,10 @@ class LinkTypeSeed:
         dedicated_endpoint: The type has a fixed meaning with its own action
             (e.g. "Supersedes" flips a status), so the generic link endpoints
             neither offer nor delete it.
+        nesting_scope: Whether the type may join a project and its ancestor or
+            descendant, and which end may sit higher (`LinkNestingScope`).
+            `UPSTREAM_IN_ANCESTOR` needs a `flow` other than `NONE`. Applied only
+            when the seed creates the type, never to an existing one.
     """
 
     forward_name: str
@@ -1243,6 +1247,7 @@ class LinkTypeSeed:
     allowed_source_types: tuple[str, ...] | None = None
     allowed_target_types: tuple[str, ...] | None = None
     dedicated_endpoint: bool = False
+    nesting_scope: LinkNestingScope = LinkNestingScope.ANCESTOR_EITHER_WAY
 
 
 @dataclass(frozen=True)
@@ -3422,7 +3427,7 @@ def get_all_link_type_seeds() -> dict[str, LinkTypeSeed]:
 
     Seeds sharing a `forward_name` are merged: restriction lists are unioned
     (`None`, meaning any, absorbs the rest), `dedicated_endpoint` is true if any
-    says so, and the first non-`none` flow wins. A module seed whose phrases
+    says so, and the first non-`none` flow (and the first non-default nesting scope) wins. A module seed whose phrases
     disagree with an earlier one is dropped and logged rather than raising, so
     one module's mistake cannot take down link creation for every module.
 
@@ -3459,6 +3464,11 @@ def get_all_link_type_seeds() -> dict[str, LinkTypeSeed]:
                 allowed_source_types=union(existing.allowed_source_types, seed.allowed_source_types),
                 allowed_target_types=union(existing.allowed_target_types, seed.allowed_target_types),
                 dedicated_endpoint=existing.dedicated_endpoint or seed.dedicated_endpoint,
+                nesting_scope=(
+                    existing.nesting_scope
+                    if existing.nesting_scope is not LinkNestingScope.ANCESTOR_EITHER_WAY
+                    else seed.nesting_scope
+                ),
             )
     return merged
 

@@ -58,7 +58,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditEvent
@@ -208,10 +208,14 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     # this bundle's own requirement-links section) — filtering on
     # `source_type == REQUIREMENT` already excludes those, since an action
     # link's source is always a `RequirementAction`, never a `Requirement`.
+    # Same-project links only: a link to an ancestor or descendant project's artefact is
+    # left out (a bundle must not embed another project's content, and import never
+    # recreates one); the manifest reports how many were left out.
     links = list(
         db.scalars(
             select(ArtefactLink).where(
-                ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids)
+                ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids),
+                ArtefactLink.source_project_id.is_(None),
             )
         )
         if req_ids else []
@@ -539,6 +543,18 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     return project_json, file_assets_by_id
 
 
+def count_cross_project_links(db: Session, project_id: UUID) -> int:
+    """How many links join this project's artefacts to an ancestor's or descendant's.
+
+    A bundle carries same-project links only, so these are left out of an export; the
+    count goes in the manifest so the omission is never silent."""
+    return db.scalar(
+        select(func.count()).select_from(ArtefactLink).where(
+            or_(ArtefactLink.source_project_id == project_id, ArtefactLink.target_project_id == project_id)
+        )
+    ) or 0
+
+
 def build_project_bundle(db: Session, project: Project, exported_by: User) -> bytes:
     """Builds a project export bundle: a zip containing `manifest.json`
     (self-describing envelope), `project.json` (structure + full history),
@@ -559,6 +575,7 @@ def build_project_bundle(db: Session, project: Project, exported_by: User) -> by
         "kind": PROJECT_BUNDLE_KIND, "format_version": PROJECT_BUNDLE_FORMAT_VERSION,
         "exported_at": datetime.now(UTC).isoformat(), "exported_by_email": exported_by.email,
         "project_name": project.name, "organization_name": org.name if org else None,
+        "excluded_cross_project_links": count_cross_project_links(db, project.id),
     }
 
     buffer = io.BytesIO()

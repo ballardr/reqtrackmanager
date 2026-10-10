@@ -965,6 +965,8 @@ export interface LinkTypeDefinition {
   allowed_target_types: string[] | null;
   /** Fixed meaning with its own action (e.g. "Supersedes"); not offered as a general link. */
   dedicated_endpoint: boolean;
+  /** Whether the type may join a project and its parent or child project; see `LINK_NESTING_SCOPE_LABEL`. */
+  nesting_scope: LinkNestingScope;
   /** `null` for an organisation-wide type; the owning project's id for a project-level one. */
   project_id?: string | null;
 }
@@ -1099,6 +1101,23 @@ export const LINK_FLOW_LABEL: Record<LinkFlow, string> = {
   forward_is_downstream: "Target is downstream",
 };
 export const LINK_FLOW_VALUES: LinkFlow[] = ["none", "forward_is_upstream", "forward_is_downstream"];
+
+/** Whether, and in which direction, a link type may join artefacts of a project and its parent or
+ * child project: not at all (`same_project`), only with the upstream end (per the type's `flow`) in the
+ * same or a parent project (`upstream_in_ancestor`, needs a direction), or either end in a parent
+ * (`ancestor_either_way`). Narrowest first. */
+export type LinkNestingScope = "same_project" | "upstream_in_ancestor" | "ancestor_either_way";
+export const LINK_NESTING_SCOPE_LABEL: Record<LinkNestingScope, string> = {
+  same_project: "Same project only",
+  upstream_in_ancestor: "Upstream end may be in a parent project",
+  ancestor_either_way: "Either end may be in a parent project",
+};
+export const LINK_NESTING_SCOPE_VALUES: LinkNestingScope[] = ["same_project", "upstream_in_ancestor", "ancestor_either_way"];
+
+/** How many existing cross-project links a nesting-scope change would flag (`GET .../nesting-impact`). */
+export interface LinkNestingImpact {
+  flagged_link_count: number;
+}
 
 /** Project-scoped requirement-action type (e.g. Review, Test) — project-
  * scoped rather than org-scoped, matching `CustomFieldDefinition`, per

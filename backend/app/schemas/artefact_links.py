@@ -12,7 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import LinkFlow
+from app.models.enums import LinkFlow, LinkNestingScope
 from app.schemas.link_type import ArtefactTypeOut
 
 
@@ -33,18 +33,21 @@ class ArtefactLinkTypeOption(BaseModel):
     forward_name: str
     reverse_name: str
     flow: LinkFlow
+    nesting_scope: LinkNestingScope = LinkNestingScope.ANCESTOR_EITHER_WAY
     direction: LinkOrientation
     phrase: str
     other_types: list[ArtefactTypeOut]
 
 
 class ArtefactLinkCreate(BaseModel):
-    """Payload to link the page's artefact to another record of the project."""
+    """Payload to link the page's artefact to another record: of the project, or, with
+    `other_project_id`, of one of its ancestor or descendant projects."""
 
     link_type_id: UUID
     direction: LinkOrientation = LinkOrientation.OUTGOING
     other_type: str
     other_id: UUID
+    other_project_id: UUID | None = None
 
 
 class ArtefactLinkOtherEnd(BaseModel):
@@ -56,6 +59,27 @@ class ArtefactLinkOtherEnd(BaseModel):
     label: str
     status: str | None
     is_archived: bool
+    project_id: UUID | None = None
+
+
+class CandidateProjectOut(BaseModel):
+    """A project a link may reach from the page's project: itself, an ancestor or a
+    descendant the caller can open. `label` states the relationship (never relying on
+    the name); `relation` is `same`, `ancestor` or `descendant`; `distance` is levels away."""
+
+    id: UUID
+    name: str
+    relation: str
+    distance: int
+    label: str
+    is_archived: bool
+
+
+class CandidateProjectsOut(BaseModel):
+    """The projects a link may reach, nearest first, and whether the cap cut the list short."""
+
+    items: list[CandidateProjectOut]
+    truncated: bool
 
 
 class ArtefactLinkOut(BaseModel):

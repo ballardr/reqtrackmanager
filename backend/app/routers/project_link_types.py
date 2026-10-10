@@ -26,16 +26,19 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.enums import LinkFlow, LinkNestingScope
 from app.models.project import Project
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.registry import get_artefact_type_label
+from app.schemas.artefact_links import CandidateProjectOut, CandidateProjectsOut
 from app.schemas.link_type import (
     ArtefactLinkRuleSet,
     ArtefactTypeOut,
     LinkTypeCandidateOut,
     LinkTypeCreate,
     LinkTypeDeleteOutcomeOut,
+    LinkTypeNestingImpactOut,
     LinkTypeOut,
     LinkTypeUpdate,
     LinkTypeUsageOut,
@@ -47,6 +50,7 @@ from app.schemas.link_type import (
 from app.schemas.project import MoveDirection
 from app.services.audit import log_event
 from app.services.link_authoring import linkable_types_for_project
+from app.services.link_nesting import count_cross_links_violating, related_projects
 from app.services.link_type_scope import (
     ScopedLinkType,
     is_customisation_locked,
@@ -64,7 +68,13 @@ from app.services.project_link_types import (
     set_visibility,
     update_project_link_type,
 )
-from app.services.rbac import can_manage_project_settings, get_effective_project_roles, require_project_manage, require_project_view_or_manage
+from app.services.rbac import (
+    can_manage_project_settings,
+    get_effective_project_roles,
+    require_project_manage,
+    require_project_view,
+    require_project_view_or_manage,
+)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["project-link-types"])
 
@@ -106,7 +116,7 @@ def _to_out(db: Session, user: User, project: Project, scoped: ScopedLinkType) -
         forward_name=link_type.forward_name, reverse_name=link_type.reverse_name, sort_order=link_type.sort_order,
         flow=link_type.flow, allowed_source_types=link_type.allowed_source_types,
         allowed_target_types=link_type.allowed_target_types, dedicated_endpoint=link_type.dedicated_endpoint,
-        scope=_scope_of(scoped, project), owner_project_id=scoped.owner_project_id,
+        nesting_scope=link_type.nesting_scope, scope=_scope_of(scoped, project), owner_project_id=scoped.owner_project_id,
         owner_project_name=_visible_project_name(db, user, scoped.owner_project_id)
         if scoped.owner_project_id != project.id else None,
         hidden=scoped.hidden, hidden_here=scoped.own_visibility,
@@ -142,6 +152,33 @@ def list_project_link_types(
     )
 
 
+@router.get("/link-candidate-projects", response_model=CandidateProjectsOut)
+def list_link_candidate_projects(
+    project_id: UUID,
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+) -> CandidateProjectsOut:
+    """The projects a link made from this project may reach: itself, its ancestors
+    (nearest first, stopping at the first one the caller cannot open) and the
+    descendants the caller can open (level by level, never descending through one
+    they cannot). Archived projects are left out (they take no new links), and the
+    list is capped, with `truncated` set when the cap cut it short. Labels state the
+    relationship ("Parent project", "2 levels down"); they never depend on a name.
+    """
+    project = _project_or_404(db, project_id)
+    related, truncated = related_projects(db, project, current_user.id, include_archived=False)
+    return CandidateProjectsOut(
+        items=[
+            CandidateProjectOut(
+                id=r.project.id, name=r.project.name, relation=r.relation.value, distance=r.distance, label=r.label,
+                is_archived=r.project.is_archived,
+            )
+            for r in related
+        ],
+        truncated=truncated,
+    )
+
+
 @router.post("/link-types", response_model=ProjectLinkTypeOut, status_code=status.HTTP_201_CREATED)
 def create_project_link_type_endpoint(
     payload: LinkTypeCreate,
@@ -160,7 +197,7 @@ def create_project_link_type_endpoint(
     link_type = create_project_link_type(
         db, project, forward_name=payload.forward_name, reverse_name=payload.reverse_name, flow=payload.flow,
         allowed_source_types=payload.allowed_source_types, allowed_target_types=payload.allowed_target_types,
-        actor=current_user,
+        actor=current_user, nesting_scope=payload.nesting_scope,
     )
     db.commit()
     return _to_out(db, current_user, project, next(s for s in resolve_link_type_scope(db, project) if s.link_type.id == link_type.id))
@@ -184,7 +221,7 @@ def update_project_link_type_endpoint(
     """
     update_project_link_type(
         db, project, link_type_id, forward_name=payload.forward_name, reverse_name=payload.reverse_name,
-        flow=payload.flow,
+        flow=payload.flow, nesting_scope=payload.nesting_scope,
         restrictions={
             k: getattr(payload, k) for k in ("allowed_source_types", "allowed_target_types") if k in payload.model_fields_set
         },
@@ -192,6 +229,21 @@ def update_project_link_type_endpoint(
     )
     db.commit()
     return _to_out(db, current_user, project, next(s for s in resolve_link_type_scope(db, project) if s.link_type.id == link_type_id))
+
+
+@router.get("/link-types/{link_type_id}/nesting-impact", response_model=LinkTypeNestingImpactOut)
+def get_project_link_type_nesting_impact(
+    link_type_id: UUID,
+    nesting_scope: LinkNestingScope = Query(..., description="The scope the type would get."),
+    flow: LinkFlow | None = Query(None, description="The flow it would get; omitted keeps the current one."),
+    project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+) -> LinkTypeNestingImpactOut:
+    """How many existing cross-level links of one of this project's own link types
+    would be flagged "no longer permitted" if its nesting scope (and flow) changed.
+    Read-only, so the admin sees the consequence before saving."""
+    link_type = get_own_link_type(db, project, link_type_id)
+    return LinkTypeNestingImpactOut(flagged_link_count=count_cross_links_violating(db, link_type, nesting_scope, flow))
 
 
 @router.post("/link-types/{link_type_id}/move", response_model=LinkTypeOut)

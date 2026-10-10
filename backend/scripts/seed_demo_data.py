@@ -451,14 +451,16 @@ def create_link_type(
 
 def create_artefact_link(
     headers: dict, project_id: str, artefact_type: str, artefact_id: str, *, link_type_id: str, other_type: str,
-    other_id: str, direction: str = "outgoing",
+    other_id: str, direction: str = "outgoing", other_project_id: str | None = None,
 ) -> dict:
-    """Links any two artefacts of a project through the generic endpoint, read from `artefact_id`'s side
-    (`direction` "outgoing" = it is the link's source)."""
+    """Links any two artefacts through the generic endpoint, read from `artefact_id`'s side
+    (`direction` "outgoing" = it is the link's source). `other_project_id` is the other record's project when it
+    is a parent or child of `project_id` (a cross-level link)."""
+    body = {"link_type_id": link_type_id, "direction": direction, "other_type": other_type, "other_id": other_id}
+    if other_project_id is not None:
+        body["other_project_id"] = other_project_id
     r = httpx.post(
-        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/links",
-        json={"link_type_id": link_type_id, "direction": direction, "other_type": other_type, "other_id": other_id},
-        headers=headers, timeout=30,
+        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/links", json=body, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -1799,7 +1801,9 @@ def main() -> None:
     assign_project_role(h_pm, avionics["id"], demo_engineer["user_id"], "project_manager")
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
-    seed_project(h_pm, avionics, avionics_components, avionics_categories, AVIONICS_REQUIREMENTS, demo_admin["user_id"])
+    avionics_reqs = seed_project(
+        h_pm, avionics, avionics_components, avionics_categories, AVIONICS_REQUIREMENTS, demo_admin["user_id"]
+    )
 
     print("Creating 'Solstice Cloud Platform'...")
     cloud = create_project(
@@ -2386,6 +2390,25 @@ def main() -> None:
     create_artefact_link(
         h_pm, drone["id"], "requirement", gps_req["id"], link_type_id=chain_link_types["Implements"]["id"],
         other_type="decision", other_id=single_fc_decision["id"], direction="incoming",
+    )
+
+    print("Linking across Falcon-3 and its Avionics sub-project (Phase 5d): the parent's dual-redundant Decision"
+          " 'Implements' an Avionics requirement, and an Avionics Decision 'Addresses' the parent's Pain Point"
+          " (the seeded 'Addresses' type keeps the upstream Pain Point in the same or a parent project)...")
+    avionics_requirement = next(iter(avionics_reqs.values()))
+    create_artefact_link(
+        h_pm, drone["id"], "decision", dual_fc_decision["id"], link_type_id=chain_link_types["Implements"]["id"],
+        other_type="requirement", other_id=avionics_requirement["id"], other_project_id=avionics["id"],
+    )
+    avionics_decision = create_decision(
+        h_pm, avionics["id"], title="Fuse IMU and GPS with a dual-redundant estimator",
+        decision_statement="Avionics will run two independent sensor-fusion estimators and vote on their output.",
+        decision_type_id=drone_decision_types["Architecture"]["id"], owner_id=demo_engineer["user_id"],
+        context="Sub-project-level consequence of the Falcon-3 dual-redundancy decision.",
+    )
+    create_artefact_link(
+        h_pm, avionics["id"], "decision", avionics_decision["id"], link_type_id=chain_link_types["Addresses"]["id"],
+        other_type="pain_point", other_id=pp_accepted["id"], other_project_id=drone["id"],
     )
 
     print("Seeding a project-level link type on Falcon-3 (Phase 5c): \"Is verified by\" (a requirement is verified by"

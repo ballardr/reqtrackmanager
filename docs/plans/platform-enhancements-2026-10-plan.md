@@ -1,11 +1,11 @@
 # Platform Enhancements (October 2026) — Plan
 
-**Status:** Decisions Q1–Q13 answered by the user 2026-10-06. Phases 1–5c implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit; 5c: project-level link types, hiding, project rules and the org lock); the rest is not implemented. Written from eight user notes, each checked against the current code.
+**Status:** Decisions Q1–Q13 answered by the user 2026-10-06, Q14 requested 2026-10-07. Phases 1–5d implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit; 5c: project-level link types, hiding, project rules and the org lock; 5d: links between parent and child projects, planned 2026-10-07 and built 2026-10-11); the rest is not implemented. Written from eight user notes, each checked against the current code.
 **Decision tags:** items marked **Decided by: User** were answered in the 2026-10-06 review (§3); everything else is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-7 / 14 phases complete (Phases 1–5c done 2026-10-06, awaiting commit). **Phase 6 is next** (its shared panel's add row is built on 5c's effective-type resolver and the `link-types` options endpoint). Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
+8 / 16 phases complete (Phases 1–5d done, awaiting commit). **Phase 6 is next** (its shared panel's add row is built on 5c's effective-type resolver and the `link-types` options endpoint, and shows 5d's project badge and project select, fed by `link-candidate-projects`). Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
 
 | # | Phase | Note | Status |
 |---|-------|------|--------|
@@ -16,7 +16,9 @@
 | 5 | Link-type direction field + link graph backend (+ MCP tool) | N1 | [x] |
 | 5b | Any-to-any linking, restrictions from both sides (per link type, per artefact type), delete-in-use dialog, generic link authoring, coverage guard | N1 | [x] |
 | 5c | Project-level link types and rules, hide org types, org switch to forbid | N1 | [x] |
+| 5d | Links between parent and child projects, allowed or directional per link type | N1 | [x] |
 | 6 | Shared Links panel, detail-page aside, migration of existing sections | N1 | [ ] |
+| 6b | Proposed links on change requests, merged on approval via an approver dialog | N1 | [ ] |
 | 7 | Trace tree and map views | N1 | [ ] |
 | 8 | Decision Management reports | N6 | [ ] |
 | 9 | Neutral report document model + DOCX export | N7 | [ ] |
@@ -244,7 +246,7 @@ Result: *Pain Point —is addressed by→ Decision —implements→ Requirement*
   - **Offered for org-wide types too** (an org admin deleting an org-wide type used by projects: copy it as a local type into each using project, top-most per branch). **Decided by: Agent**, the same mechanism and consent rule. Disabled with an explanation when the org lock is on, because local types would be dormant.
   - Archived projects are included (their links still display); the dialog counts them.
 - **UI (style guide: settings hierarchy depth, platform-default override visibility, create-as-a-layer, confirmation tiers, Toast on every mutation):** the project admin gets a "Link types" panel listing org types as inherited (badge "Organisation", with a Hide/Show toggle) and the project's own as editable, with an "Add link type" action. It is **the same shared component as the org link-type panel** (extract it from `OrgAdminPage`, update that call site, delete the bespoke copy; CLAUDE.md shared-component rule), parameterised by scope, and it shows the same flow and "Can link from/to" fields from Phase 5b. When locked, the panel renders read-only with "Your organisation uses one shared set of link types" and no controls. The org link-type admin gets the switch with the affected-count line.
-- **Nested projects (CLAUDE.md checklist, decided at design time; Q11, Decided by: User):** children inherit. Unlike Action Types this is **additive** (own + ancestors' types on top of the always-present org base) rather than "own rows else nearest ancestor's", because a child adding one type should not lose the parent's. Always on, independent of `role_inheritance_mode`/RBAC, like the Action Types fallback. Seeding is not relevant (types are created by admins, not seeded per project). Reparenting or detaching changes what a project can **create** with; links already made keep resolving by id and keep displaying. Record in `docs/decisions.md`. Cross-project links (Module 7 Phase 4) will accept **org-wide types only**, since a type must be usable at both ends.
+- **Nested projects (CLAUDE.md checklist, decided at design time; Q11, Decided by: User):** children inherit. Unlike Action Types this is **additive** (own + ancestors' types on top of the always-present org base) rather than "own rows else nearest ancestor's", because a child adding one type should not lose the parent's. Always on, independent of `role_inheritance_mode`/RBAC, like the Action Types fallback. Seeding is not relevant (types are created by admins, not seeded per project). Reparenting or detaching changes what a project can **create** with; links already made keep resolving by id and keep displaying. Record in `docs/decisions.md`. Links between a project and its ancestors or descendants are Phase 5d (the type must be in scope for the ancestor-side project); fully cross-project links (Module 7 Phase 4) will accept **org-wide types only**, since a type must be usable at both ends.
 - **MCP:** `list_artefact_link_types` (Phase 5b) already returns the effective set; no project-type write tool (Decided by: Agent: governance configuration stays a human action).
 
 **Isolation rules (SOC 2 multi-tenant isolation; consult the access-control policy; identify → verify → remediate, recorded in `docs/decisions.md`).**
@@ -286,12 +288,127 @@ flowchart TD
     ORGONLY --> USE
 ```
 
+#### Phase 5d — Links between parent and child projects, per link type (added 2026-10-07) — DONE 2026-10-11
+
+**As built (differs from the spec below):** (1) `ArtefactLink` gained `source_project_id`/`target_project_id` (set only for a cross-level link; migration `0068`) and `services.relationships` drops those rows unless a caller passes `include_cross_project`, so the reader audit became default-deny at the query layer plus a test that fails when an unreviewed file queries the table, instead of a hand audit of every reader. (2) The Decision-origin seeds use `upstream_in_ancestor` per their `flow` (the upstream pain point may be in a parent project); the spec's prose "a decision may sit above what it addresses" contradicted its own diagram and was not followed. (3) `get_many_in_projects` was not added: the graph calls the existing `get_many_in_project` once per viewable scope project (core types in one query). (4) Change requests stay same-project (cross-level `ADD_LINK`/`REMOVE_LINK` is Phase 6b), so "record the other end's project" at proposal time is moot; the generic endpoint's change-request gate (409) applies to both ends. (5) Dormant links count in `unavailable_count`; a node outside the request project's related set (a sibling) counts in `hidden_count`. (6) Added `GET .../link-types/{id}/nesting-impact` (org and project scope) for the admin's "N links will be flagged" line, `nesting_permitted` on graph edges, and the MCP tool `list_link_candidate_projects` (the spec only listed new parameters, which a client could not have discovered). (7) Artefacts and projects have no hard-delete (archive only) and organisation deletion already removes links by id across the organisation, so no extra cleanup path was needed. (8) The e2e dataset gained the two cross-level links on Gamma-6/Gamma-5 without enabling the Decisions or Context & Strategy modules there; the demo dataset has the connector example on Falcon-3 and its Avionics sub-project. See `docs/decisions.md`.
+
+**Why:** nested projects are how this product models decomposition, but a link today must join two artefacts of one project. A decision on a hardware connector, or a pain point taken in at product level, belongs at the top project and must trace to requirements in the nested projects it affects (Q14, **Decided by: User**). Module 7's general cross-project traceability is far off and is a bigger problem (siblings, unrelated projects); ancestry is the bounded case worth shipping now. **Outcome:** an artefact can be linked to an artefact in an ancestor or descendant project, each link type decides whether and in which direction that is allowed, and no one sees an artefact they could not already open.
+
+**Reading of the request (Decided by: Agent, confirm).** "Disabled per link type, with disabling being how upstream/downstream functions" is read as one per-type setting that is not just on/off: it also says *which end may sit higher*. The example (pain point must be in the same or a higher project than the requirement) is the directional option, not a ban. "Higher module" is read as "higher project in the nesting". If instead you wanted a plain on/off switch, drop the middle option below; nothing else changes.
+
+**Design**
+- **New column `RequirementLinkTypeDefinition.nesting_scope`** (plain enum with a label map, per the style guide's enum rule; applies to org-wide and project-local types alike, so Phase 5c's table and resolver need no new table):
+
+| Value | Label | Meaning |
+|-------|-------|---------|
+| `same_project` | Same project only | Today's behaviour; the feature "disabled" for this type. |
+| `upstream_in_ancestor` | Upstream end may be in a parent project | Using the type's `flow` (Phase 5), the **upstream** end must be in the same project as the downstream end or one of its ancestors. A pain point can sit above a requirement, never below it. Needs `flow` ≠ `none`; a type with no direction has no "upstream" to name (422 on save, and a flow change to `none` on such a type is rejected with the same message). |
+| `ancestor_either_way` | Either end may be in a parent project | Any ancestor/descendant pair, in either direction. The only option for symmetric ("Related to") types that should cross levels. |
+
+- **Default `ancestor_either_way` for new and existing types** (the capability is on unless disabled, per the request; **Decided by: Agent**, flip to `same_project` if existing orgs should opt in). It only widens *where* a link may go; every other check below still applies. Seeds declare their own value via `ModuleDefinition.link_type_seeds` (a new generic field `nesting_scope`, not a per-module edit in core): the Decision-origin seeds from Phase 5b (*Addresses*, *Resolves*, *Supports*, *Guided by*, *Constrained by*) use `upstream_in_ancestor`, so a decision may sit above what it addresses and not below.
+- **Ancestry only.** The two projects must be the same, or one must be an ancestor of the other (`get_project_chain_ids`, cycle-safe and capped). Siblings, cousins and unrelated projects stay unlinkable until Module 7 Phase 4. Org-scoped records keep their Phase 5b rules.
+- **Combined check, extending Phase 5b/5c's single service-layer validator** (so the generic endpoint, MCP and change-request approval all pass through it):
+
+```mermaid
+flowchart TD
+    A["Create link of type T: S in project PS, D in project PD"] --> B{"PS = PD?"}
+    B -- yes --> G
+    B -- no --> C{"One of PS, PD is an ancestor of the other?"}
+    C -- no --> X1["Rejected: not in the same nesting chain"]
+    C -- yes --> E{"T.nesting_scope"}
+    E -- same_project --> X2["Rejected: type is same-project only"]
+    E -- upstream_in_ancestor --> F{"Upstream end in the same or the ancestor project?"}
+    F -- no --> X3["Rejected: upstream end is below the downstream end"]
+    F -- yes --> G
+    E -- ancestor_either_way --> G
+    G["Existing checks, each end in its own project:<br/>type usable, T's restriction, S's and D's artefact rules,<br/>module enabled, permissions"] --> OK["Link created, audited in both projects"]
+```
+
+  - **Type usability:** the type must be in scope for the **ancestor-side** project and offered (not hidden) in the project the caller creates from. Types are inherited downwards (5c), so a type usable in the ancestor is usable in the descendant; a descendant's local type can never join a link whose other end is above it, which settles the "usable at both ends" rule 5c deferred to Module 7. **Decided by: Agent.**
+  - **Artefact rules and module enablement are resolved per end, in that end's own project** (nearest-wins, 5c), so a child that disabled a module cannot have its artefacts linked from above.
+  - **Permissions:** *manage* on the page's own artefact type in its project (as 5b), plus *view* on the other end's artefact type **in the other project**, through Fine-Grained Access Control and the same effective-permission resolution (role inheritance counts; plain org membership does not). A user who cannot open the parent project cannot link to it, and inheriting a child's name by hierarchy gives no access to its artefacts.
+  - **Change control is per end:** a requirement end in a project that requires a change request for links keeps that gate for its own end. `ADD_LINK` change requests record the other end's project and **revalidate at approval**, since a reparent between proposal and approval can invalidate the pair (not applied; Phase 6b generalises this to a set of proposed links with an approver dialog).
+  - **Fixed-semantic actions stay exempt and same-project:** *Supersedes* and the legacy typed endpoints (until Phase 6 retires their UIs) never cross projects; the generic endpoint is the only entry point for a cross-level link.
+- **Endpoints:** `link-types` (5b) takes an optional `other_project_id` and returns only types whose `nesting_scope` permits that pairing, with the right orientation. `POST .../links` gains an optional `other_project_id` (default: the page's own project). A new `GET /projects/{pid}/link-candidate-projects` lists the projects a caller may link to: self, ancestors and descendants, each only if the caller can view it (same truncate-at-first-inaccessible rule as `/ancestors`, so a hole in the chain is never silently skipped), each with a nearest-first label. The generic add row's target picker gets a project select fed by it, defaulting to "This project" (UI lands in Phase 6's panel; the backend lands here). Descendants are searched project by project, never as one unbounded list.
+- **Link graph (Phase 5) generalises its gate.** A node is shown iff it lies in the request project **or a project in its ancestor/descendant chain that the caller can view**, its module is enabled there, and the caller holds `view` on the type **in that project**; otherwise it is hidden, counted and **not traversed through** (unchanged principle). Siblings reached through a shared parent are **out of scope** and counted as hidden, so a child's page never reveals a sibling's work; the parent's own page is where "this decision affects both children" is read. `ArtefactSummaryProvider.get_many_in_project` becomes `get_many_in_projects(db, project_ids, ids)` so queries stay per type, not per project. The related-project set is capped (50); beyond it `truncated=true`. Nodes carry `project_id` and a project label so the panel and tree can show where an artefact lives (Phases 6 and 7 render it).
+- **Dormant on reparent or detach, not deleted.** A link whose projects are no longer in one chain is neither displayed nor traversed (the other end's project is no longer one the viewer is entitled to see through this path), is counted as `unavailable`, and **reappears if the chain is restored**. Same philosophy as the org lock in 5c. Disabling a type's cross-level scope later is enforced **at creation only**: existing links are flagged "no longer permitted by its link type" in the panel, never deleted (as with 5b restrictions). Archived projects keep their links for display and stop being offered as targets.
+- **Admin UI:** one labelled select "Across nested projects" in the shared link-type panel (org and project scope, from 5c) with a one-line example per option (the pain point example for the directional one), disabled with an explanation for the directional option when `flow` is `none`. Changing it from a wider to a narrower value shows how many existing links will become flagged (a count, per the 5c "see the consequence" pattern). Toast on save.
+- **Nested-project checklist (CLAUDE.md):** no new project-scoped definition table, only a column on one that already nests, so the Action-Types fallback question does not arise; the setting is a property of the type and follows it. **Decided by: Agent**, record in `docs/decisions.md`.
+- **MCP:** `list_artefact_link_types` / `create_artefact_link` gain `other_project_id`; `get_artefact_link_graph` returns the new node fields. Skill and generated reference updated (Phase 1's drift test enforces it).
+- **Project export/import:** a project bundle carries **only same-project links**; cross-level links are left out and reported in the export summary, since a bundle must not embed an ancestor's content in a child's file. **Decided by: Agent.** Import never creates a cross-level link.
+
+**Isolation rules (SOC 2 multi-tenant isolation; consult the access-control policy; identify → verify → remediate, recorded in `docs/decisions.md`).** Today "the link is in my project" is implied everywhere because both ends always are; that assumption is what this phase removes. The identify step is a grep of every caller of `get_links_*` / `get_all_links` and every reader that resolves a link's other end by id (detail-page sections, reports, CSV/bundle export, search, MCP), because any that does not filter by project would now disclose an ancestor's artefact label to someone without access to it.
+
+| Where | What goes wrong | Rule |
+|-------|-----------------|------|
+| Link creators (generic endpoint, requirement links router, Compliance traceability router, change-request create and **approve**, MCP) | Accept an `other_project_id` the caller cannot view, or a pair no longer in one chain | One validator, above; a project the caller cannot view answers 404, never "forbidden", so existence is not disclosed. |
+| `link_graph`, per-node gate | Node from another project resolved with the wrong project's permissions | Resolve and authorise every node against **its own** project's membership, module enablement and FGAC. |
+| Readers that load the other end by id without a project filter | Show an ancestor's artefact to a child-only member | Every such reader goes through the gate or filters to the page's project; the audit lists each. |
+| `project_export` / `apply_project_data` | Bundle carries, or import fabricates, a cross-level link | Same-project only both ways, as above. |
+| Reparent, detach, archive, delete a project or artefact | Orphan or stale cross-level links still displayed | Dormant until the chain is restored; deleting an artefact removes its links in both projects (the existing orphan-cleanup path is extended and tested). |
+| Org-wide counts (link-type usage, delete-in-use, 5b/5c) | Usage counts or the move/remove targets miss, or reach into, projects the caller does not manage | Usage counts include cross-level links; move or remove still requires managing every project whose links change (5c's authority rule, now covering the other end's project). |
+
+```mermaid
+flowchart TD
+    subgraph TOP["Product (top project)"]
+        PP["Pain Point: connector wear"]
+        DEC["Decision: use connector X"]
+    end
+    subgraph HW["Hardware board (child)"]
+        RH["Requirement: board connector"]
+    end
+    subgraph SW["Software module (child)"]
+        RS["Requirement: handle disconnect"]
+    end
+    PP -->|"is addressed by (upstream_in_ancestor): allowed"| DEC
+    DEC -->|"implements (upstream_in_ancestor): allowed"| RH
+    DEC -->|"implements: allowed"| RS
+    RH -. "same type, upstream end below: rejected" .-> PP
+    RH -. "sibling: out of scope until Module 7 Phase 4" .- RS
+```
+
+**Tests:** backend pytest for the validator (matrix of `nesting_scope` × direction × same / parent / grandparent / child / sibling / unrelated / other-org project × `flow` values; equal-project always allowed; `upstream_in_ancestor` rejected for `flow` none on save and on flow change); each veto independent (type usability with an ancestor-local and a descendant-local type, hidden in the originating project, S's and D's artefact rules in their own projects, module disabled in one project, FGAC denied on either end, no access to the other project answering 404); change request created then reparented then approved is rejected; the generic and MCP endpoints and the requirement and Compliance routers all enforce it; the legacy typed endpoints and *Supersedes* stay same-project; graph (node in the other project gated by that project's permissions, sibling out of scope and counted hidden, no traversal through a hidden node, `truncated` at the project cap, bounded query count, dormant after reparent/detach and restored on reattach, archived project still displays); `link-candidate-projects` (truncates at the first inaccessible ancestor, descendants listed only if viewable); export excludes and reports cross-level links, import never creates one; artefact deletion removes cross-level links; link-type usage and delete-in-use count cross-level links and apply the authority rule; migration default on existing rows; one test per row of the isolation table; the reader audit as a test that fails when a new reader resolves another project's artefact without the gate. Playwright (on Gamma-5/Gamma-6 from 5c, enabling the Decisions and Context & Strategy modules there only after checking no existing spec reads their counts): parent pain point linked to a child requirement from the child's page and from the parent's; directional type refuses the reverse and offers the right orientation; setting a type to "Same project only" removes it from the cross-level picker while existing links still show flagged; a child-only member sees a parent link only if they can view the parent; detach hides the link and reattach restores it; admin select and its disabled state for `flow` none. Storybook for the admin select in each state and the project select. Seeds: the demo dataset gains the connector example (a top-level Pain Point and Decision linked to requirements in two child projects) and the e2e dataset gains one cross-level link of each directional kind. Docs: website link-types and nested-projects pages (with the diagram above), `docs/modules.md` (`link_type_seeds.nesting_scope`, `get_many_in_projects`), `docs/solution-architecture.md`, `docs/decisions.md`, the access-control policy's notes (new cross-project read path and how it is gated), README, `docs/mcp-server.md`.
+
 #### Phase 6 — Shared panel and migration
 
 - **New shared pieces:** `ArtefactLinksPanel` (direct links grouped by artefact type, direction phrased by link-type name, status badges; the add row is driven by Phase 5b's `link-types` endpoint (effective types per Phase 5c), not a per-page kind list) and `DetailLayout` with an `aside` slot. **Layout:** right-hand, sticky, collapsible (preference-stored), default open at ≥1280px and stacked below content on narrower viewports. Record "detail page with links aside" as a pattern in `docs/ux-style-guide.md` (the existing `SidePanel` is an overlay for row detail, not a persistent column, so it is not reused).
 - **Migrate all nine existing link UIs and every artefact detail page** onto it in the same phase, and delete the bespoke components (CLAUDE.md shared-component rule). Module detail pages are module-owned and import the core panel (allowed direction). The requirement page keeps rendering module-contributed extras through the existing `requirementDetailSections` hook, never a core import. Where a module's UI adds typed-relationship semantics the generic panel cannot express (Stakeholders' relationship kinds), the panel takes a render-prop for the add row rather than the module keeping a parallel list.
 - **Every row of Phase 5b's audit matrix gets the panel**, including pages with no link UI today (Action, Stakeholder Need, the three Compliance types) and the Requirement page, which now shows module-origin links (Decisions, Pain Points, Strategies, …) through the panel rather than a `requirementDetailSections` entry. Org-scoped pages show the read-only note from Phase 5b.
+- **Parent/child links (Phase 5d):** nodes and rows from another project carry a project badge (label map, never a raw id) and link to that project's page; the add row's target picker has a project select fed by `link-candidate-projects`; a link flagged "no longer permitted" or dormant is explained, not hidden.
 - **Tests:** the Phase 5b "links on every detail page" Playwright spec; Playwright for each artefact family (view, add, remove, hidden count message, narrow-viewport stacking); Storybook for panel states (empty, many, truncated, hidden).
+
+#### Phase 6b — Proposed links on change requests, merged on approval (added 2026-10-11)
+
+**Why:** today a change request carries no set of links. `ADD_LINK`/`REMOVE_LINK` each carry exactly one, applied wholesale on approval; a `NEW_REQUIREMENT` or `MODIFY_REQUIREMENT` request carries none (links hang off the requirement, not its versions, so they survive a modify untouched). With links now first-class (Phases 5b–6) and reaching across nested projects (5d), a request to change a locked requirement needs to be able to say "and link it to these", and the approver needs control over which of those land (Q15, **Decided by: User**). Attachments are the nearest precedent: `proposed_attachment_file_ids` is additive and applied on approval, but with no approver choice. **Outcome:** a change request can propose links; on approval the approver sees them in a dialog, merges all by default, can untick any or all, and every outcome is recorded.
+
+**Design**
+- **Storage:** a child table `ChangeRequestProposedLink(change_request_version_id, link_type_id, other_type, other_id, other_project_id, direction, outcome, outcome_reason)` with a real FK to the link type, not a JSON list, so the delete-in-use dialog (5b) can repoint it as it already does for `proposed_link_type_id` (found there: `ON DELETE SET NULL` silently strips the type). `direction` is relative to the requirement, because for `NEW_REQUIREMENT` the requirement does not exist until approval. `outcome` is `pending`, `merged`, `declined` (approver unticked it) or `skipped` (not valid at approval, with the reason). **Decided by: Agent.**
+- **`ADD_LINK` becomes the one-link case of the same mechanism** (its two columns migrate into the table, pending rows included), so there is one merge path and one dialog, not a second implementation of the pattern (shared-component rule). `REMOVE_LINK` is unchanged: removal is not a merge. Proposing link *removals* alongside a modify is out of scope. **Decided by: Agent.**
+- **Proposing:** the create/edit form for new and modify requests gets a "Proposed links" section that reuses Phase 6's panel add row in a *collect* mode (same effective link types, same project select from 5d), holding rows instead of POSTing them. Creation validates each with the Phase 5b/5c/5d validator (against the existing requirement, or for a new one, against its project and artefact type) and the creator's own permissions.
+- **Approval dialog** (`ApproveChangeRequestDialog`, Modal, built on `Modal` per the style guide): fed by `GET .../change-requests/{id}/link-merge-preview`, which re-runs the validator **now** for every proposed link, never trusting creation time.
+
+```mermaid
+flowchart TD
+    CR["Change request with proposed links"] --> AP["Approver chooses Approve"]
+    AP --> PV["Merge preview: each link re-validated now"]
+    PV --> DL["Dialog: valid links ticked by default,<br/>invalid or unviewable ones shown disabled with the reason"]
+    DL --> SEL{"Approver's selection"}
+    SEL -- "all (default)" --> TX
+    SEL -- "some" --> TX
+    SEL -- "none" --> TX
+    TX["One transaction: apply the field changes,<br/>create the ticked links, record each outcome,<br/>audit, notify the creator"]
+```
+
+  - **Default is merge-all**, "Select all / none" controls, and a count in the primary button ("Approve and merge 3 links", "Approve without links"). Approving with none ticked is allowed. For an `ADD_LINK` request that applies nothing at all, so the dialog says so and points to Reject instead.
+  - **A row is selectable only if it is valid and the approver may see it:** type still usable in the project (hidden or locked-out types fail), pair still in one nesting chain and permitted by the type's `nesting_scope` (5d), both ends' artefact rules, other end still exists, not already linked (shown as "Already linked, will be skipped"), the **approver** holds *view* on the other end in its own project (an approver cannot merge a link to something they cannot read), and the **creator** still could create it (the link is attributed to them). An unselectable row stays on the request and in the dialog with its reason; it is never silently dropped.
+  - **The API keeps the old contract:** `decision` takes an optional `merge_link_ids`; omitted means "merge every valid proposed link", which is exactly what `ADD_LINK` approval did before, so existing callers and the MCP decide tool behave as today. A selected link that became invalid between preview and submit returns 409 with a fresh preview rather than being skipped, so the approver re-confirms. Rejection merges nothing.
+- **Record and notify:** each proposed link ends `merged`, `declined` or `skipped` with a reason; a merged one writes the normal link `created` audit event with `via: change_request`, in both projects for a cross-level link (5d); the CR event carries counts. The creator's approval notification states how many links were merged and how many were not, so a partial merge is never a surprise. The CR detail page shows a "Proposed links" section with each row's outcome (label-mapped).
+- **Not shown elsewhere while pending:** proposed links appear on the CR page only, never in the requirement's Links panel or the link graph, since they are not links yet.
+- **MCP:** `decide_change_request` gains optional `merge_link_ids`, and a read-only `preview_change_request_links` tool lets an AI approver see what would merge. Skill and generated reference updated (Phase 1's drift test).
+- **SOC 2 (change management policy; consult the access-control policy):** approving remains a role-gated act, and the new approver-view check closes a path where approval would otherwise create a link to an artefact the approver cannot read. Record identify → verify → remediate in `docs/decisions.md`.
+- **Nested projects:** no new project-scoped definition table, so the fallback question does not arise.
+
+**Tests:** backend pytest for the preview (each failure reason on its own: hidden type, reparented out of chain, `nesting_scope` narrowed, artefact rule added, other end deleted or archived, duplicate, approver without view on the other project, creator who lost access) and for decision (default merges all; subset; none; invalid selected link returns 409 and writes nothing; one transaction rolls back wholly on failure; rejection merges nothing; outcome and reason recorded per link; audit events per link with the `via`; creator notified with counts; `NEW_REQUIREMENT` links created against the new requirement with correct direction; omitted `merge_link_ids` matches the old `ADD_LINK` behaviour); migration of existing `ADD_LINK` rows including pending ones; delete-in-use repoints proposed links and blocks removal while pending ones exist (extends 5b); concurrency (two approvers, one decision). Playwright: propose links on a modify request, approve with all (default), with a subset, with none; an unselectable row is shown with its reason; partial-merge notification text; `ADD_LINK` approval through the same dialog. Storybook for the dialog in each state (all valid, mixed, none valid, many rows). Seeds: a pending modify request in both datasets with three proposed links, one deliberately invalid. Docs: website change-request and links pages (with the diagram above), `docs/solution-architecture.md`, `docs/decisions.md`, `docs/mcp-server.md`, README.
 
 #### Phase 7 — Tree and map
 
@@ -410,6 +527,8 @@ flowchart LR
 | Q11 | Project link types | Projects can create link types and hide org ones; child projects inherit their ancestors' local types; an org switch can forbid it all; proper tenant isolation required (2026-10-06) | User |
 | Q12 | Artefact-side rules, duplicates, delete-in-use | Artefact types can restrict which link types they use; on duplicate names the ancestor wins; deleting an in-use type opens a dialog to move or remove its links (2026-10-06) | User |
 | Q13 | Delete-in-use follow-ups | Deleting a type that child projects use offers to copy it into them; bulk removal of links is allowed (2026-10-06) | User |
+| Q14 | Parent/child links | Artefacts can link to artefacts in ancestor or descendant projects; each link type can disable this or fix which end may be higher (2026-10-07; exact option set and default are Agent's reading) | User |
+| Q15 | Links on change requests | Links proposed on a change request merge into the requirement on approval, in a dialog that defaults to merge-all and lets the approver untick some or all (2026-10-11) | User |
 
 ## 4. Standing checklist per phase
 
@@ -431,4 +550,5 @@ flowchart LR
 | Requirement PDF regresses when moved to the document model | Existing four requirement-report test files as acceptance guard |
 | DOCX renders differently in Word vs LibreOffice | Manual Word check recorded; semantic structure (styles, real tables) tested, not pixels |
 | Notification fatigue | Coalescing; per-type preference opt-out |
+| Parent/child links disclose an ancestor's artefact to someone without access | Both ends authorised in their own project, 404 for an unviewable project, reader audit test, siblings out of scope |
 | Metrics label cardinality | Operation-only labels, test asserts value set |

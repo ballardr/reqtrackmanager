@@ -251,6 +251,25 @@ class LinkFlow(str, enum.Enum):
     FORWARD_IS_DOWNSTREAM = "forward_is_downstream"
 
 
+class LinkNestingScope(str, enum.Enum):
+    """Whether, and in which direction, a link type may join artefacts of a
+    project and one of its ancestors or descendants
+    (`RequirementLinkTypeDefinition.nesting_scope`).
+
+    SAME_PROJECT: both ends must be in one project (cross-level linking is off
+        for this type).
+    UPSTREAM_IN_ANCESTOR: the *upstream* end (per the type's `LinkFlow`) must be
+        in the same project as the downstream end or one of its ancestors; a
+        pain point may sit above a requirement, never below it. Needs a `flow`
+        other than `NONE`.
+    ANCESTOR_EITHER_WAY: either end may be in the ancestor project.
+    """
+
+    SAME_PROJECT = "same_project"
+    UPSTREAM_IN_ANCESTOR = "upstream_in_ancestor"
+    ANCESTOR_EITHER_WAY = "ancestor_either_way"
+
+
 class PermissionLevel(str, enum.Enum):
     """The four-tier taxonomy crossed with every registered artefact type
     (`app.modules.registry.get_all_registered_artefact_types`) to derive

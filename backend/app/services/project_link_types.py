@@ -39,7 +39,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import LinkFlow
+from app.models.enums import LinkFlow, LinkNestingScope
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement_link_type import ProjectLinkTypeVisibility, RequirementLinkTypeDefinition
@@ -74,6 +74,16 @@ def validated_restrictions(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
 
+def check_nesting_scope(scope: LinkNestingScope, flow: LinkFlow) -> None:
+    """Raises 422 when the nesting scope needs a flow direction the type does not have."""
+    from app.services.link_nesting import validate_nesting_scope
+
+    try:
+        validate_nesting_scope(scope, flow)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+
 def _check_name(db: Session, project: Project, forward_name: str, exclude_id: uuid.UUID | None) -> None:
     """Raises 400 unless `forward_name` is free in the project's own scope and not
     already provided by the organisation or an ancestor (compared case-insensitively)."""
@@ -101,6 +111,7 @@ def create_project_link_type(
     allowed_source_types: Collection[str] | None,
     allowed_target_types: Collection[str] | None,
     actor: User,
+    nesting_scope: LinkNestingScope = LinkNestingScope.ANCESTOR_EITHER_WAY,
 ) -> RequirementLinkTypeDefinition:
     """Creates a link type local to `project` (usable there and in every descendant).
 
@@ -111,6 +122,7 @@ def create_project_link_type(
         flow: Its direction in a traceability chain.
         allowed_source_types / allowed_target_types: Optional artefact-type restriction.
         actor: The acting user, for audit.
+        nesting_scope: Whether it may join this project and an ancestor/descendant.
 
     Returns:
         The new type.
@@ -118,10 +130,12 @@ def create_project_link_type(
     Raises:
         HTTPException: 403 the organisation locks customisation; 400 the name is
             taken here or provided by the organisation/an ancestor; 422 a
-            restriction names an unknown artefact type.
+            restriction names an unknown artefact type or the nesting scope needs a
+            flow the type lacks.
     """
     assert_not_locked(db, project)
     sources, targets = validated_restrictions(allowed_source_types, allowed_target_types)
+    check_nesting_scope(nesting_scope, flow)
     _check_name(db, project, forward_name, None)
     count = db.scalar(
         select(func.count()).select_from(RequirementLinkTypeDefinition)
@@ -130,7 +144,7 @@ def create_project_link_type(
     link_type = RequirementLinkTypeDefinition(
         organization_id=project.organization_id, project_id=project.id, forward_name=forward_name,
         reverse_name=reverse_name, sort_order=count, flow=flow, allowed_source_types=sources,
-        allowed_target_types=targets,
+        allowed_target_types=targets, nesting_scope=nesting_scope,
     )
     db.add(link_type)
     db.flush()
@@ -140,6 +154,7 @@ def create_project_link_type(
         detail={
             "forward_name": forward_name, "reverse_name": reverse_name, "flow": flow.value,
             "allowed_source_types": sources, "allowed_target_types": targets, "scope": "project",
+            "nesting_scope": nesting_scope.value,
         },
     )
     return link_type
@@ -164,6 +179,7 @@ def update_project_link_type(
     flow: LinkFlow | None,
     restrictions: dict[str, list[str] | None],
     actor: User,
+    nesting_scope: LinkNestingScope | None = None,
 ) -> RequirementLinkTypeDefinition:
     """Renames a project-local link type and optionally changes its flow/restrictions.
 
@@ -173,6 +189,7 @@ def update_project_link_type(
         link_type_id: The type.
         forward_name / reverse_name: The new phrases.
         flow: The new direction, or `None` to keep it.
+        nesting_scope: The new nesting scope, or `None` to keep it.
         restrictions: `allowed_source_types` and/or `allowed_target_types` to replace
             (a key left out keeps the current value; `None`/empty means any).
         actor: The acting user, for audit.
@@ -186,11 +203,14 @@ def update_project_link_type(
     """
     assert_not_locked(db, project)
     link_type = get_own_link_type(db, project, link_type_id)
+    check_nesting_scope(nesting_scope or link_type.nesting_scope, flow or link_type.flow)
     _check_name(db, project, forward_name, link_type.id)
     link_type.forward_name = forward_name
     link_type.reverse_name = reverse_name
     if flow is not None:
         link_type.flow = flow
+    if nesting_scope is not None:
+        link_type.nesting_scope = nesting_scope
     if restrictions:
         sources, targets = validated_restrictions(
             restrictions["allowed_source_types"] if "allowed_source_types" in restrictions else link_type.allowed_source_types,
@@ -205,6 +225,7 @@ def update_project_link_type(
         detail={
             "flow": link_type.flow.value, "allowed_source_types": link_type.allowed_source_types,
             "allowed_target_types": link_type.allowed_target_types, "scope": "project",
+            "nesting_scope": link_type.nesting_scope.value,
         },
     )
     return link_type

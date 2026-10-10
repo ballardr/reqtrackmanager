@@ -21,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.models.enums import LinkFlow
+from app.models.enums import LinkFlow, LinkNestingScope
 
 
 class RequirementLinkTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
@@ -59,6 +59,10 @@ class RequirementLinkTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
             action (e.g. "Supersedes" flips a status), so the generic link
             endpoints neither offer nor delete it. Set by seeding, never by
             the admin API.
+        nesting_scope: Whether this type may join artefacts of a project and its
+            ancestor or descendant, and which end may sit higher
+            (`models.enums.LinkNestingScope`). Enforced at link creation only
+            (`services.link_nesting`); `UPSTREAM_IN_ANCESTOR` requires a `flow`.
         project_id: `None` for an organisation-wide type (the default and the
             only kind before project-level link types existed); a project's
             id for a type its project admin defined, usable in that project
@@ -95,6 +99,10 @@ class RequirementLinkTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
     allowed_source_types: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     allowed_target_types: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     dedicated_endpoint: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    nesting_scope: Mapped[LinkNestingScope] = mapped_column(
+        str_enum(LinkNestingScope, 30), default=LinkNestingScope.ANCESTOR_EITHER_WAY,
+        server_default=LinkNestingScope.ANCESTOR_EITHER_WAY.value,
+    )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )

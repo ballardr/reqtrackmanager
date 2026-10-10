@@ -6,6 +6,7 @@ import {
   linkTypesFor,
   type ArtefactLinkRule,
   type ArtefactTypeOption,
+  type LinkNestingImpact,
   type LinkTypeDefinition,
   type LinkTypeUsage,
   type ProjectArtefactLinkRule,
@@ -55,9 +56,15 @@ const usage: LinkTypeUsage = {
 
 const customisation: ProjectCustomisation = { locks: [], local_link_type_count: 3, local_link_type_project_count: 2 };
 
-function mockApis(overrides: { linkTypes?: LinkTypeDefinition[]; rules?: ArtefactLinkRule[]; usage?: LinkTypeUsage; customisation?: ProjectCustomisation } = {}) {
+function mockApis(
+  overrides: {
+    linkTypes?: LinkTypeDefinition[]; rules?: ArtefactLinkRule[]; usage?: LinkTypeUsage; customisation?: ProjectCustomisation;
+    impact?: LinkNestingImpact;
+  } = {},
+) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/usage")) return overrides.usage ?? usage;
+    if (path.includes("/nesting-impact")) return overrides.impact ?? { flagged_link_count: 0 };
     if (path.endsWith("/project-customisation")) return overrides.customisation ?? customisation;
     if (path.endsWith("/artefact-types")) return artefactTypes;
     if (path.endsWith("/artefact-link-rules")) return overrides.rules ?? defaultRules;
@@ -120,6 +127,64 @@ export const SettingAndClearingARestriction: Story = {
         forward_name: "Addresses", reverse_name: "Is addressed by", allowed_target_types: null,
       })
     );
+  },
+};
+
+/** "Across nested projects" is a labelled select per type with a one-line example of the current option;
+ * the directional option needs a flow, so it is disabled (and the reason stated) on a type with no direction. */
+export const NestingScopeSelectExplainsItsOptions: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const related = await canvas.findByRole("combobox", { name: "Across nested projects: Related to" });
+    await expect(related).toHaveValue("ancestor_either_way");
+    await expect(within(related).getByRole("option", { name: "Upstream end may be in a parent project" })).toBeDisabled();
+    await expect(canvas.getAllByText(/Needs a direction: choose a direction/).length).toBeGreaterThan(0);
+
+    const depends = canvas.getByRole("combobox", { name: "Across nested projects: Depends on" });
+    await expect(within(depends).getByRole("option", { name: "Upstream end may be in a parent project" })).toBeEnabled();
+    // Labels come from the label map, never the raw enum value.
+    await expect(within(depends).queryByText("upstream_in_ancestor")).not.toBeInTheDocument();
+  },
+};
+
+/** Choosing a scope that flags no existing link saves at once and confirms with a Toast. */
+export const SettingTheNestingScope: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByDisplayValue("Depends on")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Across nested projects: Depends on" }), "Upstream end may be in a parent project");
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/orgs/${ORG}/link-types/lt-depends`, {
+        forward_name: "Depends on", reverse_name: "Is a dependency of", nesting_scope: "upstream_in_ancestor",
+      })
+    );
+    await expect(await body().findByText("Link type nesting updated.")).toBeInTheDocument();
+  },
+};
+
+/** Narrowing a scope that existing cross-project links rely on first says how many will be flagged (kept,
+ * never deleted) and only saves once confirmed; cancelling leaves the type as it was. */
+export const NarrowingTheNestingScopeAsksFirst: Story = {
+  beforeEach: () => mockApis({ impact: { flagged_link_count: 3 } }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = await canvas.findByRole("combobox", { name: "Across nested projects: Related to" });
+
+    await userEvent.selectOptions(select, "Same project only");
+    const dialog = within(await body().findByRole("dialog", { name: "Narrow where this link type can be used?" }));
+    await expect(dialog.getByText(/3 existing link\(s\).*flagged as no longer permitted.*nothing is deleted/i)).toBeInTheDocument();
+    await expect(api.get).toHaveBeenCalledWith(`/api/v1/orgs/${ORG}/link-types/lt-related/nesting-impact?nesting_scope=same_project`);
+    await expect(api.patch).not.toHaveBeenCalled();
+
+    await userEvent.click(dialog.getByRole("button", { name: "Narrow" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/orgs/${ORG}/link-types/lt-related`, {
+        forward_name: "Related to", reverse_name: "Related to", nesting_scope: "same_project",
+      })
+    );
+    await expect(await body().findByText("Link type nesting updated.")).toBeInTheDocument();
   },
 };
 
@@ -267,6 +332,7 @@ function mockProjectApis(
   const payload: ProjectLinkTypes = { locked: options.locked ?? false, items };
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/usage")) return options.usageFor ? options.usageFor(path) : usage;
+    if (path.includes("/nesting-impact")) return { flagged_link_count: 0 };
     if (path.endsWith(`/projects/${PROJECT}/link-types`)) return payload;
     if (path.endsWith("/artefact-types")) return artefactTypes;
     if (path.endsWith(`/projects/${PROJECT}/artefact-link-rules`)) {
@@ -297,6 +363,22 @@ export const ProjectShowsInheritedAboveItsOwn: Story = {
     const own = within(canvas.getByRole("region", { name: "Link types of this project" }));
     await expect(own.getByDisplayValue("Own verb")).toBeInTheDocument();
     await expect(own.getByRole("button", { name: "Can link from: Own verb" })).toHaveTextContent("Any artefact");
+  },
+};
+
+/** A project edits the nesting scope of its own types through the project endpoint. */
+export const ProjectEditsItsOwnTypesNestingScope: Story = {
+  args: { scope: projectScope },
+  beforeEach: () => mockProjectApis([projectRelated, projectOwn]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = await canvas.findByRole("combobox", { name: "Across nested projects: Own verb" });
+    await userEvent.selectOptions(select, "Same project only");
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT}/link-types/lt-own`, {
+        forward_name: "Own verb", reverse_name: "Own reverse", nesting_scope: "same_project",
+      })
+    );
   },
 };
 

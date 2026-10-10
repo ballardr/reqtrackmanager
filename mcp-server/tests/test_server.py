@@ -44,7 +44,7 @@ MCP_WRITES_ENABLED = os.environ.get("MCP_WRITES_ENABLED", "false").strip().lower
 READ_ONLY_TOOLS = {
     "list_organizations", "list_projects", "get_project",
     "list_requirements", "get_requirement", "get_requirement_history", "get_artefact_link_graph",
-    "list_artefact_link_types",
+    "list_artefact_link_types", "list_link_candidate_projects",
     "list_change_requests", "get_change_request", "list_change_request_votes",
     "list_change_request_tasks", "list_change_request_comments",
     "list_requirement_comments", "list_notifications",
@@ -462,6 +462,15 @@ async def test_artefact_link_tools_round_trip_and_validate_arguments(admin_token
                 await client.call_tool("create_artefact_link", {**valid, **bad})
         with pytest.raises(ToolError):
             await client.call_tool("list_artefact_link_types", {**base, "other_type": "Bad Type"})
+
+        # Nested-project linking: the candidate list always offers the project itself, and a malformed
+        # or unrelated `other_project_id` is rejected.
+        candidates = (await client.call_tool("list_link_candidate_projects", {"project_id": project_id})).data
+        assert [(i["id"], i["relation"]) for i in candidates["items"]] == [(project_id, "same")]
+        with pytest.raises(ToolError):
+            await client.call_tool("list_artefact_link_types", {**base, "other_project_id": "nope"})
+        with pytest.raises(ToolError):
+            await client.call_tool("list_artefact_link_types", {**base, "other_project_id": str(uuid.uuid4())})
 
 
 @pytest.mark.asyncio

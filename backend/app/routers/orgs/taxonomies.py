@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.enums import OrgRole
+from app.models.enums import LinkFlow, LinkNestingScope, OrgRole
 from app.models.project import Project
 from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
@@ -35,6 +35,7 @@ from app.schemas.link_type import (
     LinkTypeCandidateOut,
     LinkTypeCreate,
     LinkTypeDeleteOutcomeOut,
+    LinkTypeNestingImpactOut,
     LinkTypeOut,
     LinkTypeUpdate,
     LinkTypeUsageOut,
@@ -45,6 +46,7 @@ from app.schemas.project import MoveDirection
 from app.schemas.project_status import ProjectStatusCreate, ProjectStatusOut, ProjectStatusUpdate
 from app.services.audit import log_event
 from app.services.definitions import delete_definition_with_reassignment
+from app.services.link_nesting import count_cross_links_violating
 from app.services.link_type_usage import compute_usage
 from app.services.link_type_usage import delete_link_type as delete_link_type_in_use
 from app.services.link_types import (
@@ -55,7 +57,12 @@ from app.services.link_types import (
     set_artefact_rule,
 )
 from app.services.ordering import move_ordered
-from app.services.project_link_types import get_lock_summary, set_customisation_locks, validated_restrictions
+from app.services.project_link_types import (
+    check_nesting_scope,
+    get_lock_summary,
+    set_customisation_locks,
+    validated_restrictions,
+)
 from app.services.rbac import require_org_role
 
 router = APIRouter(tags=["organizations-taxonomies"])
@@ -183,6 +190,7 @@ def create_link_type(
     allowed_source_types, allowed_target_types = validated_restrictions(
         payload.allowed_source_types, payload.allowed_target_types
     )
+    check_nesting_scope(payload.nesting_scope, payload.flow)
     existing = db.scalar(
         select(RequirementLinkTypeDefinition.id).where(
             RequirementLinkTypeDefinition.organization_id == organization_id,
@@ -203,7 +211,7 @@ def create_link_type(
     link_type = RequirementLinkTypeDefinition(
         organization_id=organization_id, forward_name=payload.forward_name, reverse_name=payload.reverse_name,
         sort_order=count, flow=payload.flow, allowed_source_types=allowed_source_types,
-        allowed_target_types=allowed_target_types,
+        allowed_target_types=allowed_target_types, nesting_scope=payload.nesting_scope,
     )
     db.add(link_type)
     db.flush()
@@ -211,7 +219,8 @@ def create_link_type(
               actor_id=current_user.id, organization_id=organization_id,
               detail={"forward_name": link_type.forward_name, "reverse_name": link_type.reverse_name,
                       "flow": link_type.flow.value, "allowed_source_types": allowed_source_types,
-                      "allowed_target_types": allowed_target_types})
+                      "allowed_target_types": allowed_target_types,
+                      "nesting_scope": link_type.nesting_scope.value})
     db.commit()
     db.refresh(link_type)
     return link_type
@@ -280,10 +289,13 @@ def rename_link_type(
     )
     if existing is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A link type with this forward name already exists.")
+    check_nesting_scope(payload.nesting_scope or link_type.nesting_scope, payload.flow or link_type.flow)
     link_type.forward_name = payload.forward_name
     link_type.reverse_name = payload.reverse_name
     if payload.flow is not None:
         link_type.flow = payload.flow
+    if payload.nesting_scope is not None:
+        link_type.nesting_scope = payload.nesting_scope
     if "allowed_source_types" in payload.model_fields_set or "allowed_target_types" in payload.model_fields_set:
         source_types, target_types = validated_restrictions(
             payload.allowed_source_types if "allowed_source_types" in payload.model_fields_set else link_type.allowed_source_types,
@@ -294,10 +306,27 @@ def rename_link_type(
     log_event(db, entity_type="requirement_link_type_definition", entity_id=link_type.id, action="renamed",
               actor_id=current_user.id, organization_id=organization_id,
               detail={"flow": link_type.flow.value, "allowed_source_types": link_type.allowed_source_types,
-                      "allowed_target_types": link_type.allowed_target_types})
+                      "allowed_target_types": link_type.allowed_target_types,
+                      "nesting_scope": link_type.nesting_scope.value})
     db.commit()
     db.refresh(link_type)
     return link_type
+
+
+@router.get("/{organization_id}/link-types/{link_type_id}/nesting-impact", response_model=LinkTypeNestingImpactOut)
+def get_link_type_nesting_impact(
+    organization_id: UUID, link_type_id: UUID,
+    nesting_scope: LinkNestingScope = Query(..., description="The scope the type would get."),
+    flow: LinkFlow | None = Query(None, description="The flow it would get; omitted keeps the current one."),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """How many existing cross-level links of an organisation-wide link type would be
+    flagged "no longer permitted" if its nesting scope (and flow) changed. Read-only,
+    so the admin sees the consequence before saving."""
+    link_type = db.get(RequirementLinkTypeDefinition, link_type_id)
+    if link_type is None or link_type.organization_id != organization_id or link_type.project_id is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link type not found.")
+    return LinkTypeNestingImpactOut(flagged_link_count=count_cross_links_violating(db, link_type, nesting_scope, flow))
 
 
 @router.get("/{organization_id}/link-types/{link_type_id}/usage", response_model=LinkTypeUsageOut)

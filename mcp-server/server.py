@@ -614,6 +614,13 @@ async def get_artefact_link_graph(
         the caller cannot see) or `unavailable_count` is above zero (linked
         records of a kind that cannot be shown); say so rather than treating
         the graph as complete.
+
+        The graph also reaches the project's parent and child projects the
+        caller can open: each node has `project_id` and `project_name` (null
+        for an organisation-wide record), and an edge with `cross_project`
+        true joins two projects; `nesting_permitted` false means its link
+        type no longer allows that pairing (the link is kept, so report it).
+        Sibling projects are never included.
     """
     pid = _require_project_id(project_id)
     aid = _require_uuid(artefact_id, "artefact_id")
@@ -636,6 +643,7 @@ async def list_artefact_link_types(
     artefact_type: str,
     artefact_id: str,
     other_type: str | None = None,
+    other_project_id: str | None = None,
 ) -> list[dict]:
     """Lists the link types usable from an artefact, and what can sit at the other end: use before `create_artefact_link`.
 
@@ -650,6 +658,10 @@ async def list_artefact_link_types(
             "decision" or "pain_point".
         artefact_id: The artefact's UUID (from the matching list tool).
         other_type: Optional artefact type; only options that can reach it.
+        other_project_id: Optional UUID of a parent or child project (from
+            `list_link_candidate_projects`) when the other record lives
+            there; only link types whose nesting scope allows that pairing
+            are listed, with the orientation each can be used in.
 
     Returns:
         One entry per usable way to link, each with `link_type_id`,
@@ -668,9 +680,34 @@ async def list_artefact_link_types(
     if other_type is not None:
         _require_artefact_type(other_type, "other_type")
         params["other_type"] = other_type
+    if other_project_id is not None:
+        params["other_project_id"] = _require_uuid(other_project_id, "other_project_id")
     response = await _call_backend(
         "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-types", params=params
     )
+    return response.json()
+
+
+@mcp.tool
+async def list_link_candidate_projects(project_id: str | None = None) -> dict:
+    """Lists the projects a link made from this project may reach: itself, its parent projects and its child projects that the caller can open.
+
+    Use it before linking across nested projects. Sibling and unrelated
+    projects are never listed (they cannot be linked), and a parent the caller
+    cannot open ends the list upwards.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+
+    Returns:
+        `items`, each with `id`, `name`, `relation` ("same", "ancestor" or
+        "descendant"), `distance` (levels away), `label` (for example "Parent
+        project") and `is_archived`, and `truncated` (true when the list was
+        capped). Pass an item's `id` as `other_project_id` to
+        `list_artefact_link_types` and `create_artefact_link`.
+    """
+    pid = _require_project_id(project_id)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/link-candidate-projects")
     return response.json()
 
 
@@ -1113,8 +1150,9 @@ if MCP_WRITES_ENABLED:
         direction: str,
         other_type: str,
         other_id: str,
+        other_project_id: str | None = None,
     ) -> dict:
-        """Links an artefact to another record of the same project.
+        """Links an artefact to another record of the same project, or of a parent or child project.
 
         Call `list_artefact_link_types` first and use one of its entries'
         `link_type_id` and `direction`; the other record's type must be one of
@@ -1132,11 +1170,18 @@ if MCP_WRITES_ENABLED:
                 "incoming" if it is the target (from `list_artefact_link_types`).
             other_type: The other record's artefact type.
             other_id: The other record's UUID.
+            other_project_id: The UUID of the other record's project when it
+                is a parent or child project (from
+                `list_link_candidate_projects`); omit for the same project.
+                Use `list_artefact_link_types` with the same value: a link
+                type's nesting scope decides whether, and in which direction,
+                a cross-project link is allowed.
 
         Returns:
             The created link: `id`, `link_type_id`, `phrase` (how it reads
             from this artefact's side), `direction` and `other` (`type`,
-            `type_label`, `id`, `label`, `status`, `is_archived`).
+            `type_label`, `id`, `label`, `status`, `is_archived`,
+            `project_id`).
         """
         pid = _require_project_id(project_id)
         aid = _require_uuid(artefact_id, "artefact_id")
@@ -1150,6 +1195,8 @@ if MCP_WRITES_ENABLED:
             "other_type": other_type,
             "other_id": _require_uuid(other_id, "other_id"),
         }
+        if other_project_id is not None:
+            body["other_project_id"] = _require_uuid(other_project_id, "other_project_id")
         response = await _call_backend(
             "POST", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/links", json=body
         )

@@ -14,7 +14,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import LinkFlow
+from app.models.enums import LinkFlow, LinkNestingScope
 
 
 class LinkTypeCreate(BaseModel):
@@ -27,6 +27,7 @@ class LinkTypeCreate(BaseModel):
     flow: LinkFlow = LinkFlow.NONE
     allowed_source_types: list[str] | None = None
     allowed_target_types: list[str] | None = None
+    nesting_scope: LinkNestingScope = LinkNestingScope.ANCESTOR_EITHER_WAY
 
 
 class LinkTypeUpdate(BaseModel):
@@ -35,13 +36,15 @@ class LinkTypeUpdate(BaseModel):
     existing link using this type, since every reference points at the
     row's id, never its names. `flow` left out keeps the current direction.
     `allowed_source_types`/`allowed_target_types` left out keep the current
-    restriction; present, they replace it (`null` or empty = any artefact type)."""
+    restriction; present, they replace it (`null` or empty = any artefact type).
+    `nesting_scope` left out keeps the current value."""
 
     forward_name: str
     reverse_name: str
     flow: LinkFlow | None = None
     allowed_source_types: list[str] | None = None
     allowed_target_types: list[str] | None = None
+    nesting_scope: LinkNestingScope | None = None
 
 
 class LinkTypeOut(BaseModel):
@@ -57,6 +60,7 @@ class LinkTypeOut(BaseModel):
     allowed_source_types: list[str] | None = None
     allowed_target_types: list[str] | None = None
     dedicated_endpoint: bool = False
+    nesting_scope: LinkNestingScope = LinkNestingScope.ANCESTOR_EITHER_WAY
 
 
 class ArtefactTypeOut(BaseModel):
@@ -144,6 +148,7 @@ class ProjectLinkTypeOut(BaseModel):
     allowed_source_types: list[str] | None = None
     allowed_target_types: list[str] | None = None
     dedicated_endpoint: bool = False
+    nesting_scope: LinkNestingScope = LinkNestingScope.ANCESTOR_EITHER_WAY
     scope: LinkTypeScope
     owner_project_id: UUID | None = None
     owner_project_name: str | None = None
@@ -161,6 +166,13 @@ class ProjectLinkTypesOut(BaseModel):
 
     locked: bool
     items: list[ProjectLinkTypeOut]
+
+
+class LinkTypeNestingImpactOut(BaseModel):
+    """What changing a link type's nesting scope (and/or flow) would do to existing
+    cross-level links: how many would be flagged "no longer permitted". Nothing is deleted."""
+
+    flagged_link_count: int
 
 
 class LinkTypeVisibilitySet(BaseModel):

@@ -145,7 +145,8 @@ export function buildLinkType(overrides: Partial<LinkTypeDefinition> = {}): Link
   return {
     id: nextId("linktype"), organization_id: "org-1", forward_name: "Depends on",
     reverse_name: "Is a dependency of", sort_order: 0, flow: "none",
-    allowed_source_types: null, allowed_target_types: null, dedicated_endpoint: false, ...overrides,
+    allowed_source_types: null, allowed_target_types: null, dedicated_endpoint: false,
+    nesting_scope: "ancestor_either_way", ...overrides,
   };
 }
 

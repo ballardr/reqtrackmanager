@@ -322,6 +322,21 @@ flowchart TD
     SEED["ModuleDefinition.link_type_seeds"] -.->|"created when absent"| LT
 ```
 
+**Links across nested projects (platform enhancements Phase 5d).** A link may join an artefact to one in an ancestor or descendant project (never a sibling or an unrelated project). `REQUIREMENT_LINK_TYPE_DEFINITION.nesting_scope` decides, per type, whether that is allowed and which end may sit higher (`same_project`, `upstream_in_ancestor` using the type's `flow`, `ancestor_either_way`); `ARTEFACT_LINK.source_project_id`/`target_project_id` are set only for such a link. The generic authoring endpoint takes `other_project_id`; every end is resolved, permission-checked and change-request-gated in its own project, the type must be in scope on the ancestor side, and the audit event is written in both projects (`services/link_nesting.py`, `link_authoring.py`, `link_types.validate_link_allowed`). `services/relationships.py` excludes cross-level rows unless asked, so no reader written for one-project links can show an ancestor's artefact to a child-only member; the link graph (`ArtefactResolver(include_related=True)`) is the reader that authorises each node against its own project. A link whose projects stop being related is dormant, not deleted. Project bundles carry same-project links only.
+
+```mermaid
+flowchart TD
+    CALL["POST .../links with other_project_id"] --> REL["related_projects:<br/>ancestors + descendants the caller can open"]
+    REL -->|"not in set"| NF["404 Linked record not found"]
+    REL --> VAL["validate_link_allowed"]
+    VAL --> NEST["check_nesting<br/>(type's nesting_scope + flow)"]
+    VAL --> USE["type usable on the ancestor side,<br/>offered in the creating project"]
+    VAL --> RULES["artefact-type rules, each end in its own project"]
+    NEST & USE & RULES --> L[("artefact_links<br/>source_project_id / target_project_id set")]
+    L --> G["link graph: each node resolved in its own project;<br/>siblings hidden, broken chains dormant"]
+    L -.->|"include_cross_project=False by default"| LEG["legacy readers, exports"]
+```
+
 **Stakeholders (Module 2 — Phase 1.2).** The same module now also records Stakeholders — the people and groups with an interest in the project — with the same org/project scope, versioning, lifecycle and two-tier type vocabulary as Personas (shared code: `type_vocabulary.TypeVocabulary` and `_attachments.AttachmentKit` on the backend; `RecordListView`, `RecordLifecycleControls`, `RecordDiscussion` and friends on the frontend). Each version carries Influence and Interest ratings from a second consumer of the core scoring matrix (the `stakeholder` scheme, whose level references use the `count_level_usage`/`reassign_level_usage` hooks for the first time), a target engagement cadence with a suggestion derived from the power/interest quadrant, and an optional link to a platform user. A Stakeholder *represents* Personas through a typed, many-to-many `ArtefactLink`. Because a Stakeholder holds a named person's contact details (Confidential personal data), it is the first record that can be permanently erased on its own (`erase_stakeholder`: versions, comments, files in storage and links are all removed, and the audit trail keeps only the id) — see the retention policy.
 
 **Stakeholder Needs (Module 2 — Phase 2).** The same module records Stakeholder Needs — a person's need in their own words, kept apart from the Requirement it leads to (§10.4). A Need is project-scoped only, versioned like the other two artefacts (Draft/Active/Retired), and linked through two typed `ArtefactLink`s: Stakeholder or Persona → Need ("has need") and Need → Requirement of the same project ("gives rise to"). Both link types are created per organisation on first use by the shared `service.get_or_create_link_type`. A Stakeholder's or Persona's page lists only the current project's needs, so an organisation-wide record never exposes another project's.

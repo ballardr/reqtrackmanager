@@ -289,6 +289,7 @@ def create_change_request(
                 or link.source_type != ArtefactType.REQUIREMENT
                 or link.target_type != ArtefactType.REQUIREMENT
                 or requirement.id not in (link.source_id, link.target_id)
+                or link.source_project_id is not None  # change requests cover same-project links only
             ):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_link_id.")
     else:
