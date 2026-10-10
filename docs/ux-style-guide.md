@@ -290,7 +290,7 @@ A 3px coloured left-border (`.entity-accent-row` for a `<tr>`, `.entity-accent-c
 | Change Request | `--color-entity-change-request` (violet) | `ChangeRequestsPage` rows/cards |
 | Compliance | `--color-entity-compliance` (terracotta) | `RequirementTraceabilityLinksSection.tsx`'s compliance-requirement-link rows |
 
-The main payoff is a *mixed* list, not a homogeneous one — e.g. a requirement's own Links card shows requirement-to-requirement links directly above compliance-requirement links from the same card, and the accent is what lets a user tell which is which without reading the text. **This set is deliberately not pre-sized for the full future-modules roadmap** ([docs/plans/future-modules-2026-09-overview.md](plans/future-modules-2026-09-overview.md) envisions up to a dozen artefact kinds across ten modules) — hand-picking that many mutually distinguishable, colourblind-safe hues today, for entities that don't exist yet and whose actual list-row shape is unknown, would be designing against a guess. A future module that needs this adds one token + one `ENTITY_ACCENT_COLOR` entry when it actually ships; it does not redesign this mechanism.
+The main payoff is a *mixed* list, not a homogeneous one — e.g. a requirement's aside shows the Links panel directly above compliance-requirement links, and the accent is what lets a user tell which is which without reading the text. **This set is deliberately not pre-sized for the full future-modules roadmap** ([docs/plans/future-modules-2026-09-overview.md](plans/future-modules-2026-09-overview.md) envisions up to a dozen artefact kinds across ten modules) — hand-picking that many mutually distinguishable, colourblind-safe hues today, for entities that don't exist yet and whose actual list-row shape is unknown, would be designing against a guess. A future module that needs this adds one token + one `ENTITY_ACCENT_COLOR` entry when it actually ships; it does not redesign this mechanism.
 
 ## Pattern: action menu
 
@@ -584,7 +584,7 @@ flowchart TD
   Count -->|"No (0 or 1)"| Panel["SidePanel alone is enough — view/edit\nin place, list still visible underneath."]
 ```
 
-Each of the four markers is independently checkable against a component's own imports/state (does it render a `*CommentsSection`, a `FileAttachmentList`, a `*RelationshipsSection`, or 3+ `ConfirmDialog`s?) rather than a subjective "feels cramped" call — the "feels cramped" fallback only matters in the rare case none of the four apply but the panel is still visibly overloaded (e.g. many long free-text fields), and even then a page is the fix, not a wider panel.
+Each of the four markers is independently checkable against a component's own imports/state (does it render a `*CommentsSection`, a `FileAttachmentList`, the Links panel, or 3+ `ConfirmDialog`s?) rather than a subjective "feels cramped" call — the "feels cramped" fallback only matters in the rare case none of the four apply but the panel is still visibly overloaded (e.g. many long free-text fields), and even then a page is the fix, not a wider panel.
 
 **When the checklist says "page," add a read-only quick-view `SidePanel` only if it earns its keep** — a minimal peek (title/name plus the one or two fields that identify the row, no actions, no edit, per this pattern's own "open it read-only" rule above) with a single "View full details" link into the page. Skip the quick view entirely (plain direct navigation, `rowHref` straight to the page — Requirements' own precedent, no quick-view step at all) when a fast peek isn't worth the extra layer for that entity's list.
 
@@ -678,13 +678,31 @@ flowchart TD
 
 Sortable columns are the obvious ones only — a name/title, a status, an ID/code, a created/modified date, a priority where one exists — never a column with no natural order (an actions column, a badge-only column). This used to note that Org Admin's Groups section and Project Admin's Groups tab were accordion-of-cards, not `<th>`-based columns, so this pattern simply didn't apply to them — both are real `DirectoryTable`s now (Phase B, 2026-08-31 follow-up UX batch), each with a sortable Name column and a Members count column that deliberately stays unsorted (no natural order for a bare count). Both list endpoints (`GET /orgs/{id}/groups`, `GET /projects/{id}/groups`) already page via `limit`/`offset`, so Name sort took the "backend `order` param, header click refetches" branch below rather than a client-side sort of only the loaded page — the same choice Org Admin's Users table made.
 
+## Pattern: detail page with a links aside
+
+*(New 2026-10-11 — October 2026 platform enhancements, Phase 6.)*
+
+Every artefact detail page (requirement, action, and each module's records) shows its links beside its content in one shared **Links panel** (`ArtefactLinksPanel`), inside `DetailLayout`:
+
+```mermaid
+flowchart LR
+    W["Viewport ≥ 1280px"] --> A["Content column + sticky aside (340px), aside collapsible,<br/>choice stored per user (detail_aside_collapsed)"]
+    N["Viewport < 1280px"] --> B["Aside stacks under the content, always shown, no toggle"]
+```
+
+- **One component per pattern.** A page does not list its own links. It passes its `artefactType` and id to the panel; the link kinds offered come from the server (restriction-, rule- and nesting-filtered), so a new artefact type or link type needs no UI change.
+- **Page-specific actions go in the `actions` slot**, not in a parallel list: a dedicated action with its own meaning (Supersede) is a button beside "Add link" (`SupersedeAction`). Links that are not between two project records (Compliance's links to standard requirements) stay a module section in the same aside.
+- **Add is a Modal** ("Add a link": kind of record, relationship, searchable record, project when one exists above or below), per Principle 3; remove is a Tier-1 confirmation; every mutation gives a Toast.
+- **Status comes from label maps**, never raw values: core types use their own maps, modules register `artefactStatusLabels` on their `TierAModuleDefinition`; a status with no label shows no badge.
+- **Why not `SidePanel`:** `SidePanel` is an overlay for row detail, not a persistent column.
+
 ## Pattern: tabbed picker modal
 
 *(New 2026-09-14 — Platform review 2026-09, Phase 7.)*
 
 A `Modal` whose body is the shared `Tabs` component (Pattern "Tabs," above), used when a picker needs more than one genuinely different way to find a target and needs real screen space to do it — more than the anchored, one/two-field `Popover` (Pattern "create panels, popovers, and one door for bulk") can hold, and not a fit for the two-pane `Modal` the "resource picker dialog" pattern already names (that shape is for browsing *sources*, not switching between unrelated *search strategies* for the same target type). Each tab is fully self-contained — its own state, its own submit action, its own "this succeeded, close and refresh" signal — the modal itself only hosts the tab strip and renders whichever tab is active.
 
-**Built** as `RequirementLinkPickerModal` (`frontend/src/components/RequirementLinkPickerModal.tsx`) — replaces the old flat, unsearched `<select>` `Popover` on a requirement's "Add link" button with a Search tab (plain text filter) and a Requirements tab (a cascading component → category → requirement browse, mirroring `RequirementsPage.tsx`'s own create-form cascade). A currently-enabled module can contribute further tabs of its own (`requirementLinkPickerTabs`, `frontend/src/modules/types.ts` — the same generic "module hands the parent a render function" shape `requirementDetailSections` already established, extended with an `onLinked()` callback so the modal can close and refresh without knowing what kind of link a contributed tab just created); Compliance's own standard → version → requirement cascade (`ComplianceRequirementLinkPickerTab.tsx`) is the first such tab.
+**Built** for the requirement link picker, which has since been replaced by the shared Links panel's "Add a link" dialog (a single-purpose form, so no tabs). The pattern stays for a picker that genuinely needs more than one way to find a target; no current screen uses it.
 
 *Why every tab panel — built-in or contributed — is conditionally rendered, never "always mounted, hidden via the `hidden` attribute":* a contributed tab reasonably reuses core vocabulary (a "Link type" select, an "Add link" button) verbatim, since it's still creating a link of some kind. An inactive tab left mounted-but-hidden would leave a second element with that same accessible name sitting in the DOM, which `getByLabel`/`getByText`-style queries — unlike `getByRole`, which already excludes `hidden`-attribute elements from Playwright/testing-library's accessibility-tree matching — do not filter out by default, breaking on an ambiguous match the moment a different tab is active. Unmounting the inactive tab removes the whole ambiguity class rather than requiring every future tab author to remember to scope their queries defensively.
 

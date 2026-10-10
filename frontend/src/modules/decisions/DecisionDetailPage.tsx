@@ -6,7 +6,7 @@
  * `module.ts`), replacing the `SidePanel`-only `DecisionDetailPanel.tsx`
  * (Phase 9, 2026-09-22). `docs/ux-style-guide.md`'s "Pattern: entity detail
  * panel" checklist called for a page here: a Decision's detail carries a
- * comment thread, file attachments, a relationships section, and 3+
+ * comment thread, file attachments, a Links panel, and 3+
  * lifecycle actions each with their own `ConfirmDialog` — all four of the
  * checklist's "too much for a SidePanel" markers. `ProjectDecisionsPage
  * .tsx`'s list opens `DecisionQuickViewPanel` (a minimal read-only peek) on
@@ -33,14 +33,16 @@ import { Pencil } from "lucide-react";
 import type { OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
+import { SupersedeAction } from "../../components/SupersedeAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionFormModal } from "./DecisionFormModal";
-import { DecisionRelationshipsSection } from "./DecisionRelationshipsSection";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionComment, DecisionFieldValues, DecisionTypeDefinition } from "./types";
 import type { FileAsset } from "../../api/types";
@@ -128,7 +130,29 @@ export function DecisionDetailPage() {
   const userOptions = orgUsers.map((u) => ({ id: u.user_id, display_name: u.display_name }));
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="decision"
+          artefactId={decision.id}
+          actions={({ reload }) => (
+            <SupersedeAction
+              artefactLabel="Decision"
+              onDone={reload}
+              loadCandidates={async () =>
+                (await decisionsApi.listDecisions(projectId))
+                  .filter((d) => d.id !== decision.id)
+                  .map((d) => ({ id: d.id, label: `${d.unique_code} — ${d.title}` }))
+              }
+              onSupersede={async (oldId) => {
+                await decisionsApi.createSupersession(projectId, decision.id, oldId);
+              }}
+            />
+          )}
+        />
+      }
+    >
       <Link to={`/projects/${projectId}/modules/decisions`}>← Decisions</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{decision.unique_code}</h1>
@@ -180,8 +204,6 @@ export function DecisionDetailPage() {
             {decision.is_archived ? "Unarchive" : "Archive"}
           </button>
         </div>
-
-        <DecisionRelationshipsSection projectId={projectId} decision={decision} onChanged={() => setDecision(decision)} />
 
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
@@ -309,7 +331,7 @@ export function DecisionDetailPage() {
           onCancel={() => setArchiveConfirm(false)}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }
 

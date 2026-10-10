@@ -44,8 +44,8 @@ A project Strategy doesn't have to reference an organisation Strategy, but when 
 
 | A project Strategy in Active status |
 | --- |
-| Falcon-3's Strategy record: fields, its own Drives/Defines relationships, and its version history |
-| ![Detail view of an Active Strategy for the Falcon-3 project, showing its fields, a Defines relationship to a Future State, a Drives relationship to a Requirement, and a five-entry version history](../../../static/img/screenshots/strategy-detail.png) |
+| Falcon-3's Strategy record: its fields and version history, with its Defines, Is driven by and Drives links in the Links panel |
+| ![Detail view of an Active Strategy for the Falcon-3 project, showing its fields and a Links panel with a Defines link to a Future State, an Is driven by link to a Pain Point and a Drives link to a Requirement](../../../static/img/screenshots/strategy-detail.png) |
 
 ## The five nav entries
 

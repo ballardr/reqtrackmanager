@@ -63,6 +63,8 @@ export const COMPLIANCE_STATUS_LABEL: Record<ComplianceStatus, string> = {
   pending_review: "Pending review",
   rejected: "Rejected",
 };
+/** A required-action assessment's status as the Links panel shows it (`open` until completed). */
+export const COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL: Record<string, string> = { open: "Open", completed: "Completed" };
 export type ComplianceApplicability = "applicable" | "not_applicable";
 export const COMPLIANCE_APPLICABILITY_LABEL: Record<ComplianceApplicability, string> = {
   applicable: "Applicable",

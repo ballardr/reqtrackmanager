@@ -1,39 +1,32 @@
 /**
  * Module: modules/compliance/RequirementTraceabilityLinksSection
  *
- * The Compliance module's contribution to `pages/RequirementDetailPage
- * .tsx`'s own "Links" card (compliance-module-plan.md Phase 34), via the
- * `requirementDetailSections` extension point (`modules/types.ts`) — lists
- * this core requirement's own links to compliance standard requirements,
- * with remove/`ConfirmDialog` behaviour.
+ * The Compliance module's contribution to `pages/RequirementDetailPage.tsx`'s
+ * aside (below the shared Links panel), via the `requirementDetailSections`
+ * extension point (`modules/types.ts`): this core requirement's links to compliance
+ * standard requirements, with an "Add" dialog and remove behind `ConfirmDialog`.
  *
- * Platform-review-2026-09 Phase 7 split this component in two: this half
- * keeps the list/remove responsibility; the "add a link" picker (three
- * cascading selects, standard -> version -> requirement) moved into
- * `ComplianceRequirementLinkPickerTab.tsx`, registered as a
- * `requirementLinkPickerTabs` contribution to the shared
- * `RequirementLinkPickerModal` instead of owning its own button+`Popover`
- * here. Because that picker is now a different component instance, this
- * list has no direct way to learn a new link was just added from it — it
- * re-fetches on `refreshToken` changing instead (a generic plumbing signal
- * `RequirementDetailPage.tsx` bumps whenever any link involving this
- * requirement changes, core-to-core or module-contributed).
+ * It stays a module-owned section rather than moving into the shared panel because
+ * these links are a different kind of record: a row in
+ * `ComplianceRequirementTraceabilityLink` pointing at an organisation-level standard
+ * requirement (picked standard -> version -> requirement, there is no search
+ * endpoint over them), not an `ArtefactLink` between two project records.
  *
  * Its own accent colour (the left-border stripe below) comes from this
  * module's own `module.ts` registration (`entityAccentColor`) via
  * `useEntityAccentColor("compliance")`, not a core `ENTITY_ACCENT_COLOR`
- * map entry — see `modules/entityAccentColor.ts`'s own docstring for why a
- * `"compliance"` entry briefly lived in that core map and was corrected
- * back out.
+ * map entry — see `modules/entityAccentColor.ts`'s own docstring.
  */
 import { useEffect, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { Modal } from "../../components/Modal";
 import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useEntityAccentColor } from "../entityAccentColor";
 import * as complianceApi from "./api";
+import { ComplianceRequirementLinkPickerTab } from "./ComplianceRequirementLinkPickerTab";
 import type { ComplianceRequirementTraceabilityLink } from "./types";
 
 interface Props {
@@ -43,12 +36,13 @@ interface Props {
   refreshToken: number;
 }
 
-export function RequirementTraceabilityLinksSection({ projectId, requirementId, refreshToken }: Props) {
+export function RequirementTraceabilityLinksSection({ projectId, requirementId, organizationId, refreshToken }: Props) {
   const strings = useStrings();
   const { showToast } = useToast();
   const accentColor = useEntityAccentColor("compliance");
   const [links, setLinks] = useState<ComplianceRequirementTraceabilityLink[]>([]);
   const [linkToRemove, setLinkToRemove] = useState<ComplianceRequirementTraceabilityLink | null>(null);
+  const [adding, setAdding] = useState(false);
 
   async function reload() {
     try {
@@ -69,8 +63,13 @@ export function RequirementTraceabilityLinksSection({ projectId, requirementId, 
   }
 
   return (
-    <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem", marginTop: "0.25rem" }}>
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>{strings.compliance.requirementLinksTitle}</h3>
+    <section className="card stack" aria-label={strings.compliance.requirementLinksTitle}>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.compliance.requirementLinksTitle}</h2>
+        <button className="btn" onClick={() => setAdding(true)}>
+          <Plus size={14} /> {strings.requirements.addLink}
+        </button>
+      </div>
       {links.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.compliance.noRequirementLinksYet}</p>}
       {links.map((link) => (
         <div
@@ -98,6 +97,19 @@ export function RequirementTraceabilityLinksSection({ projectId, requirementId, 
           </button>
         </div>
       ))}
+      {adding && (
+        <Modal title={strings.compliance.requirementLinksTitle} onClose={() => setAdding(false)}>
+          <ComplianceRequirementLinkPickerTab
+            projectId={projectId}
+            requirementId={requirementId}
+            organizationId={organizationId}
+            onLinked={() => {
+              setAdding(false);
+              void reload();
+            }}
+          />
+        </Modal>
+      )}
       {linkToRemove && (
         <ConfirmDialog
           title={strings.compliance.removeLinkTitle}
@@ -111,6 +123,6 @@ export function RequirementTraceabilityLinksSection({ projectId, requirementId, 
           onCancel={() => setLinkToRemove(null)}
         />
       )}
-    </div>
+    </section>
   );
 }

@@ -191,7 +191,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByText(new RegExp(reference)).click();
     await page.getByText(requirementName).click();
     await page.getByLabel("Link existing evidence").selectOption({ label: evidenceTitle });
-    await page.getByRole("button", { name: "Link" }).click();
+    await page.getByRole("button", { name: "Link", exact: true }).click();
     await expect(page.getByRole("button", { name: `Unlink ${evidenceTitle}` })).toBeVisible();
 
     // --- Phase 33: "Upload new evidence" creates a new evidence record and

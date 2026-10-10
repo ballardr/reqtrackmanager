@@ -824,6 +824,104 @@ a.figure-projects-link:hover {
   margin: 0 auto;
 }
 
+/* Artefact detail page frame (components/DetailLayout.tsx): content plus a
+   sticky, collapsible aside at >=1280px, stacked below that. minmax(0, 1fr)
+   for the same reason as .side-grid: wide unbreakable content must not push
+   the aside column off-screen. */
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.detail-layout.container {
+  max-width: 1480px;
+}
+
+.detail-layout__main {
+  min-width: 0;
+}
+
+.detail-layout__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.detail-layout__toggle {
+  align-self: flex-end;
+}
+
+@media (min-width: 1280px) {
+  .detail-layout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  .detail-layout--collapsed {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .detail-layout__aside {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+}
+
+/* Shared Links panel (components/ArtefactLinksPanel.tsx). */
+.artefact-links__header {
+  justify-content: space-between;
+}
+
+.artefact-links__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.artefact-links__actions {
+  flex-wrap: wrap;
+}
+
+.artefact-links__group {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.artefact-links__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.artefact-links__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.artefact-links__target {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.artefact-links__remove {
+  margin-left: auto;
+  padding: 0.2rem 0.4rem;
+}
+
+.artefact-links__note {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
 /* Two-column content/sidebar layout shared by the requirements, change
    requests, and detail pages (filter panel or activity panel on the
    right). Collapses to one column alongside the nav rail below. */

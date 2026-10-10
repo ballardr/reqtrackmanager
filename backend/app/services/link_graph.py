@@ -347,6 +347,7 @@ def build_link_graph(
                 flow=LinkGraphFlow.RELATED if link_type is None else _hop_flow(link_type.flow, outgoing),
                 cross_project=cross,
                 nesting_permitted=not cross or link_type is None or _nesting_permitted(link, link_type, chain_cache),
+                dedicated=link_type is None or link_type.dedicated_endpoint,
             )
         frontier = next_frontier
 
@@ -354,4 +355,5 @@ def build_link_graph(
         root=root, nodes=list(walk.nodes.values()), edges=list(walk.edges.values()),
         truncated=walk.truncated or resolver.related_truncated,
         hidden_count=len(walk.hidden), unavailable_count=len(walk.unavailable),
+        can_manage=resolver.holds(root_type, "manage"),
     )

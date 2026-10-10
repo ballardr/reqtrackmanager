@@ -2,6 +2,7 @@ import { createElement } from "react";
 
 import { t } from "../../i18n/strings";
 import type { TierAModuleDefinition } from "../types";
+import { COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL, COMPLIANCE_STATUS_LABEL } from "./types";
 import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
 import { ComplianceOrgOverviewTiles } from "./ComplianceOrgOverviewTiles";
 import { ComplianceProjectOverviewTiles } from "./ComplianceProjectOverviewTiles";
@@ -9,7 +10,6 @@ import { ComplianceSettingsPage } from "./ComplianceSettingsPage";
 import { OrgComplianceDashboard } from "./OrgComplianceDashboard";
 import { OrgComplianceOutstandingPanel } from "./OrgComplianceOutstandingPanel";
 import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
-import { ComplianceRequirementLinkPickerTab } from "./ComplianceRequirementLinkPickerTab";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
 import { RequirementTraceabilityLinksSection } from "./RequirementTraceabilityLinksSection";
 import { StandardListPage } from "./StandardListPage";
@@ -127,26 +127,15 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * knowing compliance exists.
  *
  * `requirementDetailSections` (compliance-module-plan.md Phase 34): this
- * module's linked-compliance-requirements list (`RequirementTraceability
- * LinksSection.tsx`), rendered inside core's own `pages/
- * RequirementDetailPage.tsx` Links card. V1 shipped only the
- * core-requirement-initiated direction — a compliance-requirement-side
- * picker is deliberately deferred (Phase 34's own scope note; see platform-
- * review-2026-09 Phase 7's own decisions.md entry for the user's explicit
- * rejection of ever building that reverse direction).
- *
- * `requirementLinkPickerTabs` (platform-review-2026-09 Phase 7,
- * `modules/types.ts`): this module's tab in the shared
- * `RequirementLinkPickerModal` (`components/RequirementLinkPickerModal
- * .tsx`), opened from core's "Add link" button. Phase 34's original
- * `RequirementTraceabilityLinksSection.tsx` owned both the links list *and*
- * its own "Add compliance link" button + `Popover`; this phase split that
- * in two — the list stays registered via `requirementDetailSections`
- * above (now also reading a `refreshToken` prop, since the add-form moved
- * to a different component instance it has no direct handle on and needs a
- * signal to re-fetch after), and the extracted add-form
- * (`ComplianceRequirementLinkPickerTab.tsx`, the exact same three-cascading-
- * select mechanism, unchanged) is what's registered here.
+ * module's linked-compliance-requirements section (`RequirementTraceability
+ * LinksSection.tsx`, with its own "Add" dialog), rendered in core's
+ * `pages/RequirementDetailPage.tsx` aside below the shared Links panel. It is
+ * not folded into that panel because these links are rows of this module's own
+ * table pointing at organisation-level standard requirements, not `ArtefactLink`s.
+ * V1 shipped only the core-requirement-initiated direction — a
+ * compliance-requirement-side picker is deliberately deferred (Phase 34's own
+ * scope note; see platform-review-2026-09 Phase 7's own decisions.md entry for the
+ * user's explicit rejection of ever building that reverse direction).
  */
 const strings = t();
 
@@ -159,6 +148,10 @@ export const moduleDefinition: TierAModuleDefinition = {
     compliance_evidence: projectCompliancePath,
     project_compliance_requirement: projectCompliancePath,
     compliance_required_action_assessment: projectCompliancePath,
+  },
+  artefactStatusLabels: {
+    project_compliance_requirement: COMPLIANCE_STATUS_LABEL,
+    compliance_required_action_assessment: COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL,
   },
   routes: [
     { path: "/projects/:projectId/modules/compliance", element: createElement(ProjectCompliancePage) },
@@ -219,14 +212,6 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "traceability-links",
       render: ({ projectId, requirementId, organizationId, refreshToken }) =>
         createElement(RequirementTraceabilityLinksSection, { projectId, requirementId, organizationId, refreshToken }),
-    },
-  ],
-  requirementLinkPickerTabs: [
-    {
-      key: "compliance-requirements",
-      label: "Compliance",
-      render: ({ projectId, requirementId, organizationId, onLinked }) =>
-        createElement(ComplianceRequirementLinkPickerTab, { projectId, requirementId, organizationId, onLinked }),
     },
   ],
   // Corrected out of `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR`

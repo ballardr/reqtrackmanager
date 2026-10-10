@@ -3,8 +3,9 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildPersona, buildRelationshipKinds } from "./fixtures";
+import { buildPersona } from "./fixtures";
 import { PersonaDetailPage } from "./PersonaDetailPage";
 import type { Persona } from "./types";
 
@@ -19,6 +20,8 @@ const ORG_USERS: OrgUser[] = [
   },
 ];
 
+const LINKED_PAIN_POINT = buildGraphNode({ type: "pain_point", id: "pp-1", type_label: "Pain Point", label: "Reports arrive late", status: null });
+
 function mockDetailApis(current: Persona, versions: unknown[] = [], represented: unknown[] = []) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
@@ -28,8 +31,7 @@ function mockDetailApis(current: Persona, versions: unknown[] = [], represented:
       return { members: ORG_USERS.filter((u) => u.display_name.toLowerCase().includes(q)), external: null };
     }
     if (path === `${PROJECT_BASE}/persona-types`) return [{ id: "type-primary", name: "Primary", display_order: 0, is_enabled: true, source: "org" }];
-    if (path === `${PROJECT_BASE}/relationship-kinds`) return buildRelationshipKinds();
-    if (path.endsWith(`/personas/${PERSONA_ID}/relationships`)) return [];
+    if (path.includes(`/artefacts/persona/${PERSONA_ID}/link-graph`)) return buildGraph([[LINKED_PAIN_POINT]]);
     if (path.endsWith(`/personas/${PERSONA_ID}/stakeholders`)) return represented;
     if (path.endsWith(`/personas/${PERSONA_ID}/needs`)) return [];
     if (path.endsWith(`/personas/${PERSONA_ID}`)) return current;
@@ -280,3 +282,12 @@ export const RepresentedByShowsAnEmptyState: Story = {
 
 export const LightTheme: Story = { ...ActiveOffersRetire };
 export const DarkTheme: Story = { ...ActiveOffersRetire, globals: { theme: "dark" } };
+
+/** Links live in the shared Links panel beside the page. */
+export const LinksPanelShowsLinks: Story = {
+  beforeEach: () => mockDetailApis(buildPersona()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reports arrive late" })).toBeInTheDocument());
+  },
+};

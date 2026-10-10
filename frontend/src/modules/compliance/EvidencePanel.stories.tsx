@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildFileAsset, withToast } from "../../testing/storybook-helpers";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
+import { buildFileAsset, withRouter, withToast } from "../../testing/storybook-helpers";
 import { EvidencePanel } from "./EvidencePanel";
 import type { ComplianceEvidence } from "./types";
 
@@ -31,6 +32,9 @@ function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEviden
 function mockApis(initial: ComplianceEvidence[]) {
   let items = initial;
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/link-graph")) {
+      return buildGraph([[buildGraphNode({ type: "requirement", id: "r-9", type_label: "Requirement", label: "SW-SEC-014 Encrypt at rest", status: null })]]);
+    }
     if (path.endsWith("/files")) return [];
     if (path.endsWith("/revalidations")) return [];
     if (path.endsWith("/evidence")) return items;
@@ -76,7 +80,7 @@ function mockApis(initial: ComplianceEvidence[]) {
 const meta: Meta<typeof EvidencePanel> = {
   title: "Modules/Compliance/EvidencePanel",
   component: EvidencePanel,
-  decorators: [withToast()],
+  decorators: [withToast(), withRouter("/")],
   args: { projectId: PROJECT_ID, orgId: ORG_ID },
 };
 export default meta;
@@ -185,6 +189,17 @@ export const ArchiveEvidence: Story = {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-1/archive`
     ));
+  },
+};
+
+/** Opening a piece of evidence shows its links in the shared Links panel. */
+export const EvidenceDetailShowsLinks: Story = {
+  beforeEach: () => mockApis([evidence()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByText("IPX6 Test Certificate"));
+    const body = within(canvasElement.ownerDocument.body);
+    await waitFor(() => expect(body.getByRole("link", { name: "SW-SEC-014 Encrypt at rest" })).toBeInTheDocument());
   },
 };
 

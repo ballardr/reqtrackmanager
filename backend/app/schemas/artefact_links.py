@@ -90,3 +90,21 @@ class ArtefactLinkOut(BaseModel):
     phrase: str
     direction: LinkOrientation
     other: ArtefactLinkOtherEnd
+
+
+class ArtefactLinkCandidate(BaseModel):
+    """A record the page artefact could be linked to (the add row's target picker)."""
+
+    type: str
+    id: UUID
+    type_label: str
+    label: str
+    status: str | None
+    project_id: UUID | None = None
+
+
+class ArtefactLinkCandidatesOut(BaseModel):
+    """Link targets of one artefact type, best match first; `truncated` when more matched than `limit`."""
+
+    items: list[ArtefactLinkCandidate]
+    truncated: bool

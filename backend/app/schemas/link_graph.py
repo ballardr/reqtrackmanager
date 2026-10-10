@@ -58,7 +58,10 @@ class LinkGraphEdge(BaseModel):
     when `outgoing`, its reverse name otherwise); `None` for an untyped link.
     `outgoing` is true when `from` is the link's stored source. `cross_project` marks
     a link between a project and its ancestor/descendant; `nesting_permitted` is false
-    when such a link no longer satisfies its link type's nesting scope (kept, flagged)."""
+    when such a link no longer satisfies its link type's nesting scope (kept, flagged).
+    `dedicated` marks a link managed by its own action: a type with a dedicated endpoint
+    (e.g. Supersedes) or an untyped structural link (action membership). It is shown but
+    cannot be removed through the generic endpoint."""
 
     id: UUID
     from_type: str
@@ -71,6 +74,7 @@ class LinkGraphEdge(BaseModel):
     outgoing: bool
     cross_project: bool = False
     nesting_permitted: bool = True
+    dedicated: bool = False
 
 
 class LinkGraphOut(BaseModel):
@@ -80,7 +84,9 @@ class LinkGraphOut(BaseModel):
     `hidden_count` counts distinct linked records not shown (no access, another
     project, a disabled module, or no longer existing); `unavailable_count`
     counts linked records of a type no installed module can display. Neither
-    is ever traversed through."""
+    is ever traversed through. `can_manage` is whether the caller may add or remove
+    links on the root (`manage` on its type in the request project), so a client
+    can hide controls that would only answer 403."""
 
     root: LinkGraphNode
     nodes: list[LinkGraphNode]
@@ -88,3 +94,4 @@ class LinkGraphOut(BaseModel):
     truncated: bool
     hidden_count: int
     unavailable_count: int
+    can_manage: bool = False

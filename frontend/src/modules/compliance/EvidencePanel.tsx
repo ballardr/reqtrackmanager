@@ -26,6 +26,7 @@ import { useEffect, useState } from "react";
 
 import type { FileAsset } from "../../api/types";
 import { api } from "../../api/client";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
@@ -205,6 +206,7 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
                 setFiles((prev) => prev.filter((f) => f.id !== fileId));
               }}
             />
+            <ArtefactLinksPanel projectId={projectId} artefactType="compliance_evidence" artefactId={selected.id} />
           </div>
         </SidePanel>
       )}

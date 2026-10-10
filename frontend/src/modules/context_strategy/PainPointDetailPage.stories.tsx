@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser } from "../../api/types";
 import { api } from "../../api/client";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildScoringScheme, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { painPointScores } from "./painPointScoringFixtures";
 import { PainPointDetailPage } from "./PainPointDetailPage";
@@ -35,6 +36,8 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
   };
 }
 
+const LINKED_DECISION = buildGraphNode({ type: "decision", id: "dec-1", type_label: "Decision", label: "DEC-001 Use Postgres", status: null });
+
 function mockDetailApis(current: PainPoint) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
@@ -49,7 +52,7 @@ function mockDetailApis(current: PainPoint) {
     if (path.endsWith("/pain-point-types")) return TYPES;
     if (path.includes("/comments")) return [];
     if (path.includes("/files")) return [];
-    if (path.includes("/relationships")) return [];
+    if (path.includes("/artefacts/pain_point/") && path.includes("/link-graph")) return buildGraph([[LINKED_DECISION]]);
     throw new Error(`Unmocked GET: ${path}`);
   });
 }
@@ -188,3 +191,12 @@ export const OwnerCanBeAssigned: Story = {
 
 export const LightTheme: Story = { ...TriagedShowsThreeBranches };
 export const DarkTheme: Story = { ...TriagedShowsThreeBranches, globals: { theme: "dark" } };
+
+/** Links live in the shared Links panel beside the page; the page adds only what is specific to it. */
+export const LinksPanelShowsLinks: Story = {
+  beforeEach: () => mockDetailApis(painPoint()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
+  },
+};

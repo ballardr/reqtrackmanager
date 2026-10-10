@@ -5,13 +5,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
-  Category,
   ChangeEntry,
   Comment,
-  Component,
   CustomFieldDefinition,
   FileAsset,
-  LinkTypeDefinition,
   Organization,
   OrgUser,
   Project,
@@ -19,11 +16,9 @@ import type {
   Requirement,
   RequirementAction,
   RequirementLevel,
-  RequirementLink,
   RequirementReviewOutcome,
   RequirementVersionEntry,
 } from "../api/types";
-import { loadOfferedLinkTypes } from "../api/linkTypes";
 import {
   ENTITY_ACCENT_COLOR,
   REQUIREMENT_ACTION_OUTCOME_LABEL,
@@ -31,17 +26,17 @@ import {
   REQUIREMENT_LEVEL_LABEL,
   REQUIREMENT_STATUS_LABEL,
   REQUIREMENT_STATUS_TONE,
-  linkTypesFor,
 } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
+import { ArtefactLinksPanel, type LinksChangeRequestMode } from "../components/ArtefactLinksPanel";
 import { AssigneePicker } from "../components/AssigneePicker";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
+import { DetailLayout } from "../components/DetailLayout";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { Modal } from "../components/Modal";
 import { Popover } from "../components/Popover";
-import { RequirementLinkPickerModal } from "../components/RequirementLinkPickerModal";
 import { ResourcePickerModal } from "../components/ResourcePickerModal";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
@@ -166,39 +161,18 @@ export function RequirementDetailPage() {
   const [orgForceLinksLocked, setOrgForceLinksLocked] = useState(false);
 
   // --- Traceability links (C-G-09) ------------------------------------
-  // Target-finding UI is a `Modal` with Search/Requirements/module-
-  // contributed tabs (platform-review-2026-09 Phase 7's
-  // `RequirementLinkPickerModal`) — replaces the old flat-`<select>`
-  // `Popover`, which stopped scaling once a project had many requirements.
-  // Remove still goes through `ConfirmDialog` (Tier 1), unchanged from the
-  // 2026-08 UX audit's sixth pass — see docs/ux-audit-2026-08.md "Links and
-  // linked actions."
-  const [links, setLinks] = useState<RequirementLink[]>([]);
-  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
-  const [projectRequirements, setProjectRequirements] = useState<Requirement[]>([]);
-  const [components, setComponents] = useState<Component[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [linkPickerModalOpen, setLinkPickerModalOpen] = useState(false);
-  const [linkToRemove, setLinkToRemove] = useState<RequirementLink | null>(null);
-  // Platform review 2026-09, Phase 8 — only rendered/required when
-  // `linksLockedForCR`, mirroring `addActionReason` below.
-  const [removeLinkReason, setRemoveLinkReason] = useState("");
-  // Bumped whenever any link involving this requirement changes — core-to-
-  // core (add/remove) or a module-contributed kind added via the picker
-  // modal's `requirementLinkPickerTabs` tabs. Passed into every
-  // `requirementDetailSections` render below as `refreshToken`, since a
-  // section that owns its own link list (e.g. Compliance's own linked-
-  // compliance-requirements list) is a different component instance than
-  // the picker modal and has no other way to learn a link was just added
-  // from it.
+  // Links are shown and edited by the shared Links panel in the aside
+  // (`ArtefactLinksPanel`, Phase 6 of the October 2026 platform enhancements) —
+  // requirement-to-requirement, module-origin (Decisions, Pain Points,
+  // Compliance, ...) and cross-project links alike. This page only decides
+  // whether link changes must go through a change request (`linksLockedForCR`,
+  // below) and supplies the two calls for that. Bumped after anything on this
+  // page that could change the links, so the panel reloads.
   const [linksRefreshToken, setLinksRefreshToken] = useState(0);
-  // Extra module-contributed link sections (compliance-module-plan.md
-  // Phase 34) — e.g. Compliance's own linked-compliance-requirements list,
-  // rendered inside this same Links card below the core-to-core links.
-  // This page renders whatever each currently-enabled module's own
-  // `requirementDetailSections` hands it and never imports a specific
-  // module's entity itself, mirroring `ProjectOverviewPage.tsx`'s identical
-  // `projectOverviewTiles` convention.
+  // Extra module-contributed sections (`requirementDetailSections`), rendered under
+  // the Links panel in the aside. This page renders whatever each currently-enabled
+  // module hands it and never imports a specific module's entity itself, mirroring
+  // `ProjectOverviewPage.tsx`'s identical `projectOverviewTiles` convention.
   const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
   const contributedLinkSections =
     projectId && requirementId && organizationId
@@ -206,25 +180,6 @@ export function RequirementDetailPage() {
           (getInstalledModule(entry.module_key)?.requirementDetailSections ?? []).map((section) => ({
             key: `${entry.module_key}:${section.key}`,
             node: section.render({ projectId, requirementId, organizationId, refreshToken: linksRefreshToken }),
-          }))
-        )
-      : [];
-  // Extra tabs the currently-enabled modules contribute to the link-picker
-  // modal (`requirementLinkPickerTabs`, platform-review-2026-09 Phase 7) —
-  // e.g. Compliance's own standard -> version -> requirement cascade. Each
-  // tab's `onLinked` closes the modal and bumps `linksRefreshToken`; this
-  // page has no idea what kind of link a contributed tab just created.
-  function onModuleTabLinked() {
-    setLinkPickerModalOpen(false);
-    setLinksRefreshToken((t) => t + 1);
-  }
-  const contributedPickerTabs =
-    projectId && requirementId && organizationId
-      ? enabledModules.flatMap((entry) =>
-          (getInstalledModule(entry.module_key)?.requirementLinkPickerTabs ?? []).map((tab) => ({
-            key: tab.key,
-            label: tab.label,
-            node: tab.render({ projectId, requirementId, organizationId, onLinked: onModuleTabLinked }),
           }))
         )
       : [];
@@ -267,7 +222,7 @@ export function RequirementDetailPage() {
 
   async function reload() {
     if (!projectId || !requirementId) return;
-    const [req, hist, comm, fls, defs, stgs, act, lnks, actTypes, linkedActs, allActs, reqs, comps, cats] = await Promise.all([
+    const [req, hist, comm, fls, defs, stgs, act, actTypes, linkedActs, allActs] = await Promise.all([
       api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${requirementId}`),
       api.get<RequirementVersionEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/history`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments`),
@@ -275,13 +230,9 @@ export function RequirementDetailPage() {
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/activity`),
-      api.get<RequirementLink[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/links`),
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/actions`),
-      api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`),
-      api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
-      api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
     ]);
     setRequirement(req);
     setHistory(hist);
@@ -293,13 +244,10 @@ export function RequirementDetailPage() {
     if (!formDirtyRef.current) setCustomFieldValues(req.custom_fields);
     setStages(stgs);
     setActivity(act);
-    setLinks(lnks);
     setProjectActionTypes(actTypes);
     setLinkedActions(linkedActs);
     setProjectActions(allActs);
-    setProjectRequirements(reqs);
-    setComponents(comps);
-    setCategories(cats);
+    setLinksRefreshToken((t) => t + 1);
     if (!formDirtyRef.current) {
       setForm({
         name: req.name,
@@ -341,45 +289,6 @@ export function RequirementDetailPage() {
     }
     await reload();
     showToast(strings.resourcePicker.attachedToast(fileIds.length));
-  }
-
-  /** Platform review 2026-09, Phase 8 — once `linksLockedForCR`, submits an
-   * `add_link` change request instead of calling the direct endpoint (the
-   * same branch `linkExistingAction`/`createAndLinkAction` below already
-   * take for `add_action`). `reason` is required by the picker modal's own
-   * validation whenever `linksLocked` is true, so it's always non-empty
-   * here in that case. */
-  async function addLink(targetRequirementId: string, linkTypeId: string, reason?: string) {
-    if (linksLockedForCR) {
-      await api.post(`/api/v1/projects/${projectId}/change-requests`, {
-        kind: "add_link", requirement_id: requirementId,
-        proposed_link_target_requirement_id: targetRequirementId, proposed_link_type_id: linkTypeId,
-        reason: reason ?? "",
-      });
-      showToast(strings.changeRequests.created);
-    } else {
-      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/links`, {
-        target_requirement_id: targetRequirementId,
-        link_type_id: linkTypeId,
-      });
-    }
-    setLinkPickerModalOpen(false);
-    setLinksRefreshToken((t) => t + 1);
-    reload();
-  }
-
-  /** Same `linksLockedForCR` branch as `addLink` above, for `remove_link`. */
-  async function removeLink(linkId: string, reason?: string) {
-    if (linksLockedForCR) {
-      await api.post(`/api/v1/projects/${projectId}/change-requests`, {
-        kind: "remove_link", requirement_id: requirementId,
-        proposed_link_id: linkId, reason: reason ?? "",
-      });
-      showToast(strings.changeRequests.created);
-    } else {
-      await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/links/${linkId}`);
-    }
-    reload();
   }
 
   async function linkExistingAction() {
@@ -477,13 +386,6 @@ export function RequirementDetailPage() {
       setOrganizationId(proj.organization_id);
       setProject(proj);
       try {
-        // Only types this project offers that may join two requirements (a hidden, restricted or dedicated type
-        // would be refused). Asked of the project, so it works for a member with no organisation role too.
-        setLinkTypes(linkTypesFor(await loadOfferedLinkTypes(projectId!), "requirement", "requirement"));
-      } catch {
-        // Nothing to offer in the Links card's type picker.
-      }
-      try {
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
         setOrgUsers(users);
         // Platform review 2026-09, Phase 8 — `OrganizationOut.
@@ -511,6 +413,31 @@ export function RequirementDetailPage() {
     (orgForceLinksLocked && !project?.exempt_from_org_link_lock)
   );
   const linksLockedForCR = !!requirement?.is_locked && requiresCRForLinks;
+
+  /** Platform review 2026-09, Phase 8 — once `linksLockedForCR`, the Links panel
+   * proposes link changes as `add_link`/`remove_link` change requests instead of
+   * calling the link endpoints (the same branch `linkExistingAction` below takes
+   * for `add_action`). `undefined` when links are not locked. An `add_link` request
+   * carries one outgoing link to a requirement of this project, which is all the
+   * panel then offers; the reason is required by the panel before it calls. */
+  const linksChangeRequest: LinksChangeRequestMode | undefined = linksLockedForCR
+    ? {
+        onPropose: async (link, reason) => {
+          await api.post(`/api/v1/projects/${projectId}/change-requests`, {
+            kind: "add_link", requirement_id: requirementId,
+            proposed_link_target_requirement_id: link.other_id, proposed_link_type_id: link.link_type_id,
+            reason,
+          });
+          showToast(strings.changeRequests.created);
+        },
+        onProposeRemove: async (linkId, reason) => {
+          await api.post(`/api/v1/projects/${projectId}/change-requests`, {
+            kind: "remove_link", requirement_id: requirementId, proposed_link_id: linkId, reason,
+          });
+          showToast(strings.changeRequests.created);
+        },
+      }
+    : undefined;
 
   async function save() {
     if (!requirement) return;
@@ -652,15 +579,27 @@ export function RequirementDetailPage() {
 
   if (!requirement) return <Spinner />;
 
-  // UX review: Add Link was always clickable even with nothing left to link
-  // to (every other requirement in the project already linked, or a
-  // single-requirement project) — greyed out below once this is empty.
-  const eligibleLinkTargets = projectRequirements.filter(
-    (r) => r.id !== requirementId && !links.some((l) => l.other_requirement_id === r.id)
-  );
-
   return (
-    <div className="stack">
+    <DetailLayout
+      contained={false}
+      aside={
+        projectId && requirementId ? (
+          <>
+            <ArtefactLinksPanel
+              projectId={projectId}
+              artefactType="requirement"
+              artefactId={requirementId}
+              refreshToken={linksRefreshToken}
+              changeRequest={linksChangeRequest}
+              hideStructuralLinks
+            />
+            {contributedLinkSections.map(({ key, node }) => (
+              <div key={key}>{node}</div>
+            ))}
+          </>
+        ) : null
+      }
+    >
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>
           {requirement.unique_code} — {requirement.name}
@@ -1030,97 +969,6 @@ export function RequirementDetailPage() {
 
       <div className="card stack">
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.links}</h2>
-          <button
-            className="btn btn-primary"
-            disabled={eligibleLinkTargets.length === 0}
-            title={eligibleLinkTargets.length === 0 ? strings.requirements.noEligibleLinkTargets : undefined}
-            onClick={() => setLinkPickerModalOpen(true)}
-          >
-            <Plus size={14} /> {strings.requirements.addLink}
-          </button>
-          {linkPickerModalOpen && (
-            <RequirementLinkPickerModal
-              eligibleTargets={eligibleLinkTargets}
-              components={components}
-              categories={categories}
-              linkTypes={linkTypes}
-              extraTabs={contributedPickerTabs}
-              linksLocked={linksLockedForCR}
-              onAddCoreLink={addLink}
-              onClose={() => setLinkPickerModalOpen(false)}
-            />
-          )}
-        </div>
-        {links.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinks}</p>}
-        {[...links]
-          .sort((a, b) => a.display_name.localeCompare(b.display_name) || a.other_requirement_unique_code.localeCompare(b.other_requirement_unique_code))
-          .map((link) => (
-            <div
-              key={link.id}
-              className="row entity-accent-card"
-              style={{
-                justifyContent: "space-between",
-                paddingLeft: "0.5rem",
-                ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement,
-              }}
-            >
-              <span>
-                <span className="badge">{link.display_name}</span>{" "}
-                <Link to={`/projects/${projectId}/requirements/${link.other_requirement_id}`}>
-                  {link.other_requirement_unique_code} — {link.other_requirement_name}
-                </Link>
-              </span>
-              <button
-                className="btn btn-danger"
-                title={strings.requirements.removeLink}
-                aria-label={strings.requirements.removeLink}
-                onClick={() => {
-                  setRemoveLinkReason("");
-                  setLinkToRemove(link);
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        {linkToRemove && (
-          <ConfirmDialog
-            title={linksLockedForCR ? strings.requirements.removeLinkViaChangeRequestTitle : strings.requirements.removeLinkTitle}
-            message={
-              linksLockedForCR ? (
-                <span className="stack" style={{ gap: "0.5rem" }}>
-                  <span>{strings.requirements.removeLinkViaChangeRequestConfirm}</span>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.changeRequests.reason}
-                    <textarea
-                      className="input" rows={2} aria-label={strings.changeRequests.reason}
-                      value={removeLinkReason} onChange={(e) => setRemoveLinkReason(e.target.value)}
-                    />
-                  </label>
-                </span>
-              ) : (
-                strings.requirements.removeLinkConfirm
-              )
-            }
-            confirmLabel={strings.requirements.removeLink}
-            confirmDisabled={linksLockedForCR && !removeLinkReason.trim()}
-            onConfirm={async () => {
-              const id = linkToRemove.id;
-              const reason = removeLinkReason;
-              setLinkToRemove(null);
-              await removeLink(id, reason);
-            }}
-            onCancel={() => setLinkToRemove(null)}
-          />
-        )}
-        {contributedLinkSections.map(({ key, node }) => (
-          <div key={key}>{node}</div>
-        ))}
-      </div>
-
-      <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.actionsSection}</h2>
           <div className="row">
             <button
@@ -1335,6 +1183,6 @@ export function RequirementDetailPage() {
         />
       </div>
       </div>
-    </div>
+    </DetailLayout>
   );
 }

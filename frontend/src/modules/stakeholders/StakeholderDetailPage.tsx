@@ -29,6 +29,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { DetailLayout } from "../../components/DetailLayout";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -41,7 +43,6 @@ import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable }
 import { RecordDiscussion } from "./RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
-import { RelationshipsPanel } from "./RelationshipsPanel";
 import { RepresentationPanel } from "./RepresentationPanel";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderVersion } from "./types";
@@ -204,7 +205,15 @@ export function StakeholderDetailPage() {
   const linkedUser = orgUsers.find((u) => u.user_id === stakeholder.user_id);
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="stakeholder"
+          artefactId={stakeholder.id}
+        />
+      }
+    >
       <Link to={listPath}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{stakeholder.name}</h1>
@@ -306,8 +315,6 @@ export function StakeholderDetailPage() {
 
         <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
 
-        <RelationshipsPanel projectId={projectId} holder="stakeholder" holderId={stakeholder.id} />
-
         {!readOnlyInProject && (
           <RecordLifecycleControls
             noun="Stakeholder"
@@ -374,6 +381,6 @@ export function StakeholderDetailPage() {
           onCancel={() => setErasing(false)}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }

@@ -24,7 +24,7 @@ const API_BASE_URL = "http://localhost:8000";
  * minimal, read-only `SidePanel` (`role="dialog"`) with no lifecycle
  * controls of its own — whose "View full details" link is what reaches
  * `DecisionDetailPage`, a real routed page (not a dialog) carrying every
- * lifecycle action, the Relationships section, comments, and attachments.
+ * lifecycle action, the Links panel, comments, and attachments.
  * Locators below are scoped to `page` (not a `dialog` role) once on that
  * page, unlike the pre-Phase-9 version of this spec.
  *
@@ -163,23 +163,20 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await confirmDialog.getByRole("button", { name: "Approve" }).click();
     await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
-    // --- From DEC-002's own Relationships section, record that it
-    // supersedes DEC-001 — both Decisions are already Approved, so the
-    // supersession should flip DEC-001 to Superseded immediately
-    // (`_maybe_supersede`: link created after the new Decision is already
-    // approved).
-    await selectLabeledOption(page, "Relationship", "Supersedes another Decision");
-    await selectLabeledOption(page, "Decision this supersedes", "DEC-001 — Adopt PostgreSQL for the billing service");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
-    // Scoped to the relationship row itself (`.row.card`,
-    // `DecisionRelationshipsSection.tsx`) — a bare `getByText(/DEC-001/)`
-    // also matches the still-rendered (if no longer visible) `<option>`
-    // this same form's own "Decision this supersedes" `<select>` carries,
-    // a Playwright strict-mode violation regardless of that option's own
-    // visibility.
-    const supersessionRow = page.locator(".row.card", { hasText: "Supersedes" });
+    // --- From DEC-002's Links panel, record that it supersedes DEC-001 — both
+    // Decisions are already Approved, so the supersession should flip DEC-001 to
+    // Superseded immediately (`_maybe_supersede`: link created after the new
+    // Decision is already approved).
+    await page.getByRole("button", { name: "Supersede another Decision" }).click();
+    const supersedeDialog = page.getByRole("dialog", { name: "Supersede another Decision" });
+    await selectLabeledOption(supersedeDialog, "Decision", "DEC-001 — Adopt PostgreSQL for the billing service");
+    await supersedeDialog.getByRole("button", { name: "Supersede", exact: true }).click();
+    // Scoped to the Links panel's own row — the supersession is a dedicated link,
+    // so it is listed with its phrase but offers no remove control.
+    const supersessionRow = page.locator(".artefact-links__row", { hasText: "Supersedes" });
     await expect(supersessionRow).toBeVisible();
     await expect(supersessionRow).toContainText("DEC-001");
+    await expect(supersessionRow.getByRole("button")).toHaveCount(0);
 
     // --- DEC-001 is now Superseded — check from its own detail page.
     // `exact: true` and the arrow prefix disambiguate this page's own back

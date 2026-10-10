@@ -61,16 +61,17 @@ import { Pencil } from "lucide-react";
 
 import type { FileAsset, OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { AssigneePicker } from "../../components/AssigneePicker";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
-import { OpenQuestionRelationshipsSection } from "./OpenQuestionRelationshipsSection";
 import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from "./types";
 
@@ -189,7 +190,15 @@ export function OpenQuestionDetailPage() {
   if (openQuestion === null) return <Spinner />;
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="open_question"
+          artefactId={openQuestion.id}
+        />
+      }
+    >
       <Link to={`/projects/${projectId}/modules/context_strategy/open-questions`}>← Open Question</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{openQuestion.question}</h1>
@@ -250,7 +259,6 @@ export function OpenQuestionDetailPage() {
           </button>
         </div>
 
-        <OpenQuestionRelationshipsSection projectId={projectId} openQuestion={openQuestion} />
 
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Evidence</h3>
@@ -386,7 +394,7 @@ export function OpenQuestionDetailPage() {
           onCancel={() => setArchiveConfirm(false)}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }
 

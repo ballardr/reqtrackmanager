@@ -11,15 +11,13 @@ import { createStandardWithVersion } from "./helpers";
  * own "initiating from the compliance-requirement side... deliberately out
  * of scope" note, reaffirmed and closed off for good in platform-review-
  * 2026-09 Phase 7's decisions.md entry) and is visible from that requirement
- * afterward, alongside its own core-to-core `RequirementLink`s in the same
- * Links card.
+ * afterward, in the Compliance section beside the Links panel.
  *
- * Phase 7 moved the picker itself: it used to be this section's own "Add
- * compliance link" button + `Popover`; it's now the "Compliance" tab of the
- * shared `RequirementLinkPickerModal`, opened via the Links card's single
- * "Add link" button (alongside the built-in Search/Requirements tabs
- * `requirement-links.spec.ts` covers) — a module-contributed tab that only
- * appears once the Compliance module is enabled for the project.
+ * The Compliance module contributes its own section to the requirement page's
+ * aside (below the shared Links panel, which cannot hold these links: they point
+ * at organisation-level standard requirements, not at project records). The
+ * section has its own "Add link" dialog and only appears once the Compliance
+ * module is enabled for the project.
  *
  * Every fixture this spec creates (standard, version, compliance
  * requirement, core requirement) is dynamically named with a per-run
@@ -63,10 +61,9 @@ test.describe("Compliance Module: core requirement <-> compliance requirement tr
     await openRequirementByName(page, coreRequirementName);
     await expect(page.getByRole("heading", { name: coreRequirementName })).toBeVisible();
 
-    await test.step("add a compliance link via the shared 'Add link' modal's Compliance tab", async () => {
-      await page.getByRole("button", { name: "Add link" }).click();
-      const modal = page.getByRole("dialog", { name: "Add link" });
-      await modal.getByRole("tab", { name: "Compliance" }).click();
+    await test.step("add a compliance link via the Compliance section's own 'Add link' dialog", async () => {
+      await page.getByRole("region", { name: "Compliance requirement links" }).getByRole("button", { name: "Add link" }).click();
+      const modal = page.getByRole("dialog", { name: "Compliance requirement links" });
       await modal.getByLabel("Standard").selectOption({ label: `${reference} — ${standardName}` });
       await modal.getByLabel("Version").selectOption({ label: "v1.0" });
       await modal.getByLabel("Requirement").selectOption({ label: `${complianceRequirementReference} — ${complianceRequirementName}` });

@@ -52,8 +52,8 @@ Per-Persona scoring of Pain Points is not available yet, so the weight is record
 
 | A Persona opened from a project |
 | --- |
-| An organisation Persona with this project's weight override, and its Pain Point relationship |
-| ![Detail page for the Field Inspector organisation Persona showing its goals, needs, behaviours, an importance weight of 5 marked Custom with Set override and Use inherited value controls, and an Experiences relationship to a Pain Point](../../../static/img/screenshots/persona-detail.png) |
+| An organisation Persona with this project's weight override, and its Pain Point link in the Links panel |
+| ![Detail page for the Field Inspector organisation Persona showing its goals, needs, behaviours, an importance weight of 5 marked Custom with Set override and Use inherited value controls, and a Links panel with an Experiences link to a Pain Point](../../../static/img/screenshots/persona-detail.png) |
 
 ## Lifecycle
 

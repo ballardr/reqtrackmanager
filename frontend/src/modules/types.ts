@@ -167,7 +167,7 @@ export interface OrgOverviewTileDef {
  * decides everything about what it shows, including rendering nothing.
  * `RequirementDetailPage.tsx` never imports a specific module's own entity
  * (e.g. it has no notion of what a "compliance requirement" is) — see
- * that page's own Links-card comment for why this exists, and CLAUDE.md's
+ * that page's aside for where these render, and CLAUDE.md's
  * "Modular Feature System Boundary" for the rule this satisfies.
  */
 export interface RequirementDetailSectionDef {
@@ -180,54 +180,12 @@ export interface RequirementDetailSectionDef {
     requirementId: string;
     organizationId: string;
     /** Bumped by `RequirementDetailPage.tsx` whenever any link involving
-     * this requirement changes — core-to-core (add/remove) or a module's
-     * own link kind added via `requirementLinkPickerTabs` below (platform-
-     * review-2026-09 Phase 7). A section that owns its own link list (e.g.
-     * Compliance's `RequirementTraceabilityLinksSection`) should re-fetch
-     * on a `refreshToken` change: it has no other way to learn that a link
-     * was added from the shared picker modal, which is a different
-     * component instance than this section. Purely a plumbing signal —
-     * core has no idea what changed, only that something did. */
+     * this page reloads (e.g. after a change request is decided). A section
+     * that owns its own link list (e.g. Compliance's
+     * `RequirementTraceabilityLinksSection`) should re-fetch on a
+     * `refreshToken` change. Purely a plumbing signal — core has no idea
+     * what changed, only that something did. */
     refreshToken: number;
-  }) => ReactNode;
-}
-
-/**
- * One extra tab a Tier A module contributes to the shared requirement-link
- * picker modal (`components/RequirementLinkPickerModal.tsx`), opened from
- * `pages/RequirementDetailPage.tsx`'s "Add link" button (platform-review-
- * 2026-09 Phase 7). The modal always renders its own built-in "Search" and
- * "Requirements" tabs (core requirement-to-requirement links); any
- * currently-enabled module's own tabs are appended after those, in
- * registration order. Mirrors `RequirementDetailSectionDef`'s exact "module
- * hands the parent a render function, parent has no idea what's inside it"
- * shape — the modal never imports a specific module's own entity (e.g. it
- * has no notion of what a "compliance requirement" is). A contributed tab
- * owns its own target-picker UI *and* its own link-creation call (it links
- * to its own kind of entity via its own module's API, not core's
- * `RequirementLink` — see CLAUDE.md's "Modular Feature System Boundary");
- * calling `onLinked()` is how it tells the modal "a link was created, close
- * and refresh" without the modal knowing what kind of link it was. The
- * first (and, at the time this was written, only) consumer is Compliance's
- * own cascading standard → version → requirement picker.
- */
-export interface RequirementLinkPickerTabDef {
-  /** Must be unique across every installed module's link-picker tabs, and
-   * distinct from the built-in `"search"`/`"requirements"` tab keys — used
-   * as this contribution's React list `key` and as part of its `Tabs`
-   * panel id, never rendered directly (see `label` for the visible name). */
-  key: string;
-  /** Visible tab label, e.g. `"Compliance"`. */
-  label: string;
-  render: (props: {
-    projectId: string;
-    requirementId: string;
-    organizationId: string;
-    /** Call once this tab has successfully created its own kind of link.
-     * The modal closes and bumps the shared `refreshToken` (above) so any
-     * section displaying that link (core's own list, or another module's
-     * `requirementDetailSections` contribution) re-fetches. */
-    onLinked: () => void;
   }) => ReactNode;
 }
 
@@ -359,12 +317,6 @@ export interface TierAModuleDefinition {
    * is. Omitted (or empty) for a module with no requirement-detail
    * contribution of its own. */
   requirementDetailSections?: RequirementDetailSectionDef[];
-  /** This module's extra tab(s) in the shared requirement-link picker modal
-   * (`components/RequirementLinkPickerModal.tsx`, platform-review-2026-09
-   * Phase 7), gated on this project's own `enabled-modules` list the same
-   * way `requirementDetailSections` is. Omitted (or empty) for a module
-   * with no linkable entity of its own. */
-  requirementLinkPickerTabs?: RequirementLinkPickerTabDef[];
   /** This module's own accent colour for `.entity-accent-card`/`.entity-
    * accent-row` styling (`styles/theme.css`) — the left-border stripe a list
    * row showing this module's own entity kind (e.g. a compliance
@@ -394,6 +346,13 @@ export interface TierAModuleDefinition {
    * the frontend counterpart of the backend's `artefact_summary_providers`).
    * Omitted for a module whose records nothing else links to. */
   artefactPaths?: Record<string, (projectId: string, id: string) => string>;
+  /** Display labels for the lifecycle status of each of this module's own artefact
+   * types, keyed by artefact type then by the backend's status string — so the
+   * shared Links panel can show a linked record's status without a raw enum
+   * string (`modules/artefactPaths.ts`'s `getArtefactStatusLabel` resolves them).
+   * Omitted for a module whose records carry no status; a type or status with no
+   * entry shows no status badge rather than the raw value. */
+  artefactStatusLabels?: Record<string, Record<string, string>>;
   /** Custom on-screen views for this module's reports, keyed by the backend
    * `ReportDefinition.key` (Module 1 Phase 13). The Reports pages list every
    * report from the backend catalogue and render `ReportViewer` (a generic

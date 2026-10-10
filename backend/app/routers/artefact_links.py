@@ -5,6 +5,7 @@ Links on any artefact of a project:
 - `GET .../{type}/{id}/link-graph`: the records linked to it out to a few hops,
   with edge direction resolved against the organisation's link-type settings.
 - `GET .../{type}/{id}/link-types`: the link types usable from it.
+- `GET .../{type}/{id}/link-candidates`: the records a link could point at, searchable.
 - `POST .../{type}/{id}/links` and `DELETE .../{type}/{id}/links/{link_id}`:
   generic link authoring from either end, whatever the artefact types.
 
@@ -26,6 +27,8 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_artefact_type_label
 from app.schemas.artefact_links import (
+    ArtefactLinkCandidate,
+    ArtefactLinkCandidatesOut,
     ArtefactLinkCreate,
     ArtefactLinkOtherEnd,
     ArtefactLinkOut,
@@ -35,8 +38,10 @@ from app.schemas.artefact_links import (
 from app.schemas.link_graph import LinkGraphDirection, LinkGraphOut
 from app.schemas.link_type import ArtefactTypeOut
 from app.services.link_authoring import (
+    CANDIDATE_LIMIT,
     create_link_for_artefact,
     delete_link_for_artefact,
+    list_link_candidates,
     related_project_or_404,
     require_visible_artefact,
     usable_options,
@@ -139,6 +144,45 @@ def list_artefact_link_types(
         )
         for option in usable_options(db, project, artefact_type, other_type, other_project)
     ]
+
+
+@router.get("/{artefact_type}/{artefact_id}/link-candidates", response_model=ArtefactLinkCandidatesOut)
+def list_artefact_link_candidates(
+    project_id: UUID,
+    artefact_type: str,
+    artefact_id: UUID,
+    other_type: str = Query(..., description="The artefact type to search."),
+    other_project_id: UUID | None = Query(None, description="Search this ancestor or descendant project instead."),
+    q: str | None = Query(None, max_length=100, description="Text the record's label must contain."),
+    limit: int = Query(CANDIDATE_LIMIT, ge=1, le=CANDIDATE_LIMIT),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+) -> ArtefactLinkCandidatesOut:
+    """Records of `other_type` this artefact could be linked to (the add row's target picker).
+
+    Only records the caller may view in the searched project are returned; the artefact
+    itself and archived records are left out. Whether the link type allows the pairing is
+    checked when the link is created.
+
+    Raises:
+        HTTPException: 404 the artefact is not visible, `other_type` is unregistered, or
+            `other_project_id` is not a related project the caller can open.
+    """
+    project = _project_or_404(db, project_id)
+    rows, truncated = list_link_candidates(
+        db, project=project, user_id=current_user.id, artefact_type=artefact_type, artefact_id=artefact_id,
+        other_type=other_type, other_project_id=other_project_id, query=q, limit=limit,
+    )
+    return ArtefactLinkCandidatesOut(
+        items=[
+            ArtefactLinkCandidate(
+                type=other_type, id=r.id, type_label=get_artefact_type_label(other_type), label=r.label,
+                status=r.status, project_id=r.project_id,
+            )
+            for r in rows
+        ],
+        truncated=truncated,
+    )
 
 
 @router.post("/{artefact_type}/{artefact_id}/links", response_model=ArtefactLinkOut, status_code=status.HTTP_201_CREATED)

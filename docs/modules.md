@@ -897,8 +897,12 @@ and offer a picker. The owner declares
 `list_artefact_summaries` / `has_artefact_summary_provider` /
 `get_artefact_summaries_in_project` / `get_artefact_type_label`. On the frontend the owner's
 `TierAModuleDefinition.artefactPaths[artefact_type] = (projectId, id) => route`
-lets `modules/artefactPaths.ts` link to the record's page. Core owns only
-`requirement`.
+lets `modules/artefactPaths.ts` link to the record's page, and
+`TierAModuleDefinition.artefactStatusLabels[artefact_type][status]` gives the
+display label of its status, so the shared Links panel can show a linked
+record's status through a label map (`getArtefactStatusLabel`; a status with no
+label shows no badge, never the raw value). Core owns only `requirement` and
+`requirement_action`.
 
 ```mermaid
 flowchart LR

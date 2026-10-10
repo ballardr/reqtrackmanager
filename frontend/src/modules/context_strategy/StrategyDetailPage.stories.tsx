@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { StrategyDetailPage } from "./StrategyDetailPage";
 import type { Strategy } from "./types";
@@ -22,13 +23,15 @@ function strategy(overrides: Partial<Strategy> = {}): Strategy {
   };
 }
 
+const LINKED_DECISION = buildGraphNode({ type: "decision", id: "dec-1", type_label: "Decision", label: "DEC-001 Use Postgres", status: null });
+
 function mockDetailApis(current: Strategy) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith(`/strategies/${STRATEGY_ID}`)) return current;
     if (path.endsWith("/versions")) return [];
     if (path.includes("/comments")) return [];
     if (path.includes("/files")) return [];
-    if (path.includes("/relationships")) return [];
+    if (path.includes("/artefacts/strategy/") && path.includes("/link-graph")) return buildGraph([[LINKED_DECISION]]);
     if (path.endsWith("/requirements")) return [];
     throw new Error(`Unmocked GET: ${path}`);
   });
@@ -122,3 +125,13 @@ export const ApproveStrategy: Story = {
 
 export const LightTheme: Story = { ...UnderReviewShowsApproveAndSendBack };
 export const DarkTheme: Story = { ...UnderReviewShowsApproveAndSendBack, globals: { theme: "dark" } };
+
+/** Links live in the shared Links panel beside the page; the page adds only what is specific to it. */
+export const LinksPanelShowsLinks: Story = {
+  beforeEach: () => mockDetailApis(strategy()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Supersede another Strategy" })).toBeInTheDocument();
+  },
+};

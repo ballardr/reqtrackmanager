@@ -8,8 +8,8 @@ A **Guiding Principle** records a standing statement of value or constraint a la
 
 | A Guiding Principle in Active status |
 | --- |
-| Falcon-3's "field reports are captured once" Guiding Principle — statement, rationale, owner, and version history |
-| ![Detail view of an Active Guiding Principle for the Falcon-3 project, showing its principle statement, rationale, an assigned owner, and a four-entry version history](../../../static/img/screenshots/guiding-principle-detail.png) |
+| Falcon-3's "field reports are captured once" Guiding Principle — statement, rationale and owner, with the Links panel beside it |
+| ![Detail view of an Active Guiding Principle for the Falcon-3 project, showing its principle statement, rationale, an assigned owner, and the Links panel](../../../static/img/screenshots/guiding-principle-detail.png) |
 
 ## Scope
 

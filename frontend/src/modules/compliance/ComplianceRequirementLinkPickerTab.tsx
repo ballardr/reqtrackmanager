@@ -1,24 +1,15 @@
 /**
  * Module: modules/compliance/ComplianceRequirementLinkPickerTab
  *
- * The Compliance module's contribution to the shared
- * `RequirementLinkPickerModal` (`components/RequirementLinkPickerModal.tsx`,
- * platform-review-2026-09 Phase 7), via the new `requirementLinkPickerTabs`
- * extension point (`modules/types.ts`) — lets a user pick a target
- * `ComplianceRequirement` through three cascading selects (standard ->
+ * The form behind `RequirementTraceabilityLinksSection`'s "Add" dialog — lets a user pick
+ * a target `ComplianceRequirement` through three cascading selects (standard ->
  * version -> requirement, the same `RequirementMappingsModal.tsx` precedent:
  * there is no cross-org compliance-requirement search endpoint to type-ahead
- * against) plus a core `RequirementLinkTypeDefinition` select (the same
- * org-scoped vocabulary core's own requirement-to-requirement links use),
- * then creates the link directly via `complianceApi.
+ * against) plus a link type select (the project's offered, org-scoped
+ * vocabulary), then creates the link directly via `complianceApi.
  * createRequirementTraceabilityLink` — this module owns its own mutation
  * (Modular Feature System Boundary; core never calls a module's API on its
  * behalf) and reports success via `onLinked()`.
- *
- * Extracted from `RequirementTraceabilityLinksSection.tsx`'s old inline
- * "Add compliance link" `Popover`, which owned this exact form until this
- * phase moved link-creation into the shared picker modal, leaving that
- * component with only the existing-links list.
  */
 import { useEffect, useState } from "react";
 

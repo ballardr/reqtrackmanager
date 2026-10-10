@@ -8,19 +8,37 @@ installCleanupHook();
 
 /**
  * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 3's exit criteria — Playwright e2e coverage for the §10.5 relationship
- * panel on Stakeholder and Persona pages (`frontend/src/modules/stakeholders/
- * RelationshipsPanel.tsx`) against a real backend: add relationships to a Pain
- * Point, a Requirement and a Decision (other modules' records, reached through
- * the generic summary-provider hook), follow a link to the target's own page,
- * remove one behind a tier-1 confirm, and see a Persona offered only the kinds
- * that apply to it.
+ * Phase 3's exit criteria, as delivered through the shared Links panel
+ * (`frontend/src/components/ArtefactLinksPanel.tsx`, October 2026 platform
+ * enhancements Phase 6) against a real backend: a Stakeholder or Persona links
+ * to a Pain Point, a Requirement and a Decision (other modules' records,
+ * reached through the generic summary-provider hook), follows a link to the
+ * target's own page, removes one behind a tier-1 confirm, and a Persona is
+ * offered only the relationship kinds that apply to it.
  *
  * Each test builds its own disposable org (see `./helpers.ts`).
  */
 
-test.describe("Stakeholders & Personas: relationships", () => {
-  test("a Stakeholder relates to a Pain Point, a Requirement and a Decision", async ({ page }) => {
+/** Opens the panel's "Add link" dialog and links to `record` with `relationship`. */
+async function addLink(
+  page: import("@playwright/test").Page,
+  relationship: string,
+  record: { type: string; label: string },
+) {
+  await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a link" });
+  await dialog.getByLabel("Link to").selectOption({ label: record.type });
+  await dialog.getByLabel("Relationship").selectOption({ label: relationship });
+  const recordSelect = dialog.getByLabel("Record");
+  await expect(recordSelect.locator("option", { hasText: record.label })).toHaveCount(1);
+  await recordSelect.selectOption({ label: record.label });
+  await dialog.getByRole("button", { name: "Add link" }).click();
+  await expect(page.getByText("Link added.").last()).toBeVisible();
+  await expect(dialog).not.toBeVisible();
+}
+
+test.describe("Stakeholders & Personas: links", () => {
+  test("a Stakeholder links to a Pain Point, a Requirement and a Decision", async ({ page }) => {
     const { suffix, org, project, adminHeaders } = await setUpOrg(page, "Rel");
     const projectApi = `${API_BASE_URL}/api/v1/projects/${project.id}`;
     const stakeholderName = `Pat Regulator ${suffix}`;
@@ -59,30 +77,17 @@ test.describe("Stakeholders & Personas: relationships", () => {
     ).json();
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${stakeholder.id}`);
-    const panel = page.getByTestId("relationships-panel");
-    await expect(panel.getByText("No relationships to this project's records yet.")).toBeVisible();
+    const panel = page.getByRole("region", { name: "Links", exact: true });
+    await expect(panel.getByText("No links yet.")).toBeVisible();
 
-    // --- A kind with one target type goes straight to the target picker.
-    await panel.getByLabel("Relationship").selectOption({ label: "Experiences" });
-    await panel.getByLabel("Pain Point").selectOption({ label: painPointTitle });
-    await panel.getByRole("button", { name: "Add relationship" }).click();
-    await expect(page.getByText("Relationship added.")).toBeVisible();
+    await addLink(page, "Experiences", { type: "Pain point", label: painPointTitle });
     await expect(panel.getByRole("link", { name: painPointTitle })).toBeVisible();
 
-    // --- A kind with two target types asks for the type first.
-    await panel.getByLabel("Relationship").selectOption({ label: "Approves" });
-    await panel.getByLabel("Target type").selectOption({ label: "Requirement" });
-    await panel.getByLabel("Requirement").selectOption({ label: `${requirement.unique_code} ${requirementName}` });
-    await panel.getByRole("button", { name: "Add relationship" }).click();
+    await addLink(page, "Approves", { type: "Requirement", label: `${requirement.unique_code} ${requirementName}` });
     await expect(panel.getByRole("link", { name: new RegExp(requirementName) })).toBeVisible();
 
-    await panel.getByLabel("Relationship").selectOption({ label: "Consulted on" });
-    await panel.getByLabel("Decision").selectOption({ label: `${decision.unique_code} ${decisionTitle}` });
-    await panel.getByRole("button", { name: "Add relationship" }).click();
+    await addLink(page, "Consulted on", { type: "Decision", label: `${decision.unique_code} ${decisionTitle}` });
     await expect(panel.getByRole("link", { name: new RegExp(decisionTitle) })).toBeVisible();
-
-    // --- The reserved Design / System Element kind is a note, not an option.
-    await expect(panel.getByText(/Uses Design \/ System Element: available once the module that provides it is installed\./)).toBeVisible();
 
     // --- A link goes to the target's own page (another module's route, resolved generically).
     await panel.getByRole("link", { name: painPointTitle }).click();
@@ -90,10 +95,10 @@ test.describe("Stakeholders & Personas: relationships", () => {
     await page.goBack();
 
     // --- Removal is behind a tier-1 confirm, with a toast.
-    await page.getByTestId("relationships-panel").getByRole("button", { name: `Remove Experiences ${painPointTitle}` }).click();
-    await page.getByRole("dialog", { name: "Remove this relationship?" }).getByRole("button", { name: "Remove" }).click();
-    await expect(page.getByText("Relationship removed.")).toBeVisible();
-    await expect(page.getByTestId("relationships-panel").getByRole("link", { name: painPointTitle })).toHaveCount(0);
+    await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: `Remove link: Experiences ${painPointTitle}` }).click();
+    await page.getByRole("dialog", { name: "Remove this link?" }).getByRole("button", { name: "Remove link" }).click();
+    await expect(page.getByText("Link removed.")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Links", exact: true }).getByRole("link", { name: painPointTitle })).toHaveCount(0);
   });
 
   test("a Persona is only offered the relationship kinds that apply to it", async ({ page }) => {
@@ -105,10 +110,13 @@ test.describe("Stakeholders & Personas: relationships", () => {
     ).json();
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
-    const kind = page.getByTestId("relationships-panel").getByLabel("Relationship");
-    await expect(kind).toBeVisible();
-    const options = await kind.locator("option").allTextContents();
-    expect(options).toEqual(expect.arrayContaining(["Experiences", "Provides", "Is affected by"]));
-    for (const stakeholderOnly of ["Consulted on", "Approves", "Reviews"]) expect(options).not.toContain(stakeholderOnly);
+    await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add a link" });
+    await dialog.getByLabel("Link to").selectOption({ label: "Requirement" });
+    const relationship = dialog.getByLabel("Relationship");
+    await expect(relationship).toBeVisible();
+    const options = await relationship.locator("option").allTextContents();
+    expect(options).toEqual(expect.arrayContaining(["Provides", "Is affected by"]));
+    for (const stakeholderOnly of ["Approves", "Reviews"]) expect(options).not.toContain(stakeholderOnly);
   });
 });

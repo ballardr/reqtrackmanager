@@ -19,17 +19,15 @@ import { expect, type Locator, type Page } from "@playwright/test";
  *
  * `scope` (a `Page` or a narrower `Locator`, e.g. an open dialog) lets a
  * caller scope the search when the same `label` text could otherwise match
- * more than one control on the page at once (`DecisionRelationshipsSection`
- * .tsx`'s own "Decision"/"Requirement" target picker changes label text
- * depending on the selected relationship kind, but "Relationship" itself is
- * always present once the section has rendered).
+ * more than one control on the page at once (e.g. a dialog's "Decision" picker
+ * against the page behind it).
  *
  * Waits for `optionLabel` to actually be present among the select's options
  * before selecting — several of this module's own selects populate their
  * options from an async fetch triggered by an earlier interaction in the
- * same test (e.g. changing "Relationship" to "Supersedes another Decision"
- * triggers a `listDecisions` call before the "Decision this supersedes"
- * select has anything to choose from yet), and `Locator.selectOption`
+ * same test (e.g. opening the "Supersede another Decision" dialog triggers a
+ * `listDecisions` call before its "Decision" select has anything to choose
+ * from yet), and `Locator.selectOption`
  * itself does not retry waiting for a specific `<option>` to appear.
  */
 export async function selectLabeledOption(scope: Page | Locator, label: string, optionLabel: string): Promise<void> {

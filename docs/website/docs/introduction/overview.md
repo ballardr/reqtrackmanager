@@ -93,8 +93,8 @@ The screenshots below are captured from the seeded demo dataset — a fictional 
 
 | Requirement detail |
 | --- |
-| Version history, change log, and discussion thread for a single requirement |
-| ![Requirement detail page showing its fields, version history, and discussion thread](../../static/img/screenshots/requirement-detail.png) |
+| Activity, actions, discussion thread and links for a single requirement |
+| ![Requirement detail page showing its fields, activity, actions and discussion thread, and a Links panel on the right](../../static/img/screenshots/requirement-detail.png) |
 
 ## Where to go next
 

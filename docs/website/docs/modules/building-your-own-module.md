@@ -136,10 +136,11 @@ Because this is compiled directly into the same frontend bundle, the module's ow
 | `projectOverviewTiles` | An extra metric tile on a project's Overview page | This project's currently-enabled-modules list |
 | `orgOverviewSections` | A `ResourceMenu` group on the Organisation Overview page | This org's currently-enabled-modules list |
 | `orgOverviewTiles` | A headline stat tile in the Organisation Overview page's own stats header | This org's currently-enabled-modules list |
-| `requirementDetailSections` | An extra section on a requirement's Links card | This project's currently-enabled-modules list |
-| `requirementLinkPickerTabs` | An extra tab in the shared "Add link" picker modal | This project's currently-enabled-modules list |
+| `requirementDetailSections` | An extra section in the aside of a requirement's page, under the shared Links panel (for links the panel cannot hold, because they are not between two project records) | This project's currently-enabled-modules list |
+| `artefactPaths` | Where each of the module's record types has its page, so the shared Links panel can link to it | Nothing — resolved by artefact type |
+| `artefactStatusLabels` | Display labels for each record type's status, so the Links panel shows a linked record's status without a raw value | Nothing — resolved by artefact type |
 
-Every one of these follows the same shape: the module hands the host a `render` function (typed per field in `frontend/src/modules/types.ts`), and the host page — `App.tsx`, `Layout.tsx`, `OrgAdminPage.tsx`, `OrgOverviewPage.tsx`, `ProjectOverviewPage.tsx`, `RequirementDetailPage.tsx`, or `RequirementLinkPickerModal.tsx`, depending on the field — never imports a specific module's own components, only ever the generic `ReactNode` it was handed back. A module needing a new kind of UI surface the table above doesn't already cover should get a new field added to `TierAModuleDefinition` for it, generic across every module, rather than a one-off import of that module into the relevant core file.
+Every one of these follows the same shape: the module hands the host a `render` function (typed per field in `frontend/src/modules/types.ts`), and the host page — `App.tsx`, `Layout.tsx`, `OrgAdminPage.tsx`, `OrgOverviewPage.tsx`, `ProjectOverviewPage.tsx`, or `RequirementDetailPage.tsx`, depending on the field — never imports a specific module's own components, only ever the generic `ReactNode` it was handed back. A module needing a new kind of UI surface the table above doesn't already cover should get a new field added to `TierAModuleDefinition` for it, generic across every module, rather than a one-off import of that module into the relevant core file.
 
 ## Module-contributed MCP tools
 

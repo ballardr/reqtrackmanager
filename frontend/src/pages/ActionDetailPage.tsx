@@ -1,6 +1,6 @@
 import { Archive, ArchiveRestore } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type {
@@ -8,13 +8,14 @@ import type {
   Comment,
   FileAsset,
   OrgUser,
-  LinkedRequirement,
   RequirementAction,
   RequirementActionOutcome,
 } from "../api/types";
 import { REQUIREMENT_ACTION_OUTCOME_LABEL } from "../api/types";
+import { ArtefactLinksPanel } from "../components/ArtefactLinksPanel";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { DetailLayout } from "../components/DetailLayout";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
@@ -38,7 +39,6 @@ export function ActionDetailPage() {
   const [action, setAction] = useState<RequirementAction | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  const [linkedRequirements, setLinkedRequirements] = useState<LinkedRequirement[]>([]);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
 
@@ -79,10 +79,6 @@ export function ActionDetailPage() {
         assigneeId: a.assignee_id ?? "", dueDate: a.due_date ?? "",
       });
     }
-
-    setLinkedRequirements(
-      await api.get<LinkedRequirement[]>(`/api/v1/projects/${projectId}/actions/${actionId}/requirements`)
-    );
   }
 
   useEffect(() => {
@@ -207,7 +203,14 @@ export function ActionDetailPage() {
   if (!action) return <Spinner />;
 
   return (
-    <div className="stack">
+    <DetailLayout
+      contained={false}
+      aside={
+        projectId && actionId ? (
+          <ArtefactLinksPanel projectId={projectId} artefactType="requirement_action" artefactId={actionId} />
+        ) : null
+      }
+    >
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>
           {action.unique_code} — {action.title}
@@ -234,8 +237,7 @@ export function ActionDetailPage() {
         />
       )}
 
-      <div className="side-grid">
-        <div className="stack">
+      <div className="stack">
           <div className="card stack">
             {action.is_archived && <div className="badge" style={{ alignSelf: "flex-start" }}>{strings.actions.archived}</div>}
             <label className="stack" style={{ gap: "0.25rem" }}>
@@ -324,21 +326,6 @@ export function ActionDetailPage() {
           </div>
 
           <div className="card stack">
-            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.actions.linkedRequirements}</h2>
-            {linkedRequirements.length === 0 ? (
-              <p className="text-muted" style={{ margin: 0 }}>{strings.actions.noLinkedRequirements}</p>
-            ) : (
-              linkedRequirements.map((r) => (
-                <div key={r.id}>
-                  <Link to={`/projects/${projectId}/requirements/${r.id}`}>
-                    {r.unique_code} — {r.name}
-                  </Link>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="card stack">
             <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.attachments}</h2>
             <FileAttachmentList files={files} onUpload={uploadFile} onRemove={removeFile} />
           </div>
@@ -355,8 +342,7 @@ export function ActionDetailPage() {
               currentUserId={user?.id}
             />
           </div>
-        </div>
       </div>
-    </div>
+    </DetailLayout>
   );
 }

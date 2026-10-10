@@ -42,8 +42,8 @@ Once a Decision reaches **Approved** or **Superseded**, every content field abov
 
 | An Approved Decision's detail view |
 | --- |
-| Content fields, the Supersedes relationship, and the locked-attachments notice on an Approved Decision |
-| ![Detail view of an Approved Decision showing its content fields, a "Supersedes" relationship to an earlier Decision, and a notice that attachments can no longer be added](../../../static/img/screenshots/decision-detail.png) |
+| Content fields and the locked-attachments notice on an Approved Decision, with its Supersedes link in the Links panel |
+| ![Detail view of an Approved Decision showing its content fields, a notice that attachments can no longer be added, and a Links panel with a "Supersedes" link to an earlier Decision](../../../static/img/screenshots/decision-detail.png) |
 
 ## Supersession
 

@@ -8,12 +8,12 @@ A requirement action is a required task — a review, a test, or any other proje
 
 | Action detail |
 | --- |
-| An action's outcome, assignee, due date, linked requirements, and discussion |
-| ![Action detail page showing outcome, assignee, and linked requirements](../../static/img/screenshots/action-detail.png) |
+| An action's outcome, assignee, due date and discussion, with its linked requirements in the Links panel |
+| ![Action detail page showing outcome, assignee, and discussion, with a Links panel listing two linked requirements](../../static/img/screenshots/action-detail.png) |
 
 ## Creating and linking actions
 
-Go to a project's **Actions** page and click **New action**. Give it a title, pick an **action type** (project-defined, e.g. "Review" or "Test" — configured in **Project Admin → Fields & actions**), and optionally an assignee and due date. From the action's detail page, link it to any requirement it helps satisfy — unlinking removes that association without deleting the action itself, since it may still be linked elsewhere.
+Go to a project's **Actions** page and click **New action**. Give it a title, pick an **action type** (project-defined, e.g. "Review" or "Test" — configured in **Project Admin → Fields & actions**), and optionally an assignee and due date. Link it to a requirement it helps satisfy from that requirement's Actions section — unlinking removes that association without deleting the action itself, since it may still be linked elsewhere. The action's own page lists its linked requirements in the [Links panel](links-and-traceability.md#the-links-panel), where it can also be linked to other kinds of record.
 
 ## Outcomes
 

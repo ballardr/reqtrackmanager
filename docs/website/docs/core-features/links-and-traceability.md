@@ -83,6 +83,11 @@ flowchart TD
     RH -. "sibling projects can't be linked" .- RS
 ```
 
+| A link across nested projects |
+| --- |
+| An Avionics sub-project Decision that addresses a Pain Point in its parent, Falcon-3; the badge names the parent project |
+| ![A Decision in the Avionics sub-project with a Links panel showing an Addresses link to a Pain Point, marked with an "In Falcon-3 Inspection Drone" badge](../../static/img/screenshots/links-cross-project.png) |
+
 - Only a project and its parents or children can be linked; siblings and unrelated projects can't, even through a shared parent. A record in a sibling never shows up in a project's link graph.
 - You need a role on **both** projects. A record in a project you can't open is reported as not found, and its project's name is never shown.
 - Each end follows its own project's rules: whether that kind of record is enabled there, your permissions there, the link types and rules that project offers, and the [change request rule for links](requirements-management.md#traceability-links).
@@ -90,9 +95,40 @@ flowchart TD
 - Narrowing a link type's setting never deletes a link already made: those links stay, marked as no longer permitted by their link type, and the admin is told how many first. If a project is moved so that the two projects are no longer parent and child, the link is hidden until they are again.
 - A project export doesn't include these links (it would carry another project's content), and says how many it left out.
 
-## Linking records
+## The Links panel
 
-Records are linked from the links sections on their pages, and by API clients and AI assistants through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A page's own links section may offer fewer kinds of link than the general endpoint does. Both ends must be records of the same project, or of a [parent or child project](#linking-across-nested-projects), that you can see, and you need permission to manage the kind of record you are linking from. A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
+Every record's page shows a **Links** panel beside its content: requirements, actions, pain points, strategies, future states, guiding principles, open questions, decisions, personas, stakeholders and stakeholder needs, and the compliance records inside the Compliance workspace. It lists the record's links grouped by the kind of record at the other end, each read with the wording that fits this end ("Is implemented by" on the requirement, "Implements" on the decision), with the linked record's status and, for a record in another project, the project's name.
+
+```mermaid
+flowchart LR
+    P["Pain point"] -->|"is addressed by"| D["Decision"]
+    D -->|"implements"| R["Requirement"]
+    L1["Links panel on the pain point's page"] -.-> P
+    L2["Links panel on the decision's page"] -.-> D
+    L3["Links panel on the requirement's page"] -.-> R
+```
+
+| A requirement's Links panel |
+| --- |
+| AV-PERF-001's links grouped by kind of record, each read from its own end, with the linked record's status; the Compliance section sits beneath |
+| ![A requirement page with the Links panel on the right listing a Decision it is implemented by and three requirements it is a dependency of, with status badges and remove buttons, above the Compliance requirement links section](../../static/img/screenshots/links-panel-requirement.png) |
+
+The same link reads correctly from all three pages, and any of them can add or remove it. On a narrow screen the panel moves below the page; on a wide one it sits to the right and can be collapsed (the choice is remembered for you).
+
+- **Add link** opens a dialog: choose the **kind of record**, the **relationship** (only link types that can join these two kinds of record are offered, after any restrictions, rules, hiding and the nested-project setting; "Related to" is preselected when it fits), then search for the **record**. When the project has a parent or child project, a **project** choice lets you link across them.
+| The Add a link dialog |
+| --- |
+| Choose the project, the kind of record, the relationship, then search for the record |
+| ![The Add a link dialog open over a Decision, with Project, Link to, Relationship, Search and Record fields filled in to link a requirement](../../static/img/screenshots/links-add-dialog.png) |
+
+- **Remove** asks for confirmation and removes only the link.
+- Links whose link type no longer permits them are kept and marked. Links with their own action (a decision *superseding* another, made with **Supersede another Decision** next to **Add link**) are shown but can't be removed here; an action's membership of a requirement is shown on the action's page and managed from the requirement's Actions section.
+- Links you can't see (a record you have no permission on, in a module that is off, or in a project you can't open) are not shown; the panel says how many were left out.
+- An approved requirement in a project that [requires a change request for links](requirements-management.md#traceability-links) shows the same panel, but adding or removing a link asks for a reason and creates a change request, and only requirements of that project can be proposed.
+- A record that belongs to the organisation rather than a project (an organisation strategy, say) shows the panel with a note instead: links are made from within a project.
+- Links from a requirement to **compliance standard requirements** are a separate list, shown under the Links panel when the Compliance module is on, with its own **Add link**.
+
+You need permission to manage the kind of record you are linking from, and to view the one you link to. API clients and AI assistants use the same rules through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
 
 ## Deleting a link type that is in use
 

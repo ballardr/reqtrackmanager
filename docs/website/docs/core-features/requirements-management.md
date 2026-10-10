@@ -21,14 +21,14 @@ Opening a requirement shows its full detail: name, reasoning, clarification, des
 
 | Requirement detail |
 | --- |
-| Editable fields, version history, and a discussion thread for one requirement |
-| ![Requirement detail page with fields, change log, and discussion](../../static/img/screenshots/requirement-detail.png) |
+| Editable fields, activity, actions and a discussion thread for one requirement, with its links in the Links panel |
+| ![Requirement detail page with its fields, activity, actions and discussion, and a Links panel on the right](../../static/img/screenshots/requirement-detail.png) |
 
 Once a requirement is locked (Approved or Completed), the edit form disables itself with a "Locked" badge, and further changes go through a [change request](./change-requests.md) instead — see [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md) for why.
 
 ## Traceability links
 
-Requirements can be linked to each other with a typed, bidirectional relationship — e.g. "Derives from" / "Is the source of" — for real traceability between requirements, beyond the 12 seeded default link types (an organisation can define more from its admin page). A link between two approved requirements can itself be made to require a change request to add or remove, via a per-project setting, for teams that want link changes reviewed the same way content changes are.
+Links are shown and edited in the **Links** panel beside a requirement's page (see [Links and traceability](links-and-traceability.md#the-links-panel)). Requirements can be linked to each other with a typed, bidirectional relationship — e.g. "Derives from" / "Is the source of" — for real traceability between requirements, beyond the 12 seeded default link types (an organisation can define more from its admin page). A link between two approved requirements can itself be made to require a change request to add or remove, via a per-project setting, for teams that want link changes reviewed the same way content changes are.
 
 Beyond requirements, any two records of a project can be linked, and an organisation can limit which kinds of record each link type may join and which link types each kind of record may use — see [Links and traceability](links-and-traceability.md).
 

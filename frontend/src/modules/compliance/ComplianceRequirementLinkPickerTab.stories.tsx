@@ -7,13 +7,9 @@ import { ComplianceRequirementLinkPickerTab } from "./ComplianceRequirementLinkP
 import type { ComplianceRequirement, ComplianceRequirementTraceabilityLink, ComplianceStandard, ComplianceStandardVersion } from "./types";
 
 /**
- * The Compliance module's tab in the shared `RequirementLinkPickerModal`
- * (`components/RequirementLinkPickerModal.tsx`), registered via
- * `module.ts`'s `requirementLinkPickerTabs` — extracted from
- * `RequirementTraceabilityLinksSection.tsx`'s old inline "Add compliance
- * link" `Popover` (platform-review-2026-09 Phase 7) once link-creation
- * moved into the shared modal. Mounted directly, same "mock only what it
- * calls" convention as `RequirementTraceabilityLinksSection.stories.tsx`.
+ * The cascading standard -> version -> requirement form inside
+ * `RequirementTraceabilityLinksSection`'s "Add" dialog. Mounted directly, same
+ * "mock only what it calls" convention as `RequirementTraceabilityLinksSection.stories.tsx`.
  */
 const meta: Meta<typeof ComplianceRequirementLinkPickerTab> = {
   title: "Modules/Compliance/ComplianceRequirementLinkPickerTab",

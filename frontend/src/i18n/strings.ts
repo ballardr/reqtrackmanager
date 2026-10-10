@@ -255,25 +255,7 @@ const en = {
     linkType: "Link type",
     targetRequirement: "Target {requirement}",
     selectARequirementToLink: "Select a {requirement}…",
-    removeLink: "Remove link",
-    removeLinkTitle: "Remove this link?",
-    removeLinkConfirm: "The link is removed from both {requirements}; the {requirement} itself is unaffected.",
     noLinks: "No links yet.",
-    linkPickerSearchTab: "Search",
-    linkPickerRequirementsTab: "{Requirements}",
-    linkPickerSearchPlaceholder: "Search by code or name…",
-    linkPickerNoMatches: "No matching {requirements}.",
-    // Platform review 2026-09, Phase 8 — shown in place of the plain
-    // add/remove-link flow once `is_locked && requiresChangeRequestForLinks`
-    // (project opt-in, or an org-wide force minus this project's own
-    // exemption): the Add link modal's Search/Requirements tabs and the
-    // remove-link confirm dialog both grow a "Reason for change" field and
-    // submit an `add_link`/`remove_link` change request instead of calling
-    // the direct endpoint. Mirrors item 514's identical ADD_ACTION pattern.
-    linkChangeRequestNotice: "This {requirement} is approved and this {project} requires a change request to add a link.",
-    removeLinkViaChangeRequestTitle: "Remove this link via change request?",
-    removeLinkViaChangeRequestConfirm:
-      "This {requirement} is approved and this {project} requires a change request to remove a link. The link is removed from both {requirements} once approved.",
     actionsSection: "Actions",
     linkExistingAction: "Link existing action",
     selectAnActionToLink: "Select an action…",
@@ -1747,8 +1729,6 @@ const en = {
     // the Tier-1-confirmed archive action itself.
     restoreAction: "Restore",
     restoredToast: "Action restored",
-    linkedRequirements: "Linked {requirements}",
-    noLinkedRequirements: "Not linked to any {requirement} yet.",
     completedAt: "Completed",
     created: "Action created",
   },
@@ -1785,6 +1765,64 @@ const en = {
     attachSelected: (n: number) => (n === 0 ? "Attach selected" : `Attach ${n} selected`),
     linkFromSharedResources: "Link from shared resources",
     attachedToast: (n: number) => (n === 1 ? "1 file linked" : `${n} files linked`),
+  },
+  artefactLinks: {
+    title: "Links",
+    asideToggleHide: "Hide links panel",
+    asideToggleShow: "Show links panel",
+    loading: "Loading links…",
+    loadError: "Could not load links.",
+    none: "No links yet.",
+    untyped: "Linked",
+    addLink: "Add link",
+    addLinkTitle: "Add a link",
+    projectLabel: "{Project}",
+    thisProject: "This {project}",
+    otherTypeLabel: "Link to",
+    otherTypePlaceholder: "Select a record type…",
+    linkTypeLabel: "Relationship",
+    searchLabel: "Search",
+    searchPlaceholder: "Search by code or name…",
+    targetLabel: "Record",
+    targetPlaceholder: "Select a record…",
+    noTypes: "No link types are available for this record here.",
+    noCandidates: "No matching records.",
+    candidatesTruncated: "Only the first matches are shown. Narrow the search to find others.",
+    reasonLabel: "Reason for change",
+    changeRequestAddNotice:
+      "This record is approved and its {project} requires link changes to go through a change request. Submitting creates one for review; only {requirements} of this {project} can be proposed.",
+    submitAdd: "Add link",
+    submitAddViaChangeRequest: "Propose link",
+    added: "Link added.",
+    removed: "Link removed.",
+    addFailed: "Could not add this link.",
+    removeFailed: "Could not remove this link.",
+    removeLabel: (phrase: string, target: string) => `Remove link: ${phrase} ${target}`,
+    removeTitle: "Remove this link?",
+    removeConfirm: "The link is removed from both records; the records themselves are unaffected.",
+    removeConfirmViaChangeRequest:
+      "This record is approved, so removing a link needs a change request. Submitting creates one for review.",
+    removeAction: "Remove link",
+    removeActionViaChangeRequest: "Request removal",
+    archivedBadge: "Archived",
+    otherProjectBadge: (name: string) => `In ${name}`,
+    notPermitted: "No longer permitted by its link type",
+    notPermittedExplanation:
+      "This link crosses {projects}, which its link type no longer allows. It is kept; remove it or change the link type's setting.",
+    hiddenNote: (count: number) =>
+      `${count} linked record${count === 1 ? " is" : "s are"} not shown (no access, in another {project}, or in a module that is off here).`,
+    unavailableNote: (count: number) =>
+      `${count} linked record${count === 1 ? " cannot" : "s cannot"} be displayed (its module is not installed, or the link is dormant).`,
+    truncatedNote: "Some links are not shown because there are too many to list.",
+    orgScopedNote: "Links are managed from within a {project}. Open this record from a {project} to add or remove links.",
+    supersedeButton: (label: string) => `Supersede another ${label}`,
+    supersedeTitle: (label: string) => `Supersede another ${label}`,
+    supersedeHelp: (label: string) =>
+      `Pick the ${label} this one replaces. It is marked Superseded and linked to this one.`,
+    supersedeConfirm: "Supersede",
+    supersedeNone: "Nothing to supersede.",
+    superseded: "Supersession recorded.",
+    supersedeFailed: "Could not record this supersession.",
   },
   common: {
     loading: "Loading…",

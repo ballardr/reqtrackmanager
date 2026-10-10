@@ -3,6 +3,10 @@ import { createElement } from "react";
 import { ProjectScoringSettings } from "../../components/ProjectScoringSettings";
 import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
+import {
+  FUTURE_STATE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, OPEN_QUESTION_STATUS_LABEL, PAIN_POINT_STATUS_LABEL,
+  STRATEGY_STATUS_LABEL,
+} from "./types";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
 import { GuidingPrincipleDetailPage } from "./GuidingPrincipleDetailPage";
 import { OpenQuestionDetailPage } from "./OpenQuestionDetailPage";
@@ -72,7 +76,7 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * placement for consistency.
  *
  * No `globalNavItems`/`standaloneWorkspaces`/`projectOverviewTiles`/
- * `orgAdminSections`/`requirementDetailSections`/`requirementLinkPickerTabs`/
+ * `orgAdminSections`/`requirementDetailSections`/
  * `entityAccentColor` this phase either — Future State has no cross-org
  * standalone entity of its own, no project-overview summary tile or
  * admin-configuration table this phase's own scope calls for, and (mirroring
@@ -144,6 +148,13 @@ export const moduleDefinition: TierAModuleDefinition = {
     pain_point: (projectId, id) => `/projects/${projectId}/modules/context_strategy/pain-points/${id}`,
     guiding_principle: (projectId, id) => `/projects/${projectId}/modules/context_strategy/guiding-principles/${id}`,
     open_question: (projectId, id) => `/projects/${projectId}/modules/context_strategy/open-questions/${id}`,
+  },
+  artefactStatusLabels: {
+    strategy: STRATEGY_STATUS_LABEL,
+    future_state: FUTURE_STATE_STATUS_LABEL,
+    pain_point: PAIN_POINT_STATUS_LABEL,
+    guiding_principle: GUIDING_PRINCIPLE_STATUS_LABEL,
+    open_question: OPEN_QUESTION_STATUS_LABEL,
   },
   routes: [
     { path: "/projects/:projectId/modules/context_strategy/strategies", element: createElement(ProjectStrategiesPage) },

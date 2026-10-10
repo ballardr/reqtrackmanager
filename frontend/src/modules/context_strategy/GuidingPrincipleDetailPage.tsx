@@ -56,16 +56,18 @@ import { Pencil } from "lucide-react";
 
 import type { FileAsset, OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { AssigneePicker } from "../../components/AssigneePicker";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
+import { SupersedeAction } from "../../components/SupersedeAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgGuidingPrincipleApi, projectGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
-import { GuidingPrincipleRelationshipsSection } from "./GuidingPrincipleRelationshipsSection";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type {
   GuidingPrinciple, GuidingPrincipleComment, GuidingPrincipleFieldValues, GuidingPrincipleVersion,
@@ -221,7 +223,29 @@ export function GuidingPrincipleDetailPage() {
   if (guidingPrinciple === null) return <Spinner />;
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="guiding_principle"
+          artefactId={guidingPrinciple.id}
+          actions={({ reload }) => (
+            <SupersedeAction
+              artefactLabel="Guiding Principle"
+              onDone={reload}
+              loadCandidates={async () =>
+                (await scopedApi.list(scopeId))
+                  .filter((other) => other.id !== guidingPrinciple.id)
+                  .map((other) => ({ id: other.id, label: other.name }))
+              }
+              onSupersede={async (oldId) => {
+                await scopedApi.createSupersessionLink(scopeId, guidingPrinciple.id, oldId);
+              }}
+            />
+          )}
+        />
+      }
+    >
       <Link to={backLink}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{guidingPrinciple.name}</h1>
@@ -284,12 +308,6 @@ export function GuidingPrincipleDetailPage() {
           </button>
         </div>
 
-        <GuidingPrincipleRelationshipsSection
-          guidingPrinciple={guidingPrinciple}
-          projectId={projectId}
-          organizationId={organizationId}
-          onChanged={() => scopedApi.get(scopeId, guidingPrinciple.id).then(setGuidingPrinciple)}
-        />
 
         {versions && versions.length > 1 && (
           <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
@@ -440,7 +458,7 @@ export function GuidingPrincipleDetailPage() {
           onCancel={() => setArchiveConfirm(false)}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }
 

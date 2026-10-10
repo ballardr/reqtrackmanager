@@ -1,27 +1,21 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, waitFor, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
+import { buildLinkType, projectLinkTypesPayload, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import { RequirementTraceabilityLinksSection } from "./RequirementTraceabilityLinksSection";
 import type { ComplianceRequirementTraceabilityLink } from "./types";
 
 /**
- * Compliance's contribution to `pages/RequirementDetailPage.tsx`'s own
- * Links card (compliance-module-plan.md Phase 34), registered via
- * `module.ts`'s `requirementDetailSections` — mirrors
- * `ComplianceProjectOverviewTiles.stories.tsx`'s own "mount the module's
- * contributed component directly, mock only what it calls" convention
- * rather than integrating through the full `RequirementDetailPage`
- * (whose own stories deliberately keep `enabled-modules` returning `[]` —
- * see that file's own comment).
- *
- * Platform-review-2026-09 Phase 7 trimmed this component to list/remove
- * only — the "add a link" picker now lives in
- * `ComplianceRequirementLinkPickerTab.tsx` (its own story file), reached
- * via the shared `RequirementLinkPickerModal` instead of a button on this
- * section. See that file's stories for the cascading-picker/create flow
- * this file's own `AddLink` story used to cover.
+ * Compliance's contribution to `pages/RequirementDetailPage.tsx`'s aside
+ * (compliance-module-plan.md Phase 34), registered via `module.ts`'s
+ * `requirementDetailSections` — mirrors `ComplianceProjectOverviewTiles.stories.tsx`'s
+ * own "mount the module's contributed component directly, mock only what it calls"
+ * convention rather than integrating through the full `RequirementDetailPage`
+ * (whose own stories deliberately keep `enabled-modules` returning `[]` for most
+ * stories). The section lists the requirement's links to standard requirements and
+ * opens its own "Add" dialog (the cascading picker is covered by
+ * `ComplianceRequirementLinkPickerTab.stories.tsx`).
  */
 const meta: Meta<typeof RequirementTraceabilityLinksSection> = {
   title: "Modules/Compliance/RequirementTraceabilityLinksSection",
@@ -68,12 +62,20 @@ export const NoLinksYet: Story = {
   },
 };
 
-// `refreshToken` bumping (the signal the shared picker modal sends after
-// adding a link from its own, separate component instance) must trigger a
-// re-fetch. A prop change mid-`play` isn't a natural fit for this file's
-// "mount once, mock, assert" story shape — the meaningful end-to-end proof
-// that adding a compliance link from the picker modal actually refreshes
-// this list is `tests/playwright/tests/modules/compliance/
-// requirement-traceability-links.spec.ts`, which drives the real add flow
-// through `RequirementDetailPage` and asserts the link appears here
-// afterwards without a page reload.
+/** "Add link" opens the section's own dialog holding the cascading standard -> version -> requirement picker. */
+export const AddOpensThePickerDialog: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/traceability-links")) return [];
+      if (path.includes("/modules/compliance/standards")) return [];
+      if (path.endsWith("/link-types")) return projectLinkTypesPayload([buildLinkType({ id: "lt-1", forward_name: "Derives from" })]);
+      throw new Error(`Unmocked path: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Add link" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Compliance requirement links" }));
+    await expect(dialog.getByLabelText("Standard")).toBeInTheDocument();
+    await expect(dialog.getByLabelText("Link type")).toBeInTheDocument();
+  },
+};

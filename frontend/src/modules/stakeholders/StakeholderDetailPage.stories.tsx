@@ -3,8 +3,9 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildPersona, buildRelationshipKinds, buildStakeholder, buildStakeholderScheme } from "./fixtures";
+import { buildPersona, buildStakeholder, buildStakeholderScheme } from "./fixtures";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
 import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder } from "./types";
 
@@ -27,6 +28,8 @@ interface Mocks {
   needs?: HeldNeed[];
 }
 
+const LINKED_PAIN_POINT = buildGraphNode({ type: "pain_point", id: "pp-1", type_label: "Pain Point", label: "Reports arrive late", status: null });
+
 function mockDetailApis(current: Stakeholder, { versions = [], represents = [], needs = [] }: Mocks = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
@@ -36,8 +39,7 @@ function mockDetailApis(current: Stakeholder, { versions = [], represents = [], 
     if (path === `${PROJECT_BASE}/stakeholder-types`) return [{ id: "stype-regulator", name: "Regulator", display_order: 0, is_enabled: true, source: "org" }];
     if (path === `${PROJECT_BASE}/personas`) return [buildPersona(), buildPersona({ id: "persona-3", name: "Control Room Operator" })];
     if (path.startsWith(`${PROJECT_BASE}/stakeholders/cadence-hint`)) return HINT;
-    if (path === `${PROJECT_BASE}/relationship-kinds`) return buildRelationshipKinds();
-    if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/relationships`)) return [];
+    if (path.includes(`/artefacts/stakeholder/${STAKEHOLDER_ID}/link-graph`)) return buildGraph([[LINKED_PAIN_POINT]]);
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/personas`)) return represents;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/needs`)) return needs;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}`)) return current;
@@ -284,3 +286,12 @@ export const ListsTheNeedsTheStakeholderHas: Story = {
 
 export const LightTheme: Story = { ...ActiveShowsFieldsPositionAndCadence };
 export const DarkTheme: Story = { ...ActiveShowsFieldsPositionAndCadence, globals: { theme: "dark" } };
+
+/** Links live in the shared Links panel beside the page. */
+export const LinksPanelShowsLinks: Story = {
+  beforeEach: () => mockDetailApis(buildStakeholder()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reports arrive late" })).toBeInTheDocument());
+  },
+};

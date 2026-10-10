@@ -30,15 +30,17 @@ import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
 import type { FileAsset } from "../../api/types";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
+import { SupersedeAction } from "../../components/SupersedeAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgFutureStateApi, projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
-import { FutureStateRelationshipsSection } from "./FutureStateRelationshipsSection";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
 
@@ -156,7 +158,29 @@ export function FutureStateDetailPage() {
   if (futureState === null) return <Spinner />;
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="future_state"
+          artefactId={futureState.id}
+          actions={({ reload }) => (
+            <SupersedeAction
+              artefactLabel="Future State"
+              onDone={reload}
+              loadCandidates={async () =>
+                (await scopedApi.list(scopeId))
+                  .filter((other) => other.id !== futureState.id)
+                  .map((other) => ({ id: other.id, label: other.title }))
+              }
+              onSupersede={async (oldId) => {
+                await scopedApi.createSupersessionLink(scopeId, futureState.id, oldId);
+              }}
+            />
+          )}
+        />
+      }
+    >
       <Link to={backLink}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{futureState.title}</h1>
@@ -220,12 +244,6 @@ export function FutureStateDetailPage() {
           </button>
         </div>
 
-        <FutureStateRelationshipsSection
-          futureState={futureState}
-          projectId={projectId}
-          organizationId={organizationId}
-          onChanged={() => scopedApi.get(scopeId, futureState.id).then(setFutureState)}
-        />
 
         {versions && versions.length > 1 && (
           <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
@@ -373,7 +391,7 @@ export function FutureStateDetailPage() {
           onCancel={() => setArchiveConfirm(false)}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }
 
