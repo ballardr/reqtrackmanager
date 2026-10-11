@@ -333,8 +333,16 @@ def update_preferences(
     mutation, so SQLAlchemy's change-tracking picks it up) rather than
     replaced wholesale, so setting one key never clobbers another; a `null`
     value removes its key, and the merged bag is size-bounded
-    (`services.ui_preferences`, 422 beyond the limits).
+    (`services.ui_preferences`, 422 beyond the limits). The user row is locked
+    (`SELECT ... FOR UPDATE`) before the merge, because two near-simultaneous
+    patches (two tabs, or the fire-and-forget view-mode toggles) would
+    otherwise each merge into the same stale bag and the later commit would
+    silently revert the earlier one's key.
     """
+    if payload.ui_preferences is not None:
+        # Before any attribute is set: a locking refresh reloads the row and
+        # would discard pending, unflushed changes made after it.
+        db.refresh(current_user, with_for_update=True)
     if payload.landing_preference is not None:
         current_user.landing_preference = payload.landing_preference
     if payload.theme_preference is not None:

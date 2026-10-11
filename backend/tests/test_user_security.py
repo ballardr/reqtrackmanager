@@ -2,6 +2,8 @@
 profile edits, org-admin display-name locking (C-U-16), and TOTP 2FA
 (C-U-14)."""
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pyotp
 from sqlalchemy import text
 
@@ -66,6 +68,20 @@ def test_ui_preferences_are_shallow_merged_not_replaced(client, admin_token):
 
 def _patch_ui_preferences(client, token, prefs):
     return client.patch("/api/v1/auth/me/preferences", json={"ui_preferences": prefs}, headers=auth_headers(token))
+
+
+def test_concurrent_ui_preference_patches_do_not_lose_updates(client, admin_token):
+    """Two near-simultaneous patches (two tabs, or the fire-and-forget view-mode
+    toggles a UI fires back-to-back) must both land: an unlocked read-merge-write
+    let the later commit overwrite the earlier one's key with a stale bag, which
+    in e2e left a shared persona stuck on list view."""
+    keys = [f"concurrent_key_{n}" for n in range(12)]
+    with ThreadPoolExecutor(max_workers=len(keys)) as pool:
+        responses = list(pool.map(lambda key: _patch_ui_preferences(client, admin_token, {key: True}), keys))
+    assert [r.status_code for r in responses] == [200] * len(keys)
+
+    stored = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["ui_preferences"]
+    assert set(keys) <= set(stored)
 
 
 def test_ui_preferences_accept_structured_json_values(client, admin_token):

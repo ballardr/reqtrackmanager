@@ -10320,3 +10320,11 @@ flowchart LR
 - Also fixed a build warning found on the way: the local-search plugin warned `blogDir doesn't exist`; set `indexBlog: false` (the site has no blog).
 
 **Verification.** `npm run build` in `docs/website` passes with no broken-link, anchor or Mermaid warnings; every retaken image was viewed.
+
+## CI failure triage on PR #32 (2026-10-12)
+
+**Decided by: Agent.** First CI run of the platform-enhancements branch: E2E failed (4 specs), Backend tests were "cancelled" (not by a person).
+
+- **Backend "cancelled" = the job's own `timeout-minutes: 20` ceiling.** Pytest (`-n 4`) was 66% through at the 20-minute mark, no failures; at that pace the suite needs ~27 minutes since the branch added ~6k lines of backend tests. Ceiling raised to 45 minutes (still a stall guard, per the comment above it).
+- **Reports UI spec was stale.** Phase 9 renamed the branding-template label to "Branding template (PDF and Word)"; `reports-ui.spec.ts` still looked for "(PDF)". Spec updated.
+- **Three Compliance specs failed on a lost update in `PATCH /auth/me/preferences`.** The handler merged into the stored `ui_preferences` bag with no row lock, so two near-simultaneous patches for one user (two e2e workers sharing a persona; equally two browser tabs) each merged into the same stale bag and the later commit silently reverted the earlier key. `compliance-standards-management.spec.ts` flips `view_mode:complianceRequirementTree` to list and back while a sibling test patches `view_mode:standards`; the stale write left the persona on list view, hiding the tree's "Add child requirement"/"Expand" controls for every retry. Fix: lock the user row (`refresh(..., with_for_update=True)`) before merging; pinned by `test_concurrent_ui_preference_patches_do_not_lose_updates` (failed before the fix, passes after). The remaining flake in that run (`module-contributed-roles`, `socket hang up` on `/api/v1/orgs`) is a single retry-passed backend connection drop, not investigated further.
