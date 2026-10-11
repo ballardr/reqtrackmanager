@@ -59,7 +59,7 @@ from app.modules.registry import (
 from app.services.link_authoring import (
     linkable_types_for_project,
     related_project_or_404,
-    require_page_artefact,
+    require_finder_artefact,
     usable_options,
 )
 from app.services.link_graph import ArtefactResolver
@@ -308,7 +308,7 @@ def _authorise(
             `other_project_id` is not a related project the caller can open.
     """
     page_resolver = ArtefactResolver(db, project, user_id)
-    require_page_artefact(db, page_resolver, project, artefact_type, artefact_id)
+    require_finder_artefact(db, page_resolver, project, artefact_type, artefact_id)
     searched = project
     if other_project_id is not None and other_project_id != project.id:
         searched = related_project_or_404(db, project, user_id, other_project_id)

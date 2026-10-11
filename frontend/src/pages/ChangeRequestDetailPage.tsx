@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import { loadReachableLinkTypes } from "../api/linkTypes";
 import type {
   ActionTypeDefinition,
   ChangeableRequirementField,
@@ -13,7 +12,6 @@ import type {
   ChangeRequestVoteChoice,
   ChangeRequestVoteTally,
   Comment,
-  LinkTypeDefinition,
   OrgUser,
   Project,
   ProjectStage,
@@ -28,8 +26,10 @@ import {
   REQUIREMENT_LEVEL_LABEL,
 } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
+import { ApproveChangeRequestDialog } from "../components/ApproveChangeRequestDialog";
 import { CommentThread } from "../components/CommentThread";
 import { Modal } from "../components/Modal";
+import { ProposedLinksSection } from "../components/ProposedLinksSection";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
@@ -74,15 +74,16 @@ export function ChangeRequestDetailPage() {
   // approving rather than a bare id.
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [linkedActionPreview, setLinkedActionPreview] = useState<RequirementAction | null>(null);
-  // ADD_LINK/REMOVE_LINK-only (Platform review 2026-09, Phase 8) — same
+  // REMOVE_LINK-only (Platform review 2026-09, Phase 8) — the same
   // "resolve the id to something a reviewer can actually read" purpose as
-  // the action fields above. `linkTargetPreview` is ADD_LINK's proposed
-  // target requirement; `linkPreview` is REMOVE_LINK's existing link (its
-  // `display_name`/other-requirement fields are already server-resolved
-  // the same way the Links card on `RequirementDetailPage.tsx` uses them).
-  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
-  const [linkTargetPreview, setLinkTargetPreview] = useState<Requirement | null>(null);
+  // the action fields above: the existing link (its `display_name`/other-
+  // requirement fields are already server-resolved the same way the Links
+  // card on `RequirementDetailPage.tsx` uses them). Links an add-link,
+  // new or modify request proposes arrive resolved on `cr.proposed_links`.
   const [linkPreview, setLinkPreview] = useState<RequirementLink | null>(null);
+  // Approving a request that proposes links goes through a dialog where the approver
+  // chooses which to merge (Phase 6b); `clearCompletion` carries the second approve button.
+  const [approving, setApproving] = useState<{ clearCompletion: boolean } | null>(null);
 
   async function reload() {
     if (!projectId || !crId) return;
@@ -116,13 +117,6 @@ export function ChangeRequestDetailPage() {
       setActionTypes([]);
       setLinkedActionPreview(null);
     }
-    if (crData.kind === "add_link" && crData.proposed_link_target_requirement_id) {
-      setLinkTargetPreview(
-        await api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${crData.proposed_link_target_requirement_id}`)
-      );
-    } else {
-      setLinkTargetPreview(null);
-    }
     if (crData.kind === "remove_link" && crData.requirement_id) {
       const links = await api.get<RequirementLink[]>(
         `/api/v1/projects/${projectId}/requirements/${crData.requirement_id}/links`
@@ -136,12 +130,6 @@ export function ChangeRequestDetailPage() {
       setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`));
     } catch {
       // No org role at all (rare) — reviewer names just fall back to raw ids.
-    }
-    try {
-      // Every type the project can reach (a hidden one still names a proposed link), not just the organisation's.
-      setLinkTypes(crData.kind === "add_link" || crData.kind === "remove_link" ? await loadReachableLinkTypes(projectId) : []);
-    } catch {
-      // Link type names just fall back to a dash.
     }
   }
 
@@ -173,10 +161,6 @@ export function ChangeRequestDetailPage() {
 
   function actionTypeName(id: string | null) {
     return actionTypes.find((t) => t.id === id)?.name ?? "—";
-  }
-
-  function linkTypeName(id: string | null) {
-    return linkTypes.find((t) => t.id === id)?.forward_name ?? "—";
   }
 
   function targetLabel(): string {
@@ -356,18 +340,7 @@ export function ChangeRequestDetailPage() {
             </p>
           </div>
         ) : cr.kind === "add_link" ? (
-          <div className="stack" style={{ gap: "0.5rem" }}>
-            <strong>{strings.changeRequests.proposedAddLink}</strong>
-            <p>
-              <strong>{strings.requirements.targetRequirement}:</strong>{" "}
-              {linkTargetPreview
-                ? `${linkTargetPreview.unique_code} — ${linkTargetPreview.name}`
-                : cr.proposed_link_target_requirement_id}
-            </p>
-            <p>
-              <strong>{strings.requirements.linkType}:</strong> {linkTypeName(cr.proposed_link_type_id)}
-            </p>
-          </div>
+          <ProposedLinksSection links={cr.proposed_links} title={strings.changeRequests.proposedAddLink} />
         ) : cr.kind === "remove_link" ? (
           <div className="stack" style={{ gap: "0.5rem" }}>
             <strong>{strings.changeRequests.proposedRemoveLink}</strong>
@@ -394,6 +367,8 @@ export function ChangeRequestDetailPage() {
             )}
           </div>
         )}
+
+        {cr.kind !== "add_link" && cr.proposed_links.length > 0 && <ProposedLinksSection links={cr.proposed_links} />}
 
         <p>
           <strong>{strings.changeRequests.reason}:</strong> {cr.reason}
@@ -443,14 +418,16 @@ export function ChangeRequestDetailPage() {
               <button
                 className="btn btn-primary"
                 onClick={() =>
-                  act(
-                    () =>
-                      api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                        approve: true,
-                        note: decisionNote,
-                      }),
-                    strings.changeRequests.approvedToast
-                  )
+                  cr.proposed_link_count > 0
+                    ? setApproving({ clearCompletion: false })
+                    : act(
+                        () =>
+                          api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+                            approve: true,
+                            note: decisionNote,
+                          }),
+                        strings.changeRequests.approvedToast
+                      )
                 }
               >
                 {strings.changeRequests.approve}
@@ -466,15 +443,17 @@ export function ChangeRequestDetailPage() {
                 <button
                   className="btn"
                   onClick={() =>
-                    act(
-                      () =>
-                        api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                          approve: true,
-                          note: decisionNote,
-                          clear_completion: true,
-                        }),
-                      strings.changeRequests.approvedToast
-                    )
+                    cr.proposed_link_count > 0
+                      ? setApproving({ clearCompletion: true })
+                      : act(
+                          () =>
+                            api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+                              approve: true,
+                              note: decisionNote,
+                              clear_completion: true,
+                            }),
+                          strings.changeRequests.approvedToast
+                        )
                   }
                 >
                   {strings.changeRequests.approveAndClearCompletion}
@@ -559,6 +538,22 @@ export function ChangeRequestDetailPage() {
           </div>
         )}
       </div>
+
+      {approving && projectId && crId && (
+        <ApproveChangeRequestDialog
+          projectId={projectId}
+          crId={crId}
+          kind={cr.kind}
+          note={decisionNote}
+          clearCompletion={approving.clearCompletion}
+          onApproved={() => {
+            setApproving(null);
+            reload();
+            showToast(strings.changeRequests.approvedToast);
+          }}
+          onClose={() => setApproving(null)}
+        />
+      )}
 
       {showVoteComments && tally && (
         <Modal title={strings.changeRequests.voteComments} onClose={() => setShowVoteComments(false)}>

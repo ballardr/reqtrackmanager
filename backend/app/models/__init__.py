@@ -9,6 +9,7 @@ from app.models.action_type import ActionTypeDefinition
 from app.models.audit import AuditEvent, LoginEvent
 from app.models.change_request import (
     ChangeRequest,
+    ChangeRequestProposedLink,
     ChangeRequestTask,
     ChangeRequestVersion,
     ChangeRequestVote,
@@ -78,6 +79,7 @@ __all__ = [
     "LoginEvent",
     "ChangeRequest",
     "ChangeRequestTask",
+    "ChangeRequestProposedLink",
     "ChangeRequestVersion",
     "ChangeRequestVote",
     "ReviewComment",

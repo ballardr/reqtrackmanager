@@ -153,7 +153,8 @@ export function ArtefactLinksPanel({
     );
   }
 
-  const canLink = graph?.can_link ?? false;
+  // Changing links on a locked record goes through a change request, which anyone allowed to link it at all may propose.
+  const canLink = (changeRequest ? graph?.can_propose : graph?.can_link) ?? false;
   return (
     <section className="card stack" aria-label={strings.artefactLinks.title}>
       <div className="row artefact-links__header">

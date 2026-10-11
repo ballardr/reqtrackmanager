@@ -19,6 +19,7 @@ from app.models.audit import AuditEvent
 from app.models.custom_role import CustomRoleDefinition, CustomRolePermission, GroupCustomRoleGrant
 from app.models.enums import PermissionLevel
 from app.models.organization import OrgGroup, OrgGroupMember
+from app.models.relationship import ArtefactLink
 from app.modules.registry import get_all_registered_artefact_types
 from app.services.custom_role_presets import PRESETS
 from app.services.permissions import ALL_ARTEFACT_TYPES, encode_permission, get_all_permissions, validate_permission_key
@@ -326,3 +327,136 @@ def test_presets_endpoint_lists_the_definitions_for_org_admins_only(world, clien
     assert client.get(
         f"/api/v1/orgs/{world.org['id']}/custom-role-presets", headers=auth_headers(token)
     ).status_code == 403
+
+
+# --- default roles: link while a record is not approved ------------------------------------------------
+
+
+def _with_role(world: World, project: dict, role: str) -> str:
+    """A user holding only the built-in project `role`; returns their token."""
+    email = f"{role}-{uuid.uuid4().hex[:6]}@example.com"
+    user_id = create_org_user(world.client, world.token, world.org["id"], email)
+    resp = world.client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": user_id, "role": role}, headers=auth_headers(world.token),
+    )
+    assert resp.status_code in (200, 201, 204), resp.text
+    return login(world.client, email, "Password123!")
+
+
+def _links_between(first: uuid.UUID, second: uuid.UUID) -> list:
+    db = SessionLocal()
+    try:
+        return list(db.scalars(select(ArtefactLink).where(
+            ArtefactLink.source_id.in_([first, second]), ArtefactLink.target_id.in_([first, second])
+        )).all())
+    finally:
+        db.close()
+
+
+def _approve(world: World, project: dict, requirement: uuid.UUID) -> None:
+    resp = world.client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement}/approve", headers=auth_headers(world.token)
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def _post_link(world: World, project: dict, page, other, token: str):
+    related = world.link_types_by_name()["Related to"]["id"]
+    return world.client.post(
+        _link_url(project, page),
+        json={"link_type_id": str(related), "direction": "outgoing", "other_type": other[0], "other_id": str(other[1])},
+        headers=auth_headers(token),
+    )
+
+
+@pytest.mark.parametrize("role", ["stakeholder", "project_administrator"])
+def test_stakeholders_and_administrators_link_and_unlink_unapproved_requirements(world, role):
+    project = world.project()
+    a, b = (REQ, world.requirement(project, "A")), (REQ, world.requirement(project, "B"))
+    token = _with_role(world, project, role)
+    created = _post_link(world, project, a, b, token)
+    assert created.status_code == 201, created.text
+    assert [e.detail["authorised_by"] for e in _link_audit(created.json()["id"])] == ["role"]
+    deleted = world.client.delete(_link_url(project, a, created.json()["id"]), headers=auth_headers(token))
+    assert deleted.status_code == 204, deleted.text
+
+
+def test_a_plain_member_cannot_link_even_an_unapproved_requirement(world):
+    project = world.project()
+    a, b = (REQ, world.requirement(project, "A")), (REQ, world.requirement(project, "B"))
+    assert _post_link(world, project, a, b, _with_role(world, project, "member")).status_code == 403
+
+
+def test_default_roles_cannot_link_an_approved_requirement_from_either_end(world):
+    project = world.project()
+    approved = world.requirement(project, "Approved")
+    draft = world.requirement(project, "Draft")
+    _approve(world, project, approved)
+    token = _with_role(world, project, "stakeholder")
+    from_approved = _post_link(world, project, (REQ, approved), (REQ, draft), token)
+    from_draft = _post_link(world, project, (REQ, draft), (REQ, approved), token)  # the approved one is the other end
+    assert from_approved.status_code == 403 and "Link permission" in from_approved.json()["detail"]
+    assert from_draft.status_code == 403
+    assert _links_between(approved, draft) == []
+
+
+def test_default_roles_cannot_remove_a_link_from_an_approved_requirement(world):
+    project = world.project()
+    a, b = world.requirement(project, "A"), world.requirement(project, "B")
+    link_id = world.generic_link(project, (REQ, a), world.link_types_by_name()["Related to"]["id"], (REQ, b)).json()["id"]
+    _approve(world, project, a)
+    token = _with_role(world, project, "project_administrator")
+    refused = world.client.delete(_link_url(project, (REQ, b), link_id), headers=auth_headers(token))
+    assert refused.status_code == 403
+
+
+def test_the_link_permission_links_an_approved_requirement_in_any_state(world):
+    project = world.project()
+    approved, other = world.requirement(project, "Approved"), world.requirement(project, "Other")
+    _approve(world, project, approved)
+    token = _linker(world, project, [encode_permission(REQ, "link")])
+    created = _post_link(world, project, (REQ, approved), (REQ, other), token)
+    assert created.status_code == 201, created.text
+    assert [e.detail["authorised_by"] for e in _link_audit(created.json()["id"])] == ["link"]
+
+
+def test_a_project_that_requires_change_requests_for_links_still_refuses_everyone_directly(world):
+    project = world.project()
+    approved, other = world.requirement(project, "Approved"), world.requirement(project, "Other")
+    _approve(world, project, approved)
+    world.client.patch(
+        f"/api/v1/projects/{project['id']}", json={"require_change_request_for_approved_links": True},
+        headers=auth_headers(world.token),
+    )
+    token = _linker(world, project, [encode_permission(REQ, "link")])
+    assert _post_link(world, project, (REQ, approved), (REQ, other), token).status_code == 409
+
+
+def test_default_roles_do_not_reach_a_modules_records(world):
+    project = world.project()
+    dec, req = (DEC, world.decision(project)), (REQ, world.requirement(project))
+    token = _with_role(world, project, "stakeholder")
+    assert _post_link(world, project, dec, req, token).status_code == 403  # a module's types need `link` or `manage`
+
+
+def test_graph_reports_direct_and_proposing_rights_per_record_state(world):
+    project = world.project()
+    draft, approved = world.requirement(project, "Draft"), world.requirement(project, "Approved")
+    _approve(world, project, approved)
+
+    def flags(token: str, requirement: uuid.UUID) -> tuple[bool, bool]:
+        graph = world.graph(project, (REQ, requirement), token=token).json()
+        return graph["can_link"], graph["can_propose"]
+
+    stakeholder = _with_role(world, project, "stakeholder")
+    assert flags(stakeholder, draft) == (True, True)
+    assert flags(stakeholder, approved) == (False, True)  # may still propose it through a change request
+    assert flags(_with_role(world, project, "member"), draft) == (False, False)
+    assert flags(_linker(world, project, [encode_permission(REQ, "link")]), approved) == (True, True)
+
+
+def test_the_finder_accepts_the_draft_id_for_a_stakeholder(world):
+    project = world.project()
+    draft = f"/api/v1/projects/{project['id']}/artefacts/{REQ}/{uuid.UUID(int=0)}/link-types"
+    assert world.client.get(draft, headers=auth_headers(_with_role(world, project, "stakeholder"))).status_code == 200
+    assert world.client.get(draft, headers=auth_headers(_with_role(world, project, "member"))).status_code == 403

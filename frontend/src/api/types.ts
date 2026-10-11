@@ -101,6 +101,20 @@ export const CHANGE_REQUEST_STATUS_TONE: Record<ChangeRequestStatus, BadgeTone> 
   rejected: "danger",
   withdrawn: "muted",
 };
+/** What became of a link proposed on a change request (Platform Enhancements Phase 6b). */
+export type ProposedLinkOutcome = "pending" | "merged" | "declined" | "skipped";
+export const PROPOSED_LINK_OUTCOME_LABEL: Record<ProposedLinkOutcome, string> = {
+  pending: "Pending",
+  merged: "Merged",
+  declined: "Left out",
+  skipped: "Not valid",
+};
+export const PROPOSED_LINK_OUTCOME_TONE: Record<ProposedLinkOutcome, BadgeTone> = {
+  pending: "info",
+  merged: "accent",
+  declined: "muted",
+  skipped: "danger",
+};
 export const REQUIREMENT_ACTION_OUTCOME_TONE: Record<RequirementActionOutcome, BadgeTone> = {
   pending: "info",
   completed: "accent",
@@ -1508,13 +1522,45 @@ export interface ChangeRequest {
   proposed_action_type_id: string | null;
   proposed_action_assignee_id: string | null;
   proposed_action_due_date: string | null;
-  /** ADD_LINK-only (Platform review 2026-09, Phase 8) — the target
-   * requirement and org link type to link to. */
-  proposed_link_target_requirement_id: string | null;
-  proposed_link_type_id: string | null;
+  /** Links this request proposes (new, modify and add-link kinds), created on
+   * approval as the approver chooses. Filled on the detail read; the list view
+   * carries only `proposed_link_count`. */
+  proposed_links: ProposedLink[];
+  proposed_link_count: number;
   /** REMOVE_LINK-only — the existing `RequirementLink` row to remove on
    * approval. */
   proposed_link_id: string | null;
+}
+
+/** One link proposed on a change request, read from the requirement's side. */
+export interface ProposedLink {
+  id: string;
+  link_type_id: string | null;
+  /** The relationship as the requirement reads it ("Depends on"); null once the link type is gone. */
+  phrase: string | null;
+  direction: "outgoing" | "incoming";
+  other_type: string;
+  other_type_label: string;
+  /** Null (with the label and project) when the viewer cannot see the far end, so its identity does not leak. */
+  other_id: string | null;
+  /** The far end's title, or null when the viewer cannot see it. */
+  other_label: string | null;
+  other_project_id: string | null;
+  other_project_name: string | null;
+  outcome: ProposedLinkOutcome;
+  outcome_reason: string | null;
+}
+
+/** A proposed link as it would merge now: `selectable` is false (with `reason`) when it cannot. */
+export interface ProposedLinkPreviewRow {
+  link: ProposedLink;
+  selectable: boolean;
+  already_linked: boolean;
+  reason: string | null;
+}
+
+export interface ProposedLinkPreview {
+  rows: ProposedLinkPreviewRow[];
 }
 
 export interface ChangeRequestTask {

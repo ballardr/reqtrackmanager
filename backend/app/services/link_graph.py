@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtefactType, LinkFlow
+from app.models.enums import ArtefactType, LinkFlow, ProjectRole
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
@@ -65,7 +65,7 @@ from app.schemas.link_graph import (
 )
 from app.services.link_nesting import RelatedProject, is_link_live, nesting_violation, related_projects
 from app.services.permissions import encode_permission
-from app.services.rbac import get_effective_permissions, permission_satisfied
+from app.services.rbac import get_effective_permissions, get_effective_project_roles, permission_satisfied
 from app.services.relationships import get_links_touching_many
 
 MAX_DEPTH = 3
@@ -73,6 +73,13 @@ MAX_NODES = 150
 
 _REQUIREMENT = ArtefactType.REQUIREMENT.value
 _ACTION = ArtefactType.REQUIREMENT_ACTION.value
+
+#: Project roles that may link a record of a core type that is not approved, without holding
+#: `link` or `manage` (the roles that could edit requirements before links had their own
+#: permission: `routers.requirements.core.CAN_EDIT_ROLES`).
+DEFAULT_LINK_ROLES = frozenset({ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER})
+#: The core types the default roles cover; a module's types need `link` or `manage`.
+DEFAULT_LINK_ROLE_TYPES = frozenset({_REQUIREMENT, _ACTION})
 
 _Key = tuple[str, uuid.UUID]
 
@@ -163,6 +170,7 @@ class ArtefactResolver:
         self._project = project
         self._user_id = user_id
         self._held = get_effective_permissions(db, user_id, project_id=project.id)
+        self._roles: set[ProjectRole] | None = None
         self._held_by_project: dict[uuid.UUID, set[str]] = {project.id: self._held}
         self._known: dict[_Key, ArtefactSummary | None | str] = {}
         self.related: list[RelatedProject] = []
@@ -238,9 +246,25 @@ class ArtefactResolver:
         return None
 
     def can_link(self, artefact_type: str) -> bool:
-        """Whether the user may add and remove links on `artefact_type` records (`link` or
-        `manage`); the one check the Links panel, the endpoints and MCP all share."""
+        """Whether the user holds `link` or `manage` on `artefact_type`: the permission that
+        allows linking a record in any state, approved included."""
         return self.link_authority(artefact_type) is not None
+
+    def has_default_link_role(self, artefact_type: str) -> bool:
+        """Whether the user's project role (stakeholder, project administrator or manager)
+        lets them link records of a core type while the record is not approved."""
+        if artefact_type not in DEFAULT_LINK_ROLE_TYPES:
+            return False
+        if self._roles is None:
+            self._roles = get_effective_project_roles(self._db, self._user_id, self._project.id)
+        return bool(self._roles & DEFAULT_LINK_ROLES)
+
+    def can_propose_link(self, artefact_type: str) -> bool:
+        """Whether the user may link `artefact_type` records at all, directly while they are
+        not approved or by proposing a link on a change request: `link`/`manage`, or a default
+        role on a core type. Whether an approved record can be linked directly is separate
+        (`can_link`), and the project's change-request rule applies to everyone."""
+        return self.can_link(artefact_type) or self.has_default_link_role(artefact_type)
 
     def is_unavailable(self, key: _Key) -> bool:
         """Whether `key`'s type cannot be displayed by any installed module."""
@@ -253,6 +277,24 @@ def _node(resolver: ArtefactResolver, summary: ArtefactSummary, artefact_type: s
         status=summary.status, is_archived=summary.is_archived, depth=depth, project_id=summary.project_id,
         project_name=resolver.project_name(summary.project_id),
     )
+
+
+def is_locked_requirement(db: Session, artefact_type: str, artefact_id: uuid.UUID) -> bool:
+    """Whether `(artefact_type, artefact_id)` is an approved (locked) requirement."""
+    if artefact_type != _REQUIREMENT:
+        return False
+    from app.services.requirements import get_current_version, is_locked
+
+    version = get_current_version(db, artefact_id)
+    return version is not None and is_locked(version)
+
+
+def _can_link_record(db: Session, resolver: ArtefactResolver, artefact_type: str, artefact_id: uuid.UUID) -> bool:
+    """Whether the user may add and remove links on this record now: `link`/`manage` always, a
+    default role only while the record is not an approved requirement."""
+    if resolver.can_link(artefact_type):
+        return True
+    return resolver.has_default_link_role(artefact_type) and not is_locked_requirement(db, artefact_type, artefact_id)
 
 
 def build_link_graph(
@@ -369,5 +411,6 @@ def build_link_graph(
         root=root, nodes=list(walk.nodes.values()), edges=list(walk.edges.values()),
         truncated=walk.truncated or resolver.related_truncated,
         hidden_count=len(walk.hidden), unavailable_count=len(walk.unavailable),
-        can_link=resolver.can_link(root_type),
+        can_link=_can_link_record(db, resolver, root_type, root_id),
+        can_propose=resolver.can_propose_link(root_type),
     )

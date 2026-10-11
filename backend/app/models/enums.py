@@ -184,6 +184,18 @@ class ChangeRequestKind(str, enum.Enum):
     REMOVE_LINK = "remove_link"
 
 
+class ProposedLinkOutcome(str, enum.Enum):
+    """What became of a link proposed on a change request: waiting for a decision
+    (`pending`), created on approval (`merged`), left out by the approver
+    (`declined`, or any link on a rejected or withdrawn request), or not valid at
+    approval and so not created (`skipped`, with a reason)."""
+
+    PENDING = "pending"
+    MERGED = "merged"
+    DECLINED = "declined"
+    SKIPPED = "skipped"
+
+
 class ChangeRequestStatus(str, enum.Enum):
     """Lifecycle states for a change request (introduction, C-G-03)."""
 

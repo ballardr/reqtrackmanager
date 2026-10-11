@@ -333,11 +333,16 @@ def upload_comment_attachment(
 def create_change_request(
     headers: dict, project_id: str, *, kind: str, requirement_id: str | None, proposed_name: str,
     proposed_reasoning: str, reason: str, component_id: str | None = None, category_id: str | None = None,
+    proposed_links: list[dict] | None = None,
 ) -> dict:
+    """Creates a change request. `proposed_links` are links to create on approval, each
+    `{"link_type_id", "direction", "other_type", "other_id"}` read from the requirement's side."""
     body = {
         "kind": kind, "requirement_id": requirement_id, "proposed_name": proposed_name,
         "proposed_reasoning": proposed_reasoning, "reason": reason,
     }
+    if proposed_links:
+        body["proposed_links"] = proposed_links
     if kind == "modify_requirement":
         # changed_fields is the explicit record of what a MODIFY_REQUIREMENT
         # change request actually proposes to change (see
@@ -1788,6 +1793,18 @@ def main() -> None:
         reason="Obstacle-avoidance sensor payload (added post-baseline) draws an additional ~4W, "
         "reducing achievable flight time in verified bench testing from 42 to 38 minutes.",
         component_id=drone_components["PR"]["id"], category_id=drone_categories["PR"]["PERF"]["id"],
+        # Platform Enhancements Phase 6b: the request also proposes three traceability links, merged only if the
+        # approver ticks them. The third is made unmergeable below (linked directly after the request was made),
+        # so the approval dialog also shows a link that "can no longer be merged" with its reason.
+        proposed_links=[
+            {"link_type_id": default_link_types["Related to"]["id"], "direction": "outgoing",
+             "other_type": "requirement", "other_id": other["id"]}
+            for other in (flight_log_req, gps_req, preflight_req)
+        ],
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "requirement", flight_time_req["id"], link_type_id=default_link_types["Related to"]["id"],
+        other_type="requirement", other_id=preflight_req["id"],
     )
     submit_change_request(h_pm, drone["id"], drone_cr["id"])
     add_cr_comment(h(login("demo.stakeholder@example.com", PASSWORD)), drone["id"], drone_cr["id"],
@@ -1999,7 +2016,7 @@ def main() -> None:
     grant_compliance_officer(h_pm, drone["id"], demo_engineer["user_id"])
     # The seeded "Link editor" preset (View + Link on every record type) lets Priya trace the Drone project's
     # records without being a manager (Platform Enhancements Phase 6d).
-    grant_custom_role(h_admin, org["id"], "Link editor", demo_engineer["user_id"], drone["id"])
+    grant_custom_role(h_pm, org["id"], "Link editor", demo_engineer["user_id"], drone["id"])
     # A requirement traces to the standard clause it derives from as an ordinary link (Platform Enhancements
     # Phase 6c): visible in the requirement's Links panel, found with the "Add a link" finder.
     create_artefact_link(

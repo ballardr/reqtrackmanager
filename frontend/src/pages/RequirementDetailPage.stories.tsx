@@ -463,8 +463,7 @@ export const RemoveLinkConfirms: Story = {
  * applies, minus exemption) *and* the requirement is locked, adding a link
  * requires a reason and submits an `ADD_LINK` change request instead of
  * calling the direct endpoint — the same change-request-only-once-locked
- * rule item 514 established for actions, extended here to links. The panel
- * then offers only same-project requirements, which is all that request carries. */
+ * rule item 514 established for actions, extended here to links. */
 export const AddLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
@@ -490,7 +489,9 @@ export const AddLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
         `/api/v1/projects/${PROJECT_ID}/change-requests`,
         expect.objectContaining({
           kind: "add_link", requirement_id: REQUIREMENT_ID,
-          proposed_link_target_requirement_id: "requirement-2", proposed_link_type_id: "lt1",
+          proposed_links: [expect.objectContaining({
+            link_type_id: "lt1", direction: "outgoing", other_type: "requirement", other_id: "requirement-2",
+          })],
           reason: "traceability gap found during review",
         })
       )

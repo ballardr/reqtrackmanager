@@ -860,6 +860,30 @@ async def get_change_request(project_id: str | None = None, *, change_request_id
 
 
 @mcp.tool
+async def preview_change_request_links(project_id: str | None = None, *, change_request_id: str) -> dict:
+    """Previews which of a change request's proposed links would merge if it were approved now.
+
+    A change request can propose links (new, modify and add-link requests). Each is re-checked
+    against today's rules: the link type must still be usable, the pair still allowed, the far
+    end still there, and the request's creator and you (the approver) must each still be able to
+    see it. Needs the project manager role.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        change_request_id: The change request's UUID (from `list_change_requests`).
+
+    Returns:
+        `rows`, one per proposed link: its `link` (id, phrase, direction, far end's type and label,
+        `outcome`), `selectable` (it would merge), `already_linked` and, when not selectable, `reason`.
+        Pass the `link.id` of the ones to merge as `merge_link_ids` to `decide_change_request`.
+    """
+    pid = _require_project_id(project_id)
+    cid = _require_uuid(change_request_id, "change_request_id")
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/change-requests/{cid}/link-merge-preview")
+    return response.json()
+
+
+@mcp.tool
 async def list_change_request_votes(project_id: str | None = None, *, change_request_id: str) -> dict:
     """Gets a change request's advisory stakeholder vote tally and individual votes.
 
@@ -1203,7 +1227,8 @@ if MCP_WRITES_ENABLED:
 
     @mcp.tool
     async def decide_change_request(
-        project_id: str | None = None, *, change_request_id: str, approve: bool, note: str = ""
+        project_id: str | None = None, *, change_request_id: str, approve: bool, note: str = "",
+        merge_link_ids: list[str] | None = None,
     ) -> dict:
         """Approves or rejects a submitted (or in-review) change request.
 
@@ -1216,15 +1241,21 @@ if MCP_WRITES_ENABLED:
             change_request_id: The change request's UUID (from `list_change_requests`).
             approve: `True` to approve, `False` to reject.
             note: Optional note explaining the decision.
+            merge_link_ids: Which of the request's proposed links to create on approval
+                (their ids, from `preview_change_request_links`). Omit to merge every link that
+                is valid now; an empty list merges none. A chosen link that is no longer valid
+                fails the whole call with a conflict and a fresh preview. Ignored on rejection.
 
         Returns:
             The change request's new current detail, same shape as `get_change_request`.
         """
         pid = _require_project_id(project_id)
         cid = _require_uuid(change_request_id, "change_request_id")
+        body: dict = {"approve": approve, "note": note}
+        if merge_link_ids is not None:
+            body["merge_link_ids"] = [_require_uuid(link_id, "merge_link_ids") for link_id in merge_link_ids]
         response = await _call_backend(
-            "POST", f"/api/v1/projects/{pid}/change-requests/{cid}/decide",
-            json={"approve": approve, "note": note},
+            "POST", f"/api/v1/projects/{pid}/change-requests/{cid}/decide", json=body,
         )
         return response.json()
 
@@ -1267,7 +1298,9 @@ if MCP_WRITES_ENABLED:
         `link_type_id` and `direction`; the other record's type must be one of
         that entry's `other_types`. The backend enforces the organisation's
         restrictions and your permissions (the `link` or `manage` permission
-        on the artefact's type), so a refused link is a rule, not
+        on the artefact's type, which works in any state; a stakeholder,
+        project administrator or manager may also link a requirement or
+        action that is not approved), so a refused link is a rule, not
         something to retry with another type. Linking changes traceability
         only, never either record's status.
 

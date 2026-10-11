@@ -652,8 +652,8 @@ def test_pending_change_request_blocks_removal_and_is_repointed_by_a_move(world,
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
-            "kind": "add_link", "requirement_id": str(a), "proposed_link_target_requirement_id": str(b),
-            "proposed_link_type_id": proposed, "reason": "gap",
+            "kind": "add_link", "requirement_id": str(a), "reason": "gap",
+            "proposed_links": [{"link_type_id": proposed, "direction": "outgoing", "other_type": "requirement", "other_id": str(b)}],
         },
         headers=auth_headers(world.token),
     )
@@ -667,7 +667,7 @@ def test_pending_change_request_blocks_removal_and_is_repointed_by_a_move(world,
     db = SessionLocal()
     try:
         version = db.scalar(select(ChangeRequestVersion).where(ChangeRequestVersion.change_request_id == uuid.UUID(cr.json()["id"])))
-        assert version.proposed_link_type_id == uuid.UUID(target)
+        assert [p.link_type_id for p in version.proposed_links] == [uuid.UUID(target)]
     finally:
         db.close()
 

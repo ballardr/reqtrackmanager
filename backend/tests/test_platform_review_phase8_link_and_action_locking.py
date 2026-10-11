@@ -382,7 +382,9 @@ def test_add_link_change_request_creates_link_on_approval_and_is_audited(client,
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
             "kind": "add_link", "requirement_id": a["id"],
-            "proposed_link_target_requirement_id": b["id"], "proposed_link_type_id": link_types["Related to"],
+            "proposed_links": [{
+                "link_type_id": link_types["Related to"], "direction": "outgoing", "other_type": "requirement", "other_id": b["id"],
+            }],
             "reason": "traceability gap",
         },
         headers=auth_headers(token),
@@ -399,7 +401,7 @@ def test_add_link_change_request_creates_link_on_approval_and_is_audited(client,
     assert len(after) == 1
     assert after[0]["other_requirement_id"] == b["id"]
 
-    events = _audit_events("requirement_link", after[0]["id"], action="created")
+    events = _audit_events("artefact_link", after[0]["id"], action="created")
     assert len(events) == 1
     assert events[0].detail["via"] == "change_request"
     assert events[0].detail["change_request_id"] == cr_id
@@ -456,7 +458,9 @@ def test_add_link_change_request_rejected_when_project_does_not_require_it(clien
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
             "kind": "add_link", "requirement_id": a["id"],
-            "proposed_link_target_requirement_id": b["id"], "proposed_link_type_id": link_types["Related to"],
+            "proposed_links": [{
+                "link_type_id": link_types["Related to"], "direction": "outgoing", "other_type": "requirement", "other_id": b["id"],
+            }],
             "reason": "x",
         },
         headers=auth_headers(token),
@@ -477,7 +481,9 @@ def test_add_link_change_request_rejected_against_still_draft_requirement(client
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
             "kind": "add_link", "requirement_id": a["id"],
-            "proposed_link_target_requirement_id": b["id"], "proposed_link_type_id": link_types["Related to"],
+            "proposed_links": [{
+                "link_type_id": link_types["Related to"], "direction": "outgoing", "other_type": "requirement", "other_id": b["id"],
+            }],
             "reason": "x",
         },
         headers=auth_headers(token),
@@ -502,7 +508,9 @@ def test_add_link_change_request_rejects_target_from_another_project(client, adm
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
             "kind": "add_link", "requirement_id": a["id"],
-            "proposed_link_target_requirement_id": other_requirement["id"], "proposed_link_type_id": link_types["Related to"],
+            "proposed_links": [{
+                "link_type_id": link_types["Related to"], "direction": "outgoing", "other_type": "requirement", "other_id": other_requirement["id"],
+            }],
             "reason": "x",
         },
         headers=auth_headers(token),

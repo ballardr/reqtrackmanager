@@ -418,15 +418,13 @@ export function RequirementDetailPage() {
    * proposes link changes as `add_link`/`remove_link` change requests instead of
    * calling the link endpoints (the same branch `linkExistingAction` below takes
    * for `add_action`). `undefined` when links are not locked. An `add_link` request
-   * carries one outgoing link to a requirement of this project, which is all the
-   * panel then offers; the reason is required by the panel before it calls. */
+   * carries the one link the dialog chose (any record the panel can link to, from
+   * either end); the reason is required by the panel before it calls. */
   const linksChangeRequest: LinksChangeRequestMode | undefined = linksLockedForCR
     ? {
         onPropose: async (link, reason) => {
           await api.post(`/api/v1/projects/${projectId}/change-requests`, {
-            kind: "add_link", requirement_id: requirementId,
-            proposed_link_target_requirement_id: link.other_id, proposed_link_type_id: link.link_type_id,
-            reason,
+            kind: "add_link", requirement_id: requirementId, proposed_links: [link], reason,
           });
           showToast(strings.changeRequests.created);
         },

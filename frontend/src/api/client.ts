@@ -11,9 +11,12 @@ const BASE_URL =
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** The response's `detail` when it was structured (an object), else `undefined`; a plain message is in `message`. */
+  detail?: unknown;
+  constructor(status: number, message: string, detail?: unknown) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -89,13 +92,18 @@ async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: n
       window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
     }
     let message = response.statusText;
+    let detail: unknown;
     try {
       const body = await response.json();
       message = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body);
+      if (body.detail && typeof body.detail === "object" && !Array.isArray(body.detail)) {
+        detail = body.detail;
+        if (typeof body.detail.message === "string") message = body.detail.message;
+      }
     } catch {
       // response had no JSON body; fall back to statusText
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, detail);
   }
   return response;
 }

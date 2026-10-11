@@ -36,7 +36,7 @@ Parameters: `project_id` (string), `name*` (string), `component_id*` (string), `
 
 Approves or rejects a submitted (or in-review) change request.
 
-Parameters: `project_id` (string), `change_request_id*` (string), `approve*` (boolean), `note` (string)
+Parameters: `project_id` (string), `change_request_id*` (string), `approve*` (boolean), `note` (string), `merge_link_ids` (list[string])
 
 ## `delete_artefact_link` (write)
 
@@ -171,6 +171,12 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 Lists requirements in a project, with the same filters the Requirements page's filter panel offers.
 
 Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean)
+
+## `preview_change_request_links` (read)
+
+Previews which of a change request's proposed links would merge if it were approved now.
+
+Parameters: `project_id` (string), `change_request_id*` (string)
 
 ## `search_artefact_link_candidates` (read)
 

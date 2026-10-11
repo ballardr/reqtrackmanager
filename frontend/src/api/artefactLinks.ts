@@ -52,8 +52,11 @@ export interface LinkGraph {
   truncated: boolean;
   hidden_count: number;
   unavailable_count: number;
-  /** The caller holds `link` or `manage` on the root record's type. */
+  /** The caller may add and remove links on the root now: `link`/`manage` (any state), or a
+   * stakeholder, project administrator or manager role while the record is not approved. */
   can_link: boolean;
+  /** The caller may link the root at all, including by proposing a link on a change request once it is approved. */
+  can_propose: boolean;
 }
 
 export interface ArtefactTypeRef {
@@ -131,6 +134,21 @@ export interface NewArtefactLink {
   other_id: string;
   other_project_id?: string;
 }
+
+/** A link chosen in the "Add a link" dialog but not created, with what is needed to show it:
+ * the rows of a change request's proposed links before the request is submitted. */
+export interface CollectedLink extends NewArtefactLink {
+  /** The relationship as the page record reads it ("Depends on"). */
+  phrase: string;
+  otherLabel: string;
+  otherTypeLabel: string;
+  /** The label of the other record's {project}, when it is not the page record's own. */
+  otherProjectLabel?: string;
+}
+
+/** The id that stands for a record not created yet (the requirement a new-requirement
+ * change request would create); the finder reads accept it, writes never do. */
+export const DRAFT_ARTEFACT_ID = "00000000-0000-0000-0000-000000000000";
 
 /** The calls the Links panel makes; injectable so stories need no network. */
 export interface ArtefactLinksApi {

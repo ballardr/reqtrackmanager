@@ -38,14 +38,13 @@ from app.models.project import Project, ProjectCategory, ProjectComponent, Proje
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
-from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.routers.change_requests.core import _latest_version, _to_out
-from app.schemas.change_request import ChangeRequestDecision, ChangeRequestOut
+from app.schemas.change_request import ChangeRequestDecision, ChangeRequestOut, ProposedLinkPreviewOut
 from app.services import notifications, pubsub
 from app.services.actions import generate_unique_code as generate_action_unique_code
 from app.services.audit import log_event
-from app.services.link_type_scope import LinkRuleError, assert_link_type_usable
+from app.services.change_request_links import build_preview, decline_all, resolve_links
 from app.services.rbac import (
     get_effective_project_roles,
     get_project_member_user_ids,
@@ -60,19 +59,17 @@ from app.services.requirements import apply_new_version, create_requirement, get
 router = APIRouter(tags=["change-requests-workflow"])
 
 
-def _link_type_still_usable(db: Session, project_id: UUID, link_type: RequirementLinkTypeDefinition) -> bool:
-    """Whether `link_type` can still be used in the project when an `ADD_LINK`
-    request is approved (not deleted, not locked out, not moved out of reach),
-    so approval never writes a link the project could no longer create. Hiding
-    is not rechecked: the request was validated when proposed."""
-    project = db.get(Project, project_id)
-    if project is None:
-        return False
-    try:
-        assert_link_type_usable(db, project, link_type)
-    except LinkRuleError:
-        return False
-    return True
+def _decision_body(note: str, result) -> str:
+    """The approval note plus, when links were proposed, how many were merged and how many were
+    not, so a partial merge is never a surprise to the person who proposed them."""
+    if result is None or result.total == 0:
+        return note
+    not_merged = result.total - result.merged
+    summary = f"{result.merged} of {result.total} proposed link{'s' if result.total != 1 else ''} merged"
+    if not_merged:
+        parts = [f"{count} {label}" for count, label in ((result.declined, "left out"), (result.skipped, "not valid")) if count]
+        summary += f" ({', '.join(parts)})"
+    return f"{note}\n{summary}." if note else f"{summary}."
 
 
 def _display_title(db: Session, cr: ChangeRequest, version: ChangeRequestVersion) -> str:
@@ -154,11 +151,51 @@ def withdraw_change_request(
     if cr.status in (ChangeRequestStatus.APPROVED, ChangeRequestStatus.REJECTED):
         raise HTTPException(status.HTTP_409_CONFLICT, "This change request has already been decided.")
     cr.status = ChangeRequestStatus.WITHDRAWN
+    decline_all(_latest_version(db, cr))
     log_event(db, entity_type="change_request", entity_id=cr.id, action="withdrawn",
               actor_id=current_user.id, project_id=project_id)
     db.commit()
     db.refresh(cr)
     return _to_out(db, cr, _latest_version(db, cr), current_user.id)
+
+
+def _require_project_manager(db: Session, user: User, project_id: UUID) -> None:
+    """403 unless `user` is a project manager of the project (the role that decides change requests)."""
+    if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, user.id, project_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can decide change requests.")
+
+
+def _stale_selection(preview: ProposedLinkPreviewOut) -> HTTPException:
+    """409 carrying a fresh preview, so the approver re-confirms rather than links being silently skipped."""
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail={
+            "message": "Some of the links you chose can no longer be merged. Review the updated list and confirm again.",
+            "preview": preview.model_dump(mode="json"),
+        },
+    )
+
+
+@router.get("/{cr_id}/link-merge-preview", response_model=ProposedLinkPreviewOut)
+def preview_change_request_links(
+    project_id: UUID, cr_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """What approving this change request would merge: each proposed link re-validated now.
+
+    A link is selectable only if the request's creator could still create it and the caller
+    (the would-be approver) can view its far end; an unselectable one carries the reason. Links
+    of a decided request are shown with the outcome they ended in.
+
+    Raises:
+        HTTPException: 403 unless the caller is a project manager; 404 unknown change request.
+    """
+    _require_project_manager(db, current_user, project_id)
+    cr = db.get(ChangeRequest, cr_id)
+    if cr is None or cr.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
+    version = _latest_version(db, cr)
+    return ProposedLinkPreviewOut(rows=build_preview(db, db.get(Project, project_id), cr, version, current_user.id))
 
 
 @router.post("/{cr_id}/decide", response_model=ChangeRequestOut)
@@ -179,8 +216,7 @@ def decide_change_request(
     docstring and docs/decisions.md's "AI approval via MCP" entry. A plain
     UI/API call is unaffected by that flag either way.
     """
-    if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can decide change requests.")
+    _require_project_manager(db, current_user, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, db.get(Project, project_id))
 
@@ -201,9 +237,20 @@ def decide_change_request(
         raise HTTPException(status.HTTP_409_CONFLICT, "Only submitted change requests can be decided.")
 
     version = _latest_version(db, cr)
+    if payload.approve and payload.merge_link_ids is not None:
+        # Checked before anything is applied: a chosen link that has become invalid since the
+        # approver looked is refused with a fresh preview, never silently left out.
+        chosen = set(payload.merge_link_ids)
+        pending_ids = {row.id for row in version.proposed_links}
+        if not chosen <= pending_ids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "merge_link_ids names a link this change request does not propose.")
+        rows = build_preview(db, db.get(Project, project_id), cr, version, current_user.id)
+        if any(row.link.id in chosen and not row.selectable for row in rows):
+            raise _stale_selection(ProposedLinkPreviewOut(rows=rows))
     cr.decided_at = datetime.now(UTC)
     cr.decided_by = current_user.id
     cr.decision_note = payload.note
+    link_result = None
 
     if payload.approve:
         cr.status = ChangeRequestStatus.APPROVED
@@ -380,36 +427,9 @@ def decide_change_request(
                 )
                 db.delete(existing)
         elif cr.kind == ChangeRequestKind.ADD_LINK:
-            # Platform review 2026-09, Phase 8 — same re-check posture as
-            # ADD_ACTION/attachments above.
-            requirement = db.get(Requirement, cr.requirement_id)
-            target = db.get(Requirement, version.proposed_link_target_requirement_id)
-            link_type = db.get(RequirementLinkTypeDefinition, version.proposed_link_type_id)
-            if (
-                target is not None and target.project_id == project_id and link_type is not None
-                and _link_type_still_usable(db, project_id, link_type)
-            ):
-                existing = get_artefact_link_between(
-                    db, source_type=ArtefactType.REQUIREMENT, source_id=requirement.id,
-                    target_type=ArtefactType.REQUIREMENT, target_id=target.id,
-                    link_type_id=link_type.id,
-                )
-                if existing is None:
-                    link = create_artefact_link(
-                        db, source_type=ArtefactType.REQUIREMENT, source_id=requirement.id,
-                        target_type=ArtefactType.REQUIREMENT, target_id=target.id,
-                        link_type_id=link_type.id, created_by=cr.creator_id,
-                        enforce_rules=False,  # validated when proposed; approval replays it
-                    )
-                    log_event(
-                        db, entity_type="requirement_link", entity_id=link.id, action="created",
-                        actor_id=current_user.id, project_id=project_id,
-                        detail={
-                            "source_requirement_id": str(requirement.id), "target_requirement_id": str(target.id),
-                            "link_type_id": str(link_type.id),
-                            "via": "change_request", "change_request_id": str(cr.id),
-                        },
-                    )
+            # Phase 6b: an add-link request is nothing but its proposed links, which
+            # `resolve_links` below merges (re-validated now, as the approver chose).
+            pass
         elif cr.kind == ChangeRequestKind.REMOVE_LINK:
             # Platform review 2026-09, Phase 8 — same re-check posture as
             # ADD_LINK above: the link may already have been removed via
@@ -461,16 +481,27 @@ def decide_change_request(
                 change_note=f"Created via approved change request: {version.reason}", change_request_id=cr.id,
             )
             cr.requirement_id = requirement.id
+        if version.proposed_links:
+            link_result = resolve_links(
+                db, db.get(Project, project_id), cr, version, approver_id=current_user.id,
+                merge_ids=set(payload.merge_link_ids) if payload.merge_link_ids is not None else None,
+            )
         change_requests_approved_total.inc()
     else:
         cr.status = ChangeRequestStatus.REJECTED
+        decline_all(version)
         change_requests_rejected_total.inc()
 
+    decision_detail: dict = {"note": payload.note, "via": "mcp"} if channel == "mcp" else {"note": payload.note}
+    if link_result is not None:
+        decision_detail["links"] = {
+            "merged": link_result.merged, "declined": link_result.declined, "skipped": link_result.skipped,
+        }
     log_event(
         db, entity_type="change_request", entity_id=cr.id,
         action="approved" if payload.approve else "rejected",
         actor_id=current_user.id, project_id=project_id,
-        detail={"note": payload.note, "via": "mcp"} if channel == "mcp" else {"note": payload.note},
+        detail=decision_detail,
     )
 
     display_title = _display_title(db, cr, version)
@@ -480,7 +511,7 @@ def decide_change_request(
             db, creator,
             notification_type=NotificationType.CHANGE_REQUEST_APPROVED if payload.approve else NotificationType.CHANGE_REQUEST_REJECTED,
             title=f"Your change request was {'approved' if payload.approve else 'rejected'}: {display_title}",
-            body=payload.note, project_id=project_id, entity_type="change_request", entity_id=str(cr.id),
+            body=_decision_body(payload.note, link_result), project_id=project_id, entity_type="change_request", entity_id=str(cr.id),
             actor_id=current_user.id,
         )
     if payload.approve:

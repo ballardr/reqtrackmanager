@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
+import { DRAFT_ARTEFACT_ID } from "../api/artefactLinks";
 import { api } from "../api/client";
 import type { Category, Component, ProjectStage } from "../api/types";
+import { buildCandidate, buildGraph, buildOption } from "../testing/artefactLinksFixtures";
 import { buildChangeRequest, buildRequirement, buildUser, withRouter, withStatefulAuth, withTerminology, withToast } from "../testing/storybook-helpers";
 import { ChangeRequestsPage } from "./ChangeRequestsPage";
 
@@ -24,8 +26,14 @@ const requirement = buildRequirement({
   target_stage_id: "s1", reasoning: "Locked-out users need a self-service recovery path.", status: "approved",
 });
 
-function mockChangeRequestsListApis() {
+/** `links` also answers the Links finder's reads (Phase 6b's proposed-links section), as a user who may link would see them. */
+function mockChangeRequestsListApis({ links = false }: { links?: boolean } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (links && path.includes("/link-graph")) return buildGraph([], { can_link: true });
+    if (links && path.includes("/link-types")) return [buildOption({ other_types: [{ type: "decision", label: "Decision" }] })];
+    if (links && path.includes("/link-candidates")) return { items: [buildCandidate()], truncated: false };
+    if (links && path.includes("/link-browse")) return null;
+    if (links && path.includes("/link-candidate-projects")) return { items: [], truncated: false };
     if (path.endsWith("/requirements")) return [requirement];
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return categories;
@@ -196,6 +204,68 @@ export const SubmitCreatesChangeRequest: Story = {
     await expect(within(document.body).getByText("Change request created")).toBeInTheDocument();
     // The Modal closes itself on a successful create (`setShowForm(false)`).
     await expect(dialog).not.toBeInTheDocument();
+  },
+};
+
+/** Phase 6b: a modify request can carry proposed links. The finder reads the selected requirement; the
+ * links are sent with the request (display-only fields dropped) and nothing is created by the dialog. */
+export const ModifyRequestSendsItsProposedLinks: Story = {
+  beforeEach: () => {
+    mockChangeRequestsListApis({ links: true });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New change request" });
+    await userEvent.click(await within(dialog).findByRole("button", { name: "Add a link" }));
+    const picker = within(await within(document.body).findByRole("dialog", { name: "Add a link" }));
+    await picker.findByRole("option", { name: "DEC-002 Use Redis" });
+    await userEvent.selectOptions(picker.getByLabelText("Record"), "dec-2");
+    await userEvent.click(picker.getByRole("button", { name: "Add to the request" }));
+    await waitFor(() => expect(within(dialog).getByText("DEC-002 Use Redis")).toBeInTheDocument());
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Reasoning" }));
+    await userEvent.type(within(dialog).getByPlaceholderText("Reason for change"), "Trace the decision");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/change-requests`,
+        expect.objectContaining({
+          kind: "modify_requirement",
+          proposed_links: [{
+            link_type_id: "lt-related", direction: "outgoing", other_type: "decision", other_id: "dec-2",
+            other_project_id: undefined,
+          }],
+        })
+      )
+    );
+  },
+};
+
+/** A new-requirement request asks the finder about the draft id, since the requirement does not exist yet. */
+export const NewRequirementRequestSearchesAsADraft: Story = {
+  beforeEach: () => mockChangeRequestsListApis({ links: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New change request" });
+    await userEvent.click(within(dialog).getByRole("radio", { name: /New/ }));
+    await within(dialog).findByRole("button", { name: "Add a link" });
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/artefacts/requirement/${DRAFT_ARTEFACT_ID}/link-types`)
+    );
+  },
+};
+
+/** Without the right to link requirements the section is not offered at all. */
+export const NoProposedLinksSectionWithoutTheRightToLink: Story = {
+  beforeEach: () => mockChangeRequestsListApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New change request" });
+    await waitFor(() => expect(within(dialog).getByText("Fields to change")).toBeInTheDocument());
+    await expect(within(dialog).queryByRole("button", { name: "Add a link" })).not.toBeInTheDocument();
   },
 };
 

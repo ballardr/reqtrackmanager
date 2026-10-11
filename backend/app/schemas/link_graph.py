@@ -85,8 +85,11 @@ class LinkGraphOut(BaseModel):
     project, a disabled module, or no longer existing); `unavailable_count`
     counts linked records of a type no installed module can display. Neither
     is ever traversed through. `can_link` is whether the caller may add or remove
-    links on the root (`link` or `manage` on its type in the request project), so a
-    client can hide controls that would only answer 403."""
+    links on the root directly now (`link` or `manage` on its type in the request
+    project, in any state; or, for a core record that is not approved, a stakeholder,
+    project administrator or manager role). `can_propose` is whether they may link it
+    at all, including by proposing a link on a change request once it is approved. A
+    client uses both to hide controls that would only answer 403."""
 
     root: LinkGraphNode
     nodes: list[LinkGraphNode]
@@ -95,3 +98,4 @@ class LinkGraphOut(BaseModel):
     hidden_count: int
     unavailable_count: int
     can_link: bool = False
+    can_propose: bool = False

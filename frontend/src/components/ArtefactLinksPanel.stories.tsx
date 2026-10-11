@@ -98,6 +98,30 @@ export const ReadOnlyWithoutManagePermission: Story = {
   },
 };
 
+/** An approved requirement whose links go through change requests: someone who cannot link it
+ * directly (a stakeholder) still gets the add control, since they may propose the link. */
+export const OffersProposingToSomeoneWhoCannotLinkDirectly: Story = {
+  args: {
+    changeRequest: { onPropose: fn(async () => undefined), onProposeRemove: fn(async () => undefined) },
+    api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION]], { can_link: false, can_propose: true })) }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Add link" })).toBeInTheDocument();
+  },
+};
+
+/** Without the change-request route, the same person sees no controls on an approved record. */
+export const ShowsNoControlsWhenOnlyProposingIsAllowedAndLinksAreNotLocked: Story = {
+  args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION]], { can_link: false, can_propose: true })) }) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Add link" })).not.toBeInTheDocument();
+  },
+};
+
 export const HidesStructuralLinksWhenThePageListsThemItself: Story = {
   args: {
     hideStructuralLinks: true,

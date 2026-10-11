@@ -762,8 +762,10 @@ def _propose_add_link(world: World, project: dict, source: uuid.UUID, target: uu
     return world.client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
-            "kind": "add_link", "requirement_id": str(source), "proposed_link_target_requirement_id": str(target),
-            "proposed_link_type_id": link_type_id, "reason": "traceability gap",
+            "kind": "add_link", "requirement_id": str(source), "reason": "traceability gap",
+            "proposed_links": [
+                {"link_type_id": link_type_id, "direction": "outgoing", "other_type": "requirement", "other_id": str(target)}
+            ],
         },
         headers=headers,
     )
@@ -779,7 +781,7 @@ def test_change_request_cannot_propose_a_type_the_project_cannot_use(world):
 
 
 def test_pending_change_requests_in_a_kept_child_follow_the_copy(world):
-    from app.models.change_request import ChangeRequestVersion
+    from app.models.change_request import ChangeRequestProposedLink
 
     parent, mine, _own, [(child, _ca)] = _parent_child_with_links(world)
     a, b = world.requirement(child, "A"), world.requirement(child, "B")
@@ -793,8 +795,8 @@ def test_pending_change_requests_in_a_kept_child_follow_the_copy(world):
     copy_id = _panel(world, child)["Shared verb"]["id"]
     db = SessionLocal()
     try:
-        proposed = db.scalars(select(ChangeRequestVersion.proposed_link_type_id).where(
-            ChangeRequestVersion.proposed_link_type_id.is_not(None))).all()
+        proposed = db.scalars(select(ChangeRequestProposedLink.link_type_id).where(
+            ChangeRequestProposedLink.link_type_id.is_not(None))).all()
         assert proposed == [uuid.UUID(copy_id)]
     finally:
         db.close()

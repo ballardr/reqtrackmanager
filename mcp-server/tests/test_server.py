@@ -46,7 +46,7 @@ READ_ONLY_TOOLS = {
     "list_requirements", "get_requirement", "get_requirement_history", "get_artefact_link_graph",
     "list_artefact_link_types", "list_link_candidate_projects",
     "search_artefact_link_candidates", "list_artefact_link_browse",
-    "list_change_requests", "get_change_request", "list_change_request_votes",
+    "list_change_requests", "get_change_request", "preview_change_request_links", "list_change_request_votes",
     "list_change_request_tasks", "list_change_request_comments",
     "list_requirement_comments", "list_notifications",
     "list_my_reviews_due", "list_project_reviews_due",

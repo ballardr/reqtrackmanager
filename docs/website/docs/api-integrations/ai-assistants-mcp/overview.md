@@ -12,7 +12,7 @@ Every tool call authenticates with the caller's own ReqTrackManager token — se
 
 ## What it can do
 
-Twenty-one read tools, always available:
+Twenty-two read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
@@ -31,7 +31,8 @@ Twenty-one read tools, always available:
 | `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
 | `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
-| `get_change_request` | A single change request's full current detail |
+| `get_change_request` | A single change request's full current detail, including the links it proposes (`proposed_links`) |
+| `preview_change_request_links` | Which of a change request's proposed links would merge if it were approved now, each re-checked, with the reason for any that would not (project managers only) |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes |
 | `list_change_request_tasks` | Follow-up tasks tracked against a change request |
 | `list_change_request_comments` | The discussion thread on a change request |
@@ -49,7 +50,7 @@ Plus seven write tools, only when write mode is enabled:
 | `create_artefact_link` | Links an artefact to another record of the same project, from either end — subject to the organisation's link restrictions and the caller's own permissions |
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `approve_requirement` | Approves a draft or reviewed requirement — only when AI approval is enabled for the project and its organisation |
-| `decide_change_request` | Approves or rejects a submitted change request — only when AI approval is enabled for the project and its organisation |
+| `decide_change_request` | Approves or rejects a submitted change request — only when AI approval is enabled for the project and its organisation. `merge_link_ids` chooses which proposed links to create (omitted: every valid one; empty: none); a chosen link that is no longer valid fails the call with a conflict |
 | `complete_requirement` | Marks an approved requirement completed — only when AI approval is enabled for the project and its organisation |
 
 No tool, in any configuration, can vote, comment, or record a review outcome. See [Known limitations](./known-limitations.md) for what's deliberately still out of scope and why.

@@ -27,14 +27,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.action_type import ActionTypeDefinition
-from app.models.change_request import ChangeRequest, ChangeRequestVersion
+from app.models.change_request import ChangeRequest, ChangeRequestProposedLink, ChangeRequestVersion
 from app.models.custom_field import CustomFieldEntityKind
 from app.models.enums import ArtefactType, ChangeRequestKind, ChangeRequestStatus, ProjectRole, ReviewTargetType
 from app.models.file import FileAsset
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
-from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.schemas.change_request import (
     CHANGEABLE_REQUIREMENT_FIELDS,
@@ -46,9 +45,9 @@ from app.schemas.changes import ChangeEntryOut
 from app.services import engagement
 from app.services.actions import get_requirement_action_in_project
 from app.services.audit import log_event
+from app.services.change_request_links import ProposedLinkProblem, check_proposed_link, describe_links
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
-from app.services.link_types import LinkRuleError, validate_link_allowed
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
@@ -75,10 +74,17 @@ def _require_can_create_change_request(db: Session, user: User, project: Project
 OPEN_CR_STATUSES = (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW)
 
 
-def _to_out(db: Session, cr: ChangeRequest, version: ChangeRequestVersion, current_user_id: UUID) -> ChangeRequestOut:
+def _to_out(
+    db: Session, cr: ChangeRequest, version: ChangeRequestVersion, current_user_id: UUID, *, with_links: bool = True
+) -> ChangeRequestOut:
     """Builds the API response shape for a change request from its identity
     row plus one version snapshot, including `current_user_id`'s
-    subscription state (C-N-01) and derived list-view badge indicators."""
+    subscription state (C-N-01) and derived list-view badge indicators.
+
+    `with_links` resolves the proposed links for display (the far end's title
+    only where `current_user_id` may see it); the list view passes false and
+    carries just `proposed_link_count`."""
+    project = db.get(Project, cr.project_id) if with_links and version.proposed_links else None
     return ChangeRequestOut(
         id=cr.id, project_id=cr.project_id, requirement_id=cr.requirement_id, kind=cr.kind, status=cr.status,
         creator_id=cr.creator_id, changed_fields=version.changed_fields,
@@ -102,8 +108,8 @@ def _to_out(db: Session, cr: ChangeRequest, version: ChangeRequestVersion, curre
         proposed_action_type_id=version.proposed_action_type_id,
         proposed_action_assignee_id=version.proposed_action_assignee_id,
         proposed_action_due_date=version.proposed_action_due_date,
-        proposed_link_target_requirement_id=version.proposed_link_target_requirement_id,
-        proposed_link_type_id=version.proposed_link_type_id,
+        proposed_links=describe_links(db, project, current_user_id, list(version.proposed_links)) if project else [],
+        proposed_link_count=len(version.proposed_links),
         proposed_link_id=version.proposed_link_id,
     )
 
@@ -115,6 +121,45 @@ def _latest_version(db: Session, cr: ChangeRequest) -> ChangeRequestVersion:
         .where(ChangeRequestVersion.change_request_id == cr.id)
         .order_by(ChangeRequestVersion.version_number.desc())
     ).first()
+
+
+MAX_PROPOSED_LINKS = 50
+
+
+def _validate_proposed_links(db: Session, project: Project, payload: ChangeRequestCreate, *, creator_id: UUID) -> None:
+    """400 unless every proposed link could be created by `creator_id` now.
+
+    Links are allowed on new, modify and add-link requests only. Each is checked with
+    the rules of creating a link directly (`services.change_request_links`), against the
+    existing requirement or, for a new one, the project; a repeated link in one request
+    is refused. The messages never reveal a record the creator cannot see.
+    """
+    links = payload.proposed_links
+    if not links:
+        return
+    if payload.kind not in (
+        ChangeRequestKind.NEW_REQUIREMENT, ChangeRequestKind.MODIFY_REQUIREMENT, ChangeRequestKind.ADD_LINK
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Links can only be proposed on a new, modify or add-link change request."
+        )
+    if len(links) > MAX_PROPOSED_LINKS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"At most {MAX_PROPOSED_LINKS} links can be proposed in one request.")
+    seen: set[tuple] = set()
+    for position, proposed in enumerate(links, start=1):
+        key = (proposed.link_type_id, proposed.direction, proposed.other_type, proposed.other_id)
+        if key in seen:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Proposed link {position} repeats an earlier one.")
+        seen.add(key)
+        try:
+            check_proposed_link(
+                db, project=project, requirement_id=payload.requirement_id, creator_id=creator_id,
+                link_type_id=proposed.link_type_id, outgoing=proposed.direction.value == "outgoing",
+                other_type=proposed.other_type, other_id=proposed.other_id,
+                other_project_id=proposed.other_project_id,
+            )
+        except ProposedLinkProblem as problem:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Proposed link {position}: {problem.message}") from problem
 
 
 @router.post("", response_model=ChangeRequestOut, status_code=status.HTTP_201_CREATED)
@@ -262,24 +307,8 @@ def create_change_request(
                 "This project doesn't require links to be changed via a change request — change it directly instead.",
             )
         if payload.kind == ChangeRequestKind.ADD_LINK:
-            if payload.proposed_link_target_requirement_id is None or payload.proposed_link_type_id is None:
-                raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST,
-                    "proposed_link_target_requirement_id and proposed_link_type_id are required to add a link.",
-                )
-            target = db.get(Requirement, payload.proposed_link_target_requirement_id)
-            if target is None or target.project_id != project_id:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_link_target_requirement_id.")
-            link_type = db.get(RequirementLinkTypeDefinition, payload.proposed_link_type_id)
-            if link_type is None:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_link_type_id must be a link type available to this project.")
-            try:
-                validate_link_allowed(
-                    db, link_type=link_type, source_type=ArtefactType.REQUIREMENT.value,
-                    target_type=ArtefactType.REQUIREMENT.value, project_id=project.id, enforce_offered=True,
-                )
-            except LinkRuleError as exc:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+            if not payload.proposed_links:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_links is required to add a link.")
         else:
             if payload.proposed_link_id is None:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_link_id is required to remove a link.")
@@ -325,6 +354,8 @@ def create_change_request(
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST, "proposed_category_id does not belong to proposed_component_id."
                 )
+
+    _validate_proposed_links(db, project, payload, creator_id=payload.creator_id or current_user.id)
 
     if payload.proposed_attachment_file_ids:
         # Same cross-org isolation check report images use
@@ -379,13 +410,19 @@ def create_change_request(
         proposed_action_type_id=payload.proposed_action_type_id,
         proposed_action_assignee_id=payload.proposed_action_assignee_id,
         proposed_action_due_date=payload.proposed_action_due_date,
-        proposed_link_target_requirement_id=payload.proposed_link_target_requirement_id,
-        proposed_link_type_id=payload.proposed_link_type_id,
         proposed_link_id=payload.proposed_link_id,
     )
     db.add(version)
+    for position, proposed in enumerate(payload.proposed_links):
+        version.proposed_links.append(ChangeRequestProposedLink(
+            link_type_id=proposed.link_type_id, direction=proposed.direction.value, other_type=proposed.other_type,
+            other_id=proposed.other_id,
+            other_project_id=proposed.other_project_id if proposed.other_project_id != project_id else None,
+            sort_order=position,
+        ))
     log_event(db, entity_type="change_request", entity_id=cr.id, action="created",
-              actor_id=current_user.id, project_id=project_id)
+              actor_id=current_user.id, project_id=project_id,
+              detail={"proposed_links": len(payload.proposed_links)} if payload.proposed_links else None)
     db.commit()
     db.refresh(cr)
     return _to_out(db, cr, version, current_user.id)
@@ -484,7 +521,7 @@ def list_change_requests(
             ]))
             if needle not in haystack:
                 continue
-        out.append(_to_out(db, cr, version, current_user.id))
+        out.append(_to_out(db, cr, version, current_user.id, with_links=False))
 
     if sort:
         def _sort_value(item: ChangeRequestOut):

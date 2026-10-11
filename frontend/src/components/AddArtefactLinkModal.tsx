@@ -20,16 +20,20 @@
  * (restrictions, artefact-type rules, hiding, nesting scope, what the user may see),
  * which re-checks it all when the link is created.
  *
- * In `changeRequest` mode (the page artefact is an approved requirement in a project
- * that needs a change request for link changes) only requirements of the same project
- * can be proposed, because that is what an `add_link` change request carries; the
- * dialog asks for the reason and hands the link to `changeRequest.onPropose`.
+ * Two modes hand the chosen link on instead of creating it:
+ * - `changeRequest` (the page artefact is an approved requirement in a project that needs
+ *   a change request for link changes): asks for the reason and hands the link to
+ *   `changeRequest.onPropose`, which submits an `add_link` request.
+ * - `collect` (the proposed-links section of a change request being drafted): hands the
+ *   link, with what is needed to show it, to `collect.onCollect` and creates nothing.
+ * Both reach the same records and relationships as the plain dialog; the server re-checks
+ * every rule when the request is created and again when it is approved.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ArtefactLinkBrowseStep, ArtefactLinkCandidate, ArtefactLinkCandidates, ArtefactLinksApi, ArtefactLinkTypeOption,
-  LinkCandidateProject, NewArtefactLink,
+  CollectedLink, LinkCandidateProject, NewArtefactLink,
 } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -38,13 +42,17 @@ import { Modal } from "./Modal";
 
 /** Lets a page route link changes through a change request instead of the link endpoints. */
 export interface LinksChangeRequestMode {
-  /** Submits a change request proposing `link` (a same-project requirement); resolves once created. */
+  /** Submits a change request proposing `link`; resolves once created. */
   onPropose: (link: NewArtefactLink, reason: string) => Promise<void>;
   /** Submits a change request proposing to remove the link `linkId`; resolves once created. */
   onProposeRemove: (linkId: string, reason: string) => Promise<void>;
 }
 
-const REQUIREMENT = "requirement";
+/** Hands the chosen link back to a form that holds it until the request is submitted. */
+export interface LinksCollectMode {
+  onCollect: (link: CollectedLink) => void;
+}
+
 const SEARCH_DEBOUNCE_MS = 250;
 const GLOBAL_MIN_QUERY = 2;
 const LEVEL_FILTER_THRESHOLD = 12;
@@ -78,15 +86,19 @@ export function AddArtefactLinkModal({
   artefactId,
   api,
   changeRequest,
+  collect,
   onAdded,
   onClose,
 }: {
   projectId: string;
+  /** The page record's type. */
   artefactType: string;
+  /** The page record's id, or `DRAFT_ARTEFACT_ID` for one that does not exist yet (`collect` only). */
   artefactId: string;
   api: ArtefactLinksApi;
   changeRequest?: LinksChangeRequestMode;
-  /** Called after the link (or change request) is created. */
+  collect?: LinksCollectMode;
+  /** Called after the link (or change request) is created, or the link is collected. */
   onAdded: () => void;
   onClose: () => void;
 }) {
@@ -107,9 +119,8 @@ export function AddArtefactLinkModal({
   const levelRequest = useRef(0);
   const filterTimer = useRef<number | undefined>(undefined);
 
-  // Where the other record may live. Not offered when proposing through a change request.
+  // Where the other record may live: this project, its ancestors and its descendants.
   useEffect(() => {
-    if (changeRequest) return;
     let active = true;
     api.projects(projectId)
       .then((result) => {
@@ -119,7 +130,7 @@ export function AddArtefactLinkModal({
     return () => {
       active = false;
     };
-  }, [api, projectId, changeRequest]);
+  }, [api, projectId]);
 
   // The relationships usable with the other end in the chosen project.
   useEffect(() => {
@@ -127,12 +138,9 @@ export function AddArtefactLinkModal({
     api.options(projectId, artefactType, artefactId, { otherProjectId: otherProjectId || undefined })
       .then((result) => {
         if (!active) return;
-        const usable = changeRequest
-          ? result.filter((o) => o.direction === "outgoing" && o.other_types.some((t) => t.type === REQUIREMENT))
-          : result;
-        setOptions(usable);
-        const types = new Set(usable.flatMap((o) => o.other_types.map((t) => t.type)));
-        setOtherType(changeRequest ? REQUIREMENT : types.size === 1 ? [...types][0] : "");
+        setOptions(result);
+        const types = new Set(result.flatMap((o) => o.other_types.map((t) => t.type)));
+        setOtherType(types.size === 1 ? [...types][0] : "");
         setLevels([]);
         setTargetId("");
         setChosenKey("");
@@ -149,7 +157,7 @@ export function AddArtefactLinkModal({
     };
     // showToast and strings are stable enough for this fetch; refetching on them would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, projectId, artefactType, artefactId, otherProjectId, changeRequest]);
+  }, [api, projectId, artefactType, artefactId, otherProjectId]);
 
   /** Loads the level after `base` (the levels already chosen) and appends it; a stale reply is dropped. */
   const loadNextLevel = useCallback(
@@ -261,7 +269,12 @@ export function AddArtefactLinkModal({
     };
     setSaving(true);
     try {
-      if (changeRequest) await changeRequest.onPropose(link, reason.trim());
+      if (collect) {
+        collect.onCollect({
+          ...link, phrase: chosen.phrase, otherLabel: target.label, otherTypeLabel: target.type_label,
+          otherProjectLabel: relatedProjects.find((p) => p.id === otherProjectId)?.label,
+        });
+      } else if (changeRequest) await changeRequest.onPropose(link, reason.trim());
       else {
         await api.create(projectId, artefactType, artefactId, link);
         showToast(strings.artefactLinks.added);
@@ -293,7 +306,7 @@ export function AddArtefactLinkModal({
         {options !== null && options.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.noTypes}</p>}
         {options !== null && options.length > 0 && (
           <>
-            {!changeRequest && typeChoices.length > 1 && (
+            {typeChoices.length > 1 && (
               <LabeledSelect
                 label={strings.artefactLinks.otherTypeLabel}
                 value={otherType}
@@ -385,7 +398,9 @@ export function AddArtefactLinkModal({
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onClose}>{strings.common.cancel}</button>
           <button className="btn btn-primary" disabled={!chosen || !target || saving || reasonMissing} onClick={submit}>
-            {changeRequest ? strings.artefactLinks.submitAddViaChangeRequest : strings.artefactLinks.submitAdd}
+            {collect
+              ? strings.artefactLinks.submitCollect
+              : changeRequest ? strings.artefactLinks.submitAddViaChangeRequest : strings.artefactLinks.submitAdd}
           </button>
         </div>
       </div>

@@ -188,6 +188,8 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       await page.getByRole("button", { name: "Submit", exact: true }).click();
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Approve", exact: true }).click();
+      // An add-link request approves through the merge dialog (Platform Enhancements Phase 6b), link ticked by default.
+      await page.getByRole("dialog", { name: "Approve change request" }).getByRole("button", { name: "Approve and merge 1 link" }).click();
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();

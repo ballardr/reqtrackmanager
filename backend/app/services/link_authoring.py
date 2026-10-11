@@ -8,7 +8,9 @@ Responsibilities:
 - Offer the link types usable from an artefact (`usable_options`).
 - Create a link (`create_link_for_artefact`) after checking: both ends are
   visible records of the project (module enabled, `view` held), the caller holds
-  `link` or `manage` on the page artefact's type, the link type belongs to the project's
+  `link` or `manage` on the page artefact's type (any state), or is a stakeholder,
+  project administrator or manager linking a core record while no requirement involved
+  is approved, the link type belongs to the project's
   organisation and is not dedicated, the link type's restriction and both ends'
   artefact-type rules allow it, and no approved requirement is being linked in a
   project that requires a change request for that.
@@ -55,7 +57,7 @@ from app.modules.registry import (
     get_module_registry,
 )
 from app.services.audit import log_event
-from app.services.link_graph import ArtefactResolver
+from app.services.link_graph import ArtefactResolver, is_locked_requirement
 from app.services.link_nesting import is_link_live, related_projects
 from app.services.link_type_scope import UNAVAILABLE_MESSAGE, assert_link_type_usable
 from app.services.link_types import LinkRuleError, LinkTypeOption, list_usable_link_types
@@ -63,6 +65,15 @@ from app.services.relationships import create_link, delete_link, get_link_betwee
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
 
 _REQUIREMENT = ArtefactType.REQUIREMENT.value
+
+#: The audit `authorised_by` value (and `require_link_authority` result) for linking by default role.
+DEFAULT_ROLE_AUTHORITY = "role"
+
+#: Stands in for a record that does not exist yet (the requirement a `new_requirement`
+#: change request would create): the finder reads accept it as the page artefact so the
+#: proposing form can search for link targets before the record exists. Never accepted by
+#: a write; the caller must hold `link` or `manage` on the type, as for a real record.
+DRAFT_ARTEFACT_ID = uuid.UUID(int=0)
 
 
 @dataclass(frozen=True)
@@ -128,7 +139,7 @@ def usable_options(
     )
 
 
-def _gate_requirement(db: Session, project: Project, artefact_type: str, artefact_id: uuid.UUID, verb: str) -> None:
+def gate_requirement(db: Session, project: Project, artefact_type: str, artefact_id: uuid.UUID, verb: str) -> None:
     """409 when `artefact_id` is an approved requirement and the project needs a change request for its links."""
     if artefact_type != _REQUIREMENT:
         return
@@ -155,23 +166,62 @@ def require_page_artefact(
     return summary
 
 
-def require_visible_artefact(
-    db: Session, project: Project, user_id: uuid.UUID, artefact_type: str, artefact_id: uuid.UUID
-) -> ArtefactSummary:
-    """The artefact's summary, or 404 unless it is a visible record of `project` for the user."""
-    return require_page_artefact(db, ArtefactResolver(db, project, user_id), project, artefact_type, artefact_id)
+def require_finder_artefact(
+    db: Session, resolver: ArtefactResolver, project: Project, artefact_type: str, artefact_id: uuid.UUID
+) -> None:
+    """Authorises the page artefact of a finder read (types, candidates, browse).
+
+    Like `require_page_artefact`, but `DRAFT_ARTEFACT_ID` stands for a record not created
+    yet and is accepted when the type is registered and the user may set links on it.
+
+    Raises:
+        HTTPException: 404 the type is unregistered or the artefact is not a visible record
+            of the project; 403 a draft was named by a user who may not link that type.
+    """
+    if artefact_id == DRAFT_ARTEFACT_ID:
+        if artefact_type not in get_all_registered_artefact_types():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefact not found.")
+        require_link_authority(resolver, artefact_type)
+        return
+    require_page_artefact(db, resolver, project, artefact_type, artefact_id)
 
 
-def _require_link_authority(resolver: ArtefactResolver, artefact_type: str) -> str:
-    """The permission (`"manage"` or `"link"`) that lets the user change `artefact_type` links in
-    the project; 403 when they hold neither."""
+def require_link_authority(resolver: ArtefactResolver, artefact_type: str) -> str:
+    """How the user may change `artefact_type` links in the project: `"manage"` or `"link"` (any
+    state, approved included), or `"role"` (a stakeholder, project administrator or manager on a
+    core type, only while no requirement involved is approved; see `require_unlocked_for_role`).
+
+    Raises:
+        HTTPException: 403 when none of them applies.
+    """
     authority = resolver.link_authority(artefact_type)
-    if authority is None:
+    if authority is not None:
+        return authority
+    if resolver.has_default_link_role(artefact_type):
+        return DEFAULT_ROLE_AUTHORITY
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        f"You do not have permission to change {get_artefact_type_label(artefact_type).lower()} links.",
+    )
+
+
+def require_unlocked_for_role(db: Session, authority: str, ends: list[tuple[str, uuid.UUID]]) -> None:
+    """When the user links by default role alone, none of the `ends` may be an approved requirement.
+
+    Holders of `link` or `manage` are not asked: the Link permission exists to link records in any
+    state. Everyone else changes an approved requirement's links through a change request.
+
+    Raises:
+        HTTPException: 403 when `authority` is the default role and an end is approved.
+    """
+    if authority != DEFAULT_ROLE_AUTHORITY:
+        return
+    if any(is_locked_requirement(db, artefact_type, artefact_id) for artefact_type, artefact_id in ends):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            f"You do not have permission to change {get_artefact_type_label(artefact_type).lower()} links.",
+            "An approved requirement's links can be changed directly only with the Link permission; "
+            "otherwise propose the change in a change request.",
         )
-    return authority
 
 
 def create_link_for_artefact(
@@ -215,7 +265,7 @@ def create_link_for_artefact(
     """
     resolver = ArtefactResolver(db, project, user_id)
     require_page_artefact(db, resolver, project, artefact_type, artefact_id)
-    authority = _require_link_authority(resolver, artefact_type)
+    authority = require_link_authority(resolver, artefact_type)
     if other_type not in get_all_registered_artefact_types():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Linked record not found.")
     other_project = project
@@ -231,6 +281,7 @@ def create_link_for_artefact(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That project is archived, so it cannot take new links.")
     if (other_type, other_id) == (artefact_type, artefact_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A record cannot be linked to itself.")
+    require_unlocked_for_role(db, authority, [(artefact_type, artefact_id), (other_type, other_id)])
 
     link_type = db.get(RequirementLinkTypeDefinition, link_type_id)
     if link_type is None:
@@ -247,8 +298,8 @@ def create_link_for_artefact(
     source_type, source_id, target_type, target_id = (
         (artefact_type, artefact_id, other_type, other_id) if outgoing else (other_type, other_id, artefact_type, artefact_id)
     )
-    _gate_requirement(db, project, artefact_type, artefact_id, "added")
-    _gate_requirement(db, other_project, other_type, other_id, "added")
+    gate_requirement(db, project, artefact_type, artefact_id, "added")
+    gate_requirement(db, other_project, other_type, other_id, "added")
     if existing_duplicate(
         db, source_type=source_type, source_id=source_id, target_type=target_type, target_id=target_id,
         link_type=link_type,
@@ -264,7 +315,7 @@ def create_link_for_artefact(
         )
     except LinkRuleError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    _audit_link(db, link, action="created", actor_id=user_id, projects=(project, other_project), via_detail={
+    audit_link(db, link, action="created", actor_id=user_id, projects=(project, other_project), via_detail={
         "link_type_id": str(link_type.id), "authorised_by": authority,
     })
     return CreatedLink(link=link, link_type=link_type, outgoing=outgoing, other_type=other_type, other=other)
@@ -295,7 +346,7 @@ def delete_link_for_artefact(
     """
     resolver = ArtefactResolver(db, project, user_id)
     require_page_artefact(db, resolver, project, artefact_type, artefact_id)
-    authority = _require_link_authority(resolver, artefact_type)
+    authority = require_link_authority(resolver, artefact_type)
     link = db.get(ArtefactLink, link_id)
     if link is None or (artefact_type, artefact_id) not in (
         (link.source_type, link.source_id), (link.target_type, link.target_id)
@@ -332,19 +383,22 @@ def delete_link_for_artefact(
         far_resolver.resolve({far_type: {far_id}})
         if far_resolver.visible((far_type, far_id)) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
+    require_unlocked_for_role(
+        db, authority, [(link.source_type, link.source_id), (link.target_type, link.target_id)]
+    )
     source_project, target_project = (
         (project, project) if other_project is project
         else ((project, other_project) if (artefact_type, artefact_id) == (link.source_type, link.source_id) else (other_project, project))
     )
-    _gate_requirement(db, source_project, link.source_type, link.source_id, "removed")
-    _gate_requirement(db, target_project, link.target_type, link.target_id, "removed")
-    _audit_link(db, link, action="deleted", actor_id=user_id, projects=(project, other_project), via_detail={
+    gate_requirement(db, source_project, link.source_type, link.source_id, "removed")
+    gate_requirement(db, target_project, link.target_type, link.target_id, "removed")
+    audit_link(db, link, action="deleted", actor_id=user_id, projects=(project, other_project), via_detail={
         "link_type_id": str(link.link_type_id) if link.link_type_id else None, "authorised_by": authority,
     })
     delete_link(db, link)
 
 
-def _audit_link(
+def audit_link(
     db: Session, link: ArtefactLink, *, action: str, actor_id: uuid.UUID, projects: tuple[Project, Project],
     via_detail: dict,
 ) -> None:

@@ -181,6 +181,12 @@ FGAC_STANDARD_NAME = "FGAC Demo Standard"
 # explicitly reserved for terminology-override coverage alone.
 LINK_LOCK_PROJECT_NAME = "Epsilon-1 Link Lock Demo"
 
+# Platform Enhancements Phase 6b: a project holding one submitted modify-requirement change request that proposes three
+# links, the last made unmergeable on purpose (its record was linked directly after the request was made), so the
+# approval dialog's "can no longer be merged, with the reason" state has a fixed fixture. Read-only: nothing here may
+# approve or reject that request (change-request-proposed-links.spec.ts builds its own disposable organisation for that).
+PROPOSED_LINKS_PROJECT_NAME = "Zeta-1 Proposed Links Demo"
+
 # Fixed hierarchy fixture for project-hierarchy.spec.ts — Gamma-4 mirrors
 # all roles from Gamma-3 (forward), and Gamma-3 also consumes members from
 # Gamma-4 (reverse, member-source). See docs/decisions.md's "Hierarchical
@@ -282,6 +288,13 @@ def create_artefact_link(
     )
     r.raise_for_status()
     return r.json()
+
+
+def get_org_link_type(headers: dict, org_id: str, forward_name: str) -> dict:
+    """The organisation's link type with this forward name (a seeded one such as "Related to")."""
+    r = httpx.get(f"{BASE}/orgs/{org_id}/link-types", headers=headers, timeout=30)
+    r.raise_for_status()
+    return next(t for t in r.json() if t["forward_name"] == forward_name)
 
 
 def create_requirement_link(headers: dict, project_id: str, requirement_id: str, target_requirement_id: str, link_type_id: str) -> dict:
@@ -675,6 +688,36 @@ def main() -> None:
     r.raise_for_status()
     seed_project_content(h_ab, epsilon1, 0)
 
+    print(f"Creating {PROPOSED_LINKS_PROJECT_NAME!r} with a submitted change request that proposes three links, the"
+          " last made unmergeable (Platform Enhancements Phase 6b)...")
+    zeta1 = create_project(
+        h_ab, alpha["id"], PROPOSED_LINKS_PROJECT_NAME,
+        "E2E seed project holding a pending change request with proposed links (read-only fixture).",
+    )
+    zeta1_reqs = seed_project_content(h_ab, zeta1, 4)
+    r = httpx.post(f"{BASE}/projects/{zeta1['id']}/requirements/{zeta1_reqs[0]['id']}/approve", headers=h_ab, timeout=30)
+    r.raise_for_status()
+    related_type = get_org_link_type(h_ab, alpha["id"], "Related to")
+    r = httpx.post(
+        f"{BASE}/projects/{zeta1['id']}/change-requests",
+        json={
+            "kind": "modify_requirement", "requirement_id": zeta1_reqs[0]["id"], "changed_fields": ["reasoning"],
+            "proposed_reasoning": "Reasoning updated by the proposed-links seed request.",
+            "reason": "E2E seed: a request that proposes three links.",
+            "proposed_links": [
+                {"link_type_id": related_type["id"], "direction": "outgoing", "other_type": "requirement", "other_id": req["id"]}
+                for req in zeta1_reqs[1:]
+            ],
+        },
+        headers=h_ab, timeout=30,
+    )
+    r.raise_for_status()
+    zeta1_request = r.json()
+    r = httpx.post(f"{BASE}/projects/{zeta1['id']}/change-requests/{zeta1_request['id']}/submit", headers=h_ab, timeout=30)
+    r.raise_for_status()
+    # Made after the request: the third record is now linked directly, so that proposed link cannot be merged.
+    create_artefact_link(h_ab, zeta1["id"], "requirement", zeta1_reqs[0]["id"], related_type["id"], "requirement", zeta1_reqs[3]["id"])
+
     print(f"Creating {FGAC_STANDARD_NAME!r} (compliance standard for Alpha, role-management.spec.ts's entity-picker fixture)...")
     fgac_standard = create_compliance_standard(h_ab, alpha["id"], reference=FGAC_STANDARD_REFERENCE, name=FGAC_STANDARD_NAME)
 
@@ -914,6 +957,9 @@ def main() -> None:
     print(f"\n{LINK_TYPES_PARENT_NAME!r} owns the project-level link type {LINK_TYPES_PARENT_VERB!r} and hides {LINK_TYPES_HIDDEN_ORG_TYPE!r};"
           f" {LINK_TYPES_CHILD_NAME!r} inherits both and has a requirement link using the parent's type. E2E Beta Software"
           " forbids project-level link types (its Link types panel is read-only on every Beta project).")
+    print(f"\n{PROPOSED_LINKS_PROJECT_NAME!r} ({zeta1['id']}) holds a submitted change request on {zeta1_reqs[0]['unique_code']}"
+          f" proposing links to {', '.join(r['unique_code'] for r in zeta1_reqs[1:])}; the link to {zeta1_reqs[3]['unique_code']}"
+          " is unmergeable (already linked), the other two are valid. Read-only fixture.")
     print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
     print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")

@@ -46,11 +46,11 @@ from app.services.link_authoring import (
     create_link_for_artefact,
     delete_link_for_artefact,
     related_project_or_404,
-    require_visible_artefact,
+    require_finder_artefact,
     usable_options,
 )
 from app.services.link_browse import CANDIDATE_LIMIT, next_browse_step, parse_selected, search_link_candidates
-from app.services.link_graph import MAX_DEPTH, build_link_graph
+from app.services.link_graph import MAX_DEPTH, ArtefactResolver, build_link_graph
 from app.services.link_types import ensure_org_seeds
 from app.services.rbac import require_project_view
 
@@ -130,7 +130,7 @@ def list_artefact_link_types(
             `other_project_id` is not a related project the caller can open.
     """
     project = _project_or_404(db, project_id)
-    require_visible_artefact(db, project, current_user.id, artefact_type, artefact_id)
+    require_finder_artefact(db, ArtefactResolver(db, project, current_user.id), project, artefact_type, artefact_id)
     other_project = (
         related_project_or_404(db, project, current_user.id, other_project_id)
         if other_project_id is not None and other_project_id != project.id else None

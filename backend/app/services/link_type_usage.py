@@ -51,7 +51,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from app.models.change_request import ChangeRequest, ChangeRequestVersion
+from app.models.change_request import ChangeRequest, ChangeRequestProposedLink, ChangeRequestVersion
 from app.models.enums import ArtefactType, ChangeRequestStatus
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
@@ -253,9 +253,10 @@ def _pending_change_request_count(db: Session, link_type_id: uuid.UUID) -> int:
     """Open (draft, submitted, in review) change requests proposing the type."""
     return db.scalar(
         select(func.count(func.distinct(ChangeRequest.id)))
-        .select_from(ChangeRequestVersion)
+        .select_from(ChangeRequestProposedLink)
+        .join(ChangeRequestVersion, ChangeRequestVersion.id == ChangeRequestProposedLink.change_request_version_id)
         .join(ChangeRequest, ChangeRequest.id == ChangeRequestVersion.change_request_id)
-        .where(ChangeRequestVersion.proposed_link_type_id == link_type_id, ChangeRequest.status.in_(_PENDING_STATUSES))
+        .where(ChangeRequestProposedLink.link_type_id == link_type_id, ChangeRequest.status.in_(_PENDING_STATUSES))
     ) or 0
 
 
@@ -568,8 +569,8 @@ def delete_link_type(
         )
     for row in kept_pending:
         db.execute(
-            update(ChangeRequestVersion).where(ChangeRequestVersion.id == row.version_id)
-            .values(proposed_link_type_id=copies[copy_site[row.project_id]].id)
+            update(ChangeRequestProposedLink).where(ChangeRequestProposedLink.id == row.proposed_link_id)
+            .values(link_type_id=copies[copy_site[row.project_id]].id)
         )
 
     if mode == "reassign":
@@ -590,8 +591,8 @@ def delete_link_type(
         _move_links(db, moved_links, link_type, replacement, actor.id, organization_id, outcome)
         for row in other_pending:
             db.execute(
-                update(ChangeRequestVersion).where(ChangeRequestVersion.id == row.version_id)
-                .values(proposed_link_type_id=replacement.id)
+                update(ChangeRequestProposedLink).where(ChangeRequestProposedLink.id == row.proposed_link_id)
+                .values(link_type_id=replacement.id)
             )
         for rule in rules:
             ids = {entry.link_type_id for entry in rule.allowed_link_types}
@@ -647,21 +648,22 @@ def delete_link_type(
 
 @dataclass(frozen=True)
 class _PendingRow:
-    """A change-request version proposing a link type: its id, project, and whether the request is still open."""
+    """A proposed link naming a link type: its id, the request's project, and whether the request is still open."""
 
-    version_id: uuid.UUID
+    proposed_link_id: uuid.UUID
     project_id: uuid.UUID
     is_open: bool
 
 
 def _pending_change_request_rows(db: Session, link_type_id: uuid.UUID) -> list[_PendingRow]:
-    """Every change-request version proposing the type (open or historic) with its project."""
+    """Every link proposed on a change request (open or historic) that names the type, with its project."""
     return [
         _PendingRow(row.id, row.project_id, row.status in _PENDING_STATUSES)
         for row in db.execute(
-            select(ChangeRequestVersion.id, ChangeRequest.project_id, ChangeRequest.status)
+            select(ChangeRequestProposedLink.id, ChangeRequest.project_id, ChangeRequest.status)
+            .join(ChangeRequestVersion, ChangeRequestVersion.id == ChangeRequestProposedLink.change_request_version_id)
             .join(ChangeRequest, ChangeRequest.id == ChangeRequestVersion.change_request_id)
-            .where(ChangeRequestVersion.proposed_link_type_id == link_type_id)
+            .where(ChangeRequestProposedLink.link_type_id == link_type_id)
         ).all()
     ]
 

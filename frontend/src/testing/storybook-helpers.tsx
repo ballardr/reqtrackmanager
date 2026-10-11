@@ -38,6 +38,7 @@ import type {
   ProjectLinkTypes,
   Notification,
   Project,
+  ProposedLink,
   ProjectFile,
   ProjectListItem,
   ProjectStage,
@@ -361,9 +362,27 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
     proposed_action_type_id: null,
     proposed_action_assignee_id: null,
     proposed_action_due_date: null,
-    proposed_link_target_requirement_id: null,
-    proposed_link_type_id: null,
+    proposed_links: [],
+    proposed_link_count: 0,
     proposed_link_id: null,
+    ...overrides,
+  };
+}
+
+export function buildProposedLink(overrides: Partial<ProposedLink> = {}): ProposedLink {
+  return {
+    id: nextId("proposed-link"),
+    link_type_id: "lt1",
+    phrase: "Depends on",
+    direction: "outgoing",
+    other_type: "requirement",
+    other_type_label: "Requirement",
+    other_id: "requirement-2",
+    other_label: "AUTH-002 — Passwords expire after 90 days",
+    other_project_id: null,
+    other_project_name: null,
+    outcome: "pending",
+    outcome_reason: null,
     ...overrides,
   };
 }

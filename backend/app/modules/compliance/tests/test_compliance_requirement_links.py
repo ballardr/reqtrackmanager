@@ -465,17 +465,22 @@ def test_migration_moves_every_traceability_row_into_artefact_links_and_back(cli
 
 
 def test_which_project_roles_can_make_a_clause_link(client, admin_token, org_id):
-    """Pins the permission the generic endpoint applies (`manage` on the requirement, `view` on the
-    clause) for each built-in project role, so a change to it is a visible decision."""
+    """Pins who may link an unapproved requirement to a clause for each built-in project role (`link`/`manage`
+    or a stakeholder, project administrator or manager role on the requirement, `view` on the clause), so a
+    change to it is a visible decision."""
     ctx = _setup(client, admin_token, org_id)
     types = _link_types(client, admin_token, org_id)
     outcomes = {}
-    for role in ("project_manager", "project_administrator", "stakeholder", "member"):
+    # A different link type per role, so a role's attempt is never a duplicate of an earlier role's link.
+    for role, type_name in zip(
+        ("project_manager", "project_administrator", "stakeholder", "member"),
+        ("Related to", "Derives from", "Depends on", "Implements"), strict=True,
+    ):
         email = f"clause.{role}@example.com"
         user_id = create_org_user(client, admin_token, org_id, email, role="member")
         _assign_project_role(client, admin_token, ctx["project"]["id"], user_id, role)
-        outcomes[role] = _link(client, login(client, email, "Password123!"), ctx, types["Related to"]).status_code
-    assert outcomes == {"project_manager": 201, "project_administrator": 403, "stakeholder": 403, "member": 403}
+        outcomes[role] = _link(client, login(client, email, "Password123!"), ctx, types[type_name]).status_code
+    assert outcomes == {"project_manager": 201, "project_administrator": 201, "stakeholder": 201, "member": 403}
 
 
 def test_an_organisation_owned_clause_is_only_offered_from_the_request_project(client, admin_token, org_id):
