@@ -15,7 +15,7 @@ For your full notification history — searchable, and not limited to the dropdo
 | Notifications page |
 | --- |
 | Full notification history with search and an unread-only filter |
-| ![Notifications page listing recent notifications with search and unread filter](../../static/img/screenshots/notifications-page.png) |
+| ![Notifications page listing two comment notifications, with search and unread filter](../../static/img/screenshots/notifications-page.png) |
 
 ## Choosing how you're notified
 

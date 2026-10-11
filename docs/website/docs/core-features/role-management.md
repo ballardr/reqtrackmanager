@@ -38,7 +38,7 @@ From an organisation's admin page, under **Role management**, an org admin defin
 | Defining a custom role |
 | --- |
 | Name, description, scope, and the permission-atom picker |
-| ![New custom role dialog showing name, description, scope, and a grouped permission-atom checklist with one atom selected](../../static/img/screenshots/role-management.png) |
+| ![New custom role dialog showing a Start from a preset list, name, description, scope, and a grouped permission-atom checklist with one atom selected](../../static/img/screenshots/role-management.png) |
 
 Only an organisation admin can create, edit, or delete a custom role definition — this is never delegable through any permission atom.
 

@@ -26,7 +26,7 @@ A project manager or administrator opens the change request and **approves** or 
 | Change request detail |
 | --- |
 | Tasks, advisory stakeholder votes, discussion, and approve/reject |
-| ![Change request detail page with tasks, stakeholder votes, and discussion](../../static/img/screenshots/change-request-detail.png) |
+| ![Change request detail page with proposed links, tasks, stakeholder votes, and discussion](../../static/img/screenshots/change-request-detail.png) |
 
 Someone who submitted a change request never sees Approve/Reject controls on their own submission, even if they otherwise hold a role that could decide other change requests — separation of duties between proposing and approving a change is enforced by the server, not just hidden in the UI.
 

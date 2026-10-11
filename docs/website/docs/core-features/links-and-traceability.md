@@ -124,7 +124,7 @@ The same link reads correctly from all three pages, and any of them can add or r
 | The Add a link dialog |
 | --- |
 | Choose the project, find the record (search, or narrow by kind and step), then the relationship |
-| ![The Add a link dialog open over a Decision, with Project, Link to, Relationship, Search and Record fields filled in to link a requirement](../../static/img/screenshots/links-add-dialog.png) |
+| ![The Add a link dialog open over a Decision, with Project, Link to, Component, Search, Record and Relationship fields filled in to link a requirement](../../static/img/screenshots/links-add-dialog.png) |
 
 - **Remove** asks for confirmation and removes only the link.
 - Links whose link type no longer permits them are kept and marked. Links with their own action (a decision *superseding* another, made with **Supersede another Decision** next to **Add link**) are shown but can't be removed here; an action's membership of a requirement is shown on the action's page and managed from the requirement's Actions section.

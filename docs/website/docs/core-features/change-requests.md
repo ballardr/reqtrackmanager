@@ -19,7 +19,7 @@ By default only stakeholders, administrators, and managers can submit change req
 | Change request detail |
 | --- |
 | Tasks, advisory stakeholder votes, discussion, and approve/reject |
-| ![Change request detail page with tasks, stakeholder votes, and discussion](../../static/img/screenshots/change-request-detail.png) |
+| ![Change request detail page with proposed links, tasks, stakeholder votes, and discussion](../../static/img/screenshots/change-request-detail.png) |
 
 ## Proposing links
 

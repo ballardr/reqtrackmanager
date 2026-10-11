@@ -69,6 +69,8 @@ const config: Config = {
       {
         hashed: true,
         language: ['en'],
+        // No blog (see `blog: false` above); stops the plugin warning that `blog/` is missing.
+        indexBlog: false,
       },
     ],
     [
