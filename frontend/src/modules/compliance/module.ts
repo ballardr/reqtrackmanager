@@ -151,6 +151,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     project_compliance_requirement: COMPLIANCE_STATUS_LABEL,
     compliance_required_action_assessment: COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL,
   },
+  artefactInactiveStatuses: { compliance_requirement: ["retired"] },
   routes: [
     { path: "/projects/:projectId/modules/compliance", element: createElement(ProjectCompliancePage) },
   ],

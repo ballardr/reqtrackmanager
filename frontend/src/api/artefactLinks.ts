@@ -152,7 +152,8 @@ export const DRAFT_ARTEFACT_ID = "00000000-0000-0000-0000-000000000000";
 
 /** The calls the Links panel makes; injectable so stories need no network. */
 export interface ArtefactLinksApi {
-  graph(projectId: string, type: string, id: string): Promise<LinkGraph>;
+  /** The link graph around a record, `depth` hops out (1 by default; the server allows up to 3). */
+  graph(projectId: string, type: string, id: string, depth?: number): Promise<LinkGraph>;
   options(
     projectId: string, type: string, id: string, params?: { otherType?: string; otherProjectId?: string },
   ): Promise<ArtefactLinkTypeOption[]>;
@@ -184,8 +185,8 @@ function selectedParam(selected: Array<[string, string]> | undefined): string | 
 
 /** The live implementation of {@link ArtefactLinksApi}. */
 export const artefactLinksApi: ArtefactLinksApi = {
-  graph: (projectId, type, id) =>
-    api.get<LinkGraph>(`${base(projectId, type, id)}/link-graph?depth=1&direction=both`),
+  graph: (projectId, type, id, depth = 1) =>
+    api.get<LinkGraph>(`${base(projectId, type, id)}/link-graph?depth=${depth}&direction=both`),
   options: (projectId, type, id, params = {}) =>
     api.get<ArtefactLinkTypeOption[]>(
       `${base(projectId, type, id)}/link-types${query({ other_type: params.otherType, other_project_id: params.otherProjectId })}`,

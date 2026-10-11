@@ -373,3 +373,22 @@ export const ProposesThroughAChangeRequestWhenLinksAreLocked: Story = {
     await expect(args.api!.remove).not.toHaveBeenCalled();
   },
 };
+
+export const OpensTheTraceOnlyWhenThereAreLinks: Story = {
+  args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION]])) }) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Trace" }));
+    await expect(await within(document.body).findByRole("dialog", { name: "Trace: REQ-001 Root" })).toBeInTheDocument();
+    await expect(await within(document.body).findByRole("tab", { name: "Map" })).toBeInTheDocument();
+  },
+};
+
+export const HasNoTraceWithoutLinks: Story = {
+  args: { api: buildLinksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("No links yet.")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Trace" })).not.toBeInTheDocument();
+  },
+};

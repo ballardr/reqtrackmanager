@@ -462,6 +462,27 @@ def test_siblings_are_out_of_scope_even_through_a_shared_parent(world, tree):
     assert {str(tree.req["child"]), str(tree.req["sibling"])} <= _graph_ids(from_root)
 
 
+def test_a_graph_can_be_rooted_at_a_record_in_an_ancestor_read_through_the_child_without_reaching_siblings(world, tree):
+    """The trace tree opens a branch by re-rooting at a record, which may live in a parent project."""
+    related = _scoped(world, "ancestor_either_way")
+    for name, project in (("child", tree.child), ("sibling", tree.sibling)):
+        assert world.generic_link(
+            tree.root, (REQ, tree.req["root"]), related, (REQ, tree.req[name]), other_project=project,
+        ).status_code == 201
+
+    rooted_above = world.graph(tree.child, (REQ, tree.req["root"]), depth=1)
+    assert rooted_above.status_code == 200, rooted_above.text
+    graph = rooted_above.json()
+    assert graph["root"]["id"] == str(tree.req["root"]) and graph["root"]["project_id"] == tree.root["id"]
+    assert {e["to_id"] for e in graph["edges"]} == {str(tree.req["child"])}
+    assert graph["hidden_count"] == 1  # the sibling's record: counted, never named
+    assert str(tree.req["sibling"]) not in _graph_ids(graph)
+
+    # A record outside the child's ancestry line is not a valid root, whatever its links.
+    assert world.graph(tree.child, (REQ, tree.req["sibling"])).status_code == 404
+    assert world.graph(tree.child, (REQ, tree.req["other"])).status_code == 404
+
+
 def test_a_node_in_a_project_the_caller_cannot_open_is_hidden_and_not_traversed(world, tree):
     related = _scoped(world, "ancestor_either_way")
     assert world.generic_link(

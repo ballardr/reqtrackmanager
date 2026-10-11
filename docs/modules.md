@@ -902,7 +902,9 @@ lets `modules/artefactPaths.ts` link to the record's page, and
 display label of its status, so the shared Links panel can show a linked
 record's status through a label map (`getArtefactStatusLabel`; a status with no
 label shows no badge, never the raw value). Core owns only `requirement` and
-`requirement_action`.
+`requirement_action`. `TierAModuleDefinition.artefactInactiveStatuses[artefact_type]` lists the
+statuses that mean a record is no longer live (superseded, retired, rejected…), which the
+link trace's "Hide inactive records" skips (`isArtefactInactive`; an archived record always counts).
 
 **Every type declares at least one browse level** (`browse_levels=(BrowseLevel(key, label), ...)`), the
 steps of the "Add a link" finder that narrow the search for a record of that type

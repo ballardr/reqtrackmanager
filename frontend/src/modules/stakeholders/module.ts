@@ -54,6 +54,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     stakeholder: STAKEHOLDER_STATUS_LABEL,
     stakeholder_need: NEED_STATUS_LABEL,
   },
+  artefactInactiveStatuses: { persona: ["retired"], stakeholder: ["retired"], stakeholder_need: ["retired"] },
   routes: [
     { path: "/projects/:projectId/modules/stakeholders/personas", element: createElement(ProjectPersonasPage) },
     { path: "/projects/:projectId/modules/stakeholders/personas/:personaId", element: createElement(PersonaDetailPage) },

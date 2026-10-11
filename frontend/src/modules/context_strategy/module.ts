@@ -156,6 +156,13 @@ export const moduleDefinition: TierAModuleDefinition = {
     guiding_principle: GUIDING_PRINCIPLE_STATUS_LABEL,
     open_question: OPEN_QUESTION_STATUS_LABEL,
   },
+  artefactInactiveStatuses: {
+    strategy: ["superseded", "retired"],
+    future_state: ["superseded", "retired"],
+    guiding_principle: ["superseded", "retired"],
+    pain_point: ["rejected", "duplicate", "closed"],
+    open_question: ["withdrawn"],
+  },
   routes: [
     { path: "/projects/:projectId/modules/context_strategy/strategies", element: createElement(ProjectStrategiesPage) },
     {

@@ -17,6 +17,7 @@
  *   hidden what the user may not see and says how many it left out.
  * - Show links to other projects (a parent or child) with a project badge, and flag
  *   a link its link type no longer permits instead of hiding it.
+ * - Open the trace (tree and map) of the record's links in a modal.
  * - Remove a link behind a Tier-1 confirmation; route through a change request when
  *   the page says links are locked (`changeRequest`).
  *
@@ -27,16 +28,16 @@
  *   (`getArtefactStatusLabel`); a status with no label shows no badge, never the raw value.
  * - API calls are injectable (`api`) so stories and tests need no network.
  */
-import { Plus, Trash2 } from "lucide-react";
+import { GitBranch, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 
 import { artefactLinksApi, type ArtefactLinksApi, type LinkGraph, type LinkGraphEdge, type LinkGraphNode } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { getArtefactPath, getArtefactStatusLabel } from "../modules/artefactPaths";
 import { AddArtefactLinkModal, type LinksChangeRequestMode } from "./AddArtefactLinkModal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { LinkedRecordSummary } from "./LinkedRecordSummary";
+import { LinkTraceModal } from "./LinkTraceModal";
 
 export type { LinksChangeRequestMode } from "./AddArtefactLinkModal";
 
@@ -81,6 +82,7 @@ export function ArtefactLinksPanel({
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [tracing, setTracing] = useState(false);
   const [removing, setRemoving] = useState<LinkRow | null>(null);
   const [removeReason, setRemoveReason] = useState("");
 
@@ -159,11 +161,18 @@ export function ArtefactLinksPanel({
     <section className="card stack" aria-label={strings.artefactLinks.title}>
       <div className="row artefact-links__header">
         <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>
-        {canLink && (
-          <button className="btn btn-primary" onClick={() => setAdding(true)}>
-            <Plus size={14} /> {strings.artefactLinks.addLink}
-          </button>
-        )}
+        <div className="row artefact-links__buttons">
+          {groups.length > 0 && (
+            <button className="btn" onClick={() => setTracing(true)}>
+              <GitBranch size={14} /> {strings.artefactLinks.traceButton}
+            </button>
+          )}
+          {canLink && (
+            <button className="btn btn-primary" onClick={() => setAdding(true)}>
+              <Plus size={14} /> {strings.artefactLinks.addLink}
+            </button>
+          )}
+        </div>
       </div>
       {actions && canLink && (
         <div className="row artefact-links__actions">
@@ -220,6 +229,16 @@ export function ArtefactLinksPanel({
           onClose={() => setAdding(false)}
         />
       )}
+      {tracing && graph && (
+        <LinkTraceModal
+          projectId={projectId}
+          artefactType={artefactType}
+          artefactId={artefactId}
+          rootLabel={graph.root.label}
+          api={api}
+          onClose={() => setTracing(false)}
+        />
+      )}
       {removing && (
         <ConfirmDialog
           title={strings.artefactLinks.removeTitle}
@@ -264,25 +283,9 @@ function LinkRowView({
   const strings = useStrings();
   const { edge, node } = row;
   const phrase = edge.phrase ?? strings.artefactLinks.untyped;
-  const path = getArtefactPath(node.type, node.project_id ?? currentProjectId, node.id);
-  const statusLabel = getArtefactStatusLabel(node.type, node.status);
-  const elsewhere = node.project_id !== null && node.project_id !== currentProjectId;
   return (
     <li className="artefact-links__row">
-      <span className="badge">{phrase}</span>
-      <span className="artefact-links__target">{path ? <Link to={path}>{node.label}</Link> : node.label}</span>
-      {statusLabel && <span className="badge badge--muted">{statusLabel}</span>}
-      {node.is_archived && <span className="badge badge--muted">{strings.artefactLinks.archivedBadge}</span>}
-      {elsewhere && (
-        <Link className="badge badge--info" to={`/projects/${node.project_id}`}>
-          {strings.artefactLinks.otherProjectBadge(node.project_name ?? "")}
-        </Link>
-      )}
-      {!edge.nesting_permitted && (
-        <span className="badge badge--warning" title={strings.artefactLinks.notPermittedExplanation}>
-          {strings.artefactLinks.notPermitted}
-        </span>
-      )}
+      <LinkedRecordSummary edge={edge} node={node} currentProjectId={currentProjectId} />
       {canRemove && (
         <button
           className="btn btn-danger artefact-links__remove"

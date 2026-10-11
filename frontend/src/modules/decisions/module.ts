@@ -65,6 +65,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     decision: (projectId, id) => `/projects/${projectId}/modules/decisions/${id}`,
   },
   artefactStatusLabels: { decision: DECISION_STATUS_LABEL },
+  artefactInactiveStatuses: { decision: ["rejected", "superseded"] },
   routes: [
     { path: "/projects/:projectId/modules/decisions", element: createElement(ProjectDecisionsPage) },
     { path: "/projects/:projectId/modules/decisions/:decisionId", element: createElement(DecisionDetailPage) },

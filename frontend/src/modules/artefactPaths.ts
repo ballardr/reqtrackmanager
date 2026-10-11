@@ -43,3 +43,22 @@ export function getArtefactStatusLabel(artefactType: string, status: string | nu
   }
   return null;
 }
+
+/** Core statuses that mean a record is no longer live (modules declare theirs on
+ * `TierAModuleDefinition.artefactInactiveStatuses`). */
+const CORE_INACTIVE_STATUSES: Record<string, string[]> = { requirement: ["archived"] };
+
+/**
+ * Whether a record is no longer live: archived, or in a status its owning module (or core)
+ * declares inactive (superseded, retired, rejected, withdrawn…).
+ *
+ * @param artefactType The record's registered artefact type.
+ * @param status The record's status, if it has one.
+ * @param isArchived The record's archived flag.
+ */
+export function isArtefactInactive(artefactType: string, status: string | null, isArchived: boolean): boolean {
+  if (isArchived) return true;
+  if (status === null) return false;
+  if (CORE_INACTIVE_STATUSES[artefactType]?.includes(status)) return true;
+  return installedModules.some((module) => module.artefactInactiveStatuses?.[artefactType]?.includes(status));
+}

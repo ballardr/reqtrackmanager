@@ -140,6 +140,40 @@ You need to view the record you link to, and one of these on the record you link
 
 The panel shows its add and remove controls only to people who may use them on that record. Other kinds of record (a decision, a pain point, …) need the Link or Manage permission. API clients and AI assistants use the same rules through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `search_artefact_link_candidates`, `list_artefact_link_browse`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
 
+## Tracing where a record comes from
+
+The Links panel shows a record's direct links. When a record has any, **Trace** (beside **Add link**) opens a larger window that follows them further, in two views.
+
+| Opening the trace |
+| --- |
+| **Trace** sits beside **Add link** at the top of a record's Links panel; it appears once the record has at least one link |
+| ![A decision's Links panel with the Trace and Add link buttons at the top, above its linked decision, pain point, requirement and stakeholder](../../static/img/screenshots/links-trace-open.png) |
+
+```mermaid
+flowchart LR
+    U2["Upstream, two hops"] --> U1["Upstream"] --> F["This record"] --> D1["Downstream"] --> D2["Downstream, two hops"]
+    F --> R1["Related"] --> R2["Related, two hops"]
+```
+
+- **Tree** lists the record's links in three groups: **Upstream** (where it comes from), **Downstream** (what depends on it) and **Related** (linked without a direction). Open any record's arrow to read what it is linked to in turn, as deep as you like; nothing deeper is loaded until you open it. A branch keeps its direction: following upstream goes further upstream, never back down through where you came from, and a record already on the path is not repeated.
+- **Map** draws the same records as a diagram on tinted lanes: upstream on the left, the record in the centre, downstream on the right, related in a band below. Arrows point downstream. Click a record to open it, or hover it to light up its own links. The **Key** button opens a small pop-over explaining the marks (a dashed border for a record in another project, a faded one for an archived record). It starts two hops out for upstream and downstream, but only one hop for related records, since there can be many; a record at the edge has a **Show more** pill that reads its own links and adds them, so the map grows as far as you take it (a record with nothing further says **No more links**). Scroll to move around. A very large map shows the nearest 60 records and says how many are left. The Tree tab is the text version of the same information.
+
+| The Tree view |
+| --- |
+| A decision's links in three groups, with its related stakeholder opened to show what that record is linked to in turn |
+| ![The Trace window on the Tree tab: a decision's Upstream, Downstream and Related groups, with the related stakeholder opened to show a stakeholder need, a requirement and a persona beneath it](../../static/img/screenshots/links-trace-tree.png) |
+
+| The Map view |
+| --- |
+| The same decision drawn by direction on tinted lanes, with a **Key** button for the marks; a related record shows one hop until you click its Show more pill |
+| ![The Trace window on the Map tab: a decision in the centre with a requirement and a pain point upstream, a superseding decision downstream, and a related stakeholder below with a Show more pill](../../static/img/screenshots/links-trace-map.png) |
+
+**Hide inactive records** (a tick box under the tabs, shared by both views) skips records that are no longer live: archived ones, and those that are superseded, retired, rejected, withdrawn, closed or marked as a duplicate. What a skipped record linked to is joined straight to the record in front of it, so tracing a decision that supersedes an older one shows the older decision's requirements and pain points directly, marked "via" the record they came through (a dashed line on the map). The record you are tracing is never hidden, even if it is itself superseded.
+
+Both views follow the same rules as the panel: records you can't see, or that are in a module that is off, are left out and never followed through, and following a record's link takes you to its page.
+
+Direction comes from the link type. A link type with no direction (an organisation admin sets one under **Admin → Projects & workflow → Link types**) always lands in **Related**, so if most of a record's links are undirected the views say so.
+
 ## Deleting a link type that is in use
 
 Deleting a link type that links still use opens a dialog that says what depends on it: how many links in how many projects, any pending change requests that propose it, links involving approved requirements in projects that normally require a change request, and the artefact-type rules that name it. You can then:

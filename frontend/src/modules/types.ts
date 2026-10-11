@@ -353,6 +353,12 @@ export interface TierAModuleDefinition {
    * Omitted for a module whose records carry no status; a type or status with no
    * entry shows no status badge rather than the raw value. */
   artefactStatusLabels?: Record<string, Record<string, string>>;
+  /** Statuses that mean a record is no longer live (superseded, retired, rejected, withdrawn…),
+   * keyed by registered artefact type, for the views that offer to hide such records (the link
+   * trace). Optional: a type with no entry is never treated as inactive by status. An archived
+   * record is inactive whatever its status, so `archived` need not be listed. Resolved by
+   * `modules/artefactPaths.ts`'s `isArtefactInactive`; core never names a module's statuses. */
+  artefactInactiveStatuses?: Record<string, string[]>;
   /** Custom on-screen views for this module's reports, keyed by the backend
    * `ReportDefinition.key` (Module 1 Phase 13). The Reports pages list every
    * report from the backend catalogue and render `ReportViewer` (a generic
