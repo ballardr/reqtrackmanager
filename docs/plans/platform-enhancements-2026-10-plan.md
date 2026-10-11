@@ -1,11 +1,11 @@
 # Platform Enhancements (October 2026) — Plan
 
-**Status:** Decisions Q1–Q13 answered by the user 2026-10-06, Q14 requested 2026-10-07. Phases 1–7 and 6b–6d implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit; 5c: project-level link types, hiding, project rules and the org lock; 5d: links between parent and child projects, planned 2026-10-07 and built 2026-10-11; 6: the shared Links panel, built 2026-10-11); 6b: proposed links on change requests, built 2026-10-11); the rest is not implemented. Written from eight user notes, each checked against the current code.
+**Status:** Decisions Q1–Q13 answered by the user 2026-10-06, Q14 requested 2026-10-07. Phases 1–8 and 6b–6d implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit; 5c: project-level link types, hiding, project rules and the org lock; 5d: links between parent and child projects, planned 2026-10-07 and built 2026-10-11; 6: the shared Links panel, built 2026-10-11); 6b: proposed links on change requests, built 2026-10-11; 8: Decision Management reports, built 2026-10-11); the rest is not implemented. Written from eight user notes, each checked against the current code.
 **Decision tags:** items marked **Decided by: User** were answered in the 2026-10-06 review (§3); everything else is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-13 / 18 phases complete (Phases 1–7, 6b, 6c and 6d done, awaiting commit). **Phase 8 is next** (Decision Management reports). Phase 7 (trace tree and map, 2026-10-11) opens from a "Trace" button on the Links panel in a large modal and has no depth limit, at the user's request. Phase 6b (added 2026-10-11 at the user's request) lets a new, modify or add-link change request carry proposed links that merge on approval through a dialog (`ApproveChangeRequestDialog`); it reused Phase 6d's `ArtefactResolver.can_link` for who may propose and the panel's add dialog in a *collect* mode. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
+14 / 18 phases complete (Phases 1–8, 6b, 6c and 6d done, awaiting commit). **Phase 9 is next** (neutral report document model and DOCX export). Phase 8 (Decision Management reports, 2026-10-11) added four project-level reports with no frontend or schema change. Phase 7 (trace tree and map, 2026-10-11) opens from a "Trace" button on the Links panel in a large modal and has no depth limit, at the user's request. Phase 6b (added 2026-10-11 at the user's request) lets a new, modify or add-link change request carry proposed links that merge on approval through a dialog (`ApproveChangeRequestDialog`); it reused Phase 6d's `ArtefactResolver.can_link` for who may propose and the panel's add dialog in a *collect* mode. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
 
 | # | Phase | Note | Status |
 |---|-------|------|--------|
@@ -22,7 +22,7 @@
 | 6d | A `link` permission level: set links on records without `manage` (runs before 6b) | N1 | [x] |
 | 6b | Proposed links on change requests, merged on approval via an approver dialog | N1 | [x] |
 | 7 | Trace tree and map views | N1 | [x] |
-| 8 | Decision Management reports | N6 | [ ] |
+| 8 | Decision Management reports | N6 | [x] |
 | 9 | Neutral report document model + DOCX export | N7 | [ ] |
 | 10 | Per-report-type content: template, project, org tiers + placeholders | N8 | [ ] |
 | 11 | Project Modules tab e2e coverage | N9 | [ ] |
@@ -463,7 +463,9 @@ flowchart TD
 - **Map lanes:** upstream on the left, focus node centre, downstream on the right, Related in a band below, each on its own tinted lane with a heading, a key under the hint, and arrowheads pointing downstream. Empty-state hint explains unclassified links (see As built 4).
 - **Tests:** Playwright for tree expand/collapse and navigation; Storybook; a11y checks (addon-a11y) on both views.
 
-### Phase 8 — Decision Management reports (N6)
+### Phase 8 — Decision Management reports (N6) — DONE 2026-10-11
+
+**As built (differs from the spec below):** (1) **"Overdue" and "unowned" were reinterpreted (Decided by: Agent).** A Decision has no due date and `owner_id` is mandatory, so D2's overdue is a waiting-time threshold (`overdue_days`, default 14) and "unowned" is a Decision with no decision maker. (2) D2's wait is measured from the audit event that put the Decision into its current status, not `updated_at`. (3) D3 lists Approved and Superseded Decisions by `decision_date` (default window 90 days) and clips free text to 400 characters so a PDF row cannot outgrow a page. (4) D4 counts a link to any non-Decision artefact as rationale, and ignores Rejected and Superseded Decisions. (5) The type filter is by type **name** (types differ per project, and children inherit). (6) **Catalogue fix found during wiring:** the report catalogue builds each report's path from the module project router's `.prefix`, which the Decisions package router lacked, so the reports were listed but 404'd in the UI; the router now assigns it, and a test asserts every catalogue path resolves. (7) No new frontend component (the generic viewer renders the sections), no table, no migration. See `docs/decisions.md`.
 
 **Why:** Decisions is the only content module with no reporting; the overview's Module 10 list names decision logs and registers. **Outcome:** reports in the catalogue (UI, PDF, CSV, DOCX after Phase 9, MCP tools) with no new framework code, since `ModuleDefinition.reports` already derives routes, gating, catalogue entries and MCP tools.
 

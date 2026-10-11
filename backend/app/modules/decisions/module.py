@@ -99,6 +99,11 @@ treatment) and the rest are ordinary CRUD/collaboration actions this
 addendum never asked to expand, not approval-type actions this gate
 concerns.
 
+Platform Enhancements Oct 2026 Phase 8: `reports=REPORT_DEFINITIONS` declares
+four project-level reports (`reports.py`); the framework generates their
+routes (mounted by `project_router`), catalogue entries and read-only
+`get_<slug>_report` MCP tools.
+
 Fine-Grained Access Control Phase 1 (2026-09-23, `docs/plans/core-fine-
 grained-access-control-plan.md`): registers `subtype_providers={
 DECISION_ARTEFACT_TYPE: _decision_subtypes}`, the first (and, as of this
@@ -123,6 +128,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
+from app.modules.decisions.reports import REPORT_DEFINITIONS
 from app.modules.decisions.service import (
     DECISION_APPROVE_PERMISSION,
     DECISION_ARTEFACT_TYPE,
@@ -139,6 +145,7 @@ from app.modules.registry import (
     ModuleRoleDefinition,
     OrgCreationChoiceOption,
 )
+from app.services.report_framework import report_mcp_tools
 
 DECISIONS_MODULE_KEY = "decisions"
 _ROUTER_PREFIX = f"/api/v1/orgs/{{organization_id}}/modules/{DECISIONS_MODULE_KEY}"
@@ -363,6 +370,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
     ),
     mcp_guidance=_MCP_GUIDANCE,
+    reports=REPORT_DEFINITIONS,
     mcp_tools=(
         McpToolDefinition(
             name="list_decision_types",
@@ -487,5 +495,6 @@ MODULE_DEFINITION = ModuleDefinition(
                  "description": "Comment explaining the rejection; the endpoint 400s if left blank."},
             ],
         ),
-    ),
+    )
+    + report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PROJECT_ROUTER_PREFIX),
 )

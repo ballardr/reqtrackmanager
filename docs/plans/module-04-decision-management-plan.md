@@ -54,7 +54,7 @@ improvised).
 
 ## Status / Resume Here
 
-9 / 10 phases complete. Phase 7 is blocked on Module 1/Module 6. Phase 8
+9 / 11 phases complete. Phase 10 (group owners and decision makers) was added 2026-10-11 and is not started. Phase 7 is blocked on Module 1/Module 6. Phase 8
 unblocked and completed 2026-09-27, once [Fine-Grained Access Control
 (core)](core-fine-grained-access-control-plan.md) reached its own Phase 7
 (that plan's 10/10 completion covers this phase's consumer migration
@@ -73,6 +73,7 @@ directly — see that plan's Phase 7 entry and `docs/decisions.md`'s
 | 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
 | 8 | Per-decision-type approver binding | [x] Complete (2026-09-27) — see note below |
 | 9 | UX/architecture follow-up: template & type placement, nested decision types, detail page | [x] Complete (2026-09-22) — see "Phase 9 notes" below |
+| 10 | Groups as owners and decision makers (users and groups on parity) | [ ] Planned 2026-10-11; waits on the parity plan's Phase 1 |
 
 ## Phase 2 notes (2026-09-21)
 
@@ -1172,6 +1173,23 @@ that plan's own Phase 2 note.
 5. **Decision Templates move from `orgOverviewSections` (Org Dashboard) to `orgAdminSections` (Org Management)** — a pure registration-key change (both share `OrgAdminSectionDef`'s identical shape).
 
 **Files changed:** `frontend/src/modules/decisions/DecisionTemplatesPanel.tsx` (`ActionMenu` actions column, imports), `frontend/src/modules/decisions/DecisionTypesPanel.tsx` (self-fetching, moved off `items`/`onReload` props), `frontend/src/modules/decisions/ProjectDecisionsPage.tsx` (tab bar removed, `DecisionQuickViewPanel` replaces `DecisionDetailPanel`), `frontend/src/modules/decisions/DecisionDetailPanel.tsx` (removed), `frontend/src/modules/decisions/DecisionDetailPage.tsx` (new), `frontend/src/modules/decisions/DecisionQuickViewPanel.tsx` (new), `frontend/src/modules/decisions/module.ts` (new route, `projectAdminSections`, `orgAdminSections` rename), `frontend/src/modules/types.ts` (`ProjectAdminSectionDef`, `projectAdminSections` field), `frontend/src/pages/ProjectAdminPage.tsx` (`moduleAdminSections` computation, generic render fallback, widened `ProjectAdminGroupKey`), `backend/app/modules/decisions/service.py` (`resolve_effective_decision_types`), `backend/app/modules/decisions/project_router.py` (`list_decision_types`, `_validate_effective_decision_type`, `delete_decision_type`'s `allow_empty`), `backend/app/modules/decisions/module.py` (root-only seeding gate), `backend/app/modules/decisions/tests/test_decisions_hierarchy.py` (new), `backend/app/modules/decisions/tests/test_decisions_seeding.py` (updated docstring + new child-seeding test), Storybook stories for all touched/new components, `tests/playwright/tests/modules/decisions/decision-lifecycle.spec.ts` (updated for the page/quick-view split), `docs/ux-style-guide.md`, `docs/solution-architecture.md`, `CLAUDE.md` (new "Nested (Hierarchical) Projects" section), `docs/website/docs/modules/decision-management-module/overview.md`, `docs/website/docs/modules/building-your-own-module.md` (`projectAdminSections` row), `docs/website/static/img/screenshots/decision-list.png`/`decision-detail.png`/`decision-templates.png`/`decision-create-template.png` (regenerated), `docs/decisions.md` (this phase's entry).
+
+## Phase 10 — Groups as owners and decision makers (users and groups on parity)
+
+**Decided by: User** (2026-10-11): groups must be selectable as a Decision's owner; both organisation groups and project groups; and the other modules get the same treatment. The cross-module work is planned in [users-and-groups-parity-plan.md](users-and-groups-parity-plan.md); this phase is that plan's Phase 2 and depends on its Phase 1 (the shared principal mechanism), so it cannot start before that lands. The rule behind it is in `CLAUDE.md` ("Users and Groups on Parity").
+
+**Why:** a decision is often owned by a team ("Platform Architecture"), not one person; `Decision.owner_id` is a mandatory user FK, so the team must name a nominee and the record goes stale when that person leaves. **Risk addressed:** a team-owned decision with no accountable owner. **Outcome:** an owner (and decision maker) can be a user, an organisation group or a project group, everywhere the Decision shows it, with the group's members treated as the owner for the existing gates.
+
+**Decisions-specific scope** (the shared mechanism, picker, usage hook, migration pattern, notification fan-out and export handling are in the parity plan's sections 2 and 3):
+
+- `owner` and `decision_maker` both become a principal reference (`owner_type`/`owner_id`, `decision_maker_type`/`decision_maker_id`); existing rows backfill to `user`. Decision maker is included although only the owner was named, because the parity rule applies to it equally (**Decided by: Agent**; the user can trim it).
+- **The owner gate.** `workflow._require_owner_of_decision_or_role` (the owner may propose and submit for review) passes for the owner user or any effective member of the owner group. The `decision_owner` role, the approve permission and the content lock are unchanged: a group owner confers no approval right.
+- **Validation.** Replaces `_require_org_member_or_none` for these two fields with the shared principal validation (same organisation; a project group must belong to this project).
+- **List and filters.** The `owner_id` filter becomes `owner` (a principal) plus a "mine" filter that matches the user's own and their groups' decisions; D1 and D2 print the group name; the MCP tools carry `owner_type`.
+- **Deleting a group that owns decisions** is blocked with the shared in-use dialog, which reassigns the decisions (owner is mandatory); a decision maker is optional and can be cleared.
+- **UI.** `DecisionFormModal` and every place the owner or decision maker is shown (list, quick view, detail page, Links panel summary, reports) move to the shared picker and badge.
+- **Checklists:** module boundary (generic extension point, no per-module core edit); nested-project fallback does not apply (no new project-scoped definition table); SOC 2 access-control and multi-tenant isolation policies consulted, since this changes who passes the owner gate.
+- **Tests:** backend (each principal kind on create and update, wrong organisation, wrong project, the gate for direct owner, org-group member, nested org-group member, project-group member, non-member 403 and a removed member, the filters, delete blocked then reassigned, migration backfill, D1/D2 and CSV/PDF output, bundle round trip and fallback); Playwright (choose each kind on create and edit, a group member proposing, the delete-reassign dialog); Storybook for each place an owner is shown. `seed_demo_data.py` gives one Decision a group owner; `seed_e2e_dataset.py` has no Decisions data. Docs: website data-model, roles and reports pages, `docs/solution-architecture.md`, the decisions log.
 
 ## Acceptance criteria (from overview §48, Decisions subset)
 

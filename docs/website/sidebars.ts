@@ -114,6 +114,7 @@ const sidebars: SidebarsConfig = {
             'modules/decision-management-module/overview',
             'modules/decision-management-module/data-model-and-lifecycle',
             'modules/decision-management-module/relationships-and-templates',
+            'modules/decision-management-module/reports',
             'modules/decision-management-module/mcp-integration',
             'modules/decision-management-module/known-limitations',
           ],

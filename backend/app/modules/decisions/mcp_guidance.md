@@ -7,6 +7,8 @@ Read workflow:
 2. `decisions_list_decision_relationships` for what the decision supersedes or links to; `decisions_list_decision_comments` and `decisions_list_decision_files` for discussion and attachments.
 3. `decisions_list_decision_types` to see the project's valid types (a child project may inherit its parent's).
 
+Reports (`decisions_get_*_report`) answer cross-cutting questions, project-level only: the decision register (filter by status, type, date range), approval ageing (what has waited longest for a verdict), the decision log (decisions made in a period, with rationale) and rationale coverage (decisions with no linked artefact, requirements with no linked decision). Prefer a report over listing and fetching every decision.
+
 Rules and gotchas:
 - There are no create, edit or submit tools: decisions are authored in the UI. Do not offer to create one.
 - `decisions_approve_decision` and `decisions_reject_decision` are approvals, gated by AI approval (see the main skill) and by the caller holding the decision approve permission. Only call them when the user explicitly asks about that specific decision, and pass the reason the user gave.

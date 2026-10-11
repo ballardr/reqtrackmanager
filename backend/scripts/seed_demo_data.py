@@ -1030,13 +1030,14 @@ def list_decision_types(headers: dict, project_id: str) -> dict[str, dict]:
 def create_decision(
     headers: dict, project_id: str, *, title: str, decision_statement: str, decision_type_id: str,
     owner_id: str, decision_maker_id: str | None = None, context: str = "", options_considered: str = "",
-    chosen_option: str = "", rationale: str = "", consequences: str = "",
+    chosen_option: str = "", rationale: str = "", consequences: str = "", decision_date: str | None = None,
 ) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/decisions",
         json={
             "title": title, "decision_statement": decision_statement, "decision_type_id": decision_type_id,
-            "owner_id": owner_id, "decision_maker_id": decision_maker_id, "context": context,
+            "owner_id": owner_id, "decision_maker_id": decision_maker_id, "decision_date": decision_date,
+            "context": context,
             "options_considered": options_considered, "chosen_option": chosen_option, "rationale": rationale,
             "consequences": consequences,
         },
@@ -1044,6 +1045,14 @@ def create_decision(
     )
     r.raise_for_status()
     return r.json()
+
+
+def advance_decision_to_review(headers: dict, project_id: str, decision_id: str, *, submit_for_review: bool = True) -> None:
+    """Moves a Decision to `Proposed`, and on to `Under review` unless `submit_for_review` is false — for demo
+    Decisions meant to read as waiting for a verdict (the Approval ageing report)."""
+    steps = ["propose", "submit-for-review"] if submit_for_review else ["propose"]
+    for step in steps:
+        httpx.post(f"{BASE}/projects/{project_id}/modules/decisions/{decision_id}/{step}", headers=headers, timeout=30).raise_for_status()
 
 
 def propose_and_approve_decision(headers: dict, project_id: str, decision_id: str, *, approval_comment: str = "") -> dict:
@@ -2211,7 +2220,7 @@ def main() -> None:
         decision_statement="Falcon-3 will ship with one primary flight controller board and a cold-spare"
         " swapped in by ground crew between flights, rather than dual-redundant boards flying together.",
         decision_type_id=drone_decision_types["Architecture"]["id"], owner_id=demo_admin["user_id"],
-        decision_maker_id=demo_admin["user_id"],
+        decision_maker_id=demo_admin["user_id"], decision_date=(date.today() - timedelta(days=75)).isoformat(),
         context="Early Falcon-3 prototypes carried a single flight controller with no in-flight redundancy.",
         options_considered="(1) Single controller, cold-spare swapped between flights. (2) Dual-redundant"
         " controllers flying together with in-flight failover.",
@@ -2231,7 +2240,7 @@ def main() -> None:
         decision_statement="Falcon-3 will fly with two flight controller boards in an active/standby"
         " arrangement, with automatic in-flight failover, superseding the earlier single-controller design.",
         decision_type_id=drone_decision_types["Architecture"]["id"], owner_id=demo_engineer["user_id"],
-        decision_maker_id=demo_admin["user_id"],
+        decision_maker_id=demo_admin["user_id"], decision_date=(date.today() - timedelta(days=12)).isoformat(),
         context="Planned operations now include inspection routes over populated infrastructure corridors,"
         " where a single controller failure could mean an uncontrolled descent rather than a safe abort.",
         options_considered="(1) Keep the single-controller/cold-spare design. (2) Dual-redundant controllers"
@@ -2257,6 +2266,21 @@ def main() -> None:
         context="Current OTA channel accepts unsigned images verified only by a checksum, adequate for an"
         " internal test fleet but not for a customer-operated one.",
     )
+    print("  Two Decisions waiting for a verdict (one with no decision maker) — feeds the Approval ageing report...")
+    modem_decision = create_decision(
+        h_pm, drone["id"], title="Select the cellular modem vendor for Falcon-3 telemetry",
+        decision_statement="Falcon-3 will standardise on one cellular modem vendor for its telemetry uplink.",
+        decision_type_id=drone_decision_types["Engineering"]["id"], owner_id=demo_engineer["user_id"],
+        context="Two vendors are qualified; field trials finished last month.",
+    )
+    advance_decision_to_review(h_pm, drone["id"], modem_decision["id"])
+    gimbal_decision = create_decision(
+        h_pm, drone["id"], title="Adopt a 3-axis gimbal as the standard inspection payload mount",
+        decision_statement="Falcon-3 inspection payloads will mount on a 3-axis gimbal.",
+        decision_type_id=drone_decision_types["Design"]["id"], owner_id=demo_engineer["user_id"],
+        decision_maker_id=demo_admin["user_id"],
+    )
+    advance_decision_to_review(h_pm, drone["id"], gimbal_decision["id"], submit_for_review=False)
 
     print("Seeding Context & Strategy (Module 1) — enabling the module, then an org Strategy and a project Strategy...")
     # default_enabled=False (docs/plans/module-01-context-and-strategy-plan.md
@@ -2721,7 +2745,8 @@ def main() -> None:
     print("  Compliance standards: ASA-1 (assigned to Falcon-3 only), EN 60529 (opt-in, unassigned),"
           " ISO/IEC 27001 (applies to all projects — auto-assigned to Falcon-3 and Solstice Cloud,"
           " Falcon-3 Avionics Subsystem excepted)")
-    print("  Decision Management (enabled org-wide): 3 Decisions on Falcon-3 — the single-flight-controller"
+    print("  Decision Management (enabled org-wide): 5 Decisions on Falcon-3 (two more wait for a verdict, so the"
+          " Decision register, Approval ageing, Decision log and Rationale coverage reports all have content) — the single-flight-controller"
           " decision (Approved, then Superseded), the dual-redundant decision that supersedes it (Approved),"
           " and an OTA-signing decision left in Draft; the single-flight-controller decision also addresses the"
           " accepted Pain Point and implements the GPS requirement through the generic link endpoint (a Pain Point ->"

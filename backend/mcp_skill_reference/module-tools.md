@@ -495,6 +495,8 @@ Read workflow:
 2. `decisions_list_decision_relationships` for what the decision supersedes or links to; `decisions_list_decision_comments` and `decisions_list_decision_files` for discussion and attachments.
 3. `decisions_list_decision_types` to see the project's valid types (a child project may inherit its parent's).
 
+Reports (`decisions_get_*_report`) answer cross-cutting questions, project-level only: the decision register (filter by status, type, date range), approval ageing (what has waited longest for a verdict), the decision log (decisions made in a period, with rationale) and rationale coverage (decisions with no linked artefact, requirements with no linked decision). Prefer a report over listing and fetching every decision.
+
 Rules and gotchas:
 - There are no create, edit or submit tools: decisions are authored in the UI. Do not offer to create one.
 - `decisions_approve_decision` and `decisions_reject_decision` are approvals, gated by AI approval (see the main skill) and by the caller holding the decision approve permission. Only call them when the user explicitly asks about that specific decision, and pass the reason the user gave.
@@ -556,6 +558,30 @@ Parameters: `project_id*` (uuid, in path), `decision_id*` (uuid, in path), `comm
 Formally rejects a Decision (a comment is required). Reached through MCP only when this project's and its organisation's AI-approval opt-in are both enabled.
 
 Parameters: `project_id*` (uuid, in path), `decision_id*` (uuid, in path), `comment*` (string, in body)
+
+#### `decisions_get_decision_register_report` (read)
+
+Decision register: Every Decision with its type, status, date, decision maker, owner and supersession.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `status` (string, in query), `decision_type` (string, in query), `date_from` (string, in query), `date_to` (string, in query), `include_archived` (boolean, in query)
+
+#### `decisions_get_approval_ageing_report` (read)
+
+Approval ageing: Proposed and Under review Decisions by days waiting, with overdue and decision-maker-less ones flagged.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `overdue_days` (integer, in query)
+
+#### `decisions_get_decision_log_report` (read)
+
+Decision log: Decisions made in a period, with context, chosen option and rationale.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `date_from` (string, in query), `date_to` (string, in query)
+
+#### `decisions_get_rationale_coverage_report` (read)
+
+Rationale coverage: Decisions with no linked artefact, and Requirements with no linked Decision.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)
 
 ## Context & Strategy (`context_strategy`)
 

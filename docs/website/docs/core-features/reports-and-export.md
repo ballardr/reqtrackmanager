@@ -13,7 +13,7 @@ A project's **Reports** page generates a PDF or CSV export of its requirements, 
 | Filtered PDF/CSV export with a selectable organisation branding template |
 | ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
 
-A project's Reports page can also offer reports from enabled modules (for example [Context & Strategy's](../modules/context-strategy-module/reports.md)) in the same **Report** picker, with *Requirements report* listed first. When no module report applies, the picker is hidden and the page is the requirements report alone.
+A project's Reports page can also offer reports from enabled modules (for example [Context & Strategy's](../modules/context-strategy-module/reports.md) and [Decision Management's](../modules/decision-management-module/reports.md)) in the same **Report** picker, with *Requirements report* listed first. When no module report applies, the picker is hidden and the page is the requirements report alone.
 
 ## Report content
 
