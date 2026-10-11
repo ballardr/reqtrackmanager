@@ -554,17 +554,26 @@ def archive_action(headers: dict, project_id: str, action_id: str) -> None:
     r.raise_for_status()
 
 
-def create_report_template(headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str) -> dict:
+def create_report_template(
+    headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str, content: list[dict] | None = None,
+) -> dict:
+    """Creates a report template; `content` is its per-report-type intro/chapters/appendices entries."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/report-templates",
         json={
             "name": name, "accent_color_hex": accent_color_hex, "include_cover_page": True,
-            "include_logo": False, "footer_text": footer_text,
+            "include_logo": False, "footer_text": footer_text, "content": content or [],
         },
         headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
+
+
+def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
+    """Saves per-report-type content at one tier: `/orgs/{id}/report-defaults` or `/projects/{id}/report-config`."""
+    r = httpx.put(f"{BASE}{path}", json={"content": content}, headers=headers, timeout=30)
+    r.raise_for_status()
 
 
 # --- Compliance Module helpers (docs/compliance-module-plan.md Phase 15) -
@@ -1606,7 +1615,20 @@ def main() -> None:
     create_report_template(
         h_pm, org["id"], name="Solstice Standard Report", accent_color_hex="#0F62FE",
         footer_text="Solstice Robotics — Confidential",
+        content=[
+            {"report_key": "requirements", "intro": "{{report_title}} — requirements baseline for {{organisation}}, "
+             "generated {{generated_on}}.", "chapters": [], "appendices": []},
+            {"report_key": "decisions.d3", "intro": "The decisions below were made for {{project_name}}.",
+             "chapters": [{"title": "How to read this log", "body": "Each decision records its context, the option chosen and why."}],
+             "appendices": []},
+        ],
     )
+    # Organisation defaults, per report type: what any project (and its child projects) uses unless it sets its own.
+    put_report_content(h_pm, f"/orgs/{org['id']}/report-defaults", [
+        {"report_key": "*", "intro": "Prepared by {{organisation}} for {{project_name}}.", "chapters": [], "appendices": []},
+        {"report_key": "requirements", "intro": "", "chapters": [],
+         "appendices": [{"title": "Document control", "body": "Controlled by the {{organisation}} engineering office."}]},
+    ])
 
     print("Setting organisation outgoing-email branding...")
     httpx.put(
@@ -1838,6 +1860,12 @@ def main() -> None:
     )
     add_member_source(h_pm, drone["id"], avionics["id"])
     assign_project_role(h_pm, avionics["id"], demo_engineer["user_id"], "project_manager")
+    # Falcon-3's own report content; its Avionics child sets none, so its reports inherit this (then the organisation's).
+    put_report_content(h_pm, f"/projects/{drone['id']}/report-config", [
+        {"report_key": "requirements", "intro": "Requirements for the Falcon-3 inspection drone programme.",
+         "chapters": [{"title": "Scope", "body": "Covers the airframe, avionics, ground station and fleet backend."}],
+         "appendices": []},
+    ])
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
     avionics_reqs = seed_project(

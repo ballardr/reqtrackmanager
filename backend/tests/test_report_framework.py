@@ -455,6 +455,80 @@ def test_template_branding_applies_to_pdf_and_foreign_templates_are_rejected(cli
     _get(probe, token, _project_url(project["id"]), expect=422, report_template_id="nope")
 
 
+# --- Authored content (Phase 10) ----------------------------------------------------------------
+
+
+def _docx_paragraphs(content: bytes) -> list[str]:
+    from io import BytesIO
+
+    from docx import Document
+
+    return [p.text for p in Document(BytesIO(content)).paragraphs]
+
+
+def _content(token, client, url, entries):
+    resp = client.put(url, json={"content": entries}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+
+
+def test_module_report_pdf_and_docx_carry_the_per_type_content_in_order(client, admin_token, probe):
+    org, project, token = _setup(client, admin_token, "Content Co")
+    key = f"{KEY}.p1"
+    _content(token, client, f"/api/v1/projects/{project['id']}/report-config", [{
+        "report_key": key, "intro": "Project intro for {{project_name}}",
+        "chapters": [{"title": "Scope chapter", "body": "Chapter body"}],
+        "appendices": [{"title": "Closing appendix", "body": "Appendix body"}],
+    }])
+    # Another report type's content must not appear in this report.
+    _content(token, client, f"/api/v1/orgs/{org['id']}/report-defaults", [
+        {"report_key": f"{KEY}.p3", "intro": "Belongs to a different report"},
+        {"report_key": "*", "chapters": [{"title": "Org all-reports chapter", "body": "x"}]},
+    ])
+
+    docx = _get(probe, token, _project_url(project["id"]), format="docx")
+    paragraphs = _docx_paragraphs(docx.content)
+    joined = "\n".join(paragraphs)
+    assert "Project intro for Content Co A" in joined
+    assert "Different report" not in joined and "Belongs to a different report" not in joined
+    # The project's chapters beat the organisation's "all reports" chapters (tier first), and the order is
+    # intro, chapters, the report itself, appendices.
+    assert "Org all-reports chapter" not in joined
+    order = [joined.index(t) for t in ("Project intro", "Scope chapter", "Content Co A · generated", "Closing appendix")]
+    assert order == sorted(order)
+    assert _get(probe, token, _project_url(project["id"]), format="pdf").content.startswith(b"%PDF")
+
+    # JSON and CSV carry no authored content.
+    assert "Project intro" not in _get(probe, token, _project_url(project["id"]), format="csv").text
+    assert "Project intro" not in _get(probe, token, _project_url(project["id"])).text
+
+    # Another report in the same module sees only the organisation's "all reports" entry.
+    other = "\n".join(_docx_paragraphs(_get(probe, token, _project_url(project["id"], "probe-project-only"), format="docx").content))
+    assert "Org all-reports chapter" in other and "Project intro" not in other
+
+
+def test_module_report_uses_the_selected_template_then_the_organisation_for_org_runs(client, admin_token, probe):
+    org, project, token = _setup(client, admin_token, "Tier Co")
+    key = f"{KEY}.p1"
+    template = client.post(
+        f"/api/v1/orgs/{org['id']}/report-templates",
+        json={"name": "Content T", "content": [{"report_key": key, "intro": "Template intro"}]}, headers=auth_headers(token),
+    ).json()
+    _content(token, client, f"/api/v1/orgs/{org['id']}/report-defaults", [{"report_key": key, "intro": "Org intro {{project_name}}"}])
+    _content(token, client, f"/api/v1/projects/{project['id']}/report-config", [{"report_key": key, "intro": "Project intro"}])
+
+    plain = "\n".join(_docx_paragraphs(_get(probe, token, _project_url(project["id"]), format="docx").content))
+    assert "Project intro" in plain and "Template intro" not in plain
+    templated = "\n".join(_docx_paragraphs(
+        _get(probe, token, _project_url(project["id"]), format="docx", report_template_id=template["id"]).content,
+    ))
+    assert "Template intro" in templated and "Project intro" not in templated
+
+    # An organisation-wide run has no project tier: the organisation's content applies, with the
+    # organisation standing in for the project name.
+    org_run = "\n".join(_docx_paragraphs(_get(probe, token, _org_url(org["id"]), format="docx").content))
+    assert "Org intro Tier Co" in org_run and "Project intro" not in org_run
+
+
 # --- Catalogue -------------------------------------------------------------------------------
 
 

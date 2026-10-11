@@ -95,6 +95,7 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.relationship import ArtefactLink
+from app.models.report_content import SCOPE_PROJECT
 from app.models.requirement import (
     Baseline,
     BaselineItem,
@@ -119,6 +120,8 @@ from app.services.files import read_file
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
+from app.services.report_content import bundle_entries, content_entries, replace_scope_content
+from app.services.report_content_bundle import ContentImageImporter, collect_content_images
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -493,6 +496,10 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         template = db.get(ReportTemplate, project.default_report_template_id)
         default_report_template_name = template.name if template else None
 
+    content = content_entries(db, SCOPE_PROJECT, project.id)
+    content_images, report_images = collect_content_images(db, project.organization_id, content)
+    file_assets_by_id.update(content_images)
+
     module_bundle_json: dict[str, Any] = {}
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         module_json, module_file_assets = hooks.export(db, project)
@@ -505,7 +512,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "require_change_request_for_approved_links": project.require_change_request_for_approved_links,
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
-        "report_intro": project.report_intro, "report_chapters": project.report_chapters, "report_appendices": project.report_appendices,
+        "report_content": [e.model_dump() for e in content], "report_images": report_images,
         "default_report_template_name": default_report_template_name,
         "stages": [{"name": s.name, "sort_order": s.sort_order} for s in stages],
         "components": [
@@ -627,8 +634,6 @@ def new_project_from_bundle_data(
         exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),
         terminology=data.get("terminology") or {},
         review_reminder_lead_days_default=data.get("review_reminder_lead_days_default", 7),
-        report_intro=data.get("report_intro", ""), report_chapters=data.get("report_chapters", []) or [],
-        report_appendices=data.get("report_appendices", []) or [],
         status_id=get_default_project_status_id(db, organization_id),
     )
 
@@ -671,6 +676,17 @@ def apply_project_data(
     # `routers/projects.py::create_project`'s own default-seeding call for
     # a manually-created (non-template) project.
     seed_action_types(db, project.id)
+    skipped_report_types = replace_scope_content(
+        db, SCOPE_PROJECT, project.id,
+        ContentImageImporter(
+            db, organization_id, current_user.id, file_bytes_by_ref, data.get("report_images"),
+        ).remap(bundle_entries(data, "report_content", ("report_intro", "report_chapters", "report_appendices"))),
+        skip_unknown=True,
+    )
+    if skipped_report_types:
+        warnings.add(
+            f"Report content for unknown report types was not imported: {', '.join(sorted(set(skipped_report_types)))}."
+        )
     template_name = data.get("default_report_template_name")
     if template_name:
         template = db.scalar(

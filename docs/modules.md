@@ -1069,8 +1069,12 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   ignored.
 - **Branding.** `?report_template_id=` applies an organisation report template's
   accent colour, cover page, logo and footer to the PDF and DOCX (400 for another
-  organisation's template). Its intro, chapters and appendices are
-  requirement-report content and are not applied.
+  organisation's template). A template's, project's and organisation's
+  authored intro, chapters and appendices for this report are applied to the PDF
+  and DOCX: content is keyed `"<module_key>.<report key>"` (the `ReportDefinition.key`),
+  so declaring a report is all a module does; there is no per-module edit
+  (`services/report_content.py`). Organisation-wide runs use the template and
+  organisation tiers only.
 - **Validation.** A definition with a duplicate key/slug, malformed parameter,
   `org_level` without an `org_role_key`, an unknown sub-component, or an
   `org_role_key` that is not an org-scoped role is excluded and logged: no

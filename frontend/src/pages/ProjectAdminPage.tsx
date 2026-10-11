@@ -30,10 +30,12 @@ import type {
   ProjectRoleInheritanceMode,
   ProjectStage,
   ProjectStatusDefinition,
-  ReportChapter,
+  EffectiveReportContent,
+  ReportContentEntry,
+  ReportTypeOption,
   ReportTemplate,
 } from "../api/types";
-import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { ALL_REPORTS_KEY, CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
@@ -50,10 +52,11 @@ import { FilterPanel } from "../components/FilterPanel";
 import { Modal } from "../components/Modal";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
-import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
+import { ReportContentEditor } from "../components/ReportContentEditor";
+import type { InheritedContent } from "../components/reportContentInheritance";
+import { inheritedFromEffective } from "../components/reportContentInheritance";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
-import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
@@ -351,19 +354,17 @@ export function ProjectAdminPage() {
   // --- Action types (project-scoped, per docs/decisions.md) ------------
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
 
-  const [reportIntro, setReportIntro] = useState("");
-  const [reportChapters, setReportChapters] = useState<ReportChapter[]>([]);
-  const [reportAppendices, setReportAppendices] = useState<ReportChapter[]>([]);
-  const [reportConfigDefaults, setReportConfigDefaults] = useState({
-    intro: false,
-    chapters: false,
-    appendices: false,
-  });
+  // The content this project itself owns, per report type (what the editor edits), the types content can be
+  // written for, and — per type, loaded as its tab is opened — what a blank field would inherit.
+  const [reportContent, setReportContent] = useState<ReportContentEntry[]>([]);
+  const [reportTypes, setReportTypes] = useState<ReportTypeOption[]>([]);
+  const [inheritedReportContent, setInheritedReportContent] = useState<Record<string, InheritedContent>>({});
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [defaultReportTemplateId, setDefaultReportTemplateId] = useState("");
   // Same reasoning as settingsDirtyRef/terminologyDirtyRef above, for the
   // fields `saveReportConfig()` submits.
   const reportConfigDirtyRef = useRef(false);
+  const activeReportTypeRef = useRef<string>(ALL_REPORTS_KEY);
 
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [newFieldKind, setNewFieldKind] = useState<CustomFieldEntityKind>("requirement");
@@ -423,7 +424,7 @@ export function ProjectAdminPage() {
     // invoked — not whenever it happens to reach the `loadGroups` line
     // near the bottom. See `loadGroupsRequestIdRef`'s own comment.
     const groupsRequestId = ++loadGroupsRequestIdRef.current;
-    const [p, s, c, cat, cf, rc, at] = await Promise.all([
+    const [p, s, c, cat, cf, rc, at, rtypes] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
@@ -431,6 +432,7 @@ export function ProjectAdminPage() {
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields`),
       api.get<ProjectReportConfig>(`/api/v1/projects/${projectId}/report-config`),
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
+      api.get<ReportTypeOption[]>(`/api/v1/projects/${projectId}/report-types`),
     ]);
     setProject(p);
     if (!settingsDirtyRef.current) {
@@ -456,16 +458,10 @@ export function ProjectAdminPage() {
     setCustomFields(cf);
     setActionTypes(at);
     if (!reportConfigDirtyRef.current) {
-      setReportIntro(rc.intro);
-      setReportChapters(rc.chapters);
-      setReportAppendices(rc.appendices);
+      setReportContent(rc.content);
       setDefaultReportTemplateId(rc.default_report_template_id ?? "");
     }
-    setReportConfigDefaults({
-      intro: rc.intro_is_organisation_default,
-      chapters: rc.chapters_is_organisation_default,
-      appendices: rc.appendices_is_organisation_default,
-    });
+    setReportTypes(rtypes);
 
     // The rest of this page's data sources — none of these fetches depend
     // on each other's *results* (each is its own independent GET, keyed
@@ -641,12 +637,33 @@ export function ProjectAdminPage() {
   }
 
   async function saveReportConfig() {
-    await api.put(`/api/v1/projects/${projectId}/report-config`, {
-      intro: reportIntro, chapters: reportChapters, appendices: reportAppendices,
-      default_report_template_id: defaultReportTemplateId || null,
-    });
-    reportConfigDirtyRef.current = false;
-    reload();
+    try {
+      await api.put(`/api/v1/projects/${projectId}/report-config`, {
+        content: reportContent,
+        default_report_template_id: defaultReportTemplateId || null,
+      });
+      reportConfigDirtyRef.current = false;
+      showToast(strings.reports.reportSetupSaved);
+      setInheritedReportContent({});
+      loadInheritedReportContent(activeReportTypeRef.current);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** Loads what a blank field of `reportKey` would inherit (its tab was just opened, or the config was saved). */
+  async function loadInheritedReportContent(reportKey: string) {
+    activeReportTypeRef.current = reportKey;
+    if (reportKey === ALL_REPORTS_KEY) return;
+    try {
+      const effective = await api.get<EffectiveReportContent>(
+        `/api/v1/projects/${projectId}/report-content/effective?report_key=${encodeURIComponent(reportKey)}`,
+      );
+      setInheritedReportContent((prev) => ({ ...prev, [reportKey]: inheritedFromEffective(effective, projectId ?? "") }));
+    } catch {
+      // The editor still works without the hint; a failed lookup is not worth interrupting the user.
+    }
   }
 
   async function addCustomField() {
@@ -1307,16 +1324,23 @@ export function ProjectAdminPage() {
   // (unpaginated) is searched first, not the Groups section's own paginated
   // `groups`, so a deep-linked group not on the currently-loaded page is
   // still found.
+  const openGroupParam = activeGroup === "groups" ? searchParams.get("openGroup") : null;
+  // The deep link is consumed once: opening the panel is derived state (set while rendering, guarded by the
+  // last param seen, per React's "adjusting state when a prop changes"), and the effect below only strips the
+  // param from the URL so closing the panel does not reopen it.
+  const [seenOpenGroupParam, setSeenOpenGroupParam] = useState<string | null>(null);
+  if (openGroupParam !== seenOpenGroupParam && (openGroupParam || seenOpenGroupParam)) {
+    setSeenOpenGroupParam(openGroupParam);
+    if (openGroupParam) setOpenGroupId(openGroupParam);
+  }
   useEffect(() => {
-    if (activeGroup !== "groups") return;
-    const openGroupParam = searchParams.get("openGroup");
     if (!openGroupParam) return;
-    setOpenGroupId(openGroupParam);
-    const next = new URLSearchParams(searchParams);
-    next.delete("openGroup");
-    setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeGroup, searchParams]);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("openGroup");
+      return next;
+    }, { replace: true });
+  }, [openGroupParam, setSearchParams]);
 
   async function deleteGroup(groupId: string) {
     try {
@@ -2697,10 +2721,7 @@ export function ProjectAdminPage() {
       {activeGroup === "reportSetup" && (
       <div className="stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.reportSetup}</h2>
-        <p className="text-muted" style={{ margin: 0 }}>
-          This intro, these chapters, and these appendices are used as the default content when a report is
-          generated for this project, unless overridden at generation time.
-        </p>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportSetupHint}</p>
         {reportTemplates.length > 0 && (
           <CollapsibleSection sectionKey="projectAdmin.reportSetup.defaultTemplate" title={strings.admin.defaultTemplateSection} defaultCollapsed={false}>
             <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
@@ -2724,47 +2745,18 @@ export function ProjectAdminPage() {
           </CollapsibleSection>
         )}
         <CollapsibleSection sectionKey="projectAdmin.reportSetup.content" title={strings.admin.reportContent} defaultCollapsed={false}>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span>
-            Project intro
-            {reportConfigDefaults.intro && <span className="text-muted"> (organisation default)</span>}
-          </span>
-          <RichTextEditor
-            rows={3}
-            value={reportIntro}
-            onChange={(v) => {
+          <ReportContentEditor
+            idPrefix="project-report-content"
+            reportTypes={reportTypes}
+            value={reportContent}
+            onChange={(entries) => {
               reportConfigDirtyRef.current = true;
-              setReportIntro(v);
+              setReportContent(entries);
             }}
             organizationId={project?.organization_id}
+            inherited={inheritedReportContent}
+            onActiveChange={loadInheritedReportContent}
           />
-        </div>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          {reportConfigDefaults.chapters && (
-            <span className="text-muted" style={{ fontSize: "0.85rem" }}>Using the organisation default body chapters.</span>
-          )}
-          <ReportChapterListEditor
-            label="Body chapters" list={reportChapters}
-            setList={(list) => {
-              reportConfigDirtyRef.current = true;
-              setReportChapters(list);
-            }}
-            organizationId={project?.organization_id}
-          />
-        </div>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          {reportConfigDefaults.appendices && (
-            <span className="text-muted" style={{ fontSize: "0.85rem" }}>Using the organisation default appendices.</span>
-          )}
-          <ReportChapterListEditor
-            label="Appendices" list={reportAppendices}
-            setList={(list) => {
-              reportConfigDirtyRef.current = true;
-              setReportAppendices(list);
-            }}
-            organizationId={project?.organization_id}
-          />
-        </div>
         </CollapsibleSection>
         <button className="btn btn-primary" onClick={saveReportConfig} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveSettings}

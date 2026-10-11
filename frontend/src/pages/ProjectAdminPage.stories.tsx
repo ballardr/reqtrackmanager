@@ -8,6 +8,7 @@ import type {
   Component,
   CustomFieldDefinition,
   EffectiveMember,
+  EffectiveReportContent,
   ModuleRoleDefinition,
   OrgGroup,
   OrgGroupProjectRoleSummary,
@@ -18,6 +19,7 @@ import type {
   ProjectMemberSource,
   ProjectModuleEnablement,
   ProjectModuleSubComponent,
+  ProjectReportConfig,
   ProjectStage,
   ProjectStatusDefinition,
 } from "../api/types";
@@ -68,6 +70,8 @@ function mockProjectAdminApis(
     groupRoles?: OrgGroupProjectRoleSummary[];
     groups?: ProjectGroup[];
     pendingInvites?: PendingInvite[];
+    reportConfig?: ProjectReportConfig;
+    effectiveReportContent?: EffectiveReportContent;
     moduleRoles?: ModuleRoleDefinition[];
     // Module 0 (Platform Foundations) Phases 4/5 — the Modules tab's own
     // bulk module list and, per module, its declared sub-components (keyed
@@ -127,11 +131,15 @@ function mockProjectAdminApis(
     // `limit`) would return everything.
     if (path.includes("/groups")) return groupsForThisStory;
     if (path.includes("/custom-fields")) return customFields;
-    if (path.includes("/report-config")) return {
-      intro: "", chapters: [], appendices: [],
-      intro_is_organisation_default: false, chapters_is_organisation_default: false, appendices_is_organisation_default: false,
-      default_report_template_id: null,
+    if (path.includes("/report-content/effective")) return overrides.effectiveReportContent ?? {
+      report_key: "requirements", intro: "", chapters: [], appendices: [],
+      intro_source: null, chapters_source: null, appendices_source: null,
     };
+    if (path.includes("/report-types")) return [
+      { key: "requirements", title: "Requirements report", module_name: null },
+      { key: "context_strategy.r1", title: "Pain point register", module_name: "Context & Strategy" },
+    ];
+    if (path.includes("/report-config")) return overrides.reportConfig ?? { default_report_template_id: null, content: [] };
     if (path.includes("/report-templates")) return [];
     // Hierarchical projects (docs/decisions.md). Checked before the plain
     // "/users" check below — /orgs/{id}/users also matches that.
@@ -1094,9 +1102,52 @@ export const ReportSetupTab: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
-    await waitFor(() => expect(canvas.getByText("Project intro")).toBeInTheDocument());
+    const typeSelect = await canvas.findByLabelText("Report type");
+    // One option per report type, led by "All reports".
+    await expect(within(typeSelect).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All reports", "Requirements report", "Pain point register",
+    ]);
     await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, expect.any(Object)));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, { content: [], default_report_template_id: null })
+    );
+    // Principle 7 — every mutation ends with feedback.
+    await expect(within(document.body).getByText("Report setup saved.")).toBeInTheDocument();
+  },
+};
+
+/** A report type names where a blank field's content comes from (here an ancestor project's and the
+ * organisation's), and "Use inherited" clears the project's own value so the next save falls back to it. */
+export const ReportSetupShowsInheritedContent: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      reportConfig: {
+        default_report_template_id: null,
+        content: [{ report_key: "requirements", intro: "Our own introduction.", chapters: [], appendices: [] }],
+      },
+      effectiveReportContent: {
+        report_key: "requirements", intro: "Our own introduction.",
+        chapters: [{ title: "Parent chapter", body: "x" }], appendices: [{ title: "Org appendix", body: "y" }],
+        intro_source: { scope_type: "project", scope_id: PROJECT_ID, scope_name: "Atlas", report_key: "requirements" },
+        chapters_source: { scope_type: "project", scope_id: "parent-1", scope_name: "Parent Programme", report_key: "*" },
+        appendices_source: { scope_type: "organization", scope_id: "org-1", scope_name: "Acme Corp", report_key: "requirements" },
+      },
+    });
+    spyOn(api, "put").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
+    await userEvent.selectOptions(await canvas.findByLabelText("Report type"), "requirements");
+    await expect(await canvas.findByText("Inherited from Parent Programme")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation default (Acme Corp)")).toBeInTheDocument();
+    await expect(canvas.getByText("Parent chapter")).toBeInTheDocument();
+    // The introduction is the project's own, so it offers the way back to the inherited value.
+    await userEvent.click(canvas.getByRole("button", { name: "Use inherited" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, { content: [], default_report_template_id: null })
+    );
   },
 };
 

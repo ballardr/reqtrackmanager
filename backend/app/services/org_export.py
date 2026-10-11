@@ -110,8 +110,10 @@ from app.models.enums import OrgRole
 from app.models.file import FileAsset
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
 from app.models.project import Project
+from app.models.report_content import SCOPE_ORGANIZATION, SCOPE_TEMPLATE
 from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
+from app.schemas.report import ReportContentEntry
 from app.services.audit import log_event
 from app.services.bundle_common import (
     BundleImportWarnings,
@@ -131,6 +133,8 @@ from app.services.project_export import (
     new_project_from_bundle_data,
 )
 from app.services.rbac import would_create_org_group_cycle
+from app.services.report_content import bundle_entries, content_entries, replace_scope_content
+from app.services.report_content_bundle import ContentImageImporter, collect_content_images
 from app.services.scoring import seed_missing_scoring_levels
 
 ORG_BUNDLE_KIND = "org-export"
@@ -171,11 +175,18 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         file_assets_by_id.update(project_files)
 
     report_templates = list(db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == org.id)))
+    org_content = content_entries(db, SCOPE_ORGANIZATION, org.id)
+    template_content = {t.id: content_entries(db, SCOPE_TEMPLATE, t.id) for t in report_templates}
+    content_images, report_images = collect_content_images(
+        db, org.id, [*org_content, *(e for entries in template_content.values() for e in entries)],
+    )
+    file_assets_by_id.update(content_images)
     report_templates_json = [
         {
             "name": t.name, "accent_color_hex": t.accent_color_hex, "include_cover_page": t.include_cover_page,
-            "include_logo": t.include_logo, "footer_text": t.footer_text, "intro": t.intro, "chapters": t.chapters,
-            "appendices": t.appendices, "chapters_per_component": t.chapters_per_component,
+            "include_logo": t.include_logo, "footer_text": t.footer_text,
+            "content": [e.model_dump() for e in template_content[t.id]],
+            "chapters_per_component": t.chapters_per_component,
         }
         for t in report_templates
     ]
@@ -236,8 +247,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         "source_sso_enabled": org.sso_enabled, "source_sso_only": org.sso_only,
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
         "oidc_required_group": org.oidc_required_group, "pat_max_lifetime_days": org.pat_max_lifetime_days,
-        "default_report_intro": org.default_report_intro, "default_report_chapters": org.default_report_chapters,
-        "default_report_appendices": org.default_report_appendices,
+        "report_content": [e.model_dump() for e in org_content], "report_images": report_images,
         "logo_file_ref": f"{logo_asset.id}_{logo_asset.filename}" if logo_asset else None,
         "logo_content_type": logo_asset.content_type if logo_asset else None,
         "login_background_file_ref": f"{background_asset.id}_{background_asset.filename}" if background_asset else None,
@@ -501,8 +511,25 @@ def _import_org_groups(
             db.add(OrgGroupMember(org_group_id=group.id, member_org_group_id=child.id))
 
 
+# Field names bundles used before per-report-type content (see `bundle_entries`).
+_LEGACY_TEMPLATE_CONTENT_KEYS = ("intro", "chapters", "appendices")
+_LEGACY_ORG_CONTENT_KEYS = ("default_report_intro", "default_report_chapters", "default_report_appendices")
+
+
+def _set_imported_content(
+    db: Session, scope_type: str, scope_id: UUID, entries: list[ReportContentEntry], images: ContentImageImporter,
+    warnings: BundleImportWarnings,
+) -> None:
+    """Stores a bundle scope's report content, remapping its images and
+    warning about report types this installation does not have."""
+    skipped = replace_scope_content(db, scope_type, scope_id, images.remap(entries), skip_unknown=True)
+    if skipped:
+        warnings.add(f"Report content for unknown report types was not imported: {', '.join(sorted(set(skipped)))}.")
+
+
 def _import_report_templates(
     db: Session, org: Organization, data: dict[str, Any], current_user: User, *, resolutions: dict[str, str] | None,
+    file_bytes_by_ref: dict[str, bytes], warnings: BundleImportWarnings,
 ) -> None:
     """Creates report templates from a bundle. `resolutions=None`
     (`import_org_bundle`): always creates fresh — a brand-new organisation
@@ -514,6 +541,7 @@ def _import_report_templates(
     in-place overwrite is safe here (unlike a project, never done silently
     for one — see `_import_projects`) because a report template is pure
     presentation config with no history or sub-content to lose."""
+    images = ContentImageImporter(db, org.id, current_user.id, file_bytes_by_ref, data.get("report_images"))
     existing_by_name: dict[str, ReportTemplate] = {}
     if resolutions is not None:
         existing_by_name = {
@@ -528,18 +556,22 @@ def _import_report_templates(
             existing.include_cover_page = t.get("include_cover_page", True)
             existing.include_logo = t.get("include_logo", True)
             existing.footer_text = t.get("footer_text")
-            existing.intro = t.get("intro", "")
-            existing.chapters = t.get("chapters") or []
-            existing.appendices = t.get("appendices") or []
             existing.chapters_per_component = t.get("chapters_per_component", True)
+            _set_imported_content(
+                db, SCOPE_TEMPLATE, existing.id, bundle_entries(t, "content", _LEGACY_TEMPLATE_CONTENT_KEYS), images, warnings,
+            )
             continue
-        db.add(ReportTemplate(
+        template = ReportTemplate(
             organization_id=org.id, name=t["name"], accent_color_hex=t.get("accent_color_hex", "#475569"),
             include_cover_page=t.get("include_cover_page", True), include_logo=t.get("include_logo", True),
-            footer_text=t.get("footer_text"), intro=t.get("intro", ""), chapters=t.get("chapters") or [],
-            appendices=t.get("appendices") or [], chapters_per_component=t.get("chapters_per_component", True),
+            footer_text=t.get("footer_text"), chapters_per_component=t.get("chapters_per_component", True),
             created_by=current_user.id,
-        ))
+        )
+        db.add(template)
+        db.flush()
+        _set_imported_content(
+            db, SCOPE_TEMPLATE, template.id, bundle_entries(t, "content", _LEGACY_TEMPLATE_CONTENT_KEYS), images, warnings,
+        )
 
 
 def _import_projects(
@@ -616,11 +648,13 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         sso_enabled=False, sso_only=False,
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),
         oidc_required_group=data.get("oidc_required_group"), pat_max_lifetime_days=data.get("pat_max_lifetime_days"),
-        default_report_intro=data.get("default_report_intro"), default_report_chapters=data.get("default_report_chapters"),
-        default_report_appendices=data.get("default_report_appendices"),
     )
     db.add(org)
     db.flush()
+    images = ContentImageImporter(db, org.id, current_user.id, file_bytes_by_ref, data.get("report_images"))
+    _set_imported_content(
+        db, SCOPE_ORGANIZATION, org.id, bundle_entries(data, "report_content", _LEGACY_ORG_CONTENT_KEYS), images, warnings,
+    )
     # Default project statuses/link types, same as any other new
     # organisation (`routers/orgs.py::create_organization`) — a bundle
     # doesn't currently carry its source organisation's status/link-type
@@ -655,7 +689,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         )
         org.login_background_file_id = asset.id
 
-    _import_report_templates(db, org, data, current_user, resolutions=None)
+    _import_report_templates(db, org, data, current_user, resolutions=None, file_bytes_by_ref=file_bytes_by_ref, warnings=warnings)
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
@@ -802,7 +836,9 @@ def merge_org_bundle(
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
-    _import_report_templates(db, target_org, data, current_user, resolutions=resolutions)
+    _import_report_templates(
+        db, target_org, data, current_user, resolutions=resolutions, file_bytes_by_ref=file_bytes_by_ref, warnings=warnings,
+    )
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, target_org, data, users, warnings, resolutions)
     project_id_by_ref = _import_projects(

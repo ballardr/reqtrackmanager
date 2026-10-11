@@ -5,8 +5,9 @@ Generates requirement reports as PDF (R-F-01), DOCX and CSV (R-F-02), with suppo
 for custom Markdown content prepended/appended to the report (R-G-01,
 R-G-02). This module holds only what is specific to requirement reports:
 `ReportRequirementRow`, grouping into component chapters and category
-sections, the four-column table, the terminology-aware CSV, and the effective
-intro/chapters/appendices resolution. Everything document-level (branding,
+sections, the four-column table and the terminology-aware CSV. The
+intro/chapters/appendices a report carries are resolved by
+`services.report_content`. Everything document-level (branding,
 cover page, footer, the Markdown renderer, image resolution, markup escaping)
 lives in `services.report_document`, shared with every module's reports. The
 report is built once as a neutral `ReportDocument` (`services.report_model`) and
@@ -26,9 +27,6 @@ import io
 from dataclasses import dataclass
 from itertools import groupby
 
-from app.models.organization import Organization, ReportTemplate
-from app.models.project import Project
-from app.schemas.report import ProjectReportConfig, ReportChapter
 from app.services.csv_safety import csv_safe
 from app.services.labels import requirement_status_label
 from app.services.report_document import ReportBranding
@@ -44,65 +42,7 @@ __all__ = [
     "generate_csv_report",
     "generate_docx_report",
     "generate_pdf_report",
-    "resolve_report_config",
-    "resolve_report_config_with_template",
 ]
-
-
-def resolve_report_config(project: Project, org: Organization) -> ProjectReportConfig:
-    """Resolves a project's *effective* report intro/chapters/appendices —
-    the project's own value if it's set anything, otherwise (intro only)
-    the project's own description (`Project.summary`), otherwise the owning
-    organisation's default (UI/UX pass), otherwise blank. Used both by the
-    Report Setup editor (so an admin sees what will actually be used, not
-    just what this project has explicitly overridden) and by
-    `routers/reports.py::generate_pdf`'s own fallback when a generation
-    request doesn't supply ad-hoc `pre_markdown`/`post_markdown`.
-
-    Each of the three fields resolves independently — a project can
-    customise just its intro and still inherit the organisation's default
-    chapters, for instance. The description fallback exists only for intro:
-    a project's summary is naturally introduction-shaped free text, but
-    there's no equivalent project field to fall back to for chapters or
-    appendices.
-    """
-    intro = project.report_intro or project.summary or org.default_report_intro or ""
-    chapters = project.report_chapters or org.default_report_chapters or []
-    appendices = project.report_appendices or org.default_report_appendices or []
-    return ProjectReportConfig(
-        intro=intro,
-        chapters=[ReportChapter(**c) for c in chapters],
-        appendices=[ReportChapter(**c) for c in appendices],
-        intro_is_organisation_default=bool(not project.report_intro and not project.summary and org.default_report_intro),
-        chapters_is_organisation_default=bool(not project.report_chapters and org.default_report_chapters),
-        appendices_is_organisation_default=bool(not project.report_appendices and org.default_report_appendices),
-        default_report_template_id=project.default_report_template_id,
-    )
-
-
-def resolve_report_config_with_template(
-    project: Project, org: Organization, template: ReportTemplate | None
-) -> ProjectReportConfig:
-    """Like `resolve_report_config`, with one more, more-specific tier: a
-    selected report template's own intro/chapters/appendices (if it set
-    any) take precedence over the project/org-resolved content, per field
-    independently — same "falls back if not set" shape as the two tiers
-    below it. `template=None` (no template selected) is identical to
-    calling `resolve_report_config` directly.
-    """
-    base = resolve_report_config(project, org)
-    if template is None:
-        return base
-    intro = template.intro or base.intro
-    chapters = [ReportChapter(**c) for c in template.chapters] if template.chapters else base.chapters
-    appendices = [ReportChapter(**c) for c in template.appendices] if template.appendices else base.appendices
-    return ProjectReportConfig(
-        intro=intro, chapters=chapters, appendices=appendices,
-        intro_is_organisation_default=bool(not template.intro and base.intro_is_organisation_default),
-        chapters_is_organisation_default=bool(not template.chapters and base.chapters_is_organisation_default),
-        appendices_is_organisation_default=bool(not template.appendices and base.appendices_is_organisation_default),
-        default_report_template_id=base.default_report_template_id,
-    )
 
 
 @dataclass
@@ -195,6 +135,7 @@ def build_requirement_document(
     branding: ReportBranding | None = None,
     images: dict[str, bytes] | None = None,
     chapters_per_component: bool = True,
+    placeholders: dict[str, str] | None = None,
 ) -> ReportDocument:
     """Builds the neutral document for a project's requirements report, which
     the PDF and DOCX renderers both consume.
@@ -222,11 +163,13 @@ def build_requirement_document(
             the two applies before calling this — see
             `default_chapters_per_component`'s docstring for that
             precedence.
+        placeholders: Values for the `{{...}}` placeholders in the pre/post
+            Markdown (`report_content.build_placeholders`).
 
     Returns:
         The portrait requirements document.
     """
-    blocks: list[Block] = list(markdown_to_blocks(pre_markdown, images))
+    blocks: list[Block] = list(markdown_to_blocks(pre_markdown, images, placeholders))
     # Same total width (17.5cm) the single combined table used to sum to —
     # Component/Category don't need their own columns (the chapter-per-component /
     # section-per-category structure below already conveys them), so their
@@ -253,7 +196,7 @@ def build_requirement_document(
                 Gap(0.5),
             ]
 
-    blocks += markdown_to_blocks(post_markdown, images)
+    blocks += markdown_to_blocks(post_markdown, images, placeholders)
     return ReportDocument(title=project_name, blocks=blocks, branding=branding)
 
 

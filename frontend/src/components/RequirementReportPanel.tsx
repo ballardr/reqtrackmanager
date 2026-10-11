@@ -11,7 +11,7 @@
  * shared resource sections (R-G-04). It has its own request model
  * (`POST /projects/{id}/reports`), which is why it is not a catalogue entry.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import type { ReportDownloadKind } from "../api/reports";
@@ -20,12 +20,13 @@ import type {
   Component,
   FileAsset,
   Project,
+  EffectiveReportContent,
   ProjectReportConfig,
   ReportChapter,
   ReportTemplate,
   RequirementStatus,
 } from "../api/types";
-import { REQUIREMENT_STATUS_LABEL } from "../api/types";
+import { REQUIREMENT_STATUS_LABEL, REQUIREMENTS_REPORT_KEY } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { downloadBlob } from "../utils/download";
@@ -76,27 +77,24 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const [reportAppendices, setReportAppendices] = useState<ReportChapter[]>([]);
 
   // The intro/chapters/appendices actually used for a given template
-  // selection: the template's own content per field where it set any,
-  // otherwise the project's effective (already org-fallback-resolved)
-  // content — the same per-field precedence
-  // `services/reports.py::resolve_report_config_with_template` applies
-  // server-side, computed here just for on-page preview/editing.
-  function effectiveContentFor(templateId: string, base: ProjectReportConfig, templates: ReportTemplate[]) {
-    const tpl = templates.find((t) => t.id === templateId);
-    return {
-      intro: tpl?.intro || base.intro,
-      chapters: tpl && tpl.chapters.length > 0 ? tpl.chapters : base.chapters,
-      appendices: tpl && tpl.appendices.length > 0 ? tpl.appendices : base.appendices,
-    };
-  }
-
-  function selectTemplate(templateId: string) {
-    setReportTemplateId(templateId);
-    if (!reportConfig) return;
-    const effective = effectiveContentFor(templateId, reportConfig, reportTemplates);
+  // selection, resolved server-side (template, project, ancestor projects,
+  // organisation — `services/report_content.py`) so this page never
+  // re-implements the chain; fetched into the editors below, where they can
+  // still be edited for this one report.
+  const loadEffectiveContent = useCallback(async (templateId: string) => {
+    const params = new URLSearchParams({ report_key: REQUIREMENTS_REPORT_KEY });
+    if (templateId) params.set("template_id", templateId);
+    const effective = await api.get<EffectiveReportContent>(
+      `/api/v1/projects/${projectId}/report-content/effective?${params.toString()}`,
+    );
     setReportIntro(effective.intro);
     setReportChapters(effective.chapters);
     setReportAppendices(effective.appendices);
+  }, [projectId]);
+
+  function selectTemplate(templateId: string) {
+    setReportTemplateId(templateId);
+    loadEffectiveContent(templateId).catch((err) => showToast(toErrorMessage(err, strings.common.error), "error"));
   }
 
   useEffect(() => {
@@ -118,12 +116,9 @@ export function RequirementReportPanel({ project }: { project: Project }) {
       setReportConfig(rc);
       const initialTemplateId = rc.default_report_template_id ?? "";
       setReportTemplateId(initialTemplateId);
-      const effective = effectiveContentFor(initialTemplateId, rc, templates);
-      setReportIntro(effective.intro);
-      setReportChapters(effective.chapters);
-      setReportAppendices(effective.appendices);
+      await loadEffectiveContent(initialTemplateId);
     })();
-  }, [projectId, project.organization_id]);
+  }, [projectId, project.organization_id, loadEffectiveContent]);
 
   function toggleResource(id: string) {
     setResourceFileIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));

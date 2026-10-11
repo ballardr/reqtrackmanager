@@ -29,7 +29,7 @@ Deleting a group never leaves a project without a Project Manager. Every project
 
 ## Branding and report templates
 
-Set the organisation's logo and, under **Templates & reports**, define **report templates** (accent colour, cover page, footer text) and organisation-wide **report defaults** (introduction/chapters/appendices) that a project falls back to wherever it leaves its own report content blank. See [Core Features → Reports and export](../core-features/reports-and-export.md).
+Set the organisation's logo and, under **Templates & reports**, define **report templates** (accent colour, cover page, footer text, and optional content) and organisation-wide **report defaults** (introduction, chapters and appendices, written separately for each report type) that a project falls back to, after its parent projects, wherever it leaves its own report content blank. See [Core Features → Reports and export](../core-features/reports-and-export.md).
 
 ## Single sign-on
 

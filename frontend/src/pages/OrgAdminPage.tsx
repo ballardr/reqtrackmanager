@@ -39,7 +39,8 @@ import type {
   ProjectListItem,
   ProjectRole,
   ProjectStatusDefinition,
-  ReportChapter,
+  ReportContentEntry,
+  ReportTypeOption,
   ReportTemplate,
   ScimTokenCreated,
   ScimTokenStatus,
@@ -75,10 +76,9 @@ import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
-import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
+import { ReportContentEditor } from "../components/ReportContentEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
-import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
@@ -493,9 +493,8 @@ export function OrgAdminPage() {
   const [scimError, setScimError] = useState<string | null>(null);
 
   const [orgReportDefaultsAvailable, setOrgReportDefaultsAvailable] = useState(false);
-  const [orgReportIntro, setOrgReportIntro] = useState("");
-  const [orgReportChapters, setOrgReportChapters] = useState<ReportChapter[]>([]);
-  const [orgReportAppendices, setOrgReportAppendices] = useState<ReportChapter[]>([]);
+  const [orgReportContent, setOrgReportContent] = useState<ReportContentEntry[]>([]);
+  const [reportTypes, setReportTypes] = useState<ReportTypeOption[]>([]);
 
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [newTemplateName, setNewTemplateName] = useState("");
@@ -503,9 +502,7 @@ export function OrgAdminPage() {
   const [newTemplateIncludeCoverPage, setNewTemplateIncludeCoverPage] = useState(true);
   const [newTemplateIncludeLogo, setNewTemplateIncludeLogo] = useState(true);
   const [newTemplateFooterText, setNewTemplateFooterText] = useState("");
-  const [newTemplateIntro, setNewTemplateIntro] = useState("");
-  const [newTemplateChapters, setNewTemplateChapters] = useState<ReportChapter[]>([]);
-  const [newTemplateAppendices, setNewTemplateAppendices] = useState<ReportChapter[]>([]);
+  const [newTemplateContent, setNewTemplateContent] = useState<ReportContentEntry[]>([]);
   const [newTemplateChaptersPerComponent, setNewTemplateChaptersPerComponent] = useState(true);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   // The create/edit form for a report template is a brand-new (or, when
@@ -742,9 +739,8 @@ export function OrgAdminPage() {
     try {
       const rd = await api.get<OrgReportDefaults>(`/api/v1/orgs/${orgId}/report-defaults`);
       setOrgReportDefaultsAvailable(true);
-      setOrgReportIntro(rd.intro);
-      setOrgReportChapters(rd.chapters);
-      setOrgReportAppendices(rd.appendices);
+      setOrgReportContent(rd.content);
+      setReportTypes(await api.get<ReportTypeOption[]>(`/api/v1/orgs/${orgId}/report-types`));
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setOrgReportDefaultsAvailable(false);
@@ -756,10 +752,13 @@ export function OrgAdminPage() {
 
   async function saveOrgReportDefaults() {
     if (!orgId) return;
-    await api.put(`/api/v1/orgs/${orgId}/report-defaults`, {
-      intro: orgReportIntro, chapters: orgReportChapters, appendices: orgReportAppendices,
-    });
-    reload();
+    try {
+      await api.put(`/api/v1/orgs/${orgId}/report-defaults`, { content: orgReportContent });
+      showToast(strings.reports.reportDefaultsSaved);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   /** Applies a partial filter change (one `FilterCheckbox`/`FilterField` at
@@ -1905,9 +1904,7 @@ export function OrgAdminPage() {
     setNewTemplateIncludeCoverPage(true);
     setNewTemplateIncludeLogo(true);
     setNewTemplateFooterText("");
-    setNewTemplateIntro("");
-    setNewTemplateChapters([]);
-    setNewTemplateAppendices([]);
+    setNewTemplateContent([]);
     setNewTemplateChaptersPerComponent(true);
   }
 
@@ -1928,9 +1925,7 @@ export function OrgAdminPage() {
     setNewTemplateIncludeCoverPage(tpl.include_cover_page);
     setNewTemplateIncludeLogo(tpl.include_logo);
     setNewTemplateFooterText(tpl.footer_text ?? "");
-    setNewTemplateIntro(tpl.intro);
-    setNewTemplateChapters(tpl.chapters);
-    setNewTemplateAppendices(tpl.appendices);
+    setNewTemplateContent(tpl.content);
     setNewTemplateChaptersPerComponent(tpl.chapters_per_component);
     setTemplateFormOpen(true);
   }
@@ -1943,9 +1938,7 @@ export function OrgAdminPage() {
       include_cover_page: newTemplateIncludeCoverPage,
       include_logo: newTemplateIncludeLogo,
       footer_text: newTemplateFooterText || null,
-      intro: newTemplateIntro,
-      chapters: newTemplateChapters,
-      appendices: newTemplateAppendices,
+      content: newTemplateContent,
       chapters_per_component: newTemplateChaptersPerComponent,
     };
     if (editingTemplateId) {
@@ -3386,20 +3379,14 @@ export function OrgAdminPage() {
         {activeGroup === "templates-reports" && (
           <div className="stack">
             {orgReportDefaultsAvailable && (
-              <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title="Report Defaults">
-                <p className="text-muted" style={{ margin: 0 }}>
-                  Used as the default intro, body chapters, and appendices for any project in this {orgLabel} that
-                  hasn't set its own — see each project's Report Setup tab.
-                </p>
-                <div className="stack" style={{ gap: "0.25rem" }}>
-                  <span>Default intro</span>
-                  <RichTextEditor rows={3} value={orgReportIntro} onChange={setOrgReportIntro} organizationId={orgId} />
-                </div>
-                <ReportChapterListEditor
-                  label="Default body chapters" list={orgReportChapters} setList={setOrgReportChapters} organizationId={orgId}
-                />
-                <ReportChapterListEditor
-                  label="Default appendices" list={orgReportAppendices} setList={setOrgReportAppendices} organizationId={orgId}
+              <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title={strings.admin.reportDefaults}>
+                <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportDefaultsHint(orgLabel)}</p>
+                <ReportContentEditor
+                  idPrefix="org-report-defaults"
+                  reportTypes={reportTypes}
+                  value={orgReportContent}
+                  onChange={setOrgReportContent}
+                  organizationId={orgId}
                 />
                 <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
                   {strings.admin.saveSettings}
@@ -3473,16 +3460,12 @@ export function OrgAdminPage() {
                   className="input" placeholder={strings.admin.footerText}
                   value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
                 />
-                <div className="stack" style={{ gap: "0.25rem" }}>
-                  <span>{strings.admin.templateIntro}</span>
-                  <RichTextEditor rows={3} value={newTemplateIntro} onChange={setNewTemplateIntro} organizationId={orgId} />
-                </div>
-                <ReportChapterListEditor
-                  label={strings.admin.templateChapters} list={newTemplateChapters} setList={setNewTemplateChapters}
-                  organizationId={orgId}
-                />
-                <ReportChapterListEditor
-                  label={strings.admin.templateAppendices} list={newTemplateAppendices} setList={setNewTemplateAppendices}
+                <strong>{strings.admin.templateContent}</strong>
+                <ReportContentEditor
+                  idPrefix="template-report-content"
+                  reportTypes={reportTypes}
+                  value={newTemplateContent}
+                  onChange={setNewTemplateContent}
                   organizationId={orgId}
                 />
                 <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>

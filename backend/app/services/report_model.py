@@ -36,6 +36,8 @@ Dependencies: markdown-it-py. `ReportBranding` is imported for typing only.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -45,6 +47,32 @@ if TYPE_CHECKING:
     from app.services.report_document import ReportBranding
 
 _md = MarkdownIt()
+
+# The fixed allow-list of `{{name}}` placeholders content may use. Not a
+# template engine: a name is replaced by plain string substitution and anything
+# else (unknown names, other braces) stays literal text.
+PLACEHOLDER_NAMES: tuple[str, ...] = ("project_name", "report_title", "generated_on", "organisation")
+_PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
+
+
+def fill_placeholders(text: str, placeholders: Mapping[str, str] | None) -> str:
+    """Replaces allow-listed `{{name}}` placeholders in `text` in a single pass.
+
+    Args:
+        text: Author-written text.
+        placeholders: Values by name; names outside `PLACEHOLDER_NAMES` are
+            never substituted even if present.
+
+    Returns:
+        The text with known placeholders replaced. A substituted value is not
+        re-scanned, so a value containing `{{...}}` stays literal.
+    """
+    if not placeholders or "{{" not in text:
+        return text
+    return _PLACEHOLDER.sub(
+        lambda m: placeholders[m.group(1)] if m.group(1) in PLACEHOLDER_NAMES and m.group(1) in placeholders else m.group(0),
+        text,
+    )
 
 
 @dataclass(frozen=True)
@@ -139,7 +167,9 @@ class ReportDocument:
     landscape: bool = False
 
 
-def markdown_to_blocks(markdown_text: str, images: dict[str, bytes] | None = None) -> list[Block]:
+def markdown_to_blocks(
+    markdown_text: str, images: dict[str, bytes] | None = None, placeholders: Mapping[str, str] | None = None,
+) -> list[Block]:
     """Converts a Markdown string into blocks.
 
     Covers headings, paragraphs, bullet lists and images on their own line,
@@ -153,6 +183,10 @@ def markdown_to_blocks(markdown_text: str, images: dict[str, bytes] | None = Non
             from `images` (unresolved, another organisation's, not an image)
             is skipped silently. An image mixed with other text is not
             supported: the paragraph keeps its literal source text.
+        placeholders: Values for the `PLACEHOLDER_NAMES` placeholders. They are
+            substituted into the parsed heading, paragraph and list text, never
+            into the Markdown source, so a value is ordinary text that cannot
+            introduce headings, lists or images.
 
     Returns:
         The blocks (empty for blank input).
@@ -168,7 +202,7 @@ def markdown_to_blocks(markdown_text: str, images: dict[str, bytes] | None = Non
         token = tokens[i]
         if token.type == "heading_open":
             level = int(token.tag[1:]) if token.tag[1:].isdigit() else 3
-            blocks.append(Heading(tokens[i + 1].content, min(level, 4)))
+            blocks.append(Heading(fill_placeholders(tokens[i + 1].content, placeholders), min(level, 4)))
             i += 3
         elif token.type == "paragraph_open":
             inline = tokens[i + 1]
@@ -179,7 +213,7 @@ def markdown_to_blocks(markdown_text: str, images: dict[str, bytes] | None = Non
                     blocks.append(Image(image_bytes))
                     blocks.append(Gap(0.2))
             else:
-                blocks.append(Paragraph(inline.content))
+                blocks.append(Paragraph(fill_placeholders(inline.content, placeholders)))
                 blocks.append(Gap(0.2))
             i += 3
         elif token.type == "bullet_list_open":
@@ -187,7 +221,7 @@ def markdown_to_blocks(markdown_text: str, images: dict[str, bytes] | None = Non
             j = i + 1
             while tokens[j].type != "bullet_list_close":
                 if tokens[j].type == "inline":
-                    items.append(tokens[j].content)
+                    items.append(fill_placeholders(tokens[j].content, placeholders))
                 j += 1
             blocks.append(BulletList(items))
             i = j + 1

@@ -253,6 +253,12 @@ def create_link_type(
     return r.json()
 
 
+def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
+    """Saves per-report-type content at one tier: `/orgs/{id}/report-defaults` or `/projects/{id}/report-config`."""
+    r = httpx.put(f"{BASE}{path}", json={"content": content}, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
 def create_project_link_type(
     headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
 ) -> dict:
@@ -841,6 +847,15 @@ def main() -> None:
     )
     gamma5_reqs = seed_project_content(h_g, gamma5, 2)
     gamma6_reqs = seed_project_content(h_g, gamma6, 2)
+    print("Seeding per-report-type content (Phase 10): Gamma's organisation default for 'all reports', and a requirements"
+          " introduction and chapter on Gamma-5 that its child Gamma-6 (which sets none) inherits.")
+    put_report_content(h_g, f"/orgs/{gamma['id']}/report-defaults", [
+        {"report_key": "*", "intro": "Prepared by {{organisation}} for {{project_name}}.", "chapters": [], "appendices": []},
+    ])
+    put_report_content(h_g, f"/projects/{gamma5['id']}/report-config", [
+        {"report_key": "requirements", "intro": "Gamma-5 requirements, inherited by its child projects.",
+         "chapters": [{"title": "Scope", "body": "Shared by the Gamma-5 programme."}], "appendices": []},
+    ])
     parent_type = create_project_link_type(
         h_g, gamma5["id"], forward_name=LINK_TYPES_PARENT_VERB, reverse_name="E2E Parent reverse", flow="forward_is_upstream",
     )

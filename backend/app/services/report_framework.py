@@ -70,7 +70,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.organization import Organization
+from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import (
@@ -98,6 +98,7 @@ from app.services.rbac import (
     require_project_subcomponent_enabled,
     user_satisfies_module_role,
 )
+from app.services.report_content import build_placeholders, content_blocks, report_key_for, resolve_report_content
 from app.services.report_document import ReportBranding, load_report_template, resolve_branding
 from app.services.report_docx import render_docx_document
 from app.services.report_model import Block, Gap, Heading, Note, ReportDocument, Table
@@ -376,7 +377,10 @@ def render_csv(result: ReportResult) -> bytes:
     return buffer.getvalue().encode("utf-8")
 
 
-def build_result_document(result: ReportResult, *, branding: ReportBranding | None = None) -> ReportDocument:
+def build_result_document(
+    result: ReportResult, *, branding: ReportBranding | None = None,
+    before: Sequence[Block] = (), after: Sequence[Block] = (),
+) -> ReportDocument:
     """Builds the neutral landscape document for a collected report, which the
     PDF and DOCX renderers both consume.
 
@@ -384,12 +388,16 @@ def build_result_document(result: ReportResult, *, branding: ReportBranding | No
         result: The collected report.
         branding: Optional organisation template branding (accent colour,
             cover page, logo, footer); `None` renders the plain default style.
+        before: Blocks placed ahead of the report (its introduction and
+            chapters, from `services.report_content`).
+        after: Blocks placed after the last section (its appendices).
 
     Returns:
-        The document: a scope line, the notes, then each section's heading,
-        note and table (or "None.").
+        The document: the introduction and chapters, a scope line, the notes,
+        each section's heading, note and table (or "None."), then the appendices.
     """
     blocks: list[Block] = [
+        *before,
         Note(f"{result.scope_label} · generated {result.generated_at.strftime('%Y-%m-%d %H:%M')} UTC"),
         Gap(0.2),
         *[Note(n) for n in result.notes],
@@ -402,33 +410,44 @@ def build_result_document(result: ReportResult, *, branding: ReportBranding | No
             blocks.append(Table(section.columns, section.rows, compact=True))
         else:
             blocks.append(Note("None."))
+    blocks += after
     return ReportDocument(title=result.title, blocks=blocks, branding=branding, landscape=True)
 
 
-def render_pdf(result: ReportResult, *, branding: ReportBranding | None = None) -> bytes:
+def render_pdf(
+    result: ReportResult, *, branding: ReportBranding | None = None,
+    before: Sequence[Block] = (), after: Sequence[Block] = (),
+) -> bytes:
     """Renders the whole report (every section) as a landscape A4 PDF.
 
     Args:
         result: The collected report.
         branding: Optional organisation template branding; see `build_result_document`.
+        before: Blocks ahead of the report; see `build_result_document`.
+        after: Blocks after the report; see `build_result_document`.
 
     Returns:
         PDF bytes.
     """
-    return render_pdf_document(build_result_document(result, branding=branding))
+    return render_pdf_document(build_result_document(result, branding=branding, before=before, after=after))
 
 
-def render_docx(result: ReportResult, *, branding: ReportBranding | None = None) -> bytes:
+def render_docx(
+    result: ReportResult, *, branding: ReportBranding | None = None,
+    before: Sequence[Block] = (), after: Sequence[Block] = (),
+) -> bytes:
     """Renders the whole report (every section) as an editable landscape DOCX.
 
     Args:
         result: The collected report.
         branding: Optional organisation template branding; see `build_result_document`.
+        before: Blocks ahead of the report; see `build_result_document`.
+        after: Blocks after the report; see `build_result_document`.
 
     Returns:
         DOCX bytes.
     """
-    return render_docx_document(build_result_document(result, branding=branding))
+    return render_docx_document(build_result_document(result, branding=branding, before=before, after=after))
 
 
 # --- JSON schema --------------------------------------------------------------------
@@ -609,20 +628,22 @@ def _live_definition(module_key: str, definition: ReportDefinition) -> ReportDef
 
 def _respond(
     result: ReportResult, definition: ReportDefinition, fmt: str, scope_name: str, branding: ReportBranding | None,
+    before: Sequence[Block] = (), after: Sequence[Block] = (),
 ) -> Response | ReportOut:
-    """Serialises `result` as `fmt`."""
+    """Serialises `result` as `fmt`; `before`/`after` (the report's content
+    blocks) only reach the PDF and DOCX."""
     if fmt == "json":
         return to_out(result)
     stem = f"{filename_safe(scope_name, fallback='report')}-{definition.slug}"
     if fmt == "csv":
         return file_response(render_csv(result), stem, "csv")
     if fmt == "docx":
-        return file_response(render_docx(result, branding=branding), stem, "docx")
-    return file_response(render_pdf(result, branding=branding), stem, "pdf")
+        return file_response(render_docx(result, branding=branding, before=before, after=after), stem, "docx")
+    return file_response(render_pdf(result, branding=branding, before=before, after=after), stem, "pdf")
 
 
-def _branding_for(db: Session, organization: Organization, template_id: UUID | None) -> ReportBranding | None:
-    """The branding of the requested template, `None` when none was requested.
+def _template_for(db: Session, organization: Organization, template_id: UUID | None) -> ReportTemplate | None:
+    """The requested template, `None` when none was requested.
 
     Raises:
         HTTPException: 400 when the template is not one of the organisation's.
@@ -632,7 +653,26 @@ def _branding_for(db: Session, organization: Organization, template_id: UUID | N
     template = load_report_template(db, organization.id, template_id)
     if template is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this organisation.")
-    return resolve_branding(db, organization, template)
+    return template
+
+
+def _content_blocks_for(
+    db: Session, fmt: str, module_key: str, definition: ReportDefinition, result: ReportResult,
+    organization: Organization, project: Project | None, template: ReportTemplate | None,
+) -> tuple[list[Block], list[Block]]:
+    """The report's introduction/chapters and appendices as blocks for the PDF
+    and DOCX (empty for JSON and CSV, which carry no authored content).
+    Resolution is `report_content.resolve_report_content`; an organisation-wide
+    run passes `project=None`, so only the template and organisation tiers apply.
+    """
+    if fmt not in ("pdf", "docx"):
+        return [], []
+    content = resolve_report_content(db, report_key_for(module_key, definition.key), organization, project, template)
+    placeholders = build_placeholders(
+        project_name=result.scope_label, report_title=result.title, generated_on=result.generated_at.date(),
+        organisation=organization.name,
+    )
+    return content_blocks(db, organization.id, content, placeholders)
 
 
 def _route_signature(path_param: str, definition: ReportDefinition, *, project_level: bool, dependency: Callable) -> inspect.Signature:
@@ -675,7 +715,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         project = db.get(Project, kw["project_id"])
         organization = db.get(Organization, project.organization_id)
         params = validated_params(live, kw)
-        branding = _branding_for(db, organization, kw["report_template_id"])
+        template = _template_for(db, organization, kw["report_template_id"])
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=project, params=params,
             projects=readable_projects(
@@ -683,7 +723,11 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
                 include_children=kw["include_children"],
             ),
         )
-        return _respond(live.collector(db, ctx), live, kw["format"], project.name, branding)
+        result = live.collector(db, ctx)
+        before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, project, template)
+        return _respond(
+            result, live, kw["format"], project.name, resolve_branding(db, organization, template), before, after,
+        )
 
     endpoint.__signature__ = _route_signature("project_id", definition, project_level=True, dependency=dependency)  # type: ignore[attr-defined]
     endpoint.__doc__ = (
@@ -708,7 +752,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not hold the role required for organisation-wide reports.")
         organization = db.get(Organization, organization_id)
         params = validated_params(live, kw)
-        branding = _branding_for(db, organization, kw["report_template_id"])
+        template = _template_for(db, organization, kw["report_template_id"])
         projects = scope_projects(
             db, current_user, definition=live, organization=organization, root_project=None, include_children=False,
         )
@@ -722,7 +766,11 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
             all_org_projects=live.org_scope == "all_org_projects",
             projects=projects,
         )
-        return _respond(live.collector(db, ctx), live, kw["format"], organization.name, branding)
+        result = live.collector(db, ctx)
+        before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, None, template)
+        return _respond(
+            result, live, kw["format"], organization.name, resolve_branding(db, organization, template), before, after,
+        )
 
     endpoint.__signature__ = _route_signature("organization_id", definition, project_level=False, dependency=dependency)  # type: ignore[attr-defined]
     scope = "every project in the organisation" if definition.org_scope == "all_org_projects" else "projects the caller can read"

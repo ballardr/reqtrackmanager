@@ -126,6 +126,11 @@ Creates one custom field of each of the four types (short text, long text, check
 
 Creates, edits, and deletes an org report template (accent colour, cover page/logo toggles, footer, chapter-per-component default); selects it as a project's default (pre-populates the Reports page); marks a project as usable as a template and confirms it appears in "New project"'s create-from-template list.
 
+### 13b. Per-report-type content and inheritance
+**Persona:** a disposable org admin. **Spec:** `report-content-per-type.spec.ts` (Platform enhancements Phase 10).
+
+In a disposable organisation with a parent and a child project: org defaults are saved per report type (the Report type drop-down matches the server's report-type list); the child's Report Setup names the organisation default, then the parent project, as the source of a blank field; the child's own content wins and "Use inherited" gives it back; a report template's per-type content is loaded when selected on the generation page; a PDF still generates.
+
 ### 14. Org security controls: org-wide 2FA, display-name lock, member filters, external invites
 **Persona:** Org Admin Gamma. **Spec:** `org-security-controls.spec.ts` (the "28-item batch" round, C-A-13).
 
