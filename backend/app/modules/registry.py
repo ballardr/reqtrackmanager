@@ -51,7 +51,7 @@ import logging
 import os
 import re
 import uuid
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -62,6 +62,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.models.enums import LinkFlow, LinkNestingScope
 
 if TYPE_CHECKING:
     from alembic.config import Config
@@ -1169,17 +1170,59 @@ class ArtefactSummary:
     Attributes:
         id: The artefact's id.
         project_id: The project the artefact belongs to (links are validated
-            against the linking record's own project).
+            against the linking record's own project); `None` for a record
+            owned by an organisation rather than a project (an org-level
+            Persona, say), which therefore never matches a project check.
         label: Display name (a code plus title where the artefact has one).
         status: The artefact's lifecycle status as a plain string, or `None`.
         is_archived: Whether the artefact is archived.
+        organization_id: The owning organisation for an org-owned record,
+            else `None`.
+        facets: The classifications the record carries for the scoped finder
+            (Phase 6c), `{level key: (option id, option label)}`, e.g.
+            `{"status": ("draft", "Draft")}`. Read by facet-derived `BrowseLevel`s
+            and by the default narrowing; excluded from equality and hashing.
     """
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    project_id: uuid.UUID | None
     label: str
     status: str | None = None
     is_archived: bool = False
+    organization_id: uuid.UUID | None = None
+    facets: Mapping[str, tuple[str, str]] = field(default_factory=dict, compare=False, repr=False)
+
+
+@dataclass(frozen=True)
+class BrowseLevel:
+    """One step of the scoped finder an artefact type offers when choosing a link
+    target (Platform Enhancements Phase 6c): "Standard" -> "Version" -> "Requirement",
+    "Component" -> "Category", or just "Status".
+
+    A type's levels are ordered and each is optional: the user may stop after any
+    level and search what is left. The owning module declares them, so the dialog
+    needs no per-type code.
+
+    Attributes:
+        key: Stable identifier of the level within its type (`"standard"`). For a
+            facet-derived level it is also the key in `ArtefactSummary.facets`.
+        label: Singular display name shown above the picker (`"Standard"`).
+        list_options: `(db, project_id, selected, query) -> [(option_id, label)]`: the
+            options of this level given the options already chosen at earlier levels
+            (`selected`: `{level key: option id}`), narrowed by the label text `query`
+            (may be empty). `project_id` is the project whose records are being
+            searched. Called only after the caller has been authorised to view the
+            type in that project; it must compute its options from `selected` alone
+            and never from anything the client could widen. It returns every match
+            (callers cap what they send, but validate a selection against the full
+            list). `None` (the default) derives the options from the facet `key` of
+            the records the provider offers for the project, which suits any
+            classification the records themselves carry (a status, a type).
+    """
+
+    key: str
+    label: str
+    list_options: Callable[[Session, uuid.UUID, Mapping[str, str], str], list[tuple[str, str]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -1191,10 +1234,68 @@ class ArtefactSummaryProvider:
             record does not exist.
         list_for_project: `(db, project_id) -> list[ArtefactSummary]`, the
             records a picker can offer for the project.
+        get_many_in_project: `(db, project_id, ids) -> list[ArtefactSummary]`,
+            optional batch lookup (one query, not one per id) that returns
+            only the records `project_id` may see: owned by that project, or
+            owned by its organisation and not hidden from it. The owning
+            module applies its own visibility rules here (e.g. per-project
+            hiding of an org Persona), so the artefact link graph can ask
+            "which of these are visible here" without knowing them. When
+            omitted, callers fall back to `get` per id and keep records
+            whose `project_id` equals the project.
+        browse_levels: The ordered `BrowseLevel`s of the type's scoped finder
+            (Phase 6c). Every registered type declares at least one; a backend
+            coverage test fails otherwise, so a new type cannot ship search-only.
+        filter: Optional `(db, project_id, selected, query, limit) -> summaries`
+            narrowing the records offered by the options chosen at the levels
+            (`selected`: `{level key: option id}`) and the label text `query`. Must
+            return only records `list_for_project` would offer, at most `limit` + 2
+            (one more shows the result was cut, one allows for the page's own record
+            being dropped). When omitted, the finder narrows by the summaries' `facets`.
     """
 
     get: Callable[[Session, uuid.UUID], ArtefactSummary | None]
     list_for_project: Callable[[Session, uuid.UUID], list[ArtefactSummary]]
+    get_many_in_project: Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], list[ArtefactSummary]] | None = None
+    browse_levels: tuple[BrowseLevel, ...] = ()
+    filter: Callable[[Session, uuid.UUID, Mapping[str, str], str, int], list[ArtefactSummary]] | None = None
+
+
+@dataclass(frozen=True)
+class LinkTypeSeed:
+    """A link type a module wants to exist in every organisation, so its
+    artefact types can be linked meaningfully without a core edit
+    (`ModuleDefinition.link_type_seeds`).
+
+    Seeds describe, they do not gate: a type is created lazily when first
+    needed or listed (`services.link_types.ensure_org_link_type`) and **only
+    when the organisation has no type with that `forward_name`**, so an admin's
+    edit (renamed phrases, changed flow, a different restriction) is never
+    overwritten. Seeds that share a `forward_name` (several modules sharing
+    "Supersedes", or a legacy kind reusing "Drives") are merged: the restriction
+    lists are unioned and the phrases must agree.
+
+    Attributes:
+        forward_name / reverse_name: The phrase read from the source / target.
+        flow: Direction in a traceability chain (`LinkFlow`).
+        allowed_source_types / allowed_target_types: Artefact types the link
+            may run from / to; `None` = any.
+        dedicated_endpoint: The type has a fixed meaning with its own action
+            (e.g. "Supersedes" flips a status), so the generic link endpoints
+            neither offer nor delete it.
+        nesting_scope: Whether the type may join a project and its ancestor or
+            descendant, and which end may sit higher (`LinkNestingScope`).
+            `UPSTREAM_IN_ANCESTOR` needs a `flow` other than `NONE`. Applied only
+            when the seed creates the type, never to an existing one.
+    """
+
+    forward_name: str
+    reverse_name: str
+    flow: LinkFlow = LinkFlow.NONE
+    allowed_source_types: tuple[str, ...] | None = None
+    allowed_target_types: tuple[str, ...] | None = None
+    dedicated_endpoint: bool = False
+    nesting_scope: LinkNestingScope = LinkNestingScope.ANCESTOR_EITHER_WAY
 
 
 @dataclass(frozen=True)
@@ -1730,6 +1831,11 @@ class ModuleDefinition:
             `list_artefact_summaries` (below), which return `None`/`[]` when
             the owning module is disabled for the project. Empty for a module
             whose records nothing else links to.
+        artefact_type_labels: Maps one of this module's own `artefact_types` to
+            its singular display name (e.g. `"pain_point"` -> `"Pain point"`),
+            read via `get_artefact_type_label`. Lets core UI and API responses
+            name a record's kind without a closed per-module map in a core
+            file; a type left out gets a title-cased fallback.
         reports: Module 1 Phase 12b — the reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -1737,6 +1843,21 @@ class ModuleDefinition:
             endpoints list them via `get_module_reports`. Definitions that fail
             `validate_report_definitions` are excluded and logged. Empty for a
             module with no reports.
+        link_type_seeds: Platform Enhancements Phase 5b — link types (`LinkTypeSeed`)
+            this module wants to exist, each with phrases, flow and an optional
+            source/target artefact-type restriction. Created lazily and only when
+            absent, so an organisation's edits are never overwritten; seeds sharing
+            a `forward_name` across modules are merged (`get_all_link_type_seeds`).
+            Any two artefact types can be linked by default, so a module needs
+            seeds only to ship meaningful vocabulary, never to make its types
+            linkable. Empty for a module with no vocabulary of its own.
+        mcp_guidance: Hand-written Markdown telling an AI agent how to use this
+            module's MCP tools (typical workflows, lifecycle order, which tools
+            are gated, gotchas). Embedded per module in the agent skill's
+            generated `module-tools.md` (`backend/scripts/generate_mcp_module_
+            tools_reference.py`); a module that contributes MCP tools must
+            provide it (enforced by `backend/tests/test_mcp_skill_reference.py`).
+            Do not repeat per-tool parameter lists, which the generator adds.
     """
 
     key: str
@@ -1749,6 +1870,7 @@ class ModuleDefinition:
     roles: tuple[ModuleRoleDefinition, ...] = field(default=())
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = field(default=())
+    mcp_guidance: str = ""
     models_import_path: str | None = None
     migrations_dir: str | None = None
     migrations_import_path: str | None = None
@@ -1775,7 +1897,9 @@ class ModuleDefinition:
         default_factory=dict
     )
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = field(default_factory=dict)
+    artefact_type_labels: dict[str, str] = field(default_factory=dict)
     reports: tuple[ReportDefinition, ...] = field(default=())
+    link_type_seeds: tuple[LinkTypeSeed, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -3325,6 +3449,133 @@ def list_artefact_summaries(db: Session, project_id: uuid.UUID, artefact_type: s
     if not is_module_enabled_for_project(db, project_id, definition.key):
         return []
     return provider.list_for_project(db, project_id)
+
+
+_CORE_ARTEFACT_TYPE_LABELS = {"requirement": "Requirement", "requirement_action": "Action"}
+
+
+def get_artefact_type_label(artefact_type: str) -> str:
+    """The singular display name of `artefact_type`: a core type's built-in
+    label, else the owning module's `artefact_type_labels` entry, else the
+    type string title-cased (`"open_question"` -> `"Open question"`)."""
+    label = _CORE_ARTEFACT_TYPE_LABELS.get(artefact_type)
+    if label is not None:
+        return label
+    for definition in get_module_registry().values():
+        label = definition.artefact_type_labels.get(artefact_type)
+        if label is not None:
+            return label
+    return artefact_type.replace("_", " ").capitalize()
+
+
+def get_all_link_type_seeds() -> dict[str, LinkTypeSeed]:
+    """Every link type the platform and its modules want to exist, keyed by
+    `forward_name`: the core defaults (`services.definitions.DEFAULT_LINK_TYPES`,
+    unrestricted) plus each module's `link_type_seeds`.
+
+    Seeds sharing a `forward_name` are merged: restriction lists are unioned
+    (`None`, meaning any, absorbs the rest), `dedicated_endpoint` is true if any
+    says so, and the first non-`none` flow (and the first non-default nesting scope) wins. A module seed whose phrases
+    disagree with an earlier one is dropped and logged rather than raising, so
+    one module's mistake cannot take down link creation for every module.
+
+    Returns:
+        `{forward_name: merged seed}`.
+    """
+    from app.services.definitions import DEFAULT_LINK_TYPES
+
+    merged: dict[str, LinkTypeSeed] = {
+        forward: LinkTypeSeed(forward_name=forward, reverse_name=reverse, flow=flow)
+        for forward, reverse, flow in DEFAULT_LINK_TYPES
+    }
+
+    def union(a: tuple[str, ...] | None, b: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        if a is None or b is None:
+            return None
+        return tuple(dict.fromkeys((*a, *b)))
+
+    for definition in get_module_registry().values():
+        for seed in definition.link_type_seeds:
+            existing = merged.get(seed.forward_name)
+            if existing is None:
+                merged[seed.forward_name] = seed
+                continue
+            if existing.reverse_name != seed.reverse_name:
+                logger.warning(
+                    "Module %r link type seed %r has reverse phrase %r, conflicting with %r; seed ignored.",
+                    definition.key, seed.forward_name, seed.reverse_name, existing.reverse_name,
+                )
+                continue
+            merged[seed.forward_name] = LinkTypeSeed(
+                forward_name=existing.forward_name, reverse_name=existing.reverse_name,
+                flow=existing.flow if existing.flow is not LinkFlow.NONE else seed.flow,
+                allowed_source_types=union(existing.allowed_source_types, seed.allowed_source_types),
+                allowed_target_types=union(existing.allowed_target_types, seed.allowed_target_types),
+                dedicated_endpoint=existing.dedicated_endpoint or seed.dedicated_endpoint,
+                nesting_scope=(
+                    existing.nesting_scope
+                    if existing.nesting_scope is not LinkNestingScope.ANCESTOR_EITHER_WAY
+                    else seed.nesting_scope
+                ),
+            )
+    return merged
+
+
+def get_link_type_seed_owners() -> dict[str, frozenset[str]]:
+    """`{forward_name: keys of the modules that declare a seed with it}`, so a
+    seed is only materialised for an organisation where one of its owning
+    modules is enabled (a core default has no owner and is seeded at
+    organisation creation instead)."""
+    owners: dict[str, set[str]] = {}
+    for definition in get_module_registry().values():
+        for seed in definition.link_type_seeds:
+            owners.setdefault(seed.forward_name, set()).add(definition.key)
+    return {name: frozenset(keys) for name, keys in owners.items()}
+
+
+def _artefact_type_enabled_for_project(
+    db: Session, definition: ModuleDefinition, artefact_type: str, project_id: uuid.UUID
+) -> bool:
+    """Whether the module owning `artefact_type` is enabled for the project —
+    and, where the module declares a sub-component keyed by the artefact type
+    itself (Context & Strategy's `"pain_point"`, Stakeholders' `"persona"`),
+    whether that sub-component is too."""
+    if any(sub.key == artefact_type for sub in definition.sub_components):
+        return is_module_subcomponent_enabled(db, project_id, definition.key, artefact_type)
+    return is_module_enabled_for_project(db, project_id, definition.key)
+
+
+def get_artefact_summaries_in_project(
+    db: Session, project_id: uuid.UUID, artefact_type: str, ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, ArtefactSummary] | None:
+    """The summaries of the `ids` of `artefact_type` that `project_id` may
+    see, via the owning module's provider (batch when it offers
+    `get_many_in_project`, else one `get` per id filtered to the project).
+
+    Args:
+        db: An active database session.
+        project_id: The project doing the looking.
+        artefact_type: A registered artefact type, e.g. `"decision"`.
+        ids: Record ids to look up.
+
+    Returns:
+        `{id: summary}` for the visible records — a missing id is absent,
+        so "not found", "other project's" and "hidden" look identical; `{}`
+        when the owning module (or sub-component) is disabled for the
+        project. `None` when no installed module provides `artefact_type`,
+        so a caller can tell "cannot show this kind yet" from "none visible".
+    """
+    found = _summary_provider_for(artefact_type)
+    if found is None:
+        return None
+    definition, provider = found
+    if not ids or not _artefact_type_enabled_for_project(db, definition, artefact_type, project_id):
+        return {}
+    if provider.get_many_in_project is not None:
+        summaries = provider.get_many_in_project(db, project_id, list(ids))
+    else:
+        summaries = [s for s in (provider.get(db, i) for i in ids) if s is not None and s.project_id == project_id]
+    return {s.id: s for s in summaries}
 
 
 def get_subtype_providers() -> dict[str, Callable[[Session, uuid.UUID], list[str]]]:

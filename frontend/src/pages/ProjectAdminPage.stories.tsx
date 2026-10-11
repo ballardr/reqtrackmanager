@@ -8,21 +8,25 @@ import type {
   Component,
   CustomFieldDefinition,
   EffectiveMember,
+  EffectiveReportContent,
   ModuleRoleDefinition,
   OrgGroup,
   OrgGroupProjectRoleSummary,
   Organization,
   PendingInvite,
   ProjectGroup,
+  ProjectLinkType,
   ProjectMemberSource,
   ProjectModuleEnablement,
   ProjectModuleSubComponent,
+  ProjectReportConfig,
   ProjectStage,
   ProjectStatusDefinition,
 } from "../api/types";
 import {
   buildActionType,
   buildProject,
+  buildProjectLinkType,
   buildProjectListItem,
   buildProjectStatus,
   buildUser,
@@ -66,18 +70,24 @@ function mockProjectAdminApis(
     groupRoles?: OrgGroupProjectRoleSummary[];
     groups?: ProjectGroup[];
     pendingInvites?: PendingInvite[];
+    reportConfig?: ProjectReportConfig;
+    effectiveReportContent?: EffectiveReportContent;
     moduleRoles?: ModuleRoleDefinition[];
     // Module 0 (Platform Foundations) Phases 4/5 — the Modules tab's own
     // bulk module list and, per module, its declared sub-components (keyed
     // by `module_key`; defaults to `[]` per module, matching the real
     // `GET .../subcomponents` endpoint's own "no sub-components declared"
     // response).
+    // The "Link types" section of Fields & actions (`LinkTypesPanel`, project scope).
+    linkTypes?: ProjectLinkType[];
     projectModules?: ProjectModuleEnablement[];
     projectModuleSubComponents?: Record<string, ProjectModuleSubComponent[]>;
     // Platform review 2026-09, Phase 8 — the org's own
     // `force_require_change_request_for_approved_links`, fetched via a bare
     // `GET /orgs/{id}` alongside the other org-scoped calls below.
     organization?: Organization;
+    stages?: ProjectStage[];
+    categories?: Category[];
   } = {}
 ) {
   const groupsForThisStory = overrides.groups ?? groups;
@@ -97,10 +107,13 @@ function mockProjectAdminApis(
     // Checked before the "/orgs/" + "/groups"/"/users" branches below,
     // which this bare org-detail path doesn't match (no further segment).
     if (path === `/api/v1/orgs/${project.organization_id}`) return organization;
-    if (path.includes("/stages")) return stages;
+    if (path.includes("/stages")) return overrides.stages ?? stages;
     if (path.includes("/components")) return components;
-    if (path.includes("/categories")) return categories;
+    if (path.includes("/categories")) return overrides.categories ?? categories;
     if (path.includes("/action-types")) return actionTypes;
+    if (path.endsWith("/link-types")) return { locked: false, items: overrides.linkTypes ?? [buildProjectLinkType({ id: "lt-related", forward_name: "Related to", reverse_name: "Related to" })] };
+    if (path.endsWith("/artefact-types")) return [{ type: "requirement", label: "Requirement" }];
+    if (path.endsWith("/artefact-link-rules")) return [];
     if (path.includes("/project-statuses")) return projectStatuses;
     // `ProjectMembersTable`'s own second data source (Phase D, follow-up UX
     // batch, 2026-08-31) — checked before "/groups" below purely for
@@ -118,11 +131,15 @@ function mockProjectAdminApis(
     // `limit`) would return everything.
     if (path.includes("/groups")) return groupsForThisStory;
     if (path.includes("/custom-fields")) return customFields;
-    if (path.includes("/report-config")) return {
-      intro: "", chapters: [], appendices: [],
-      intro_is_organisation_default: false, chapters_is_organisation_default: false, appendices_is_organisation_default: false,
-      default_report_template_id: null,
+    if (path.includes("/report-content/effective")) return overrides.effectiveReportContent ?? {
+      report_key: "requirements", intro: "", chapters: [], appendices: [],
+      intro_source: null, chapters_source: null, appendices_source: null,
     };
+    if (path.includes("/report-types")) return [
+      { key: "requirements", title: "Requirements report", module_name: null },
+      { key: "context_strategy.r1", title: "Pain point register", module_name: "Context & Strategy" },
+    ];
+    if (path.includes("/report-config")) return overrides.reportConfig ?? { default_report_template_id: null, content: [] };
     if (path.includes("/report-templates")) return [];
     // Hierarchical projects (docs/decisions.md). Checked before the plain
     // "/users" check below — /orgs/{id}/users also matches that.
@@ -386,6 +403,58 @@ export const StagesTabAddAndTransition: Story = {
     await expect(stagesSection.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
     await userEvent.click(canvas.getByRole("button", { name: "Start review" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s1/transition?new_status=review`));
+  },
+};
+
+/** Deleting a stage always asks where its requirements go: the shared in-use dialog lists the other
+ * stages, confirm stays disabled until one is chosen, and the delete carries `reassign_to`. */
+export const StagesTabDeleteReassignsViaDialog: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      stages: [
+        ...stages,
+        { id: "s2", project_id: PROJECT_ID, name: "Design", status: "scoping", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
+      ],
+    });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Delete this stage" })).toHaveLength(2));
+    await userEvent.click(canvas.getAllByRole("button", { name: "Delete this stage" })[1]);
+
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Delete “Design”?" }));
+    const confirm = dialog.getByRole("button", { name: "Confirm delete" });
+    await expect(confirm).toBeDisabled();
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "Scoping");
+    await userEvent.click(confirm);
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s2?reassign_to=s1`));
+  },
+};
+
+/** The same dialog serves categories, listing the others as "Component / Category". */
+export const StructureTabDeleteCategoryReassignsViaDialog: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      categories: [
+        ...categories,
+        { id: "cat2", project_id: PROJECT_ID, component_id: "c1", name: "Logout", prefix: "OUT", sort_order: 1 },
+      ],
+    });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Logout")).toBeInTheDocument());
+    const row = canvas.getByDisplayValue("Logout").closest<HTMLElement>(".stack")!;
+    await userEvent.click(within(row).getByTitle("Delete this category"));
+
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Delete “Logout”?" }));
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "Authentication / Login");
+    await userEvent.click(dialog.getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/categories/cat2?reassign_to=cat1`));
   },
 };
 
@@ -1033,9 +1102,52 @@ export const ReportSetupTab: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
-    await waitFor(() => expect(canvas.getByText("Project intro")).toBeInTheDocument());
+    const typeSelect = await canvas.findByLabelText("Report type");
+    // One option per report type, led by "All reports".
+    await expect(within(typeSelect).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All reports", "Requirements report", "Pain point register",
+    ]);
     await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, expect.any(Object)));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, { content: [], default_report_template_id: null })
+    );
+    // Principle 7 — every mutation ends with feedback.
+    await expect(within(document.body).getByText("Report setup saved.")).toBeInTheDocument();
+  },
+};
+
+/** A report type names where a blank field's content comes from (here an ancestor project's and the
+ * organisation's), and "Use inherited" clears the project's own value so the next save falls back to it. */
+export const ReportSetupShowsInheritedContent: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      reportConfig: {
+        default_report_template_id: null,
+        content: [{ report_key: "requirements", intro: "Our own introduction.", chapters: [], appendices: [] }],
+      },
+      effectiveReportContent: {
+        report_key: "requirements", intro: "Our own introduction.",
+        chapters: [{ title: "Parent chapter", body: "x" }], appendices: [{ title: "Org appendix", body: "y" }],
+        intro_source: { scope_type: "project", scope_id: PROJECT_ID, scope_name: "Atlas", report_key: "requirements" },
+        chapters_source: { scope_type: "project", scope_id: "parent-1", scope_name: "Parent Programme", report_key: "*" },
+        appendices_source: { scope_type: "organization", scope_id: "org-1", scope_name: "Acme Corp", report_key: "requirements" },
+      },
+    });
+    spyOn(api, "put").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
+    await userEvent.selectOptions(await canvas.findByLabelText("Report type"), "requirements");
+    await expect(await canvas.findByText("Inherited from Parent Programme")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation default (Acme Corp)")).toBeInTheDocument();
+    await expect(canvas.getByText("Parent chapter")).toBeInTheDocument();
+    // The introduction is the project's own, so it offers the way back to the inherited value.
+    await userEvent.click(canvas.getByRole("button", { name: "Use inherited" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, { content: [], default_report_template_id: null })
+    );
   },
 };
 
@@ -1575,6 +1687,17 @@ export const ModulesTabHardDisabledModuleShowsDisabledToggleWithHint: Story = {
   },
 };
 
+/** No registered modules: the tab shows its empty message, not a blank list. */
+export const ModulesTabEmptyShowsMessage: Story = {
+  beforeEach: () => mockProjectAdminApis({ projectModules: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("No modules are registered on this deployment yet.")).toBeInTheDocument());
+    await expect(canvas.queryByRole("switch")).not.toBeInTheDocument();
+  },
+};
+
 /** Toggling one sub-component's own override, one level below the
  * whole-module toggle — proves the nested sub-component row is wired to
  * its own `PUT .../subcomponents/{key}` endpoint, independent of the
@@ -1608,3 +1731,27 @@ export const ModulesTabToggleSubComponent: Story = {
 
 export const LightTheme: Story = { ...OverviewTabSaveSettings, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...OverviewTabSaveSettings, globals: { theme: "dark" } };
+
+
+/** Project-level link types live in Fields & actions: the organisation's types are listed read-only with a
+ * Hide control, and this project's own types are added in the same row the organisation uses. */
+export const FieldsAndActionsShowsLinkTypes: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      linkTypes: [
+        buildProjectLinkType({ id: "lt-related", forward_name: "Related to", reverse_name: "Related to" }),
+        buildProjectLinkType({
+          id: "lt-own", forward_name: "Verifies", reverse_name: "Is verified by", scope: "project", owner_project_id: PROJECT_ID, editable: true,
+        }),
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("link", { name: "Fields & actions" }));
+    const available = within(await canvas.findByRole("region", { name: "Available to this project" }));
+    await expect(available.getByRole("button", { name: "Hide Related to in this project" })).toBeInTheDocument();
+    const own = within(canvas.getByRole("region", { name: "Link types of this project" }));
+    await expect(own.getByDisplayValue("Verifies")).toBeInTheDocument();
+    await expect(own.getByRole("button", { name: "New link type" })).toBeInTheDocument();
+  },
+};

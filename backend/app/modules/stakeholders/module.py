@@ -40,6 +40,7 @@ other new modules.
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -61,6 +62,7 @@ from app.modules.stakeholders import need_export, relationship_export, stakehold
 from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
+from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
 from app.modules.stakeholders.service import (
     NEED_ARTEFACT_TYPE,
@@ -71,6 +73,7 @@ from app.modules.stakeholders.service import (
     STAKEHOLDERS_MODULE_KEY,
     persona_scoring_targets,
 )
+from app.modules.stakeholders.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
 
 _PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}"
 
@@ -507,6 +510,10 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     )
 
 
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=STAKEHOLDERS_MODULE_KEY,
     name="Stakeholders & Personas",
@@ -546,6 +553,9 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
     ),
     artefact_types=(PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE),
+    artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    artefact_type_labels=ARTEFACT_TYPE_LABELS,
+    link_type_seeds=LINK_TYPE_SEEDS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     sub_components=(
         ModuleSubComponentDefinition(key="persona", name="Personas", default_enabled=True),
@@ -612,5 +622,6 @@ MODULE_DEFINITION = ModuleDefinition(
             scope="project", permissions=(NEED_MANAGE_PERMISSION,),
         ),
     ),
+    mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=_build_mcp_tools(),
 )

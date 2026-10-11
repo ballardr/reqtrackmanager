@@ -24,6 +24,13 @@ foreign-key cascade can't do on its own:
   `ArtefactLink` endpoints are polymorphic UUIDs with no FK, and a link
   type still referenced made the org delete fail (found 2026-10-05). Module
   artefacts' comments/subscriptions are swept the same way.
+- Deleting the org's artefact-type link rules and their entries before its
+  link types: an entry's foreign key to a link type has no cascade (a deleted
+  type must never dangle in a rule), so the database cannot order the two
+  itself.
+- Deleting the org's report content rows (`ReportContent`): their owner is a
+  polymorphic id (template, project or the organisation) with no foreign key
+  to cascade through.
 - Deleting the org's projects explicitly, before the org row, so project-
   scoped rows never outlive the org-level definitions they reference
   (cascade order between the two isn't otherwise fixed).
@@ -52,15 +59,21 @@ from sqlalchemy.orm import Session
 from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.engagement import Subscription
 from app.models.file import FileAsset
-from app.models.organization import Organization
+from app.models.organization import Organization, ReportTemplate
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
+from app.models.report_content import SCOPE_ORGANIZATION, SCOPE_PROJECT, SCOPE_TEMPLATE
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
-from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.models.requirement_link_type import (
+    ArtefactTypeLinkRule,
+    ArtefactTypeLinkRuleEntry,
+    RequirementLinkTypeDefinition,
+)
 from app.modules.registry import get_module_artefact_ids_in_organization
 from app.services.files import delete_file
+from app.services.report_content import delete_content_for_scopes
 
 
 def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
@@ -96,6 +109,16 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
     if artefact_ids:
         link_conditions += [ArtefactLink.source_id.in_(artefact_ids), ArtefactLink.target_id.in_(artefact_ids)]
     db.execute(ArtefactLink.__table__.delete().where(or_(*link_conditions)))
+
+    rule_ids = select(ArtefactTypeLinkRule.id).where(ArtefactTypeLinkRule.organization_id == organization_id)
+    db.execute(ArtefactTypeLinkRuleEntry.__table__.delete().where(ArtefactTypeLinkRuleEntry.rule_id.in_(rule_ids)))
+    db.execute(ArtefactTypeLinkRule.__table__.delete().where(ArtefactTypeLinkRule.organization_id == organization_id))
+
+    # Report content has no FK to its owner (a template, project or the org).
+    template_ids = list(db.scalars(select(ReportTemplate.id).where(ReportTemplate.organization_id == organization_id)).all())
+    delete_content_for_scopes(db, SCOPE_TEMPLATE, template_ids)
+    delete_content_for_scopes(db, SCOPE_PROJECT, project_ids)
+    delete_content_for_scopes(db, SCOPE_ORGANIZATION, [organization_id])
 
     # Organization.logo_file_id/login_background_file_id are self-referential
     # FKs to file_assets with no ondelete action (models/organization.py) —

@@ -2,6 +2,9 @@ import { createElement } from "react";
 
 import { t } from "../../i18n/strings";
 import type { TierAModuleDefinition } from "../types";
+import {
+  COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL, COMPLIANCE_STANDARD_VERSION_STATUS_LABEL, COMPLIANCE_STATUS_LABEL,
+} from "./types";
 import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
 import { ComplianceOrgOverviewTiles } from "./ComplianceOrgOverviewTiles";
 import { ComplianceProjectOverviewTiles } from "./ComplianceProjectOverviewTiles";
@@ -9,9 +12,7 @@ import { ComplianceSettingsPage } from "./ComplianceSettingsPage";
 import { OrgComplianceDashboard } from "./OrgComplianceDashboard";
 import { OrgComplianceOutstandingPanel } from "./OrgComplianceOutstandingPanel";
 import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
-import { ComplianceRequirementLinkPickerTab } from "./ComplianceRequirementLinkPickerTab";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
-import { RequirementTraceabilityLinksSection } from "./RequirementTraceabilityLinksSection";
 import { StandardListPage } from "./StandardListPage";
 import { StandardNavSection } from "./StandardNavSection";
 import { StandardWorkspacePage } from "./StandardWorkspacePage";
@@ -126,32 +127,31 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * zero or more `MetricTile`s; `ProjectOverviewPage.tsx` renders it without
  * knowing compliance exists.
  *
- * `requirementDetailSections` (compliance-module-plan.md Phase 34): this
- * module's linked-compliance-requirements list (`RequirementTraceability
- * LinksSection.tsx`), rendered inside core's own `pages/
- * RequirementDetailPage.tsx` Links card. V1 shipped only the
- * core-requirement-initiated direction — a compliance-requirement-side
- * picker is deliberately deferred (Phase 34's own scope note; see platform-
- * review-2026-09 Phase 7's own decisions.md entry for the user's explicit
- * rejection of ever building that reverse direction).
- *
- * `requirementLinkPickerTabs` (platform-review-2026-09 Phase 7,
- * `modules/types.ts`): this module's tab in the shared
- * `RequirementLinkPickerModal` (`components/RequirementLinkPickerModal
- * .tsx`), opened from core's "Add link" button. Phase 34's original
- * `RequirementTraceabilityLinksSection.tsx` owned both the links list *and*
- * its own "Add compliance link" button + `Popover`; this phase split that
- * in two — the list stays registered via `requirementDetailSections`
- * above (now also reading a `refreshToken` prop, since the add-form moved
- * to a different component instance it has no direct handle on and needs a
- * signal to re-fetch after), and the extracted add-form
- * (`ComplianceRequirementLinkPickerTab.tsx`, the exact same three-cascading-
- * select mechanism, unchanged) is what's registered here.
+ * A core requirement's links to a standard's clauses are ordinary links (artefact
+ * type `compliance_requirement`, platform-enhancements Phase 6c): the shared Links
+ * panel shows and edits them, so this module contributes no requirement-page
+ * section for them. A clause belongs to an organisation-level standard, so its
+ * path is the Standards page rather than a project page.
  */
 const strings = t();
 
+/** Compliance's records have no pages of their own: each is managed from the project's Compliance page. */
+const projectCompliancePath = (projectId: string) => `/projects/${projectId}/modules/compliance`;
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "compliance",
+  artefactPaths: {
+    compliance_requirement: () => "/standards",
+    compliance_evidence: projectCompliancePath,
+    project_compliance_requirement: projectCompliancePath,
+    compliance_required_action_assessment: projectCompliancePath,
+  },
+  artefactStatusLabels: {
+    compliance_requirement: COMPLIANCE_STANDARD_VERSION_STATUS_LABEL,
+    project_compliance_requirement: COMPLIANCE_STATUS_LABEL,
+    compliance_required_action_assessment: COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL,
+  },
+  artefactInactiveStatuses: { compliance_requirement: ["retired"] },
   routes: [
     { path: "/projects/:projectId/modules/compliance", element: createElement(ProjectCompliancePage) },
   ],
@@ -204,21 +204,6 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "status",
       render: ({ projectId }) => createElement(ComplianceProjectOverviewTiles, { projectId }),
-    },
-  ],
-  requirementDetailSections: [
-    {
-      key: "traceability-links",
-      render: ({ projectId, requirementId, organizationId, refreshToken }) =>
-        createElement(RequirementTraceabilityLinksSection, { projectId, requirementId, organizationId, refreshToken }),
-    },
-  ],
-  requirementLinkPickerTabs: [
-    {
-      key: "compliance-requirements",
-      label: "Compliance",
-      render: ({ projectId, requirementId, organizationId, onLinked }) =>
-        createElement(ComplianceRequirementLinkPickerTab, { projectId, requirementId, organizationId, onLinked }),
     },
   ],
   // Corrected out of `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR`

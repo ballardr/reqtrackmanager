@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.enums import RequirementStatus
 
@@ -19,8 +19,9 @@ class ReportRequest(BaseModel):
     """Options controlling generated report content.
 
     Attributes:
-        format: Which output format to generate — `"pdf"` (R-F-01) or
-            `"csv"` (R-F-02). `routers.reports.generate_report` dispatches
+        format: Which output format to generate — `"pdf"` (R-F-01), `"docx"`
+            (an editable Word file with the same content and branding as the
+            PDF) or `"csv"` (R-F-02). `routers.reports.generate_report` dispatches
             on this instead of there being two separate endpoints (2026-09-22
             merge, see docs/decisions.md — one endpoint per resource, with
             the specific format as a parameter, so a future report-type/
@@ -47,7 +48,7 @@ class ReportRequest(BaseModel):
             wins over both when explicitly set. Ignored for CSV exports.
     """
 
-    format: Literal["pdf", "csv"]
+    format: Literal["pdf", "csv", "docx"]
     pre_markdown: str = ""
     post_markdown: str = ""
     include_archived: bool = False
@@ -61,43 +62,63 @@ class ReportRequest(BaseModel):
 
 
 class ReportChapter(BaseModel):
-    title: str
-    body: str = ""
+    title: str = Field(max_length=500)
+    body: str = Field(default="", max_length=200_000)
+
+
+class ReportContentEntry(BaseModel):
+    """The introduction, chapters and appendices one scope holds for one report
+    type (`models.report_content.ReportContent`). A blank entry is "inherit"
+    and is not stored.
+
+    Attributes:
+        report_key: `"requirements"`, `"<module_key>.<report_key>"`, or `"*"`
+            (every report without an entry of its own).
+        intro: Markdown printed first.
+        chapters: Chapters printed after the intro.
+        appendices: Chapters printed after the report.
+    """
+
+    report_key: str = Field(min_length=1, max_length=100)
+    intro: str = Field(default="", max_length=100_000)
+    chapters: list[ReportChapter] = Field(default_factory=list, max_length=100)
+    appendices: list[ReportChapter] = Field(default_factory=list, max_length=100)
 
 
 class ProjectReportConfig(BaseModel):
-    """Persisted report structure (mock's "Report Setup"), used as the
-    default report content when a generation request doesn't override it
-    with ad-hoc pre_markdown/post_markdown.
+    """A project's own report setup (the "Report Setup" tab): its default
+    template and the content it owns, per report type. Inherited content is not
+    included (`ReportContentSourceOut` / the effective-content endpoint
+    describes it)."""
 
-    `intro`/`chapters`/`appendices` are always the *effective* values on a
-    `GET` (falling back to the organisation's own default per-field when
-    the project hasn't set its own — `services.reports.resolve_report_config`)
-    and the *raw* project-level values on a `PUT` (this schema doubles as
-    the request body; the `*_is_organisation_default` fields are
-    response-only and simply ignored if present on a request).
-    """
-
-    intro: str = ""
-    chapters: list[ReportChapter] = []
-    appendices: list[ReportChapter] = []
-    intro_is_organisation_default: bool = False
-    chapters_is_organisation_default: bool = False
-    appendices_is_organisation_default: bool = False
-    # Not part of the intro/chapters/appendices per-field fallback
-    # resolution above (there's no organisation-level default template to
-    # fall back to) — just the project's own raw setting, read/written
-    # directly, ignored if present on a PUT (matches how the
-    # `*_is_organisation_default` fields are documented above).
     default_report_template_id: UUID | None = None
+    content: list[ReportContentEntry] = Field(default_factory=list, max_length=100)
 
 
 class OrgReportDefaults(BaseModel):
-    """Organisation-level default report content (UI/UX pass) — a project
-    falls back to these per-field when its own is blank/empty. Symmetric
-    with `Project`'s own fields: an empty string/list here means "no
-    organisation default set", not "explicitly blank"."""
+    """Organisation-level default report content, per report type; a project
+    falls back to it when it and its ancestors set nothing."""
 
+    content: list[ReportContentEntry] = Field(default_factory=list, max_length=100)
+
+
+class ReportContentSourceOut(BaseModel):
+    """Where an effective value came from (`services.report_content.ContentSource`)."""
+
+    scope_type: Literal["template", "project", "organization", "project_summary"]
+    scope_id: UUID
+    scope_name: str
+    report_key: str
+
+
+class EffectiveReportContentOut(BaseModel):
+    """The content a report of one type would use, with where each field came
+    from (`null` source = nothing set it). `report_key` echoes the request."""
+
+    report_key: str
     intro: str = ""
-    chapters: list[ReportChapter] = []
-    appendices: list[ReportChapter] = []
+    chapters: list[ReportChapter] = Field(default_factory=list)
+    appendices: list[ReportChapter] = Field(default_factory=list)
+    intro_source: ReportContentSourceOut | None = None
+    chapters_source: ReportContentSourceOut | None = None
+    appendices_source: ReportContentSourceOut | None = None

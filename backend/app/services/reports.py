@@ -1,14 +1,17 @@
 """
 Module: services.reports
 
-Generates requirement reports as PDF (R-F-01) and CSV (R-F-02), with support
+Generates requirement reports as PDF (R-F-01), DOCX and CSV (R-F-02), with support
 for custom Markdown content prepended/appended to the report (R-G-01,
 R-G-02). This module holds only what is specific to requirement reports:
 `ReportRequirementRow`, grouping into component chapters and category
-sections, the four-column table, the terminology-aware CSV, and the effective
-intro/chapters/appendices resolution. Everything document-level (branding,
+sections, the four-column table and the terminology-aware CSV. The
+intro/chapters/appendices a report carries are resolved by
+`services.report_content`. Everything document-level (branding,
 cover page, footer, the Markdown renderer, image resolution, markup escaping)
-lives in `services.report_document`, shared with every module's reports.
+lives in `services.report_document`, shared with every module's reports. The
+report is built once as a neutral `ReportDocument` (`services.report_model`) and
+rendered by `report_pdf` or `report_docx`, so the two formats cannot drift.
 
 Image support (`![alt](attachment:<file id>)`, inserted via the report
 content editor's attachment panel) is deliberately resolved from a
@@ -24,92 +27,22 @@ import io
 from dataclasses import dataclass
 from itertools import groupby
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import PageBreak, Paragraph, Spacer
-
-from app.models.organization import Organization, ReportTemplate
-from app.models.project import Project
-from app.schemas.report import ProjectReportConfig, ReportChapter
 from app.services.csv_safety import csv_safe
 from app.services.labels import requirement_status_label
-from app.services.report_document import (
-    STYLES,
-    ReportBranding,
-    build_pdf,
-    markdown_to_flowables,
-    safe,
-    styled_table,
-    title_flowables,
-)
+from app.services.report_document import ReportBranding
+from app.services.report_docx import render_docx_document
+from app.services.report_model import Block, Gap, Heading, PageBreak, ReportDocument, Table, markdown_to_blocks
+from app.services.report_pdf import render_pdf_document
 
 __all__ = [
     "ReportBranding",
     "ReportRequirementRow",
+    "build_requirement_document",
     "default_chapters_per_component",
     "generate_csv_report",
+    "generate_docx_report",
     "generate_pdf_report",
-    "resolve_report_config",
-    "resolve_report_config_with_template",
 ]
-
-
-def resolve_report_config(project: Project, org: Organization) -> ProjectReportConfig:
-    """Resolves a project's *effective* report intro/chapters/appendices —
-    the project's own value if it's set anything, otherwise (intro only)
-    the project's own description (`Project.summary`), otherwise the owning
-    organisation's default (UI/UX pass), otherwise blank. Used both by the
-    Report Setup editor (so an admin sees what will actually be used, not
-    just what this project has explicitly overridden) and by
-    `routers/reports.py::generate_pdf`'s own fallback when a generation
-    request doesn't supply ad-hoc `pre_markdown`/`post_markdown`.
-
-    Each of the three fields resolves independently — a project can
-    customise just its intro and still inherit the organisation's default
-    chapters, for instance. The description fallback exists only for intro:
-    a project's summary is naturally introduction-shaped free text, but
-    there's no equivalent project field to fall back to for chapters or
-    appendices.
-    """
-    intro = project.report_intro or project.summary or org.default_report_intro or ""
-    chapters = project.report_chapters or org.default_report_chapters or []
-    appendices = project.report_appendices or org.default_report_appendices or []
-    return ProjectReportConfig(
-        intro=intro,
-        chapters=[ReportChapter(**c) for c in chapters],
-        appendices=[ReportChapter(**c) for c in appendices],
-        intro_is_organisation_default=bool(not project.report_intro and not project.summary and org.default_report_intro),
-        chapters_is_organisation_default=bool(not project.report_chapters and org.default_report_chapters),
-        appendices_is_organisation_default=bool(not project.report_appendices and org.default_report_appendices),
-        default_report_template_id=project.default_report_template_id,
-    )
-
-
-def resolve_report_config_with_template(
-    project: Project, org: Organization, template: ReportTemplate | None
-) -> ProjectReportConfig:
-    """Like `resolve_report_config`, with one more, more-specific tier: a
-    selected report template's own intro/chapters/appendices (if it set
-    any) take precedence over the project/org-resolved content, per field
-    independently — same "falls back if not set" shape as the two tiers
-    below it. `template=None` (no template selected) is identical to
-    calling `resolve_report_config` directly.
-    """
-    base = resolve_report_config(project, org)
-    if template is None:
-        return base
-    intro = template.intro or base.intro
-    chapters = [ReportChapter(**c) for c in template.chapters] if template.chapters else base.chapters
-    appendices = [ReportChapter(**c) for c in template.appendices] if template.appendices else base.appendices
-    return ProjectReportConfig(
-        intro=intro, chapters=chapters, appendices=appendices,
-        intro_is_organisation_default=bool(not template.intro and base.intro_is_organisation_default),
-        chapters_is_organisation_default=bool(not template.chapters and base.chapters_is_organisation_default),
-        appendices_is_organisation_default=bool(not template.appendices and base.appendices_is_organisation_default),
-        default_report_template_id=base.default_report_template_id,
-    )
 
 
 @dataclass
@@ -193,7 +126,7 @@ def default_chapters_per_component(rows: list[ReportRequirementRow]) -> bool:
     return True
 
 
-def generate_pdf_report(
+def build_requirement_document(
     *,
     project_name: str,
     pre_markdown: str,
@@ -202,8 +135,10 @@ def generate_pdf_report(
     branding: ReportBranding | None = None,
     images: dict[str, bytes] | None = None,
     chapters_per_component: bool = True,
-) -> bytes:
-    """Builds a PDF report of a project's requirements.
+    placeholders: dict[str, str] | None = None,
+) -> ReportDocument:
+    """Builds the neutral document for a project's requirements report, which
+    the PDF and DOCX renderers both consume.
 
     Args:
         project_name: The project's display name, used as the report title.
@@ -217,63 +152,76 @@ def generate_pdf_report(
             page (with the org logo if provided), and an optional footer.
         images: Pre-resolved `attachment:<id>` -> image bytes mapping for
             any images referenced in `pre_markdown`/`post_markdown` — see
-            `report_document.markdown_to_flowables`'s docstring.
+            `report_model.markdown_to_blocks`'s docstring.
         chapters_per_component: When `True` (the default), each component
             gets its own chapter heading and starts on a fresh page, with a
             sub-section per category underneath. When `False`, the
             per-category headings and tables are unchanged but there's no
             component-level heading or forced page break — categories just
             flow continuously in component/category tree order. The
-            caller (`routers/reports.py::generate_pdf`) resolves which of
+            caller (`routers/reports.py::generate_report`) resolves which of
             the two applies before calling this — see
             `default_chapters_per_component`'s docstring for that
             precedence.
+        placeholders: Values for the `{{...}}` placeholders in the pre/post
+            Markdown (`report_content.build_placeholders`).
+
+    Returns:
+        The portrait requirements document.
+    """
+    blocks: list[Block] = list(markdown_to_blocks(pre_markdown, images, placeholders))
+    # Same total width (17.5cm) the single combined table used to sum to —
+    # Component/Category don't need their own columns (the chapter-per-component /
+    # section-per-category structure below already conveys them), so their
+    # width goes to Name/Reasoning.
+    widths = [3, 5, 7.5, 2]
+    header = ["ID", "Name", "Reasoning", "Status"]
+
+    # Chapter per component (each starting on its own page) with a sub-section
+    # per category underneath when chapters_per_component, otherwise just the
+    # category headings/tables flowing continuously — see
+    # _group_rows_by_component_and_category's docstring for the ordering rules,
+    # which apply identically either way.
+    for component_name, sections in _group_rows_by_component_and_category(rows):
+        if chapters_per_component:
+            blocks += [PageBreak(), Heading(component_name, 1), Gap(0.3)]
+        for category_name, category_rows in sections:
+            blocks += [
+                Heading(category_name, 2), Gap(0.2),
+                Table(
+                    header,
+                    [[r.unique_code, r.name, r.reasoning, requirement_status_label(r.status)] for r in category_rows],
+                    col_widths_cm=widths,
+                ),
+                Gap(0.5),
+            ]
+
+    blocks += markdown_to_blocks(post_markdown, images, placeholders)
+    return ReportDocument(title=project_name, blocks=blocks, branding=branding)
+
+
+def generate_pdf_report(**kwargs) -> bytes:
+    """Builds a PDF report of a project's requirements.
+
+    Args:
+        **kwargs: As for `build_requirement_document`.
 
     Returns:
         The generated PDF file content as bytes.
     """
-    accent_color = colors.HexColor((branding or ReportBranding()).accent_color_hex)
-    story: list = title_flowables(project_name, branding)
-    story.extend(markdown_to_flowables(pre_markdown, images))
+    return render_pdf_document(build_requirement_document(**kwargs))
 
-    table_style = ParagraphStyle("cell", parent=STYLES["BodyText"], fontSize=8, leading=10)
-    header = ["ID", "Name", "Reasoning", "Status"]
 
-    def _requirement_table(category_rows: list[ReportRequirementRow]):
-        data = [header]
-        for row in category_rows:
-            data.append([
-                Paragraph(safe(row.unique_code), table_style), Paragraph(safe(row.name), table_style),
-                Paragraph(safe(row.reasoning), table_style),
-                Paragraph(safe(requirement_status_label(row.status)), table_style),
-            ])
-        # Same total width (17.5cm) the single combined table used to sum
-        # to — Component/Category no longer need their own columns (R-G's
-        # chapter-per-component/section-per-category structure below
-        # already conveys that), so their width goes to Name/Reasoning.
-        return styled_table(data, col_widths=[3 * cm, 5 * cm, 7.5 * cm, 2 * cm], accent_color=accent_color)
+def generate_docx_report(**kwargs) -> bytes:
+    """Builds an editable Word (DOCX) report of a project's requirements.
 
-    # Chapter per component (each starting on its own page) with a
-    # sub-section per category underneath when chapters_per_component,
-    # otherwise just the category headings/tables flowing continuously
-    # with no component heading or page break — see
-    # _group_rows_by_component_and_category's docstring for the ordering
-    # rules, which apply identically either way.
-    for component_name, sections in _group_rows_by_component_and_category(rows):
-        if chapters_per_component:
-            story.append(PageBreak())
-            story.append(Paragraph(safe(component_name), STYLES["Heading1"]))
-            story.append(Spacer(1, 0.3 * cm))
-        for category_name, category_rows in sections:
-            story.append(Paragraph(safe(category_name), STYLES["Heading2"]))
-            story.append(Spacer(1, 0.2 * cm))
-            story.append(_requirement_table(category_rows))
-            story.append(Spacer(1, 0.5 * cm))
+    Args:
+        **kwargs: As for `build_requirement_document`.
 
-    story.extend(markdown_to_flowables(post_markdown, images))
-    return build_pdf(
-        story, footer_text=branding.footer_text if branding else None, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm,
-    )
+    Returns:
+        The generated DOCX file content as bytes.
+    """
+    return render_docx_document(build_requirement_document(**kwargs))
 
 
 def generate_csv_report(rows: list[ReportRequirementRow], terminology: dict[str, str] | None = None) -> bytes:

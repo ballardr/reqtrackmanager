@@ -19,7 +19,7 @@ export function buildReportCatalogueEntry(overrides: Partial<ReportCatalogueEntr
     description: "A synthetic report used to exercise the generic Reports UI.",
     scope: "project",
     path: "/api/v1/projects/project-1/modules/fixture_report_module/reports/fixture-report",
-    formats: ["json", "pdf", "csv"],
+    formats: ["json", "pdf", "csv", "docx"],
     supports_include_children: true,
     supports_project_filter: false,
     breakdown_path: null,

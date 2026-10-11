@@ -2,11 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ChangeRequestVoteTally, LinkTypeDefinition, ProjectRole, Requirement, RequirementAction, RequirementLink } from "../api/types";
+import type {
+  ChangeRequestVoteTally, ProjectRole, ProposedLinkPreview, Requirement, RequirementAction, RequirementLink,
+} from "../api/types";
 import {
   buildActionType,
   buildChangeRequest,
-  buildLinkType,
+  buildProposedLink,
   buildProjectListItem,
   buildRequirement,
   buildRequirementAction,
@@ -32,10 +34,10 @@ function mockChangeRequestDetailApis(
   extra: {
     linkedActionPreview?: RequirementAction;
     requirement?: Requirement;
-    // Platform review 2026-09, Phase 8 — ADD_LINK/REMOVE_LINK preview data.
-    linkTypes?: LinkTypeDefinition[];
-    linkTargetPreview?: Requirement;
+    // Platform review 2026-09, Phase 8 — REMOVE_LINK preview data.
     links?: RequirementLink[];
+    // Phase 6b — what approving would merge (the dialog's preview).
+    mergePreview?: ProposedLinkPreview;
   } = {}
 ) {
   const cr = buildChangeRequest({ id: CR_ID, project_id: PROJECT_ID, ...crOverrides });
@@ -49,13 +51,12 @@ function mockChangeRequestDetailApis(
     if (path.endsWith("/activity")) return [];
     if (path.endsWith("/tasks")) return [];
     if (path.endsWith("/votes")) return emptyTally;
+    if (path.endsWith("/link-merge-preview")) return extra.mergePreview ?? { rows: [] };
     if (cr.requirement_id && path.endsWith(`/requirements/${cr.requirement_id}/links`)) return extra.links ?? [];
     if (path.endsWith(`/requirements/${cr.requirement_id}`)) return extra.requirement ?? null;
-    if (extra.linkTargetPreview && path.endsWith(`/requirements/${extra.linkTargetPreview.id}`)) return extra.linkTargetPreview;
     if (path.endsWith("/action-types")) return actionTypes;
     if (extra.linkedActionPreview && path.endsWith(`/actions/${extra.linkedActionPreview.id}`)) return extra.linkedActionPreview;
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
-    if (path.includes("/link-types")) return extra.linkTypes ?? [];
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
@@ -153,21 +154,20 @@ export const RemoveActionShowsLinkedActionPreview: Story = {
 };
 
 /** ADD_LINK (Platform review 2026-09, Phase 8 opt-in sibling of ADD_ACTION
- * for `RequirementLink`) resolves the proposed target requirement and link
- * type the same way ADD_ACTION resolves its own proposed content. */
+ * for `RequirementLink`) is the one-link case of the proposed-links mechanism
+ * (Phase 6b): the request page lists the link exactly as a modify or new
+ * request would, the relationship read from the requirement's side. */
 export const AddLinkShowsProposedLinkContent: Story = {
   beforeEach: () => {
     const requirement = buildRequirement({ id: "requirement-1", unique_code: "AUTH-001", name: "Users can reset their password" });
-    const target = buildRequirement({ id: "requirement-2", unique_code: "AUTH-002", name: "Passwords expire after 90 days" });
-    const linkType = buildLinkType({ id: "lt1", forward_name: "Depends on" });
     mockChangeRequestDetailApis(
       ["member"],
       {
         kind: "add_link", status: "submitted", requirement_id: "requirement-1",
-        proposed_link_target_requirement_id: "requirement-2", proposed_link_type_id: "lt1",
+        proposed_links: [buildProposedLink()], proposed_link_count: 1,
         reason: "found during traceability review",
       },
-      { requirement, linkTargetPreview: target, linkTypes: [linkType] }
+      { requirement }
     );
   },
   play: async ({ canvasElement }) => {
@@ -176,6 +176,88 @@ export const AddLinkShowsProposedLinkContent: Story = {
     await expect(canvas.getByText("AUTH-002 — Passwords expire after 90 days")).toBeInTheDocument();
     await expect(canvas.getByText("Depends on")).toBeInTheDocument();
     await expect(canvas.queryByText(/^Target:/)).not.toBeInTheDocument();
+  },
+};
+
+/** A modify request lists the links it proposes beside its field changes, each with its outcome. */
+export const ModifyRequestListsItsProposedLinks: Story = {
+  beforeEach: () => {
+    const requirement = buildRequirement({ id: "requirement-1", unique_code: "AUTH-001", name: "Users can reset their password" });
+    mockChangeRequestDetailApis(
+      ["member"],
+      {
+        kind: "modify_requirement", status: "approved", requirement_id: "requirement-1", changed_fields: ["name"],
+        proposed_name: "Users can reset a password", decided_at: "2026-02-02T09:00:00Z",
+        proposed_links: [
+          buildProposedLink({ id: "pl1", outcome: "merged" }),
+          buildProposedLink({ id: "pl2", other_label: "Audit log retention", other_type: "decision", other_type_label: "Decision", outcome: "declined" }),
+          buildProposedLink({
+            id: "pl3", other_label: null, other_type_label: "Decision", outcome: "skipped",
+            outcome_reason: "You cannot view the linked record, so you cannot merge this link.",
+          }),
+        ],
+        proposed_link_count: 3,
+      },
+      { requirement }
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Proposed links")).toBeInTheDocument());
+    await expect(canvas.getByText("Merged")).toBeInTheDocument();
+    await expect(canvas.getByText("Left out")).toBeInTheDocument();
+    await expect(canvas.getByText("Not valid")).toBeInTheDocument();
+    await expect(canvas.getByText("A record you cannot see")).toBeInTheDocument();
+    await expect(canvas.getByText(/cannot merge this link/)).toBeInTheDocument();
+  },
+};
+
+/** Approving a request that proposes links opens the dialog: every valid link is ticked, one that
+ * cannot be merged is disabled with its reason, and unticking one sends only the others' ids. */
+export const ApprovingWithProposedLinksOpensTheMergeDialog: Story = {
+  beforeEach: () => {
+    const requirement = buildRequirement({ id: "requirement-1", unique_code: "AUTH-001", name: "Users can reset their password" });
+    const links = [
+      buildProposedLink({ id: "pl1" }),
+      buildProposedLink({ id: "pl2", other_label: "Audit log retention", other_type: "decision", other_type_label: "Decision" }),
+      buildProposedLink({ id: "pl3", other_label: "AUTH-003 — Lockout after five failures" }),
+    ];
+    mockChangeRequestDetailApis(
+      ["project_manager"],
+      {
+        kind: "modify_requirement", status: "submitted", requirement_id: "requirement-1", changed_fields: ["name"],
+        proposed_name: "Users can reset a password", proposed_links: links, proposed_link_count: 3,
+      },
+      {
+        requirement,
+        mergePreview: {
+          rows: [
+            { link: links[0], selectable: true, already_linked: false, reason: null },
+            { link: links[1], selectable: true, already_linked: false, reason: null },
+            { link: links[2], selectable: false, already_linked: true, reason: "These records are already linked this way." },
+          ],
+        },
+      }
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Approve" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve change request" }));
+    const first = await dialog.findByRole("checkbox", { name: /Merge link: Depends on AUTH-002/ });
+    await expect(first).toBeChecked();
+    await expect(dialog.getByRole("checkbox", { name: /Merge link: Depends on AUTH-003/ })).toBeDisabled();
+    await expect(dialog.getByText("Already linked, will be skipped")).toBeInTheDocument();
+    await expect(dialog.getByRole("button", { name: "Approve and merge 2 links" })).toBeInTheDocument();
+
+    await userEvent.click(dialog.getByRole("checkbox", { name: /Merge link: Depends on Audit log retention/ }));
+    await userEvent.click(dialog.getByRole("button", { name: "Approve and merge 1 link" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        expect.stringContaining("/decide"),
+        expect.objectContaining({ approve: true, merge_link_ids: ["pl1"] })
+      )
+    );
   },
 };
 

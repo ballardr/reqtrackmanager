@@ -14,7 +14,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
-from app.schemas.report import ReportChapter
+from app.schemas.report import ReportContentEntry
 
 
 class OrganizationCreate(BaseModel):
@@ -522,6 +522,17 @@ class ModuleRoleAssign(BaseModel):
     role_key: str
 
 
+class CustomRolePresetOut(BaseModel):
+    """A ready-made custom role (`app.services.custom_role_presets.PRESETS`) the Role
+    Management form can start from (`GET /orgs/{id}/custom-role-presets`)."""
+
+    key: str
+    name: str
+    description: str
+    scope: str
+    permissions: list[str]
+
+
 class PermissionOut(BaseModel):
     """One permission atom in this organisation's currently-valid vocabulary
     (Fine-Grained Access Control, `docs/plans/core-fine-grained-access-
@@ -814,9 +825,7 @@ class ReportTemplateCreate(BaseModel):
     include_cover_page: bool = True
     include_logo: bool = True
     footer_text: str | None = None
-    intro: str = ""
-    chapters: list[ReportChapter] = []
-    appendices: list[ReportChapter] = []
+    content: list[ReportContentEntry] = Field(default_factory=list, max_length=100)
     chapters_per_component: bool = True
 
 
@@ -828,9 +837,7 @@ class ReportTemplateOut(BaseModel):
     include_cover_page: bool
     include_logo: bool
     footer_text: str | None = None
-    intro: str = ""
-    chapters: list[ReportChapter] = []
-    appendices: list[ReportChapter] = []
+    content: list[ReportContentEntry] = []
     chapters_per_component: bool = True
 
 

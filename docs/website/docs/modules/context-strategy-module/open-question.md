@@ -8,8 +8,8 @@ An **Open Question** records something that still needs deciding before a Strate
 
 | An Open Question, Ready for Decision |
 | --- |
-| Falcon-3's battery-vendor Open Question — context, evidence, and a Related-to-Strategy picker |
-| ![Detail view of an Open Question for the Falcon-3 project in Ready for Decision status, showing its context, evidence, an unassigned owner, and Resolve/Withdraw actions](../../../static/img/screenshots/open-question-detail.png) |
+| Falcon-3's battery-vendor Open Question — context and evidence, with the Links panel (its Add link dialog offers the Strategies it can relate to) |
+| ![Detail view of an Open Question for the Falcon-3 project in Ready for Decision status, showing its context, evidence, an unassigned owner, Resolve/Withdraw actions, and the Links panel](../../../static/img/screenshots/open-question-detail.png) |
 
 ## Fields
 

@@ -95,6 +95,23 @@ def get_ancestor_chain(db: Session, project_id: UUID) -> list[Project]:
     return chain
 
 
+def get_project_chain_ids(db: Session, project_id: UUID) -> list[UUID]:
+    """Returns `project_id` followed by its ancestors, nearest first (the
+    project itself, its parent, ... the root), walking
+    `Project.parent_project_id` upward. Cycle-safe and capped like
+    `resolve_effective_action_types`. No accessibility filtering: callers only
+    use this for structural, already-authorised resolution (link-type scope).
+    """
+    chain: list[UUID] = []
+    visited: set[UUID] = set()
+    current_id: UUID | None = project_id
+    while current_id is not None and current_id not in visited and len(chain) < _PROJECT_TREE_ITERATION_CAP:
+        visited.add(current_id)
+        chain.append(current_id)
+        current_id = db.scalar(select(Project.parent_project_id).where(Project.id == current_id))
+    return chain
+
+
 def resolve_effective_action_types(db: Session, project_id: UUID) -> list[ActionTypeDefinition]:
     """Returns the action types a project should offer when creating a
     requirement action: its own, if it has any, else the nearest ancestor's

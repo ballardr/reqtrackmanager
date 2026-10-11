@@ -289,9 +289,9 @@ test.describe("Context & Strategy: Reports UI", () => {
       expect(csv).toContain(titles.blocker);
     });
 
-    await test.step("the chosen branding template is sent with the PDF only", async () => {
+    await test.step("the chosen branding template is sent with the PDF download", async () => {
       await picker(page).selectOption("pain-point-prioritisation");
-      await page.getByRole("combobox", { name: "Branding template (PDF)" }).selectOption({ label: template.name });
+      await page.getByRole("combobox", { name: "Branding template (PDF and Word)" }).selectOption({ label: template.name });
       await page.getByRole("button", { name: "Export" }).click();
       const pdf = page.waitForResponse((r) => r.url().includes("format=pdf") && r.url().includes(`report_template_id=${template.id}`));
       await page.getByRole("button", { name: "Download PDF report" }).click();

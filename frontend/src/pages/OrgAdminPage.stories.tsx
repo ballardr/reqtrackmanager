@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { CustomRoleDefinition, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgReportDefaults, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
@@ -42,11 +42,22 @@ const groups: OrgGroup[] = [
   { id: "grp2", name: "Platform", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
 ];
 
+const defaultArtefactTypes: ArtefactTypeOption[] = [
+  { type: "requirement", label: "Requirement" },
+  { type: "decision", label: "Decision" },
+];
+const defaultArtefactRules: ArtefactLinkRule[] = [
+  { artefact_type: "requirement", label: "Requirement", link_type_ids: null },
+  { artefact_type: "decision", label: "Decision", link_type_ids: null },
+];
+
 function mockOrgAdminApis(overrides: {
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
   modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
+  // The organisation-tier report content; omitted = the caller is not an org admin (403), the default here.
+  reportDefaults?: OrgReportDefaults;
   // Module 0 (Platform Foundations) Phase 4 — a module's own declared
   // sub-components, keyed by `module_key`; defaults to `[]` per module
   // (every module except Context & Strategy today), matching the real
@@ -60,6 +71,8 @@ function mockOrgAdminApis(overrides: {
   // below. Default to empty — the real-world-default "no custom roles
   // defined yet" case.
   permissions?: Permission[]; customRoles?: CustomRoleDefinition[];
+  // `GET .../custom-role-presets`, fetched when the New custom role Modal opens; defaults to none.
+  customRolePresets?: CustomRolePreset[];
   // Fine-Grained Access Control (core) Phase 5 — fetched unconditionally in
   // the same `reload()` bundle as `permissions`/`customRoles` above (see
   // `OrgAdminPage.tsx`'s own comment there); left unmocked here would 500
@@ -80,6 +93,9 @@ function mockOrgAdminApis(overrides: {
    * now genuinely called on every render of this page's normal header,
    * not just by stories that opt in to exercising it. */
   orgs?: Organization[];
+  /** Link types panel (Platform Enhancements Phase 5b): the artefact types the
+   * restriction pickers offer, and the "By artefact type" rules. */
+  artefactTypes?: ArtefactTypeOption[]; artefactRules?: ArtefactLinkRule[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -90,6 +106,9 @@ function mockOrgAdminApis(overrides: {
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path === "/api/v1/orgs?mine=true") return overrides.orgs ?? [];
     if (path.includes("/project-statuses")) return statuses;
+    if (path.includes("/artefact-types")) return overrides.artefactTypes ?? defaultArtefactTypes;
+    if (path.includes("/artefact-link-rules")) return overrides.artefactRules ?? defaultArtefactRules;
+    if (path.endsWith("/project-customisation")) return { locks: [], local_link_type_count: 0, local_link_type_project_count: 0 };
     if (path.includes("/link-types")) return types;
     // Phase A's org-only pending-invites list (follow-up UX batch).
     if (path.includes("/pending-invites")) return orgPendingInvites;
@@ -97,7 +116,14 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/resources")) return [];
     if (path.includes("archived=false")) return [];
     if (path.includes("/report-templates")) return [];
-    if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
+    if (path.includes("/report-types")) return [
+      { key: "requirements", title: "Requirements report", module_name: null },
+      { key: "decisions.r1", title: "Decision log", module_name: "Decision Management" },
+    ];
+    if (path.includes("/report-defaults")) {
+      if (overrides.reportDefaults) return overrides.reportDefaults;
+      throw new ApiError(403, "Forbidden");
+    }
     if (path.includes("/advanced-settings")) {
       if (overrides.advancedForbidden) throw new ApiError(403, "Forbidden");
       return overrides.advanced ?? advanced;
@@ -129,6 +155,7 @@ function mockOrgAdminApis(overrides: {
     // plain "/users" branch below since neither substring collides with
     // it, same ordering reasoning as `/module-roles`/`/modules` above.
     if (path.includes("/permissions")) return overrides.permissions ?? [];
+    if (path.includes("/custom-role-presets")) return overrides.customRolePresets ?? [];
     if (path.includes("/custom-roles")) return overrides.customRoles ?? [];
     // Fine-Grained Access Control (core) Phase 5 — checked before the
     // plain "/users" branch below, same ordering reasoning as the two
@@ -760,6 +787,63 @@ export const NewReportTemplateOpensModalAndCreates: Story = {
       )
     );
     await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
+/** The organisation's report defaults are written per report type: a tab for "All reports" and each type,
+ * saved as the list of entries that hold content, with a Toast on success. */
+export const ReportDefaultsPerReportType: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ reportDefaults: { content: [] } });
+    spyOn(api, "put").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    const typeSelect = await canvas.findByLabelText("Report type");
+    await expect(within(typeSelect).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All reports", "Requirements report", "Decision log",
+    ]);
+    await userEvent.selectOptions(typeSelect, "decisions.r1");
+    // The placeholders the content may use are listed.
+    await expect(canvas.getByText("{{project_name}}")).toBeInTheDocument();
+    await userEvent.click(canvas.getAllByRole("button", { name: "Add chapter" })[0]);
+    await userEvent.type(canvas.getAllByPlaceholderText("Chapter title")[0], "Decision criteria");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/report-defaults`, {
+        content: [{ report_key: "decisions.r1", intro: "", chapters: [{ title: "Decision criteria", body: "" }], appendices: [] }],
+      })
+    );
+    await expect(within(document.body).getByText("Report defaults saved.")).toBeInTheDocument();
+  },
+};
+
+/** A report template carries its own content per report type (here the Decision log's chapter). */
+export const NewReportTemplateWithPerTypeContent: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ reportDefaults: { content: [] } });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "New template" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New template" });
+    await userEvent.type(within(dialog).getByPlaceholderText("Name", { exact: true }), "Board Pack");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Report type"), "decisions.r1");
+    await userEvent.click(within(dialog).getAllByRole("button", { name: "Add chapter" })[0]);
+    await userEvent.type(within(dialog).getAllByPlaceholderText("Chapter title")[0], "Board summary");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/report-templates`,
+        expect.objectContaining({
+          name: "Board Pack",
+          content: [{ report_key: "decisions.r1", intro: "", chapters: [{ title: "Board summary", body: "" }], appendices: [] }],
+        })
+      )
+    );
   },
 };
 
@@ -1729,9 +1813,9 @@ export const ProjectStatusesDeleteDisabledAtLastRow: Story = {
 };
 
 /** Deleting a status that's currently assigned to a project 409s; the UI
- * opens a reassignment picker showing the server's own in-use message
+ * opens the shared in-use dialog showing the server's own in-use message
  * instead of a generic confirm, per §4.0's contract. */
-export const ProjectStatusesDeleteInUseOpensReassignPicker: Story = {
+export const ProjectStatusesDeleteInUseOpensDialog: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
     spyOn(api, "delete").mockRejectedValue(new ApiError(409, "This status is used by 3 project(s). Pass reassign_to_id to move them to another status before deleting."));
@@ -1742,8 +1826,9 @@ export const ProjectStatusesDeleteInUseOpensReassignPicker: Story = {
     await waitFor(() => expect(canvas.getByDisplayValue("Proposed")).toBeInTheDocument());
     const row = canvas.getByDisplayValue("Proposed").closest<HTMLElement>(".stack")!;
     await userEvent.click(within(row).getByTitle("Delete this status"));
-    await waitFor(() => expect(canvas.getByText(/used by 3 project\(s\)/)).toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Confirm delete" })).toBeDisabled();
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByText(/used by 3 project\(s\)/)).toBeInTheDocument();
+    await expect(dialog.getByRole("button", { name: "Confirm delete" })).toBeDisabled();
   },
 };
 
@@ -1773,6 +1858,33 @@ export const LinkTypesAddAndRename: Story = {
         { forward_name: "Supersedes", reverse_name: "Is superseded by" }
       )
     );
+  },
+};
+
+/** Setting a link type's direction PATCHes it immediately (names unchanged)
+ * and confirms with a Toast; the select shows the stored direction. */
+export const LinkTypesSetDirection: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      linkTypes: [buildLinkType({ id: "lt1", forward_name: "Derives from", reverse_name: "Is the source of", flow: "forward_is_upstream" })],
+    });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    const select = await canvas.findByRole("combobox", { name: "Direction: Derives from" });
+    await expect(select).toHaveValue("forward_is_upstream");
+    await expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "No direction", "Target is upstream", "Target is downstream",
+    ]);
+    await userEvent.selectOptions(select, "forward_is_downstream");
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/link-types/lt1`, {
+        forward_name: "Derives from", reverse_name: "Is the source of", flow: "forward_is_downstream",
+      })
+    );
+    await waitFor(() => expect(within(document.body).getByText("Link type direction updated.")).toBeInTheDocument());
   },
 };
 
@@ -2349,6 +2461,43 @@ export const RoleManagementCreateCustomRole: Story = {
     );
     await expect(within(document.body).getByText("Custom role created")).toBeInTheDocument();
     await waitFor(() => expect(canvas.getAllByText("Reviewer").length).toBeGreaterThan(0));
+  },
+};
+
+/** Starting from a preset (the Link editor) fills the form with the preset's name,
+ * description, scope and its "all record types" permissions; the admin can still change
+ * anything before saving. */
+export const RoleManagementCreateFromLinkEditorPreset: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      permissions: [
+        { key: "*:link:", label: "all record types — link", artefact_type: "*", level: "link", subtype: null },
+        ...fixturePermissions,
+      ],
+      customRolePresets: [{
+        key: "link_editor", name: "Link editor", description: "Set and remove links on any record of a project.",
+        scope: "project", permissions: ["*:link:"],
+      }],
+    });
+    spyOn(api, "post").mockResolvedValue({ ...fixtureCustomRole, id: "role-new", name: "Link editor" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Role management" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New custom role" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "New custom role" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New custom role" });
+    await userEvent.selectOptions(await within(dialog).findByLabelText("Start from a preset"), "Link editor");
+
+    await expect(within(dialog).getByLabelText("Name")).toHaveValue("Link editor");
+    await expect(within(dialog).getByRole("checkbox", { name: "all record types — link" })).toBeChecked();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/custom-roles`, {
+        name: "Link editor", description: "Set and remove links on any record of a project.",
+        scope: "project", permissions: ["*:link:"],
+      })
+    );
   },
 };
 

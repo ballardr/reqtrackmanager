@@ -83,6 +83,7 @@ An organisation can also define its own custom templates alongside (or instead o
 
 - [Data model and lifecycle](./data-model-and-lifecycle.md) — fields, supersession semantics, and content-lock-after-approval.
 - [Relationships and templates](./relationships-and-templates.md) — Decision↔Requirement and Decision↔Decision links, and the relationship types still reserved for modules that don't exist yet.
+- [Reports](./reports.md) — the decision register, approval ageing, decision log, and rationale coverage reports.
 - [AI assistant (MCP) integration](./mcp-integration.md) — the read-only tools an AI assistant can call against a project's Decisions.
 - [Known limitations](./known-limitations.md) — what this module deliberately doesn't do yet.
 

@@ -14,7 +14,14 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import ChangeRequestKind, ChangeRequestStatus, ChangeRequestVoteChoice, RequirementLevel
+from app.models.enums import (
+    ChangeRequestKind,
+    ChangeRequestStatus,
+    ChangeRequestVoteChoice,
+    ProposedLinkOutcome,
+    RequirementLevel,
+)
+from app.schemas.artefact_links import LinkOrientation
 
 #: Field names a MODIFY_REQUIREMENT change request may list in
 #: `changed_fields` — matching RequirementVersion's own attribute names,
@@ -43,6 +50,57 @@ FIELDS_REQUIRING_A_VALUE_WHEN_CHANGED = {
     "target_stage_id": "proposed_target_stage_id",
     "level": "proposed_level",
 }
+
+
+class ProposedLinkIn(BaseModel):
+    """A link proposed on a change request, from the requirement's point of view:
+    `direction` says whether the requirement is the link's source (`outgoing`) or
+    target (`incoming`). `other_project_id` names the far end's project when it is an
+    ancestor or descendant of the request's project."""
+
+    link_type_id: UUID
+    direction: LinkOrientation = LinkOrientation.OUTGOING
+    other_type: str
+    other_id: UUID
+    other_project_id: UUID | None = None
+
+
+class ProposedLinkOut(BaseModel):
+    """A proposed link as shown on the change request page. When the viewer cannot see
+    the far end (no access, missing, or in a project they cannot open) `other_label`,
+    `other_id`, `other_project_id` and `other_project_name` are all `None`, so neither its
+    title nor its identity leaks; only its type is shown. `phrase` reads the relationship
+    from the requirement's side."""
+
+    id: UUID
+    link_type_id: UUID | None
+    phrase: str | None
+    direction: LinkOrientation
+    other_type: str
+    other_type_label: str
+    other_id: UUID | None
+    other_label: str | None
+    other_project_id: UUID | None
+    other_project_name: str | None
+    outcome: ProposedLinkOutcome
+    outcome_reason: str | None
+
+
+class ProposedLinkPreviewRow(BaseModel):
+    """One proposed link as it would merge right now. `selectable` is false when it
+    cannot be created (`reason` says why); `already_linked` marks the harmless case
+    of a link that exists already."""
+
+    link: ProposedLinkOut
+    selectable: bool
+    already_linked: bool = False
+    reason: str | None = None
+
+
+class ProposedLinkPreviewOut(BaseModel):
+    """What approving a change request would merge, re-validated at read time."""
+
+    rows: list[ProposedLinkPreviewRow]
 
 
 class ChangeRequestCreate(BaseModel):
@@ -82,10 +140,10 @@ class ChangeRequestCreate(BaseModel):
     proposed_action_type_id: UUID | None = None
     proposed_action_assignee_id: UUID | None = None
     proposed_action_due_date: date | None = None
-    # ADD_LINK-only (Platform review 2026-09, Phase 8) — see
-    # `ChangeRequestVersion`'s docstring.
-    proposed_link_target_requirement_id: UUID | None = None
-    proposed_link_type_id: UUID | None = None
+    # Links to create on approval (Platform Enhancements Phase 6b): the whole
+    # payload of an ADD_LINK request (at least one), optional on NEW_REQUIREMENT
+    # and MODIFY_REQUIREMENT, not allowed on the other kinds.
+    proposed_links: list[ProposedLinkIn] = []
     # REMOVE_LINK-only (Platform review 2026-09, Phase 8).
     proposed_link_id: UUID | None = None
 
@@ -125,8 +183,9 @@ class ChangeRequestOut(BaseModel):
     proposed_action_type_id: UUID | None = None
     proposed_action_assignee_id: UUID | None = None
     proposed_action_due_date: date | None = None
-    proposed_link_target_requirement_id: UUID | None = None
-    proposed_link_type_id: UUID | None = None
+    # Filled on the detail read and after a mutation; the list view carries only the count.
+    proposed_links: list[ProposedLinkOut] = []
+    proposed_link_count: int = 0
     proposed_link_id: UUID | None = None
 
 
@@ -145,6 +204,10 @@ class ChangeRequestDecision(BaseModel):
     # approver says a particular change is substantial enough that
     # completion needs re-verifying, distinct from every other approval.
     clear_completion: bool = False
+    # Which proposed links to merge on approval (Phase 6b). Omitted merges every
+    # link that is valid at decision time, which is what approving an ADD_LINK
+    # request has always done; an empty list merges none. Ignored on rejection.
+    merge_link_ids: list[UUID] | None = None
 
 
 class ChangeRequestTaskCreate(BaseModel):

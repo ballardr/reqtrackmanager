@@ -349,9 +349,11 @@ class ModuleDefinition:
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
+    link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
+    mcp_guidance: str = ""  # agent usage guidance, required when mcp_tools is non-empty
     models_import_path: str | None = None       # dotted path to your ORM models module
     migrations_import_path: str | None = None   # dotted path to a module exposing run_migrations(connection)
     get_project_router: Callable[[], APIRouter | None] | None = None  # optional 2nd, project-scoped router
@@ -889,12 +891,37 @@ A module that relates its records to another module's (a Stakeholder
 "experiences" a Pain Point, is "consulted on" a Decision) can't import that
 module, but must still validate the target belongs to the same project, label it
 and offer a picker. The owner declares
-`artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project)`;
-callers use `registry.get_artefact_summary` / `list_artefact_summaries` /
-`has_artefact_summary_provider`. On the frontend the owner's
+`artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project, get_many_in_project, browse_levels, filter)`
+(the batch lookup and `filter` are optional; `browse_levels` is required, see below) and a display name in
+`artefact_type_labels[artefact_type]`; callers use `registry.get_artefact_summary` /
+`list_artefact_summaries` / `has_artefact_summary_provider` /
+`get_artefact_summaries_in_project` / `get_artefact_type_label`. On the frontend the owner's
 `TierAModuleDefinition.artefactPaths[artefact_type] = (projectId, id) => route`
-lets `modules/artefactPaths.ts` link to the record's page. Core owns only
-`requirement`.
+lets `modules/artefactPaths.ts` link to the record's page, and
+`TierAModuleDefinition.artefactStatusLabels[artefact_type][status]` gives the
+display label of its status, so the shared Links panel can show a linked
+record's status through a label map (`getArtefactStatusLabel`; a status with no
+label shows no badge, never the raw value). Core owns only `requirement` and
+`requirement_action`. `TierAModuleDefinition.artefactInactiveStatuses[artefact_type]` lists the
+statuses that mean a record is no longer live (superseded, retired, rejected…), which the
+link trace's "Hide inactive records" skips (`isArtefactInactive`; an archived record always counts).
+
+**Every type declares at least one browse level** (`browse_levels=(BrowseLevel(key, label), ...)`), the
+steps of the "Add a link" finder that narrow the search for a record of that type
+("Standard" > "Version" > "Requirement", "Status"). A level with no `list_options`
+reads the facet of the same `key` from the `ArtefactSummary.facets` your provider
+sets (`{key: (option_id, label)}`), so a status or type needs only that one line
+per level plus the facet; give `list_options(db, project_id, selected, query)` and
+an SQL `filter(db, project_id, selected, query, limit)` (return at most
+`limit + 2`) only for a type too large to load whole (an organisation's compliance
+clauses). `selected` is `{level key: option id}` for the earlier levels; the core
+validates it against what each level offered, so compute options from it alone and
+scope them to the project's organisation. A test fails if a registered type has no
+level. An organisation-owned type (`project_id=None`) is offered only from the
+request project. Core owns only `requirement` and `requirement_action` (its levels
+live in `services/link_browse.py`). `services.summary_facets` has helpers for status
+and two-tier type facets, and `relationships.delete_links_for_artefacts` removes
+links when a type hard-deletes records.
 
 ```mermaid
 flowchart LR
@@ -903,20 +930,93 @@ flowchart LR
     REG -->|"enabled"| PROV["owner's provider<br/>id · project_id · label · status · is_archived"]
 ```
 
-- `ArtefactSummary` carries the target's `project_id`, so the caller enforces
-  "same project as the request" without knowing the owner's tables.
+- `ArtefactSummary` carries the target's `project_id` (`None` for an org-owned
+  record, with `organization_id` set), so the caller enforces "same project as
+  the request" without knowing the owner's tables.
+- `get_many_in_project(db, project_id, ids)` returns only what that project may
+  see — its own records and, for a type with an org form, the org's records the
+  project has not hidden — in one query. The owner applies its own visibility
+  rules there; without it the registry falls back to `get` per id filtered to the
+  project. `get_artefact_summaries_in_project` adds the module/sub-component
+  enablement check (a sub-component whose `key` equals the artefact type) and
+  returns `None` when no module provides the type, so a caller can tell "cannot
+  show this kind" from "none visible".
+- The link graph also reaches the request project's parent and child projects the
+  caller can open (links across nesting), so it calls `get_many_in_project` once per
+  such project. A summary returned for a related project is accepted only if its
+  `project_id` is that project: an org-owned record (`project_id` `None`) is taken
+  from the request project alone, so a related project can never be used to reach one
+  the request project hides. Return only what the *given* project may see.
+- Every first-party artefact type has a provider, enforced by
+  `tests/test_link_graph.py`: the core link graph (`services/link_graph.py`,
+  `GET /projects/{id}/artefacts/{type}/{id}/link-graph`) shows only types it can
+  resolve. A new module declaring `artefact_types` must also declare a provider
+  and a label.
 - A relationship kind whose target type has no provider (Design / System
   Element, until Module 6) is *declared but unavailable*: listed, never
   creatable. It goes live when the owner registers a provider.
 - The caller stores `target_id` in `ArtefactLink` as a plain id; the provider
   does not authorise, so the caller still checks the `(type, view)` permission.
 
+### 4f-bis. Link types: any artefact can link to any artefact (Platform enhancements Phase 5b)
+
+Any two registered artefact types in a project can be linked, so a module needs
+nothing to make its types linkable the day they register. Link types (the org's
+vocabulary of phrases) can restrict which artefact types they join, and an
+artefact type can restrict which link types it uses; both are enforced when a
+link is created (`services.relationships.create_link`), never retroactively. A
+module that wants meaningful vocabulary declares **seeds**:
+
+```python
+ModuleDefinition(
+    ...,
+    link_type_seeds=(
+        LinkTypeSeed("Addresses", "Is addressed by", LinkFlow.FORWARD_IS_UPSTREAM,
+                     nesting_scope=LinkNestingScope.UPSTREAM_IN_ANCESTOR,
+                     allowed_source_types=("decision",), allowed_target_types=("pain_point",)),
+        LinkTypeSeed("Supersedes", "Is superseded by", dedicated_endpoint=True,
+                     allowed_source_types=("decision",), allowed_target_types=("decision",)),
+    ),
+)
+```
+
+- A seed is created for an organisation only when it has no link type with that
+  forward name, and only for modules enabled in it (on first use, when the org's
+  link types are listed, or when link types are requested for an artefact), so an
+  admin's edits are never overwritten. A type an admin deletes is recreated by the
+  next use; restrict a type rather than deleting it.
+- `nesting_scope` says whether the type may join a project and its parent or child
+  project (default `ANCESTOR_EITHER_WAY`; `SAME_PROJECT` turns it off;
+  `UPSTREAM_IN_ANCESTOR` requires the upstream end, per `flow`, to be in the same or a
+  parent project, so it needs a `flow` other than `NONE`). Like the rest of the seed
+  it applies only when the type is created.
+- Seeds sharing a forward name across modules merge: restriction lists are unioned,
+  the first non-`none` flow wins, and a conflicting reverse phrase is dropped with a
+  warning. Core defaults (`services.definitions.DEFAULT_LINK_TYPES`) are unrestricted.
+- Use `services.link_types.ensure_org_link_type(db, org_id, forward_name, reverse_name)`
+  to fetch-or-create a type in your own code, never your own copy of the query. It
+  returns the organisation-wide type; a project's own link types never replace it.
+- A project can also own link types (inherited by nested projects), hide
+  organisation-wide ones, and set its own artefact-type rules; an organisation can
+  switch that off. A module creating links should pass its project to
+  `relationships.create_link(..., project_id=...)` so the type is checked as usable
+  there and the project's rules apply; a type it picks for the user should also pass
+  `enforce_offered=True` (a hidden type is then refused). Never query link types
+  directly for a picker: use `services.link_type_scope.resolve_effective_link_types`.
+- `dedicated_endpoint=True` marks a type with a fixed meaning and its own action
+  (supersession flips a status): the generic link endpoints neither offer, create nor
+  delete it, and your own action passes `enforce_rules=False` to `create_link`.
+- A module declaring `artefact_types` also needs `artefact_summary_providers`,
+  `artefact_type_labels` (§4f) and, on the frontend, `artefactPaths`, so the type can
+  be shown and followed from a link; `tests/test_artefact_type_routes.py` and
+  `frontend/src/modules/registeredArtefactTypes.json` guard the last.
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on
 `ModuleDefinition.reports` and writes one `collect_*` function for each. Core
-(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|csv`,
-access gating, typed parameters, MCP tools, the catalogue and the branded PDF.
+(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|docx|csv`,
+access gating, typed parameters, MCP tools, the catalogue and the branded PDF and Word output.
 
 ```mermaid
 flowchart LR
@@ -927,7 +1027,7 @@ flowchart LR
     REG --> CAT["GET /projects/{id}/report-catalogue<br/>GET /orgs/{id}/report-catalogue"]
     API --> CTX["ReportContext<br/>readable projects · validated params"]
     CTX --> COL["collector → ReportResult"]
-    COL --> OUT["JSON · CSV (first section) · PDF (all sections,<br/>template branding via report_document)"]
+    COL --> OUT["JSON · CSV (first section) · PDF and DOCX (all sections,<br/>one ReportDocument, template branding)"]
 ```
 
 ```python
@@ -968,15 +1068,19 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   and `report_template_id` are framework-level; unknown query parameters are
   ignored.
 - **Branding.** `?report_template_id=` applies an organisation report template's
-  accent colour, cover page, logo and footer to the PDF (400 for another
-  organisation's template). Its intro, chapters and appendices are
-  requirement-report content and are not applied.
+  accent colour, cover page, logo and footer to the PDF and DOCX (400 for another
+  organisation's template). A template's, project's and organisation's
+  authored intro, chapters and appendices for this report are applied to the PDF
+  and DOCX: content is keyed `"<module_key>.<report key>"` (the `ReportDefinition.key`),
+  so declaring a report is all a module does; there is no per-module edit
+  (`services/report_content.py`). Organisation-wide runs use the template and
+  organisation tiers only.
 - **Validation.** A definition with a duplicate key/slug, malformed parameter,
   `org_level` without an `org_role_key`, an unknown sub-component, or an
   `org_role_key` that is not an org-scoped role is excluded and logged: no
   catalogue entry, no MCP tool, 404 on its route.
 - **Cells are untrusted.** CSV cells go through `csv_safe`, PDF cells through
-  `report_document.safe`. Do not put Restricted data (secrets, file content) in
+  `report_document.safe` and DOCX cells through `report_docx.clean_text`. Do not put Restricted data (secrets, file content) in
   a result: report reads are not audit-logged, on the basis that every field is
   already returned to the same caller elsewhere.
 - **Not built yet:** rich cells (Compliance's multi-line narrative), richer
@@ -985,7 +1089,7 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
 - **On-screen UI is core too (Phase 13).** The project Reports page and Org
   Overview's "Reports" group list whatever the catalogue returns and run it with
   the shared `ReportRunner` (parameter form from the declaration, `ReportViewer`,
-  PDF/CSV). A module needs no UI for a report whose table form is enough. To draw
+  PDF/Word/CSV). A module needs no UI for a report whose table form is enough. To draw
   something richer, register a view on the frontend
   `TierAModuleDefinition.reportViews`:
 
@@ -1583,6 +1687,8 @@ deliberately doesn't take on.
 
 ---
 
+**Agent guidance (required).** A module that contributes MCP tools must also set `mcp_guidance`, Markdown telling an AI agent how to use them: the data model and lifecycle order, the read and write workflows, which tools are approvals, and gotchas. Keep it in a `mcp_guidance.md` file next to `module.py` and load it, as the first-party modules do. It is embedded in the MCP agent skill's generated `module-tools.md` (see [mcp-server.md](mcp-server.md#agent-skill)); do not repeat parameter lists there, the generator adds them. `backend/tests/test_mcp_skill_reference.py` fails if a module with tools has no guidance, or if the generated reference is stale (run `python scripts/generate_mcp_module_tools_reference.py` from `backend/`).
+
 ## 7. Building a new module: a checklist
 
 **Decide how it will be discovered.** All three options below are gated and
@@ -1616,7 +1722,8 @@ reaches the registry:
    audit trail every core mutation already goes through.
 4. Assemble your `ModuleDefinition` (key, name, description, version,
    `default_enabled`, `get_router`, `roles`, `frontend_manifest`,
-   `mcp_tools`, `models_import_path`, `migrations_import_path`) and
+   `mcp_tools` plus the required `mcp_guidance` if you declare tools,
+   `models_import_path`, `migrations_import_path`) and
    register it via whichever discovery path you chose above.
 
 **Frontend (if you have a UI):**

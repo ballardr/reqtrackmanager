@@ -181,11 +181,27 @@ FGAC_STANDARD_NAME = "FGAC Demo Standard"
 # explicitly reserved for terminology-override coverage alone.
 LINK_LOCK_PROJECT_NAME = "Epsilon-1 Link Lock Demo"
 
+# Platform Enhancements Phase 6b: a project holding one submitted modify-requirement change request that proposes three
+# links, the last made unmergeable on purpose (its record was linked directly after the request was made), so the
+# approval dialog's "can no longer be merged, with the reason" state has a fixed fixture. Read-only: nothing here may
+# approve or reject that request (change-request-proposed-links.spec.ts builds its own disposable organisation for that).
+PROPOSED_LINKS_PROJECT_NAME = "Zeta-1 Proposed Links Demo"
+
 # Fixed hierarchy fixture for project-hierarchy.spec.ts — Gamma-4 mirrors
 # all roles from Gamma-3 (forward), and Gamma-3 also consumes members from
 # Gamma-4 (reverse, member-source). See docs/decisions.md's "Hierarchical
 # projects" entry. No other spec may depend on this pair's configuration.
 GAMMA3_NAME = "Gamma-3 Hierarchy Parent"
+# Phase 5c (docs/plans/platform-enhancements-2026-10-plan.md): a parent that owns a project-level link type, and a
+# child that uses it and inherits its hide of an organisation type. Kept apart from Gamma-3/4 so the hierarchy spec's
+# fixture stays untouched.
+LINK_TYPES_PARENT_NAME = "Gamma-5 Link Types Parent"
+LINK_TYPES_CHILD_NAME = "Gamma-6 Link Types Child"
+LINK_TYPES_PARENT_VERB = "E2E Parent verb"
+LINK_TYPES_HIDDEN_ORG_TYPE = "Mitigates"
+# Phase 5d: the same pair carries one cross-level link of each kind — a directional type (the upstream end must be
+# in the same or a parent project) and an either-way symmetric one ("Related to").
+NESTING_DIRECTIONAL_TYPE = "E2E Derives (nested)"
 GAMMA4_NAME = "Gamma-4 Hierarchy Child"
 
 
@@ -214,13 +230,77 @@ def create_requirement(headers: dict, project_id: str, name: str, reasoning: str
     return r.json()
 
 
-def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str) -> dict:
+def create_link_type(
+    headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
+    allowed_source_types: list[str] | None = None, allowed_target_types: list[str] | None = None,
+    nesting_scope: str = "ancestor_either_way",
+) -> dict:
+    """`flow` says where the link's target sits in a traceability chain: "forward_is_upstream",
+    "forward_is_downstream" or "none" (see `models.enums.LinkFlow`). `allowed_source_types` /
+    `allowed_target_types` restrict which artefact types the link may run from / to (`None` = any).
+    `nesting_scope` says whether it may join a project and its parent/child ("same_project",
+    "upstream_in_ancestor" (needs a flow) or "ancestor_either_way")."""
     r = httpx.post(
-        f"{BASE}/orgs/{org_id}/link-types", json={"forward_name": forward_name, "reverse_name": reverse_name},
+        f"{BASE}/orgs/{org_id}/link-types",
+        json={
+            "forward_name": forward_name, "reverse_name": reverse_name, "flow": flow,
+            "allowed_source_types": allowed_source_types, "allowed_target_types": allowed_target_types,
+            "nesting_scope": nesting_scope,
+        },
         headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
+
+
+def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
+    """Saves per-report-type content at one tier: `/orgs/{id}/report-defaults` or `/projects/{id}/report-config`."""
+    r = httpx.put(f"{BASE}{path}", json={"content": content}, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
+def create_project_link_type(
+    headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
+) -> dict:
+    """A link type local to one project (usable there and in every nested project)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/link-types",
+        json={"forward_name": forward_name, "reverse_name": reverse_name, "flow": flow}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_link_type_visibility(headers: dict, project_id: str, link_type_id: str, hidden: bool) -> dict:
+    """Hides (or re-shows) a link type the project can reach, for that project and the ones nested under it."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/link-types/{link_type_id}/visibility", json={"hidden": hidden}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_artefact_link(
+    headers: dict, project_id: str, source_type: str, source_id: str, link_type_id: str, target_type: str, target_id: str,
+    other_project_id: str | None = None,
+) -> dict:
+    """A link between any two artefacts through the generic link-authoring endpoint; `other_project_id` is the
+    target's project when it is a parent or child of `project_id` (a cross-level link)."""
+    body = {"link_type_id": link_type_id, "direction": "outgoing", "other_type": target_type, "other_id": target_id}
+    if other_project_id is not None:
+        body["other_project_id"] = other_project_id
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/artefacts/{source_type}/{source_id}/links", json=body, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def get_org_link_type(headers: dict, org_id: str, forward_name: str) -> dict:
+    """The organisation's link type with this forward name (a seeded one such as "Related to")."""
+    r = httpx.get(f"{BASE}/orgs/{org_id}/link-types", headers=headers, timeout=30)
+    r.raise_for_status()
+    return next(t for t in r.json() if t["forward_name"] == forward_name)
 
 
 def create_requirement_link(headers: dict, project_id: str, requirement_id: str, target_requirement_id: str, link_type_id: str) -> dict:
@@ -614,6 +694,36 @@ def main() -> None:
     r.raise_for_status()
     seed_project_content(h_ab, epsilon1, 0)
 
+    print(f"Creating {PROPOSED_LINKS_PROJECT_NAME!r} with a submitted change request that proposes three links, the"
+          " last made unmergeable (Platform Enhancements Phase 6b)...")
+    zeta1 = create_project(
+        h_ab, alpha["id"], PROPOSED_LINKS_PROJECT_NAME,
+        "E2E seed project holding a pending change request with proposed links (read-only fixture).",
+    )
+    zeta1_reqs = seed_project_content(h_ab, zeta1, 4)
+    r = httpx.post(f"{BASE}/projects/{zeta1['id']}/requirements/{zeta1_reqs[0]['id']}/approve", headers=h_ab, timeout=30)
+    r.raise_for_status()
+    related_type = get_org_link_type(h_ab, alpha["id"], "Related to")
+    r = httpx.post(
+        f"{BASE}/projects/{zeta1['id']}/change-requests",
+        json={
+            "kind": "modify_requirement", "requirement_id": zeta1_reqs[0]["id"], "changed_fields": ["reasoning"],
+            "proposed_reasoning": "Reasoning updated by the proposed-links seed request.",
+            "reason": "E2E seed: a request that proposes three links.",
+            "proposed_links": [
+                {"link_type_id": related_type["id"], "direction": "outgoing", "other_type": "requirement", "other_id": req["id"]}
+                for req in zeta1_reqs[1:]
+            ],
+        },
+        headers=h_ab, timeout=30,
+    )
+    r.raise_for_status()
+    zeta1_request = r.json()
+    r = httpx.post(f"{BASE}/projects/{zeta1['id']}/change-requests/{zeta1_request['id']}/submit", headers=h_ab, timeout=30)
+    r.raise_for_status()
+    # Made after the request: the third record is now linked directly, so that proposed link cannot be merged.
+    create_artefact_link(h_ab, zeta1["id"], "requirement", zeta1_reqs[0]["id"], related_type["id"], "requirement", zeta1_reqs[3]["id"])
+
     print(f"Creating {FGAC_STANDARD_NAME!r} (compliance standard for Alpha, role-management.spec.ts's entity-picker fixture)...")
     fgac_standard = create_compliance_standard(h_ab, alpha["id"], reference=FGAC_STANDARD_REFERENCE, name=FGAC_STANDARD_NAME)
 
@@ -726,6 +836,51 @@ def main() -> None:
         h_g, gamma1["id"], "persona", field_inspector["id"], "affected_by_requirement", "requirement", gamma1_reqs[0]["id"],
     )
     seed_project_content(h_g, gamma2, 6)
+
+    print(f"Seeding project-level link types (Phase 5c): {LINK_TYPES_PARENT_NAME!r} owns {LINK_TYPES_PARENT_VERB!r} and hides"
+          f" the organisation's {LINK_TYPES_HIDDEN_ORG_TYPE!r}; its child {LINK_TYPES_CHILD_NAME!r} inherits both and links"
+          " two of its requirements with the parent's type. Beta forbids project-level link types (the org switch).")
+    gamma5 = create_project(h_g, gamma["id"], LINK_TYPES_PARENT_NAME, "E2E seed project — project-level link types parent.", can_be_parent=True)
+    gamma6 = create_project(
+        h_g, gamma["id"], LINK_TYPES_CHILD_NAME, "E2E seed project — project-level link types child.",
+        parent_project_id=gamma5["id"],
+    )
+    gamma5_reqs = seed_project_content(h_g, gamma5, 2)
+    gamma6_reqs = seed_project_content(h_g, gamma6, 2)
+    print("Seeding per-report-type content (Phase 10): Gamma's organisation default for 'all reports', and a requirements"
+          " introduction and chapter on Gamma-5 that its child Gamma-6 (which sets none) inherits.")
+    put_report_content(h_g, f"/orgs/{gamma['id']}/report-defaults", [
+        {"report_key": "*", "intro": "Prepared by {{organisation}} for {{project_name}}.", "chapters": [], "appendices": []},
+    ])
+    put_report_content(h_g, f"/projects/{gamma5['id']}/report-config", [
+        {"report_key": "requirements", "intro": "Gamma-5 requirements, inherited by its child projects.",
+         "chapters": [{"title": "Scope", "body": "Shared by the Gamma-5 programme."}], "appendices": []},
+    ])
+    parent_type = create_project_link_type(
+        h_g, gamma5["id"], forward_name=LINK_TYPES_PARENT_VERB, reverse_name="E2E Parent reverse", flow="forward_is_upstream",
+    )
+    create_artefact_link(h_g, gamma6["id"], "requirement", gamma6_reqs[0]["id"], parent_type["id"], "requirement", gamma6_reqs[1]["id"])
+    gamma_types = {t["forward_name"]: t for t in httpx.get(f"{BASE}/orgs/{gamma['id']}/link-types", headers=h_g, timeout=30).json()}
+    set_link_type_visibility(h_g, gamma5["id"], gamma_types[LINK_TYPES_HIDDEN_ORG_TYPE]["id"], True)
+    print("Seeding cross-level links (Phase 5d) between Gamma-6 (child) and Gamma-5 (parent): one with a directional type"
+          f" ({NESTING_DIRECTIONAL_TYPE!r}, the upstream end in the parent) and one either-way symmetric 'Related to'...")
+    directional = create_link_type(
+        h_g, gamma["id"], forward_name=NESTING_DIRECTIONAL_TYPE, reverse_name="E2E Is source of (nested)",
+        flow="forward_is_upstream", nesting_scope="upstream_in_ancestor",
+    )
+    create_artefact_link(
+        h_g, gamma6["id"], "requirement", gamma6_reqs[0]["id"], directional["id"], "requirement", gamma5_reqs[0]["id"],
+        other_project_id=gamma5["id"],
+    )
+    create_artefact_link(
+        h_g, gamma5["id"], "requirement", gamma5_reqs[1]["id"], gamma_types["Related to"]["id"], "requirement",
+        gamma6_reqs[1]["id"], other_project_id=gamma6["id"],
+    )
+    r = httpx.put(
+        f"{BASE}/orgs/{beta['id']}/project-customisation", json={"locks": ["link_types"]}, headers=h_ab, timeout=30,
+    )
+    r.raise_for_status()
+
     delta1_reqs = seed_project_content(h_ab, delta1, 3)
 
     print("Locking Delta-1's first requirement so terminology-coverage.spec.ts can reach its 'Make {changeRequest}' link"
@@ -770,8 +925,17 @@ def main() -> None:
 
     print("Adding a custom link type and fixed requirement links/actions on Alpha-1, for the requirement-links "
           "and requirement-actions E2E specs...")
-    e2e_link_type = create_link_type(h_ab, alpha["id"], forward_name="E2E Supersedes", reverse_name="E2E Is superseded by")
+    e2e_link_type = create_link_type(
+        h_ab, alpha["id"], forward_name="E2E Supersedes", reverse_name="E2E Is superseded by", flow="forward_is_upstream",
+    )
     create_requirement_link(h_ab, alpha1["id"], alpha1_reqs[1]["id"], alpha1_reqs[0]["id"], e2e_link_type["id"])
+    # A restricted type (a requirement may start it, only an action may be its target) for the link-type
+    # restriction specs; the Pain Point -> Decision -> Requirement chain arrives with Phase 6's links panel
+    # spec, since Alpha has no Decisions module.
+    create_link_type(
+        h_ab, alpha["id"], forward_name="E2E Validated by action", reverse_name="E2E Validates",
+        allowed_source_types=["requirement"], allowed_target_types=["requirement_action"],
+    )
     alpha1_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{alpha1['id']}/action-types", headers=h_ab, timeout=30).json()}
     e2e_review_action = create_and_link_action(
         h_ab, alpha1["id"], alpha1_reqs[2]["id"], title="E2E Review Action", action_type_id=alpha1_action_types["Review"]["id"],
@@ -805,6 +969,12 @@ def main() -> None:
           " stakeholder on Gamma-3 (direct, shows up as forward-inherited on Gamma-4)")
     print(f"\n{GAMMA3_NAME!r} (id {gamma3['id']}) mirror-all-inherits into {GAMMA4_NAME!r} (id {gamma4['id']});"
           f" {GAMMA3_NAME!r} also consumes members from {GAMMA4_NAME!r} (member-source) — fixed project-hierarchy.spec.ts fixture.")
+    print(f"\n{LINK_TYPES_PARENT_NAME!r} owns the project-level link type {LINK_TYPES_PARENT_VERB!r} and hides {LINK_TYPES_HIDDEN_ORG_TYPE!r};"
+          f" {LINK_TYPES_CHILD_NAME!r} inherits both and has a requirement link using the parent's type. E2E Beta Software"
+          " forbids project-level link types (its Link types panel is read-only on every Beta project).")
+    print(f"\n{PROPOSED_LINKS_PROJECT_NAME!r} ({zeta1['id']}) holds a submitted change request on {zeta1_reqs[0]['unique_code']}"
+          f" proposing links to {', '.join(r['unique_code'] for r in zeta1_reqs[1:])}; the link to {zeta1_reqs[3]['unique_code']}"
+          " is unmergeable (already linked), the other two are valid. Read-only fixture.")
     print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
     print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")

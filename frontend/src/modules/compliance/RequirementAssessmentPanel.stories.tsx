@@ -3,7 +3,8 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
-import { buildFileAsset, withToast } from "../../testing/storybook-helpers";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
+import { buildFileAsset, withRouter, withToast } from "../../testing/storybook-helpers";
 import { RequirementAssessmentPanel } from "./RequirementAssessmentPanel";
 import type {
   ComplianceEvidence,
@@ -63,6 +64,9 @@ function mockApis(pcrRow: ProjectComplianceRequirement, assessments: ComplianceR
       const needle = new URLSearchParams(path.split("?")[1]).get("q")?.toLowerCase() ?? "";
       return { members: ORG_USERS.filter((u) => u.display_name.toLowerCase().includes(needle)), external: null };
     }
+    if (path.includes("/link-graph")) {
+      return buildGraph([[buildGraphNode({ type: "requirement", id: "r-9", type_label: "Requirement", label: "SW-SEC-014 Encrypt at rest", status: null })]]);
+    }
     if (path.includes("/required-action-assessments")) return assessments;
     if (path.includes("/required-actions")) return [ACTION_DEF];
     if (path.endsWith("/evidence")) return [];
@@ -101,6 +105,7 @@ function mockEvidenceApis(pcrRow: ProjectComplianceRequirement) {
   let linked: ComplianceEvidence[] = [];
 
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/link-graph")) return buildGraph();
     if (path.includes("/required-action-assessments")) return [];
     if (path.includes("/required-actions")) return [];
     if (path.includes("/requirements/") && path.endsWith("/evidence")) return linked;
@@ -146,7 +151,7 @@ const ORG_USERS: OrgUser[] = [
 const meta: Meta<typeof RequirementAssessmentPanel> = {
   title: "Modules/Compliance/RequirementAssessmentPanel",
   component: RequirementAssessmentPanel,
-  decorators: [withToast()],
+  decorators: [withToast(), withRouter("/")],
   args: {
     orgId: ORG_ID, projectId: PROJECT_ID, standardId: STANDARD_ID, versionId: VERSION_ID, projectComplianceId: PC_ID,
     requirement: REQUIREMENT, orgUsers: [], onClose: () => {}, onChanged: () => {},
@@ -349,6 +354,19 @@ export const EvidenceUploadNewWithFileSkipsFollowUpModal: Story = {
     ));
     await expect(body.queryByRole("dialog", { name: 'Attach files to "New Access Report"' })).not.toBeInTheDocument();
     await waitFor(() => expect(body.getByText("New Access Report")).toBeInTheDocument());
+  },
+};
+
+/** The requirement's own Links panel sits at the end of the panel; each required-action
+ * assessment reveals its own on demand (one at a time). */
+export const LinksPanelsForTheRequirementAndEachRequiredAction: Story = {
+  beforeEach: () => mockApis(pcr()),
+  args: { pcr: pcr() },
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    await waitFor(() => expect(body.getByRole("link", { name: "SW-SEC-014 Encrypt at rest" })).toBeInTheDocument());
+    await userEvent.click(body.getByRole("button", { name: "Links" }));
+    await waitFor(() => expect(body.getAllByRole("region", { name: "Links" })).toHaveLength(2));
   },
 };
 

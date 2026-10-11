@@ -81,6 +81,7 @@ from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_K
 from app.modules.stakeholders.type_vocabulary import TypeVocabulary
 from app.services.audit import log_event
 from app.services.files import delete_file
+from app.services.link_types import ensure_org_link_type
 from app.services.project_hierarchy import get_ancestor_chain
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
 
@@ -775,27 +776,10 @@ def suggest_cadence(quadrant: GridQuadrant | None) -> TargetCadence | None:
 def get_or_create_link_type(
     db: Session, organization_id: uuid.UUID, forward_name: str, reverse_name: str
 ) -> RequirementLinkTypeDefinition:
-    """The org's link type named `forward_name`/`reverse_name`, created on
-    first use (the same convention Context & Strategy and Decisions follow for
-    their own link types)."""
-    link_type = db.scalar(
-        select(RequirementLinkTypeDefinition).where(
-            RequirementLinkTypeDefinition.organization_id == organization_id,
-            RequirementLinkTypeDefinition.forward_name == forward_name,
-        )
-    )
-    if link_type is not None:
-        return link_type
-    count = db.scalar(
-        select(func.count()).select_from(RequirementLinkTypeDefinition)
-        .where(RequirementLinkTypeDefinition.organization_id == organization_id)
-    )
-    link_type = RequirementLinkTypeDefinition(
-        organization_id=organization_id, forward_name=forward_name, reverse_name=reverse_name, sort_order=count,
-    )
-    db.add(link_type)
-    db.flush()
-    return link_type
+    """The org's link type named `forward_name`, created on first use from the
+    registered seed (`services.link_types.ensure_org_link_type`; `reverse_name`
+    is the fallback phrase for an unseeded name)."""
+    return ensure_org_link_type(db, organization_id, forward_name, reverse_name)
 
 
 def link_type_id_if_exists(db: Session, organization_id: uuid.UUID, forward_name: str) -> uuid.UUID | None:
@@ -829,7 +813,8 @@ def persona_visible_to_stakeholder(stakeholder: Stakeholder, persona: Persona, o
 
 
 def add_represents_link(
-    db: Session, stakeholder: Stakeholder, persona: Persona, actor: User, *, organization_id: uuid.UUID
+    db: Session, stakeholder: Stakeholder, persona: Persona, actor: User, *, organization_id: uuid.UUID,
+    project_id: uuid.UUID | None = None,
 ) -> Any:
     """Records that `stakeholder` represents `persona`. The caller has
     authorised both; this validates compatibility and de-duplicates.
@@ -848,7 +833,7 @@ def add_represents_link(
         raise ValueError("This Stakeholder already represents that Persona.")
     return create_link(
         db, source_type=STAKEHOLDER_ARTEFACT_TYPE, source_id=stakeholder.id, target_type=PERSONA_ARTEFACT_TYPE,
-        target_id=persona.id, link_type_id=link_type.id, created_by=actor.id,
+        target_id=persona.id, link_type_id=link_type.id, created_by=actor.id, project_id=project_id,
     )
 
 
@@ -1050,7 +1035,7 @@ NEED_HOLDER_TYPES = (STAKEHOLDER_ARTEFACT_TYPE, PERSONA_ARTEFACT_TYPE)
 
 def add_has_need_link(
     db: Session, holder_type: str, holder_id: uuid.UUID, need: StakeholderNeed, actor: User, *,
-    organization_id: uuid.UUID,
+    organization_id: uuid.UUID, project_id: uuid.UUID | None = None,
 ) -> Any:
     """Records that a Stakeholder or Persona has `need`. The caller has loaded
     both records and checked the holder is visible to the need's project.
@@ -1068,7 +1053,7 @@ def add_has_need_link(
         raise ValueError("That record already has this need.")
     return create_link(
         db, source_type=holder_type, source_id=holder_id, target_type=NEED_ARTEFACT_TYPE, target_id=need.id,
-        link_type_id=link_type.id, created_by=actor.id,
+        link_type_id=link_type.id, created_by=actor.id, project_id=project_id,
     )
 
 
@@ -1106,7 +1091,8 @@ def list_holder_needs(
 
 
 def add_gives_rise_to_link(
-    db: Session, need: StakeholderNeed, requirement_id: uuid.UUID, actor: User, *, organization_id: uuid.UUID
+    db: Session, need: StakeholderNeed, requirement_id: uuid.UUID, actor: User, *, organization_id: uuid.UUID,
+    project_id: uuid.UUID | None = None,
 ) -> Any:
     """Records that `need` gave rise to a Requirement (the caller has checked it
     belongs to the need's project).
@@ -1122,7 +1108,7 @@ def add_gives_rise_to_link(
         raise ValueError("This need already gave rise to that Requirement.")
     return create_link(
         db, source_type=NEED_ARTEFACT_TYPE, source_id=need.id, target_type="requirement", target_id=requirement_id,
-        link_type_id=link_type.id, created_by=actor.id,
+        link_type_id=link_type.id, created_by=actor.id, project_id=project_id,
     )
 
 

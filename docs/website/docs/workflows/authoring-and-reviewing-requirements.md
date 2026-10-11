@@ -25,8 +25,8 @@ Open a requirement from the list to see its full detail: an editable form, its c
 
 | Requirement detail |
 | --- |
-| Editable fields, version history, and a discussion thread for one requirement |
-| ![Requirement detail page with fields, change log, and discussion](../../static/img/screenshots/requirement-detail.png) |
+| Editable fields, activity, actions and a discussion thread for one requirement, with its links in the Links panel |
+| ![Requirement detail page with its fields, activity, actions and discussion, and a Links panel on the right](../../static/img/screenshots/requirement-detail.png) |
 
 Add a comment in the discussion thread for informal back-and-forth — this works even on a locked requirement, since it isn't part of the governed content. Attach a file to a comment with the paperclip icon while writing it, or while editing your own existing one.
 

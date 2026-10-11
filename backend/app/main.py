@@ -29,6 +29,7 @@ from app.modules.registry import get_module_registry, sync_module_role_definitio
 from app.routers import (
     action_types,
     actions,
+    artefact_links,
     auth,
     auth_oidc,
     change_requests,
@@ -38,6 +39,7 @@ from app.routers import (
     notifications,
     orgs,
     pats,
+    project_link_types,
     projects,
     report_catalogue,
     reports,
@@ -253,6 +255,8 @@ app.include_router(files.router)
 app.include_router(custom_fields.router)
 app.include_router(action_types.router)
 app.include_router(actions.router)
+app.include_router(artefact_links.router)
+app.include_router(project_link_types.router)
 app.include_router(notifications.router)
 app.include_router(reviews.router)
 app.include_router(pats.router)

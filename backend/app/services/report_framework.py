@@ -14,10 +14,12 @@ Responsibilities:
   `readable_projects` / `scope_projects` are the only places report scope is
   decided.
 - Output: `render_csv` (first section only, formula-neutralised) and
-  `render_pdf` (every section, built on `services.report_document` so a
-  template's cover, accent colour and footer apply).
+  `render_pdf` and `render_docx` (every section). Both render one neutral
+  `ReportDocument` from `build_result_document` (`services.report_model`), so a
+  template's cover, accent colour and footer apply to each and the formats
+  cannot drift.
 - HTTP: `build_report_routers` turns `ReportDefinition`s into a project router
-  and an organisation router (`GET .../reports/<slug>?format=json|pdf|csv`) for
+  and an organisation router (`GET .../reports/<slug>?format=json|pdf|csv|docx`) for
   the module to include under its own prefixes, so routes stay inside the
   module's mount and MCP path verification keeps working.
 - MCP: `report_mcp_tools` derives read-only tools from the same declarations.
@@ -39,11 +41,12 @@ Design decisions:
 - Parameters are declared, not hand-written: the generated route signature
   carries typed `Query` parameters (so FastAPI validates types and bounds, 422)
   and `choices` are checked here (400). Unknown query parameters are ignored.
-- The CSV is the first section only (the flat export); the PDF carries the full
-  layout. Every CSV cell goes through `csv_safe` and every PDF cell through
-  `report_document.safe`, since cells hold user-entered text.
+- The CSV is the first section only (the flat export); the PDF and DOCX carry the
+  full layout. Every CSV cell goes through `csv_safe`; PDF and DOCX cells are
+  escaped by their renderers (`report_document.safe`, `report_docx.clean_text`),
+  since cells hold user-entered text.
 
-Dependencies: FastAPI/Pydantic, ReportLab (via `report_document`),
+Dependencies: FastAPI/Pydantic, ReportLab and python-docx (via `report_pdf`/`report_docx`),
 `modules.registry`, `services.rbac`.
 """
 
@@ -63,16 +66,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, model_validator
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, Spacer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.organization import Organization
+from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import (
@@ -88,9 +86,8 @@ from app.modules.registry import (
     is_org_module_subcomponent_enabled,
     validate_report_definitions,
 )
-from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.csv_safety import csv_safe
-from app.services.downloads import filename_safe
+from app.services.downloads import file_response, filename_safe
 from app.services.project_hierarchy import get_descendant_project_ids
 from app.services.rbac import (
     get_effective_project_roles,
@@ -101,19 +98,14 @@ from app.services.rbac import (
     require_project_subcomponent_enabled,
     user_satisfies_module_role,
 )
-from app.services.report_document import (
-    STYLES,
-    ReportBranding,
-    build_pdf,
-    load_report_template,
-    resolve_branding,
-    safe,
-    styled_table,
-    title_flowables,
-)
+from app.services.report_content import build_placeholders, content_blocks, report_key_for, resolve_report_content
+from app.services.report_document import ReportBranding, load_report_template, resolve_branding
+from app.services.report_docx import render_docx_document
+from app.services.report_model import Block, Gap, Heading, Note, ReportDocument, Table
+from app.services.report_pdf import render_pdf_document
 
-ReportFormat = Literal["json", "pdf", "csv"]
-REPORT_FORMATS: tuple[str, ...] = ("json", "pdf", "csv")
+ReportFormat = Literal["json", "pdf", "csv", "docx"]
+REPORT_FORMATS: tuple[str, ...] = ("json", "pdf", "csv", "docx")
 
 # --- Result shapes -------------------------------------------------------------
 
@@ -364,11 +356,6 @@ def scope_projects(
 
 # --- Rendering --------------------------------------------------------------------
 
-_NOTE = ParagraphStyle("report_note", parent=STYLES["BodyText"], fontSize=8.5, leading=11, textColor=colors.HexColor("#555555"))
-_CELL = ParagraphStyle("report_cell", parent=STYLES["BodyText"], fontSize=7.5, leading=9.5)
-_HEAD = ParagraphStyle("report_head", parent=_CELL, textColor=colors.white, fontName="Helvetica-Bold")
-
-
 def render_csv(result: ReportResult) -> bytes:
     """Renders the report's main table (its first section) as UTF-8 CSV.
 
@@ -390,41 +377,77 @@ def render_csv(result: ReportResult) -> bytes:
     return buffer.getvalue().encode("utf-8")
 
 
-def render_pdf(result: ReportResult, *, branding: ReportBranding | None = None) -> bytes:
-    """Renders the whole report (every section) as a landscape A4 PDF.
+def build_result_document(
+    result: ReportResult, *, branding: ReportBranding | None = None,
+    before: Sequence[Block] = (), after: Sequence[Block] = (),
+) -> ReportDocument:
+    """Builds the neutral landscape document for a collected report, which the
+    PDF and DOCX renderers both consume.
 
     Args:
         result: The collected report.
         branding: Optional organisation template branding (accent colour,
             cover page, logo, footer); `None` renders the plain default style.
+        before: Blocks placed ahead of the report (its introduction and
+            chapters, from `services.report_content`).
+        after: Blocks placed after the last section (its appendices).
+
+    Returns:
+        The document: the introduction and chapters, a scope line, the notes,
+        each section's heading, note and table (or "None."), then the appendices.
+    """
+    blocks: list[Block] = [
+        *before,
+        Note(f"{result.scope_label} · generated {result.generated_at.strftime('%Y-%m-%d %H:%M')} UTC"),
+        Gap(0.2),
+        *[Note(n) for n in result.notes],
+    ]
+    for section in result.sections:
+        blocks += [Gap(0.4), Heading(section.title, 2)]
+        if section.note:
+            blocks.append(Note(section.note))
+        if section.rows and section.columns:
+            blocks.append(Table(section.columns, section.rows, compact=True))
+        else:
+            blocks.append(Note("None."))
+    blocks += after
+    return ReportDocument(title=result.title, blocks=blocks, branding=branding, landscape=True)
+
+
+def render_pdf(
+    result: ReportResult, *, branding: ReportBranding | None = None,
+    before: Sequence[Block] = (), after: Sequence[Block] = (),
+) -> bytes:
+    """Renders the whole report (every section) as a landscape A4 PDF.
+
+    Args:
+        result: The collected report.
+        branding: Optional organisation template branding; see `build_result_document`.
+        before: Blocks ahead of the report; see `build_result_document`.
+        after: Blocks after the report; see `build_result_document`.
 
     Returns:
         PDF bytes.
     """
-    accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
-    width = landscape(A4)[0] - 3 * cm
-    story: list = title_flowables(result.title, branding)
-    story += [
-        Paragraph(safe(f"{result.scope_label} · generated {result.generated_at.strftime('%Y-%m-%d %H:%M')} UTC"), _NOTE),
-        Spacer(1, 0.2 * cm),
-    ]
-    story += [Paragraph(safe(n), _NOTE) for n in result.notes]
-    for section in result.sections:
-        story += [Spacer(1, 0.4 * cm), Paragraph(safe(section.title), STYLES["Heading2"])]
-        if section.note:
-            story.append(Paragraph(safe(section.note), _NOTE))
-        if section.rows and section.columns:
-            data = [[Paragraph(safe(c), _HEAD) for c in section.columns]]
-            data += [[Paragraph(safe(cell), _CELL) for cell in row] for row in section.rows]
-            story.append(styled_table(
-                data, col_widths=[width / len(section.columns)] * len(section.columns), accent_color=accent, compact=True,
-            ))
-        else:
-            story.append(Paragraph("None.", _NOTE))
-    return build_pdf(
-        story, footer_text=branding.footer_text if branding else None, pagesize=landscape(A4),
-        leftMargin=1.5 * cm, rightMargin=1.5 * cm, topMargin=1.5 * cm, bottomMargin=1.5 * cm, title=result.title,
-    )
+    return render_pdf_document(build_result_document(result, branding=branding, before=before, after=after))
+
+
+def render_docx(
+    result: ReportResult, *, branding: ReportBranding | None = None,
+    before: Sequence[Block] = (), after: Sequence[Block] = (),
+) -> bytes:
+    """Renders the whole report (every section) as an editable landscape DOCX.
+
+    Args:
+        result: The collected report.
+        branding: Optional organisation template branding; see `build_result_document`.
+        before: Blocks ahead of the report; see `build_result_document`.
+        after: Blocks after the report; see `build_result_document`.
+
+    Returns:
+        DOCX bytes.
+    """
+    return render_docx_document(build_result_document(result, branding=branding, before=before, after=after))
 
 
 # --- JSON schema --------------------------------------------------------------------
@@ -605,24 +628,22 @@ def _live_definition(module_key: str, definition: ReportDefinition) -> ReportDef
 
 def _respond(
     result: ReportResult, definition: ReportDefinition, fmt: str, scope_name: str, branding: ReportBranding | None,
+    before: Sequence[Block] = (), after: Sequence[Block] = (),
 ) -> Response | ReportOut:
-    """Serialises `result` as `fmt`."""
+    """Serialises `result` as `fmt`; `before`/`after` (the report's content
+    blocks) only reach the PDF and DOCX."""
     if fmt == "json":
         return to_out(result)
     stem = f"{filename_safe(scope_name, fallback='report')}-{definition.slug}"
     if fmt == "csv":
-        return Response(
-            content=render_csv(result), media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{stem}.csv"'},
-        )
-    return Response(
-        content=render_pdf(result, branding=branding), media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{stem}.pdf"'},
-    )
+        return file_response(render_csv(result), stem, "csv")
+    if fmt == "docx":
+        return file_response(render_docx(result, branding=branding, before=before, after=after), stem, "docx")
+    return file_response(render_pdf(result, branding=branding, before=before, after=after), stem, "pdf")
 
 
-def _branding_for(db: Session, organization: Organization, template_id: UUID | None) -> ReportBranding | None:
-    """The branding of the requested template, `None` when none was requested.
+def _template_for(db: Session, organization: Organization, template_id: UUID | None) -> ReportTemplate | None:
+    """The requested template, `None` when none was requested.
 
     Raises:
         HTTPException: 400 when the template is not one of the organisation's.
@@ -632,7 +653,26 @@ def _branding_for(db: Session, organization: Organization, template_id: UUID | N
     template = load_report_template(db, organization.id, template_id)
     if template is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this organisation.")
-    return resolve_branding(db, organization, template)
+    return template
+
+
+def _content_blocks_for(
+    db: Session, fmt: str, module_key: str, definition: ReportDefinition, result: ReportResult,
+    organization: Organization, project: Project | None, template: ReportTemplate | None,
+) -> tuple[list[Block], list[Block]]:
+    """The report's introduction/chapters and appendices as blocks for the PDF
+    and DOCX (empty for JSON and CSV, which carry no authored content).
+    Resolution is `report_content.resolve_report_content`; an organisation-wide
+    run passes `project=None`, so only the template and organisation tiers apply.
+    """
+    if fmt not in ("pdf", "docx"):
+        return [], []
+    content = resolve_report_content(db, report_key_for(module_key, definition.key), organization, project, template)
+    placeholders = build_placeholders(
+        project_name=result.scope_label, report_title=result.title, generated_on=result.generated_at.date(),
+        organisation=organization.name,
+    )
+    return content_blocks(db, organization.id, content, placeholders)
 
 
 def _route_signature(path_param: str, definition: ReportDefinition, *, project_level: bool, dependency: Callable) -> inspect.Signature:
@@ -675,7 +715,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         project = db.get(Project, kw["project_id"])
         organization = db.get(Organization, project.organization_id)
         params = validated_params(live, kw)
-        branding = _branding_for(db, organization, kw["report_template_id"])
+        template = _template_for(db, organization, kw["report_template_id"])
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=project, params=params,
             projects=readable_projects(
@@ -683,13 +723,17 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
                 include_children=kw["include_children"],
             ),
         )
-        return _respond(live.collector(db, ctx), live, kw["format"], project.name, branding)
+        result = live.collector(db, ctx)
+        before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, project, template)
+        return _respond(
+            result, live, kw["format"], project.name, resolve_branding(db, organization, template), before, after,
+        )
 
     endpoint.__signature__ = _route_signature("project_id", definition, project_level=True, dependency=dependency)  # type: ignore[attr-defined]
     endpoint.__doc__ = (
-        f"{definition.title} for this project: {definition.description} `format` is json (default), pdf or csv; "
+        f"{definition.title} for this project: {definition.description} `format` is json (default), pdf, csv or docx; "
         "`include_children` adds readable child projects; `report_template_id` applies an organisation report "
-        "template's branding to the PDF."
+        "template's branding to the PDF and DOCX."
     )
     return endpoint
 
@@ -708,7 +752,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not hold the role required for organisation-wide reports.")
         organization = db.get(Organization, organization_id)
         params = validated_params(live, kw)
-        branding = _branding_for(db, organization, kw["report_template_id"])
+        template = _template_for(db, organization, kw["report_template_id"])
         projects = scope_projects(
             db, current_user, definition=live, organization=organization, root_project=None, include_children=False,
         )
@@ -722,7 +766,11 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
             all_org_projects=live.org_scope == "all_org_projects",
             projects=projects,
         )
-        return _respond(live.collector(db, ctx), live, kw["format"], organization.name, branding)
+        result = live.collector(db, ctx)
+        before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, None, template)
+        return _respond(
+            result, live, kw["format"], organization.name, resolve_branding(db, organization, template), before, after,
+        )
 
     endpoint.__signature__ = _route_signature("organization_id", definition, project_level=False, dependency=dependency)  # type: ignore[attr-defined]
     scope = "every project in the organisation" if definition.org_scope == "all_org_projects" else "projects the caller can read"
@@ -1044,7 +1092,9 @@ __all__ = [
     "organization_catalogue",
     "project_catalogue",
     "readable_projects",
+    "build_result_document",
     "render_csv",
+    "render_docx",
     "render_pdf",
     "report_mcp_tools",
     "scope_projects",

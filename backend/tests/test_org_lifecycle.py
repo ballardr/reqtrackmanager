@@ -511,3 +511,22 @@ def test_delete_succeeds_with_typed_requirement_links_and_action_comments(client
         assert _row_count("artefact_links", "source_id", artefact_id) == 0
         assert _row_count("artefact_links", "target_id", artefact_id) == 0
     assert _row_count("review_comments", "target_id", action_id) == 0
+
+
+def test_delete_succeeds_with_artefact_type_link_rules(client, admin_token):
+    """A rule's entries point at the org's link types with no cascade (a deleted type must never dangle in
+    a rule), so deleting the org must remove rules and entries before the link types (found 2026-10-06 by
+    the link-rules e2e spec's org cleanup returning 500)."""
+    org, token = create_org_admin_in(client, admin_token, "Link Rule Cascade Org")
+    link_types = client.get(f"/api/v1/orgs/{org['id']}/link-types", headers=auth_headers(token)).json()
+    resp = client.put(
+        f"/api/v1/orgs/{org['id']}/artefact-link-rules/requirement",
+        json={"link_type_ids": [link_types[0]["id"], link_types[1]["id"]]}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = client.request("DELETE", f"/api/v1/orgs/{org['id']}", json={"confirm_name": org["name"]},
+                          headers=auth_headers(admin_token))
+    assert resp.status_code == 204, resp.text
+    assert _row_count("artefact_type_link_rules", "organization_id", org["id"]) == 0
+

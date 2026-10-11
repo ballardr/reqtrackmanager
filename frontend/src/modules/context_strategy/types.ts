@@ -639,8 +639,8 @@ export const GUIDING_PRINCIPLE_STATUS_TONE: Record<GuidingPrincipleStatus, impor
 //
 // `GuidingPrincipleLinkKind.GUIDES_DECISION` (§8.5's "Decision -> guided by
 // -> Guiding Principle") is the reserved Decision-target relationship
-// (module docstring) and is deliberately absent here — see
-// `GuidingPrincipleRelationshipsSection.tsx`'s own present-but-reserved text.
+// (module docstring) and is deliberately absent here — Decision links are
+// generic links in the shared Links panel now.
 
 export type GuidingPrincipleLinkKind = "supports_strategy" | "informs_requirement";
 
@@ -766,8 +766,7 @@ export const OPEN_QUESTION_STATUS_TONE: Record<OpenQuestionStatus, import("../..
 // Both untyped "related to" associations (§9.2's own plain field naming, no
 // causal verb, the same as Future State's own links). `RESOLVED_BY_DECISION`
 // (§9.5, the reserved Decision-target relationship, Phase 0 Q5) is
-// deliberately absent here — see `OpenQuestionRelationshipsSection.tsx`'s
-// own docstring for why this section renders no "reserved" note either.
+// deliberately absent here — a Decision resolves a Question through a generic link.
 
 export type OpenQuestionLinkKind = "related_to_strategy" | "related_to_requirement";
 

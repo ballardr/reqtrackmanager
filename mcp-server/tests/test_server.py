@@ -43,8 +43,10 @@ MCP_WRITES_ENABLED = os.environ.get("MCP_WRITES_ENABLED", "false").strip().lower
 
 READ_ONLY_TOOLS = {
     "list_organizations", "list_projects", "get_project",
-    "list_requirements", "get_requirement", "get_requirement_history",
-    "list_change_requests", "get_change_request", "list_change_request_votes",
+    "list_requirements", "get_requirement", "get_requirement_history", "get_artefact_link_graph",
+    "list_artefact_link_types", "list_link_candidate_projects",
+    "search_artefact_link_candidates", "list_artefact_link_browse",
+    "list_change_requests", "get_change_request", "preview_change_request_links", "list_change_request_votes",
     "list_change_request_tasks", "list_change_request_comments",
     "list_requirement_comments", "list_notifications",
     "list_my_reviews_due", "list_project_reviews_due",
@@ -54,7 +56,7 @@ READ_ONLY_TOOLS = {
     # plan's own MCP-tools addendum).
     "list_permissions", "list_custom_roles", "get_custom_role",
 }
-WRITE_TOOLS = {"create_requirement", "update_requirement"}
+WRITE_TOOLS = {"create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link"}
 # AI approval via MCP (docs/decisions.md): approval-type tools, always
 # present when write mode is on (each additionally gated at call time on a
 # live org+project allow_ai_approvals setting — see the tests below).
@@ -91,11 +93,21 @@ def test_health_check_is_reachable_without_auth():
 
 
 @pytest.mark.asyncio
-async def test_tools_are_discoverable():
+async def test_tools_are_discoverable(admin_token):
+    """The core tool set is exactly the expected one. Module-contributed tools are registered
+    lazily from the backend's manifest (and stay registered once any earlier request has loaded
+    them), so they are subtracted first: whether they are present depends on what ran before,
+    which is not what this test is about (their own contract is in `test_module_tools.py`)."""
+    manifest = httpx.get(
+        f"{REQTRACK_API_URL}/api/v1/system/modules/mcp-tools", headers={"Authorization": f"Bearer {admin_token}"},
+        timeout=30,
+    )
+    manifest.raise_for_status()
+    module_tools = {entry["name"] for entry in manifest.json()}
     async with _client(None) as client:
         tools = {t.name for t in await client.list_tools()}
     expected = READ_ONLY_TOOLS | (WRITE_TOOLS | APPROVAL_TOOLS if MCP_WRITES_ENABLED else set())
-    assert tools == expected
+    assert tools - module_tools == expected
 
 
 @pytest.mark.asyncio
@@ -181,6 +193,30 @@ async def test_full_tool_chain_returns_consistent_real_data(admin_token):
         )
         assert len(history.data) >= 1
         assert history.data[0]["version_number"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_artefact_link_graph_returns_the_root_and_validates_arguments(admin_token):
+    """The link graph of a real requirement contains that requirement as its
+    root, and bad arguments are rejected before any backend call."""
+    async with _client(admin_token) as client:
+        projects = (await client.call_tool("list_projects", {})).data
+        if not projects:
+            pytest.skip("No projects visible to the admin account — seed data hasn't been loaded.")
+        project = projects[0]
+        requirements = (await client.call_tool("list_requirements", {"project_id": project["id"]})).data
+        if not requirements:
+            pytest.skip(f"Project {project['name']!r} has no requirements to fetch.")
+        requirement = requirements[0]
+        args = {"project_id": project["id"], "artefact_type": "requirement", "artefact_id": requirement["id"]}
+
+        graph = (await client.call_tool("get_artefact_link_graph", args)).data
+
+        assert graph["root"]["id"] == requirement["id"] and graph["root"]["type"] == "requirement"
+        assert {"nodes", "edges", "truncated", "hidden_count", "unavailable_count"} <= set(graph)
+        for bad in ({"depth": 4}, {"direction": "sideways"}, {"artefact_type": "../x"}, {"artefact_id": "not-a-uuid"}):
+            with pytest.raises(ToolError):
+                await client.call_tool("get_artefact_link_graph", {**args, **bad})
 
 
 @pytest.mark.asyncio
@@ -383,6 +419,77 @@ async def test_create_requirement_creates_a_real_draft_requirement(admin_token):
     # Always starts in draft — no way to create pre-approved (see this
     # tool's own docstring).
     assert created.data["status"] == "draft"
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_artefact_link_tools_round_trip_and_validate_arguments(admin_token):
+    """List the usable link types of a requirement, link it to another, see it in the link graph, then
+    remove the link; bad arguments are rejected before any backend call."""
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    async with _client(admin_token) as client:
+        ids = []
+        for name in ("Link source", "Link target"):
+            created = await client.call_tool(
+                "create_requirement",
+                {"project_id": project_id, "name": name, "component_id": component_id, "category_id": category_id},
+            )
+            ids.append(created.data["id"])
+        base = {"project_id": project_id, "artefact_type": "requirement", "artefact_id": ids[0]}
+
+        options = (await client.call_tool("list_artefact_link_types", base)).data
+        related = next(o for o in options if o["phrase"] == "Related to")
+        assert related["direction"] == "outgoing"
+        assert {"requirement", "requirement_action"} <= {t["type"] for t in related["other_types"]}
+        narrowed = (await client.call_tool("list_artefact_link_types", {**base, "other_type": "requirement"})).data
+        assert any(o["phrase"] == "Related to" for o in narrowed)
+
+        # Finding the other record: a global search by text, one type narrowed by its browse levels.
+        found = (await client.call_tool("search_artefact_link_candidates", {**base, "q": "Link target"})).data
+        assert [(i["type"], i["id"]) for i in found["items"]] == [("requirement", ids[1])]
+        assert (await client.call_tool("search_artefact_link_candidates", {**base, "q": "L"})).data["items"] == []
+        level = (await client.call_tool("list_artefact_link_browse", {**base, "other_type": "requirement"})).data
+        assert level["key"] == "component" and level["options"]
+        narrowed_search = (await client.call_tool("search_artefact_link_candidates", {
+            **base, "other_type": "requirement", "selected": f"component:{level['options'][0]['id']}",
+        })).data
+        assert [i["id"] for i in narrowed_search["items"]] == [ids[1]]
+        for bad_call, bad_args in (
+            ("search_artefact_link_candidates", {"other_type": "Bad Type"}),
+            ("list_artefact_link_browse", {"other_type": "../x"}),
+            ("list_artefact_link_browse", {"other_type": "requirement", "selected": "component:not-an-option"}),
+        ):
+            with pytest.raises(ToolError):
+                await client.call_tool(bad_call, {**base, **bad_args})
+
+        created = (await client.call_tool("create_artefact_link", {
+            **base, "link_type_id": related["link_type_id"], "direction": related["direction"],
+            "other_type": "requirement", "other_id": ids[1],
+        })).data
+        assert created["phrase"] == "Related to" and created["other"]["id"] == ids[1]
+
+        graph = (await client.call_tool("get_artefact_link_graph", base)).data
+        assert {n["id"] for n in graph["nodes"]} == set(ids)
+
+        deleted = (await client.call_tool("delete_artefact_link", {**base, "link_id": created["id"]})).data
+        assert deleted == {"deleted": True, "link_id": created["id"]}
+        assert len((await client.call_tool("get_artefact_link_graph", base)).data["nodes"]) == 1
+
+        valid = {**base, "link_type_id": related["link_type_id"], "direction": "outgoing", "other_type": "requirement", "other_id": ids[1]}
+        for bad in ({"direction": "sideways"}, {"other_type": "../x"}, {"link_type_id": "not-a-uuid"}, {"artefact_id": "nope"}):
+            with pytest.raises(ToolError):
+                await client.call_tool("create_artefact_link", {**valid, **bad})
+        with pytest.raises(ToolError):
+            await client.call_tool("list_artefact_link_types", {**base, "other_type": "Bad Type"})
+
+        # Nested-project linking: the candidate list always offers the project itself, and a malformed
+        # or unrelated `other_project_id` is rejected.
+        candidates = (await client.call_tool("list_link_candidate_projects", {"project_id": project_id})).data
+        assert [(i["id"], i["relation"]) for i in candidates["items"]] == [(project_id, "same")]
+        with pytest.raises(ToolError):
+            await client.call_tool("list_artefact_link_types", {**base, "other_project_id": "nope"})
+        with pytest.raises(ToolError):
+            await client.call_tool("list_artefact_link_types", {**base, "other_project_id": str(uuid.uuid4())})
 
 
 @pytest.mark.asyncio

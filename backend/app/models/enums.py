@@ -184,6 +184,18 @@ class ChangeRequestKind(str, enum.Enum):
     REMOVE_LINK = "remove_link"
 
 
+class ProposedLinkOutcome(str, enum.Enum):
+    """What became of a link proposed on a change request: waiting for a decision
+    (`pending`), created on approval (`merged`), left out by the approver
+    (`declined`, or any link on a rejected or withdrawn request), or not valid at
+    approval and so not created (`skipped`, with a reason)."""
+
+    PENDING = "pending"
+    MERGED = "merged"
+    DECLINED = "declined"
+    SKIPPED = "skipped"
+
+
 class ChangeRequestStatus(str, enum.Enum):
     """Lifecycle states for a change request (introduction, C-G-03)."""
 
@@ -233,8 +245,45 @@ class ArtefactType(str, enum.Enum):
     REQUIREMENT_ACTION = "requirement_action"
 
 
+class LinkFlow(str, enum.Enum):
+    """Which way a typed link points in a traceability chain
+    (`RequirementLinkTypeDefinition.flow`), read from the link's source to its
+    target using the type's `forward_name`.
+
+    NONE: no direction (symmetric, e.g. "Related to"); also every type an
+        organisation has not classified.
+    FORWARD_IS_UPSTREAM: the target is a source/origin of the link's source
+        (e.g. "Derives from").
+    FORWARD_IS_DOWNSTREAM: the target depends on or follows from the link's
+        source (e.g. "Is implemented by").
+    """
+
+    NONE = "none"
+    FORWARD_IS_UPSTREAM = "forward_is_upstream"
+    FORWARD_IS_DOWNSTREAM = "forward_is_downstream"
+
+
+class LinkNestingScope(str, enum.Enum):
+    """Whether, and in which direction, a link type may join artefacts of a
+    project and one of its ancestors or descendants
+    (`RequirementLinkTypeDefinition.nesting_scope`).
+
+    SAME_PROJECT: both ends must be in one project (cross-level linking is off
+        for this type).
+    UPSTREAM_IN_ANCESTOR: the *upstream* end (per the type's `LinkFlow`) must be
+        in the same project as the downstream end or one of its ancestors; a
+        pain point may sit above a requirement, never below it. Needs a `flow`
+        other than `NONE`.
+    ANCESTOR_EITHER_WAY: either end may be in the ancestor project.
+    """
+
+    SAME_PROJECT = "same_project"
+    UPSTREAM_IN_ANCESTOR = "upstream_in_ancestor"
+    ANCESTOR_EITHER_WAY = "ancestor_either_way"
+
+
 class PermissionLevel(str, enum.Enum):
-    """The four-tier taxonomy crossed with every registered artefact type
+    """The permission-level taxonomy crossed with every registered artefact type
     (`app.modules.registry.get_all_registered_artefact_types`) to derive
     the Fine-Grained Access Control permission-atom vocabulary
     (`docs/plans/core-fine-grained-access-control-plan.md` Phase 0 Q1/Phase
@@ -252,6 +301,11 @@ class PermissionLevel(str, enum.Enum):
         power to directly edit or approve an existing one.
     MANAGE: edit/manage an existing artefact of this type, short of
         approving/baselining it.
+    LINK: set and remove links on an existing artefact of this type
+        (`docs/plans/platform-enhancements-2026-10-plan.md` Phase 6d) and
+        nothing else. Link authoring accepts `LINK` or `MANAGE`; `MANAGE` is
+        deliberately not rewritten to imply it, so the vocabulary stays a flat
+        set of independent atoms.
     APPROVE_BASELINE: approve, baseline, or otherwise finalise an artefact
         of this type — the tier Decision Management's own per-Decision-Type
         approval scoping (Phase 5) is expressed against.
@@ -260,6 +314,7 @@ class PermissionLevel(str, enum.Enum):
     VIEW = "view"
     PROPOSE_CREATE = "propose_create"
     MANAGE = "manage"
+    LINK = "link"
     APPROVE_BASELINE = "approve_baseline"
 
 

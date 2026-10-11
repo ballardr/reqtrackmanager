@@ -41,6 +41,7 @@ class NotificationType(str, enum.Enum):
     COMMENT_ADDED = "comment_added"
     REQUIREMENT_REVIEW_DUE = "requirement_review_due"
     STAGE_REVIEW_AUTO_APPROVED = "stage_review_auto_approved"
+    PROJECT_MEMBERS_CHANGED_BY_ORG = "project_members_changed_by_org"
 
     # Compliance Module (docs/compliance-module-plan.md Phase 10; docs/
     # Compliance_Module_Requirements.md §18) — every event §18 lists.

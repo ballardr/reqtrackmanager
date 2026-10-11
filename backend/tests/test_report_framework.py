@@ -42,6 +42,7 @@ from app.services.report_framework import (
     ReportSection,
     build_report_routers,
     render_csv,
+    render_docx,
     render_pdf,
     report_mcp_tools,
 )
@@ -414,13 +415,19 @@ def test_json_shape_and_pdf_csv_files(client, admin_token, probe):
     pdf = _get(probe, token, _project_url(project["id"]), format="pdf")
     assert pdf.headers["content-type"] == "application/pdf" and pdf.content.startswith(b"%PDF")
 
+    docx = _get(probe, token, _project_url(project["id"]), format="docx")
+    assert docx.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    assert docx.headers["content-disposition"] == 'attachment; filename="Format Co A-probe-all.docx"'
+    assert docx.content[:2] == b"PK"
+    _get(probe, token, _project_url(project["id"]), expect=422, format="odt")
+
 
 def test_render_functions_handle_empty_results_and_escape_markup():
     result = ReportResult("k", "T", "Scope", datetime.now(UTC), [MARKUP], [ReportSection("s", "S", ["A"], [[MARKUP]], note=MARKUP)])
-    assert render_pdf(result).startswith(b"%PDF")
+    assert render_pdf(result).startswith(b"%PDF") and render_docx(result)[:2] == b"PK"
     empty = ReportResult("k", "T", "Scope", datetime.now(UTC), [], [])
     assert render_csv(empty).decode() == "\r\n"
-    assert render_pdf(empty).startswith(b"%PDF")
+    assert render_pdf(empty).startswith(b"%PDF") and render_docx(empty)[:2] == b"PK"
     assert render_csv(ReportResult("k", "T", "S", datetime.now(UTC), [], [ReportSection("s", "S", ["=A"], [["+b"]])])).decode() == "'=A\r\n'+b\r\n"
 
 
@@ -435,6 +442,9 @@ def test_template_branding_applies_to_pdf_and_foreign_templates_are_rejected(cli
     plain = _get(probe, token, _project_url(project["id"]), format="pdf").content
     branded = _get(probe, token, _project_url(project["id"]), format="pdf", report_template_id=template_id).content
     assert branded.startswith(b"%PDF") and branded != plain
+    docx_plain = _get(probe, token, _project_url(project["id"]), format="docx").content
+    docx_branded = _get(probe, token, _project_url(project["id"]), format="docx", report_template_id=template_id).content
+    assert docx_branded[:2] == b"PK" and docx_branded != docx_plain
     assert _get(probe, token, _org_url(org["id"]), format="pdf", report_template_id=template_id).content.startswith(b"%PDF")
 
     other, _, other_admin = _setup(client, admin_token, "Brand Other")
@@ -443,6 +453,80 @@ def test_template_branding_applies_to_pdf_and_foreign_templates_are_rejected(cli
     _get(probe, token, _project_url(project["id"]), expect=400, report_template_id=foreign.json()["id"])
     _get(probe, token, _project_url(project["id"]), expect=400, report_template_id=str(uuid.uuid4()))
     _get(probe, token, _project_url(project["id"]), expect=422, report_template_id="nope")
+
+
+# --- Authored content (Phase 10) ----------------------------------------------------------------
+
+
+def _docx_paragraphs(content: bytes) -> list[str]:
+    from io import BytesIO
+
+    from docx import Document
+
+    return [p.text for p in Document(BytesIO(content)).paragraphs]
+
+
+def _content(token, client, url, entries):
+    resp = client.put(url, json={"content": entries}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+
+
+def test_module_report_pdf_and_docx_carry_the_per_type_content_in_order(client, admin_token, probe):
+    org, project, token = _setup(client, admin_token, "Content Co")
+    key = f"{KEY}.p1"
+    _content(token, client, f"/api/v1/projects/{project['id']}/report-config", [{
+        "report_key": key, "intro": "Project intro for {{project_name}}",
+        "chapters": [{"title": "Scope chapter", "body": "Chapter body"}],
+        "appendices": [{"title": "Closing appendix", "body": "Appendix body"}],
+    }])
+    # Another report type's content must not appear in this report.
+    _content(token, client, f"/api/v1/orgs/{org['id']}/report-defaults", [
+        {"report_key": f"{KEY}.p3", "intro": "Belongs to a different report"},
+        {"report_key": "*", "chapters": [{"title": "Org all-reports chapter", "body": "x"}]},
+    ])
+
+    docx = _get(probe, token, _project_url(project["id"]), format="docx")
+    paragraphs = _docx_paragraphs(docx.content)
+    joined = "\n".join(paragraphs)
+    assert "Project intro for Content Co A" in joined
+    assert "Different report" not in joined and "Belongs to a different report" not in joined
+    # The project's chapters beat the organisation's "all reports" chapters (tier first), and the order is
+    # intro, chapters, the report itself, appendices.
+    assert "Org all-reports chapter" not in joined
+    order = [joined.index(t) for t in ("Project intro", "Scope chapter", "Content Co A · generated", "Closing appendix")]
+    assert order == sorted(order)
+    assert _get(probe, token, _project_url(project["id"]), format="pdf").content.startswith(b"%PDF")
+
+    # JSON and CSV carry no authored content.
+    assert "Project intro" not in _get(probe, token, _project_url(project["id"]), format="csv").text
+    assert "Project intro" not in _get(probe, token, _project_url(project["id"])).text
+
+    # Another report in the same module sees only the organisation's "all reports" entry.
+    other = "\n".join(_docx_paragraphs(_get(probe, token, _project_url(project["id"], "probe-project-only"), format="docx").content))
+    assert "Org all-reports chapter" in other and "Project intro" not in other
+
+
+def test_module_report_uses_the_selected_template_then_the_organisation_for_org_runs(client, admin_token, probe):
+    org, project, token = _setup(client, admin_token, "Tier Co")
+    key = f"{KEY}.p1"
+    template = client.post(
+        f"/api/v1/orgs/{org['id']}/report-templates",
+        json={"name": "Content T", "content": [{"report_key": key, "intro": "Template intro"}]}, headers=auth_headers(token),
+    ).json()
+    _content(token, client, f"/api/v1/orgs/{org['id']}/report-defaults", [{"report_key": key, "intro": "Org intro {{project_name}}"}])
+    _content(token, client, f"/api/v1/projects/{project['id']}/report-config", [{"report_key": key, "intro": "Project intro"}])
+
+    plain = "\n".join(_docx_paragraphs(_get(probe, token, _project_url(project["id"]), format="docx").content))
+    assert "Project intro" in plain and "Template intro" not in plain
+    templated = "\n".join(_docx_paragraphs(
+        _get(probe, token, _project_url(project["id"]), format="docx", report_template_id=template["id"]).content,
+    ))
+    assert "Template intro" in templated and "Project intro" not in templated
+
+    # An organisation-wide run has no project tier: the organisation's content applies, with the
+    # organisation standing in for the project name.
+    org_run = "\n".join(_docx_paragraphs(_get(probe, token, _org_url(org["id"]), format="docx").content))
+    assert "Org intro Tier Co" in org_run and "Project intro" not in org_run
 
 
 # --- Catalogue -------------------------------------------------------------------------------
@@ -461,7 +545,7 @@ def test_project_catalogue_lists_enabled_reports_with_parameters(client, admin_t
     entry = entries["probe-all"]
     assert entry["scope"] == "project" and entry["supports_include_children"] is True
     assert entry["supports_project_filter"] is False
-    assert entry["path"] == _project_url(project["id"]) and entry["formats"] == ["json", "pdf", "csv"]
+    assert entry["path"] == _project_url(project["id"]) and entry["formats"] == ["json", "pdf", "csv", "docx"]
     assert entry["module_name"] == "Report Probe"
     params = {p["name"]: p for p in entry["params"]}
     assert params["mode"]["choices"] == ["a", "b"] and params["limit"]["minimum"] == 1 and params["limit"]["maximum"] == 5

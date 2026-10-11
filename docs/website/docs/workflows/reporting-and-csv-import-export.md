@@ -4,17 +4,17 @@ sidebar_position: 9
 
 # Reporting and CSV import/export
 
-## Generating a PDF or CSV report
+## Generating a PDF, Word or CSV report
 
 Open a project's **Reports** page:
 
 1. Filter by component, category, status, or keyword to scope what's included.
-2. Optionally pick one of the organisation's **report templates** for a PDF export — an accent colour, cover page, and footer, for consistent on-brand output.
-3. Generate the report — a PDF includes the project's own introduction/chapters/appendices (**Project Admin → Report Setup**), falling back to the organisation's defaults field by field wherever the project leaves one blank.
+2. Optionally pick one of the organisation's **report templates** for a PDF or Word export — an accent colour, cover page, and footer, for consistent on-brand output.
+3. Generate the report with **Generate PDF**, or choose **More formats** for an editable Word file or CSV — a PDF or Word file includes the introduction, chapters and appendices written for that report type (**Project Admin → Report Setup**), falling back to the parent project's and then the organisation's defaults field by field wherever the project leaves one blank. See [Report content](../core-features/reports-and-export.md#report-content).
 
 | Reports page |
 | --- |
-| Filtered PDF/CSV export with a selectable organisation branding template |
+| Filtered PDF/Word/CSV export with a selectable organisation branding template |
 | ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
 
 ## Exporting requirements to CSV

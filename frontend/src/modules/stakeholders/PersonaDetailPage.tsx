@@ -37,6 +37,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { DetailLayout } from "../../components/DetailLayout";
 import { OverridePill } from "../../components/OverridePill";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -48,7 +50,6 @@ import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable }
 import { RecordDiscussion } from "./RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
-import { RelationshipsPanel } from "./RelationshipsPanel";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Persona, PersonaFieldValues, PersonaVersion } from "./types";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA_WEIGHT_SOURCE_LABEL } from "./types";
@@ -176,7 +177,15 @@ export function PersonaDetailPage() {
   const weightInputValid = weightInput.trim() !== "" && Number.isFinite(weightInputNumber) && weightInputNumber > 0;
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="persona"
+          artefactId={persona.id}
+        />
+      }
+    >
       <Link to={backLink}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{persona.name}</h1>
@@ -295,8 +304,6 @@ export function PersonaDetailPage() {
 
         <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listPersonaNeeds(projectId ?? "", persona.id)} />
 
-        <RelationshipsPanel projectId={projectId} holder="persona" holderId={persona.id} />
-
         {!readOnlyInProject && (
           <RecordLifecycleControls
             noun="Persona"
@@ -344,6 +351,6 @@ export function PersonaDetailPage() {
           onSave={saveEdit}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }

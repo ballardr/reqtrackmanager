@@ -13,50 +13,21 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { resolveNavIcon } from "../modules/navIcons";
+import type { ProjectNavItem } from "../navigation/projectNav";
 import { installedModules } from "../modules/registry";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
 import { NotificationBell } from "./NotificationBell";
+import { NavRailLink } from "./NavRailLink";
+import { ProjectNavSection } from "./ProjectNavSection";
 import { Tooltip } from "./Tooltip";
 
-/**
- * One nav-rail row. The tooltip only wraps the link while the rail is
- * collapsed to icons-only — while expanded, the link already shows its own
- * text label (`nav-label`), so a hover tooltip repeating that same text is
- * pure noise, exactly the complaint that motivated this. `.nav-link` itself
- * is `width: 100%` (see theme.css) so the whole row is clickable/highlit,
- * not just the icon+text's own shrink-wrapped width.
- *
- * Exported (module system follow-up, compliance-module-plan.md Phase 18) so
- * a Tier A module's own `globalNavItems`/`standaloneWorkspaces` render
- * functions (`modules/types.ts`) can build visually-consistent rail links
- * themselves — `Layout.tsx` invites those contributions to render but has
- * no reason to know what any specific one looks like beyond that shared
- * shape, the same "module owns its own UI, core just mounts it" boundary
- * `orgAdminSections` already establishes for `OrgAdminPage.tsx`.
- */
-// Matches theme.css's `@media (max-width: 860px)` nav-rail breakpoint,
-// which force-collapses the rail to icon-only regardless of the user's own
-// `nav_rail_collapsed` preference (not enough room for a full-width rail
-// alongside content below this width). `NavRailLink`'s tooltip only makes
-// sense when the label text is actually hidden, so anything that decides
-// "is the rail showing icon-only right now" needs to account for this
-// CSS-only forced collapse too, not just the JS preference — otherwise a
-// user with the rail set to expanded gets no tooltips at all once the CSS
-// has forced their links down to icons (see `railIconOnly` below).
+// Matches theme.css's `@media (max-width: 860px)` nav-rail breakpoint, which force-collapses
+// the rail to icon-only regardless of the user's own `nav_rail_collapsed` preference (not
+// enough room for a full-width rail alongside content below this width). Anything that decides
+// "is the rail showing icon-only right now" needs to account for this CSS-only forced
+// collapse too, not just the JS preference (see `railIconOnly` below) — otherwise a user with
+// the rail set to expanded gets no tooltips once the CSS has forced their links to icons.
 const MOBILE_BREAKPOINT_PX = 860;
-
-export function NavRailLink({
-  to, label, icon, exact = false, railCollapsed,
-}: { to: string; label: string; icon: ReactNode; exact?: boolean; railCollapsed: boolean }) {
-  const location = useLocation();
-  const active = exact ? location.pathname === to : location.pathname.startsWith(to);
-  const link = (
-    <Link to={to} className={`nav-link${active ? " active" : ""}`} aria-label={label}>
-      {icon} <span className="nav-label">{label}</span>
-    </Link>
-  );
-  return railCollapsed ? <Tooltip label={label}>{link}</Tooltip> : link;
-}
 
 /**
  * App shell: a fixed top bar plus a pinned, full-height nav rail (U-P-02,
@@ -151,6 +122,44 @@ function LayoutShell({ children }: { children: ReactNode }) {
     }
   }
 
+  // The Project nav section's items, in product-default order: the core entries, then one per
+  // (module, nav entry) pair for every currently-enabled module that declares a frontend
+  // manifest, Tier A or Tier B alike (compliance-module-plan.md Phase 3; several entries per
+  // module since Module 1 — Context & Strategy — Phase 7.1). A module whose manifest was
+  // rejected (e.g. a Tier B frame_url outside the deployment's allowlist) simply has no entry,
+  // since `get_frontend_manifest` already omitted it server-side. `ProjectNavSection` applies
+  // the user's order/"More" preference to this list without knowing what any item is.
+  const projectNavItems: ProjectNavItem[] = projectId
+    ? [
+        { key: "overview", to: `/projects/${projectId}`, exact: true, label: strings.nav.overview, icon: <LayoutDashboard size={16} /> },
+        { key: "requirements", to: `/projects/${projectId}/requirements`, label: strings.nav.requirements, icon: <ListChecks size={16} /> },
+        { key: "change-requests", to: `/projects/${projectId}/change-requests`, label: strings.nav.changeRequests, icon: <GitPullRequest size={16} /> },
+        { key: "actions", to: `/projects/${projectId}/actions`, label: strings.nav.actions, icon: <CheckSquare size={16} /> },
+        { key: "files", to: `/projects/${projectId}/files`, label: strings.files.title, icon: <Files size={16} /> },
+        { key: "reports", to: `/projects/${projectId}/reports`, label: strings.nav.reports, icon: <FileText size={16} /> },
+        { key: "reviews-due", to: `/projects/${projectId}/reviews-due`, label: strings.reviews.projectTitle, icon: <Clock size={16} /> },
+        { key: "history", to: `/projects/${projectId}/history`, label: strings.history.title, icon: <History size={16} /> },
+        { key: "admin", to: `/projects/${projectId}/admin`, label: strings.nav.admin, icon: <Settings size={16} /> },
+        ...enabledModules.flatMap((moduleEntry) => {
+          const manifest = moduleEntry.frontend_manifest;
+          if (!manifest) return [];
+          const entries = [
+            { nav_label: manifest.nav_label, nav_path: manifest.nav_path, nav_icon: manifest.nav_icon },
+            ...(manifest.additional_nav_entries ?? []),
+          ];
+          return entries.map((entry) => {
+            const EntryIcon = resolveNavIcon(entry.nav_icon);
+            return {
+              key: `${moduleEntry.module_key}:${entry.nav_path}`,
+              to: entry.nav_path,
+              label: entry.nav_label,
+              icon: <EntryIcon size={16} />,
+            };
+          });
+        }),
+      ]
+    : [];
+
   useEffect(() => {
     if (!user) return;
     api.get<SystemVersion>("/api/v1/system/version").then(setBackendVersion);
@@ -206,53 +215,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
           className={`nav-rail stack ${railIconOnly ? "nav-rail-icons" : ""}`}
           style={{ gap: "0.15rem" }}
         >
-          {projectId && (
-            <>
-              <div className="nav-section-label">{strings.nav.projectSectionLabel}</div>
-              <NavRailLink to={`/projects/${projectId}`} exact label={strings.nav.overview} icon={<LayoutDashboard size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to={`/projects/${projectId}/requirements`} label={strings.nav.requirements} icon={<ListChecks size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to={`/projects/${projectId}/change-requests`} label={strings.nav.changeRequests} icon={<GitPullRequest size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to={`/projects/${projectId}/actions`} label={strings.nav.actions} icon={<CheckSquare size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to={`/projects/${projectId}/files`} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to={`/projects/${projectId}/reports`} label={strings.nav.reports} icon={<FileText size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to={`/projects/${projectId}/reviews-due`} label={strings.reviews.projectTitle} icon={<Clock size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to={`/projects/${projectId}/history`} label={strings.history.title} icon={<History size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to={`/projects/${projectId}/admin`} label={strings.nav.admin} icon={<Settings size={16} />} railCollapsed={railIconOnly} />
-              {/* Module-contributed nav entries (compliance-module-plan.md
-                  Phase 3, extended to multiple entries per module by Module
-                  1 — Context & Strategy — Phase 7.1, 2026-09-29) — one row
-                  per (module, nav entry) pair, for every currently-enabled
-                  module that declares a frontend manifest, Tier A or Tier B
-                  alike; a module whose manifest was rejected (e.g. a Tier B
-                  frame_url outside the deployment's allowlist) simply has no
-                  entry here, since `get_frontend_manifest` already omitted
-                  it server-side. Every module before Context & Strategy
-                  (Compliance, Decision Management) only ever contributes its
-                  manifest's own primary entry — `additional_nav_entries`
-                  defaults to `[]`, so `.flatMap` here is a no-op change of
-                  shape for them, not of behaviour. */}
-              {enabledModules.flatMap((moduleEntry) => {
-                const manifest = moduleEntry.frontend_manifest;
-                if (!manifest) return [];
-                const entries = [
-                  { nav_label: manifest.nav_label, nav_path: manifest.nav_path, nav_icon: manifest.nav_icon },
-                  ...(manifest.additional_nav_entries ?? []),
-                ];
-                return entries.map((entry) => {
-                  const EntryIcon = resolveNavIcon(entry.nav_icon);
-                  return (
-                    <NavRailLink
-                      key={`${moduleEntry.module_key}:${entry.nav_path}`}
-                      to={entry.nav_path}
-                      label={entry.nav_label}
-                      icon={<EntryIcon size={16} />}
-                      railCollapsed={railIconOnly}
-                    />
-                  );
-                });
-              })}
-            </>
-          )}
+          {projectId && <ProjectNavSection projectId={projectId} items={projectNavItems} railCollapsed={railIconOnly} />}
           {/* A module-contributed "standalone workspace" section (Phase
               18's "Standard" is the first one) — a sibling structural
               pattern to "Project" above, not nested inside it. See this

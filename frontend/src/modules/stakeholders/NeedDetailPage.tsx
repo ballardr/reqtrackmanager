@@ -18,6 +18,8 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project, Requirement } from "../../api/types";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { DetailLayout } from "../../components/DetailLayout";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -125,7 +127,15 @@ export function NeedDetailPage() {
   );
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="stakeholder_need"
+          artefactId={need.id}
+        />
+      }
+    >
       <Link to={`/projects/${projectId}/modules/stakeholders/needs`}>← Needs</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{need.name}</h1>
@@ -212,6 +222,6 @@ export function NeedDetailPage() {
           onSave={saveEdit}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }

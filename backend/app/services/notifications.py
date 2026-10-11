@@ -96,7 +96,6 @@ def notify(
         return None
 
     pref = _get_preference(db, user.id, notification_type)
-    ui_enabled = pref.ui_enabled if pref else True
     email_enabled = pref.email_enabled if pref else True
 
     notification = Notification(
@@ -109,11 +108,8 @@ def notify(
         entity_id=entity_id,
         created_at=datetime.now(UTC),
     )
-    if not ui_enabled:
-        # Still recorded (so read-state / digest bookkeeping stays simple),
-        # but hidden from the UI list via a null read_at is irrelevant here;
-        # the notifications endpoint filters by preference at query time.
-        pass
+    # A UI opt-out still records the row (digest bookkeeping stays simple);
+    # `routers.notifications.list_notifications` hides it at query time.
     db.add(notification)
 
     if email_enabled and user.email_digest_mode == DigestMode.INSTANT:
@@ -164,11 +160,20 @@ async def run_digest_loop() -> None:
 
 
 async def send_daily_digests(db: Session) -> None:
-    """Batches un-emailed notifications for users on daily digest mode into one email each (C-N-05)."""
+    """Batches un-emailed notifications for users on daily digest mode into one email each (C-N-05).
+
+    Types the user has opted out of by email (`email_enabled` false) are left out.
+    """
     users = db.scalars(select(User).where(User.email_digest_mode == DigestMode.DAILY)).all()
     for user in users:
+        email_opted_out = select(NotificationPreference.type).where(
+            NotificationPreference.user_id == user.id, NotificationPreference.email_enabled.is_(False)
+        )
         pending = db.scalars(
-            select(Notification).where(Notification.user_id == user.id, Notification.emailed_at.is_(None))
+            select(Notification).where(
+                Notification.user_id == user.id, Notification.emailed_at.is_(None),
+                Notification.type.not_in(email_opted_out),
+            )
         ).all()
         if not pending:
             continue

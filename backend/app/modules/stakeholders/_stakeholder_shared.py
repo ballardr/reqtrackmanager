@@ -303,7 +303,8 @@ def add_represents(
     """Links `stakeholder` to `persona`, audit-logs and commits (409 on a
     duplicate or an incompatible pair)."""
     link = apply_value_error_as_conflict(
-        add_represents_link, db, stakeholder, persona, actor, organization_id=organization_id
+        add_represents_link, db, stakeholder, persona, actor, organization_id=organization_id,
+        project_id=stakeholder.project_id,
     )
     log_event(db, entity_type=STAKEHOLDER_ARTEFACT_TYPE, entity_id=stakeholder.id, action="represents_added",
               actor_id=actor.id, organization_id=stakeholder.organization_id, project_id=stakeholder.project_id,

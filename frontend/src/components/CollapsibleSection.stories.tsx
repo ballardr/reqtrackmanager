@@ -3,6 +3,7 @@ import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
 import { AuthContext } from "../context/AuthContextValue";
+import { applyUiPreferencePatch } from "../context/uiPreferencePatch";
 import { buildUser } from "../testing/storybook-helpers";
 import { CollapsibleSection } from "./CollapsibleSection";
 
@@ -30,7 +31,9 @@ function Interactive({ variant = "card" as "card" | "plain", defaultCollapsed = 
         logout: () => {},
         refreshUser: async () => {},
         setUiPreference: (key, value) =>
-          setUser((u) => ({ ...u, ui_preferences: { ...u.ui_preferences, [key]: value } })),
+          setUser((u) => ({ ...u, ui_preferences: applyUiPreferencePatch(u.ui_preferences, { [key]: value }) })),
+        setUiPreferences: async (patch) =>
+          setUser((u) => ({ ...u, ui_preferences: applyUiPreferencePatch(u.ui_preferences, patch) })),
       }}
     >
       <CollapsibleSection sectionKey="storyExample" title="Personal Access Tokens" variant={variant} defaultCollapsed={defaultCollapsed}>

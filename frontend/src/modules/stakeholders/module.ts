@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { ProjectScoringSettings } from "../../components/ProjectScoringSettings";
 import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
+import { NEED_STATUS_LABEL, PERSONA_STATUS_LABEL, STAKEHOLDER_STATUS_LABEL } from "./types";
 import { NeedDetailPage } from "./NeedDetailPage";
 import { OrgPersonasPanel } from "./OrgPersonasPanel";
 import { OrgPersonaTypesPanel } from "./OrgPersonaTypesPanel";
@@ -48,6 +49,12 @@ export const moduleDefinition: TierAModuleDefinition = {
     stakeholder: (projectId, id) => `/projects/${projectId}/modules/stakeholders/stakeholders/${id}`,
     stakeholder_need: (projectId, id) => `/projects/${projectId}/modules/stakeholders/needs/${id}`,
   },
+  artefactStatusLabels: {
+    persona: PERSONA_STATUS_LABEL,
+    stakeholder: STAKEHOLDER_STATUS_LABEL,
+    stakeholder_need: NEED_STATUS_LABEL,
+  },
+  artefactInactiveStatuses: { persona: ["retired"], stakeholder: ["retired"], stakeholder_need: ["retired"] },
   routes: [
     { path: "/projects/:projectId/modules/stakeholders/personas", element: createElement(ProjectPersonasPage) },
     { path: "/projects/:projectId/modules/stakeholders/personas/:personaId", element: createElement(PersonaDetailPage) },

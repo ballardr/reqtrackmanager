@@ -46,6 +46,15 @@ note for that atom's full, deliberately documented scope.
 """
 
 
+ALL_ARTEFACT_TYPES = "*"
+"""The `artefact_type` of an "every record type" atom (`*:link:`): held once, it
+covers every artefact type registered now or later, so a module enabled next month
+is included without the grant being edited (Phase 6d of
+`docs/plans/platform-enhancements-2026-10-plan.md`). Resolved by
+`app.services.rbac.permission_satisfied`; it has no sub-type form.
+"""
+
+
 def encode_permission(artefact_type: str, level: str, subtype: str | None = None) -> str:
     """Encodes an artefact-type permission atom as the flat string
     `CustomRolePermission.permission`/`ModuleRoleDefinition.permissions`
@@ -106,14 +115,24 @@ def get_all_permissions(db: Session, organization_id: uuid.UUID) -> list[Permiss
     validation `validate_permission_key` (below) performs.
 
     Returns:
-        Every currently-valid `Permission` — artefact-type atoms first (by
+        Every currently-valid `Permission` — the "every record type" atom for
+        each level first (`ALL_ARTEFACT_TYPES`), then artefact-type atoms (by
         `get_all_registered_artefact_types()` in sorted order, then by
         `PermissionLevel`'s own declaration order, wildcard before any
         specific sub-type), followed by the administrative permissions.
     """
     from app.modules.registry import get_all_registered_artefact_types, get_subtypes
 
-    permissions: list[Permission] = []
+    permissions: list[Permission] = [
+        Permission(
+            key=encode_permission(ALL_ARTEFACT_TYPES, level.value),
+            label=f"all record types — {level.value}",
+            artefact_type=ALL_ARTEFACT_TYPES,
+            level=level.value,
+            subtype=None,
+        )
+        for level in PermissionLevel
+    ]
     for artefact_type in sorted(get_all_registered_artefact_types()):
         for level in PermissionLevel:
             permissions.append(

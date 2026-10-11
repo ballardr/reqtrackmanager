@@ -10,8 +10,10 @@ on (requirements in `services.reports`, any module's report in
 - `title_flowables`, `build_pdf`: the cover/title block, footer and A4 document
   build, parameterised by page size so tall requirement tables and wide module
   tables use the same shell.
-- `markdown_to_flowables` and `resolve_report_images`: the restricted
-  Markdown-to-PDF renderer and the tenant-checked image lookup it relies on.
+- `image_flowable` and `resolve_report_images`: the PDF image builder and the
+  tenant-checked image lookup every renderer's images come through. The
+  neutral document model and its Markdown reader live in `services.report_model`;
+  the renderers are `report_pdf` and `report_docx`.
 - `safe`, `styled_table`: ReportLab-markup escaping and the accent-coloured
   table builder.
 
@@ -38,15 +40,12 @@ from dataclasses import dataclass
 from uuid import UUID
 from xml.sax.saxutils import escape as _xml_escape
 
-from markdown_it import MarkdownIt
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
     Image,
-    ListFlowable,
-    ListItem,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -61,7 +60,6 @@ from app.models.organization import Organization, ReportTemplate
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.files import read_file
 
-_md = MarkdownIt()
 STYLES = getSampleStyleSheet()
 _MAX_IMAGE_WIDTH = A4[0] - 4 * cm  # matches SimpleDocTemplate's leftMargin+rightMargin default (2cm each)
 _ATTACHMENT_REF = re.compile(r"attachment:([0-9a-fA-F-]{36})")
@@ -238,7 +236,7 @@ def styled_table(data: list[list], *, col_widths: list[float], accent_color, com
     return table
 
 
-def _image_flowable(image_bytes: bytes):
+def image_flowable(image_bytes: bytes):
     """Builds a page-width-constrained ReportLab `Image` flowable, or
     `None` if `image_bytes` isn't a decodable image — the same
     "a bad image must never break report generation" handling used for the
@@ -252,75 +250,6 @@ def _image_flowable(image_bytes: bytes):
         return img
     except Exception:  # noqa: BLE001 - malformed/unsupported image content must never break report generation
         return None
-
-
-def markdown_to_flowables(markdown_text: str, images: dict[str, bytes] | None = None) -> list:
-    """Converts a Markdown string into a list of ReportLab flowables.
-
-    Covers headings, paragraphs, bullet lists and images on their own line —
-    enough for introduction/appendix style sections without a full HTML
-    rendering stack.
-
-    Args:
-        markdown_text: The Markdown source.
-        images: Maps an image reference (as it appears in
-            `![alt](ref)`, e.g. `"attachment:<uuid>"`) to already-resolved
-            image bytes. A paragraph consisting of *only* an image (the
-            normal "image on its own line" Markdown shape) is rendered as
-            a `reportlab.platypus.Image`; a reference missing from `images`
-            (not resolved, wrong org, not actually an image) is skipped
-            silently rather than failing report generation. Images mixed
-            inline with other paragraph text are not supported — the
-            paragraph falls back to its literal escaped text.
-
-    Returns:
-        The flowables (empty for blank input).
-    """
-    flowables: list = []
-    if not markdown_text.strip():
-        return flowables
-    images = images or {}
-
-    tokens = _md.parse(markdown_text)
-    i = 0
-    heading_styles = {
-        "h1": STYLES["Heading1"], "h2": STYLES["Heading2"], "h3": STYLES["Heading3"],
-        "h4": STYLES["Heading4"], "h5": STYLES["Heading4"], "h6": STYLES["Heading4"],
-    }
-    while i < len(tokens):
-        token = tokens[i]
-        if token.type == "heading_open":
-            text = safe(tokens[i + 1].content)
-            flowables.append(Paragraph(text, heading_styles.get(token.tag, STYLES["Heading3"])))
-            i += 3
-        elif token.type == "paragraph_open":
-            inline = tokens[i + 1]
-            image_children = [c for c in (inline.children or []) if c.type == "image"]
-            if len(image_children) == 1 and len(inline.children) == 1:
-                ref = image_children[0].attrs.get("src", "")
-                image_bytes = images.get(ref)
-                flowable = _image_flowable(image_bytes) if image_bytes else None
-                if flowable is not None:
-                    flowables.append(flowable)
-                    flowables.append(Spacer(1, 0.2 * cm))
-                # Missing/unresolvable reference: skip silently, no placeholder.
-            else:
-                text = safe(inline.content)
-                flowables.append(Paragraph(text, STYLES["BodyText"]))
-                flowables.append(Spacer(1, 0.2 * cm))
-            i += 3
-        elif token.type == "bullet_list_open":
-            items = []
-            j = i + 1
-            while tokens[j].type != "bullet_list_close":
-                if tokens[j].type == "inline":
-                    items.append(ListItem(Paragraph(safe(tokens[j].content), STYLES["BodyText"])))
-                j += 1
-            flowables.append(ListFlowable(items, bulletType="bullet"))
-            i = j + 1
-        else:
-            i += 1
-    return flowables
 
 
 def resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: str) -> dict[str, bytes]:
@@ -347,7 +276,7 @@ def resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: s
     references that were never a legitimate use of it. A reference that
     doesn't resolve — wrong org, not a shared resource, not found, not
     actually an image content type — is simply left out of the returned
-    mapping; `markdown_to_flowables` already treats a missing entry as
+    mapping; `report_model.markdown_to_blocks` already treats a missing entry as
     "skip this image" rather than an error, so a bad reference never breaks
     report generation.
 

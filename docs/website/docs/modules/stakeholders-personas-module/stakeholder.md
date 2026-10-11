@@ -24,8 +24,8 @@ Because a Stakeholder record holds contact details about an identifiable person,
 
 | A Stakeholder opened from a project |
 | --- |
-| Falcon-3's fleet operations manager: their rating, cadence, the Persona they represent, their Needs and relationships |
-| ![Detail page for the Stakeholder Dana Whitfield showing her fields, Influence Medium and Interest High with a Manage closely position, a Monthly target cadence, the Persona she represents, a Need, and Provides and Consulted on relationships](../../../static/img/screenshots/stakeholder-detail.png) |
+| Falcon-3's fleet operations manager: their rating, cadence, the Persona they represent and their Needs, with their links in the Links panel |
+| ![Detail page for the Stakeholder Dana Whitfield showing her fields, Influence Medium and Interest High with a Manage closely position, a Monthly target cadence, the Persona she represents, a Need, and a Links panel with Consulted on, Represents, Provides and Has need links](../../../static/img/screenshots/stakeholder-detail.png) |
 
 ## Influence × Interest
 

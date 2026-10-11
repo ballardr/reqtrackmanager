@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildNeed, buildPersona, buildStakeholder } from "./fixtures";
 import { NeedDetailPage } from "./NeedDetailPage";
@@ -25,6 +26,8 @@ const HOLDERS: NeedHolder[] = [
 ];
 const REQUIREMENTS: NeedRequirement[] = [{ link_id: "r1", id: "req-1", unique_code: "SW-PERF-001", title: "Remote diagnostics in 30 seconds" }];
 
+const LINKED_PAIN_POINT = buildGraphNode({ type: "pain_point", id: "pp-1", type_label: "Pain Point", label: "Reports arrive late", status: null });
+
 interface Mocks {
   versions?: unknown[];
   holders?: NeedHolder[];
@@ -41,6 +44,7 @@ function mockDetailApis(current: Need, { versions = [], holders = HOLDERS, requi
     if (path === `/api/v1/projects/${PROJECT_ID}/requirements`) {
       return [{ id: "req-1", unique_code: "SW-PERF-001", name: "Remote diagnostics in 30 seconds" }, { id: "req-2", unique_code: "SW-PERF-002", name: "Offline mode" }];
     }
+    if (path.includes(`/artefacts/stakeholder_need/${NEED_ID}/link-graph`)) return buildGraph([[LINKED_PAIN_POINT]]);
     if (path === `${BASE}/needs/${NEED_ID}/holders`) return holders;
     if (path === `${BASE}/needs/${NEED_ID}/requirements`) return requirements;
     if (path === `${BASE}/needs/${NEED_ID}`) return current;
@@ -212,3 +216,12 @@ export const EditOpensThePrefilledForm: Story = {
 
 export const LightTheme: Story = { ...ActiveShowsFieldsAndLinks };
 export const DarkTheme: Story = { ...ActiveShowsFieldsAndLinks, globals: { theme: "dark" } };
+
+/** Links live in the shared Links panel beside the page. */
+export const LinksPanelShowsLinks: Story = {
+  beforeEach: () => mockDetailApis(buildNeed()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reports arrive late" })).toBeInTheDocument());
+  },
+};

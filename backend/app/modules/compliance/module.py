@@ -24,7 +24,7 @@ requirements/required-actions/action-types/mapping-relationship-types
 CRUD+move, requirement mappings, project-compliance assignment+migration,
 requirement applicability/assessment, required-action-assessment
 complete/uncomplete, evidence CRUD+links+revalidation, reviews CRUD
-+complete+evidence-links, traceability links), gated as normal by the
++complete+evidence-links), gated as normal by the
 global `MCP_WRITES_ENABLED` switch and the calling account's own RBAC role
 — nothing new needed for those. Three categories stay off the tool surface
 even now, for reasons that are *not* superseded by this reversal:
@@ -241,6 +241,7 @@ document resolving the `MODULE_DEFINITION`/registry import cycle via
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -250,6 +251,7 @@ from sqlalchemy.orm import Session
 from app.modules.compliance.service import (
     COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
     COMPLIANCE_ACTION_ASSESSMENT_VIEW_PERMISSION,
+    COMPLIANCE_CLAUSE_VIEW_PERMISSION,
     COMPLIANCE_EVIDENCE_MANAGE_PERMISSION,
     COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION,
     COMPLIANCE_EVIDENCE_VIEW_PERMISSION,
@@ -260,6 +262,7 @@ from app.modules.compliance.service import (
     COMPLIANCE_STANDARD_CONTENT_APPROVE_BASELINE_PERMISSION,
     COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION,
 )
+from app.modules.compliance.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
 from app.modules.registry import (
     EntityScopeDefinition,
     McpToolDefinition,
@@ -297,8 +300,12 @@ _ORG_MERGE_RESOLUTION_CHOICES = {"compliance_standard": frozenset({"skip", "impo
 # contribution to the shared `ArtefactType` vocabulary (Module 0 — Platform
 # Foundations, Phase 3): `app.models.relationship.ArtefactLink` rows with
 # `source_type="compliance_evidence"` point at either target type below,
-# replacing the old dedicated evidence-link join tables.
+# replacing the old dedicated evidence-link join tables. `compliance_requirement`
+# (a standard's clause, organisation-owned) is the target of a core requirement's
+# traceability links (Platform Enhancements Phase 6c), replacing the old dedicated
+# `ComplianceRequirementTraceabilityLink` table.
 _ARTEFACT_TYPES = (
+    "compliance_requirement",
     "compliance_evidence",
     "project_compliance_requirement",
     "compliance_required_action_assessment",
@@ -499,13 +506,17 @@ def _run_target_date_notifications(db: Session) -> None:
 def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUID]:
     """`ModuleDefinition.artefact_ids_in_organization`: every piece of
     evidence, project compliance requirement and required-action assessment
-    in the organisation's projects, for org deletion's polymorphic cleanup."""
+    in the organisation's projects, plus every clause of the organisation's
+    own standards, for org deletion's polymorphic cleanup."""
     from sqlalchemy import select
 
     from app.models.project import Project
     from app.modules.compliance.models import (
         ComplianceEvidence,
         ComplianceRequiredActionAssessment,
+        ComplianceRequirement,
+        ComplianceStandard,
+        ComplianceStandardVersion,
         ProjectCompliance,
         ProjectComplianceRequirement,
     )
@@ -515,11 +526,21 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
         ProjectCompliance, ProjectCompliance.id == ProjectComplianceRequirement.project_compliance_id
     ).where(ProjectCompliance.project_id.in_(project_ids))
     ids = set(db.scalars(select(ComplianceEvidence.id).where(ComplianceEvidence.project_id.in_(project_ids))).all())
+    ids.update(db.scalars(
+        select(ComplianceRequirement.id)
+        .join(ComplianceStandardVersion, ComplianceStandardVersion.id == ComplianceRequirement.standard_version_id)
+        .join(ComplianceStandard, ComplianceStandard.id == ComplianceStandardVersion.standard_id)
+        .where(ComplianceStandard.organization_id == organization_id)
+    ).all())
     ids.update(db.scalars(requirement_ids).all())
     ids.update(db.scalars(select(ComplianceRequiredActionAssessment.id).where(
         ComplianceRequiredActionAssessment.project_compliance_requirement_id.in_(requirement_ids)
     )).all())
     return ids
+
+
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
 
 
 MODULE_DEFINITION = ModuleDefinition(
@@ -544,6 +565,8 @@ MODULE_DEFINITION = ModuleDefinition(
     validate_org_group_member_removal=_validate_org_group_member_removal,
     validate_org_group_deletion=_validate_org_group_deletion,
     artefact_types=_ARTEFACT_TYPES,
+    artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     entity_scopes={
         "standard": EntityScopeDefinition(
@@ -596,6 +619,7 @@ MODULE_DEFINITION = ModuleDefinition(
             # describes this role as full org-wide compliance management,
             # not a narrower slice of it.
             permissions=(
+                COMPLIANCE_CLAUSE_VIEW_PERMISSION,
                 COMPLIANCE_EVIDENCE_VIEW_PERMISSION,
                 COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION,
                 COMPLIANCE_EVIDENCE_MANAGE_PERMISSION,
@@ -629,6 +653,7 @@ MODULE_DEFINITION = ModuleDefinition(
             # it today and this field is meant to describe what the role
             # *can do*, not only what's been wired through the new gate.
             permissions=(
+                COMPLIANCE_CLAUSE_VIEW_PERMISSION,
                 COMPLIANCE_EVIDENCE_VIEW_PERMISSION,
                 COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION,
                 COMPLIANCE_EVIDENCE_MANAGE_PERMISSION,
@@ -698,6 +723,7 @@ MODULE_DEFINITION = ModuleDefinition(
             ),
         ),
     ),
+    mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=(
         McpToolDefinition(
             name="list_standards",
@@ -1803,31 +1829,6 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "project_id", "type": "uuid", "required": True, "in": "path", "description": "The project."},
                 {"name": "review_id", "type": "uuid", "required": True, "in": "path", "description": "The review."},
                 {"name": "evidence_id", "type": "uuid", "required": True, "in": "path", "description": "The evidence to unlink."},
-            ],
-        ),
-        McpToolDefinition(
-            name="create_requirement_traceability_link",
-            description="Creates a traceability link from a core project requirement to a compliance standard requirement.",
-            method="POST",
-            path_template=f"{_PROJECT_ROUTER_PREFIX}/requirements/{{requirement_id}}/traceability-links",
-            params=[
-                {"name": "project_id", "type": "uuid", "required": True, "in": "path", "description": "The project."},
-                {"name": "requirement_id", "type": "uuid", "required": True, "in": "path", "description": "The core requirement to link from."},
-                {"name": "compliance_requirement_id", "type": "uuid", "required": True, "in": "body",
-                 "description": "The compliance standard requirement to link to."},
-                {"name": "link_type_id", "type": "uuid", "required": True, "in": "body",
-                 "description": "The link type describing this traceability link."},
-            ],
-        ),
-        McpToolDefinition(
-            name="delete_requirement_traceability_link",
-            description="Deletes a traceability link between a core project requirement and a compliance standard requirement.",
-            method="DELETE",
-            path_template=f"{_PROJECT_ROUTER_PREFIX}/requirements/{{requirement_id}}/traceability-links/{{link_id}}",
-            params=[
-                {"name": "project_id", "type": "uuid", "required": True, "in": "path", "description": "The project."},
-                {"name": "requirement_id", "type": "uuid", "required": True, "in": "path", "description": "The core requirement."},
-                {"name": "link_id", "type": "uuid", "required": True, "in": "path", "description": "The traceability link to delete."},
             ],
         ),
     ),

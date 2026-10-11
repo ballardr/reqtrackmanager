@@ -4,7 +4,7 @@ sidebar_position: 20
 
 # Relationships and types
 
-Each of Context & Strategy's five artefact types has its own dedicated page — [Strategy](./strategy.md), [Future State](./future-state.md), [Pain Point](./pain-point.md), [Guiding Principle](./guiding-principle.md), [Open Question](./open-question.md) — with its own "Relationships" section covering the links that artefact creates. This page is the bird's-eye view across all five at once, plus the relationships still reserved pending other modules.
+Each of Context & Strategy's five artefact types has its own dedicated page — [Strategy](./strategy.md), [Future State](./future-state.md), [Pain Point](./pain-point.md), [Guiding Principle](./guiding-principle.md), [Open Question](./open-question.md) — with the shared [Links panel](../../core-features/links-and-traceability.md#the-links-panel) beside it, covering the links that artefact has. This page is the bird's-eye view across all five at once, plus the relationships still reserved pending other modules.
 
 ## Cross-artefact relationships
 

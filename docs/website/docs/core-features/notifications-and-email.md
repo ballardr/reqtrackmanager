@@ -8,6 +8,10 @@ sidebar_position: 6
 
 The bell icon in the top bar shows recent notifications — project joins, stage transitions, change-request activity, password changes, permission grants, and more — with an unread-count badge. Clicking a notification marks it read and, for anything about a specific requirement, change request, or project, jumps straight to it; **Mark all read** clears every unread one without navigating anywhere. The full notification history — searchable, not limited to the dropdown's recent slice — lives on the **Notifications** page in the nav's Global section.
 
+### Membership changes made from outside the project
+
+If an organisation admin (or anyone holding the org-level **grant roles** permission) adds or removes a project member without being a project manager or administrator of that project, the project's managers and administrators — including inherited ones — get a **Project members changed** notification. It covers direct member grants, by-email invites, organisation-group or project-group role grants, and project-group edits (adding or removing members, deleting a group). Changes made by the project's own managers, and changes to who is *inside* an organisation group, do not notify. Several changes by the same person within ten minutes are merged into one unread notification, so adding a whole team does not flood anyone. Like any type, it can be switched off per person under **Preferences**.
+
 ## Per-type preferences and digests
 
 **Preferences → Notification preferences** lets each person choose, per notification type, whether they want it in-app, by email, or both, and whether email notifications arrive instantly or batched into a daily digest — so nobody has to choose between "know everything immediately" and "silence."

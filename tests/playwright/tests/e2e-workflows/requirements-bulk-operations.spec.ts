@@ -139,12 +139,10 @@ test.describe("requirements list: bulk operations", () => {
       await selectProjectAdminGroup(page, "Structure");
       const deleteButtons = page.getByRole("button", { name: "Delete this stage" });
       const targetDeleteButton = deleteButtons.last();
-      const stageRow = targetDeleteButton.locator(
-        "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' stack ')][1]"
-      );
       await targetDeleteButton.click();
-      await stageRow.getByRole("combobox").selectOption({ label: "Scoping" });
-      await stageRow.getByRole("button", { name: "Confirm delete" }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByRole("combobox", { name: "Reassign existing items to" }).selectOption({ label: "Scoping" });
+      await dialog.getByRole("button", { name: "Confirm delete" }).click();
       await expect(page.getByRole("button", { name: "Delete this stage" })).toHaveCount(0);
     });
   });

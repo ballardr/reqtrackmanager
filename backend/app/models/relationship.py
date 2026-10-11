@@ -98,6 +98,14 @@ class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
             `RequirementLinkTypeDefinition` row (what `RequirementLink`
             used to represent). See this module's docstring for the full
             reasoning.
+        source_project_id / target_project_id: Set (both) only for a link
+            between a project and one of its ancestors or descendants, naming
+            the project each end belongs to; `NULL` for the ordinary
+            same-project link. This is what keeps cross-level links out of
+            every reader that assumes both ends share a project:
+            `services.relationships` excludes rows where these are set unless
+            asked (`include_cross_project`), so a legacy reader can never show an
+            ancestor's artefact to someone who cannot open it.
         created_by: The user who created the link.
     """
 
@@ -130,6 +138,8 @@ class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
         # above already give forward lookups ("what does X link to") a
         # usable leading-column index via source_type/source_id.
         Index("ix_artefact_links_target", "target_type", "target_id"),
+        Index("ix_artefact_links_source_project", "source_project_id", postgresql_where=sa_text("source_project_id IS NOT NULL")),
+        Index("ix_artefact_links_target_project", "target_project_id", postgresql_where=sa_text("target_project_id IS NOT NULL")),
     )
 
     # Plain strings, not a `str_enum(ArtefactType, ...)` column (unlike
@@ -146,5 +156,11 @@ class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     link_type_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id"), nullable=True
+    )
+    source_project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    target_project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

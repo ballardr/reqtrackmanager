@@ -8,8 +8,8 @@ A **Future State** records the vision a [Strategy](./strategy.md) is aiming at, 
 
 | A project Future State in Active status |
 | --- |
-| Falcon-3's Future State: current/desired state, outcomes, success measures, and its own "Is defined by" relationship back to the Strategy that defines it |
-| ![Detail view of an Active Future State for the Falcon-3 project, showing its current and desired state, outcomes, success measures, assumptions, and an "Is defined by" relationship to the Strategy that defines it](../../../static/img/screenshots/future-state-detail.png) |
+| Falcon-3's Future State: current/desired state, outcomes, success measures, and its "Is defined by" link back to the Strategy that defines it, in the Links panel |
+| ![Detail view of an Active Future State for the Falcon-3 project, showing its current and desired state, outcomes, success measures, assumptions, and a Links panel with an "Is defined by" link to the Strategy that defines it](../../../static/img/screenshots/future-state-detail.png) |
 
 ## Scope
 

@@ -2,7 +2,7 @@
  * Module: components/RequirementReportPanel
  *
  * The requirement report's configuration and generation surface (R-F-01 PDF,
- * R-F-02 CSV), extracted from `pages/ReportsPage.tsx` so it can sit beside
+ * Word, R-F-02 CSV), extracted from `pages/ReportsPage.tsx` so it can sit beside
  * the catalogue reports in the same Reports picker (Module 1 Phase 13). It
  * carries the project's effective introduction/body chapters/appendices
  * (R-G-01, R-G-02) editable in place, a report-template picker that previews
@@ -11,25 +11,28 @@
  * shared resource sections (R-G-04). It has its own request model
  * (`POST /projects/{id}/reports`), which is why it is not a catalogue entry.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api } from "../api/client";
+import type { ReportDownloadKind } from "../api/reports";
 import type {
   Category,
   Component,
   FileAsset,
   Project,
+  EffectiveReportContent,
   ProjectReportConfig,
   ReportChapter,
   ReportTemplate,
   RequirementStatus,
 } from "../api/types";
-import { REQUIREMENT_STATUS_LABEL } from "../api/types";
+import { REQUIREMENT_STATUS_LABEL, REQUIREMENTS_REPORT_KEY } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { downloadBlob } from "../utils/download";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ReportChapterListEditor } from "./ReportChapterListEditor";
+import { ReportExportButton } from "./ReportExportButton";
 import { RichTextEditor } from "./RichTextEditor";
 import { Spinner } from "./Spinner";
 
@@ -54,7 +57,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const projectId = project.id;
   const { showToast } = useToast();
   const [includeArchived, setIncludeArchived] = useState(false);
-  const [generating, setGenerating] = useState<"pdf" | "csv" | null>(null);
+  const [generating, setGenerating] = useState<ReportDownloadKind | null>(null);
 
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -74,27 +77,24 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const [reportAppendices, setReportAppendices] = useState<ReportChapter[]>([]);
 
   // The intro/chapters/appendices actually used for a given template
-  // selection: the template's own content per field where it set any,
-  // otherwise the project's effective (already org-fallback-resolved)
-  // content — the same per-field precedence
-  // `services/reports.py::resolve_report_config_with_template` applies
-  // server-side, computed here just for on-page preview/editing.
-  function effectiveContentFor(templateId: string, base: ProjectReportConfig, templates: ReportTemplate[]) {
-    const tpl = templates.find((t) => t.id === templateId);
-    return {
-      intro: tpl?.intro || base.intro,
-      chapters: tpl && tpl.chapters.length > 0 ? tpl.chapters : base.chapters,
-      appendices: tpl && tpl.appendices.length > 0 ? tpl.appendices : base.appendices,
-    };
-  }
-
-  function selectTemplate(templateId: string) {
-    setReportTemplateId(templateId);
-    if (!reportConfig) return;
-    const effective = effectiveContentFor(templateId, reportConfig, reportTemplates);
+  // selection, resolved server-side (template, project, ancestor projects,
+  // organisation — `services/report_content.py`) so this page never
+  // re-implements the chain; fetched into the editors below, where they can
+  // still be edited for this one report.
+  const loadEffectiveContent = useCallback(async (templateId: string) => {
+    const params = new URLSearchParams({ report_key: REQUIREMENTS_REPORT_KEY });
+    if (templateId) params.set("template_id", templateId);
+    const effective = await api.get<EffectiveReportContent>(
+      `/api/v1/projects/${projectId}/report-content/effective?${params.toString()}`,
+    );
     setReportIntro(effective.intro);
     setReportChapters(effective.chapters);
     setReportAppendices(effective.appendices);
+  }, [projectId]);
+
+  function selectTemplate(templateId: string) {
+    setReportTemplateId(templateId);
+    loadEffectiveContent(templateId).catch((err) => showToast(toErrorMessage(err, strings.common.error), "error"));
   }
 
   useEffect(() => {
@@ -116,18 +116,15 @@ export function RequirementReportPanel({ project }: { project: Project }) {
       setReportConfig(rc);
       const initialTemplateId = rc.default_report_template_id ?? "";
       setReportTemplateId(initialTemplateId);
-      const effective = effectiveContentFor(initialTemplateId, rc, templates);
-      setReportIntro(effective.intro);
-      setReportChapters(effective.chapters);
-      setReportAppendices(effective.appendices);
+      await loadEffectiveContent(initialTemplateId);
     })();
-  }, [projectId, project.organization_id]);
+  }, [projectId, project.organization_id, loadEffectiveContent]);
 
   function toggleResource(id: string) {
     setResourceFileIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
   }
 
-  async function generate(kind: "pdf" | "csv") {
+  async function generate(kind: ReportDownloadKind) {
     setGenerating(kind);
     try {
       const preMarkdown = [reportIntro, chaptersToMarkdown(reportChapters)].filter(Boolean).join("\n\n");
@@ -142,8 +139,8 @@ export function RequirementReportPanel({ project }: { project: Project }) {
         status: statusFilter || null,
         keyword: keyword || null,
         resource_file_ids: resourceFileIds,
-        report_template_id: kind === "pdf" ? reportTemplateId || null : null,
-        chapters_per_component: kind === "pdf" ? chaptersPerComponent : null,
+        report_template_id: kind !== "csv" ? reportTemplateId || null : null,
+        chapters_per_component: kind !== "csv" ? chaptersPerComponent : null,
       });
       const projectName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
       downloadBlob(blob, `${projectName}-requirements.${kind}`);
@@ -162,9 +159,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
         <button className="btn btn-primary" onClick={() => generate("pdf")} disabled={generating !== null}>
           {generating === "pdf" ? "…" : strings.reports.generatePdf}
         </button>
-        <button className="btn" onClick={() => generate("csv")} disabled={generating !== null}>
-          {generating === "csv" ? "…" : strings.reports.generateCsv}
-        </button>
+        <ReportExportButton onDownload={generate} kinds={["docx", "csv"]} label={strings.reports.moreFormats} />
       </div>
 
       <CollapsibleSection sectionKey="reports.templateAndLayout" title={strings.reports.templateAndLayout} defaultCollapsed>

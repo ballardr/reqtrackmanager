@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import { DRAFT_ARTEFACT_ID, type CollectedLink } from "../api/artefactLinks";
 import { api } from "../api/client";
 import type {
   ChangeableRequirementField,
@@ -30,6 +31,7 @@ import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
+import { ProposedLinksEditor } from "../components/ProposedLinksEditor";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
@@ -123,6 +125,12 @@ export function ChangeRequestsPage() {
   const [changedFields, setChangedFields] = useState<Set<ChangeableRequirementField>>(new Set());
   const [proposed, setProposed] = useState<ProposedFields>(BLANK_PROPOSED);
   const [attachmentFileIds, setAttachmentFileIds] = useState<string[]>([]);
+  // Links proposed with the request (Phase 6b), created only if the approver merges them. They belong
+  // to one requirement (or to the one a new request creates), so a different target starts over.
+  const linksTarget = kind === "new_requirement" ? DRAFT_ARTEFACT_ID : requirementId;
+  const [collectedLinks, setCollectedLinks] = useState<{ target: string; links: CollectedLink[] }>({ target: "", links: [] });
+  const proposedLinks = collectedLinks.target === linksTarget ? collectedLinks.links : [];
+  const setProposedLinks = (links: CollectedLink[]) => setCollectedLinks({ target: linksTarget, links });
   const [reason, setReason] = useState("");
   const [stages, setStages] = useState<ProjectStage[]>([]);
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
@@ -315,6 +323,13 @@ export function ChangeRequestsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requirementId, kind, requirements]);
 
+  /** The collected links as the API takes them (the display fields are dropped). */
+  function proposedLinksPayload() {
+    return proposedLinks.map(({ link_type_id, direction, other_type, other_id, other_project_id }) => ({
+      link_type_id, direction, other_type, other_id, other_project_id,
+    }));
+  }
+
   function toggleChangedField(field: ChangeableRequirementField) {
     setChangedFields((current) => {
       const next = new Set(current);
@@ -332,6 +347,7 @@ export function ChangeRequestsPage() {
     setProposed(BLANK_PROPOSED);
     setChangedFields(new Set());
     setAttachmentFileIds([]);
+    setProposedLinks([]);
     setCustomFieldValues({});
     setReason("");
     setShowForm(false);
@@ -359,6 +375,7 @@ export function ChangeRequestsPage() {
           proposed_reviewer_id: changedFields.has("reviewer_id") ? proposed.reviewerId || null : null,
           proposed_attachment_file_ids: changedFields.has("attachments") ? attachmentFileIds : [],
           custom_fields: changedFields.has("custom_fields") ? customFieldValues : {},
+          proposed_links: proposedLinksPayload(),
           reason,
         });
       } else {
@@ -377,6 +394,7 @@ export function ChangeRequestsPage() {
           proposed_reviewer_id: proposed.reviewerId || null,
           reason,
           custom_fields: customFieldValues,
+          proposed_links: proposedLinksPayload(),
         });
       }
       resetForm();
@@ -700,6 +718,15 @@ export function ChangeRequestsPage() {
                 onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
               />
             </>
+          )}
+
+          {projectId && linksTarget && (
+            <ProposedLinksEditor
+              projectId={projectId}
+              artefactId={linksTarget}
+              links={proposedLinks}
+              onChange={setProposedLinks}
+            />
           )}
 
           <textarea

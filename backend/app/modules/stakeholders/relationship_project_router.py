@@ -158,7 +158,7 @@ def _add(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Relationship target not found.")
     link = apply_value_error_as_conflict(
         rel.add_relationship, db, holder_type, holder.id, kind, summary, payload.target_type, user,
-        organization_id=project.organization_id,
+        organization_id=project.organization_id, project_id=project.id,
     )
     log_event(db, entity_type=holder_type, entity_id=holder.id, action="relationship_added", actor_id=user.id,
               project_id=project.id, detail={"kind": kind.key, "target_type": payload.target_type, "target_id": str(summary.id)})

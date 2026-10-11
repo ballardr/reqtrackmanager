@@ -27,6 +27,9 @@ export interface ReportParam {
   choice_labels?: Record<string, string> | null;
 }
 
+/** The file formats a report can be downloaded in (the JSON form is the on-screen run). */
+export type ReportDownloadKind = "pdf" | "docx" | "csv";
+
 /** One runnable report (`ReportCatalogueEntryOut`). */
 export interface ReportCatalogueEntry {
   module_key: string;
@@ -38,7 +41,7 @@ export interface ReportCatalogueEntry {
   scope: "project" | "organization";
   /** Route with the project/organisation id already substituted. */
   path: string;
-  formats: ("json" | "pdf" | "csv")[];
+  formats: ("json" | ReportDownloadKind)[];
   supports_include_children: boolean;
   /** Organisation-level entries accept `project_id` to narrow the run to one project in scope. */
   supports_project_filter: boolean;
@@ -120,7 +123,7 @@ export interface ReportBreakdown {
 export type ReportRunValues = Record<string, string | number | boolean | null | undefined>;
 
 /** Builds the query string for a run; blank/unset values are omitted so the server default applies. */
-export function reportQuery(format: "json" | "pdf" | "csv", values: ReportRunValues): string {
+export function reportQuery(format: "json" | ReportDownloadKind, values: ReportRunValues): string {
   const query = new URLSearchParams({ format });
   for (const [name, value] of Object.entries(values)) {
     if (value === undefined || value === null || value === "") continue;
@@ -140,7 +143,7 @@ export const reportsApi = {
     if (!entry.breakdown_path) throw new Error("This report has no per-project breakdown.");
     return api.get<ReportBreakdown>(`${entry.breakdown_path}?${reportQuery("json", values)}`);
   },
-  /** Runs a report and returns the PDF or CSV file. */
-  download: (entry: ReportCatalogueEntry, format: "pdf" | "csv", values: ReportRunValues) =>
+  /** Runs a report and returns the PDF, Word (DOCX) or CSV file. */
+  download: (entry: ReportCatalogueEntry, format: ReportDownloadKind, values: ReportRunValues) =>
     api.getForBlob(`${entry.path}?${reportQuery(format, values)}`),
 };

@@ -54,6 +54,14 @@ The part of a requirement that never changes once created: its project, componen
 
 The fixed sequence a requirement moves through: Draft → Reviewed → Approved → Completed, with Archived available as an exit from Draft or Reviewed. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
 
+#### Link
+
+A typed relationship between two records of the same project (or a parent and child project), shown in the **Links** panel on both records. Its [link type](#link-type) names it from each end. See [Links and traceability](../core-features/links-and-traceability.md).
+
+#### Link type
+
+The named, directional relationship a [link](#link) carries ("Derives from" / "Is source of"). An organisation defines them, a project may add its own, and each can limit which kinds of record it joins. See [Links and traceability → Link types](../core-features/links-and-traceability.md#link-types).
+
 #### Locking
 
 What happens once a requirement reaches Approved or Completed: its edit form disables, and further change must go through a [change request](#change-request) rather than a silent edit. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
@@ -94,6 +102,14 @@ One step in a project's sequence (e.g. Scoping → Development → Hardening). A
 
 A project marked usable as a template; creating a new project from it copies its components, categories, custom field definitions, groups, and requirements (reset to draft). See [Custom fields, terminology, and templates](../concepts/custom-fields-terminology-and-templates.md).
 
+#### Proposed link
+
+A link a change request carries and an approver merges, or declines, when approving it. See [Change requests → Proposing links](../core-features/change-requests.md#proposing-links).
+
+#### Report content
+
+The introduction, chapters and appendices written for a report type at the template, project or organisation level, with `{{placeholders}}` filled at generation. See [Reports and export → Report content](../core-features/reports-and-export.md#report-content).
+
 #### Requirement version
 
 One historical or current state of a requirement's content (name, reasoning, description, status, custom field values). Editing a requirement never overwrites a version — it closes the current one and opens a new one. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
@@ -109,6 +125,10 @@ A project-level renaming of a fixed set of nouns (project, stage, component, cat
 #### Tier A / Tier B / Tier C module
 
 The three ways a module can supply its frontend UI: Tier A is compiled directly into the core frontend image, Tier B renders in a sandboxed iframe, and Tier C is loaded dynamically at runtime with no rebuild and no sandbox. See [Modules → Overview](../modules/overview.md) and [Third-party and federated modules](../modules/third-party-and-federated-modules.md).
+
+#### Trace
+
+The window opened from a record's Links panel that follows its links to any depth, as a tree or a map, split into upstream, downstream and related. See [Links and traceability → Tracing where a record comes from](../core-features/links-and-traceability.md#tracing-where-a-record-comes-from).
 
 #### Two-factor authentication (2FA)
 

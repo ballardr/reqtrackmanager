@@ -1,6 +1,7 @@
 import { createElement } from "react";
 
 import type { TierAModuleDefinition } from "../types";
+import { DECISION_STATUS_LABEL } from "./types";
 import { DecisionDetailPage } from "./DecisionDetailPage";
 import { DecisionTemplatesPanel } from "./DecisionTemplatesPanel";
 import { DecisionTypesPanel } from "./DecisionTypesPanel";
@@ -45,12 +46,11 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  * shape.
  *
  * `entityAccentColor`: intentionally **not** set. This module still
- * doesn't add a `requirementDetailSections`/`requirementLinkPickerTabs`
- * contribution (see `ProjectDecisionsPage.tsx`'s own module docstring for
- * that scoping call), so there is no cross-module mixed list this module's
- * own entity kind would ever need to be told apart in — nothing would read
- * `useEntityAccentColor("decisions")` yet. Add it alongside whichever
- * future phase does add that contribution, not speculatively now.
+ * doesn't add a `requirementDetailSections` contribution (a requirement's
+ * Decision links are shown by the shared Links panel instead), so there is no
+ * cross-module mixed list this module's own entity kind would ever need to be
+ * told apart in — nothing would read `useEntityAccentColor("decisions")` yet.
+ * Add it alongside whichever future phase does add such a list, not speculatively now.
  *
  * No `globalNavItems`/`standaloneWorkspaces`/`globalRoutes`/
  * `projectOverviewTiles`/`orgOverviewSections` — Decision Management has no
@@ -64,6 +64,8 @@ export const moduleDefinition: TierAModuleDefinition = {
   artefactPaths: {
     decision: (projectId, id) => `/projects/${projectId}/modules/decisions/${id}`,
   },
+  artefactStatusLabels: { decision: DECISION_STATUS_LABEL },
+  artefactInactiveStatuses: { decision: ["rejected", "superseded"] },
   routes: [
     { path: "/projects/:projectId/modules/decisions", element: createElement(ProjectDecisionsPage) },
     { path: "/projects/:projectId/modules/decisions/:decisionId", element: createElement(DecisionDetailPage) },

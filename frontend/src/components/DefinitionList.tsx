@@ -3,6 +3,12 @@ import { useState, type ReactNode } from "react";
 
 import { ApiError } from "../api/client";
 import { t } from "../i18n/strings";
+import {
+  DeleteInUseDialog,
+  type DeleteInUseCandidate,
+  type DeleteInUseKeepOption,
+  type DeleteInUseRemoveOption,
+} from "./DeleteInUseDialog";
 
 const strings = t();
 
@@ -23,10 +29,25 @@ export interface DefinitionListField<T> {
   inputType?: "text" | "number";
 }
 
+/** What the in-use delete dialog shows for one item, when a vocabulary needs
+ * more than the default "move to another one" (see `loadInUse`). */
+export interface DeleteInUseConfig {
+  summary?: ReactNode;
+  details?: string[];
+  candidates: DeleteInUseCandidate[];
+  remove?: DeleteInUseRemoveOption;
+  /** Offer to leave the item behind for the other projects that use it (ticked by default). */
+  keep?: DeleteInUseKeepOption;
+  /** Reassesses the dialog for the box being ticked or not (candidates depend on what would still move). */
+  reload?: (keep: boolean) => Promise<DeleteInUseConfig>;
+  /** Why moving is unavailable; set to disable it. */
+  moveBlockedReason?: string;
+}
+
 export interface DefinitionListProps<T extends { id: string }> {
   items: T[];
   fields: DefinitionListField<T>[];
-  /** Label shown for each candidate in the reassign-on-delete dropdown. */
+  /** Label shown for each candidate in the in-use delete dialog's reassign dropdown. */
   getReassignLabel: (item: T) => string;
   /** Reorders an item. Omit for lists whose order is derived (e.g.
    * scoring levels, ordered by weight) — the reorder buttons are hidden. */
@@ -38,10 +59,19 @@ export interface DefinitionListProps<T extends { id: string }> {
    * shared server contract, a plain delete succeeds unless the item is
    * in use, in which case it throws an `ApiError` with status 409 whose
    * message names the conflicting count. `DefinitionList` catches that
-   * and opens its own reassign-target picker, then calls this again
-   * with the chosen `reassignToId`.
+   * and opens `DeleteInUseDialog`, then calls this again with the chosen
+   * `reassignToId`. `keep` is true when the dialog's "keep for other
+   * projects" box was ticked (only vocabularies offering it, link types).
    */
-  onDelete: (id: string, reassignToId?: string) => Promise<void>;
+  onDelete: (id: string, reassignToId?: string, keep?: boolean) => Promise<void>;
+  /**
+   * Optional richer content for the in-use dialog, for a vocabulary whose
+   * deletion has more to say or more choices than the default (link types:
+   * usage counts, replacements that cannot take every link, delete-the-links).
+   * Called with the item and the 409 message; omit for the default dialog
+   * (every other item as a candidate, labelled by `getReassignLabel`).
+   */
+  loadInUse?: (item: T, message: string) => Promise<DeleteInUseConfig>;
   deleteLabel: string;
   addLabel: string;
   /**
@@ -56,6 +86,10 @@ export interface DefinitionListProps<T extends { id: string }> {
    * Omit for the common all-text case (every pre-existing call site).
    */
   renderExtra?: (item: T) => ReactNode;
+  /** Optional per-row slot rendered on its own line under the row — for a
+   * group of controls too wide for the row itself (link types'
+   * "can link from/to" restrictions). */
+  renderDetails?: (item: T) => ReactNode;
   /** The fewest items the list may hold (default 1); delete is disabled at
    * this floor. Scoring axes, for example, keep at least two levels. */
   minItems?: number;
@@ -65,9 +99,10 @@ export interface DefinitionListProps<T extends { id: string }> {
  * Shared CRUD list for the app's "definition" entities — small, ordered,
  * flat lists of named things (action types, project statuses, link
  * types, ...) that support inline rename, reorder, add, and a
- * delete-or-reassign-if-in-use flow. Consolidates what were three
- * near-identical implementations of the same rename/reorder/delete
- * logic in `ProjectAdminPage`/`OrgAdminPage`.
+ * delete-or-reassign-if-in-use flow, the latter through the shared
+ * `DeleteInUseDialog`. Consolidates what were three near-identical
+ * implementations of the same rename/reorder/delete logic in
+ * `ProjectAdminPage`/`OrgAdminPage`.
  */
 export function DefinitionList<T extends { id: string }>({
   items,
@@ -77,18 +112,18 @@ export function DefinitionList<T extends { id: string }>({
   onRename,
   onAdd,
   onDelete,
+  loadInUse,
   deleteLabel,
   addLabel,
   renderExtra,
+  renderDetails,
   minItems = 1,
 }: DefinitionListProps<T>) {
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const [newDraft, setNewDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.key, ""]))
   );
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [inUseMessage, setInUseMessage] = useState<string | null>(null);
-  const [reassignTo, setReassignTo] = useState("");
+  const [inUse, setInUse] = useState<{ item: T; config: DeleteInUseConfig | null; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function draftFor(item: T): Record<string, string> {
@@ -121,24 +156,17 @@ export function DefinitionList<T extends { id: string }>({
       await onDelete(item.id);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setDeletingId(item.id);
-        setInUseMessage(err.message);
+        try {
+          // Without `loadInUse` the candidates are read live from `items` at render, so a rename that
+          // lands while the dialog is open shows the new name rather than a stale snapshot.
+          const config = loadInUse ? await loadInUse(item, err.message) : null;
+          setInUse({ item, config, message: err.message });
+        } catch (loadErr) {
+          setError(loadErr instanceof Error ? loadErr.message : strings.common.error);
+        }
       } else {
         setError(err instanceof Error ? err.message : strings.common.error);
       }
-    }
-  }
-
-  async function handleConfirmDelete(item: T) {
-    if (!reassignTo) return;
-    setError(null);
-    try {
-      await onDelete(item.id, reassignTo);
-      setDeletingId(null);
-      setInUseMessage(null);
-      setReassignTo("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : strings.common.error);
     }
   }
 
@@ -158,7 +186,6 @@ export function DefinitionList<T extends { id: string }>({
       {items.map((item, idx) => {
         const draft = draftFor(item);
         const dirty = isDirty(item, draft);
-        const others = items.filter((other) => other.id !== item.id);
         const atFloor = items.length <= minItems;
         const floorHint = minItems > 1 ? strings.admin.deleteMinItemsHint(minItems) : strings.admin.deleteLastOneHint;
         return (
@@ -217,27 +244,37 @@ export function DefinitionList<T extends { id: string }>({
                 </button>
               </div>
             </div>
-            {deletingId === item.id && (
-              <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
-                <span>{inUseMessage}</span>
-                <span>{strings.admin.reassignExistingTo}</span>
-                <select className="input" style={{ maxWidth: 220 }} value={reassignTo} onChange={(e) => setReassignTo(e.target.value)}>
-                  <option value="">—</option>
-                  {others.map((other) => (
-                    <option key={other.id} value={other.id}>{getReassignLabel(other)}</option>
-                  ))}
-                </select>
-                <button className="btn btn-danger" disabled={!reassignTo} onClick={() => handleConfirmDelete(item)}>
-                  {strings.admin.confirmDelete}
-                </button>
-                <button className="btn" onClick={() => { setDeletingId(null); setInUseMessage(null); setReassignTo(""); }}>
-                  {strings.common.cancel}
-                </button>
-              </div>
-            )}
+            {renderDetails?.(item)}
           </div>
         );
       })}
+      {inUse && (
+        <DeleteInUseDialog
+          title={strings.admin.deleteInUseTitle(fields[0].getValue(inUse.item))}
+          summary={inUse.config?.summary ?? inUse.message}
+          details={inUse.config?.details}
+          candidates={
+            inUse.config?.candidates ??
+            items
+              .filter((other) => other.id !== inUse.item.id)
+              .map((other) => ({ id: other.id, label: getReassignLabel(other) }))
+          }
+          onMove={(replacementId, keep) => onDelete(inUse.item.id, replacementId, keep)}
+          remove={inUse.config?.remove}
+          keep={inUse.config?.keep}
+          moveBlockedReason={inUse.config?.moveBlockedReason}
+          onKeepChange={
+            inUse.config?.reload
+              ? async (keep) => {
+                  const config = await inUse.config!.reload!(keep);
+                  setInUse((current) => (current ? { ...current, config } : current));
+                }
+              : undefined
+          }
+          onDeleteKeeping={inUse.config?.keep ? () => onDelete(inUse.item.id, undefined, true) : undefined}
+          onClose={() => setInUse(null)}
+        />
+      )}
       <div className="row">
         {fields.map((f) => (
           <input

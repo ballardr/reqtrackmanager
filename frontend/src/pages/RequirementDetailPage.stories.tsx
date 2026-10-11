@@ -2,22 +2,25 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ActionTypeDefinition, Category, Component, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, Requirement, RequirementAction, RequirementLink, RequirementVersionEntry } from "../api/types";
+import type { ArtefactLinkCandidate, ArtefactLinkTypeOption, LinkGraph } from "../api/artefactLinks";
+import type { ActionTypeDefinition, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, RequirementAction, RequirementVersionEntry } from "../api/types";
+import {
+  buildCandidate, buildGraph, buildGraphNode, buildOption,
+} from "../testing/artefactLinksFixtures";
 import {
   buildActionType,
   buildComment,
   buildFileAsset,
   buildLinkType,
+  projectLinkTypesPayload,
   buildProjectListItem,
   buildRequirement,
   buildRequirementAction,
-  buildRequirementLink,
   buildUser,
   withAuth,
   withRouter,
   withStatefulAuth,
   withTerminology,
-  withThemeProvider,
   withToast,
 } from "../testing/storybook-helpers";
 import { RequirementDetailPage } from "./RequirementDetailPage";
@@ -40,32 +43,20 @@ function mockRequirementDetailApis(
   myRoles: ProjectRole[],
   requirementOverrides: Parameters<typeof buildRequirement>[0] = {},
   extra: {
-    links?: RequirementLink[];
+    // The Links panel's data (`artefactLinksApi`): the depth-1 link graph around the
+    // requirement, the link types usable from it, and the records a link could point at.
+    // Each defaults to "no links, nothing to link to".
+    linkGraph?: LinkGraph;
+    linkOptions?: ArtefactLinkTypeOption[];
+    linkCandidates?: ArtefactLinkCandidate[];
     linkedActions?: RequirementAction[];
     projectActions?: RequirementAction[];
-    otherRequirements?: Requirement[];
-    // Feed the "Requirements" browse tab of `RequirementLinkPickerModal`
-    // (platform-review-2026-09 Phase 7) — both default empty, matching
-    // `otherRequirements`'s own "no eligible targets" default.
-    components?: Component[];
-    categories?: Category[];
     history?: RequirementVersionEntry[];
     orgResources?: FileAsset[];
     orgUsers?: OrgUser[];
     orgUserSearchMembers?: OrgUser[];
-    // No module enabled for this fixture's org — no module-contributed
-    // Links-card sections (compliance-module-plan.md Phase 34's
-    // `requirementDetailSections`; see `RequirementTraceabilityLinksSection
-    // .stories.tsx` for the Compliance module's own populated case,
-    // mirroring `ProjectOverviewPage.stories.tsx`'s identical convention
-    // for `projectOverviewTiles`).
+    // Modules enabled for the project (`GET /enabled-modules`); none by default.
     enabledModules?: ModuleNavEntry[];
-    // The Compliance module's own `RequirementTraceabilityLinksSection`
-    // (rendered when `enabledModules` includes it) fetches these two of
-    // its own endpoints; both default empty the same way `links` above
-    // does.
-    complianceTraceabilityLinks?: unknown[];
-    complianceStandards?: unknown[];
     // Platform review 2026-09, Phase 8 — the org's own
     // `force_require_change_request_for_approved_links`, fetched via a
     // bare `GET /orgs/{id}` (readable by any org member). Defaults false,
@@ -92,14 +83,17 @@ function mockRequirementDetailApis(
     if (path.includes("custom-fields")) return [];
     if (path.endsWith("/stages")) return [];
     if (path.endsWith("/activity")) return [];
-    if (path.endsWith(`/requirements/${REQUIREMENT_ID}/links`)) return extra.links ?? [];
-    if (path.endsWith("/link-types")) return linkTypes;
+    if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-graph`)) return extra.linkGraph ?? buildGraph();
+    if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-types`)) return extra.linkOptions ?? [];
+    if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-browse`)) return null;
+    if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-candidates`)) {
+      return { items: extra.linkCandidates ?? [], truncated: false };
+    }
+    if (path.endsWith("/link-candidate-projects")) return { items: [], truncated: false };
+    if (path.endsWith("/link-types")) return projectLinkTypesPayload(linkTypes);
     if (path.endsWith(`/requirements/${REQUIREMENT_ID}/actions`)) return extra.linkedActions ?? [];
     if (path.endsWith("/action-types")) return actionTypes;
     if (path.endsWith(`/projects/${PROJECT_ID}/actions`)) return extra.projectActions ?? [];
-    if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) return extra.otherRequirements ?? [];
-    if (path.endsWith(`/projects/${PROJECT_ID}/components`)) return extra.components ?? [];
-    if (path.endsWith(`/projects/${PROJECT_ID}/categories`)) return extra.categories ?? [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) {
       return {
         organization_id: "org-1",
@@ -113,8 +107,6 @@ function mockRequirementDetailApis(
       return { force_require_change_request_for_approved_links: extra.orgForceLinksLocked ?? false };
     }
     if (path.endsWith("/enabled-modules")) return extra.enabledModules ?? [];
-    if (path.endsWith("/traceability-links")) return extra.complianceTraceabilityLinks ?? [];
-    if (path.includes("/modules/compliance/standards")) return extra.complianceStandards ?? [];
     if (path.endsWith("/resources")) return extra.orgResources ?? [];
     if (path.includes("/users/search")) {
       const needle = new URLSearchParams(path.split("?")[1]).get("q")?.toLowerCase() ?? "";
@@ -138,12 +130,6 @@ const meta: Meta<typeof RequirementDetailPage> = {
       "/projects/:projectId/requirements/:requirementId"
     ),
     withToast(),
-    // The two "...Compliance Link..." stories below render Compliance's
-    // `RequirementTraceabilityLinksSection`/`ComplianceRequirementLinkPickerTab`
-    // contributions, which now call `useTheme()` via `useEntityAccentColor`
-    // (`modules/entityAccentColor.ts`) — see `withThemeProvider`'s own
-    // docstring for why the global Storybook theme toggle alone isn't enough.
-    withThemeProvider(),
   ],
 };
 export default meta;
@@ -366,168 +352,100 @@ export const PostComment: Story = {
   },
 };
 
-/** Links card populated with an outgoing link — `display_name`/
- * `other_requirement_*` are already server-resolved, so the card just
- * renders them directly with zero client-side direction logic. */
-export const LinksCardPopulated: Story = {
+const OTHER_REQUIREMENT = buildGraphNode({
+  type: "requirement", id: "requirement-2", type_label: "Requirement",
+  label: "AUTH-LOG-002 Users can enable two-factor authentication", status: "approved",
+});
+const DEPENDS_ON: ArtefactLinkTypeOption = buildOption({
+  link_type_id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", phrase: "Depends on",
+  other_types: [{ type: "requirement", label: "Requirement" }],
+});
+const OTHER_REQUIREMENT_CANDIDATE = buildCandidate({
+  type: "requirement", id: "requirement-2", type_label: "Requirement", label: OTHER_REQUIREMENT.label,
+});
+
+/** The Links panel (the aside's shared `ArtefactLinksPanel`) lists the requirement's links as the
+ * server resolved them — phrase, linked record, label-mapped status — with no client-side
+ * direction logic. */
+export const LinksPanelPopulated: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
-      links: [buildRequirementLink({ id: "link1", display_name: "Depends on", other_requirement_unique_code: "AUTH-LOG-002", other_requirement_name: "Users can enable two-factor authentication" })],
+      linkGraph: buildGraph([[OTHER_REQUIREMENT, { id: "link1", phrase: "Depends on", flow: "upstream", outgoing: true }]]),
     });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText(/AUTH-LOG-002/)).toBeInTheDocument());
-    // "Depends on" also appears as an <option> in the "add link" type
-    // select below, so this is scoped to the link row's own badge.
+    await waitFor(() => expect(canvas.getByRole("link", { name: /AUTH-LOG-002/ })).toBeInTheDocument());
     await expect(canvas.getByText("Depends on", { selector: "span.badge" })).toBeInTheDocument();
+    await expect(canvas.getByText("Approved")).toBeInTheDocument();
   },
 };
 
-/** The Links card also renders every installed module's own contributed
- * section (`modules/types.ts`'s `requirementDetailSections`,
- * compliance-module-plan.md Phase 34) — this page has no notion of what a
- * "compliance requirement" is and just renders whatever the Compliance
- * module hands it once the project reports that module enabled. See
- * `modules/compliance/RequirementTraceabilityLinksSection.stories.tsx` for
- * that component's own dedicated coverage (mirroring `ProjectOverviewPage
- * .stories.tsx`'s "module tiles get their own story file" convention) —
- * this story only pins that it actually renders inside this page's card. */
-export const LinksCardWithComplianceLink: Story = {
+/** A requirement's link to a Compliance standard's clause is an ordinary link: the shared panel lists it
+ * under the clause's type, labelled with the standard, version and clause, and this page needs no
+ * Compliance-specific section. */
+export const LinksPanelShowsAComplianceClauseLink: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
-      enabledModules: [{ module_key: "compliance", name: "Compliance", frontend_manifest: null }],
-      complianceTraceabilityLinks: [
-        {
-          id: "trace-link-1", requirement_id: REQUIREMENT_ID, compliance_requirement_id: "creq-1", link_type_id: "lt-1",
-          display_name: "Derives from", compliance_requirement_reference: "A.5.15", compliance_requirement_name: "Logical access control",
-          standard_id: "standard-1", standard_reference: "ISO-27001", standard_name: "Corporate Security Standard",
-          standard_version_id: "version-1", standard_version_label: "2.0", created_by: "user-1", created_at: "2026-01-01T00:00:00Z",
-        },
-      ],
+      linkGraph: buildGraph([[
+        buildGraphNode({
+          type: "compliance_requirement", id: "clause-1", type_label: "Compliance standard clause",
+          label: "ISO-27001 v2.0 · A.5.15 Logical access control", status: "published", project_id: null,
+        }),
+        { id: "clause-link", phrase: "Derives from", flow: "upstream", outgoing: true },
+      ]]),
     });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText("Compliance requirement links")).toBeInTheDocument());
-    await expect(canvas.getByText(/A\.5\.15 Logical access control/)).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Compliance standard clause" })).toBeInTheDocument());
+    await expect(canvas.getByText("ISO-27001 v2.0 · A.5.15 Logical access control")).toBeInTheDocument();
     await expect(canvas.getByText("Derives from", { selector: "span.badge" })).toBeInTheDocument();
+    await expect(canvas.getByText("Published")).toBeInTheDocument();
   },
 };
 
-/** "Add link" now opens a `RequirementLinkPickerModal` (platform-review-
- * 2026-09 Phase 7 — replaces the old flat-`<select>` `Popover`, which
- * stopped scaling once a project had many requirements) with Search and
- * Requirements tabs; a module-contributed Compliance tab is covered
- * separately by `LinksCardWithComplianceLinkPickerTab` below. This story
- * exercises the default-active Search tab — typing narrows the target
- * select, matching the "search by code or name" ask. */
+/** "Add link" in the panel opens the shared dialog; the requirement-to-requirement case posts to
+ * the generic link endpoint with the chosen relationship's link type and orientation. */
 export const AddLink: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
-      otherRequirements: [buildRequirement({ id: "requirement-2", unique_code: "AUTH-LOG-002", name: "Users can enable two-factor authentication" })],
+      linkOptions: [DEPENDS_ON],
+      linkCandidates: [OTHER_REQUIREMENT_CANDIDATE],
     });
-    spyOn(api, "post").mockResolvedValue(buildComment());
+    spyOn(api, "post").mockResolvedValue({});
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Add link" })).toBeInTheDocument());
-    // Selects aren't in the document until the modal trigger opens it.
-    await expect(canvas.queryByLabelText("Target requirement")).not.toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
-
-    const modal = within(document.body).getByRole("dialog", { name: "Add link" });
-    await userEvent.type(within(modal).getByPlaceholderText("Search by code or name…"), "AUTH-LOG");
-    await userEvent.selectOptions(within(modal).getByLabelText("Target requirement"), "requirement-2");
-    await userEvent.selectOptions(within(modal).getByLabelText("Link type"), "lt1");
+    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
+    const modal = within(document.body).getByRole("dialog", { name: "Add a link" });
+    // One record type is offered, so it is preselected and its records are listed; the relationship
+    // is chosen after the record and preselected when only one is usable.
+    await within(modal).findByRole("option", { name: /AUTH-LOG-002/ });
+    await userEvent.selectOptions(within(modal).getByLabelText("Record"), "requirement-2");
+    await waitFor(() => expect(within(modal).getByLabelText("Relationship")).toHaveValue("lt1:outgoing"));
     await userEvent.click(within(modal).getByRole("button", { name: "Add link" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
-        `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links`,
-        { target_requirement_id: "requirement-2", link_type_id: "lt1" }
+        `/api/v1/projects/${PROJECT_ID}/artefacts/requirement/${REQUIREMENT_ID}/links`,
+        { link_type_id: "lt1", direction: "outgoing", other_type: "requirement", other_id: "requirement-2", other_project_id: undefined }
       )
     );
-    // A successful add closes the modal.
-    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Add link" })).not.toBeInTheDocument());
+    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Add a link" })).not.toBeInTheDocument());
   },
 };
 
-/** The Requirements tab cascades component -> category -> requirement
- * (mirroring `RequirementsPage.tsx`'s own create-form cascade) rather than
- * a flat/searched list — this is the phase's other built-in tab, alongside
- * Search above. */
-export const AddLinkViaRequirementsBrowseTab: Story = {
-  beforeEach: () => {
-    mockRequirementDetailApis(["stakeholder"], {}, {
-      otherRequirements: [
-        buildRequirement({ id: "requirement-2", unique_code: "AUTH-LOG-002", name: "Users can enable two-factor authentication", component_id: "comp-1", category_id: "cat-1" }),
-      ],
-      components: [{ id: "comp-1", project_id: PROJECT_ID, name: "Authentication", prefix: "AUTH", sort_order: 0 }],
-      categories: [{ id: "cat-1", project_id: PROJECT_ID, component_id: "comp-1", name: "Login", prefix: "LOG", sort_order: 0 }],
-    });
-    spyOn(api, "post").mockResolvedValue(buildComment());
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
-    const modal = within(document.body).getByRole("dialog", { name: "Add link" });
-    await userEvent.click(within(modal).getByRole("tab", { name: "Requirements" }));
-
-    await userEvent.selectOptions(within(modal).getByLabelText("Component"), "comp-1");
-    await userEvent.selectOptions(within(modal).getByLabelText("Category"), "cat-1");
-    await userEvent.selectOptions(within(modal).getByLabelText("Target requirement"), "requirement-2");
-    await userEvent.selectOptions(within(modal).getByLabelText("Link type"), "lt1");
-    await userEvent.click(within(modal).getByRole("button", { name: "Add link" }));
-    await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(
-        `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links`,
-        { target_requirement_id: "requirement-2", link_type_id: "lt1" }
-      )
-    );
-  },
-};
-
-/** A module-contributed tab (Compliance's own cascading standard -> version
- * -> requirement picker, `requirementLinkPickerTabs`) appears in the same
- * modal only once that module is enabled for the project — this page has
- * no notion of what a "compliance requirement" is and just renders
- * whatever the module hands it, mirroring `LinksCardWithComplianceLink`'s
- * own `requirementDetailSections` convention above. See
- * `modules/compliance/ComplianceRequirementLinkPickerTab.stories.tsx` for
- * that tab's own dedicated create-flow coverage — this story only pins
- * that the tab actually appears inside this page's modal. */
-export const LinksCardWithComplianceLinkPickerTab: Story = {
-  beforeEach: () => {
-    mockRequirementDetailApis(["stakeholder"], {}, {
-      // "Add link" is disabled with nothing eligible to core-link to — this
-      // story is about the Compliance tab appearing regardless, so one
-      // eligible core target keeps the trigger enabled.
-      otherRequirements: [buildRequirement({ id: "requirement-2", unique_code: "AUTH-LOG-002", name: "Users can enable two-factor authentication" })],
-      enabledModules: [{ module_key: "compliance", name: "Compliance", frontend_manifest: null }],
-    });
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
-    const modal = within(document.body).getByRole("dialog", { name: "Add link" });
-    await expect(within(modal).getByRole("tab", { name: "Compliance" })).toBeInTheDocument();
-  },
-};
-
-/** Removing a link now opens the shared `ConfirmDialog` (Tier 1) instead of
- * firing `DELETE` immediately — the other half of the sixth-pass audit
- * finding, alongside `AddLink` above. */
+/** Removing a link opens the shared `ConfirmDialog` (Tier 1) instead of firing `DELETE` immediately. */
 export const RemoveLinkConfirms: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
-      links: [buildRequirementLink({ id: "link1", display_name: "Depends on", other_requirement_unique_code: "AUTH-LOG-002", other_requirement_name: "Users can enable two-factor authentication" })],
+      linkGraph: buildGraph([[OTHER_REQUIREMENT, { id: "link1", phrase: "Depends on", outgoing: true }]]),
     });
     spyOn(api, "delete").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText(/AUTH-LOG-002/)).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Remove link" }));
+    await userEvent.click(await canvas.findByRole("button", { name: /Remove link: Depends on AUTH-LOG-002/ }));
 
     const dialog = within(document.body).getByRole("dialog", { name: "Remove this link?" });
     await expect(dialog).toBeVisible();
@@ -535,7 +453,7 @@ export const RemoveLinkConfirms: Story = {
 
     await userEvent.click(within(dialog).getByRole("button", { name: "Remove link" }));
     await waitFor(() =>
-      expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links/link1`)
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/artefacts/requirement/${REQUIREMENT_ID}/links/link1`)
     );
   },
 };
@@ -549,47 +467,48 @@ export const RemoveLinkConfirms: Story = {
 export const AddLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
-      otherRequirements: [buildRequirement({ id: "requirement-2", unique_code: "AUTH-LOG-002", name: "Users can enable two-factor authentication" })],
+      linkOptions: [DEPENDS_ON],
+      linkCandidates: [OTHER_REQUIREMENT_CANDIDATE],
       requireCrForLinks: true,
     });
     spyOn(api, "post").mockResolvedValue({});
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
-    const modal = within(document.body).getByRole("dialog", { name: "Add link" });
-    await expect(within(modal).getByText(/requires a change request/i)).toBeInTheDocument();
-
-    await userEvent.selectOptions(within(modal).getByLabelText("Target requirement"), "requirement-2");
-    await userEvent.selectOptions(within(modal).getByLabelText("Link type"), "lt1");
-    const addButton = within(modal).getByRole("button", { name: "Add link" });
-    await expect(addButton).toBeDisabled();
+    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
+    const modal = within(document.body).getByRole("dialog", { name: "Add a link" });
+    await within(modal).findByRole("option", { name: /AUTH-LOG-002/ });
+    await userEvent.selectOptions(within(modal).getByLabelText("Record"), "requirement-2");
+    const proposeButton = within(modal).getByRole("button", { name: "Propose link" });
+    await expect(proposeButton).toBeDisabled();
     await userEvent.type(within(modal).getByLabelText("Reason for change"), "traceability gap found during review");
-    await userEvent.click(addButton);
+    await userEvent.click(proposeButton);
 
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/change-requests`,
         expect.objectContaining({
           kind: "add_link", requirement_id: REQUIREMENT_ID,
-          proposed_link_target_requirement_id: "requirement-2", proposed_link_type_id: "lt1",
+          proposed_links: [expect.objectContaining({
+            link_type_id: "lt1", direction: "outgoing", other_type: "requirement", other_id: "requirement-2",
+          })],
           reason: "traceability gap found during review",
         })
       )
     );
     expect(api.post).not.toHaveBeenCalledWith(
-      `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links`, expect.anything()
+      `/api/v1/projects/${PROJECT_ID}/artefacts/requirement/${REQUIREMENT_ID}/links`, expect.anything()
     );
     await waitFor(() => expect(within(document.body).getByText("Change request created")).toBeInTheDocument());
   },
 };
 
-/** Same `requireCrForLinks && is_locked` gate as `AddLinkRoutesThrough
- * ChangeRequestOnceLinksLocked` above, for removing an existing link. */
+/** Same `requireCrForLinks && is_locked` gate as `AddLinkRoutesThroughChangeRequestOnceLinksLocked`
+ * above, for removing an existing link. */
 export const RemoveLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
-      links: [buildRequirementLink({ id: "link1", display_name: "Depends on", other_requirement_unique_code: "AUTH-LOG-002", other_requirement_name: "Users can enable two-factor authentication" })],
+      linkGraph: buildGraph([[OTHER_REQUIREMENT, { id: "link1", phrase: "Depends on", outgoing: true }]]),
       requireCrForLinks: true,
     });
     spyOn(api, "post").mockResolvedValue({});
@@ -597,11 +516,10 @@ export const RemoveLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText(/AUTH-LOG-002/)).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Remove link" }));
+    await userEvent.click(await canvas.findByRole("button", { name: /Remove link: Depends on AUTH-LOG-002/ }));
 
-    const dialog = within(document.body).getByRole("dialog", { name: "Remove this link via change request?" });
-    const confirmButton = within(dialog).getByRole("button", { name: "Remove link" });
+    const dialog = within(document.body).getByRole("dialog", { name: "Remove this link?" });
+    const confirmButton = within(dialog).getByRole("button", { name: "Request removal" });
     await expect(confirmButton).toBeDisabled();
     await userEvent.type(within(dialog).getByLabelText("Reason for change"), "link was created in error");
     await expect(confirmButton).toBeEnabled();

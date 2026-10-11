@@ -9,6 +9,7 @@ from app.models.action_type import ActionTypeDefinition
 from app.models.audit import AuditEvent, LoginEvent
 from app.models.change_request import (
     ChangeRequest,
+    ChangeRequestProposedLink,
     ChangeRequestTask,
     ChangeRequestVersion,
     ChangeRequestVote,
@@ -52,6 +53,7 @@ from app.models.project import (
 )
 from app.models.project_status import ProjectStatusDefinition
 from app.models.relationship import ArtefactLink
+from app.models.report_content import ReportContent
 from app.models.requirement import (
     Baseline,
     BaselineItem,
@@ -61,7 +63,12 @@ from app.models.requirement import (
     RequirementVersion,
 )
 from app.models.requirement_action import RequirementAction
-from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.models.requirement_link_type import (
+    ArtefactTypeLinkRule,
+    ArtefactTypeLinkRuleEntry,
+    ProjectLinkTypeVisibility,
+    RequirementLinkTypeDefinition,
+)
 from app.models.scoring import ScoringBand, ScoringLevel, ScoringModelDefault
 from app.models.sequence import ProjectSequenceCounter
 from app.models.server_role import UserServerRole
@@ -73,6 +80,7 @@ __all__ = [
     "LoginEvent",
     "ChangeRequest",
     "ChangeRequestTask",
+    "ChangeRequestProposedLink",
     "ChangeRequestVersion",
     "ChangeRequestVote",
     "ReviewComment",
@@ -93,6 +101,7 @@ __all__ = [
     "OrgGroup",
     "OrgGroupMember",
     "PendingInvite",
+    "ReportContent",
     "ReportTemplate",
     "ServerSettings",
     "UserOrgRole",
@@ -115,6 +124,9 @@ __all__ = [
     "BaselineItem",
     "Requirement",
     "RequirementKeyword",
+    "ArtefactTypeLinkRule",
+    "ArtefactTypeLinkRuleEntry",
+    "ProjectLinkTypeVisibility",
     "RequirementLinkTypeDefinition",
     "RequirementAction",
     "RequirementReview",

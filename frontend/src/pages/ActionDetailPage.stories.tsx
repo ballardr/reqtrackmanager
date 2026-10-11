@@ -13,6 +13,7 @@ import {
   withRouter,
   withToast,
 } from "../testing/storybook-helpers";
+import { buildGraph, buildGraphNode } from "../testing/artefactLinksFixtures";
 import { ActionDetailPage } from "./ActionDetailPage";
 
 const PROJECT_ID = "project-1";
@@ -34,8 +35,12 @@ function mockActionDetailApis(action: RequirementAction) {
     if (path.includes("/action-types")) return actionTypes;
     if (path.endsWith(`/actions/${ACTION_ID}/comments`)) return [buildComment({ author_display_name: "Jamie Lee" })];
     if (path.endsWith(`/actions/${ACTION_ID}/files`)) return [];
-    if (path.endsWith(`/actions/${ACTION_ID}/requirements`)) {
-      return [{ id: requirement.id, unique_code: requirement.unique_code, name: requirement.name }];
+    if (path.includes(`/artefacts/requirement_action/${ACTION_ID}/link-graph`)) {
+      const node = buildGraphNode({
+        type: "requirement", id: requirement.id, type_label: "Requirement", label: `${requirement.unique_code} ${requirement.name}`,
+        status: "approved",
+      });
+      return buildGraph([[node, { phrase: null, dedicated: true }]]);
     }
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
     if (path.includes("/users")) return [orgUser];
@@ -65,10 +70,13 @@ export const PendingActionWithLinkedRequirement: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: /Review password reset flow/ })).toBeInTheDocument());
     await expect(canvas.getByText(/AUTH-LOG-001/)).toBeInTheDocument();
     await expect(canvas.getByLabelText("Outcome")).toHaveValue("pending");
-    // Linked requirements come from the action's own endpoint in one call,
-    // not one request per requirement in the project.
-    await expect(api.get).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/actions/${ACTION_ID}/requirements`);
+    // Linked requirements come from the Links panel's graph in one call, not one request per
+    // requirement in the project; the membership link is structural, so it cannot be removed here.
+    await expect(api.get).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/artefacts/requirement_action/${ACTION_ID}/link-graph?depth=1&direction=both`
+    );
     await expect(api.get).not.toHaveBeenCalledWith(expect.stringMatching(/\/requirements\/[^/]+\/actions$/));
+    await expect(canvas.queryByRole("button", { name: /Remove link/ })).not.toBeInTheDocument();
   },
 };
 

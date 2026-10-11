@@ -333,11 +333,16 @@ def upload_comment_attachment(
 def create_change_request(
     headers: dict, project_id: str, *, kind: str, requirement_id: str | None, proposed_name: str,
     proposed_reasoning: str, reason: str, component_id: str | None = None, category_id: str | None = None,
+    proposed_links: list[dict] | None = None,
 ) -> dict:
+    """Creates a change request. `proposed_links` are links to create on approval, each
+    `{"link_type_id", "direction", "other_type", "other_id"}` read from the requirement's side."""
     body = {
         "kind": kind, "requirement_id": requirement_id, "proposed_name": proposed_name,
         "proposed_reasoning": proposed_reasoning, "reason": reason,
     }
+    if proposed_links:
+        body["proposed_links"] = proposed_links
     if kind == "modify_requirement":
         # changed_fields is the explicit record of what a MODIFY_REQUIREMENT
         # change request actually proposes to change (see
@@ -430,10 +435,58 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
     return r.json()
 
 
-def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str) -> dict:
+def create_link_type(
+    headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
+    allowed_source_types: list[str] | None = None, allowed_target_types: list[str] | None = None,
+) -> dict:
+    """`flow` says where the link's target sits in a traceability chain: "forward_is_upstream",
+    "forward_is_downstream" or "none" (see `models.enums.LinkFlow`). `allowed_source_types` /
+    `allowed_target_types` restrict which artefact types the link may run from / to (`None` = any)."""
     r = httpx.post(
-        f"{BASE}/orgs/{org_id}/link-types", json={"forward_name": forward_name, "reverse_name": reverse_name},
+        f"{BASE}/orgs/{org_id}/link-types",
+        json={
+            "forward_name": forward_name, "reverse_name": reverse_name, "flow": flow,
+            "allowed_source_types": allowed_source_types, "allowed_target_types": allowed_target_types,
+        },
         headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_artefact_link(
+    headers: dict, project_id: str, artefact_type: str, artefact_id: str, *, link_type_id: str, other_type: str,
+    other_id: str, direction: str = "outgoing", other_project_id: str | None = None,
+) -> dict:
+    """Links any two artefacts through the generic endpoint, read from `artefact_id`'s side
+    (`direction` "outgoing" = it is the link's source). `other_project_id` is the other record's project when it
+    is a parent or child of `project_id` (a cross-level link)."""
+    body = {"link_type_id": link_type_id, "direction": direction, "other_type": other_type, "other_id": other_id}
+    if other_project_id is not None:
+        body["other_project_id"] = other_project_id
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/links", json=body, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_link_type(
+    headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
+) -> dict:
+    """A link type local to one project (usable there and in every sub-project)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/link-types",
+        json={"forward_name": forward_name, "reverse_name": reverse_name, "flow": flow}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_link_type_visibility(headers: dict, project_id: str, link_type_id: str, hidden: bool) -> dict:
+    """Hides (or re-shows) a link type for a project and the sub-projects under it; links already using it keep showing."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/link-types/{link_type_id}/visibility", json={"hidden": hidden}, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -501,17 +554,26 @@ def archive_action(headers: dict, project_id: str, action_id: str) -> None:
     r.raise_for_status()
 
 
-def create_report_template(headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str) -> dict:
+def create_report_template(
+    headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str, content: list[dict] | None = None,
+) -> dict:
+    """Creates a report template; `content` is its per-report-type intro/chapters/appendices entries."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/report-templates",
         json={
             "name": name, "accent_color_hex": accent_color_hex, "include_cover_page": True,
-            "include_logo": False, "footer_text": footer_text,
+            "include_logo": False, "footer_text": footer_text, "content": content or [],
         },
         headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
+
+
+def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
+    """Saves per-report-type content at one tier: `/orgs/{id}/report-defaults` or `/projects/{id}/report-config`."""
+    r = httpx.put(f"{BASE}{path}", json={"content": content}, headers=headers, timeout=30)
+    r.raise_for_status()
 
 
 # --- Compliance Module helpers (docs/compliance-module-plan.md Phase 15) -
@@ -635,6 +697,19 @@ def assign_compliance_standard(headers: dict, org_id: str, project_id: str, stan
     )
     r.raise_for_status()
     return r.json()
+
+
+def grant_custom_role(headers: dict, org_id: str, role_name: str, user_id: str, project_id: str) -> None:
+    """Grants an organisation's project-scoped custom role (looked up by name, e.g. the seeded
+    "Link editor" preset) to a user on one project."""
+    roles = httpx.get(f"{BASE}/orgs/{org_id}/custom-roles", headers=headers, timeout=30)
+    roles.raise_for_status()
+    role = next(r for r in roles.json() if r["name"] == role_name)
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/custom-roles/{role['id']}/users/{user_id}", json={"project_id": project_id},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
 
 
 def grant_compliance_officer(headers: dict, project_id: str, user_id: str) -> None:
@@ -964,13 +1039,14 @@ def list_decision_types(headers: dict, project_id: str) -> dict[str, dict]:
 def create_decision(
     headers: dict, project_id: str, *, title: str, decision_statement: str, decision_type_id: str,
     owner_id: str, decision_maker_id: str | None = None, context: str = "", options_considered: str = "",
-    chosen_option: str = "", rationale: str = "", consequences: str = "",
+    chosen_option: str = "", rationale: str = "", consequences: str = "", decision_date: str | None = None,
 ) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/decisions",
         json={
             "title": title, "decision_statement": decision_statement, "decision_type_id": decision_type_id,
-            "owner_id": owner_id, "decision_maker_id": decision_maker_id, "context": context,
+            "owner_id": owner_id, "decision_maker_id": decision_maker_id, "decision_date": decision_date,
+            "context": context,
             "options_considered": options_considered, "chosen_option": chosen_option, "rationale": rationale,
             "consequences": consequences,
         },
@@ -978,6 +1054,14 @@ def create_decision(
     )
     r.raise_for_status()
     return r.json()
+
+
+def advance_decision_to_review(headers: dict, project_id: str, decision_id: str, *, submit_for_review: bool = True) -> None:
+    """Moves a Decision to `Proposed`, and on to `Under review` unless `submit_for_review` is false — for demo
+    Decisions meant to read as waiting for a verdict (the Approval ageing report)."""
+    steps = ["propose", "submit-for-review"] if submit_for_review else ["propose"]
+    for step in steps:
+        httpx.post(f"{BASE}/projects/{project_id}/modules/decisions/{decision_id}/{step}", headers=headers, timeout=30).raise_for_status()
 
 
 def propose_and_approve_decision(headers: dict, project_id: str, decision_id: str, *, approval_comment: str = "") -> dict:
@@ -1531,7 +1615,20 @@ def main() -> None:
     create_report_template(
         h_pm, org["id"], name="Solstice Standard Report", accent_color_hex="#0F62FE",
         footer_text="Solstice Robotics — Confidential",
+        content=[
+            {"report_key": "requirements", "intro": "{{report_title}} — requirements baseline for {{organisation}}, "
+             "generated {{generated_on}}.", "chapters": [], "appendices": []},
+            {"report_key": "decisions.d3", "intro": "The decisions below were made for {{project_name}}.",
+             "chapters": [{"title": "How to read this log", "body": "Each decision records its context, the option chosen and why."}],
+             "appendices": []},
+        ],
     )
+    # Organisation defaults, per report type: what any project (and its child projects) uses unless it sets its own.
+    put_report_content(h_pm, f"/orgs/{org['id']}/report-defaults", [
+        {"report_key": "*", "intro": "Prepared by {{organisation}} for {{project_name}}.", "chapters": [], "appendices": []},
+        {"report_key": "requirements", "intro": "", "chapters": [],
+         "appendices": [{"title": "Document control", "body": "Controlled by the {{organisation}} engineering office."}]},
+    ])
 
     print("Setting organisation outgoing-email branding...")
     httpx.put(
@@ -1548,7 +1645,17 @@ def main() -> None:
     print("Adding a custom requirement link type...")
     # Beyond the 12 seeded defaults (C-G-09) — demonstrates that an
     # organisation can extend the link-type vocabulary with its own.
-    supersedes_link_type = create_link_type(h_pm, org["id"], forward_name="Supersedes", reverse_name="Is superseded by")
+    # `flow` makes the artefact link graph read it as upstream (the superseded one is older), unlike a
+    # custom type left at the default "none", which the graph shows as merely related.
+    supersedes_link_type = create_link_type(
+        h_pm, org["id"], forward_name="Supersedes", reverse_name="Is superseded by", flow="forward_is_upstream"
+    )
+    # A restricted type: only a requirement may start it and only an action may be its target, so the link
+    # panel offers it just for that pair ("Can link from"/"Can link to" in Org Admin's Link types).
+    create_link_type(
+        h_pm, org["id"], forward_name="Is validated in simulation by", reverse_name="Validates in simulation",
+        flow="forward_is_downstream", allowed_source_types=["requirement"], allowed_target_types=["requirement_action"],
+    )
     default_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
     project_statuses = {s["name"]: s for s in httpx.get(f"{BASE}/orgs/{org['id']}/project-statuses", headers=h_pm, timeout=30).json()}
 
@@ -1604,6 +1711,12 @@ def main() -> None:
     create_requirement_link(h_pm, drone["id"], return_to_home_req["id"], gps_req["id"], default_link_types["Depends on"]["id"])
     create_requirement_link(h_pm, drone["id"], preflight_req["id"], gps_req["id"], default_link_types["Depends on"]["id"])
     create_requirement_link(h_pm, drone["id"], remote_id_req["id"], flight_log_req["id"], supersedes_link_type["id"])
+    # Multi-hop chain for the artefact link graph: remote ID needs a position fix (depends on GPS), and the
+    # return-to-home threshold derives from the flight-time requirement's margin (an upstream of an upstream
+    # when read from GPS at depth 2).
+    flight_time_req = drone_reqs["Provide a minimum flight time of 42 minutes at an 800g payload"]
+    create_requirement_link(h_pm, drone["id"], remote_id_req["id"], gps_req["id"], default_link_types["Depends on"]["id"])
+    create_requirement_link(h_pm, drone["id"], return_to_home_req["id"], flight_time_req["id"], default_link_types["Derives from"]["id"])
 
     print("Creating and linking requirement actions on Falcon-3 (review/test tasks)...")
     drone_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()}
@@ -1711,6 +1824,18 @@ def main() -> None:
         reason="Obstacle-avoidance sensor payload (added post-baseline) draws an additional ~4W, "
         "reducing achievable flight time in verified bench testing from 42 to 38 minutes.",
         component_id=drone_components["PR"]["id"], category_id=drone_categories["PR"]["PERF"]["id"],
+        # Platform Enhancements Phase 6b: the request also proposes three traceability links, merged only if the
+        # approver ticks them. The third is made unmergeable below (linked directly after the request was made),
+        # so the approval dialog also shows a link that "can no longer be merged" with its reason.
+        proposed_links=[
+            {"link_type_id": default_link_types["Related to"]["id"], "direction": "outgoing",
+             "other_type": "requirement", "other_id": other["id"]}
+            for other in (flight_log_req, gps_req, preflight_req)
+        ],
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "requirement", flight_time_req["id"], link_type_id=default_link_types["Related to"]["id"],
+        other_type="requirement", other_id=preflight_req["id"],
     )
     submit_change_request(h_pm, drone["id"], drone_cr["id"])
     add_cr_comment(h(login("demo.stakeholder@example.com", PASSWORD)), drone["id"], drone_cr["id"],
@@ -1735,9 +1860,17 @@ def main() -> None:
     )
     add_member_source(h_pm, drone["id"], avionics["id"])
     assign_project_role(h_pm, avionics["id"], demo_engineer["user_id"], "project_manager")
+    # Falcon-3's own report content; its Avionics child sets none, so its reports inherit this (then the organisation's).
+    put_report_content(h_pm, f"/projects/{drone['id']}/report-config", [
+        {"report_key": "requirements", "intro": "Requirements for the Falcon-3 inspection drone programme.",
+         "chapters": [{"title": "Scope", "body": "Covers the airframe, avionics, ground station and fleet backend."}],
+         "appendices": []},
+    ])
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
-    seed_project(h_pm, avionics, avionics_components, avionics_categories, AVIONICS_REQUIREMENTS, demo_admin["user_id"])
+    avionics_reqs = seed_project(
+        h_pm, avionics, avionics_components, avionics_categories, AVIONICS_REQUIREMENTS, demo_admin["user_id"]
+    )
 
     print("Creating 'Solstice Cloud Platform'...")
     cloud = create_project(
@@ -1918,6 +2051,15 @@ def main() -> None:
 
     drone_compliance = assign_compliance_standard(h_pm, org["id"], drone["id"], airworthiness_standard["id"], airworthiness_version["id"])
     grant_compliance_officer(h_pm, drone["id"], demo_engineer["user_id"])
+    # The seeded "Link editor" preset (View + Link on every record type) lets Priya trace the Drone project's
+    # records without being a manager (Platform Enhancements Phase 6d).
+    grant_custom_role(h_pm, org["id"], "Link editor", demo_engineer["user_id"], drone["id"])
+    # A requirement traces to the standard clause it derives from as an ordinary link (Platform Enhancements
+    # Phase 6c): visible in the requirement's Links panel, found with the "Add a link" finder.
+    create_artefact_link(
+        h_pm, drone["id"], "requirement", remote_id_req["id"], link_type_id=default_link_types["Derives from"]["id"],
+        other_type="compliance_requirement", other_id=remote_id_compliance_req["id"],
+    )
 
     compliance_pcrs = list_compliance_requirements(h_pm, drone["id"], drone_compliance["id"])
     remote_id_pcr = next(p for p in compliance_pcrs if p["requirement_id"] == remote_id_compliance_req["id"])
@@ -2106,7 +2248,7 @@ def main() -> None:
         decision_statement="Falcon-3 will ship with one primary flight controller board and a cold-spare"
         " swapped in by ground crew between flights, rather than dual-redundant boards flying together.",
         decision_type_id=drone_decision_types["Architecture"]["id"], owner_id=demo_admin["user_id"],
-        decision_maker_id=demo_admin["user_id"],
+        decision_maker_id=demo_admin["user_id"], decision_date=(date.today() - timedelta(days=75)).isoformat(),
         context="Early Falcon-3 prototypes carried a single flight controller with no in-flight redundancy.",
         options_considered="(1) Single controller, cold-spare swapped between flights. (2) Dual-redundant"
         " controllers flying together with in-flight failover.",
@@ -2126,7 +2268,7 @@ def main() -> None:
         decision_statement="Falcon-3 will fly with two flight controller boards in an active/standby"
         " arrangement, with automatic in-flight failover, superseding the earlier single-controller design.",
         decision_type_id=drone_decision_types["Architecture"]["id"], owner_id=demo_engineer["user_id"],
-        decision_maker_id=demo_admin["user_id"],
+        decision_maker_id=demo_admin["user_id"], decision_date=(date.today() - timedelta(days=12)).isoformat(),
         context="Planned operations now include inspection routes over populated infrastructure corridors,"
         " where a single controller failure could mean an uncontrolled descent rather than a safe abort.",
         options_considered="(1) Keep the single-controller/cold-spare design. (2) Dual-redundant controllers"
@@ -2152,6 +2294,21 @@ def main() -> None:
         context="Current OTA channel accepts unsigned images verified only by a checksum, adequate for an"
         " internal test fleet but not for a customer-operated one.",
     )
+    print("  Two Decisions waiting for a verdict (one with no decision maker) — feeds the Approval ageing report...")
+    modem_decision = create_decision(
+        h_pm, drone["id"], title="Select the cellular modem vendor for Falcon-3 telemetry",
+        decision_statement="Falcon-3 will standardise on one cellular modem vendor for its telemetry uplink.",
+        decision_type_id=drone_decision_types["Engineering"]["id"], owner_id=demo_engineer["user_id"],
+        context="Two vendors are qualified; field trials finished last month.",
+    )
+    advance_decision_to_review(h_pm, drone["id"], modem_decision["id"])
+    gimbal_decision = create_decision(
+        h_pm, drone["id"], title="Adopt a 3-axis gimbal as the standard inspection payload mount",
+        decision_statement="Falcon-3 inspection payloads will mount on a 3-axis gimbal.",
+        decision_type_id=drone_decision_types["Design"]["id"], owner_id=demo_engineer["user_id"],
+        decision_maker_id=demo_admin["user_id"],
+    )
+    advance_decision_to_review(h_pm, drone["id"], gimbal_decision["id"], submit_for_review=False)
 
     print("Seeding Context & Strategy (Module 1) — enabling the module, then an org Strategy and a project Strategy...")
     # default_enabled=False (docs/plans/module-01-context-and-strategy-plan.md
@@ -2311,6 +2468,50 @@ def main() -> None:
     )
     print(f"  Duplicate: {pp_duplicate['title']!r} (real 'Duplicate of' relationship to the canonical Pain Point,"
           " not just the mandatory comment's own prose)")
+
+    print("Linking a Pain Point -> Decision -> Requirement chain on Falcon-3 through the generic link endpoint...")
+    # Decision-to-Pain-Point links have no per-module endpoint: the org's seeded "Addresses" type (Decision ->
+    # Pain point) is used from the Pain Point's side, and the core "Implements" type from the Requirement's
+    # side, so the chain can be authored (and read as a graph) from any of the three pages.
+    chain_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
+    create_artefact_link(
+        h_pm, drone["id"], "pain_point", pp_accepted["id"], link_type_id=chain_link_types["Addresses"]["id"],
+        other_type="decision", other_id=single_fc_decision["id"], direction="incoming",
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "requirement", gps_req["id"], link_type_id=chain_link_types["Implements"]["id"],
+        other_type="decision", other_id=single_fc_decision["id"], direction="incoming",
+    )
+
+    print("Linking across Falcon-3 and its Avionics sub-project (Phase 5d): the parent's dual-redundant Decision"
+          " 'Implements' an Avionics requirement, and an Avionics Decision 'Addresses' the parent's Pain Point"
+          " (the seeded 'Addresses' type keeps the upstream Pain Point in the same or a parent project)...")
+    avionics_requirement = next(iter(avionics_reqs.values()))
+    create_artefact_link(
+        h_pm, drone["id"], "decision", dual_fc_decision["id"], link_type_id=chain_link_types["Implements"]["id"],
+        other_type="requirement", other_id=avionics_requirement["id"], other_project_id=avionics["id"],
+    )
+    avionics_decision = create_decision(
+        h_pm, avionics["id"], title="Fuse IMU and GPS with a dual-redundant estimator",
+        decision_statement="Avionics will run two independent sensor-fusion estimators and vote on their output.",
+        decision_type_id=drone_decision_types["Architecture"]["id"], owner_id=demo_engineer["user_id"],
+        context="Sub-project-level consequence of the Falcon-3 dual-redundancy decision.",
+    )
+    create_artefact_link(
+        h_pm, avionics["id"], "decision", avionics_decision["id"], link_type_id=chain_link_types["Addresses"]["id"],
+        other_type="pain_point", other_id=pp_accepted["id"], other_project_id=drone["id"],
+    )
+
+    print("Seeding a project-level link type on Falcon-3 (Phase 5c): \"Is verified by\" (a requirement is verified by"
+          " another), inherited by the Avionics sub-project, and Falcon-3 hides the organisation's \"Mitigates\"...")
+    verified_by = create_project_link_type(
+        h_pm, drone["id"], forward_name="Is verified by", reverse_name="Verifies", flow="forward_is_downstream",
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "requirement", gps_req["id"], link_type_id=verified_by["id"],
+        other_type="requirement", other_id=flight_time_req["id"],
+    )
+    set_link_type_visibility(h_pm, drone["id"], chain_link_types["Mitigates"]["id"], True)
 
     print("Seeding Pain Point scoring config (Module 1 Phase 10) — org keeps the seeded Severity/Frequency/"
           "Confidence levels and module-default model; Falcon-3 overrides its default model to S×F...")
@@ -2572,9 +2773,13 @@ def main() -> None:
     print("  Compliance standards: ASA-1 (assigned to Falcon-3 only), EN 60529 (opt-in, unassigned),"
           " ISO/IEC 27001 (applies to all projects — auto-assigned to Falcon-3 and Solstice Cloud,"
           " Falcon-3 Avionics Subsystem excepted)")
-    print("  Decision Management (enabled org-wide): 3 Decisions on Falcon-3 — the single-flight-controller"
+    print("  Decision Management (enabled org-wide): 5 Decisions on Falcon-3 (two more wait for a verdict, so the"
+          " Decision register, Approval ageing, Decision log and Rationale coverage reports all have content) — the single-flight-controller"
           " decision (Approved, then Superseded), the dual-redundant decision that supersedes it (Approved),"
-          " and an OTA-signing decision left in Draft")
+          " and an OTA-signing decision left in Draft; the single-flight-controller decision also addresses the"
+          " accepted Pain Point and implements the GPS requirement through the generic link endpoint (a Pain Point ->"
+          " Decision -> Requirement chain, readable as a link graph from any of the three), and the org has a"
+          " restricted link type ('Is validated in simulation by', requirement -> action only)")
     print("  Context & Strategy (enabled org-wide): 1 organisation Strategy (Active) and 1 project Strategy on"
           " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win;"
           " 1 organisation Future State and 1 Active project Future State on Falcon-3 (plus a Draft one with a"

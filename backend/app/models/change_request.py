@@ -13,7 +13,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,7 @@ from app.models.enums import (
     ChangeRequestKind,
     ChangeRequestStatus,
     ChangeRequestVoteChoice,
+    ProposedLinkOutcome,
     RequirementLevel,
     ReviewTargetType,
 )
@@ -104,10 +105,11 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
             requirement's already-linked actions to unlink on approval;
             reusing the same column rather than adding a duplicate one,
             since the two kinds never coexist on one version row.
-        proposed_link_target_requirement_id / proposed_link_type_id:
-            ADD_LINK-only (Platform review 2026-09, Phase 8) — the
-            requirement to link to and which org-defined link type, mirroring
-            `RequirementLinkCreate`'s own two fields.
+        proposed_links: The links this change request proposes (Platform
+            Enhancements Phase 6b), merged into the requirement on approval
+            as the approver chooses. The whole payload of an ADD_LINK request
+            and an optional addition to NEW_REQUIREMENT / MODIFY_REQUIREMENT
+            ones. See `ChangeRequestProposedLink`.
         proposed_link_id: REMOVE_LINK-only (Platform review 2026-09, Phase
             8) — the existing `ArtefactLink` row to remove on approval.
             `ondelete="SET NULL"` since the link could in principle be
@@ -175,15 +177,7 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     proposed_action_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # ADD_LINK/REMOVE_LINK-only (Platform review 2026-09, Phase 8) — see
-    # this class's own docstring for what each field means per kind.
-    proposed_link_target_requirement_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
-    )
-    proposed_link_type_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id", ondelete="SET NULL"), nullable=True
-    )
-    # References `artefact_links.id` (Module 0, Platform Foundations Phase
+    # REMOVE_LINK-only (Platform review 2026-09, Phase 8). References `artefact_links.id` (Module 0, Platform Foundations Phase
     # 1) — originally `requirement_links.id`; repointed by migration 0041
     # when that table was folded into the generic `ArtefactLink` table,
     # preserving each migrated row's original id so this FK never needed
@@ -203,6 +197,59 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     change_request: Mapped[ChangeRequest] = relationship(back_populates="versions")
+    proposed_links: Mapped[list[ChangeRequestProposedLink]] = relationship(
+        back_populates="version", order_by="ChangeRequestProposedLink.sort_order",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
+
+
+class ChangeRequestProposedLink(UUIDPKMixin, Base):
+    """One link a change request proposes to create, merged on approval.
+
+    Platform Enhancements Phase 6b. A real table (not a JSON list) so the link
+    type is a foreign key: deleting an in-use link type repoints or blocks on
+    these rows (`services.link_type_usage`) instead of `SET NULL` silently
+    stripping the type from a request that could then no longer be applied.
+
+    Attributes:
+        change_request_version_id: The version row the link was proposed on.
+        link_type_id: The link type. `SET NULL` only reaches resolved (merged,
+            declined, skipped) rows, since an open request blocks or repoints
+            first; such a row keeps its outcome but no longer names a type.
+        direction: `"outgoing"` when the requirement is the link's source,
+            `"incoming"` when it is the target. Relative to the requirement
+            because a `NEW_REQUIREMENT` request has no requirement id yet.
+        other_type / other_id: The record at the far end.
+        other_project_id: The far end's project when it is an ancestor or
+            descendant of the request's project; `NULL` for the request's own.
+        outcome / outcome_reason: What became of it (`ProposedLinkOutcome`) and,
+            for `skipped`, why.
+        sort_order: Display order, the order it was proposed in.
+    """
+
+    __tablename__ = "change_request_proposed_links"
+    __table_args__ = (
+        Index("ix_cr_proposed_links_version", "change_request_version_id"),
+        Index("ix_cr_proposed_links_link_type", "link_type_id"),
+    )
+
+    change_request_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("change_request_versions.id", ondelete="CASCADE")
+    )
+    link_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    direction: Mapped[str] = mapped_column(String(10))
+    other_type: Mapped[str] = mapped_column(String(40))
+    other_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    other_project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    outcome: Mapped[ProposedLinkOutcome] = mapped_column(str_enum(ProposedLinkOutcome, 20), default=ProposedLinkOutcome.PENDING)
+    outcome_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    version: Mapped[ChangeRequestVersion] = relationship(back_populates="proposed_links")
 
 
 class ReviewComment(UUIDPKMixin, TimestampMixin, Base):

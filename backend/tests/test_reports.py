@@ -4,14 +4,11 @@ endpoint (merged from separate `/reports/pdf`/`/reports/csv` endpoints,
 2026-09-22 — see docs/decisions.md), selected via the required `format`
 field."""
 
-from app.models.organization import Organization
-from app.models.project import Project
 from app.services.reports import (
     ReportRequirementRow,
     _group_rows_by_component_and_category,
     default_chapters_per_component,
     generate_csv_report,
-    resolve_report_config,
 )
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
 
@@ -215,28 +212,23 @@ def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, 
     project = _seed_requirement(client, admin_token, org_id)
 
     empty = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert empty == {
-        "intro": "", "chapters": [], "appendices": [],
-        "intro_is_organisation_default": False,
-        "chapters_is_organisation_default": False,
-        "appendices_is_organisation_default": False,
-        "default_report_template_id": None,
-    }
+    assert empty == {"default_report_template_id": None, "content": []}
 
     saved = client.put(
         f"/api/v1/projects/{project['id']}/report-config",
-        json={
+        json={"content": [{
+            "report_key": "requirements",
             "intro": "Welcome to the report.",
             "chapters": [{"title": "Scope", "body": "What this covers."}],
             "appendices": [{"title": "Glossary", "body": "Terms used."}],
-        },
+        }]},
         headers=auth_headers(admin_token),
     )
     assert saved.status_code == 200
-    assert saved.json()["intro"] == "Welcome to the report."
+    assert saved.json()["content"][0]["intro"] == "Welcome to the report."
 
     reread = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert reread["chapters"] == [{"title": "Scope", "body": "What this covers."}]
+    assert reread["content"][0]["chapters"] == [{"title": "Scope", "body": "What this covers."}]
 
     # Generating without ad-hoc pre/post markdown should fall back to the
     # persisted config rather than producing a bare report.
@@ -268,7 +260,7 @@ def test_report_config_is_readable_by_a_plain_stakeholder_not_just_a_manager(cli
 
     denied = client.put(
         f"/api/v1/projects/{project['id']}/report-config",
-        json={"intro": "Should not be allowed."},
+        json={"content": [{"report_key": "requirements", "intro": "Should not be allowed."}]},
         headers=auth_headers(stakeholder_token),
     )
     assert denied.status_code == 403
@@ -276,73 +268,52 @@ def test_report_config_is_readable_by_a_plain_stakeholder_not_just_a_manager(cli
 
 def test_project_falls_back_to_organisation_report_defaults(client, admin_token, org_id):
     """A project with no report content of its own (R-G-01/R-G-02) should
-    use the organisation's defaults field-by-field, and the response should
-    say so via the `*_is_organisation_default` flags — the same "narrower
-    scope overrides a broader default" shape used for branding."""
+    use the organisation's defaults field-by-field, and the effective
+    endpoint says where each field came from — the same "narrower scope
+    overrides a broader default" shape used for branding."""
     project = _seed_requirement(client, admin_token, org_id)
+    effective_url = f"/api/v1/projects/{project['id']}/report-content/effective?report_key=requirements"
 
     defaults = client.put(
         f"/api/v1/orgs/{org_id}/report-defaults",
-        json={
-            "intro": "Org-wide introduction.",
+        json={"content": [{
+            "report_key": "requirements", "intro": "Org-wide introduction.",
             "chapters": [{"title": "Standard scope", "body": "Applies to every project."}],
-            "appendices": [],
-        },
+        }]},
         headers=auth_headers(admin_token),
     )
     assert defaults.status_code == 200
-    assert defaults.json()["intro"] == "Org-wide introduction."
+    assert defaults.json()["content"][0]["intro"] == "Org-wide introduction."
 
     fetched = client.get(f"/api/v1/orgs/{org_id}/report-defaults", headers=auth_headers(admin_token)).json()
-    assert fetched["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
+    assert fetched["content"][0]["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
 
-    config = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert config["intro"] == "Org-wide introduction."
-    assert config["intro_is_organisation_default"] is True
-    assert config["chapters_is_organisation_default"] is True
-    # Appendices default is empty, so there's nothing to "use" — not organisation-default.
-    assert config["appendices_is_organisation_default"] is False
+    # The project's own config holds nothing; the effective view inherits the org's.
+    own = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
+    assert own["content"] == []
+    effective = client.get(effective_url, headers=auth_headers(admin_token)).json()
+    assert effective["intro"] == "Org-wide introduction."
+    assert effective["intro_source"]["scope_type"] == "organization"
+    assert effective["chapters_source"]["scope_type"] == "organization"
+    # Appendices default is empty, so nothing set them.
+    assert effective["appendices_source"] is None
 
     # The project's own intro, once set, takes priority over the org default.
     client.put(
         f"/api/v1/projects/{project['id']}/report-config",
-        json={"intro": "Project-specific introduction.", "chapters": [], "appendices": []},
+        json={"content": [{"report_key": "requirements", "intro": "Project-specific introduction."}]},
         headers=auth_headers(admin_token),
     )
-    overridden = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
+    overridden = client.get(effective_url, headers=auth_headers(admin_token)).json()
     assert overridden["intro"] == "Project-specific introduction."
-    assert overridden["intro_is_organisation_default"] is False
-    # Chapters weren't set on the project (still []), so the org default still applies there.
+    assert overridden["intro_source"]["scope_type"] == "project"
+    # Chapters weren't set on the project, so the org default still applies there.
     assert overridden["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
-    assert overridden["chapters_is_organisation_default"] is True
+    assert overridden["chapters_source"]["scope_type"] == "organization"
 
     resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "pdf"}, headers=auth_headers(admin_token))
     assert resp.status_code == 200
     assert resp.content[:5] == b"%PDF-"
-
-
-def test_resolve_report_config_falls_back_to_project_summary_then_org_default_for_intro():
-    """Precedence for intro specifically: project.report_intro (explicit
-    override) > project.summary (project description) > org default >
-    blank. Chapters/appendices have no summary-equivalent fallback."""
-    org = Organization(default_report_intro="org default intro")
-
-    # No report_intro set at all: falls back to the project's description.
-    project = Project(report_intro="", summary="A drone inspection platform.")
-    resolved = resolve_report_config(project, org)
-    assert resolved.intro == "A drone inspection platform."
-    assert resolved.intro_is_organisation_default is False
-
-    # An explicit report_intro still wins over the description.
-    project = Project(report_intro="Explicit intro.", summary="A drone inspection platform.")
-    resolved = resolve_report_config(project, org)
-    assert resolved.intro == "Explicit intro."
-
-    # Neither report_intro nor summary set: falls all the way to the org default.
-    project = Project(report_intro="", summary="")
-    resolved = resolve_report_config(project, org)
-    assert resolved.intro == "org default intro"
-    assert resolved.intro_is_organisation_default is True
 
 
 def test_default_chapters_per_component_heuristic():

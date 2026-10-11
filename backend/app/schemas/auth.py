@@ -134,7 +134,8 @@ class UserPreferencesUpdate(BaseModel):
         default=None,
         description="Partial update, shallow-merged into the existing bag by top-level key rather than "
         "replacing it wholesale — setting one key (e.g. a single list's tile/list choice) never needs to "
-        "know or resend every other key already stored.",
+        "know or resend every other key already stored. A null value removes its key. The merged bag is "
+        "bounded (key count, key length, total size); exceeding a limit is a 422.",
     )
 
 

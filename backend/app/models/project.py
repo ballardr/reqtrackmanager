@@ -172,14 +172,8 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # this is not a freeform key-value store.
     terminology: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
-    # Persisted report structure (mock's "Report Setup": Project Intro / Body
-    # Chapters / Appendices), used as the default when a report is generated
-    # without ad-hoc pre_markdown/post_markdown overrides (see
-    # services/reports.py). Chapters/appendices are each an ordered list of
-    # {"title": str, "body": str} objects.
-    report_intro: Mapped[str] = mapped_column(Text, default="")
-    report_chapters: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
-    report_appendices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    # The project's report intro/chapters/appendices live in `ReportContent`
+    # rows (models/report_content.py), one per report type.
     # Pre-selected (not enforced) on the report generation page — a user can
     # still pick a different template, or none, for a specific generation.
     # ON DELETE SET NULL: deleting the referenced template must not break

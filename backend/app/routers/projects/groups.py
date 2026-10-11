@@ -27,6 +27,10 @@ from app.routers.projects.core import _require_user_in_org
 from app.schemas.project import ProjectGroupCreate, ProjectGroupMemberAdd, ProjectGroupOut, ProjectGroupRoleAssign
 from app.services import engagement
 from app.services.audit import log_event
+from app.services.membership_notifications import (
+    actor_bypasses_project_managers,
+    notify_managers_of_member_change,
+)
 from app.services.notifications import notify
 from app.services.rbac import (
     _descendant_org_group_ids,
@@ -129,6 +133,21 @@ def _get_group_in_project(db: Session, project_id: UUID, group_id: UUID) -> Proj
     return group
 
 
+def _member_label(
+    db: Session, *, user_id: UUID | None, org_group_id: UUID | None, source_project_id: UUID | None,
+) -> str:
+    """Display text for a project-group member (a user, an org group, or a
+    source-project roster reference), for manager notifications."""
+    if user_id is not None:
+        user = db.get(User, user_id)
+        return user.display_name if user is not None else "a user"
+    if org_group_id is not None:
+        org_group = db.get(OrgGroup, org_group_id)
+        return f"group {org_group.name}" if org_group is not None else "an organisation group"
+    source = db.get(Project, source_project_id) if source_project_id is not None else None
+    return f"the members of {source.name}" if source is not None else "a project roster"
+
+
 @router.post("/{project_id}/groups/{group_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
 def assign_project_group_role(
     project_id: UUID, group_id: UUID, payload: ProjectGroupRoleAssign,
@@ -153,7 +172,8 @@ def assign_project_group_role(
     granting an already-held role is a silent no-op, not a 409 — no audit
     event or commit happens on the no-op path.
     """
-    _get_group_in_project(db, project.id, group_id)
+    group = _get_group_in_project(db, project.id, group_id)
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     existing = db.scalar(
         select(ProjectGroupRole).where(
             ProjectGroupRole.project_group_id == group_id, ProjectGroupRole.role == payload.role,
@@ -165,6 +185,11 @@ def assign_project_group_role(
             db, entity_type="project_group", entity_id=group_id, action="role_granted", actor_id=current_user.id,
             project_id=project.id, detail={"role": payload.role.value},
         )
+        if bypass:
+            notify_managers_of_member_change(
+                db, project=project, actor=current_user, verb="Added", target=f"project group {group.name}",
+                role=payload.role,
+            )
         db.commit()
 
 
@@ -189,7 +214,8 @@ def revoke_project_group_role(
     see docs/decisions.md's identify/verify/remediate entry for this
     endpoint.
     """
-    _get_group_in_project(db, project.id, group_id)
+    group = _get_group_in_project(db, project.id, group_id)
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     if role == ProjectRole.PROJECT_MANAGER:
         lock_project_for_update(db, project.id)
     removed = db.execute(
@@ -205,6 +231,11 @@ def revoke_project_group_role(
             db, entity_type="project_group", entity_id=group_id, action="role_revoked", actor_id=current_user.id,
             project_id=project.id, detail={"role": role.value},
         )
+        if bypass:
+            notify_managers_of_member_change(
+                db, project=project, actor=current_user, verb="Removed", target=f"project group {group.name}",
+                role=role,
+            )
         # Same per-member engagement cleanup `revoke_group_project_role`
         # applies for its own (potentially many-user) revocation: a group's
         # role can be one of several sources a member holds it through, so
@@ -254,6 +285,7 @@ def delete_project_group(
     normal live-state question afterward.
     """
     group = _get_group_in_project(db, project.id, group_id)
+    bypass = actor_bypasses_project_managers(db, current_user, project)
 
     group_roles = list(db.scalars(select(ProjectGroupRole.role).where(ProjectGroupRole.project_group_id == group_id)).all())
     is_manager_group = ProjectRole.PROJECT_MANAGER in group_roles
@@ -268,6 +300,10 @@ def delete_project_group(
     db.flush()
     if is_manager_group and not get_effective_project_managers(db, project.id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
+    if bypass:
+        notify_managers_of_member_change(
+            db, project=project, actor=current_user, verb="Deleted", target=f"project group {group.name}",
+        )
     db.commit()
 
 
@@ -281,7 +317,8 @@ def add_project_group_member(
     target_count = sum(x is not None for x in (payload.user_id, payload.org_group_id, payload.source_project_id))
     if target_count != 1:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide exactly one of user_id, org_group_id, source_project_id.")
-    _get_group_in_project(db, project.id, group_id)
+    group = _get_group_in_project(db, project.id, group_id)
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     if payload.user_id is not None:
         # C-U-02: "All Project users, must be an organisation user."
         _require_user_in_org(db, payload.user_id, project.organization_id)
@@ -319,13 +356,21 @@ def add_project_group_member(
     if payload.user_id is not None:
         added_user = db.get(User, payload.user_id)
         if added_user is not None:
-            group = db.get(ProjectGroup, group_id)
             notify(
                 db, added_user, notification_type=NotificationType.PROJECT_JOINED,
                 title=f"You were added to {project.name}",
-                body=f"You were added to the '{group.name}' group." if group else "",
+                body=f"You were added to the '{group.name}' group.",
                 project_id=project.id, actor_id=current_user.id,
             )
+    if bypass:
+        notify_managers_of_member_change(
+            db, project=project, actor=current_user, verb="Added",
+            target=_member_label(
+                db, user_id=payload.user_id, org_group_id=payload.org_group_id,
+                source_project_id=payload.source_project_id,
+            ),
+            detail=f"to project group {group.name}",
+        )
     db.commit()
 
 
@@ -352,7 +397,8 @@ def remove_project_group_member(
     project-reference removal always falls through to the block, unchanged
     from before).
     """
-    _get_group_in_project(db, project.id, group_id)
+    group = _get_group_in_project(db, project.id, group_id)
+    bypass = actor_bypasses_project_managers(db, current_user, project)
     group_is_manager = db.scalar(
         select(ProjectGroupRole).where(
             ProjectGroupRole.project_group_id == group_id, ProjectGroupRole.role == ProjectRole.PROJECT_MANAGER,
@@ -383,6 +429,15 @@ def remove_project_group_member(
         db, entity_type="project_group", entity_id=group_id, action="member_removed", actor_id=current_user.id,
         project_id=project.id, detail={"member_id": str(member_id)},
     )
+    if bypass and removed_member is not None:
+        notify_managers_of_member_change(
+            db, project=project, actor=current_user, verb="Removed",
+            target=_member_label(
+                db, user_id=removed_member.user_id, org_group_id=removed_member.org_group_id,
+                source_project_id=removed_member.source_project_id,
+            ),
+            detail=f"from project group {group.name}",
+        )
     # Resolve the real user(s) this removal can actually affect. `member_id`
     # may be a real user id, an org-group id, or a source-project id (see
     # this function's own docstring) — only the first can be checked

@@ -105,7 +105,7 @@ export const DeleteLastItemIsDisabled: Story = {
   },
 };
 
-export const DeleteInUseOffersReassignThenConfirms: Story = {
+export const DeleteInUseOpensDialogThenConfirms: Story = {
   render: () => (
     <SingleFieldHarness
       initialItems={[
@@ -119,16 +119,17 @@ export const DeleteInUseOffersReassignThenConfirms: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getAllByRole("button", { name: "Delete type" })[0]);
 
-    await expect(await canvas.findByText("2 action items still use this type")).toBeInTheDocument();
-    const confirmButton = canvas.getByRole("button", { name: "Confirm delete" });
+    // The dialog renders in a portal, outside the story canvas.
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Delete “Bug”?" }));
+    await expect(dialog.getByText("2 action items still use this type")).toBeInTheDocument();
+    const confirmButton = dialog.getByRole("button", { name: "Confirm delete" });
     await expect(confirmButton).toBeDisabled();
 
-    const select = canvas.getByRole("combobox");
-    await userEvent.selectOptions(select, "Feature");
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "Feature");
     await expect(confirmButton).toBeEnabled();
 
     await userEvent.click(confirmButton);
-    await waitFor(async () => expect(canvas.queryByText("2 action items still use this type")).not.toBeInTheDocument());
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
     // 1 remaining item + the "add new" row's own input = 2 textboxes.
     await expect(canvas.getAllByRole("textbox")).toHaveLength(2);
   },

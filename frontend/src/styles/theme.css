@@ -197,7 +197,8 @@ textarea {
    shape doesn't. */
 .tabs-list {
   display: flex;
-  gap: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -218,7 +219,7 @@ textarea {
   color: var(--color-text);
 }
 
-.tabs-tab:focus {
+.tabs-tab:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
@@ -824,6 +825,436 @@ a.figure-projects-link:hover {
   margin: 0 auto;
 }
 
+/* Artefact detail page frame (components/DetailLayout.tsx): content plus a
+   sticky, collapsible aside at >=1280px, stacked below that. minmax(0, 1fr)
+   for the same reason as .side-grid: wide unbreakable content must not push
+   the aside column off-screen. */
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.detail-layout.container {
+  max-width: 1480px;
+}
+
+.detail-layout__main {
+  min-width: 0;
+}
+
+.detail-layout__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.detail-layout__toggle {
+  align-self: flex-end;
+}
+
+@media (min-width: 1280px) {
+  .detail-layout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  .detail-layout--collapsed {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .detail-layout__aside {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+}
+
+/* Shared Links panel (components/ArtefactLinksPanel.tsx). */
+.artefact-links__header {
+  justify-content: space-between;
+}
+
+.artefact-links__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.artefact-links__actions {
+  flex-wrap: wrap;
+}
+
+.artefact-links__group {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.artefact-links__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.artefact-links__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.artefact-links__target {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.artefact-links__remove {
+  margin-left: auto;
+  padding: 0.2rem 0.4rem;
+}
+
+.artefact-links__note {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+/* Trace tree and map (components/LinkTraceTree.tsx, LinkTraceMap.tsx). */
+.artefact-links__buttons {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.link-trace__hint,
+.link-trace__none {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.link-trace__callout {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  border-left: 3px solid var(--color-info);
+  background: var(--color-surface-alt);
+}
+
+.link-trace__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.link-trace__children {
+  margin: 0.35rem 0 0 0.6rem;
+  padding-left: 0.9rem;
+  border-left: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.link-trace__toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.link-trace__toggle:hover {
+  background: var(--color-surface-alt);
+}
+
+/* The map's scroller: the dialog is at most 80vh, so leave room for its title, tabs,
+   hint and key and let only the diagram scroll, not the dialog around it. */
+.link-trace__map {
+  overflow: auto;
+  max-height: max(14rem, calc(80vh - 16.5rem));
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.link-trace__map svg {
+  display: block;
+}
+
+/* Lanes: tinted by direction from the theme's own tones (never the only cue: position,
+   headings and arrowheads say the same thing). */
+.link-trace__lane {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  fill: color-mix(in srgb, var(--color-text-muted) 7%, var(--color-surface));
+}
+
+.link-trace__lane--upstream {
+  fill: color-mix(in srgb, var(--color-info) 7%, var(--color-surface));
+}
+
+.link-trace__lane--downstream {
+  fill: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+}
+
+.link-trace__lane--focus {
+  fill: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.link-trace__heading {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--color-text-muted);
+}
+
+.link-trace__edge {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.25;
+}
+
+.link-trace__arrow {
+  fill: var(--color-text-muted);
+}
+
+/* An edge joined through hidden records ("Hide inactive records"): dashed, so it reads as inferred. */
+.link-trace__edge--joined {
+  stroke-dasharray: 5 4;
+}
+
+/* "via DEC-001": on its own line under the record, indented past the expand arrow. */
+.link-trace__via {
+  flex-basis: 100%;
+  padding-left: 1.9rem;
+  font-size: 0.8rem;
+}
+
+.link-trace__edge-pill {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+}
+
+.link-trace__edge-label {
+  font-size: 10px;
+  fill: var(--color-text-muted);
+}
+
+/* While a record is hovered or focused, its own edges stand out and the rest recede. */
+.link-trace__edge-group--active .link-trace__edge {
+  stroke: var(--color-primary);
+  stroke-width: 2.5;
+}
+
+.link-trace__edge-group--active .link-trace__arrow {
+  fill: var(--color-primary);
+}
+
+.link-trace__edge-group--active .link-trace__edge-pill {
+  stroke: var(--color-primary);
+}
+
+.link-trace__edge-group--active .link-trace__edge-label {
+  fill: var(--color-text);
+}
+
+.link-trace__svg--tracing .link-trace__edge-group:not(.link-trace__edge-group--active) {
+  opacity: 0.3;
+}
+
+.link-trace__node-box {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+  stroke-width: 1.5;
+}
+
+/* The direction stripe on a node's left edge (tone is secondary to its lane and arrow). */
+.link-trace__node-bar {
+  fill: var(--color-text-muted);
+}
+
+.link-trace__node--upstream .link-trace__node-bar {
+  fill: var(--color-info);
+}
+
+.link-trace__node--downstream .link-trace__node-bar {
+  fill: var(--color-accent);
+}
+
+.link-trace__node--focus .link-trace__node-box {
+  fill: var(--color-primary);
+  stroke: var(--color-primary);
+}
+
+.link-trace__node-ring {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+
+.link-trace__node--elsewhere .link-trace__node-box {
+  stroke-dasharray: 5 3;
+}
+
+.link-trace__node--archived {
+  opacity: 0.6;
+}
+
+.link-trace__node a:hover .link-trace__node-box {
+  fill: var(--color-surface-alt);
+  stroke: var(--color-primary);
+}
+
+.link-trace__node--focus a:hover .link-trace__node-box {
+  fill: var(--color-primary-hover);
+}
+
+.link-trace__node a:focus-visible,
+.link-trace__expand:focus-visible {
+  outline: none;
+}
+
+.link-trace__node a:focus-visible .link-trace__node-box,
+.link-trace__expand:focus-visible rect {
+  stroke: var(--color-info);
+  stroke-width: 3;
+}
+
+.link-trace__node-kind {
+  font-size: 10px;
+  fill: var(--color-text-muted);
+}
+
+.link-trace__node-label {
+  font-size: 11.5px;
+  fill: var(--color-text);
+}
+
+.link-trace__node--focus .link-trace__node-kind,
+.link-trace__node--focus .link-trace__node-label {
+  fill: var(--color-primary-contrast);
+}
+
+/* "Show more": a labelled pill straddling the node's bottom edge, so it is read as part of the node.
+   `.link-trace__chip` is its drawn face (also used, inert, in the key); `.link-trace__expand` the live control. */
+.link-trace__chip {
+  color: var(--color-primary);
+}
+
+.link-trace__chip rect {
+  fill: var(--color-surface);
+  stroke: var(--color-primary);
+  stroke-width: 1.5;
+}
+
+.link-trace__chip text {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--color-primary);
+}
+
+.link-trace__expand {
+  cursor: pointer;
+}
+
+.link-trace__expand:hover .link-trace__chip,
+.link-trace__expand--pending .link-trace__chip {
+  color: var(--color-primary-contrast);
+}
+
+.link-trace__expand:hover .link-trace__chip rect,
+.link-trace__expand--pending .link-trace__chip rect {
+  fill: var(--color-primary);
+}
+
+.link-trace__expand:hover .link-trace__chip text,
+.link-trace__expand--pending .link-trace__chip text {
+  fill: var(--color-primary-contrast);
+}
+
+.link-trace__expand--pending {
+  cursor: progress;
+}
+
+.link-trace__spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: link-trace-spin 0.8s linear infinite;
+}
+
+@keyframes link-trace-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .link-trace__spin {
+    animation: none;
+  }
+}
+
+/* A record whose own links were read and had nothing further. */
+.link-trace__exhausted rect {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+  stroke-dasharray: 3 2;
+}
+
+.link-trace__exhausted text {
+  font-size: 10px;
+  fill: var(--color-text-muted);
+}
+
+/* The key under the map hint; its swatches reuse the map's own classes so they cannot drift. */
+.link-trace__filter {
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.link-trace__hint-row {
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.link-trace__key-button {
+  flex: none;
+}
+
+/* The map's key, listed vertically inside a popover. */
+.link-trace__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.link-trace__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.link-trace__legend svg {
+  flex: none;
+}
+
 /* Two-column content/sidebar layout shared by the requirements, change
    requests, and detail pages (filter panel or activity panel on the
    right). Collapses to one column alongside the nav rail below. */
@@ -931,6 +1362,52 @@ a.figure-projects-link:hover {
 .nav-link-row.active .nav-link-row-link,
 .nav-link-row.active .nav-link-row-toggle {
   color: var(--color-primary-contrast) !important;
+}
+
+/* Project nav customisation (components/ProjectNavSection.tsx): the section label carries a
+   small "Customise navigation" icon button on its right; "More" is a `.nav-link` that is a
+   button (disclosure/popover trigger) rather than a route link, so it needs the native button
+   chrome reset; its expanded children are indented under it. */
+.nav-section-label-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-section-action {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 0.2rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.nav-section-action:hover,
+.nav-section-action:focus-visible {
+  background: var(--color-surface-alt);
+}
+
+.nav-link-button {
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-link-button-chevron {
+  margin-left: auto;
+  display: inline-flex;
+}
+
+.nav-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-left: 0.75rem;
 }
 
 /* Icon-only collapsed rail state: hide link labels, centre the icons,

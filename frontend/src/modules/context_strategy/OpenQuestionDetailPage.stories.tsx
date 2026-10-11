@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser } from "../../api/types";
 import { api } from "../../api/client";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { OpenQuestionDetailPage } from "./OpenQuestionDetailPage";
 import type { OpenQuestion } from "./types";
@@ -30,6 +31,8 @@ function openQuestion(overrides: Partial<OpenQuestion> = {}): OpenQuestion {
   };
 }
 
+const LINKED_DECISION = buildGraphNode({ type: "decision", id: "dec-1", type_label: "Decision", label: "DEC-001 Use Postgres", status: null });
+
 function mockDetailApis(current: OpenQuestion) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
@@ -41,7 +44,7 @@ function mockDetailApis(current: OpenQuestion) {
     if (path.endsWith(`/open-questions/${OPEN_QUESTION_ID}`)) return current;
     if (path.includes("/comments")) return [];
     if (path.includes("/files")) return [];
-    if (path.includes("/relationships")) return [];
+    if (path.includes("/artefacts/open_question/") && path.includes("/link-graph")) return buildGraph([[LINKED_DECISION]]);
     throw new Error(`Unmocked GET: ${path}`);
   });
 }
@@ -159,3 +162,12 @@ export const OwnerCanBeAssigned: Story = {
 
 export const LightTheme: Story = { ...InvestigatingShowsBothBranches };
 export const DarkTheme: Story = { ...InvestigatingShowsBothBranches, globals: { theme: "dark" } };
+
+/** Links live in the shared Links panel beside the page; the page adds only what is specific to it. */
+export const LinksPanelShowsLinks: Story = {
+  beforeEach: () => mockDetailApis(openQuestion()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
+  },
+};

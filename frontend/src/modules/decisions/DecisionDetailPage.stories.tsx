@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser } from "../../api/types";
 import { api } from "../../api/client";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { DecisionDetailPage } from "./DecisionDetailPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
@@ -34,14 +35,18 @@ function decision(overrides: Partial<Decision> = {}): Decision {
   };
 }
 
+const LINKED_REQUIREMENT = buildGraphNode({
+  type: "requirement", id: "req-1", type_label: "Requirement", label: "REQ-001 Remote diagnostics", status: null,
+});
+
 function mockDetailApis(current: Decision) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith(`/decisions/${DECISION_ID}`)) return current;
     if (path.includes("/decision-types")) return DECISION_TYPES;
     if (path.includes("/comments")) return [];
     if (path.includes("/files")) return [];
-    if (path.includes("/relationships")) return [];
-    if (path.includes("/requirements")) return [];
+    if (path.includes(`/artefacts/decision/${DECISION_ID}/link-graph`)) return buildGraph([[LINKED_REQUIREMENT]]);
+    if (path.split("?")[0].endsWith("/modules/decisions")) return [current, decision({ id: "decision-0", unique_code: "DEC-000", title: "Use MySQL" })];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { id: PROJECT_ID, organization_id: "org-1" };
     if (path.includes("/users")) return ORG_USERS;
     throw new Error(`Unmocked GET: ${path}`);
@@ -128,6 +133,28 @@ export const ApproveDecision: Story = {
       { comment: null }
     ));
     await waitFor(() => expect(canvas.getByText("Approved")).toBeInTheDocument());
+  },
+};
+
+/** Links live in the shared Links panel beside the page; supersession is the dedicated action
+ * the page adds to it (it also marks the other Decision Superseded, so it is not a general link). */
+export const LinksPanelShowsLinksAndOffersSupersede: Story = {
+  beforeEach: () => {
+    mockDetailApis(decision());
+    spyOn(api, "post").mockResolvedValue({});
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "REQ-001 Remote diagnostics" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Supersede another Decision" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Supersede another Decision" }));
+    await dialog.findByRole("option", { name: "DEC-000 — Use MySQL" });
+    await userEvent.selectOptions(dialog.getByLabelText("Decision"), "decision-0");
+    await userEvent.click(dialog.getByRole("button", { name: "Supersede" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/decisions/${DECISION_ID}/supersessions`,
+      { old_decision_id: "decision-0" }
+    ));
   },
 };
 

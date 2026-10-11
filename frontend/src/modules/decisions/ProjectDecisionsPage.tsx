@@ -24,25 +24,9 @@
  * the list's Type column/filter and the create/detail forms, it just no
  * longer hosts their CRUD UI.
  *
- * **Deliberately out of scope for Phase 5** (Decided by: Agent): a
- * `requirementDetailSections`/`requirementLinkPickerTabs` contribution
- * showing/adding Decision links from the *Requirement* Detail page's own
- * Links card — the reverse direction from `DecisionRelationshipsSection`'s
- * own Decision-side creation. The backend's Phase 4 API has no "list
- * Decision links touching a given Requirement" endpoint (only `GET
- * /{decision_id}/relationships`, decision-centric) — building the reverse
- * listing endpoint too wasn't in Phase 4's own shipped scope, and adding it
- * now would be scope creep beyond this plan's own Phase 5 text ("project-
- * scoped Decision list, detail page, create/edit form, and an approve/
- * reject/supersede action flow"). Every relationship is still fully
- * visible and creatable from the Decision's own detail page in both
- * directions (`GET /{decision_id}/relationships` returns incoming and
- * outgoing links alike) — this only affects where in the UI it can be
- * *seen from*, not what can be expressed. Compliance's own Phase 34 drew
- * the identical one-direction-only line for its first pass (see that
- * module's `RequirementTraceabilityLinksSection.tsx` docstring); this
- * mirrors that precedent rather than inventing a new one. Revisit if a real
- * need for the reverse direction surfaces.
+ * Links to and from a Decision (Requirements, Pain Points, other Decisions, ...) are shown and
+ * edited in the shared Links panel on `DecisionDetailPage.tsx`, and a Decision's links appear on
+ * the other record's own page the same way — nothing here is Decision-specific.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

@@ -10,11 +10,11 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
   AssignByEmailOutcome,
   CustomRoleDefinition,
+  CustomRolePreset,
   EffectiveMember,
   EntityScope,
   ExternalUserPolicy,
   FileAsset,
-  LinkTypeDefinition,
   MaterializeResult,
   MergeConflict,
   ModuleRoleDefinition,
@@ -39,7 +39,8 @@ import type {
   ProjectListItem,
   ProjectRole,
   ProjectStatusDefinition,
-  ReportChapter,
+  ReportContentEntry,
+  ReportTypeOption,
   ReportTemplate,
   ScimTokenCreated,
   ScimTokenStatus,
@@ -68,16 +69,16 @@ import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
+import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { Modal } from "../components/Modal";
 import { ModuleAvailabilitySelect, ModuleSettingsList } from "../components/ModuleSettingsList";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
-import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
+import { ReportContentEditor } from "../components/ReportContentEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
-import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
@@ -279,7 +280,6 @@ export function OrgAdminPage() {
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDefinition[]>([]);
 
   // --- Requirement link types (C-G-09) ---------------------------------
-  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
 
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
@@ -358,6 +358,7 @@ export function OrgAdminPage() {
   // never hardcoding a specific module's scope kind.
   const [entityScopes, setEntityScopes] = useState<EntityScope[]>([]);
   const [customRoleModalOpen, setCustomRoleModalOpen] = useState(false);
+  const [customRolePresets, setCustomRolePresets] = useState<CustomRolePreset[]>([]);
   const [editingCustomRoleId, setEditingCustomRoleId] = useState<string | null>(null);
   const [customRoleFormName, setCustomRoleFormName] = useState("");
   const [customRoleFormDescription, setCustomRoleFormDescription] = useState("");
@@ -492,9 +493,8 @@ export function OrgAdminPage() {
   const [scimError, setScimError] = useState<string | null>(null);
 
   const [orgReportDefaultsAvailable, setOrgReportDefaultsAvailable] = useState(false);
-  const [orgReportIntro, setOrgReportIntro] = useState("");
-  const [orgReportChapters, setOrgReportChapters] = useState<ReportChapter[]>([]);
-  const [orgReportAppendices, setOrgReportAppendices] = useState<ReportChapter[]>([]);
+  const [orgReportContent, setOrgReportContent] = useState<ReportContentEntry[]>([]);
+  const [reportTypes, setReportTypes] = useState<ReportTypeOption[]>([]);
 
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [newTemplateName, setNewTemplateName] = useState("");
@@ -502,9 +502,7 @@ export function OrgAdminPage() {
   const [newTemplateIncludeCoverPage, setNewTemplateIncludeCoverPage] = useState(true);
   const [newTemplateIncludeLogo, setNewTemplateIncludeLogo] = useState(true);
   const [newTemplateFooterText, setNewTemplateFooterText] = useState("");
-  const [newTemplateIntro, setNewTemplateIntro] = useState("");
-  const [newTemplateChapters, setNewTemplateChapters] = useState<ReportChapter[]>([]);
-  const [newTemplateAppendices, setNewTemplateAppendices] = useState<ReportChapter[]>([]);
+  const [newTemplateContent, setNewTemplateContent] = useState<ReportContentEntry[]>([]);
   const [newTemplateChaptersPerComponent, setNewTemplateChaptersPerComponent] = useState(true);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   // The create/edit form for a report template is a brand-new (or, when
@@ -621,10 +619,10 @@ export function OrgAdminPage() {
     // real message instead of leaving `org` unset and the page spinning
     // forever (its loading gate is just `if (!org) return <Spinner />`).
     let o: Organization, allG: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
-    let statuses: ProjectStatusDefinition[], linkTypeList: LinkTypeDefinition[];
+    let statuses: ProjectStatusDefinition[];
     let permissionsList: Permission[], customRoleList: CustomRoleDefinition[], entityScopeList: EntityScope[];
     try {
-      [o, allG, r, projects, templates, statuses, linkTypeList, permissionsList, customRoleList, entityScopeList] =
+      [o, allG, r, projects, templates, statuses, permissionsList, customRoleList, entityScopeList] =
         await Promise.all([
         api.get<Organization>(`/api/v1/orgs/${orgId}`),
         // Unpaginated — nested-group name resolution and the "add nested
@@ -637,7 +635,6 @@ export function OrgAdminPage() {
         api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${orgId}`),
         api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
         api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
-        api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${orgId}/link-types`),
         // Fine-Grained Access Control Phase 3 — open to any real org role
         // (backend `_VIEW_ROLES`), same tier as every other call in this
         // bundle, so it belongs here rather than the ORG_ADMIN-gated
@@ -678,7 +675,6 @@ export function OrgAdminPage() {
     setThisOrgVisibleProjects(projects.filter((p) => p.organization_id === orgId));
     setReportTemplates(templates);
     setProjectStatuses(statuses);
-    setLinkTypes(linkTypeList);
     setPermissions(permissionsList);
     setCustomRoles(customRoleList);
     setEntityScopes(entityScopeList);
@@ -743,9 +739,8 @@ export function OrgAdminPage() {
     try {
       const rd = await api.get<OrgReportDefaults>(`/api/v1/orgs/${orgId}/report-defaults`);
       setOrgReportDefaultsAvailable(true);
-      setOrgReportIntro(rd.intro);
-      setOrgReportChapters(rd.chapters);
-      setOrgReportAppendices(rd.appendices);
+      setOrgReportContent(rd.content);
+      setReportTypes(await api.get<ReportTypeOption[]>(`/api/v1/orgs/${orgId}/report-types`));
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setOrgReportDefaultsAvailable(false);
@@ -757,10 +752,13 @@ export function OrgAdminPage() {
 
   async function saveOrgReportDefaults() {
     if (!orgId) return;
-    await api.put(`/api/v1/orgs/${orgId}/report-defaults`, {
-      intro: orgReportIntro, chapters: orgReportChapters, appendices: orgReportAppendices,
-    });
-    reload();
+    try {
+      await api.put(`/api/v1/orgs/${orgId}/report-defaults`, { content: orgReportContent });
+      showToast(strings.reports.reportDefaultsSaved);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   /** Applies a partial filter change (one `FilterCheckbox`/`FilterField` at
@@ -1207,27 +1205,6 @@ export function OrgAdminPage() {
     reload();
   }
 
-  async function addLinkType(forward: string, reverse: string) {
-    if (!orgId) return;
-    await api.post(`/api/v1/orgs/${orgId}/link-types`, { forward_name: forward, reverse_name: reverse });
-    reload();
-  }
-
-  async function moveLinkType(id: string, direction: "up" | "down") {
-    await api.post(`/api/v1/orgs/${orgId}/link-types/${id}/move`, { direction });
-    reload();
-  }
-
-  async function renameLinkType(id: string, forward: string, reverse: string) {
-    await api.patch(`/api/v1/orgs/${orgId}/link-types/${id}`, { forward_name: forward, reverse_name: reverse });
-    reload();
-  }
-
-  async function deleteLinkType(id: string, reassignToId?: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/link-types/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
-    reload();
-  }
-
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1431,6 +1408,19 @@ export function OrgAdminPage() {
     setCustomRoleFormPermissions([]);
     setCustomRoleFormError(null);
     setCustomRoleModalOpen(true);
+    // Presets are the same for every organisation and only an org admin may read them.
+    if (customRolePresets.length === 0 && orgId) {
+      api.get<CustomRolePreset[]>(`/api/v1/orgs/${orgId}/custom-role-presets`).then(setCustomRolePresets, () => {});
+    }
+  }
+
+  function applyCustomRolePreset(key: string) {
+    const preset = customRolePresets.find((p) => p.key === key);
+    if (!preset) return;
+    setCustomRoleFormName(preset.name);
+    setCustomRoleFormDescription(preset.description);
+    setCustomRoleFormScope(preset.scope);
+    setCustomRoleFormPermissions(preset.permissions);
   }
 
   function openEditCustomRoleModal(role: CustomRoleDefinition) {
@@ -1914,9 +1904,7 @@ export function OrgAdminPage() {
     setNewTemplateIncludeCoverPage(true);
     setNewTemplateIncludeLogo(true);
     setNewTemplateFooterText("");
-    setNewTemplateIntro("");
-    setNewTemplateChapters([]);
-    setNewTemplateAppendices([]);
+    setNewTemplateContent([]);
     setNewTemplateChaptersPerComponent(true);
   }
 
@@ -1937,9 +1925,7 @@ export function OrgAdminPage() {
     setNewTemplateIncludeCoverPage(tpl.include_cover_page);
     setNewTemplateIncludeLogo(tpl.include_logo);
     setNewTemplateFooterText(tpl.footer_text ?? "");
-    setNewTemplateIntro(tpl.intro);
-    setNewTemplateChapters(tpl.chapters);
-    setNewTemplateAppendices(tpl.appendices);
+    setNewTemplateContent(tpl.content);
     setNewTemplateChaptersPerComponent(tpl.chapters_per_component);
     setTemplateFormOpen(true);
   }
@@ -1952,9 +1938,7 @@ export function OrgAdminPage() {
       include_cover_page: newTemplateIncludeCoverPage,
       include_logo: newTemplateIncludeLogo,
       footer_text: newTemplateFooterText || null,
-      intro: newTemplateIntro,
-      chapters: newTemplateChapters,
-      appendices: newTemplateAppendices,
+      content: newTemplateContent,
       chapters_per_component: newTemplateChaptersPerComponent,
     };
     if (editingTemplateId) {
@@ -3256,21 +3240,7 @@ export function OrgAdminPage() {
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes}>
-              <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypesHint}</p>
-              <DefinitionList
-                items={linkTypes}
-                fields={[
-                  { key: "forward", getValue: (i) => i.forward_name, placeholder: strings.orgAdmin.forwardName, ariaLabel: strings.orgAdmin.forwardName, maxWidth: 200 },
-                  { key: "reverse", getValue: (i) => i.reverse_name, placeholder: strings.orgAdmin.reverseName, ariaLabel: strings.orgAdmin.reverseName, maxWidth: 200 },
-                ]}
-                getReassignLabel={(i) => i.forward_name}
-                onMove={moveLinkType}
-                onRename={(id, values) => renameLinkType(id, values.forward, values.reverse)}
-                onAdd={(values) => addLinkType(values.forward, values.reverse)}
-                onDelete={deleteLinkType}
-                deleteLabel={strings.orgAdmin.deleteLinkType}
-                addLabel={strings.orgAdmin.newLinkType}
-              />
+              <LinkTypesPanel scope={{ kind: "organization", orgId: org.id }} />
             </CollapsibleSection>
           </div>
         )}
@@ -3409,20 +3379,14 @@ export function OrgAdminPage() {
         {activeGroup === "templates-reports" && (
           <div className="stack">
             {orgReportDefaultsAvailable && (
-              <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title="Report Defaults">
-                <p className="text-muted" style={{ margin: 0 }}>
-                  Used as the default intro, body chapters, and appendices for any project in this {orgLabel} that
-                  hasn't set its own — see each project's Report Setup tab.
-                </p>
-                <div className="stack" style={{ gap: "0.25rem" }}>
-                  <span>Default intro</span>
-                  <RichTextEditor rows={3} value={orgReportIntro} onChange={setOrgReportIntro} organizationId={orgId} />
-                </div>
-                <ReportChapterListEditor
-                  label="Default body chapters" list={orgReportChapters} setList={setOrgReportChapters} organizationId={orgId}
-                />
-                <ReportChapterListEditor
-                  label="Default appendices" list={orgReportAppendices} setList={setOrgReportAppendices} organizationId={orgId}
+              <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title={strings.admin.reportDefaults}>
+                <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportDefaultsHint(orgLabel)}</p>
+                <ReportContentEditor
+                  idPrefix="org-report-defaults"
+                  reportTypes={reportTypes}
+                  value={orgReportContent}
+                  onChange={setOrgReportContent}
+                  organizationId={orgId}
                 />
                 <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
                   {strings.admin.saveSettings}
@@ -3496,16 +3460,12 @@ export function OrgAdminPage() {
                   className="input" placeholder={strings.admin.footerText}
                   value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
                 />
-                <div className="stack" style={{ gap: "0.25rem" }}>
-                  <span>{strings.admin.templateIntro}</span>
-                  <RichTextEditor rows={3} value={newTemplateIntro} onChange={setNewTemplateIntro} organizationId={orgId} />
-                </div>
-                <ReportChapterListEditor
-                  label={strings.admin.templateChapters} list={newTemplateChapters} setList={setNewTemplateChapters}
-                  organizationId={orgId}
-                />
-                <ReportChapterListEditor
-                  label={strings.admin.templateAppendices} list={newTemplateAppendices} setList={setNewTemplateAppendices}
+                <strong>{strings.admin.templateContent}</strong>
+                <ReportContentEditor
+                  idPrefix="template-report-content"
+                  reportTypes={reportTypes}
+                  value={newTemplateContent}
+                  onChange={setNewTemplateContent}
                   organizationId={orgId}
                 />
                 <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
@@ -4086,6 +4046,21 @@ export function OrgAdminPage() {
                     size="lg"
                   >
                     <div className="stack">
+                      {!editingCustomRoleId && customRolePresets.length > 0 && (
+                        <label className="stack" style={{ gap: "0.25rem" }}>
+                          {strings.orgAdmin.customRolePreset}
+                          <select
+                            className="input"
+                            value=""
+                            onChange={(e) => applyCustomRolePreset(e.target.value)}
+                          >
+                            <option value="">{strings.orgAdmin.customRolePresetNone}</option>
+                            {customRolePresets.map((p) => (
+                              <option key={p.key} value={p.key}>{p.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                       <label className="stack" style={{ gap: "0.25rem" }}>
                         {strings.orgAdmin.customRoleName}
                         <input

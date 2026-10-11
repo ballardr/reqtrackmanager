@@ -101,6 +101,20 @@ export const CHANGE_REQUEST_STATUS_TONE: Record<ChangeRequestStatus, BadgeTone> 
   rejected: "danger",
   withdrawn: "muted",
 };
+/** What became of a link proposed on a change request (Platform Enhancements Phase 6b). */
+export type ProposedLinkOutcome = "pending" | "merged" | "declined" | "skipped";
+export const PROPOSED_LINK_OUTCOME_LABEL: Record<ProposedLinkOutcome, string> = {
+  pending: "Pending",
+  merged: "Merged",
+  declined: "Left out",
+  skipped: "Not valid",
+};
+export const PROPOSED_LINK_OUTCOME_TONE: Record<ProposedLinkOutcome, BadgeTone> = {
+  pending: "info",
+  merged: "accent",
+  declined: "muted",
+  skipped: "danger",
+};
 export const REQUIREMENT_ACTION_OUTCOME_TONE: Record<RequirementActionOutcome, BadgeTone> = {
   pending: "info",
   completed: "accent",
@@ -287,6 +301,7 @@ export type NotificationType =
   | "comment_added"
   | "requirement_review_due"
   | "stage_review_auto_approved"
+  | "project_members_changed_by_org"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
   | "compliance_target_date_approaching"
@@ -337,8 +352,13 @@ export interface User {
    * that don't warrant their own dedicated field — e.g. per-list tile/list
    * view mode, keyed `view_mode:<page>`. Deliberately loosely typed so a
    * new preference of this kind never needs an API type change. */
-  ui_preferences: Record<string, string | boolean>;
+  ui_preferences: Record<string, UiPreferenceValue>;
 }
+
+/** Any JSON value a `ui_preferences` key can hold (the backend bag is open-ended JSON,
+ * size-bounded server-side) — scalars for toggles, objects/lists for structured layouts
+ * such as the per-user project nav order. */
+export type UiPreferenceValue = string | number | boolean | UiPreferenceValue[] | { [key: string]: UiPreferenceValue };
 
 export interface TwoFactorChallenge {
   requires_2fa: true;
@@ -497,13 +517,19 @@ export interface ModuleRoleGrant {
  * mirrors `app.models.enums.PermissionLevel`'s wire values exactly. `view`
  * is its own independent atom (a role can hold it alone, a pure read-only
  * grant) rather than being implied by every write tier. */
-export type PermissionLevel = "view" | "propose_create" | "manage" | "approve_baseline";
+export type PermissionLevel = "view" | "propose_create" | "manage" | "link" | "approve_baseline";
 export const PERMISSION_LEVEL_LABEL: Record<PermissionLevel, string> = {
   view: "View",
   propose_create: "Propose/create",
   manage: "Manage",
+  link: "Link",
   approve_baseline: "Approve/baseline",
 };
+
+/** `Permission.artefact_type` of the "every record type" atom (`*:<level>:`): held
+ * once, it covers every artefact type, including ones a module registers later
+ * (`app.services.permissions.ALL_ARTEFACT_TYPES`). */
+export const ALL_ARTEFACT_TYPES = "*";
 
 /** One permission atom in an organisation's currently-valid vocabulary
  * (Fine-Grained Access Control Phase 3, `GET /orgs/{id}/permissions`) —
@@ -521,6 +547,16 @@ export interface Permission {
   artefact_type: string | null;
   level: PermissionLevel | null;
   subtype: string | null;
+}
+
+/** A ready-made custom role the Role Management form can start from
+ * (`GET /orgs/{id}/custom-role-presets`) — mirrors `CustomRolePresetOut`. */
+export interface CustomRolePreset {
+  key: string;
+  name: string;
+  description: string;
+  scope: string;
+  permissions: string[];
 }
 
 /** An organisation-defined `CustomRoleDefinition` (Fine-Grained Access
@@ -951,6 +987,166 @@ export interface LinkTypeDefinition {
   forward_name: string;
   reverse_name: string;
   sort_order: number;
+  /** Which way the link points in a traceability chain; see `LINK_FLOW_LABEL`. */
+  flow: LinkFlow;
+  /** Artefact types a link of this type may start from; `null` = any. */
+  allowed_source_types: string[] | null;
+  /** Artefact types a link of this type may point at; `null` = any. */
+  allowed_target_types: string[] | null;
+  /** Fixed meaning with its own action (e.g. "Supersedes"); not offered as a general link. */
+  dedicated_endpoint: boolean;
+  /** Whether the type may join a project and its parent or child project; see `LINK_NESTING_SCOPE_LABEL`. */
+  nesting_scope: LinkNestingScope;
+  /** `null` for an organisation-wide type; the owning project's id for a project-level one. */
+  project_id?: string | null;
+}
+
+/** Where a link type comes from, relative to the project looking at it: `organization` (shared by
+ * every project), `project` (this project's own, editable) or `inherited` (an ancestor project's). */
+export type LinkTypeScope = "organization" | "project" | "inherited";
+export const LINK_TYPE_SCOPE_LABEL: Record<LinkTypeScope, string> = {
+  organization: "Organisation",
+  project: "This project",
+  inherited: "Parent project",
+};
+
+/** A link type as one project sees it (`GET /projects/{id}/link-types`). */
+export interface ProjectLinkType extends LinkTypeDefinition {
+  scope: LinkTypeScope;
+  owner_project_id: string | null;
+  /** Only given when the viewer can already see the owning project. */
+  owner_project_name: string | null;
+  /** Effective: hidden for this project (by its own choice or an ancestor's). */
+  hidden: boolean;
+  /** This project's own choice: `true` hidden, `false` shown, `null` none. */
+  hidden_here: boolean | null;
+  hidden_by_inherited: boolean;
+  /** Set when a same-named type takes precedence, so this one is not offered. */
+  shadowed_by_scope: LinkTypeScope | null;
+  shadowed_by_name: string | null;
+  editable: boolean;
+}
+
+/** A project's link-type panel data; `locked` when the organisation forbids project-level changes. */
+export interface ProjectLinkTypes {
+  locked: boolean;
+  items: ProjectLinkType[];
+}
+
+/** The types a project's pickers offer: not hidden, not shadowed. */
+export function offeredLinkTypes(items: ProjectLinkType[]): ProjectLinkType[] {
+  return items.filter((i) => !i.hidden && i.shadowed_by_scope === null);
+}
+
+/** The organisation's switches forbidding project-level customisation (`GET /orgs/{id}/project-customisation`). */
+export interface ProjectCustomisation {
+  locks: string[];
+  local_link_type_count: number;
+  local_link_type_project_count: number;
+}
+
+/** The link types worth offering for a new link from `sourceType` to `targetType`: not a dedicated
+ * one (its own action makes those) and not one whose restriction excludes the pair. A convenience
+ * for pickers only; the server enforces the rules (the rules of the two artefact types included). */
+export function linkTypesFor(types: LinkTypeDefinition[], sourceType: string, targetType: string): LinkTypeDefinition[] {
+  return types.filter(
+    (t) =>
+      !t.dedicated_endpoint &&
+      (!t.allowed_source_types || t.allowed_source_types.includes(sourceType)) &&
+      (!t.allowed_target_types || t.allowed_target_types.includes(targetType)),
+  );
+}
+
+/** A registered artefact type with its display label (`GET /orgs/{id}/artefact-types`). */
+export interface ArtefactTypeOption {
+  type: string;
+  label: string;
+}
+
+/** One artefact type's rule: the link types it may use, or `null` = any link type. */
+export interface ArtefactLinkRule {
+  artefact_type: string;
+  label: string;
+  link_type_ids: string[] | null;
+}
+
+/** A rule as a project resolves it: which scope it comes from (`null` = no rule, any link type),
+ * and whether the project itself holds it (so it can be cleared to use the inherited one). */
+export interface ProjectArtefactLinkRule extends ArtefactLinkRule {
+  source: LinkTypeScope | null;
+  source_project_name: string | null;
+  own: boolean;
+}
+
+/** A link type assessed as the replacement when deleting one that is in use. */
+export interface LinkTypeCandidate {
+  id: string;
+  forward_name: string;
+  reverse_name: string;
+  flow: LinkFlow;
+  compatible: boolean;
+  reason: string | null;
+  flow_differs: boolean;
+}
+
+/** What depends on a link type (`GET .../link-types/{id}/usage`). */
+export interface LinkTypeUsage {
+  link_count: number;
+  /** `null` when there are too many links to resolve their projects. */
+  project_count: number | null;
+  pending_change_requests: number;
+  approved_requirement_links: number;
+  rule_artefact_types: ArtefactTypeOption[];
+  emptied_rule_artefact_types: ArtefactTypeOption[];
+  is_dedicated: boolean;
+  is_last: boolean;
+  candidates: LinkTypeCandidate[];
+  /** Links the chosen mode would move or remove (the rest are kept by copy in other projects). */
+  moved_link_count: number;
+  /** Other projects hold links, so they could keep the type by copy. */
+  keep_available: boolean;
+  keep_project_count: number | null;
+  /** Projects holding links the caller cannot manage; blocks moving/removing without keeping. */
+  unmanageable_project_count: number;
+}
+
+/** What a mode-based link type delete did. */
+export interface LinkTypeDeleteOutcome {
+  moved: number;
+  merged: number;
+  removed: number;
+  copies_created: number;
+  /** Names of copies that had to be renamed because the name was taken. */
+  copies_renamed: string[];
+}
+
+/** Where the target of a link of a given type sits relative to its source, read
+ * with the type's forward name: upstream = a source/origin of the source
+ * ("Derives from"), downstream = depends on or follows from it ("Is
+ * implemented by"), none = symmetric or not yet classified. */
+export type LinkFlow = "none" | "forward_is_upstream" | "forward_is_downstream";
+export const LINK_FLOW_LABEL: Record<LinkFlow, string> = {
+  none: "No direction",
+  forward_is_upstream: "Target is upstream",
+  forward_is_downstream: "Target is downstream",
+};
+export const LINK_FLOW_VALUES: LinkFlow[] = ["none", "forward_is_upstream", "forward_is_downstream"];
+
+/** Whether, and in which direction, a link type may join artefacts of a project and its parent or
+ * child project: not at all (`same_project`), only with the upstream end (per the type's `flow`) in the
+ * same or a parent project (`upstream_in_ancestor`, needs a direction), or either end in a parent
+ * (`ancestor_either_way`). Narrowest first. */
+export type LinkNestingScope = "same_project" | "upstream_in_ancestor" | "ancestor_either_way";
+export const LINK_NESTING_SCOPE_LABEL: Record<LinkNestingScope, string> = {
+  same_project: "Same project only",
+  upstream_in_ancestor: "Upstream end may be in a parent project",
+  ancestor_either_way: "Either end may be in a parent project",
+};
+export const LINK_NESTING_SCOPE_VALUES: LinkNestingScope[] = ["same_project", "upstream_in_ancestor", "ancestor_either_way"];
+
+/** How many existing cross-project links a nesting-scope change would flag (`GET .../nesting-impact`). */
+export interface LinkNestingImpact {
+  flagged_link_count: number;
 }
 
 /** Project-scoped requirement-action type (e.g. Review, Test) — project-
@@ -1326,13 +1522,45 @@ export interface ChangeRequest {
   proposed_action_type_id: string | null;
   proposed_action_assignee_id: string | null;
   proposed_action_due_date: string | null;
-  /** ADD_LINK-only (Platform review 2026-09, Phase 8) — the target
-   * requirement and org link type to link to. */
-  proposed_link_target_requirement_id: string | null;
-  proposed_link_type_id: string | null;
+  /** Links this request proposes (new, modify and add-link kinds), created on
+   * approval as the approver chooses. Filled on the detail read; the list view
+   * carries only `proposed_link_count`. */
+  proposed_links: ProposedLink[];
+  proposed_link_count: number;
   /** REMOVE_LINK-only — the existing `RequirementLink` row to remove on
    * approval. */
   proposed_link_id: string | null;
+}
+
+/** One link proposed on a change request, read from the requirement's side. */
+export interface ProposedLink {
+  id: string;
+  link_type_id: string | null;
+  /** The relationship as the requirement reads it ("Depends on"); null once the link type is gone. */
+  phrase: string | null;
+  direction: "outgoing" | "incoming";
+  other_type: string;
+  other_type_label: string;
+  /** Null (with the label and project) when the viewer cannot see the far end, so its identity does not leak. */
+  other_id: string | null;
+  /** The far end's title, or null when the viewer cannot see it. */
+  other_label: string | null;
+  other_project_id: string | null;
+  other_project_name: string | null;
+  outcome: ProposedLinkOutcome;
+  outcome_reason: string | null;
+}
+
+/** A proposed link as it would merge now: `selectable` is false (with `reason`) when it cannot. */
+export interface ProposedLinkPreviewRow {
+  link: ProposedLink;
+  selectable: boolean;
+  already_linked: boolean;
+  reason: string | null;
+}
+
+export interface ProposedLinkPreview {
+  rows: ProposedLinkPreviewRow[];
 }
 
 export interface ChangeRequestTask {
@@ -1446,20 +1674,53 @@ export interface ReportChapter {
   body: string;
 }
 
-export interface ProjectReportConfig {
+/** The sentinel report key for "every report without an entry of its own". */
+export const ALL_REPORTS_KEY = "*";
+/** The key of the requirements report (a module report is `<module_key>.<report_key>`). */
+export const REQUIREMENTS_REPORT_KEY = "requirements";
+
+/** The introduction, chapters and appendices one scope holds for one report type. */
+export interface ReportContentEntry {
+  report_key: string;
   intro: string;
   chapters: ReportChapter[];
   appendices: ReportChapter[];
-  intro_is_organisation_default: boolean;
-  chapters_is_organisation_default: boolean;
-  appendices_is_organisation_default: boolean;
+}
+
+/** A report type content can be written for (`GET .../report-types`). */
+export interface ReportTypeOption {
+  key: string;
+  title: string;
+  module_name: string | null;
+}
+
+/** A project's own report setup: its default template and the content it owns. */
+export interface ProjectReportConfig {
   default_report_template_id: string | null;
+  content: ReportContentEntry[];
 }
 
 export interface OrgReportDefaults {
+  content: ReportContentEntry[];
+}
+
+/** Where an effective report-content value came from. */
+export interface ReportContentSource {
+  scope_type: "template" | "project" | "organization" | "project_summary";
+  scope_id: string;
+  scope_name: string;
+  report_key: string;
+}
+
+/** The content a report of one type would use, with each field's source (`null` = nothing set it). */
+export interface EffectiveReportContent {
+  report_key: string;
   intro: string;
   chapters: ReportChapter[];
   appendices: ReportChapter[];
+  intro_source: ReportContentSource | null;
+  chapters_source: ReportContentSource | null;
+  appendices_source: ReportContentSource | null;
 }
 
 export type ExternalUserPolicy = "disabled" | "org_domain_only" | "anyone";
@@ -1717,9 +1978,7 @@ export interface ReportTemplate {
   include_cover_page: boolean;
   include_logo: boolean;
   footer_text: string | null;
-  intro: string;
-  chapters: ReportChapter[];
-  appendices: ReportChapter[];
+  content: ReportContentEntry[];
   chapters_per_component: boolean;
 }
 

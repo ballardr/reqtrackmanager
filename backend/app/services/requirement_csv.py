@@ -119,14 +119,16 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
     links_by_req: dict[UUID, list[str]] = {}
     if req_ids:
         # Requirement-to-requirement traceability links only — filtering on
-        # `source_type == REQUIREMENT` excludes untyped action links, which
+        # `source_type`/`target_type == REQUIREMENT` excludes untyped action links, which
         # also live in `artefact_links` but were never part of this CSV's
         # links column (an action's source is always a `RequirementAction`,
         # never a `Requirement`).
         link_rows = list(
             db.scalars(
                 select(ArtefactLink).where(
-                    ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids)
+                    ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids),
+                    ArtefactLink.target_type == ArtefactType.REQUIREMENT,  # a decision or clause has no requirement code
+                    ArtefactLink.source_project_id.is_(None),  # never another project's requirement code
                 )
             ).all()
         )
@@ -138,12 +140,16 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
         # the link's source in this export, since `link_rows` was queried by
         # `source_id`) — a plain informational column, not re-imported by
         # CSV import (which has no notion of links).
+        link_type_ids = {link.link_type_id for link in link_rows if link.link_type_id is not None}
         link_type_forward_name_by_id = {
             lt.id: lt.forward_name
             for lt in db.scalars(
-                select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == project.organization_id)
+                select(RequirementLinkTypeDefinition).where(
+                    RequirementLinkTypeDefinition.organization_id == project.organization_id,
+                    RequirementLinkTypeDefinition.id.in_(link_type_ids),
+                )
             )
-        }
+        } if link_type_ids else {}
         for link in link_rows:
             target_code = code_by_id.get(link.target_id, "?")
             type_name = link_type_forward_name_by_id.get(link.link_type_id, "?")

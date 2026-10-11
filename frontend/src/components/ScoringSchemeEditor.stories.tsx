@@ -77,7 +77,7 @@ export const AddLevel: Story = {
   },
 };
 
-/** An in-use level opens the shared reassign picker; confirming retries with the target. */
+/** An in-use level opens the shared in-use dialog; confirming retries with the target. */
 export const DeleteInUseLevelReassigns: Story = {
   beforeEach: () => mockSchemeApis(buildScoringScheme(), ["freq-1"]),
   play: async ({ canvasElement }) => {
@@ -85,9 +85,10 @@ export const DeleteInUseLevelReassigns: Story = {
     await waitFor(() => canvas.getByDisplayValue("Rare"));
     const row = canvas.getByDisplayValue("Rare").closest("div")!.parentElement!;
     await userEvent.click(within(row).getByRole("button", { name: "Delete Frequency level" }));
-    await waitFor(() => expect(canvas.getByText(/used by 2 score/)).toBeInTheDocument());
-    await userEvent.selectOptions(within(row.parentElement!).getByRole("combobox"), "freq-2");
-    await userEvent.click(canvas.getByRole("button", { name: /confirm/i }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await waitFor(() => expect(dialog.getByText(/used by 2 score/)).toBeInTheDocument());
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "freq-2");
+    await userEvent.click(dialog.getByRole("button", { name: /confirm/i }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`${BASE}/levels/freq-1?reassign_to_id=freq-2`));
   },
 };

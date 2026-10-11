@@ -64,12 +64,14 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     assert definition.get_router() is not None, "Phase 6 adds the Standards Management API router"
     assert definition.get_project_router is not None, "Phase 7 adds the project-scoped assessment router"
     assert definition.get_project_router() is not None
-    assert len(definition.mcp_tools) == 76, (
+    assert len(definition.mcp_tools) == 74, (
         "Ten read-only tools (three from Phase 6, two more from Phase 7, one more from Phase 8, one more "
         "from Phase 9, one more from Phase 10, two more from Phase 11) plus 68 write tools declared in the "
         "2026-09-22 reversal (docs/decisions.md's 'Compliance MCP write tools + generalized AI approval "
         "gate' entry), minus 2 removed in the 2026-09-23 hardening pass (complete_project_review/"
-        "complete_standard_review) — see module.py's own updated docstring"
+        "complete_standard_review) and 2 more removed in platform enhancements Phase 6c (the requirement "
+        "traceability-link create/delete tools, replaced by the generic artefact-link tools) — see "
+        "module.py's own updated docstring"
     )
     assert {tool.name for tool in definition.mcp_tools} >= {
         "submit_requirement_for_approval", "approve_requirement", "reject_requirement",

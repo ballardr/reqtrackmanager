@@ -99,6 +99,11 @@ treatment) and the rest are ordinary CRUD/collaboration actions this
 addendum never asked to expand, not approval-type actions this gate
 concerns.
 
+Platform Enhancements Oct 2026 Phase 8: `reports=REPORT_DEFINITIONS` declares
+four project-level reports (`reports.py`); the framework generates their
+routes (mounted by `project_router`), catalogue entries and read-only
+`get_<slug>_report` MCP tools.
+
 Fine-Grained Access Control Phase 1 (2026-09-23, `docs/plans/core-fine-
 grained-access-control-plan.md`): registers `subtype_providers={
 DECISION_ARTEFACT_TYPE: _decision_subtypes}`, the first (and, as of this
@@ -115,22 +120,32 @@ to this module's own approval logic lands until then.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.modules.decisions.service import DECISION_APPROVE_PERMISSION, DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
+from app.modules.decisions.reports import REPORT_DEFINITIONS
+from app.modules.decisions.service import (
+    DECISION_APPROVE_PERMISSION,
+    DECISION_ARTEFACT_TYPE,
+    DECISION_TEMPLATE_PACKS,
+    LINK_TYPE_SEEDS,
+)
 from app.modules.registry import (
     ArtefactSummary,
     ArtefactSummaryProvider,
+    BrowseLevel,
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
     ModuleRoleDefinition,
     OrgCreationChoiceOption,
 )
+from app.services.report_framework import report_mcp_tools
 
 DECISIONS_MODULE_KEY = "decisions"
 _ROUTER_PREFIX = f"/api/v1/orgs/{{organization_id}}/modules/{DECISIONS_MODULE_KEY}"
@@ -229,11 +244,28 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
     ).all())
 
 
-def _decision_summary(decision) -> ArtefactSummary:
-    return ArtefactSummary(
-        id=decision.id, project_id=decision.project_id, label=f"{decision.unique_code} {decision.title}",
-        status=decision.status.value, is_archived=decision.is_archived,
+def _decision_summaries(db: Session, decisions) -> list[ArtefactSummary]:
+    """Summaries for `decisions`, resolving each one's decision type name (the finder's
+    `decision_type` facet) in one query."""
+    from sqlalchemy import select
+
+    from app.modules.decisions.models import DecisionTypeDefinition
+
+    type_ids = {d.decision_type_id for d in decisions}
+    names = (
+        dict(db.execute(select(DecisionTypeDefinition.id, DecisionTypeDefinition.name).where(
+            DecisionTypeDefinition.id.in_(type_ids)
+        )).all())
+        if type_ids else {}
     )
+    return [
+        ArtefactSummary(
+            id=d.id, project_id=d.project_id, label=f"{d.unique_code} {d.title}", status=d.status.value,
+            is_archived=d.is_archived,
+            facets={"decision_type": (str(d.decision_type_id), names.get(d.decision_type_id, ""))},
+        )
+        for d in decisions
+    ]
 
 
 def _get_decision_summary(db: Session, decision_id: UUID) -> ArtefactSummary | None:
@@ -241,7 +273,20 @@ def _get_decision_summary(db: Session, decision_id: UUID) -> ArtefactSummary | N
     from app.modules.decisions.models import Decision
 
     decision = db.get(Decision, decision_id)
-    return None if decision is None else _decision_summary(decision)
+    return None if decision is None else _decision_summaries(db, [decision])[0]
+
+
+def _get_many_decision_summaries_in_project(
+    db: Session, project_id: UUID, decision_ids: Sequence[UUID]
+) -> list[ArtefactSummary]:
+    """`ArtefactSummaryProvider.get_many_in_project` for Decisions: the given
+    decisions that belong to `project_id`, in one query."""
+    from sqlalchemy import select
+
+    from app.modules.decisions.models import Decision
+
+    rows = db.scalars(select(Decision).where(Decision.id.in_(decision_ids), Decision.project_id == project_id)).all()
+    return _decision_summaries(db, rows)
 
 
 def _list_decision_summaries(db: Session, project_id: UUID) -> list[ArtefactSummary]:
@@ -254,7 +299,11 @@ def _list_decision_summaries(db: Session, project_id: UUID) -> list[ArtefactSumm
         select(Decision).where(Decision.project_id == project_id, Decision.is_archived.is_(False))
         .order_by(Decision.unique_code)
     ).all()
-    return [_decision_summary(d) for d in rows]
+    return _decision_summaries(db, rows)
+
+
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
 
 
 MODULE_DEFINITION = ModuleDefinition(
@@ -285,8 +334,14 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_types=(DECISION_ARTEFACT_TYPE,),
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={
-        DECISION_ARTEFACT_TYPE: ArtefactSummaryProvider(get=_get_decision_summary, list_for_project=_list_decision_summaries),
+        DECISION_ARTEFACT_TYPE: ArtefactSummaryProvider(
+            get=_get_decision_summary, list_for_project=_list_decision_summaries,
+            get_many_in_project=_get_many_decision_summaries_in_project,
+            browse_levels=(BrowseLevel("decision_type", "Decision type"),),
+        ),
     },
+    artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},
+    link_type_seeds=LINK_TYPE_SEEDS,
     roles=(
         ModuleRoleDefinition(
             role_key="decision_owner",
@@ -314,6 +369,8 @@ MODULE_DEFINITION = ModuleDefinition(
             permissions=(DECISION_APPROVE_PERMISSION,),
         ),
     ),
+    mcp_guidance=_MCP_GUIDANCE,
+    reports=REPORT_DEFINITIONS,
     mcp_tools=(
         McpToolDefinition(
             name="list_decision_types",
@@ -438,5 +495,6 @@ MODULE_DEFINITION = ModuleDefinition(
                  "description": "Comment explaining the rejection; the endpoint 400s if left blank."},
             ],
         ),
-    ),
+    )
+    + report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PROJECT_ROUTER_PREFIX),
 )

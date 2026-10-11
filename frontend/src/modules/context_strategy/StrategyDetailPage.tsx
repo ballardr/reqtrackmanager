@@ -36,15 +36,17 @@ import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
 import type { FileAsset } from "../../api/types";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
+import { SupersedeAction } from "../../components/SupersedeAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgStrategyApi, projectStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
-import { StrategyRelationshipsSection } from "./StrategyRelationshipsSection";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL } from "./types";
 import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
 
@@ -161,7 +163,29 @@ export function StrategyDetailPage() {
   if (strategy === null) return <Spinner />;
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="strategy"
+          artefactId={strategy.id}
+          actions={({ reload }) => (
+            <SupersedeAction
+              artefactLabel="Strategy"
+              onDone={reload}
+              loadCandidates={async () =>
+                (await scopedApi.list(scopeId))
+                  .filter((other) => other.id !== strategy.id)
+                  .map((other) => ({ id: other.id, label: other.title }))
+              }
+              onSupersede={async (oldId) => {
+                await scopedApi.createSupersessionLink(scopeId, strategy.id, oldId);
+              }}
+            />
+          )}
+        />
+      }
+    >
       <Link to={backLink}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{strategy.title}</h1>
@@ -226,12 +250,6 @@ export function StrategyDetailPage() {
           </button>
         </div>
 
-        <StrategyRelationshipsSection
-          strategy={strategy}
-          projectId={projectId}
-          organizationId={organizationId}
-          onChanged={() => scopedApi.get(scopeId, strategy.id).then(setStrategy)}
-        />
 
         {versions && versions.length > 1 && (
           <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
@@ -379,7 +397,7 @@ export function StrategyDetailPage() {
           onCancel={() => setArchiveConfirm(false)}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }
 

@@ -18,6 +18,8 @@ Once a standard version is [published](./data-model-and-lifecycle.md#standards-l
 
 - **Evidence** — a piece of evidence (a certificate, test report, or similar) can support one or many requirements and/or required actions at once. Evidence can carry an expiry date; the module tracks Valid / Expiring Soon / Expired independently, and a revalidation records the previous and new expiry alongside who did it and why, without losing that history. A single penetration-test report, for instance, might support several requirements at once across "network security" and "vulnerability management" sections — uploading it once and linking it to each is enough; there's no need to duplicate the file per requirement.
 
+- **Links to requirements** — a requirement links to the clauses it satisfies from its own **Links** panel, under **Compliance standard clause**, like any other link; the clause's page is the Standards page. See [Links and traceability](../../core-features/links-and-traceability.md#the-links-panel).
+
 - **Approval/sign-off** — a formally distinct step from assessment: an assessed requirement is submitted for approval, then approved or rejected, with the decision and its rationale retained. A material change afterwards (the applicability decision changing, or linked evidence being archived/revalidated) automatically flags an approved or pending requirement as **Requires Re-assessment**, so a stale sign-off is never silently left looking current.
 
 | Assessing a standard |

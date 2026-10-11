@@ -57,6 +57,10 @@ export const PROJECT_NAMES = {
    * unlink/remove/approve would make non-idempotent). No other spec may
    * depend on this project's setting. */
   epsilon1: "Epsilon-1 Link Lock Demo",
+  /** Platform Enhancements Phase 6b — holds one submitted change request proposing three links, the last
+   * unmergeable (see PROPOSED_LINKS_PROJECT_NAME in backend/scripts/seed_e2e_dataset.py). Read-only: no spec may
+   * approve or reject that request; change-request-proposed-links.spec.ts builds its own organisation for that. */
+  zeta1: "Zeta-1 Proposed Links Demo",
 } as const;
 
 /** Mirrors TERMINOLOGY_OVERRIDE in backend/scripts/seed_e2e_dataset.py — the

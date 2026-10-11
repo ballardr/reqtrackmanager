@@ -6,8 +6,7 @@ concern routers — `assignment` (a project's standard assignments, version
 migration, and status/rollup GETs), `applicability` (per-requirement
 applicability/assessment editing), `assessment_workflow` (submit/approve/
 reject, history, evidence listing), `required_action_assessments`,
-`evidence`, `reviews`, and `traceability_links` (links to core, non-
-compliance requirements) — into the single `/api/v1/projects/{project_id}/
+`evidence`, and `reviews` — into the single `/api/v1/projects/{project_id}/
 modules/compliance` router `app.modules.compliance.module.get_project_
 router()` returns.
 
@@ -31,7 +30,6 @@ from app.modules.compliance.project_router import (
     evidence,
     required_action_assessments,
     reviews,
-    traceability_links,
 )
 
 _PREFIX = "/api/v1/projects/{project_id}/modules/compliance"
@@ -43,4 +41,3 @@ router.include_router(assessment_workflow.router, prefix=_PREFIX)
 router.include_router(required_action_assessments.router, prefix=_PREFIX)
 router.include_router(evidence.router, prefix=_PREFIX)
 router.include_router(reviews.router, prefix=_PREFIX)
-router.include_router(traceability_links.router, prefix=_PREFIX)

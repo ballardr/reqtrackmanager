@@ -16,29 +16,40 @@ import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } 
  * untouched requirements (HW-FN-005/SW-PERF-006) so this spec never
  * mutates that shared fixture.
  *
- * A link's display name (e.g. "Depends on") is also one of the "add link"
- * form's own `<option>` labels, and the other requirement's own code/name
- * is also an `<option>` in the "Target requirement" picker — every
- * assertion below is scoped to the actual rendered link row (its badge, or
- * the real `<a>` it renders as) rather than a bare `getByText`, to stay
- * unambiguous against those selects.
- *
- * 2026-08 UX audit, sixth pass: "Add link" opens a picker instead of
- * rendering the target/type selects as a permanently-visible inline row,
- * and removing a link now goes through a `ConfirmDialog` (Tier 1) instead
- * of firing immediately — both asserted below alongside the underlying job.
- *
- * Platform-review-2026-09 Phase 7 replaced that picker's original flat,
- * unsearched `<select>` `Popover` with `RequirementLinkPickerModal` — a
- * `Modal` offering a default-active Search tab (exercised below, alongside
- * the underlying create/remove job) and a Requirements browse tab
- * (component -> category -> requirement cascade, exercised in its own
- * dedicated step using a third, otherwise-untouched requirement pair so it
- * doesn't interfere with the create/remove flow's own HW-FN-005/
- * SW-PERF-006 pair).
+ * Links are shown and edited in the shared Links panel (`ArtefactLinksPanel`,
+ * October 2026 platform enhancements Phase 6): "Add link" opens a dialog (record
+ * finder, then the relationship) and removing a link goes through a
+ * `ConfirmDialog` (Tier 1). A link's phrase is also one of the dialog's own
+ * `<option>` labels, so every assertion below is scoped to the panel's rendered
+ * rows (their badge, or the real `<a>`) rather than a bare `getByText`.
  */
 function linkBadge(page: import("@playwright/test").Page, text: string) {
   return page.locator("span.badge", { hasText: text });
+}
+
+const linksPanel = (page: import("@playwright/test").Page) => page.getByRole("region", { name: "Links", exact: true });
+
+/** Links the open requirement to the requirement named `target` with `relationship` via the panel's dialog. */
+async function addRequirementLink(page: import("@playwright/test").Page, relationship: string, target: string) {
+  await linksPanel(page).getByRole("button", { name: "Add link" }).click();
+  const modal = page.getByRole("dialog", { name: "Add a link" });
+  await modal.getByLabel("Link to").selectOption({ label: "Requirement" });
+  await modal.getByLabel("Search").fill(target);
+  const targetSelect = modal.getByLabel("Record");
+  await expect(targetSelect.locator("option", { hasText: target })).toHaveCount(1);
+  await targetSelect.selectOption({ label: await targetSelect.locator("option", { hasText: target }).innerText() });
+  // The relationship is chosen after the record, from those usable for it.
+  await modal.getByLabel("Relationship").selectOption({ label: relationship });
+  await modal.getByRole("button", { name: "Add link" }).click();
+  await expect(modal).not.toBeVisible();
+}
+
+/** Removes the link whose row reads `phrase`, confirming the dialog. */
+async function removeLink(page: import("@playwright/test").Page, phrase: string) {
+  await linksPanel(page).getByRole("button", { name: new RegExp(`^Remove link: ${phrase}`) }).click();
+  const dialog = page.getByRole("dialog", { name: "Remove this link?" });
+  await dialog.getByRole("button", { name: "Remove link" }).click();
+  await expect(dialog).not.toBeVisible();
 }
 
 /**
@@ -88,55 +99,34 @@ test.describe("requirement traceability links", () => {
       await expect(page.getByRole("link", { name: /SW-PERF-002/ })).toBeVisible();
     });
 
-    await test.step("add a new 'Depends on' link between two other requirements via the 'Add link' modal's Search tab", async () => {
+    await test.step("add a new 'Depends on' link between two other requirements via the panel's 'Add link' dialog", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-005");
-      await page.getByRole("button", { name: "Add link" }).click();
-      const modal = page.getByRole("dialog", { name: "Add link" });
-      // Search is the default-active tab.
-      await modal.getByPlaceholder("Search by code or name…").fill("SW-PERF-006");
-      const targetSelect = modal.getByLabel("Target requirement");
-      const targetValue = await targetSelect.locator("option", { hasText: "SW-PERF-006" }).getAttribute("value");
-      await targetSelect.selectOption(targetValue!);
-      await modal.getByLabel("Link type").selectOption({ label: "Depends on" });
-      await modal.getByRole("button", { name: "Add link" }).click();
-      await expect(modal).not.toBeVisible();
+      await addRequirementLink(page, "Depends on", "SW-PERF-006");
       await expect(linkBadge(page, "Depends on")).toBeVisible();
       await expect(page.getByRole("link", { name: /SW-PERF-006/ })).toBeVisible();
     });
 
-    await test.step("the 'Add link' modal's Requirements tab cascades component -> category -> requirement", async () => {
+    await test.step("the dialog's search narrows the offered records", async () => {
       // A third, otherwise-untouched pair (neither seeded with a fixed
-      // link/action/attachment nor used by any other spec, confirmed by
-      // grep before writing this step) — added then immediately removed so
-      // this step is fully self-contained and leaves no state behind for
-      // later runs.
+      // link/action/attachment nor used by any other spec) — added then
+      // immediately removed so this step is fully self-contained and leaves
+      // no state behind for later runs.
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-007");
-      await page.getByRole("button", { name: "Add link" }).click();
-      const modal = page.getByRole("dialog", { name: "Add link" });
-      await modal.getByRole("tab", { name: "Requirements" }).click();
-      await modal.getByLabel("Component").selectOption({ label: "Hardware (HW)" });
-      await modal.getByLabel("Category").selectOption({ label: "Functional (FN)" });
-      // The cascade actually filters: Hardware/Functional never offers a
-      // Software/Performance requirement.
-      await expect(modal.getByLabel("Target requirement").locator("option", { hasText: "SW-PERF-008" })).toHaveCount(0);
-      await modal.getByLabel("Component").selectOption({ label: "Software (SW)" });
-      await modal.getByLabel("Category").selectOption({ label: "Performance (PERF)" });
-      const targetSelect = modal.getByLabel("Target requirement");
-      const targetValue = await targetSelect.locator("option", { hasText: "SW-PERF-008" }).getAttribute("value");
-      await targetSelect.selectOption(targetValue!);
-      await modal.getByLabel("Link type").selectOption({ label: "Depends on" });
-      await modal.getByRole("button", { name: "Add link" }).click();
-      await expect(modal).not.toBeVisible();
+      await linksPanel(page).getByRole("button", { name: "Add link" }).click();
+      const modal = page.getByRole("dialog", { name: "Add a link" });
+      await modal.getByLabel("Link to").selectOption({ label: "Requirement" });
+      await modal.getByLabel("Search").fill("SW-PERF-008");
+      // The search actually filters: only the matching requirement is offered.
+      await expect(modal.getByLabel("Record").locator("option", { hasText: "SW-PERF-008" })).toHaveCount(1);
+      await expect(modal.getByLabel("Record").locator("option", { hasText: "HW-FN-001" })).toHaveCount(0);
+      await modal.getByRole("button", { name: "Cancel" }).click();
+      await addRequirementLink(page, "Depends on", "SW-PERF-008");
       await expect(linkBadge(page, "Depends on")).toBeVisible();
       await expect(page.getByRole("link", { name: /SW-PERF-008/ })).toBeVisible();
 
-      const linkRow = page.locator(".row", { hasText: "Depends on" });
-      await linkRow.getByRole("button").click();
-      const dialog = page.getByRole("dialog", { name: "Remove this link?" });
-      await dialog.getByRole("button", { name: "Remove link" }).click();
-      await expect(dialog).not.toBeVisible();
+      await removeLink(page, "Depends on");
       await expect(linkBadge(page, "Depends on")).toHaveCount(0);
     });
 
@@ -148,12 +138,7 @@ test.describe("requirement traceability links", () => {
     });
 
     await test.step("remove the link from the target requirement's own page (confirming the ConfirmDialog); it disappears from both ends", async () => {
-      const linkRow = page.locator(".row", { hasText: "Is a dependency of" });
-      await linkRow.getByRole("button").click();
-      const dialog = page.getByRole("dialog", { name: "Remove this link?" });
-      await expect(dialog).toBeVisible();
-      await dialog.getByRole("button", { name: "Remove link" }).click();
-      await expect(dialog).not.toBeVisible();
+      await removeLink(page, "Is a dependency of");
       await expect(linkBadge(page, "Is a dependency of")).toHaveCount(0);
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();

@@ -38,6 +38,7 @@ import { AssigneePicker } from "../../components/AssigneePicker";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Modal } from "../../components/Modal";
 import { ResourcePickerModal } from "../../components/ResourcePickerModal";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -96,6 +97,8 @@ export function RequirementAssessmentPanel({
   const [notes, setNotes] = useState(pcr.notes);
   const [decisionNote, setDecisionNote] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  // The required-action assessment whose Links panel is expanded (one at a time).
+  const [linksOpenFor, setLinksOpenFor] = useState<string | null>(null);
 
   const [actionDefs, setActionDefs] = useState<ComplianceRequiredAction[] | null>(null);
   const [assessments, setAssessments] = useState<ComplianceRequiredActionAssessment[] | null>(null);
@@ -409,7 +412,21 @@ export function RequirementAssessmentPanel({
                           aria-label={`Due date for ${def?.name ?? "required action"}`}
                         />
                       </label>
+                      <button
+                        className="btn"
+                        aria-expanded={linksOpenFor === assessment.id}
+                        onClick={() => setLinksOpenFor(linksOpenFor === assessment.id ? null : assessment.id)}
+                      >
+                        Links
+                      </button>
                     </div>
+                    {linksOpenFor === assessment.id && (
+                      <ArtefactLinksPanel
+                        projectId={projectId}
+                        artefactType="compliance_required_action_assessment"
+                        artefactId={assessment.id}
+                      />
+                    )}
                   </li>
                 );
               })}
@@ -498,6 +515,8 @@ export function RequirementAssessmentPanel({
             )
           )}
         </section>
+
+        <ArtefactLinksPanel projectId={projectId} artefactType="project_compliance_requirement" artefactId={pcr.id} />
       </div>
 
       {creatingEvidence && (

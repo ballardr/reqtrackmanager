@@ -13,8 +13,8 @@ Go to a project's **Actions** page and click **New action**:
 
 | Action detail |
 | --- |
-| An action's outcome, assignee, due date, linked requirements, and discussion |
-| ![Action detail page showing outcome, assignee, and linked requirements](../../static/img/screenshots/action-detail.png) |
+| An action's outcome, assignee, due date and discussion, with its linked requirements in the Links panel |
+| ![Action detail page showing outcome, assignee, and discussion, with a Links panel listing two linked requirements](../../static/img/screenshots/action-detail.png) |
 
 ## Linking an action to requirements
 

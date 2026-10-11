@@ -83,15 +83,17 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       await expect(actionPanel).not.toBeVisible();
       await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
 
-      await page.getByRole("button", { name: "Add link" }).click();
-      const linkModal = page.getByRole("dialog", { name: "Add link" });
+      await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
+      const linkModal = page.getByRole("dialog", { name: "Add a link" });
       // Still draft — no change-request notice, and Add link works directly.
-      await expect(linkModal.getByText(/requires a change request/i)).toHaveCount(0);
-      await linkModal.getByPlaceholder("Search by code or name…").fill(reqBName);
-      const targetSelect = linkModal.getByLabel("Target requirement");
+      await expect(linkModal.getByText(/requires link changes to go through a change request/i)).toHaveCount(0);
+      await linkModal.getByLabel("Link to").selectOption({ label: "Requirement" });
+      await linkModal.getByLabel("Search").fill(reqBName);
+      const targetSelect = linkModal.getByLabel("Record");
+      await expect(targetSelect.locator("option", { hasText: reqBName })).toHaveCount(1);
       const targetValue = await targetSelect.locator("option", { hasText: reqBName }).getAttribute("value");
       await targetSelect.selectOption(targetValue!);
-      await linkModal.getByLabel("Link type").selectOption({ label: "Related to" });
+      await linkModal.getByLabel("Relationship").selectOption({ label: "Related to" });
       await linkModal.getByRole("button", { name: "Add link" }).click();
       await expect(linkModal).not.toBeVisible();
       await expect(page.getByRole("link", { name: reqBName })).toBeVisible();
@@ -132,11 +134,11 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
 
     let removeLinkCrId = "";
     await test.step("removing the link now opens a change-request confirm, not a plain remove", async () => {
-      const linkRow = page.locator(".row", { hasText: "Related to" });
-      await linkRow.getByRole("button", { name: "Remove link" }).click();
-      const dialog = page.getByRole("dialog", { name: "Remove this link via change request?" });
+      await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: /^Remove link: Related to/ }).click();
+      const dialog = page.getByRole("dialog", { name: "Remove this link?" });
       await expect(dialog).toBeVisible();
-      const confirmButton = dialog.getByRole("button", { name: "Remove link" });
+      await expect(dialog.getByText(/needs a change request/i)).toBeVisible();
+      const confirmButton = dialog.getByRole("button", { name: "Request removal" });
       await expect(confirmButton).toBeDisabled();
       await dialog.getByLabel("Reason for change").fill("Link was recorded against the wrong requirement.");
       await expect(confirmButton).toBeEnabled();
@@ -160,16 +162,17 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
     });
 
     let addLinkCrId = "";
-    await test.step("adding a new link now opens the picker's change-request notice and requires a reason", async () => {
-      await page.getByRole("button", { name: "Add link" }).click();
-      const modal = page.getByRole("dialog", { name: "Add link" });
-      await expect(modal.getByText(/requires a change request/i)).toBeVisible();
-      await modal.getByPlaceholder("Search by code or name…").fill(reqCName);
-      const targetSelect = modal.getByLabel("Target requirement");
+    await test.step("adding a new link now shows the change-request notice, offers only requirements and requires a reason", async () => {
+      await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
+      const modal = page.getByRole("dialog", { name: "Add a link" });
+      await expect(modal.getByText(/requires link changes to go through a change request/i)).toBeVisible();
+      await modal.getByLabel("Search").fill(reqCName);
+      const targetSelect = modal.getByLabel("Record");
+      await expect(targetSelect.locator("option", { hasText: reqCName })).toHaveCount(1);
       const targetValue = await targetSelect.locator("option", { hasText: reqCName }).getAttribute("value");
       await targetSelect.selectOption(targetValue!);
-      await modal.getByLabel("Link type").selectOption({ label: "Depends on" });
-      const addButton = modal.getByRole("button", { name: "Add link" });
+      await modal.getByLabel("Relationship").selectOption({ label: "Depends on" });
+      const addButton = modal.getByRole("button", { name: "Propose link" });
       await expect(addButton).toBeDisabled();
       await modal.getByLabel("Reason for change").fill("New dependency found during review.");
       await expect(addButton).toBeEnabled();
@@ -185,6 +188,8 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       await page.getByRole("button", { name: "Submit", exact: true }).click();
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Approve", exact: true }).click();
+      // An add-link request approves through the merge dialog (Platform Enhancements Phase 6b), link ticked by default.
+      await page.getByRole("dialog", { name: "Approve change request" }).getByRole("button", { name: "Approve and merge 1 link" }).click();
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();

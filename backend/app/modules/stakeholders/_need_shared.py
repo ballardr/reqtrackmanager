@@ -209,7 +209,8 @@ def add_holder(
     commits (409 on a duplicate)."""
     record = get_visible_holder(db, project, kind, holder_id)
     link = apply_value_error_as_conflict(
-        add_has_need_link, db, kind, record.id, need, actor, organization_id=project.organization_id
+        add_has_need_link, db, kind, record.id, need, actor, organization_id=project.organization_id,
+        project_id=project.id,
     )
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="holder_added", actor_id=actor.id,
               project_id=need.project_id, detail={"kind": kind, "id": str(record.id)})
@@ -256,7 +257,8 @@ def add_requirement(
     audit-logs and commits (409 on a duplicate)."""
     requirement = get_project_requirement(db, project, requirement_id)
     link = apply_value_error_as_conflict(
-        add_gives_rise_to_link, db, need, requirement.id, actor, organization_id=project.organization_id
+        add_gives_rise_to_link, db, need, requirement.id, actor, organization_id=project.organization_id,
+        project_id=project.id,
     )
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="requirement_linked",
               actor_id=actor.id, project_id=need.project_id, detail={"requirement_id": str(requirement.id)})

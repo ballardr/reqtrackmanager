@@ -58,7 +58,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditEvent
@@ -95,6 +95,7 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.relationship import ArtefactLink
+from app.models.report_content import SCOPE_PROJECT
 from app.models.requirement import (
     Baseline,
     BaselineItem,
@@ -116,8 +117,11 @@ from app.services.bundle_common import (
 )
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
+from app.services.link_type_scope import resolve_link_type_scope
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
+from app.services.report_content import bundle_entries, content_entries, replace_scope_content
+from app.services.report_content_bundle import ContentImageImporter, collect_content_images
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -207,10 +211,15 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     # this bundle's own requirement-links section) — filtering on
     # `source_type == REQUIREMENT` already excludes those, since an action
     # link's source is always a `RequirementAction`, never a `Requirement`.
+    # Same-project links only: a link to an ancestor or descendant project's artefact is
+    # left out (a bundle must not embed another project's content, and import never
+    # recreates one); the manifest reports how many were left out.
     links = list(
         db.scalars(
             select(ArtefactLink).where(
-                ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids)
+                ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids),
+                ArtefactLink.target_type == ArtefactType.REQUIREMENT,
+                ArtefactLink.source_project_id.is_(None),
             )
         )
         if req_ids else []
@@ -221,12 +230,18 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     # `requirement_link_type_definitions` table means nothing on import
     # (`apply_project_data` looks this back up by `forward_name` within the
     # *target* organisation's own link types).
+    # Only the types the exported links reference are loaded (never every type the
+    # organisation has, which would include other projects' local types).
+    link_type_ids = {link.link_type_id for link in links if link.link_type_id is not None}
     link_type_forward_name_by_id = {
         lt.id: lt.forward_name
         for lt in db.scalars(
-            select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == project.organization_id)
+            select(RequirementLinkTypeDefinition).where(
+                RequirementLinkTypeDefinition.organization_id == project.organization_id,
+                RequirementLinkTypeDefinition.id.in_(link_type_ids),
+            )
         )
-    }
+    } if link_type_ids else {}
 
     attachments_by_req: dict[UUID, list[dict]] = {}
     file_assets_by_id: dict[UUID, FileAsset] = {}
@@ -481,6 +496,10 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         template = db.get(ReportTemplate, project.default_report_template_id)
         default_report_template_name = template.name if template else None
 
+    content = content_entries(db, SCOPE_PROJECT, project.id)
+    content_images, report_images = collect_content_images(db, project.organization_id, content)
+    file_assets_by_id.update(content_images)
+
     module_bundle_json: dict[str, Any] = {}
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         module_json, module_file_assets = hooks.export(db, project)
@@ -493,7 +512,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "require_change_request_for_approved_links": project.require_change_request_for_approved_links,
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
-        "report_intro": project.report_intro, "report_chapters": project.report_chapters, "report_appendices": project.report_appendices,
+        "report_content": [e.model_dump() for e in content], "report_images": report_images,
         "default_report_template_name": default_report_template_name,
         "stages": [{"name": s.name, "sort_order": s.sort_order} for s in stages],
         "components": [
@@ -532,6 +551,18 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     return project_json, file_assets_by_id
 
 
+def count_cross_project_links(db: Session, project_id: UUID) -> int:
+    """How many links join this project's artefacts to an ancestor's or descendant's.
+
+    A bundle carries same-project links only, so these are left out of an export; the
+    count goes in the manifest so the omission is never silent."""
+    return db.scalar(
+        select(func.count()).select_from(ArtefactLink).where(
+            or_(ArtefactLink.source_project_id == project_id, ArtefactLink.target_project_id == project_id)
+        )
+    ) or 0
+
+
 def build_project_bundle(db: Session, project: Project, exported_by: User) -> bytes:
     """Builds a project export bundle: a zip containing `manifest.json`
     (self-describing envelope), `project.json` (structure + full history),
@@ -552,6 +583,7 @@ def build_project_bundle(db: Session, project: Project, exported_by: User) -> by
         "kind": PROJECT_BUNDLE_KIND, "format_version": PROJECT_BUNDLE_FORMAT_VERSION,
         "exported_at": datetime.now(UTC).isoformat(), "exported_by_email": exported_by.email,
         "project_name": project.name, "organization_name": org.name if org else None,
+        "excluded_cross_project_links": count_cross_project_links(db, project.id),
     }
 
     buffer = io.BytesIO()
@@ -602,8 +634,6 @@ def new_project_from_bundle_data(
         exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),
         terminology=data.get("terminology") or {},
         review_reminder_lead_days_default=data.get("review_reminder_lead_days_default", 7),
-        report_intro=data.get("report_intro", ""), report_chapters=data.get("report_chapters", []) or [],
-        report_appendices=data.get("report_appendices", []) or [],
         status_id=get_default_project_status_id(db, organization_id),
     )
 
@@ -646,6 +676,17 @@ def apply_project_data(
     # `routers/projects.py::create_project`'s own default-seeding call for
     # a manually-created (non-template) project.
     seed_action_types(db, project.id)
+    skipped_report_types = replace_scope_content(
+        db, SCOPE_PROJECT, project.id,
+        ContentImageImporter(
+            db, organization_id, current_user.id, file_bytes_by_ref, data.get("report_images"),
+        ).remap(bundle_entries(data, "report_content", ("report_intro", "report_chapters", "report_appendices"))),
+        skip_unknown=True,
+    )
+    if skipped_report_types:
+        warnings.add(
+            f"Report content for unknown report types was not imported: {', '.join(sorted(set(skipped_report_types)))}."
+        )
     template_name = data.get("default_report_template_name")
     if template_name:
         template = db.scalar(
@@ -813,11 +854,13 @@ def apply_project_data(
     # (e.g. it was a custom, non-default type the target org never defined)
     # is skipped with a warning rather than guessing a fallback type, which
     # would silently misrepresent the link's asserted meaning.
+    # Resolved among the types usable in the *target* project (organisation-wide, or
+    # local to it or an ancestor; the winner of a duplicate name), so a name can never
+    # land on a type the project cannot use.
     link_type_id_by_name = {
-        lt.forward_name: lt.id
-        for lt in db.scalars(
-            select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == organization_id)
-        )
+        scoped.link_type.forward_name: scoped.link_type.id
+        for scoped in resolve_link_type_scope(db, project)
+        if scoped.shadowed_by is None
     }
     for link in data.get("requirement_links", []):
         source_id = requirement_id_by_code.get(link["source_unique_code"])
@@ -828,12 +871,13 @@ def apply_project_data(
                 db, source_type=ArtefactType.REQUIREMENT, source_id=source_id,
                 target_type=ArtefactType.REQUIREMENT, target_id=target_id, link_type_id=link_type_id,
                 created_by=users.resolve(link.get("created_by_email"), required=True, context="Requirement link creator"),
+                enforce_rules=False,  # replaying existing data, not a new user-chosen link
             )
         elif source_id and target_id:
             warnings.add(
                 f"Requirement link {link.get('source_unique_code')} -> {link.get('target_unique_code')} "
-                f"references a link type ({link.get('link_type_forward_name')!r}) that doesn't exist in the "
-                "target organisation and was skipped."
+                f"references a link type ({link.get('link_type_forward_name')!r}) that isn't available to the "
+                "target project and was skipped."
             )
 
     def import_comment(c: dict, target_type: ReviewTargetType, target_id: UUID, uploaded_by_key: str) -> None:

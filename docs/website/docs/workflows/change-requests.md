@@ -9,8 +9,9 @@ sidebar_position: 5
 Once a requirement is locked, go to the project's **Change Requests** page (its own **Make a change request** link also appears directly on the requirement's own detail page):
 
 1. Choose **new requirement** or **modify requirement**. For "modify requirement," pick the requirement first, then tick a checkbox for each field you actually want to change — only ticked fields become editable, pre-filled from the current value, and only ticked fields are proposed. Anything left unticked stays untouched when the change request is approved.
-2. Give a **reason** for the change — required either way.
-3. **Submit** it. This notifies the project's managers and stakeholders.
+2. Optionally add **proposed links** — the "Add a link" dialog in the form — to trace the requirement to other records. They are created only if the approver merges them.
+3. Give a **reason** for the change — required either way.
+4. **Submit** it. This notifies the project's managers and stakeholders.
 
 By default only stakeholders, administrators, and managers can submit change requests; a project setting (**Project Admin → Settings**) can open this up to ordinary members too.
 
@@ -20,11 +21,12 @@ A project manager or administrator opens the change request and **approves** or 
 
 - **Approve** applies only the ticked fields to the target requirement (creating it, for a "new requirement" change request) and notifies the requester. A proposed attachment is only actually attached to the requirement once approved.
 - **Reject** leaves the requirement untouched.
+- If the change request proposes links, **Approve** opens a dialog where every link that can still be created is ticked; untick any or all, then **Approve and merge N links** (or **Approve without links**). A link that can no longer be merged is shown disabled with the reason. See [Core Features → Change requests](../core-features/change-requests.md#proposing-links).
 
 | Change request detail |
 | --- |
 | Tasks, advisory stakeholder votes, discussion, and approve/reject |
-| ![Change request detail page with tasks, stakeholder votes, and discussion](../../static/img/screenshots/change-request-detail.png) |
+| ![Change request detail page with proposed links, tasks, stakeholder votes, and discussion](../../static/img/screenshots/change-request-detail.png) |
 
 Someone who submitted a change request never sees Approve/Reject controls on their own submission, even if they otherwise hold a role that could decide other change requests — separation of duties between proposing and approving a change is enforced by the server, not just hidden in the UI.
 

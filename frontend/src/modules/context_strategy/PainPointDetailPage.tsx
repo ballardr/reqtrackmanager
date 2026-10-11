@@ -57,16 +57,17 @@ import { Pencil } from "lucide-react";
 
 import type { FileAsset, OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { AssigneePicker } from "../../components/AssigneePicker";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
-import { PainPointRelationshipsSection } from "./PainPointRelationshipsSection";
 import { PainPointScoringPanel } from "./PainPointScoringPanel";
 import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
 import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFieldValues } from "./types";
@@ -212,7 +213,15 @@ export function PainPointDetailPage() {
   if (painPoint === null) return <Spinner />;
 
   return (
-    <div className="container stack">
+    <DetailLayout
+      aside={
+        <ArtefactLinksPanel
+          projectId={projectId}
+          artefactType="pain_point"
+          artefactId={painPoint.id}
+        />
+      }
+    >
       <Link to={`/projects/${projectId}/modules/context_strategy/pain-points`}>← Pain Point</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{painPoint.title}</h1>
@@ -280,7 +289,6 @@ export function PainPointDetailPage() {
 
         <PainPointScoringPanel projectId={projectId} painPointId={painPoint.id} locked={painPoint.is_locked} />
 
-        <PainPointRelationshipsSection projectId={projectId} painPoint={painPoint} />
 
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Evidence</h3>
@@ -416,7 +424,7 @@ export function PainPointDetailPage() {
           onCancel={() => setArchiveConfirm(false)}
         />
       )}
-    </div>
+    </DetailLayout>
   );
 }
 

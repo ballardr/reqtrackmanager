@@ -34,8 +34,11 @@ import type {
   Component,
   FileAsset,
   LinkTypeDefinition,
+  ProjectLinkType,
+  ProjectLinkTypes,
   Notification,
   Project,
+  ProposedLink,
   ProjectFile,
   ProjectListItem,
   ProjectStage,
@@ -142,8 +145,24 @@ export function buildProjectStatus(overrides: Partial<ProjectStatusDefinition> =
 export function buildLinkType(overrides: Partial<LinkTypeDefinition> = {}): LinkTypeDefinition {
   return {
     id: nextId("linktype"), organization_id: "org-1", forward_name: "Depends on",
-    reverse_name: "Is a dependency of", sort_order: 0, ...overrides,
+    reverse_name: "Is a dependency of", sort_order: 0, flow: "none",
+    allowed_source_types: null, allowed_target_types: null, dedicated_endpoint: false,
+    nesting_scope: "ancestor_either_way", ...overrides,
   };
+}
+
+/** A link type as a project sees it: organisation-wide by default, read-only, offered. */
+export function buildProjectLinkType(overrides: Partial<ProjectLinkType> = {}): ProjectLinkType {
+  return {
+    ...buildLinkType(), scope: "organization", owner_project_id: null, owner_project_name: null, hidden: false,
+    hidden_here: null, hidden_by_inherited: false, shadowed_by_scope: null, shadowed_by_name: null, editable: false,
+    ...overrides,
+  };
+}
+
+/** The body of `GET /projects/{id}/link-types` for these types (all organisation-wide, offered, unlocked). */
+export function projectLinkTypesPayload(types: LinkTypeDefinition[] = []): ProjectLinkTypes {
+  return { locked: false, items: types.map((t) => buildProjectLinkType(t)) };
 }
 
 export function buildActionType(overrides: Partial<ActionTypeDefinition> = {}): ActionTypeDefinition {
@@ -343,9 +362,27 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
     proposed_action_type_id: null,
     proposed_action_assignee_id: null,
     proposed_action_due_date: null,
-    proposed_link_target_requirement_id: null,
-    proposed_link_type_id: null,
+    proposed_links: [],
+    proposed_link_count: 0,
     proposed_link_id: null,
+    ...overrides,
+  };
+}
+
+export function buildProposedLink(overrides: Partial<ProposedLink> = {}): ProposedLink {
+  return {
+    id: nextId("proposed-link"),
+    link_type_id: "lt1",
+    phrase: "Depends on",
+    direction: "outgoing",
+    other_type: "requirement",
+    other_type_label: "Requirement",
+    other_id: "requirement-2",
+    other_label: "AUTH-002 — Passwords expire after 90 days",
+    other_project_id: null,
+    other_project_name: null,
+    outcome: "pending",
+    outcome_reason: null,
     ...overrides,
   };
 }
@@ -413,6 +450,7 @@ export function withAuth(user: User | null, overrides: Partial<AuthContextValue>
     logout: () => {},
     refreshUser: async () => {},
     setUiPreference: () => {},
+    setUiPreferences: async () => {},
     ...overrides,
   };
   return (Story) => (

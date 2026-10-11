@@ -63,6 +63,8 @@ export const COMPLIANCE_STATUS_LABEL: Record<ComplianceStatus, string> = {
   pending_review: "Pending review",
   rejected: "Rejected",
 };
+/** A required-action assessment's status as the Links panel shows it (`open` until completed). */
+export const COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL: Record<string, string> = { open: "Open", completed: "Completed" };
 export type ComplianceApplicability = "applicable" | "not_applicable";
 export const COMPLIANCE_APPLICABILITY_LABEL: Record<ComplianceApplicability, string> = {
   applicable: "Applicable",
@@ -310,28 +312,6 @@ export interface ComplianceRequirementMapping {
   archived_by: string | null;
   created_at: string;
   updated_at: string;
-}
-
-// Phase 34 — a traceability link from a core `Requirement` to this
-// requirement, resolved server-side (mirrors core's own `RequirementLink`
-// shape): `display_name`/`compliance_*`/`standard_*` are denormalised so
-// `RequirementTraceabilityLinksSection.tsx` can render a full row without a
-// second round trip.
-export interface ComplianceRequirementTraceabilityLink {
-  id: string;
-  requirement_id: string;
-  compliance_requirement_id: string;
-  link_type_id: string;
-  display_name: string;
-  compliance_requirement_reference: string | null;
-  compliance_requirement_name: string;
-  standard_id: string;
-  standard_reference: string;
-  standard_name: string;
-  standard_version_id: string;
-  standard_version_label: string;
-  created_by: string;
-  created_at: string;
 }
 
 export interface ComplianceRequirementSummary {

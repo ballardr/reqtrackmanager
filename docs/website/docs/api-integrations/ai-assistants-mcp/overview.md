@@ -12,18 +12,27 @@ Every tool call authenticates with the caller's own ReqTrackManager token — se
 
 ## What it can do
 
-Fifteen read tools, always available:
+Twenty-two read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
 | `list_organizations` | Organisations the caller's account belongs to or administers |
 | `list_projects` | Projects the caller has a role on, optionally filtered by organisation or a name/summary search |
 | `get_project` | A single project's detail |
+| `list_permissions` | An organisation's full Fine-Grained Access Control permission vocabulary |
+| `list_custom_roles` | An organisation's custom roles (each role's own definition, never who holds it) |
+| `get_custom_role` | A single custom role's definition |
 | `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why |
+| `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream, downstream or related) for impact analysis; says when the result is partial |
+| `list_artefact_link_types` | The link types usable from an artefact, with direction, wording and the kinds of record each can reach — the starting point for linking. Give it a parent or child project to see only the types that may join across them |
+| `list_link_candidate_projects` | The projects a link from this project may reach: itself, its parent projects and its child projects you can open |
+| `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
+| `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
-| `get_change_request` | A single change request's full current detail |
+| `get_change_request` | A single change request's full current detail, including the links it proposes (`proposed_links`) |
+| `preview_change_request_links` | Which of a change request's proposed links would merge if it were approved now, each re-checked, with the reason for any that would not (project managers only) |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes |
 | `list_change_request_tasks` | Follow-up tasks tracked against a change request |
 | `list_change_request_comments` | The discussion thread on a change request |
@@ -32,21 +41,23 @@ Fifteen read tools, always available:
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Plus five write tools, only when write mode is enabled:
+Plus seven write tools, only when write mode is enabled:
 
 | Tool | Purpose |
 | --- | --- |
 | `create_requirement` | Creates a new requirement (always starts in "draft") |
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+| `create_artefact_link` | Links an artefact to another record of the same project, from either end — subject to the organisation's link restrictions and the caller's own permissions |
+| `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `approve_requirement` | Approves a draft or reviewed requirement — only when AI approval is enabled for the project and its organisation |
-| `decide_change_request` | Approves or rejects a submitted change request — only when AI approval is enabled for the project and its organisation |
+| `decide_change_request` | Approves or rejects a submitted change request — only when AI approval is enabled for the project and its organisation. `merge_link_ids` chooses which proposed links to create (omitted: every valid one; empty: none); a chosen link that is no longer valid fails the call with a conflict |
 | `complete_requirement` | Marks an approved requirement completed — only when AI approval is enabled for the project and its organisation |
 
 No tool, in any configuration, can vote, comment, or record a review outcome. See [Known limitations](./known-limitations.md) for what's deliberately still out of scope and why.
 
 ## Write mode
 
-On by default (`MCP_WRITES_ENABLED` unset, or anything other than `false`/`0`/`no`/`off`) — set it to `false` explicitly to opt a deployment back into read-only-only. Both the bundled dev/test stack and the production stack default it on. When it's off, none of the five write tools above exist at all: an MCP client's tool list never mentions them.
+On by default (`MCP_WRITES_ENABLED` unset, or anything other than `false`/`0`/`no`/`off`) — set it to `false` explicitly to opt a deployment back into read-only-only. Both the bundled dev/test stack and the production stack default it on. When it's off, none of the seven write tools above exist at all: an MCP client's tool list never mentions them.
 
 **`create_requirement`/`update_requirement`: requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through either tool, regardless of what the calling account's own role could do directly via the API. Editing an already-approved (locked) requirement is rejected with a clear error pointing at a change request instead.
 
@@ -61,7 +72,7 @@ Every approval/decision/completion performed this way is visibly marked "(via MC
 
 **Still exactly the same pass-through authentication and authorization as every read tool** — write mode doesn't add a second permission model. The caller's own account still needs a requirement-editing project role for `create_requirement`/`update_requirement`, and the project-manager role for the three approval-type tools, exactly as the UI would require.
 
-**What's still not exposed, in any configuration** — a deliberately narrow set, not an oversight: submitting a change request, voting, commenting, recording a review outcome, archiving/deleting, uploading attachments, and creating traceability links.
+**What's still not exposed, in any configuration** — a deliberately narrow set, not an oversight: submitting a change request, voting, commenting, recording a review outcome, archiving/deleting, and uploading attachments.
 
 ## Default organisation/project scope
 
@@ -69,11 +80,13 @@ Two optional HTTP headers on the MCP connection — `X-Default-Organization-Id` 
 
 ## Module-contributed tools
 
+Module tools are numerous (about 200 across Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas), so this page does not itemise them. The [Agent skill](./agent-skill.mdx) includes a generated, always-current list with usage guidance for each module.
+
 Beyond the tools above, a backend module can declare its own tools that this server registers automatically, without any module-specific code living in the MCP server itself — see [Modules → Building your own module](../../modules/building-your-own-module.md#module-contributed-mcp-tools) for the mechanism.
 
-**Compliance and Decision Management are the modules that use this so far.** Compliance's MCP surface was write-enabled 2026-09-22 (see [decisions.md](https://github.com/ballardr/reqtrackmanager/blob/main/docs/decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry); Decision Management's approve/reject actions got the identical gated treatment the same day, as an explicit follow-up (see that same doc's "Decision Management MCP approval gate" entry) — its other mutating actions remain undeclared.
+**Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas use this so far.** Compliance's MCP surface was write-enabled 2026-09-22 (see [decisions.md](https://github.com/ballardr/reqtrackmanager/blob/main/docs/decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry); Decision Management's approve/reject actions got the identical gated treatment the same day, as an explicit follow-up (see that same doc's "Decision Management MCP approval gate" entry) — its other mutating actions remain undeclared.
 
-Compliance contributes 78 tools: 10 read-only —
+Compliance contributes 76 tools: 10 read-only —
 
 | Tool | Purpose |
 | --- | --- |
@@ -88,7 +101,7 @@ Compliance contributes 78 tools: 10 read-only —
 | `compliance_list_requirement_mappings` | Lists the cross-standard/cross-version mapping links for one compliance requirement |
 | `compliance_get_standard_version_diff` | Computes the added/removed/modified/replaced/re-mapped requirement diff between two versions of a standard |
 
-— plus 68 write tools covering essentially every mutating compliance endpoint (standards/versions/requirements/required-actions/action-types/mapping-relationship-types CRUD, project assignment/migration, assessment, evidence, reviews, traceability links; full list in [Compliance module → AI assistant integration](../../modules/compliance-module/mcp-integration.md)), each gated the same as any other MCP write tool by write mode and the caller's own RBAC role. `compliance_approve_requirement`/`compliance_reject_requirement` are the one exception: they exist as tools but additionally require the target project's and its organisation's `allow_ai_approvals` opt-in (the same one `approve_requirement`/`decide_change_request`/`complete_requirement` above use, generalized for module reuse) — no longer a hard, no-opt-in-possible exclusion. Standard member/group role assignment and the two file-upload endpoints (`import_standard`, evidence file upload) still have no MCP tool — an RBAC role grant and a file upload respectively, neither of which this mechanism supports for any module.
+— plus 64 write tools covering essentially every mutating compliance endpoint (standards/versions/requirements/required-actions/action-types/mapping-relationship-types CRUD, project assignment/migration, assessment, evidence, reviews; full list in [Compliance module → AI assistant integration](../../modules/compliance-module/mcp-integration.md)), each gated the same as any other MCP write tool by write mode and the caller's own RBAC role. `compliance_approve_requirement`/`compliance_reject_requirement` are the one exception: they exist as tools but additionally require the target project's and its organisation's `allow_ai_approvals` opt-in (the same one `approve_requirement`/`decide_change_request`/`complete_requirement` above use, generalized for module reuse) — no longer a hard, no-opt-in-possible exclusion. Standard member/group role assignment and the two file-upload endpoints (`import_standard`, evidence file upload) still have no MCP tool — an RBAC role grant and a file upload respectively, neither of which this mechanism supports for any module.
 
 Decision Management contributes nine tools: seven read-only —
 

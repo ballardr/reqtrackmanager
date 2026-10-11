@@ -19,6 +19,14 @@ sidebar_position: 12
 
 **Project Admin → Custom fields** defines additional attributes on requirements or change requests — short text, long text, checkbox, or a fixed list of options. These appear automatically on the create/edit forms and are versioned along with everything else.
 
+## Link types
+
+**Project Admin → Fields & actions → Link types** lists the organisation's link types (and any a parent project defined) with a **Hide** toggle each, and lets the project add link types of its own. The organisation can switch this off, which shows the list read-only. See [Links and traceability → Link types for one project](../core-features/links-and-traceability.md#link-types-for-one-project).
+
+## Report setup
+
+**Project Admin → Report Setup** sets the project's default report template and the introduction, chapters and appendices of each report type, each labelled with where its value is inherited from (a parent project or the organisation). See [Reports and export → Report content](../core-features/reports-and-export.md#report-content).
+
 ## Terminology
 
 **Project Admin → Terminology** renames how a fixed set of nouns (project, stage, component, category, requirement, change request) are labelled in this project's UI, for a team with different internal vocabulary — the override reaches the nav, list-page headings, and every other surface those words appear on, not just the settings page itself.

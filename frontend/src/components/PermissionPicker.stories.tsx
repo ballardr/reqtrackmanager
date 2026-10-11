@@ -6,6 +6,9 @@ import { buildUser, withAuth } from "../testing/storybook-helpers";
 import { PermissionPicker } from "./PermissionPicker";
 
 const PERMISSIONS: Permission[] = [
+  { key: "*:view:", label: "all record types — view", artefact_type: "*", level: "view", subtype: null },
+  { key: "*:link:", label: "all record types — link", artefact_type: "*", level: "link", subtype: null },
+  { key: "requirement:link:", label: "requirement — link", artefact_type: "requirement", level: "link", subtype: null },
   { key: "requirement:view:", label: "requirement — view", artefact_type: "requirement", level: "view", subtype: null },
   {
     key: "requirement:propose_create:",
@@ -61,6 +64,19 @@ export const GroupedByArtefactType: Story = {
     await expect(canvas.getByRole("checkbox", { name: "requirement — view" })).toBeChecked();
     await expect(canvas.getByRole("checkbox", { name: "decision — view" })).not.toBeChecked();
     await expect(canvas.getByRole("checkbox", { name: "Grant Roles" })).toBeChecked();
+  },
+};
+
+/** The "every record type" atoms (`*:<level>:`) lead, under their own heading: one tick
+ * grants a level on every type, including ones a module registers later. */
+export const AllRecordTypesGroupLeads: Story = {
+  args: { selected: ["*:link:"] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const headings = canvas.getAllByRole("button").map((b) => b.textContent ?? "");
+    await expect(headings[0]).toContain("All record types");
+    await expect(canvas.getByRole("checkbox", { name: "all record types — link" })).toBeChecked();
+    await expect(canvas.getByRole("checkbox", { name: "all record types — view" })).not.toBeChecked();
   },
 };
 

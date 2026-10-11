@@ -50,10 +50,11 @@ async function openStructuralProject(page: Page, label: string) {
   return { projectId, projectName, authHeaders };
 }
 
-/** Picks the reassignment target in `DefinitionList`-style delete flows and confirms. */
+/** Picks the reassignment target in the in-use delete dialog (`DeleteInUseDialog`) and confirms. */
 async function reassignTo(page: Page, label: string) {
-  await page.getByText("Reassign existing items to").locator("xpath=..").getByRole("combobox").selectOption({ label });
-  await page.getByRole("button", { name: "Confirm delete" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox", { name: "Reassign existing items to" }).selectOption({ label });
+  await dialog.getByRole("button", { name: "Confirm delete" }).click();
 }
 
 // Stages and Categories live together on the "Structure" group, each in its
@@ -191,6 +192,10 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       // Stage order is Milestone 1(0)/Milestone 2(1).
       await stagesSection.getByTitle("Delete this stage").nth(0).click();
       await reassignTo(page, "Milestone 2");
+      // The refusal is shown inside the dialog, which stays open; cancel it, and the stage is still there.
+      await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
+      await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(page.locator('input.input[value="Milestone 1"]:not([placeholder])')).toBeVisible();
     });
 

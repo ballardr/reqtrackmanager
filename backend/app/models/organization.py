@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -163,6 +162,14 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             active in order to render their own project's settings
             correctly — see docs/decisions.md's "Platform review 2026-09,
             Phase 8" entry.
+        project_customisation_locks: Keys (from `services.link_types.
+            PROJECT_CUSTOMISATION_LOCK_KEYS`, initially just `"link_types"`)
+            of the vocabularies projects may *not* customise in this
+            organisation, so every project sees the org's own set. Empty
+            (the default) means projects may customise everything. A list of
+            keys rather than a boolean per vocabulary so a later vocabulary
+            needs no new column; locking hides project-level rows, never
+            deletes them.
     """
 
     __tablename__ = "organizations"
@@ -176,6 +183,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
         str_enum(ExternalUserPolicy), default=ExternalUserPolicy.DISABLED
     )
     allow_relaxed_child_project_creation: Mapped[bool] = mapped_column(Boolean, default=True)
+    project_customisation_locks: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -223,19 +233,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    # Organisation-level default report content (UI/UX pass): a project
-    # falls back to these when its own `report_intro`/`report_chapters`/
-    # `report_appendices` (models/project.py) are blank/empty — the same
-    # "org sets a default, a narrower scope can override" shape as
-    # accent_color_hex/header_title above, just resolved at read time
-    # (`services/reports.py::resolve_report_config`) via plain truthiness
-    # rather than a nullable column on `Project`, since an empty string/
-    # list and "never customised" are treated as the same thing here (no
-    # separate way to force "genuinely blank despite an org default" — a
-    # deliberate simplification, not an oversight).
-    default_report_intro: Mapped[str | None] = mapped_column(Text, nullable=True)
-    default_report_chapters: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
-    default_report_appendices: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    # The organisation's default report intro/chapters/appendices live in
+    # `ReportContent` rows (models/report_content.py), one per report type.
 
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -370,8 +369,9 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
 
 class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     """A named, reusable PDF report preset for an organisation (R-G-05):
-    branding (accent colour, cover page, logo, footer) plus, optionally,
-    its own introduction/body chapters/appendices.
+    branding (accent colour, cover page, logo, footer). Its optional
+    introduction/chapters/appendices are `ReportContent` rows
+    (`scope_type="template"`), one per report type.
 
     Org-scoped (shared across the org's projects) to match how the org logo
     already works. Selected optionally at report-generation time; when none
@@ -379,14 +379,6 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     output with the project's own resolved content.
 
     Attributes:
-        intro / chapters / appendices: Optional content this template
-            supplies, taking precedence over the project's own resolved
-            content (which itself falls back to the org's default) when
-            this template is selected at generation time — a third,
-            more-specific tier on top of `resolve_report_config`'s
-            project-then-org-default resolution. Empty means "this template
-            doesn't override content", not "explicitly blank" — same
-            per-field independence as the project/org tiers.
         chapters_per_component: Whether a PDF generated with this template
             organises requirements into one chapter per component (each on
             its own page) with a sub-section per category, or renders
@@ -405,9 +397,6 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     include_cover_page: Mapped[bool] = mapped_column(Boolean, default=True)
     include_logo: Mapped[bool] = mapped_column(Boolean, default=True)
     footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    intro: Mapped[str] = mapped_column(Text, default="")
-    chapters: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
-    appendices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 

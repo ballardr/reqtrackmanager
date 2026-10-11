@@ -72,6 +72,7 @@ import html
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -207,6 +208,12 @@ def _require_uuid(value: str, field_name: str) -> str:
     except (ValueError, AttributeError, TypeError) as exc:
         raise ValueError(f"{field_name!r} must be a valid UUID, got {value!r}.") from exc
 
+
+def _require_artefact_type(value: str, field_name: str = "artefact_type") -> str:
+    """Validates an artefact type string (lowercase, underscores) before it is put in a URL path."""
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", value):
+        raise ValueError(f"'{field_name}' must be a lowercase artefact type such as 'requirement', got {value!r}.")
+    return value
 
 def _default_scope() -> tuple[str | None, str | None]:
     """Reads this MCP connection's optional default-scope headers,
@@ -415,9 +422,10 @@ async def get_project(project_id: str | None = None) -> dict:
 async def list_permissions(organization_id: str | None = None) -> list[dict]:
     """Lists an organisation's full, currently-valid Fine-Grained Access
     Control permission-atom vocabulary — every registered artefact type
-    crossed with View/Propose-Create/Manage/Approve-Baseline (plus any
+    crossed with View/Propose-Create/Manage/Link/Approve-Baseline (plus any
     registered sub-type for that artefact type), and the fixed
-    administrative permissions (e.g. grant_roles). Describes what
+    administrative permissions (e.g. grant_roles). An "all record types"
+    atom (artefact type `*`) exists for each level. Describes what
     permissions *exist* to grant, not who currently holds them — see
     `list_custom_roles`/`get_custom_role` for role definitions built from
     this vocabulary.
@@ -573,6 +581,246 @@ async def get_requirement_history(project_id: str | None = None, *, requirement_
 
 
 @mcp.tool
+async def get_artefact_link_graph(
+    project_id: str | None = None,
+    *,
+    artefact_type: str,
+    artefact_id: str,
+    depth: int = 2,
+    direction: str = "both",
+) -> dict:
+    """Gets what an artefact is linked to, out to a few hops: use it for impact analysis ("what depends on this?", "where does this come from?").
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The root artefact's type, for example "requirement",
+            "requirement_action", "decision", "pain_point", "strategy",
+            "persona", "stakeholder_need" or "compliance_evidence".
+        artefact_id: The artefact's UUID (from the matching list tool).
+        depth: Hops to follow, 1 to 3 (default 2).
+        direction: Which stored link orientations to follow: "outgoing"
+            (the artefact is the link's source), "incoming" (it is the
+            target) or "both" (default).
+
+    Returns:
+        `root` and `nodes` (each with `type`, `type_label`, `id`, `label`,
+        `status`, `is_archived`, `depth`), and `edges`. Each edge goes from
+        the node nearer the root (`from_type`/`from_id`) to the other one
+        (`to_type`/`to_id`), with `phrase` (how the link reads from the
+        `from` side, null when untyped) and `flow`: "upstream" (the `to`
+        node is where the `from` node comes from), "downstream" (it depends
+        on the `from` node) or "related" (no direction, or the link type is
+        not classified). The result is partial when `truncated` is true (the
+        node cap was reached), `hidden_count` is above zero (linked records
+        the caller cannot see) or `unavailable_count` is above zero (linked
+        records of a kind that cannot be shown); say so rather than treating
+        the graph as complete.
+
+        The graph also reaches the project's parent and child projects the
+        caller can open: each node has `project_id` and `project_name` (null
+        for an organisation-wide record), and an edge with `cross_project`
+        true joins two projects; `nesting_permitted` false means its link
+        type no longer allows that pairing (the link is kept, so report it).
+        Sibling projects are never included.
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    if not 1 <= depth <= 3:
+        raise ValueError(f"'depth' must be between 1 and 3, got {depth!r}.")
+    if direction not in ("outgoing", "incoming", "both"):
+        raise ValueError(f"'direction' must be 'outgoing', 'incoming' or 'both', got {direction!r}.")
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-graph",
+        params={"depth": depth, "direction": direction},
+    )
+    return response.json()
+
+
+@mcp.tool
+async def list_artefact_link_types(
+    project_id: str | None = None,
+    *,
+    artefact_type: str,
+    artefact_id: str,
+    other_type: str | None = None,
+    other_project_id: str | None = None,
+) -> list[dict]:
+    """Lists the link types usable from an artefact, and what can sit at the other end: use before `create_artefact_link`.
+
+    Link types are managed by the organisation, which can restrict what each
+    may join. Any two artefacts can be linked unless a restriction says
+    otherwise, so this list is the source of truth, not the artefact kinds
+    you expect to be related.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The artefact's type, for example "requirement",
+            "decision" or "pain_point".
+        artefact_id: The artefact's UUID (from the matching list tool).
+        other_type: Optional artefact type; only options that can reach it.
+        other_project_id: Optional UUID of a parent or child project (from
+            `list_link_candidate_projects`) when the other record lives
+            there; only link types whose nesting scope allows that pairing
+            are listed, with the orientation each can be used in.
+
+    Returns:
+        One entry per usable way to link, each with `link_type_id`,
+        `direction` ("outgoing" when this artefact is the link's source,
+        "incoming" when it is the target; pass it unchanged to
+        `create_artefact_link`), `phrase` (how the link reads from this
+        artefact's side), `flow` and `other_types` (the artefact types, each
+        with `type` and `label`, that can sit at the other end). Link types
+        with a fixed meaning and their own action (such as "Supersedes") are
+        not listed.
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    params = {}
+    if other_type is not None:
+        _require_artefact_type(other_type, "other_type")
+        params["other_type"] = other_type
+    if other_project_id is not None:
+        params["other_project_id"] = _require_uuid(other_project_id, "other_project_id")
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-types", params=params
+    )
+    return response.json()
+
+
+@mcp.tool
+async def search_artefact_link_candidates(
+    project_id: str | None = None,
+    *,
+    artefact_type: str,
+    artefact_id: str,
+    other_type: str | None = None,
+    other_project_id: str | None = None,
+    selected: str | None = None,
+    q: str | None = None,
+) -> dict:
+    """Finds the record to link an artefact to: use it to get the `other_id` that `create_artefact_link` needs.
+
+    Without `other_type` it searches every record type a usable link type can
+    reach from this artefact (a short search, at least two characters of `q`).
+    With `other_type` it searches that type, optionally narrowed by the
+    options chosen at the type's browse levels (see
+    `list_artefact_link_browse`). Only records the caller may view are
+    returned, and the artefact itself and archived records are left out.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The artefact's type, for example "requirement".
+        artefact_id: The artefact's UUID.
+        other_type: Optional artefact type to search; omit to search all.
+        other_project_id: Optional UUID of a parent or child project (from
+            `list_link_candidate_projects`) to search instead.
+        selected: Optional browse choices narrowing `other_type`, as
+            `level:option,level:option` using `key` and an option `id` from
+            `list_artefact_link_browse`.
+        q: Text the record's label must contain (required, 2+ characters,
+            when `other_type` is omitted).
+
+    Returns:
+        `items`, each with `type`, `type_label`, `id` (the `other_id` to use),
+        `label`, `status` and `project_id`, and `truncated` (true when more
+        matched than were returned: narrow the search).
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    params: dict[str, str] = {}
+    if other_type is not None:
+        _require_artefact_type(other_type, "other_type")
+        params["other_type"] = other_type
+    if other_project_id is not None:
+        params["other_project_id"] = _require_uuid(other_project_id, "other_project_id")
+    if selected:
+        params["selected"] = selected
+    if q:
+        params["q"] = q
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-candidates", params=params
+    )
+    return response.json()
+
+
+@mcp.tool
+async def list_artefact_link_browse(
+    project_id: str | None = None,
+    *,
+    artefact_type: str,
+    artefact_id: str,
+    other_type: str,
+    other_project_id: str | None = None,
+    selected: str | None = None,
+    q: str | None = None,
+) -> dict | None:
+    """Lists the next browse level of a record type, to narrow `search_artefact_link_candidates` step by step.
+
+    Each record type declares ordered levels (a compliance clause:
+    standard, then version, then requirement; a requirement: component, then
+    category; many types: a status or type). Call it with no `selected` for
+    the first level, then again with the choices made so far for the next,
+    until it returns null (every level chosen).
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The artefact's type being linked from.
+        artefact_id: The artefact's UUID.
+        other_type: The record type being browsed.
+        other_project_id: Optional UUID of a parent or child project to browse.
+        selected: Choices so far as `key:option_id,key:option_id`, in level
+            order, using `key` and option `id` values returned by this tool.
+        q: Optional text the options' labels must contain.
+
+    Returns:
+        The next level: `key`, `label`, `options` (each `id` and `label`) and
+        `truncated`; or null when the chain is complete or the type has no
+        records you can view.
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    _require_artefact_type(other_type, "other_type")
+    params: dict[str, str] = {"other_type": other_type}
+    if other_project_id is not None:
+        params["other_project_id"] = _require_uuid(other_project_id, "other_project_id")
+    if selected:
+        params["selected"] = selected
+    if q:
+        params["q"] = q
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-browse", params=params
+    )
+    return response.json()
+
+
+@mcp.tool
+async def list_link_candidate_projects(project_id: str | None = None) -> dict:
+    """Lists the projects a link made from this project may reach: itself, its parent projects and its child projects that the caller can open.
+
+    Use it before linking across nested projects. Sibling and unrelated
+    projects are never listed (they cannot be linked), and a parent the caller
+    cannot open ends the list upwards.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+
+    Returns:
+        `items`, each with `id`, `name`, `relation` ("same", "ancestor" or
+        "descendant"), `distance` (levels away), `label` (for example "Parent
+        project") and `is_archived`, and `truncated` (true when the list was
+        capped). Pass an item's `id` as `other_project_id` to
+        `list_artefact_link_types` and `create_artefact_link`.
+    """
+    pid = _require_project_id(project_id)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/link-candidate-projects")
+    return response.json()
+
+
+@mcp.tool
 async def list_change_requests(project_id: str | None = None, status: str | None = None) -> list[dict]:
     """Lists change requests in a project.
 
@@ -608,6 +856,30 @@ async def get_change_request(project_id: str | None = None, *, change_request_id
     pid = _require_project_id(project_id)
     cid = _require_uuid(change_request_id, "change_request_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/change-requests/{cid}")
+    return response.json()
+
+
+@mcp.tool
+async def preview_change_request_links(project_id: str | None = None, *, change_request_id: str) -> dict:
+    """Previews which of a change request's proposed links would merge if it were approved now.
+
+    A change request can propose links (new, modify and add-link requests). Each is re-checked
+    against today's rules: the link type must still be usable, the pair still allowed, the far
+    end still there, and the request's creator and you (the approver) must each still be able to
+    see it. Needs the project manager role.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        change_request_id: The change request's UUID (from `list_change_requests`).
+
+    Returns:
+        `rows`, one per proposed link: its `link` (id, phrase, direction, far end's type and label,
+        `outcome`), `selectable` (it would merge), `already_linked` and, when not selectable, `reason`.
+        Pass the `link.id` of the ones to merge as `merge_link_ids` to `decide_change_request`.
+    """
+    pid = _require_project_id(project_id)
+    cid = _require_uuid(change_request_id, "change_request_id")
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/change-requests/{cid}/link-merge-preview")
     return response.json()
 
 
@@ -955,7 +1227,8 @@ if MCP_WRITES_ENABLED:
 
     @mcp.tool
     async def decide_change_request(
-        project_id: str | None = None, *, change_request_id: str, approve: bool, note: str = ""
+        project_id: str | None = None, *, change_request_id: str, approve: bool, note: str = "",
+        merge_link_ids: list[str] | None = None,
     ) -> dict:
         """Approves or rejects a submitted (or in-review) change request.
 
@@ -968,15 +1241,21 @@ if MCP_WRITES_ENABLED:
             change_request_id: The change request's UUID (from `list_change_requests`).
             approve: `True` to approve, `False` to reject.
             note: Optional note explaining the decision.
+            merge_link_ids: Which of the request's proposed links to create on approval
+                (their ids, from `preview_change_request_links`). Omit to merge every link that
+                is valid now; an empty list merges none. A chosen link that is no longer valid
+                fails the whole call with a conflict and a fresh preview. Ignored on rejection.
 
         Returns:
             The change request's new current detail, same shape as `get_change_request`.
         """
         pid = _require_project_id(project_id)
         cid = _require_uuid(change_request_id, "change_request_id")
+        body: dict = {"approve": approve, "note": note}
+        if merge_link_ids is not None:
+            body["merge_link_ids"] = [_require_uuid(link_id, "merge_link_ids") for link_id in merge_link_ids]
         response = await _call_backend(
-            "POST", f"/api/v1/projects/{pid}/change-requests/{cid}/decide",
-            json={"approve": approve, "note": note},
+            "POST", f"/api/v1/projects/{pid}/change-requests/{cid}/decide", json=body,
         )
         return response.json()
 
@@ -1000,6 +1279,103 @@ if MCP_WRITES_ENABLED:
         rid = _require_uuid(requirement_id, "requirement_id")
         response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements/{rid}/complete")
         return response.json()
+
+    @mcp.tool
+    async def create_artefact_link(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        link_type_id: str,
+        direction: str,
+        other_type: str,
+        other_id: str,
+        other_project_id: str | None = None,
+    ) -> dict:
+        """Links an artefact to another record of the same project, or of a parent or child project.
+
+        Call `list_artefact_link_types` first and use one of its entries'
+        `link_type_id` and `direction`; the other record's type must be one of
+        that entry's `other_types`. The backend enforces the organisation's
+        restrictions and your permissions (the `link` or `manage` permission
+        on the artefact's type, which works in any state; a stakeholder,
+        project administrator or manager may also link a requirement or
+        action that is not approved), so a refused link is a rule, not
+        something to retry with another type. Linking changes traceability
+        only, never either record's status.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The artefact's type, for example "decision".
+            artefact_id: The artefact's UUID.
+            link_type_id: The link type's UUID (from `list_artefact_link_types`).
+            direction: "outgoing" if this artefact is the link's source,
+                "incoming" if it is the target (from `list_artefact_link_types`).
+            other_type: The other record's artefact type.
+            other_id: The other record's UUID.
+            other_project_id: The UUID of the other record's project when it
+                is a parent or child project (from
+                `list_link_candidate_projects`); omit for the same project.
+                Use `list_artefact_link_types` with the same value: a link
+                type's nesting scope decides whether, and in which direction,
+                a cross-project link is allowed.
+
+        Returns:
+            The created link: `id`, `link_type_id`, `phrase` (how it reads
+            from this artefact's side), `direction` and `other` (`type`,
+            `type_label`, `id`, `label`, `status`, `is_archived`,
+            `project_id`).
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        _require_artefact_type(other_type, "other_type")
+        if direction not in ("outgoing", "incoming"):
+            raise ValueError(f"'direction' must be 'outgoing' or 'incoming', got {direction!r}.")
+        body = {
+            "link_type_id": _require_uuid(link_type_id, "link_type_id"),
+            "direction": direction,
+            "other_type": other_type,
+            "other_id": _require_uuid(other_id, "other_id"),
+        }
+        if other_project_id is not None:
+            body["other_project_id"] = _require_uuid(other_project_id, "other_project_id")
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/links", json=body
+        )
+        return response.json()
+
+    @mcp.tool
+    async def delete_artefact_link(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        link_id: str,
+    ) -> dict:
+        """Removes a link touching an artefact. Irreversible: confirm with the user first.
+
+        Fails if the link does not touch this artefact, belongs to a fixed-
+        meaning action (such as supersession) or, for an approved requirement
+        in a project that requires change requests for links, must go through
+        one.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The artefact's type, for example "decision".
+            artefact_id: The artefact's UUID.
+            link_id: The link's UUID (an edge `id` from `get_artefact_link_graph`
+                or the `id` returned by `create_artefact_link`).
+
+        Returns:
+            `{"deleted": true, "link_id": ...}`.
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        lid = _require_uuid(link_id, "link_id")
+        await _call_backend("DELETE", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/links/{lid}")
+        return {"deleted": True, "link_id": lid}
 
 
 # --- Module-contributed tools (compliance-module-plan.md Phase 4) ----------

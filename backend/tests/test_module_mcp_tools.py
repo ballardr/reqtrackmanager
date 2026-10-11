@@ -346,8 +346,9 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
 
     mutating_compliance_tools = {name for name, t in by_name.items() if name.startswith("compliance_") and t.mutates}
     # 68 write tools declared in module.py, minus 2 removed in the 2026-09-23
-    # hardening pass (complete_project_review/complete_standard_review) = 66.
-    assert len(mutating_compliance_tools) == 66
+    # hardening pass (complete_project_review/complete_standard_review) and the two traceability-link tools
+    # removed in platform enhancements Phase 6c (generic artefact-link tools replace them) = 64.
+    assert len(mutating_compliance_tools) == 64
 
     # Ordinary CRUD/lifecycle write tools resolve normally, mutates=True.
     for name in (
@@ -357,7 +358,7 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
         "compliance_assign_standard_to_project", "compliance_migrate_project_compliance_version",
         "compliance_update_requirement_applicability", "compliance_update_requirement_assessment",
         "compliance_create_evidence", "compliance_create_standard_review",
-        "compliance_create_project_review", "compliance_create_requirement_traceability_link",
+        "compliance_create_project_review",
     ):
         assert name in by_name, name
         assert by_name[name].mutates is True
