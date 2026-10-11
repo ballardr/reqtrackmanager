@@ -84,9 +84,9 @@ class LinkGraphOut(BaseModel):
     `hidden_count` counts distinct linked records not shown (no access, another
     project, a disabled module, or no longer existing); `unavailable_count`
     counts linked records of a type no installed module can display. Neither
-    is ever traversed through. `can_manage` is whether the caller may add or remove
-    links on the root (`manage` on its type in the request project), so a client
-    can hide controls that would only answer 403."""
+    is ever traversed through. `can_link` is whether the caller may add or remove
+    links on the root (`link` or `manage` on its type in the request project), so a
+    client can hide controls that would only answer 403."""
 
     root: LinkGraphNode
     nodes: list[LinkGraphNode]
@@ -94,4 +94,4 @@ class LinkGraphOut(BaseModel):
     truncated: bool
     hidden_count: int
     unavailable_count: int
-    can_manage: bool = False
+    can_link: bool = False

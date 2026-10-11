@@ -62,6 +62,7 @@ from app.schemas.org import (
     OrgProjectSummaryOut,
 )
 from app.services.audit import log_event
+from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.downloads import filename_safe
 from app.services.org_deletion import delete_organization_cascade
@@ -101,6 +102,7 @@ def create_organization(
     db.flush()
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    seed_custom_role_presets(db, org.id)
     # Generic module-contributed org-creation seeding (e.g. Compliance's
     # `seed_compliance_action_types`, or a module's opt-in `org_creation_
     # choices`, e.g. Decision Management's ADR template packs) — this core

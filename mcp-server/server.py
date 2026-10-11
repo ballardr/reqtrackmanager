@@ -422,9 +422,10 @@ async def get_project(project_id: str | None = None) -> dict:
 async def list_permissions(organization_id: str | None = None) -> list[dict]:
     """Lists an organisation's full, currently-valid Fine-Grained Access
     Control permission-atom vocabulary — every registered artefact type
-    crossed with View/Propose-Create/Manage/Approve-Baseline (plus any
+    crossed with View/Propose-Create/Manage/Link/Approve-Baseline (plus any
     registered sub-type for that artefact type), and the fixed
-    administrative permissions (e.g. grant_roles). Describes what
+    administrative permissions (e.g. grant_roles). An "all record types"
+    atom (artefact type `*`) exists for each level. Describes what
     permissions *exist* to grant, not who currently holds them — see
     `list_custom_roles`/`get_custom_role` for role definitions built from
     this vocabulary.
@@ -1265,7 +1266,8 @@ if MCP_WRITES_ENABLED:
         Call `list_artefact_link_types` first and use one of its entries'
         `link_type_id` and `direction`; the other record's type must be one of
         that entry's `other_types`. The backend enforces the organisation's
-        restrictions and your permissions, so a refused link is a rule, not
+        restrictions and your permissions (the `link` or `manage` permission
+        on the artefact's type), so a refused link is a rule, not
         something to retry with another type. Linking changes traceability
         only, never either record's status.
 

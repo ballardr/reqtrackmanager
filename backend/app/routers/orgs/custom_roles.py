@@ -39,11 +39,13 @@ from app.schemas.org import (
     CustomRoleDefinitionOut,
     CustomRoleDefinitionUpdate,
     CustomRoleGrantTarget,
+    CustomRolePresetOut,
     EntityScopeEntityOut,
     EntityScopeOut,
     PermissionOut,
 )
 from app.services.audit import log_event
+from app.services.custom_role_presets import PRESETS
 from app.services.notifications import notify
 from app.services.permissions import get_all_permissions, validate_permission_key
 from app.services.rbac import require_org_admin_or_grant_roles, require_org_admin_or_server_admin, require_org_role
@@ -180,6 +182,22 @@ def list_org_permissions(
     return [
         PermissionOut(key=p.key, label=p.label, artefact_type=p.artefact_type, level=p.level, subtype=p.subtype)
         for p in get_all_permissions(db, organization_id)
+    ]
+
+
+@router.get("/{organization_id}/custom-role-presets", response_model=list[CustomRolePresetOut])
+def list_custom_role_presets(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_admin_or_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Lists the ready-made custom roles the Role Management form can start from
+    (`app.services.custom_role_presets.PRESETS`). Org admin only, like creating a role."""
+    return [
+        CustomRolePresetOut(
+            key=p.key, name=p.name, description=p.description, scope=p.scope, permissions=list(p.permissions)
+        )
+        for p in PRESETS
     ]
 
 

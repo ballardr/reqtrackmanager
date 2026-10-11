@@ -10,6 +10,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
   AssignByEmailOutcome,
   CustomRoleDefinition,
+  CustomRolePreset,
   EffectiveMember,
   EntityScope,
   ExternalUserPolicy,
@@ -357,6 +358,7 @@ export function OrgAdminPage() {
   // never hardcoding a specific module's scope kind.
   const [entityScopes, setEntityScopes] = useState<EntityScope[]>([]);
   const [customRoleModalOpen, setCustomRoleModalOpen] = useState(false);
+  const [customRolePresets, setCustomRolePresets] = useState<CustomRolePreset[]>([]);
   const [editingCustomRoleId, setEditingCustomRoleId] = useState<string | null>(null);
   const [customRoleFormName, setCustomRoleFormName] = useState("");
   const [customRoleFormDescription, setCustomRoleFormDescription] = useState("");
@@ -1407,6 +1409,19 @@ export function OrgAdminPage() {
     setCustomRoleFormPermissions([]);
     setCustomRoleFormError(null);
     setCustomRoleModalOpen(true);
+    // Presets are the same for every organisation and only an org admin may read them.
+    if (customRolePresets.length === 0 && orgId) {
+      api.get<CustomRolePreset[]>(`/api/v1/orgs/${orgId}/custom-role-presets`).then(setCustomRolePresets, () => {});
+    }
+  }
+
+  function applyCustomRolePreset(key: string) {
+    const preset = customRolePresets.find((p) => p.key === key);
+    if (!preset) return;
+    setCustomRoleFormName(preset.name);
+    setCustomRoleFormDescription(preset.description);
+    setCustomRoleFormScope(preset.scope);
+    setCustomRoleFormPermissions(preset.permissions);
   }
 
   function openEditCustomRoleModal(role: CustomRoleDefinition) {
@@ -4048,6 +4063,21 @@ export function OrgAdminPage() {
                     size="lg"
                   >
                     <div className="stack">
+                      {!editingCustomRoleId && customRolePresets.length > 0 && (
+                        <label className="stack" style={{ gap: "0.25rem" }}>
+                          {strings.orgAdmin.customRolePreset}
+                          <select
+                            className="input"
+                            value=""
+                            onChange={(e) => applyCustomRolePreset(e.target.value)}
+                          >
+                            <option value="">{strings.orgAdmin.customRolePresetNone}</option>
+                            {customRolePresets.map((p) => (
+                              <option key={p.key} value={p.key}>{p.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                       <label className="stack" style={{ gap: "0.25rem" }}>
                         {strings.orgAdmin.customRoleName}
                         <input

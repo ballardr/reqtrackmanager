@@ -1,5 +1,5 @@
 """Tests for the Links panel's backend support (docs/plans/platform-enhancements-2026-10-plan.md
-Phase 6): the `link-candidates` target search, and the graph's `can_manage` / per-edge
+Phase 6): the `link-candidates` target search, and the graph's `can_link` / per-edge
 `dedicated` flags the panel uses to hide controls that would only answer 403/400.
 
 Each test builds its own organisation (`tests.link_world.World`), so none depends on state
@@ -132,10 +132,10 @@ def test_non_member_is_refused(world, client, admin_token):
     assert _candidates(world, project, (REQ, page), token=outsider.token, other_type=REQ).status_code == 403
 
 
-def test_graph_can_manage_reflects_the_manage_permission(world, client):
+def test_graph_can_link_reflects_the_link_permission(world, client):
     project = world.project()
     req = world.requirement(project)
-    assert world.graph(project, (REQ, req)).json()["can_manage"] is True
+    assert world.graph(project, (REQ, req)).json()["can_link"] is True
     email = f"viewer-{uuid.uuid4().hex[:6]}@example.com"
     user_id = create_org_user(client, world.token, world.org["id"], email)
     client.post(
@@ -143,7 +143,7 @@ def test_graph_can_manage_reflects_the_manage_permission(world, client):
         headers=auth_headers(world.token),
     )
     member = login(client, email, "Password123!")
-    assert world.graph(project, (REQ, req), token=member).json()["can_manage"] is False
+    assert world.graph(project, (REQ, req), token=member).json()["can_link"] is False
 
 
 def test_graph_edges_flag_dedicated_links(world):

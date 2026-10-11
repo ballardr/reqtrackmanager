@@ -112,6 +112,8 @@ Any two artefacts of a project can be linked unless a link type is restricted (w
 
 To link across nested projects, call `list_link_candidate_projects` for the project you are in and pick the parent or child project that holds the other record. Pass that project's `id` as `other_project_id` to `list_artefact_link_types`, `search_artefact_link_candidates`, `list_artefact_link_browse` and `create_artefact_link`. Each link type has a nesting scope: some allow only one project, some require the upstream end (for example a pain point) to be in the same or a parent project, some allow either end in a parent. `list_artefact_link_types` with `other_project_id` already applies this, so use only what it returns. Siblings and unrelated projects cannot be linked, and a project the caller cannot open is reported as not found.
 
+Creating and removing a link needs the `link` or `manage` permission on the type of the record you start from (`link` is a narrower grant that allows nothing else; a 403 means the caller holds neither). `list_permissions` shows both.
+
 A refusal (400 or 409) is a rule, not a glitch: a restriction, a duplicate, or an approved requirement in a project that needs a change request for links. Report the message; do not retry with another link type to get around it. Link types with a fixed meaning and their own action (such as "Supersedes", which changes a status) are not offered here.
 
 ## Errors

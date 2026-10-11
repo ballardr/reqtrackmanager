@@ -144,7 +144,7 @@ Lists the organisations the caller's ReqTrackManager account belongs to or admin
 
 ## `list_permissions` (read)
 
-Lists an organisation's full, currently-valid Fine-Grained Access Control permission-atom vocabulary — every registered artefact type crossed with View/Propose-Create/Manage/Approve-Baseline (plus any registered sub-type for that artefact type), and the fixed administrative permissions (e.g. grant_roles). Describes what permissions *exist* to grant, not who currently holds them — see `list_custom_roles`/`get_custom_role` for role definitions built from this vocabulary.
+Lists an organisation's full, currently-valid Fine-Grained Access Control permission-atom vocabulary — every registered artefact type crossed with View/Propose-Create/Manage/Link/Approve-Baseline (plus any registered sub-type for that artefact type), and the fixed administrative permissions (e.g. grant_roles). An "all record types" atom (artefact type `*`) exists for each level. Describes what permissions *exist* to grant, not who currently holds them — see `list_custom_roles`/`get_custom_role` for role definitions built from this vocabulary.
 
 Parameters: `organization_id` (string)
 

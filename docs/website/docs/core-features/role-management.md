@@ -6,7 +6,7 @@ sidebar_position: 13
 
 ## What a permission atom is
 
-Underneath the fixed organisation and project roles (see [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md)), every access check in ReqTrackManager ultimately comes down to a **permission atom**: an artefact type (Requirement, Change Request, Decision, and so on), crossed with one of four tiers — **View**, **Propose-Create**, **Manage**, or **Approve-Baseline** — and, for artefact types that have one, an optional **sub-type** (for example a specific Decision Type). View is independent of the write tiers: a role can hold view-only access to something without any ability to create, edit, or approve it.
+Underneath the fixed organisation and project roles (see [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md)), every access check in ReqTrackManager ultimately comes down to a **permission atom**: an artefact type (Requirement, Change Request, Decision, and so on), crossed with one of five tiers — **View**, **Propose-Create**, **Manage**, **Link**, or **Approve-Baseline** — and, for artefact types that have one, an optional **sub-type** (for example a specific Decision Type). View is independent of the write tiers: a role can hold view-only access to something without any ability to create, edit, or approve it. **Link** is the lightest write: it lets someone add and remove [links](links-and-traceability.md) on records of that type, and nothing else — no editing, archiving or approving. Setting a link needs **Link** or **Manage** on the type of the record you start from, so everyone who could link before still can.
 
 A **custom role** is simply a named set of these atoms that an organisation admin defines directly, without waiting on a new release — an additional way to grant access, alongside the fixed and module roles that already exist.
 
@@ -41,6 +41,12 @@ From an organisation's admin page, under **Role management**, an org admin defin
 | ![New custom role dialog showing name, description, scope, and a grouped permission-atom checklist with one atom selected](../../static/img/screenshots/role-management.png) |
 
 Only an organisation admin can create, edit, or delete a custom role definition — this is never delegable through any permission atom.
+
+At the top of the checklist, **All record types** has one box per tier. Ticking **Link** there covers every kind of record, including ones a module adds later, without editing the role again. Ticking Manage or Approve-Baseline there grants that tier on everything, so use it deliberately.
+
+## The Link editor role
+
+Every new organisation starts with a project-level custom role called **Link editor** (View and Link on all record types). Grant it, for one project, to someone who should be able to trace the project's records without being a project manager. They still need a project role such as Member, which is what opens the project. Because it is an ordinary custom role you can rename, change or delete it. Existing organisations don't get it automatically: choose **Link editor** under **Start from a preset** in the New custom role dialog to create it.
 
 Granting an existing role — fixed, module, or custom — to a user or an organisation group is a separate, more widely delegable action, covered by the **Grant roles** section on the same page. This page is named "Role Management," not "Custom Roles," precisely because it covers both.
 

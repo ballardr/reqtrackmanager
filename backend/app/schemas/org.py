@@ -522,6 +522,17 @@ class ModuleRoleAssign(BaseModel):
     role_key: str
 
 
+class CustomRolePresetOut(BaseModel):
+    """A ready-made custom role (`app.services.custom_role_presets.PRESETS`) the Role
+    Management form can start from (`GET /orgs/{id}/custom-role-presets`)."""
+
+    key: str
+    name: str
+    description: str
+    scope: str
+    permissions: list[str]
+
+
 class PermissionOut(BaseModel):
     """One permission atom in this organisation's currently-valid vocabulary
     (Fine-Grained Access Control, `docs/plans/core-fine-grained-access-

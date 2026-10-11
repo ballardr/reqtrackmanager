@@ -52,7 +52,8 @@ export interface LinkGraph {
   truncated: boolean;
   hidden_count: number;
   unavailable_count: number;
-  can_manage: boolean;
+  /** The caller holds `link` or `manage` on the root record's type. */
+  can_link: boolean;
 }
 
 export interface ArtefactTypeRef {

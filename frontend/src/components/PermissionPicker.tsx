@@ -26,11 +26,12 @@
 import type { ReactNode } from "react";
 
 import type { Permission } from "../api/types";
-import { activityEntityLabel } from "../api/types";
+import { ALL_ARTEFACT_TYPES, activityEntityLabel } from "../api/types";
 import { useOrgLabel } from "../context/BrandingContext";
 import { CollapsibleSection } from "./CollapsibleSection";
 
 const ADMINISTRATIVE_GROUP_LABEL = "Administrative";
+const ALL_TYPES_GROUP_LABEL = "All record types";
 
 /** Groups `permissions` by `artefact_type`, administrative (`artefact_type
  * === null`) permissions last — mirrors `get_all_permissions`'s own
@@ -44,7 +45,9 @@ function groupByArtefactType(permissions: Permission[]): Array<{ key: string; la
     if (existing) existing.push(permission);
     else groups.set(key, [permission]);
   }
-  const orderedKeys = [...groups.keys()].filter((k) => k !== "").sort();
+  // The "every record type" atoms lead: one tick per level covers every type, present and future.
+  const orderedKeys = [...groups.keys()].filter((k) => k !== "" && k !== ALL_ARTEFACT_TYPES).sort();
+  if (groups.has(ALL_ARTEFACT_TYPES)) orderedKeys.unshift(ALL_ARTEFACT_TYPES);
   if (groups.has("")) orderedKeys.push("");
   return orderedKeys.map((key) => ({ key: key || "__administrative__", label: key, items: groups.get(key) ?? [] }));
 }
@@ -88,7 +91,13 @@ export function PermissionPicker({
           key={group.key}
           sectionKey={`permissionPicker.${group.key}`}
           variant="plain"
-          title={group.label ? activityEntityLabel(group.label, orgLabel) : ADMINISTRATIVE_GROUP_LABEL}
+          title={
+            group.label === ALL_ARTEFACT_TYPES
+              ? ALL_TYPES_GROUP_LABEL
+              : group.label
+                ? activityEntityLabel(group.label, orgLabel)
+                : ADMINISTRATIVE_GROUP_LABEL
+          }
         >
           <div className="stack" style={{ gap: "0.35rem" }}>
             {group.items.map((permission) => (

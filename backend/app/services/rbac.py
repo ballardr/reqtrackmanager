@@ -181,7 +181,7 @@ from app.modules.registry import (
     is_module_subcomponent_enabled,
     is_org_module_subcomponent_enabled,
 )
-from app.services.permissions import ADMINISTRATIVE_PERMISSIONS, encode_permission
+from app.services.permissions import ADMINISTRATIVE_PERMISSIONS, ALL_ARTEFACT_TYPES, encode_permission
 
 # Defensive circuit-breaker for the forward-inheritance and member-source
 # walks below — matches `_ORG_GROUP_CLOSURE_ITERATION_CAP`'s own rationale:
@@ -2880,6 +2880,7 @@ _PROJECT_ROLE_LEVELS: dict[ProjectRole, tuple[PermissionLevel, ...]] = {
         PermissionLevel.VIEW,
         PermissionLevel.PROPOSE_CREATE,
         PermissionLevel.MANAGE,
+        PermissionLevel.LINK,
         PermissionLevel.APPROVE_BASELINE,
     ),
     # C-U-03's own tasks for this role (project setup, versions/stages,
@@ -3342,7 +3343,9 @@ def permission_satisfied(held: set[str], required: str) -> bool:
     subtype=None)` satisfies a check for `(decision, approve_baseline,
     subtype="Architecture")`. The reverse never holds — a sub-type-specific
     grant never satisfies a check for a *different* sub-type, or for the
-    unscoped permission itself.
+    unscoped permission itself. A held "every record type" atom
+    (`*:<level>:`, `ALL_ARTEFACT_TYPES`) satisfies the same level on any
+    artefact type and sub-type, including types registered later.
 
     `required` with no `:` (an administrative permission, e.g.
     `"grant_roles"`) has no wildcard concept — only exact membership can
@@ -3359,9 +3362,10 @@ def permission_satisfied(held: set[str], required: str) -> bool:
     if ":" not in required:
         return False
     artefact_type, level, subtype = required.split(":", 2)
-    if not subtype:
-        return False  # `required` is itself the wildcard; already checked above.
-    return encode_permission(artefact_type, level) in held
+    if subtype and encode_permission(artefact_type, level) in held:
+        return True
+    # The "every record type" atom for this level (`ALL_ARTEFACT_TYPES`) covers any type and sub-type.
+    return encode_permission(ALL_ARTEFACT_TYPES, level) in held
 
 
 def require_permission(*allowed: str, entity_scope: str | None = None):

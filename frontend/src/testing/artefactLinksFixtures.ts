@@ -36,7 +36,7 @@ export function buildGraph(
     root: buildGraphNode({ type: "requirement", id: LINKS_ARTEFACT_ID, type_label: "Requirement", label: "REQ-001 Root", depth: 0 }),
     nodes: rows.map(([node]) => node),
     edges: rows.map(([node, edge]) => buildGraphEdge(node, edge)),
-    truncated: false, hidden_count: 0, unavailable_count: 0, can_manage: true, ...overrides,
+    truncated: false, hidden_count: 0, unavailable_count: 0, can_link: true, ...overrides,
   };
 }
 

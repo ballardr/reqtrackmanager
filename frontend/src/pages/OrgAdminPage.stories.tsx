@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
@@ -69,6 +69,8 @@ function mockOrgAdminApis(overrides: {
   // below. Default to empty — the real-world-default "no custom roles
   // defined yet" case.
   permissions?: Permission[]; customRoles?: CustomRoleDefinition[];
+  // `GET .../custom-role-presets`, fetched when the New custom role Modal opens; defaults to none.
+  customRolePresets?: CustomRolePreset[];
   // Fine-Grained Access Control (core) Phase 5 — fetched unconditionally in
   // the same `reload()` bundle as `permissions`/`customRoles` above (see
   // `OrgAdminPage.tsx`'s own comment there); left unmocked here would 500
@@ -144,6 +146,7 @@ function mockOrgAdminApis(overrides: {
     // plain "/users" branch below since neither substring collides with
     // it, same ordering reasoning as `/module-roles`/`/modules` above.
     if (path.includes("/permissions")) return overrides.permissions ?? [];
+    if (path.includes("/custom-role-presets")) return overrides.customRolePresets ?? [];
     if (path.includes("/custom-roles")) return overrides.customRoles ?? [];
     // Fine-Grained Access Control (core) Phase 5 — checked before the
     // plain "/users" branch below, same ordering reasoning as the two
@@ -2392,6 +2395,43 @@ export const RoleManagementCreateCustomRole: Story = {
     );
     await expect(within(document.body).getByText("Custom role created")).toBeInTheDocument();
     await waitFor(() => expect(canvas.getAllByText("Reviewer").length).toBeGreaterThan(0));
+  },
+};
+
+/** Starting from a preset (the Link editor) fills the form with the preset's name,
+ * description, scope and its "all record types" permissions; the admin can still change
+ * anything before saving. */
+export const RoleManagementCreateFromLinkEditorPreset: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      permissions: [
+        { key: "*:link:", label: "all record types — link", artefact_type: "*", level: "link", subtype: null },
+        ...fixturePermissions,
+      ],
+      customRolePresets: [{
+        key: "link_editor", name: "Link editor", description: "Set and remove links on any record of a project.",
+        scope: "project", permissions: ["*:link:"],
+      }],
+    });
+    spyOn(api, "post").mockResolvedValue({ ...fixtureCustomRole, id: "role-new", name: "Link editor" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Role management" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New custom role" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "New custom role" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New custom role" });
+    await userEvent.selectOptions(await within(dialog).findByLabelText("Start from a preset"), "Link editor");
+
+    await expect(within(dialog).getByLabelText("Name")).toHaveValue("Link editor");
+    await expect(within(dialog).getByRole("checkbox", { name: "all record types — link" })).toBeChecked();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/custom-roles`, {
+        name: "Link editor", description: "Set and remove links on any record of a project.",
+        scope: "project", permissions: ["*:link:"],
+      })
+    );
   },
 };
 

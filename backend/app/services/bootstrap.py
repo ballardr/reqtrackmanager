@@ -18,6 +18,7 @@ from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
 from app.modules.registry import run_on_org_created_hooks
 from app.security import hash_password
+from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
 
 settings = get_settings()
@@ -52,6 +53,7 @@ def run_bootstrap(db: Session) -> None:
             db.flush()
             seed_project_statuses(db, org.id)
             seed_link_types(db, org.id)
+            seed_custom_role_presets(db, org.id)
             # Generic module-contributed org-creation seeding — same
             # reasoning/mechanism as `routers.orgs.create_organization`
             # (`ModuleDefinition.on_org_created`'s own docstring).

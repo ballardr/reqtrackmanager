@@ -120,6 +120,7 @@ from app.services.bundle_common import (
     enforce_zip_uncompressed_size_limit,
     import_bundled_file,
 )
+from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.files import read_file
 from app.services.invites import create_pending_invite
@@ -629,6 +630,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     # exist before it creates this org's first imported project.
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    seed_custom_role_presets(db, org.id)
     # Scoring levels likewise start at registry defaults (Module 1 Phase 10).
     seed_missing_scoring_levels(db, org.id)
     if data.get("source_sso_only"):

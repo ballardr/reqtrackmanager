@@ -503,13 +503,19 @@ export interface ModuleRoleGrant {
  * mirrors `app.models.enums.PermissionLevel`'s wire values exactly. `view`
  * is its own independent atom (a role can hold it alone, a pure read-only
  * grant) rather than being implied by every write tier. */
-export type PermissionLevel = "view" | "propose_create" | "manage" | "approve_baseline";
+export type PermissionLevel = "view" | "propose_create" | "manage" | "link" | "approve_baseline";
 export const PERMISSION_LEVEL_LABEL: Record<PermissionLevel, string> = {
   view: "View",
   propose_create: "Propose/create",
   manage: "Manage",
+  link: "Link",
   approve_baseline: "Approve/baseline",
 };
+
+/** `Permission.artefact_type` of the "every record type" atom (`*:<level>:`): held
+ * once, it covers every artefact type, including ones a module registers later
+ * (`app.services.permissions.ALL_ARTEFACT_TYPES`). */
+export const ALL_ARTEFACT_TYPES = "*";
 
 /** One permission atom in an organisation's currently-valid vocabulary
  * (Fine-Grained Access Control Phase 3, `GET /orgs/{id}/permissions`) —
@@ -527,6 +533,16 @@ export interface Permission {
   artefact_type: string | null;
   level: PermissionLevel | null;
   subtype: string | null;
+}
+
+/** A ready-made custom role the Role Management form can start from
+ * (`GET /orgs/{id}/custom-role-presets`) — mirrors `CustomRolePresetOut`. */
+export interface CustomRolePreset {
+  key: string;
+  name: string;
+  description: string;
+  scope: string;
+  permissions: string[];
 }
 
 /** An organisation-defined `CustomRoleDefinition` (Fine-Grained Access

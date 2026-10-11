@@ -271,7 +271,7 @@ class LinkNestingScope(str, enum.Enum):
 
 
 class PermissionLevel(str, enum.Enum):
-    """The four-tier taxonomy crossed with every registered artefact type
+    """The permission-level taxonomy crossed with every registered artefact type
     (`app.modules.registry.get_all_registered_artefact_types`) to derive
     the Fine-Grained Access Control permission-atom vocabulary
     (`docs/plans/core-fine-grained-access-control-plan.md` Phase 0 Q1/Phase
@@ -289,6 +289,11 @@ class PermissionLevel(str, enum.Enum):
         power to directly edit or approve an existing one.
     MANAGE: edit/manage an existing artefact of this type, short of
         approving/baselining it.
+    LINK: set and remove links on an existing artefact of this type
+        (`docs/plans/platform-enhancements-2026-10-plan.md` Phase 6d) and
+        nothing else. Link authoring accepts `LINK` or `MANAGE`; `MANAGE` is
+        deliberately not rewritten to imply it, so the vocabulary stays a flat
+        set of independent atoms.
     APPROVE_BASELINE: approve, baseline, or otherwise finalise an artefact
         of this type — the tier Decision Management's own per-Decision-Type
         approval scoping (Phase 5) is expressed against.
@@ -297,6 +302,7 @@ class PermissionLevel(str, enum.Enum):
     VIEW = "view"
     PROPOSE_CREATE = "propose_create"
     MANAGE = "manage"
+    LINK = "link"
     APPROVE_BASELINE = "approve_baseline"
 
 

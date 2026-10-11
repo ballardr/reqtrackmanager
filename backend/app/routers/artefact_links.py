@@ -14,8 +14,8 @@ Links on any artefact of a project:
 
 This router is the authorisation point: project membership is checked here, and
 the services then authorise every record (same project or visible org record,
-module enabled, `view` permission; `manage` on the page artefact's type for
-writes), so a hidden record is counted but never revealed or traversed.
+module enabled, `view` permission; `link` or `manage` on the page artefact's type
+for writes), so a hidden record is counted but never revealed or traversed.
 """
 
 from __future__ import annotations
@@ -250,7 +250,7 @@ def create_artefact_link(
     Raises:
         HTTPException: 404 an end is not a visible record of its project, or
             `other_project_id` is not a related project the caller can open; 403
-            `manage` on this artefact type not held; 400 the link type is unusable
+            neither `link` nor `manage` on this artefact type held; 400 the link type is unusable
             here (other organisation, dedicated, or a link-type restriction or
             artefact-type rule or the type's nesting scope forbids the pair) or a self-link;
             409 duplicate or
@@ -288,7 +288,7 @@ def delete_artefact_link(
 
     Raises:
         HTTPException: 404 the artefact is not visible or the link does not touch
-            it; 403 `manage` not held; 400 the link belongs to a dedicated action;
+            it; 403 neither `link` nor `manage` held; 400 the link belongs to a dedicated action;
             409 a change request is required for an approved requirement.
     """
     project = _project_or_404(db, project_id)

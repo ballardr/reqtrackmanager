@@ -89,7 +89,7 @@ export const FlagsALinkItsTypeNoLongerPermitsAndKeepsDedicatedLinksUnremovable: 
 };
 
 export const ReadOnlyWithoutManagePermission: Story = {
-  args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION]], { can_manage: false })) }) },
+  args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION]], { can_link: false })) }) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());

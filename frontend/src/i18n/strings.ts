@@ -959,6 +959,8 @@ const en = {
     customRolesTitle: "Custom roles",
     customRolesHint: "A custom role is a named set of permissions, additive to the fixed and module roles above — it never replaces them.",
     newCustomRole: "New custom role",
+    customRolePreset: "Start from a preset",
+    customRolePresetNone: "Blank role",
     editCustomRoleModalTitle: "Edit custom role",
     editCustomRole: (name: string) => `Edit ${name}`,
     noCustomRoles: "No custom roles defined yet.",

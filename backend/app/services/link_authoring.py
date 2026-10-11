@@ -8,7 +8,7 @@ Responsibilities:
 - Offer the link types usable from an artefact (`usable_options`).
 - Create a link (`create_link_for_artefact`) after checking: both ends are
   visible records of the project (module enabled, `view` held), the caller holds
-  `manage` on the page artefact's type, the link type belongs to the project's
+  `link` or `manage` on the page artefact's type, the link type belongs to the project's
   organisation and is not dedicated, the link type's restriction and both ends'
   artefact-type rules allow it, and no approved requirement is being linked in a
   project that requires a change request for that.
@@ -162,13 +162,16 @@ def require_visible_artefact(
     return require_page_artefact(db, ArtefactResolver(db, project, user_id), project, artefact_type, artefact_id)
 
 
-def _require_manage(resolver: ArtefactResolver, artefact_type: str) -> None:
-    """403 unless the user holds `manage` on `artefact_type` in the project."""
-    if not resolver.holds(artefact_type, "manage"):
+def _require_link_authority(resolver: ArtefactResolver, artefact_type: str) -> str:
+    """The permission (`"manage"` or `"link"`) that lets the user change `artefact_type` links in
+    the project; 403 when they hold neither."""
+    authority = resolver.link_authority(artefact_type)
+    if authority is None:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             f"You do not have permission to change {get_artefact_type_label(artefact_type).lower()} links.",
         )
+    return authority
 
 
 def create_link_for_artefact(
@@ -204,7 +207,7 @@ def create_link_for_artefact(
     Raises:
         HTTPException: 404 an end is not a visible record of its project, or
             `other_project_id` is not a related project the caller can open; 403
-            `manage` not held; 400 the link type is not usable (not available to the
+            neither `link` nor `manage` held; 400 the link type is not usable (not available to the
             project, hidden, dedicated, a rule forbids the pair, or its nesting scope
             forbids this pair of projects) or it is a self-link or the other project is
             archived; 409 a duplicate, or a change request is required for an
@@ -212,7 +215,7 @@ def create_link_for_artefact(
     """
     resolver = ArtefactResolver(db, project, user_id)
     require_page_artefact(db, resolver, project, artefact_type, artefact_id)
-    _require_manage(resolver, artefact_type)
+    authority = _require_link_authority(resolver, artefact_type)
     if other_type not in get_all_registered_artefact_types():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Linked record not found.")
     other_project = project
@@ -262,7 +265,7 @@ def create_link_for_artefact(
     except LinkRuleError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     _audit_link(db, link, action="created", actor_id=user_id, projects=(project, other_project), via_detail={
-        "link_type_id": str(link_type.id),
+        "link_type_id": str(link_type.id), "authorised_by": authority,
     })
     return CreatedLink(link=link, link_type=link_type, outgoing=outgoing, other_type=other_type, other=other)
 
@@ -287,12 +290,12 @@ def delete_link_for_artefact(
 
     Raises:
         HTTPException: 404 the artefact is not visible or the link does not touch
-            it; 403 `manage` not held; 400 the link is structural (untyped) or its type is dedicated; 409 an
+            it; 403 neither `link` nor `manage` held; 400 the link is structural (untyped) or its type is dedicated; 409 an
             approved requirement is involved and a change request is required.
     """
     resolver = ArtefactResolver(db, project, user_id)
     require_page_artefact(db, resolver, project, artefact_type, artefact_id)
-    _require_manage(resolver, artefact_type)
+    authority = _require_link_authority(resolver, artefact_type)
     link = db.get(ArtefactLink, link_id)
     if link is None or (artefact_type, artefact_id) not in (
         (link.source_type, link.source_id), (link.target_type, link.target_id)
@@ -336,7 +339,7 @@ def delete_link_for_artefact(
     _gate_requirement(db, source_project, link.source_type, link.source_id, "removed")
     _gate_requirement(db, target_project, link.target_type, link.target_id, "removed")
     _audit_link(db, link, action="deleted", actor_id=user_id, projects=(project, other_project), via_detail={
-        "link_type_id": str(link.link_type_id) if link.link_type_id else None,
+        "link_type_id": str(link.link_type_id) if link.link_type_id else None, "authorised_by": authority,
     })
     delete_link(db, link)
 

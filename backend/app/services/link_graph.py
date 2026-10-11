@@ -228,6 +228,20 @@ class ArtefactResolver:
         """Whether the user holds `level` (e.g. `"manage"`) on `artefact_type` in the request project."""
         return permission_satisfied(self._held, encode_permission(artefact_type, level))
 
+    def link_authority(self, artefact_type: str) -> str | None:
+        """The permission that lets the user set links on `artefact_type` in the request
+        project: `"manage"` if held, else `"link"`, else `None`. `manage` is reported
+        first so a `"link"` result means the dedicated level alone authorised it."""
+        for level in ("manage", "link"):
+            if self.holds(artefact_type, level):
+                return level
+        return None
+
+    def can_link(self, artefact_type: str) -> bool:
+        """Whether the user may add and remove links on `artefact_type` records (`link` or
+        `manage`); the one check the Links panel, the endpoints and MCP all share."""
+        return self.link_authority(artefact_type) is not None
+
     def is_unavailable(self, key: _Key) -> bool:
         """Whether `key`'s type cannot be displayed by any installed module."""
         return self._known.get(key) == self._UNAVAILABLE
@@ -355,5 +369,5 @@ def build_link_graph(
         root=root, nodes=list(walk.nodes.values()), edges=list(walk.edges.values()),
         truncated=walk.truncated or resolver.related_truncated,
         hidden_count=len(walk.hidden), unavailable_count=len(walk.unavailable),
-        can_manage=resolver.holds(root_type, "manage"),
+        can_link=resolver.can_link(root_type),
     )

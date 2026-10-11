@@ -153,18 +153,18 @@ export function ArtefactLinksPanel({
     );
   }
 
-  const canManage = graph?.can_manage ?? false;
+  const canLink = graph?.can_link ?? false;
   return (
     <section className="card stack" aria-label={strings.artefactLinks.title}>
       <div className="row artefact-links__header">
         <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>
-        {canManage && (
+        {canLink && (
           <button className="btn btn-primary" onClick={() => setAdding(true)}>
             <Plus size={14} /> {strings.artefactLinks.addLink}
           </button>
         )}
       </div>
-      {actions && canManage && (
+      {actions && canLink && (
         <div className="row artefact-links__actions">
           {typeof actions === "function" ? actions({ reload: changed }) : actions}
         </div>
@@ -186,7 +186,7 @@ export function ArtefactLinksPanel({
                   key={row.edge.id}
                   row={row}
                   currentProjectId={projectId}
-                  canRemove={canManage && !row.edge.dedicated}
+                  canRemove={canLink && !row.edge.dedicated}
                   onRemove={() => {
                     setRemoveReason("");
                     setRemoving(row);

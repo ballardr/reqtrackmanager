@@ -685,6 +685,19 @@ def assign_compliance_standard(headers: dict, org_id: str, project_id: str, stan
     return r.json()
 
 
+def grant_custom_role(headers: dict, org_id: str, role_name: str, user_id: str, project_id: str) -> None:
+    """Grants an organisation's project-scoped custom role (looked up by name, e.g. the seeded
+    "Link editor" preset) to a user on one project."""
+    roles = httpx.get(f"{BASE}/orgs/{org_id}/custom-roles", headers=headers, timeout=30)
+    roles.raise_for_status()
+    role = next(r for r in roles.json() if r["name"] == role_name)
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/custom-roles/{role['id']}/users/{user_id}", json={"project_id": project_id},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 def grant_compliance_officer(headers: dict, project_id: str, user_id: str) -> None:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/members/{user_id}/module-roles",
@@ -1984,6 +1997,9 @@ def main() -> None:
 
     drone_compliance = assign_compliance_standard(h_pm, org["id"], drone["id"], airworthiness_standard["id"], airworthiness_version["id"])
     grant_compliance_officer(h_pm, drone["id"], demo_engineer["user_id"])
+    # The seeded "Link editor" preset (View + Link on every record type) lets Priya trace the Drone project's
+    # records without being a manager (Platform Enhancements Phase 6d).
+    grant_custom_role(h_admin, org["id"], "Link editor", demo_engineer["user_id"], drone["id"])
     # A requirement traces to the standard clause it derives from as an ordinary link (Platform Enhancements
     # Phase 6c): visible in the requirement's Links panel, found with the "Add a link" finder.
     create_artefact_link(
