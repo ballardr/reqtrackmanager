@@ -55,11 +55,12 @@ from app.modules.registry import (
     ModuleDefinition,
     ModuleSubComponentDefinition,
     build_registry,
+    get_module_registry,
     is_module_enabled_for_project,
     is_module_subcomponent_enabled,
 )
 from app.services.rbac import require_project_module_enabled, require_project_module_enabled_dynamic
-from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 FAKE_MODULE_KEY = "fake_pme_test_module"
 # Kept short deliberately: `update_org_module_enablement`'s audit-log call
@@ -609,6 +610,33 @@ def test_list_project_modules_404_for_unknown_project(client, admin_token):
         f"/api/v1/projects/{uuid_lib.uuid4()}/modules", headers=auth_headers(admin_token),
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("project_role", ["project_administrator", "project_manager"])
+def test_list_project_modules_for_project_role_who_is_not_org_admin(
+    client, admin_token, org_id, project_role,
+):
+    """The Modules tab is reachable by a project-only role, not just an org
+    admin (Phase 11): a plain org member holding only a project role gets
+    every registered module, while an org member with no role on the
+    project is refused (403), so the tab can't become a module-list leak."""
+    project = create_project(client, admin_token, org_id, f"Modules Tab {project_role}")
+    holder_id = create_org_user(client, admin_token, org_id, f"modtab-{project_role}@example.com")
+    create_org_user(client, admin_token, org_id, f"modtab-outsider-{project_role}@example.com")
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": holder_id, "role": project_role},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 204, resp.text
+
+    holder_token = login(client, f"modtab-{project_role}@example.com", "Password123!")
+    resp = client.get(f"/api/v1/projects/{project['id']}/modules", headers=auth_headers(holder_token))
+    assert resp.status_code == 200, resp.text
+    assert {row["module_key"] for row in resp.json()} == set(get_module_registry())
+
+    outsider_token = login(client, f"modtab-outsider-{project_role}@example.com", "Password123!")
+    resp = client.get(f"/api/v1/projects/{project['id']}/modules", headers=auth_headers(outsider_token))
+    assert resp.status_code == 403
 
 
 # --- Copy-on-create / copy-before-default-change (Decided by: User, 2026-10-04) ----------

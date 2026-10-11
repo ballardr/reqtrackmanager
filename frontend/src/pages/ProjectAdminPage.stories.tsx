@@ -1687,6 +1687,17 @@ export const ModulesTabHardDisabledModuleShowsDisabledToggleWithHint: Story = {
   },
 };
 
+/** No registered modules: the tab shows its empty message, not a blank list. */
+export const ModulesTabEmptyShowsMessage: Story = {
+  beforeEach: () => mockProjectAdminApis({ projectModules: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("No modules are registered on this deployment yet.")).toBeInTheDocument());
+    await expect(canvas.queryByRole("switch")).not.toBeInTheDocument();
+  },
+};
+
 /** Toggling one sub-component's own override, one level below the
  * whole-module toggle — proves the nested sub-component row is wired to
  * its own `PUT .../subcomponents/{key}` endpoint, independent of the
