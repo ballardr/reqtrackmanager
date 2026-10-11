@@ -19,8 +19,9 @@ class ReportRequest(BaseModel):
     """Options controlling generated report content.
 
     Attributes:
-        format: Which output format to generate — `"pdf"` (R-F-01) or
-            `"csv"` (R-F-02). `routers.reports.generate_report` dispatches
+        format: Which output format to generate — `"pdf"` (R-F-01), `"docx"`
+            (an editable Word file with the same content and branding as the
+            PDF) or `"csv"` (R-F-02). `routers.reports.generate_report` dispatches
             on this instead of there being two separate endpoints (2026-09-22
             merge, see docs/decisions.md — one endpoint per resource, with
             the specific format as a parameter, so a future report-type/
@@ -47,7 +48,7 @@ class ReportRequest(BaseModel):
             wins over both when explicitly set. Ignored for CSV exports.
     """
 
-    format: Literal["pdf", "csv"]
+    format: Literal["pdf", "csv", "docx"]
     pre_markdown: str = ""
     post_markdown: str = ""
     include_archived: bool = False

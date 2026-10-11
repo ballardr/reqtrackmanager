@@ -1,11 +1,11 @@
 # Platform Enhancements (October 2026) — Plan
 
-**Status:** Decisions Q1–Q13 answered by the user 2026-10-06, Q14 requested 2026-10-07. Phases 1–8 and 6b–6d implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit; 5c: project-level link types, hiding, project rules and the org lock; 5d: links between parent and child projects, planned 2026-10-07 and built 2026-10-11; 6: the shared Links panel, built 2026-10-11); 6b: proposed links on change requests, built 2026-10-11; 8: Decision Management reports, built 2026-10-11); the rest is not implemented. Written from eight user notes, each checked against the current code.
+**Status:** Decisions Q1–Q13 answered by the user 2026-10-06, Q14 requested 2026-10-07. Phases 1–9 and 6b–6d implemented (5b: link authoring, any-to-any with restrictions from both sides, added 2026-10-06 after a link-coverage audit; 5c: project-level link types, hiding, project rules and the org lock; 5d: links between parent and child projects, planned 2026-10-07 and built 2026-10-11; 6: the shared Links panel, built 2026-10-11); 6b: proposed links on change requests, built 2026-10-11; 8: Decision Management reports, built 2026-10-11; 9: neutral report document model and DOCX export, built 2026-10-11); the rest is not implemented. Written from eight user notes, each checked against the current code.
 **Decision tags:** items marked **Decided by: User** were answered in the 2026-10-06 review (§3); everything else is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-14 / 18 phases complete (Phases 1–8, 6b, 6c and 6d done, awaiting commit). **Phase 9 is next** (neutral report document model and DOCX export). Phase 8 (Decision Management reports, 2026-10-11) added four project-level reports with no frontend or schema change. Phase 7 (trace tree and map, 2026-10-11) opens from a "Trace" button on the Links panel in a large modal and has no depth limit, at the user's request. Phase 6b (added 2026-10-11 at the user's request) lets a new, modify or add-link change request carry proposed links that merge on approval through a dialog (`ApproveChangeRequestDialog`); it reused Phase 6d's `ArtefactResolver.can_link` for who may propose and the panel's add dialog in a *collect* mode. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
+15 / 18 phases complete (Phases 1–9, 6b, 6c and 6d done, awaiting commit). **Phase 10 is next** (per-report-type content across template, project and org tiers; it builds on the document model). Phase 9 (neutral report document model and DOCX export, 2026-10-11) moved the requirement PDF and every framework report onto one `ReportDocument` with PDF and DOCX renderers; the PDFs are unchanged (golden comparison) and a manual open in Word is still owed. Phase 8 (Decision Management reports, 2026-10-11) added four project-level reports with no frontend or schema change. Phase 7 (trace tree and map, 2026-10-11) opens from a "Trace" button on the Links panel in a large modal and has no depth limit, at the user's request. Phase 6b (added 2026-10-11 at the user's request) lets a new, modify or add-link change request carry proposed links that merge on approval through a dialog (`ApproveChangeRequestDialog`); it reused Phase 6d's `ArtefactResolver.can_link` for who may propose and the panel's add dialog in a *collect* mode. Phase 10 grew after review (three tiers, placeholders, ancestor fallback); Phase 3 shrank (no dashboard). Phase 11 (project Modules tab e2e coverage) was added after review; Phase 12 is the closing website-docs reconciliation and runs last.
 
 | # | Phase | Note | Status |
 |---|-------|------|--------|
@@ -23,7 +23,7 @@
 | 6b | Proposed links on change requests, merged on approval via an approver dialog | N1 | [x] |
 | 7 | Trace tree and map views | N1 | [x] |
 | 8 | Decision Management reports | N6 | [x] |
-| 9 | Neutral report document model + DOCX export | N7 | [ ] |
+| 9 | Neutral report document model + DOCX export | N7 | [x] |
 | 10 | Per-report-type content: template, project, org tiers + placeholders | N8 | [ ] |
 | 11 | Project Modules tab e2e coverage | N9 | [ ] |
 | 12 | Docs website reconciliation for the whole branch | all | [ ] |
@@ -482,7 +482,9 @@ Report keys D1–D4 are this table's own labels; open decisions in §3 use "Q" t
 - No new tables; the nested-project fallback checklist does not apply (no new project-scoped definition table). Reports respect the existing rule that report reads are not audit-logged and collectors never include Restricted data.
 - **Tests:** collector per report incl. filters, scope (unreadable project excluded), module-disabled project, PDF/CSV render, catalogue entries, MCP tool presence (Phase 1 test). Update `seed_demo_data.py` so decisions span statuses, ages and links; docs website page for the module's reports.
 
-### Phase 9 — Neutral document model and DOCX export (N7)
+### Phase 9 — Neutral document model and DOCX export (N7) — DONE 2026-10-11
+
+**As built (differs from the spec below):** (1) Modules: `services/report_model.py` (blocks and the Markdown reader), `report_pdf.py`, `report_docx.py`; `report_document.py` keeps the ReportLab shell Compliance's bespoke PDFs still use. (2) **Inline Markdown is not interpreted in either format** (the PDF never did), so there is no hyperlink path and the `http(s)/mailto` rule has nothing to constrain; **Decided by: Agent.** (3) **Compliance's two bespoke reports are not on the model** and stay PDF/CSV; **Decided by: Agent.** (4) A `Gap` block keeps the PDF's spacing exact; golden comparison showed identical framework PDFs and identical requirement page streams (only a new `/Title` metadata entry). (5) **UI:** Word and CSV sit behind a "More formats" menu beside "Generate PDF" (style guide Principle 11), `ReportExportButton` gained `kinds` and `label`; **Decided by: Agent.** (6) **Manual Word check is still owed** (LibreOffice render only). See `docs/decisions.md`.
 
 **Why:** users edit reports after download. **Risk addressed:** a second renderer drifting from the PDF layout, and malformed-XML crashes on user text. **Outcome:** `?format=docx` for the requirement report and every framework report.
 

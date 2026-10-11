@@ -13,7 +13,7 @@ flowchart LR
     A --> D3["Decision log"]
     A --> D4["Rationale coverage"]
     L["Links to Requirements<br/>and other records"] --> D4
-    D1 & D2 & D3 & D4 --> E["On screen · PDF · CSV · AI assistant"]
+    D1 & D2 & D3 & D4 --> E["On screen · PDF · Word · CSV · AI assistant"]
 ```
 
 Open the project's **Reports** page and choose a report from the **Report** picker; the module's reports appear there only while Decision Management is enabled for the project. How the page works (options, figures, export, branding template) is the same as for every module report; see [Context & Strategy → Reports](../context-strategy-module/reports.md#generating-a-report). A report covers only what you can read, and **Include child projects** adds readable sub-projects that have the module enabled.
@@ -36,7 +36,7 @@ Things worth knowing:
 
 ## Export and AI assistants
 
-Each report downloads as **PDF** or **CSV** from **Export**; the CSV is the report's first table (the register, the awaiting list, the log, or the Decisions with no linked record). The same four reports are available to an [AI assistant](./mcp-integration.md) as read-only tools.
+Each report downloads as **PDF**, **Word** or **CSV** from **Export**; the CSV is the report's first table (the register, the awaiting list, the log, or the Decisions with no linked record). The same four reports are available to an [AI assistant](./mcp-integration.md) as read-only tools.
 
 ## Limits
 

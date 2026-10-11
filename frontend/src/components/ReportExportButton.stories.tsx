@@ -37,6 +37,19 @@ export const DownloadPdfCallsOnDownloadWithPdf: Story = {
   },
 };
 
+/** `kinds` chooses the options on offer, in order; `label` renames the trigger beside a primary button. */
+export const OffersTheRequestedKindsUnderACustomLabel: Story = {
+  args: { kinds: ["docx", "csv"], label: "More formats" },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "More formats" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await expect(within(menu).queryByRole("button", { name: "Download PDF report" })).not.toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole("button", { name: "Download Word report" }));
+    await waitFor(() => expect(args.onDownload).toHaveBeenCalledWith("docx"));
+  },
+};
+
 export const DownloadCsvCallsOnDownloadWithCsv: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);

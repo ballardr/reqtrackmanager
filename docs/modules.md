@@ -1015,8 +1015,8 @@ ModuleDefinition(
 
 A module that reports on its records declares a `ReportDefinition` per report on
 `ModuleDefinition.reports` and writes one `collect_*` function for each. Core
-(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|csv`,
-access gating, typed parameters, MCP tools, the catalogue and the branded PDF.
+(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|docx|csv`,
+access gating, typed parameters, MCP tools, the catalogue and the branded PDF and Word output.
 
 ```mermaid
 flowchart LR
@@ -1027,7 +1027,7 @@ flowchart LR
     REG --> CAT["GET /projects/{id}/report-catalogue<br/>GET /orgs/{id}/report-catalogue"]
     API --> CTX["ReportContext<br/>readable projects · validated params"]
     CTX --> COL["collector → ReportResult"]
-    COL --> OUT["JSON · CSV (first section) · PDF (all sections,<br/>template branding via report_document)"]
+    COL --> OUT["JSON · CSV (first section) · PDF and DOCX (all sections,<br/>one ReportDocument, template branding)"]
 ```
 
 ```python
@@ -1068,7 +1068,7 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   and `report_template_id` are framework-level; unknown query parameters are
   ignored.
 - **Branding.** `?report_template_id=` applies an organisation report template's
-  accent colour, cover page, logo and footer to the PDF (400 for another
+  accent colour, cover page, logo and footer to the PDF and DOCX (400 for another
   organisation's template). Its intro, chapters and appendices are
   requirement-report content and are not applied.
 - **Validation.** A definition with a duplicate key/slug, malformed parameter,
@@ -1076,7 +1076,7 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   `org_role_key` that is not an org-scoped role is excluded and logged: no
   catalogue entry, no MCP tool, 404 on its route.
 - **Cells are untrusted.** CSV cells go through `csv_safe`, PDF cells through
-  `report_document.safe`. Do not put Restricted data (secrets, file content) in
+  `report_document.safe` and DOCX cells through `report_docx.clean_text`. Do not put Restricted data (secrets, file content) in
   a result: report reads are not audit-logged, on the basis that every field is
   already returned to the same caller elsewhere.
 - **Not built yet:** rich cells (Compliance's multi-line narrative), richer
@@ -1085,7 +1085,7 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
 - **On-screen UI is core too (Phase 13).** The project Reports page and Org
   Overview's "Reports" group list whatever the catalogue returns and run it with
   the shared `ReportRunner` (parameter form from the declaration, `ReportViewer`,
-  PDF/CSV). A module needs no UI for a report whose table form is enough. To draw
+  PDF/Word/CSV). A module needs no UI for a report whose table form is enough. To draw
   something richer, register a view on the frontend
   `TierAModuleDefinition.reportViews`:
 

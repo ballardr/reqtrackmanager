@@ -186,9 +186,18 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     expect(download.suggestedFilename()).toContain("requirements.pdf");
   });
 
+  await test.step("generate a Word report", async () => {
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "More formats" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download Word report" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain("requirements.docx");
+  });
+
   await test.step("generate a CSV report", async () => {
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Generate CSV" }).click();
+    await page.getByRole("button", { name: "More formats" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toContain("requirements.csv");
   });

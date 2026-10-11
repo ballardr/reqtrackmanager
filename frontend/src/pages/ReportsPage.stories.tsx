@@ -68,6 +68,26 @@ export const GeneratePdf: Story = {
   },
 };
 
+/** The Word download sits under "More formats" and posts the same request as the PDF with `format: "docx"`,
+ * including the selected template and layout (only CSV omits them). */
+export const GenerateWord: Story = {
+  beforeEach: () => {
+    mockReportsApis();
+    spyOn(api, "postForBlob").mockResolvedValue(new Blob(["docx"], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "More formats" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download Word report" }));
+    await waitFor(() =>
+      expect(api.postForBlob).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/reports`,
+        expect.objectContaining({ format: "docx", pre_markdown: expect.stringContaining("Atlas platform") })
+      )
+    );
+  },
+};
+
 /** Selecting a report template swaps the intro/chapters editors to the
  * template's own content (`effectiveContentFor`) — a documented, deliberate
  * mirror of `resolve_report_config_with_template`'s server-side precedence

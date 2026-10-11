@@ -1,15 +1,17 @@
 """
 Module: services.downloads
 
-A single shared helper for building safe `Content-Disposition` filenames
-for generated downloads (reports, CSV/bundle exports), used by every router
-that serves a file response so the sanitization logic exists in exactly one
-place.
+Shared helpers for generated downloads (reports, CSV/bundle exports): safe
+`Content-Disposition` filenames (`filename_safe`) and the report file response
+with its content type (`file_response`), used by every router that serves a
+file so the sanitization and content types exist in exactly one place.
 """
 
 from __future__ import annotations
 
 import re
+
+from fastapi import Response
 
 
 def filename_safe(name: str, *, fallback: str = "download") -> str:
@@ -25,3 +27,31 @@ def filename_safe(name: str, *, fallback: str = "download") -> str:
     cleaned = re.sub(r'[\\"/\r\n\t]', "", name)
     cleaned = re.sub(r"[^\x20-\x7e]", "_", cleaned).strip()
     return cleaned or fallback
+
+
+_MEDIA_TYPES = {
+    "pdf": "application/pdf",
+    "csv": "text/csv",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def file_response(content: bytes, stem: str, ext: str) -> Response:
+    """A download response for a generated file.
+
+    Args:
+        content: The file bytes.
+        stem: The filename without extension; the caller passes it through
+            `filename_safe`.
+        ext: One of `pdf`, `csv`, `docx`; selects the content type.
+
+    Returns:
+        A response with the content type and an `attachment` disposition.
+
+    Raises:
+        KeyError: If `ext` is not a known format.
+    """
+    return Response(
+        content=content, media_type=_MEDIA_TYPES[ext],
+        headers={"Content-Disposition": f'attachment; filename="{stem}.{ext}"'},
+    )

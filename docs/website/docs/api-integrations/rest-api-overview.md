@@ -33,7 +33,7 @@ A [module](../modules/overview.md) isn't limited to what ships in the core appli
 
 ## Request and response conventions
 
-- **JSON in, JSON out.** Request bodies for `POST`/`PUT`/`PATCH` are JSON objects; every response body is JSON (except a file download, a generated PDF/CSV report, or a plain-text health check).
+- **JSON in, JSON out.** Request bodies for `POST`/`PUT`/`PATCH` are JSON objects; every response body is JSON (except a file download, a generated PDF/Word/CSV report, or a plain-text health check).
 - **Field names are `snake_case`**, matching the Pydantic schemas the backend is built from — the same shape the frontend consumes.
 - **IDs are UUIDs**, serialised as strings.
 - **Timestamps are ISO 8601, UTC** (e.g. `"2026-09-15T03:42:37.401458Z"`).

@@ -101,12 +101,13 @@ Options are generated from what each report accepts, so a report only shows the 
 
 | Exporting a report |
 | --- |
-| **Export** offers PDF and CSV of exactly what is on screen, with the options currently set |
+| **Export** offers PDF, Word and CSV of exactly what is on screen, with the options currently set |
 | ![Export menu open beside the branding template selector, offering Download PDF report and Download CSV report](../../../static/img/screenshots/cs-report-export-menu.png) |
 
 | Format | Contains |
 | --- | --- |
 | **PDF** | The report's notes and **every table** (including the matrix and gap tables), laid out for reading or circulating, with the branding template's cover, accent colour and footer if you chose one. The on-screen figure tiles and the matrix's colouring are not drawn; the figures appear in the tables. R8 opens with a Headline figures table, so it is the one to circulate. |
+| **Word (DOCX)** | The same content, order and branding as the PDF, as an editable Word file in landscape: real headings and tables with a repeating header row, and a footer with page numbers. |
 | **CSV** | The report's **first table** only, as a flat file for a spreadsheet. Cell values that a spreadsheet could read as a formula are neutralised. |
 
 | An exported PDF (R1 with a branding template) |
@@ -122,18 +123,18 @@ sxf,1,Flight logs cannot be exported for audit,Falcon-3 Inspection Drone,Operato
 sxf,2,Pilots cannot tell which redundant flight controller is in command,Falcon-3 Inspection Drone,User,Accepted,High,21,Medium,Blocker: BVLOS Remote Pilot,
 ```
 
-**Branding template (PDF)** applies an organisation [report template](../../core-features/reports-and-export.md)'s accent colour, cover page, logo, and footer to the PDF. Its introduction and chapters belong to the requirements report and aren't used here. CSV never carries a template.
+**Branding template (PDF and Word)** applies an organisation [report template](../../core-features/reports-and-export.md)'s accent colour, cover page, logo, and footer to the PDF and Word file. Its introduction and chapters belong to the requirements report and aren't used here. CSV never carries a template.
 
 ## Using reports from the API or an AI assistant
 
-Every report is also available over REST, as JSON, PDF, or CSV, and is read-only:
+Every report is also available over REST, as JSON, PDF, Word (DOCX), or CSV, and is read-only:
 
 ```bash
 # Which reports can I run on this project?
 curl -H "Authorization: Bearer $TOKEN" \
   "$BASE/api/v1/projects/$PROJECT_ID/report-catalogue"
 
-# Run one (format = json | pdf | csv)
+# Run one (format = json | pdf | docx | csv)
 curl -H "Authorization: Bearer $TOKEN" \
   "$BASE/api/v1/projects/$PROJECT_ID/modules/context_strategy/reports/pain-point-prioritisation?model_key=sxf&rollup=worst_case"
 

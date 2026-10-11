@@ -42,6 +42,7 @@ from app.services.report_framework import (
     ReportSection,
     build_report_routers,
     render_csv,
+    render_docx,
     render_pdf,
     report_mcp_tools,
 )
@@ -414,13 +415,19 @@ def test_json_shape_and_pdf_csv_files(client, admin_token, probe):
     pdf = _get(probe, token, _project_url(project["id"]), format="pdf")
     assert pdf.headers["content-type"] == "application/pdf" and pdf.content.startswith(b"%PDF")
 
+    docx = _get(probe, token, _project_url(project["id"]), format="docx")
+    assert docx.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    assert docx.headers["content-disposition"] == 'attachment; filename="Format Co A-probe-all.docx"'
+    assert docx.content[:2] == b"PK"
+    _get(probe, token, _project_url(project["id"]), expect=422, format="odt")
+
 
 def test_render_functions_handle_empty_results_and_escape_markup():
     result = ReportResult("k", "T", "Scope", datetime.now(UTC), [MARKUP], [ReportSection("s", "S", ["A"], [[MARKUP]], note=MARKUP)])
-    assert render_pdf(result).startswith(b"%PDF")
+    assert render_pdf(result).startswith(b"%PDF") and render_docx(result)[:2] == b"PK"
     empty = ReportResult("k", "T", "Scope", datetime.now(UTC), [], [])
     assert render_csv(empty).decode() == "\r\n"
-    assert render_pdf(empty).startswith(b"%PDF")
+    assert render_pdf(empty).startswith(b"%PDF") and render_docx(empty)[:2] == b"PK"
     assert render_csv(ReportResult("k", "T", "S", datetime.now(UTC), [], [ReportSection("s", "S", ["=A"], [["+b"]])])).decode() == "'=A\r\n'+b\r\n"
 
 
@@ -435,6 +442,9 @@ def test_template_branding_applies_to_pdf_and_foreign_templates_are_rejected(cli
     plain = _get(probe, token, _project_url(project["id"]), format="pdf").content
     branded = _get(probe, token, _project_url(project["id"]), format="pdf", report_template_id=template_id).content
     assert branded.startswith(b"%PDF") and branded != plain
+    docx_plain = _get(probe, token, _project_url(project["id"]), format="docx").content
+    docx_branded = _get(probe, token, _project_url(project["id"]), format="docx", report_template_id=template_id).content
+    assert docx_branded[:2] == b"PK" and docx_branded != docx_plain
     assert _get(probe, token, _org_url(org["id"]), format="pdf", report_template_id=template_id).content.startswith(b"%PDF")
 
     other, _, other_admin = _setup(client, admin_token, "Brand Other")
@@ -461,7 +471,7 @@ def test_project_catalogue_lists_enabled_reports_with_parameters(client, admin_t
     entry = entries["probe-all"]
     assert entry["scope"] == "project" and entry["supports_include_children"] is True
     assert entry["supports_project_filter"] is False
-    assert entry["path"] == _project_url(project["id"]) and entry["formats"] == ["json", "pdf", "csv"]
+    assert entry["path"] == _project_url(project["id"]) and entry["formats"] == ["json", "pdf", "csv", "docx"]
     assert entry["module_name"] == "Report Probe"
     params = {p["name"]: p for p in entry["params"]}
     assert params["mode"]["choices"] == ["a", "b"] and params["limit"]["minimum"] == 1 and params["limit"]["maximum"] == 5

@@ -42,7 +42,7 @@ Captured from the seeded demo dataset (see [docs/development.md](docs/developmen
 | ![Requirements list](docs/screenshots/requirements-list.png) | ![Requirement detail](docs/screenshots/requirement-detail.png) |
 | **Change request** — tasks, advisory stakeholder votes, discussion, approve/reject | **Organisation admin** — members, roles, 2FA status, access-review filters |
 | ![Change request detail](docs/screenshots/change-request-detail.png) | ![Organisation admin](docs/screenshots/org-admin.png) |
-| **Reports** — filtered PDF/CSV export with selectable org branding | **Reviews due** — requirements with a scheduled review date now overdue |
+| **Reports** — filtered PDF/Word/CSV export with selectable org branding | **Reviews due** — requirements with a scheduled review date now overdue |
 | ![Reports](docs/screenshots/reports-page.png) | ![Reviews due](docs/screenshots/reviews-due.png) |
 
 <details>

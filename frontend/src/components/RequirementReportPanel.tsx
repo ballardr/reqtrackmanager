@@ -2,7 +2,7 @@
  * Module: components/RequirementReportPanel
  *
  * The requirement report's configuration and generation surface (R-F-01 PDF,
- * R-F-02 CSV), extracted from `pages/ReportsPage.tsx` so it can sit beside
+ * Word, R-F-02 CSV), extracted from `pages/ReportsPage.tsx` so it can sit beside
  * the catalogue reports in the same Reports picker (Module 1 Phase 13). It
  * carries the project's effective introduction/body chapters/appendices
  * (R-G-01, R-G-02) editable in place, a report-template picker that previews
@@ -14,6 +14,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
+import type { ReportDownloadKind } from "../api/reports";
 import type {
   Category,
   Component,
@@ -30,6 +31,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { downloadBlob } from "../utils/download";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ReportChapterListEditor } from "./ReportChapterListEditor";
+import { ReportExportButton } from "./ReportExportButton";
 import { RichTextEditor } from "./RichTextEditor";
 import { Spinner } from "./Spinner";
 
@@ -54,7 +56,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const projectId = project.id;
   const { showToast } = useToast();
   const [includeArchived, setIncludeArchived] = useState(false);
-  const [generating, setGenerating] = useState<"pdf" | "csv" | null>(null);
+  const [generating, setGenerating] = useState<ReportDownloadKind | null>(null);
 
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -127,7 +129,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
     setResourceFileIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
   }
 
-  async function generate(kind: "pdf" | "csv") {
+  async function generate(kind: ReportDownloadKind) {
     setGenerating(kind);
     try {
       const preMarkdown = [reportIntro, chaptersToMarkdown(reportChapters)].filter(Boolean).join("\n\n");
@@ -142,8 +144,8 @@ export function RequirementReportPanel({ project }: { project: Project }) {
         status: statusFilter || null,
         keyword: keyword || null,
         resource_file_ids: resourceFileIds,
-        report_template_id: kind === "pdf" ? reportTemplateId || null : null,
-        chapters_per_component: kind === "pdf" ? chaptersPerComponent : null,
+        report_template_id: kind !== "csv" ? reportTemplateId || null : null,
+        chapters_per_component: kind !== "csv" ? chaptersPerComponent : null,
       });
       const projectName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
       downloadBlob(blob, `${projectName}-requirements.${kind}`);
@@ -162,9 +164,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
         <button className="btn btn-primary" onClick={() => generate("pdf")} disabled={generating !== null}>
           {generating === "pdf" ? "…" : strings.reports.generatePdf}
         </button>
-        <button className="btn" onClick={() => generate("csv")} disabled={generating !== null}>
-          {generating === "csv" ? "…" : strings.reports.generateCsv}
-        </button>
+        <ReportExportButton onDownload={generate} kinds={["docx", "csv"]} label={strings.reports.moreFormats} />
       </div>
 
       <CollapsibleSection sectionKey="reports.templateAndLayout" title={strings.reports.templateAndLayout} defaultCollapsed>

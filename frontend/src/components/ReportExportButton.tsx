@@ -3,7 +3,7 @@
  *
  * The "report export trigger" pattern (`docs/ux-style-guide.md`) — a single
  * "Export" button that opens a `Popover` offering "Download PDF report"/
- * "Download CSV report," for a host page or panel whose report generation
+ * "Download Word report"/"Download CSV report," for a host page or panel whose report generation
  * needs no pre-generation configuration screen of its own (contrast the
  * dedicated `pages/ReportsPage.tsx`, which does). First built inline in
  * `OrgComplianceDashboard.tsx` (Phase 25b, replacing two permanently-
@@ -30,14 +30,34 @@
 import { Download } from "lucide-react";
 import { useRef, useState } from "react";
 
+import type { ReportDownloadKind } from "../api/reports";
 import { Popover } from "./Popover";
 
-export function ReportExportButton({ onDownload }: { onDownload: (kind: "pdf" | "csv") => Promise<void> }) {
-  const [downloading, setDownloading] = useState<"pdf" | "csv" | null>(null);
+const OPTION_LABEL: Record<ReportDownloadKind, string> = {
+  pdf: "Download PDF report",
+  docx: "Download Word report",
+  csv: "Download CSV report",
+};
+
+/**
+ * `kinds` lists the formats on offer (default PDF and CSV, what the compliance
+ * callers have); `label` renames the trigger when it sits beside a primary
+ * download button ("More formats") rather than standing alone.
+ */
+export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">({
+  onDownload,
+  kinds = ["pdf", "csv"] as K[],
+  label = "Export",
+}: {
+  onDownload: (kind: K) => Promise<void>;
+  kinds?: readonly K[];
+  label?: string;
+}) {
+  const [downloading, setDownloading] = useState<K | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  async function handleDownload(kind: "pdf" | "csv") {
+  async function handleDownload(kind: K) {
     setMenuOpen(false);
     setDownloading(kind);
     try {
@@ -50,23 +70,19 @@ export function ReportExportButton({ onDownload }: { onDownload: (kind: "pdf" | 
   return (
     <>
       <button ref={triggerRef} type="button" className="btn" onClick={() => setMenuOpen((v) => !v)}>
-        <Download size={16} /> {downloading ? "Exporting…" : "Export"}
+        <Download size={16} /> {downloading ? "Exporting…" : label}
       </button>
       {menuOpen && (
         <Popover anchorRef={triggerRef} title="Export" onClose={() => setMenuOpen(false)}>
           <div className="stack" style={{ gap: "0.25rem", minWidth: 180 }}>
-            <button
-              type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
-              onClick={() => handleDownload("pdf")}
-            >
-              <Download size={14} /> {downloading === "pdf" ? "…" : "Download PDF report"}
-            </button>
-            <button
-              type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
-              onClick={() => handleDownload("csv")}
-            >
-              <Download size={14} /> {downloading === "csv" ? "…" : "Download CSV report"}
-            </button>
+            {kinds.map((kind) => (
+              <button
+                key={kind} type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
+                onClick={() => handleDownload(kind)}
+              >
+                <Download size={14} /> {downloading === kind ? "…" : OPTION_LABEL[kind]}
+              </button>
+            ))}
           </div>
         </Popover>
       )}

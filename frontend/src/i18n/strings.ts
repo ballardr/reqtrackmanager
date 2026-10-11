@@ -1598,7 +1598,7 @@ const en = {
   reports: {
     title: "Reports",
     generatePdf: "Generate PDF",
-    generateCsv: "Generate CSV",
+    moreFormats: "More formats",
     templateAndLayout: "Template & layout",
     reportTemplate: "Report template",
     noTemplate: "None (plain)",

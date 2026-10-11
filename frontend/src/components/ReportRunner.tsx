@@ -2,7 +2,7 @@
  * Module: components/ReportRunner
  *
  * Runs one catalogue report and shows it (Module 1 Phase 13): the generated
- * parameter form, the on-screen result, and PDF/CSV downloads. Everything
+ * parameter form, the on-screen result, and PDF/Word/CSV downloads. Everything
  * that is the same for every report lives here; only the result view varies,
  * and that is resolved generically (`getReportView`) so core never imports a
  * module's own view, falling back to `ReportViewer` for a report with none.
@@ -16,7 +16,7 @@
  * - For an organisation-wide report, offer a "Project" picker (`project_id`)
  *   listing the catalogue entry's `projects`: exactly the ones the report
  *   accepts for this caller, so the picker never offers one that would fail.
- * - Offer an optional branding template for downloads (PDF only; it never
+ * - Offer an optional branding template for downloads (PDF and Word; it never
  *   changes the on-screen result) and download through the shared
  *   `ReportExportButton`, with a toast on success or failure. Downloads send
  *   the same values as the screen so a file never silently widens the view
@@ -26,7 +26,14 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-import { reportsApi, type ReportCatalogueEntry, type ReportMetric, type ReportResult, type ReportRunValues } from "../api/reports";
+import {
+  reportsApi,
+  type ReportCatalogueEntry,
+  type ReportDownloadKind,
+  type ReportMetric,
+  type ReportResult,
+  type ReportRunValues,
+} from "../api/reports";
 import { api } from "../api/client";
 import type { ReportTemplate } from "../api/types";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -55,6 +62,9 @@ function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
  * @param organizationId The owning organisation, for the branding template list.
  * @param focusSection A section key to scroll to once the report has loaded (a figure's "see the gap table" link).
  */
+/** How a download kind is named to the user (toasts). */
+const DOWNLOAD_NAME: Record<ReportDownloadKind, string> = { pdf: "PDF", docx: "Word file", csv: "CSV" };
+
 export function ReportRunner({
   entry, scope, organizationId, focusSection,
 }: {
@@ -122,13 +132,14 @@ export function ReportRunner({
     setValues((current) => ({ ...current, [name]: value }));
   }
 
-  async function download(kind: "pdf" | "csv") {
+  async function download(kind: ReportDownloadKind) {
+    const name = DOWNLOAD_NAME[kind];
     try {
-      const blob = await reportsApi.download(entry, kind, kind === "pdf" ? { ...values, report_template_id: templateId } : values);
+      const blob = await reportsApi.download(entry, kind, kind === "csv" ? values : { ...values, report_template_id: templateId });
       downloadBlob(blob, `${entry.slug}.${kind}`);
-      showToast(`Downloaded ${entry.title} (${kind.toUpperCase()}).`, "success");
+      showToast(`Downloaded ${entry.title} (${name}).`, "success");
     } catch (err) {
-      showToast(toErrorMessage(err, `Could not generate the ${kind.toUpperCase()} for ${entry.title}.`), "error");
+      showToast(toErrorMessage(err, `Could not generate the ${name} for ${entry.title}.`), "error");
     }
   }
 
@@ -161,14 +172,14 @@ export function ReportRunner({
         <div className="row" style={{ alignItems: "flex-end", gap: "0.75rem" }}>
           {templates.length > 0 && (
             <LabeledSelect
-              label="Branding template (PDF)"
+              label="Branding template (PDF and Word)"
               value={templateId}
               onChange={setTemplateId}
               options={templates.map((t) => ({ value: t.id, label: t.name }))}
               placeholder="No template"
             />
           )}
-          <ReportExportButton onDownload={download} />
+          <ReportExportButton onDownload={download} kinds={entry.formats.filter((f): f is ReportDownloadKind => f !== "json")} />
         </div>
       </div>
       {error && (
