@@ -41,6 +41,7 @@ list_organizations -> list_projects -> (project_id) -> list_requirements / list_
 | What it is linked to, and what depends on it | `get_artefact_link_graph` (see "Linking and traceability") |
 | Which link types can join two kinds of record | `list_artefact_link_types` |
 | Which parent and child projects a link may reach | `list_link_candidate_projects` |
+| Find the record to link to (`other_id`) | `search_artefact_link_candidates`, narrowed with `list_artefact_link_browse` |
 
 Lists are not paginated. Narrow with filters before fetching full records, and call `get_requirement` only for the few you need.
 
@@ -99,14 +100,17 @@ Artefacts (requirements, actions, module items) are connected by typed links. `g
 
 ### Creating and removing links
 
+A requirement's links to a compliance standard's clauses are ordinary links too (record type `compliance_requirement`, found by searching for the standard, version or clause text, or by browsing standard, then version, then requirement).
+
 Any two artefacts of a project can be linked unless a link type is restricted (which kinds of record it may join) or an artefact type is (which link types it may use), by the organisation or by the project. A project can also add link types of its own (its child projects inherit them) and hide the organisation's, so the list differs per project: always read it for the project you are in. So never assume two kinds of record cannot be related, and never pick a link type from memory.
 
 1. `list_artefact_link_types` for the artefact (add `other_type` to narrow). Each entry gives `link_type_id`, `direction`, `phrase` (how the link reads from this artefact's side) and `other_types`. Choose the entry whose phrase says what the user means.
-2. Confirm the link with the user in words: "this decision *addresses* that pain point".
-3. `create_artefact_link` with that entry's `link_type_id` and `direction`, and the other record's `other_type` and `other_id`. A link can be made from either end; from the pain point's page the same link reads "is addressed by" with direction `incoming`.
-4. `delete_artefact_link` takes the link's `id` (an edge id from `get_artefact_link_graph`, or the id `create_artefact_link` returned). Removing a link is irreversible, so confirm first.
+2. Find the other record: `search_artefact_link_candidates` with `q` (two or more characters) searches every type the entry can reach, or pass `other_type` to search one type. To narrow a large type step by step (a compliance clause by standard, then version; a requirement by component, then category; most types by a status or type), call `list_artefact_link_browse` with `other_type` for the first level, then again with `selected=key:option_id,...` for the next until it returns null, and pass the same `selected` to `search_artefact_link_candidates`. A result's `id` is the `other_id`. Results are capped, so narrow when `truncated` is true.
+3. Confirm the link with the user in words: "this decision *addresses* that pain point".
+4. `create_artefact_link` with that entry's `link_type_id` and `direction`, and the other record's `other_type` and `other_id`. A link can be made from either end; from the pain point's page the same link reads "is addressed by" with direction `incoming`.
+5. `delete_artefact_link` takes the link's `id` (an edge id from `get_artefact_link_graph`, or the id `create_artefact_link` returned). Removing a link is irreversible, so confirm first.
 
-To link across nested projects, call `list_link_candidate_projects` for the project you are in and pick the parent or child project that holds the other record. Pass that project's `id` as `other_project_id` to both `list_artefact_link_types` and `create_artefact_link`. Each link type has a nesting scope: some allow only one project, some require the upstream end (for example a pain point) to be in the same or a parent project, some allow either end in a parent. `list_artefact_link_types` with `other_project_id` already applies this, so use only what it returns. Siblings and unrelated projects cannot be linked, and a project the caller cannot open is reported as not found.
+To link across nested projects, call `list_link_candidate_projects` for the project you are in and pick the parent or child project that holds the other record. Pass that project's `id` as `other_project_id` to `list_artefact_link_types`, `search_artefact_link_candidates`, `list_artefact_link_browse` and `create_artefact_link`. Each link type has a nesting scope: some allow only one project, some require the upstream end (for example a pain point) to be in the same or a parent project, some allow either end in a parent. `list_artefact_link_types` with `other_project_id` already applies this, so use only what it returns. Siblings and unrelated projects cannot be linked, and a project the caller cannot open is reported as not found.
 
 A refusal (400 or 409) is a rule, not a glitch: a restriction, a duplicate, or an approved requirement in a project that needs a change request for links. Report the message; do not retry with another link type to get around it. Link types with a fixed meaning and their own action (such as "Supersedes", which changes a status) are not offered here.
 

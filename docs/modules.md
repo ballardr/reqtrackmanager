@@ -891,8 +891,8 @@ A module that relates its records to another module's (a Stakeholder
 "experiences" a Pain Point, is "consulted on" a Decision) can't import that
 module, but must still validate the target belongs to the same project, label it
 and offer a picker. The owner declares
-`artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project, get_many_in_project)`
-(the batch lookup is optional) and a display name in
+`artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project, get_many_in_project, browse_levels, filter)`
+(the batch lookup and `filter` are optional; `browse_levels` is required, see below) and a display name in
 `artefact_type_labels[artefact_type]`; callers use `registry.get_artefact_summary` /
 `list_artefact_summaries` / `has_artefact_summary_provider` /
 `get_artefact_summaries_in_project` / `get_artefact_type_label`. On the frontend the owner's
@@ -903,6 +903,23 @@ display label of its status, so the shared Links panel can show a linked
 record's status through a label map (`getArtefactStatusLabel`; a status with no
 label shows no badge, never the raw value). Core owns only `requirement` and
 `requirement_action`.
+
+**Every type declares at least one browse level** (`browse_levels=(BrowseLevel(key, label), ...)`), the
+steps of the "Add a link" finder that narrow the search for a record of that type
+("Standard" > "Version" > "Requirement", "Status"). A level with no `list_options`
+reads the facet of the same `key` from the `ArtefactSummary.facets` your provider
+sets (`{key: (option_id, label)}`), so a status or type needs only that one line
+per level plus the facet; give `list_options(db, project_id, selected, query)` and
+an SQL `filter(db, project_id, selected, query, limit)` (return at most
+`limit + 2`) only for a type too large to load whole (an organisation's compliance
+clauses). `selected` is `{level key: option id}` for the earlier levels; the core
+validates it against what each level offered, so compute options from it alone and
+scope them to the project's organisation. A test fails if a registered type has no
+level. An organisation-owned type (`project_id=None`) is offered only from the
+request project. Core owns only `requirement` and `requirement_action` (its levels
+live in `services/link_browse.py`). `services.summary_facets` has helpers for status
+and two-tier type facets, and `relationships.delete_links_for_artefacts` removes
+links when a type hard-deletes records.
 
 ```mermaid
 flowchart LR

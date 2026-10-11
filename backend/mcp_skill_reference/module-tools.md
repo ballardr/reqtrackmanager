@@ -480,18 +480,6 @@ Removes a link between a review and a piece of evidence.
 
 Parameters: `project_id*` (uuid, in path), `review_id*` (uuid, in path), `evidence_id*` (uuid, in path)
 
-#### `compliance_create_requirement_traceability_link` (write)
-
-Creates a traceability link from a core project requirement to a compliance standard requirement.
-
-Parameters: `project_id*` (uuid, in path), `requirement_id*` (uuid, in path), `compliance_requirement_id*` (uuid, in body), `link_type_id*` (uuid, in body)
-
-#### `compliance_delete_requirement_traceability_link` (write)
-
-Deletes a traceability link between a core project requirement and a compliance standard requirement.
-
-Parameters: `project_id*` (uuid, in path), `requirement_id*` (uuid, in path), `link_id*` (uuid, in path)
-
 ## Decision Management (`decisions`)
 
 Record, approve, and supersede formal decisions made during a project's lifecycle — architecture, design, engineering, strategy, and operational.

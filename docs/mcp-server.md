@@ -22,6 +22,8 @@ Twenty-one read tools, always available:
 | `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream / downstream / related) for impact analysis; reports hidden and truncated results rather than hiding them |
 | `list_artefact_link_types` | The link types usable from an artefact, with direction, wording and the kinds of record each can reach — the starting point for linking. With `other_project_id` (a parent or child project) only the types whose nesting scope allows that pairing |
 | `list_link_candidate_projects` | The projects a link from this project may reach: itself, parent projects and child projects the caller can open (siblings and unrelated projects never appear) |
+| `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
+| `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes (C-R-03) |
@@ -65,7 +67,7 @@ Every approval/decision/completion performed through one of these three tools is
 
 **Still exactly the same pass-through authentication and authorization as every read tool** (see [Authentication model](#authentication-model) below) — write mode doesn't add a second permission model. The caller's own account still needs a requirement-editing project role (stakeholder, administrator, or manager) for `create_requirement`/`update_requirement`, and the project-manager role for the three approval-type tools, exactly as the UI would require.
 
-**What's still not exposed, in any configuration** — a deliberately narrow set, not an oversight: submitting a change request, voting, commenting, recording a review outcome, archiving/deleting, uploading attachments, and creating traceability links. All read-only-adjacent for now (each already has a read tool where relevant); a natural, larger follow-up if any of them is wanted later — see [Known limitations](#known-limitations).
+**What's still not exposed, in any configuration** — a deliberately narrow set, not an oversight: submitting a change request, voting, commenting, recording a review outcome, archiving/deleting, and uploading attachments. All read-only-adjacent for now (each already has a read tool where relevant); a natural, larger follow-up if any of them is wanted later — see [Known limitations](#known-limitations).
 
 ## Default organisation/project scope
 
@@ -75,7 +77,7 @@ Two optional, non-sensitive HTTP headers on the MCP connection — `X-Default-Or
 
 Beyond the hand-written tools above, a backend module (plans/compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
 
-**Compliance (plans/compliance-module-plan.md Phase 6, extended through Phase 22, then reversed to write-enabled 2026-09-22) is the first module to use this**, contributing 76 tools total: 10 read-only tools (unchanged since Phase 6/7/8/9/10/11) plus 66 write tools added in the 2026-09-22 reversal — see [docs/decisions.md](decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry for the full rationale for why this module's MCP surface, previously described here as "deliberately read-only," no longer is.
+**Compliance (plans/compliance-module-plan.md Phase 6, extended through Phase 22, then reversed to write-enabled 2026-09-22) is the first module to use this**, contributing 74 tools total: 10 read-only tools (unchanged since Phase 6/7/8/9/10/11) plus 64 write tools added in the 2026-09-22 reversal — see [docs/decisions.md](decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry for the full rationale for why this module's MCP surface, previously described here as "deliberately read-only," no longer is.
 
 The 10 read-only tools:
 
@@ -94,7 +96,7 @@ The 10 read-only tools:
 
 The first three, plus both Phase 11 tools, take `organization_id` as a required parameter (`compliance_get_standard_version`/`compliance_list_requirements`/`compliance_list_requirement_mappings`/`compliance_get_standard_version_diff` also take `standard_id`/`version_id`, the latter two also a second version id and a `requirement_id` respectively) — Phase 4's scoping rule (see above): no implicit "current org," no cross-org aggregation. The five Phase 7/8/9/10 tools take `project_id` only, no `organization_id` at all — mirroring hand-written tools like `get_project(project_id)` — because they proxy to a *second*, project-scoped router the Compliance module registers (`get_project_router`, mounted at `/api/v1/projects/{project_id}/modules/compliance/...`) rather than its original org-scoped one; `build_mcp_tool_manifest` validates a tool's `path_template` against either of a module's two router prefixes, not just one.
 
-**The 66 write tools (2026-09-22), by area** — each subject to `MCP_WRITES_ENABLED` and the calling account's own RBAC role exactly like any other write tool, per [Write mode](#write-mode) above (full param lists are in `backend/app/modules/compliance/module.py`'s `mcp_tools`, not repeated here):
+**The 64 write tools (2026-09-22), by area** — each subject to `MCP_WRITES_ENABLED` and the calling account's own RBAC role exactly like any other write tool, per [Write mode](#write-mode) above (full param lists are in `backend/app/modules/compliance/module.py`'s `mcp_tools`, not repeated here):
 
 | Area | Tools |
 | --- | --- |
@@ -110,7 +112,6 @@ The first three, plus both Phase 11 tools, take `organization_id` as a required 
 | Required action assessments | `compliance_update_required_action_assessment`, `compliance_complete_required_action_assessment`, `compliance_uncomplete_required_action_assessment` |
 | Evidence | `compliance_create_evidence`, `compliance_update_evidence`, `compliance_archive_evidence`, `compliance_unarchive_evidence`, `compliance_revalidate_evidence`, `compliance_link_evidence_to_requirement`, `compliance_unlink_evidence_from_requirement`, `compliance_link_evidence_to_action_assessment`, `compliance_unlink_evidence_from_action_assessment`, `compliance_link_evidence_file`, `compliance_unlink_evidence_file` |
 | Reviews | `compliance_create_standard_review`, `compliance_update_standard_review`, `compliance_delete_standard_review`, `compliance_complete_standard_review`, `compliance_create_project_review`, `compliance_update_project_review`, `compliance_delete_project_review`, `compliance_complete_project_review`, `compliance_link_review_evidence`, `compliance_unlink_review_evidence` |
-| Traceability links | `compliance_create_requirement_traceability_link`, `compliance_delete_requirement_traceability_link` |
 
 **Three things stay off the tool surface even now:**
 

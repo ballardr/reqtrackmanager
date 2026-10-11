@@ -28,6 +28,8 @@ Twenty-one read tools, always available:
 | `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream, downstream or related) for impact analysis; says when the result is partial |
 | `list_artefact_link_types` | The link types usable from an artefact, with direction, wording and the kinds of record each can reach — the starting point for linking. Give it a parent or child project to see only the types that may join across them |
 | `list_link_candidate_projects` | The projects a link from this project may reach: itself, its parent projects and its child projects you can open |
+| `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
+| `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail |
 | `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes |
@@ -69,7 +71,7 @@ Every approval/decision/completion performed this way is visibly marked "(via MC
 
 **Still exactly the same pass-through authentication and authorization as every read tool** — write mode doesn't add a second permission model. The caller's own account still needs a requirement-editing project role for `create_requirement`/`update_requirement`, and the project-manager role for the three approval-type tools, exactly as the UI would require.
 
-**What's still not exposed, in any configuration** — a deliberately narrow set, not an oversight: submitting a change request, voting, commenting, recording a review outcome, archiving/deleting, uploading attachments, and creating traceability links.
+**What's still not exposed, in any configuration** — a deliberately narrow set, not an oversight: submitting a change request, voting, commenting, recording a review outcome, archiving/deleting, and uploading attachments.
 
 ## Default organisation/project scope
 
@@ -98,7 +100,7 @@ Compliance contributes 76 tools: 10 read-only —
 | `compliance_list_requirement_mappings` | Lists the cross-standard/cross-version mapping links for one compliance requirement |
 | `compliance_get_standard_version_diff` | Computes the added/removed/modified/replaced/re-mapped requirement diff between two versions of a standard |
 
-— plus 66 write tools covering essentially every mutating compliance endpoint (standards/versions/requirements/required-actions/action-types/mapping-relationship-types CRUD, project assignment/migration, assessment, evidence, reviews, traceability links; full list in [Compliance module → AI assistant integration](../../modules/compliance-module/mcp-integration.md)), each gated the same as any other MCP write tool by write mode and the caller's own RBAC role. `compliance_approve_requirement`/`compliance_reject_requirement` are the one exception: they exist as tools but additionally require the target project's and its organisation's `allow_ai_approvals` opt-in (the same one `approve_requirement`/`decide_change_request`/`complete_requirement` above use, generalized for module reuse) — no longer a hard, no-opt-in-possible exclusion. Standard member/group role assignment and the two file-upload endpoints (`import_standard`, evidence file upload) still have no MCP tool — an RBAC role grant and a file upload respectively, neither of which this mechanism supports for any module.
+— plus 64 write tools covering essentially every mutating compliance endpoint (standards/versions/requirements/required-actions/action-types/mapping-relationship-types CRUD, project assignment/migration, assessment, evidence, reviews; full list in [Compliance module → AI assistant integration](../../modules/compliance-module/mcp-integration.md)), each gated the same as any other MCP write tool by write mode and the caller's own RBAC role. `compliance_approve_requirement`/`compliance_reject_requirement` are the one exception: they exist as tools but additionally require the target project's and its organisation's `allow_ai_approvals` opt-in (the same one `approve_requirement`/`decide_change_request`/`complete_requirement` above use, generalized for module reuse) — no longer a hard, no-opt-in-possible exclusion. Standard member/group role assignment and the two file-upload endpoints (`import_standard`, evidence file upload) still have no MCP tool — an RBAC role grant and a file upload respectively, neither of which this mechanism supports for any module.
 
 Decision Management contributes nine tools: seven read-only —
 

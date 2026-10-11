@@ -689,6 +689,114 @@ async def list_artefact_link_types(
 
 
 @mcp.tool
+async def search_artefact_link_candidates(
+    project_id: str | None = None,
+    *,
+    artefact_type: str,
+    artefact_id: str,
+    other_type: str | None = None,
+    other_project_id: str | None = None,
+    selected: str | None = None,
+    q: str | None = None,
+) -> dict:
+    """Finds the record to link an artefact to: use it to get the `other_id` that `create_artefact_link` needs.
+
+    Without `other_type` it searches every record type a usable link type can
+    reach from this artefact (a short search, at least two characters of `q`).
+    With `other_type` it searches that type, optionally narrowed by the
+    options chosen at the type's browse levels (see
+    `list_artefact_link_browse`). Only records the caller may view are
+    returned, and the artefact itself and archived records are left out.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The artefact's type, for example "requirement".
+        artefact_id: The artefact's UUID.
+        other_type: Optional artefact type to search; omit to search all.
+        other_project_id: Optional UUID of a parent or child project (from
+            `list_link_candidate_projects`) to search instead.
+        selected: Optional browse choices narrowing `other_type`, as
+            `level:option,level:option` using `key` and an option `id` from
+            `list_artefact_link_browse`.
+        q: Text the record's label must contain (required, 2+ characters,
+            when `other_type` is omitted).
+
+    Returns:
+        `items`, each with `type`, `type_label`, `id` (the `other_id` to use),
+        `label`, `status` and `project_id`, and `truncated` (true when more
+        matched than were returned: narrow the search).
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    params: dict[str, str] = {}
+    if other_type is not None:
+        _require_artefact_type(other_type, "other_type")
+        params["other_type"] = other_type
+    if other_project_id is not None:
+        params["other_project_id"] = _require_uuid(other_project_id, "other_project_id")
+    if selected:
+        params["selected"] = selected
+    if q:
+        params["q"] = q
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-candidates", params=params
+    )
+    return response.json()
+
+
+@mcp.tool
+async def list_artefact_link_browse(
+    project_id: str | None = None,
+    *,
+    artefact_type: str,
+    artefact_id: str,
+    other_type: str,
+    other_project_id: str | None = None,
+    selected: str | None = None,
+    q: str | None = None,
+) -> dict | None:
+    """Lists the next browse level of a record type, to narrow `search_artefact_link_candidates` step by step.
+
+    Each record type declares ordered levels (a compliance clause:
+    standard, then version, then requirement; a requirement: component, then
+    category; many types: a status or type). Call it with no `selected` for
+    the first level, then again with the choices made so far for the next,
+    until it returns null (every level chosen).
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The artefact's type being linked from.
+        artefact_id: The artefact's UUID.
+        other_type: The record type being browsed.
+        other_project_id: Optional UUID of a parent or child project to browse.
+        selected: Choices so far as `key:option_id,key:option_id`, in level
+            order, using `key` and option `id` values returned by this tool.
+        q: Optional text the options' labels must contain.
+
+    Returns:
+        The next level: `key`, `label`, `options` (each `id` and `label`) and
+        `truncated`; or null when the chain is complete or the type has no
+        records you can view.
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    _require_artefact_type(other_type, "other_type")
+    params: dict[str, str] = {"other_type": other_type}
+    if other_project_id is not None:
+        params["other_project_id"] = _require_uuid(other_project_id, "other_project_id")
+    if selected:
+        params["selected"] = selected
+    if q:
+        params["q"] = q
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/link-browse", params=params
+    )
+    return response.json()
+
+
+@mcp.tool
 async def list_link_candidate_projects(project_id: str | None = None) -> dict:
     """Lists the projects a link made from this project may reach: itself, its parent projects and its child projects that the caller can open.
 

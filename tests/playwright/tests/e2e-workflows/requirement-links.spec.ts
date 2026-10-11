@@ -18,7 +18,7 @@ import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } 
  *
  * Links are shown and edited in the shared Links panel (`ArtefactLinksPanel`,
  * October 2026 platform enhancements Phase 6): "Add link" opens a dialog (record
- * type, relationship, searchable record) and removing a link goes through a
+ * finder, then the relationship) and removing a link goes through a
  * `ConfirmDialog` (Tier 1). A link's phrase is also one of the dialog's own
  * `<option>` labels, so every assertion below is scoped to the panel's rendered
  * rows (their badge, or the real `<a>`) rather than a bare `getByText`.
@@ -34,11 +34,12 @@ async function addRequirementLink(page: import("@playwright/test").Page, relatio
   await linksPanel(page).getByRole("button", { name: "Add link" }).click();
   const modal = page.getByRole("dialog", { name: "Add a link" });
   await modal.getByLabel("Link to").selectOption({ label: "Requirement" });
-  await modal.getByLabel("Relationship").selectOption({ label: relationship });
   await modal.getByLabel("Search").fill(target);
   const targetSelect = modal.getByLabel("Record");
   await expect(targetSelect.locator("option", { hasText: target })).toHaveCount(1);
   await targetSelect.selectOption({ label: await targetSelect.locator("option", { hasText: target }).innerText() });
+  // The relationship is chosen after the record, from those usable for it.
+  await modal.getByLabel("Relationship").selectOption({ label: relationship });
   await modal.getByRole("button", { name: "Add link" }).click();
   await expect(modal).not.toBeVisible();
 }

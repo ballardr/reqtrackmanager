@@ -21,7 +21,6 @@ import {
   withRouter,
   withStatefulAuth,
   withTerminology,
-  withThemeProvider,
   withToast,
 } from "../testing/storybook-helpers";
 import { RequirementDetailPage } from "./RequirementDetailPage";
@@ -56,19 +55,8 @@ function mockRequirementDetailApis(
     orgResources?: FileAsset[];
     orgUsers?: OrgUser[];
     orgUserSearchMembers?: OrgUser[];
-    // No module enabled for this fixture's org — no module-contributed
-    // Links-card sections (compliance-module-plan.md Phase 34's
-    // `requirementDetailSections`; see `RequirementTraceabilityLinksSection
-    // .stories.tsx` for the Compliance module's own populated case,
-    // mirroring `ProjectOverviewPage.stories.tsx`'s identical convention
-    // for `projectOverviewTiles`).
+    // Modules enabled for the project (`GET /enabled-modules`); none by default.
     enabledModules?: ModuleNavEntry[];
-    // The Compliance module's own `RequirementTraceabilityLinksSection`
-    // (rendered when `enabledModules` includes it) fetches these two of
-    // its own endpoints; both default empty the same way `links` above
-    // does.
-    complianceTraceabilityLinks?: unknown[];
-    complianceStandards?: unknown[];
     // Platform review 2026-09, Phase 8 — the org's own
     // `force_require_change_request_for_approved_links`, fetched via a
     // bare `GET /orgs/{id}` (readable by any org member). Defaults false,
@@ -97,6 +85,7 @@ function mockRequirementDetailApis(
     if (path.endsWith("/activity")) return [];
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-graph`)) return extra.linkGraph ?? buildGraph();
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-types`)) return extra.linkOptions ?? [];
+    if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-browse`)) return null;
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-candidates`)) {
       return { items: extra.linkCandidates ?? [], truncated: false };
     }
@@ -118,8 +107,6 @@ function mockRequirementDetailApis(
       return { force_require_change_request_for_approved_links: extra.orgForceLinksLocked ?? false };
     }
     if (path.endsWith("/enabled-modules")) return extra.enabledModules ?? [];
-    if (path.endsWith("/traceability-links")) return extra.complianceTraceabilityLinks ?? [];
-    if (path.includes("/modules/compliance/standards")) return extra.complianceStandards ?? [];
     if (path.endsWith("/resources")) return extra.orgResources ?? [];
     if (path.includes("/users/search")) {
       const needle = new URLSearchParams(path.split("?")[1]).get("q")?.toLowerCase() ?? "";
@@ -143,12 +130,6 @@ const meta: Meta<typeof RequirementDetailPage> = {
       "/projects/:projectId/requirements/:requirementId"
     ),
     withToast(),
-    // The two "...Compliance Link..." stories below render Compliance's
-    // `RequirementTraceabilityLinksSection`/`ComplianceRequirementLinkPickerTab`
-    // contributions, which now call `useTheme()` via `useEntityAccentColor`
-    // (`modules/entityAccentColor.ts`) — see `withThemeProvider`'s own
-    // docstring for why the global Storybook theme toggle alone isn't enough.
-    withThemeProvider(),
   ],
 };
 export default meta;
@@ -400,30 +381,27 @@ export const LinksPanelPopulated: Story = {
   },
 };
 
-/** Every installed module's own contributed section (`modules/types.ts`'s `requirementDetailSections`,
- * compliance-module-plan.md Phase 34) renders in the aside under the Links panel — this page has no
- * notion of what a "compliance requirement" is and just renders whatever the Compliance module hands
- * it once the project reports that module enabled. See `modules/compliance/` for that component's
- * own dedicated coverage; this story only pins that it renders inside this page. */
-export const AsideWithComplianceLink: Story = {
+/** A requirement's link to a Compliance standard's clause is an ordinary link: the shared panel lists it
+ * under the clause's type, labelled with the standard, version and clause, and this page needs no
+ * Compliance-specific section. */
+export const LinksPanelShowsAComplianceClauseLink: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
-      enabledModules: [{ module_key: "compliance", name: "Compliance", frontend_manifest: null }],
-      complianceTraceabilityLinks: [
-        {
-          id: "trace-link-1", requirement_id: REQUIREMENT_ID, compliance_requirement_id: "creq-1", link_type_id: "lt-1",
-          display_name: "Derives from", compliance_requirement_reference: "A.5.15", compliance_requirement_name: "Logical access control",
-          standard_id: "standard-1", standard_reference: "ISO-27001", standard_name: "Corporate Security Standard",
-          standard_version_id: "version-1", standard_version_label: "2.0", created_by: "user-1", created_at: "2026-01-01T00:00:00Z",
-        },
-      ],
+      linkGraph: buildGraph([[
+        buildGraphNode({
+          type: "compliance_requirement", id: "clause-1", type_label: "Compliance standard clause",
+          label: "ISO-27001 v2.0 · A.5.15 Logical access control", status: "published", project_id: null,
+        }),
+        { id: "clause-link", phrase: "Derives from", flow: "upstream", outgoing: true },
+      ]]),
     });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText("Compliance requirement links")).toBeInTheDocument());
-    await expect(canvas.getByText(/A\.5\.15 Logical access control/)).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Compliance standard clause" })).toBeInTheDocument());
+    await expect(canvas.getByText("ISO-27001 v2.0 · A.5.15 Logical access control")).toBeInTheDocument();
     await expect(canvas.getByText("Derives from", { selector: "span.badge" })).toBeInTheDocument();
+    await expect(canvas.getByText("Published")).toBeInTheDocument();
   },
 };
 
@@ -441,10 +419,11 @@ export const AddLink: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
     const modal = within(document.body).getByRole("dialog", { name: "Add a link" });
-    // One record type and one relationship are offered, so both are preselected.
-    await waitFor(() => expect(within(modal).getByLabelText("Relationship")).toHaveValue("lt1:outgoing"));
+    // One record type is offered, so it is preselected and its records are listed; the relationship
+    // is chosen after the record and preselected when only one is usable.
     await within(modal).findByRole("option", { name: /AUTH-LOG-002/ });
     await userEvent.selectOptions(within(modal).getByLabelText("Record"), "requirement-2");
+    await waitFor(() => expect(within(modal).getByLabelText("Relationship")).toHaveValue("lt1:outgoing"));
     await userEvent.click(within(modal).getByRole("button", { name: "Add link" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(

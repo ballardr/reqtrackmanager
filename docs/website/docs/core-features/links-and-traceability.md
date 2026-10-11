@@ -93,7 +93,7 @@ flowchart TD
 - Each end follows its own project's rules: whether that kind of record is enabled there, your permissions there, the link types and rules that project offers, and the [change request rule for links](requirements-management.md#traceability-links).
 - A link type a child project defined can't be used on a link whose other end is in the parent. The parent's types and the organisation's can.
 - Narrowing a link type's setting never deletes a link already made: those links stay, marked as no longer permitted by their link type, and the admin is told how many first. If a project is moved so that the two projects are no longer parent and child, the link is hidden until they are again.
-- A project export doesn't include these links (it would carry another project's content), and says how many it left out.
+- A project export doesn't include these links (it would carry another project's content), and says how many it left out. A requirement's links to compliance clauses are included, and re-created on import when the target organisation has the same standard version.
 
 ## The Links panel
 
@@ -115,10 +115,15 @@ flowchart LR
 
 The same link reads correctly from all three pages, and any of them can add or remove it. On a narrow screen the panel moves below the page; on a wide one it sits to the right and can be collapsed (the choice is remembered for you).
 
-- **Add link** opens a dialog: choose the **kind of record**, the **relationship** (only link types that can join these two kinds of record are offered, after any restrictions, rules, hiding and the nested-project setting; "Related to" is preselected when it fits), then search for the **record**. When the project has a parent or child project, a **project** choice lets you link across them.
+- **Add link** opens a dialog. When the project has a parent or child project, a **project** choice lets you link across them. Then find the record with one finder: a **Search** box over a scope that narrows step by step.
+  - With nothing chosen, typing two or more characters searches **every kind of record** you can link to; each result is named with its kind.
+  - Choose a **kind of record** ("Link to") to search only that kind, or to list its records.
+  - Each kind can then be narrowed by its own steps, every one optional: a compliance clause by **Standard**, then **Version**, then **Requirement**; a requirement by **Component**, then **Category**; most others by a status or type. Changing an earlier step clears the later ones, and a long list of options has its own filter box.
+
+  Pick the **record**, then the **relationship**: only link types that can join these two kinds of record are offered, after any restrictions, rules, hiding and the nested-project setting, and "Related to" is preselected when it fits.
 | The Add a link dialog |
 | --- |
-| Choose the project, the kind of record, the relationship, then search for the record |
+| Choose the project, find the record (search, or narrow by kind and step), then the relationship |
 | ![The Add a link dialog open over a Decision, with Project, Link to, Relationship, Search and Record fields filled in to link a requirement](../../static/img/screenshots/links-add-dialog.png) |
 
 - **Remove** asks for confirmation and removes only the link.
@@ -126,9 +131,9 @@ The same link reads correctly from all three pages, and any of them can add or r
 - Links you can't see (a record you have no permission on, in a module that is off, or in a project you can't open) are not shown; the panel says how many were left out.
 - An approved requirement in a project that [requires a change request for links](requirements-management.md#traceability-links) shows the same panel, but adding or removing a link asks for a reason and creates a change request, and only requirements of that project can be proposed.
 - A record that belongs to the organisation rather than a project (an organisation strategy, say) shows the panel with a note instead: links are made from within a project.
-- Links from a requirement to **compliance standard requirements** are a separate list, shown under the Links panel when the Compliance module is on, with its own **Add link**.
+- A requirement's links to **compliance standard clauses** are ordinary links: they appear in the panel under **Compliance standard clause** (when the Compliance module is on), are found with the finder above (search the standard, version or clause text, or narrow Standard > Version > Requirement), and follow the same rules as any other link. A clause belongs to the organisation, so it can be linked from a project but not reached through a parent project. Opening one goes to the Standards page.
 
-You need permission to manage the kind of record you are linking from, and to view the one you link to. API clients and AI assistants use the same rules through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
+You need permission to manage the kind of record you are linking from, and to view the one you link to. API clients and AI assistants use the same rules through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `search_artefact_link_candidates`, `list_artefact_link_browse`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
 
 ## Deleting a link type that is in use
 

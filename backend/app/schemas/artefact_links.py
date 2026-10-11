@@ -104,7 +104,25 @@ class ArtefactLinkCandidate(BaseModel):
 
 
 class ArtefactLinkCandidatesOut(BaseModel):
-    """Link targets of one artefact type, best match first; `truncated` when more matched than `limit`."""
+    """Link targets found by the finder (one type, or every linkable type), ordered by label;
+    `truncated` when more matched than were returned."""
 
     items: list[ArtefactLinkCandidate]
+    truncated: bool
+
+
+class ArtefactLinkBrowseOption(BaseModel):
+    """One choice at a browse level (a standard, a version, a status, a component)."""
+
+    id: str
+    label: str
+
+
+class ArtefactLinkBrowseStepOut(BaseModel):
+    """The next level of a type's scoped finder: its key and label, the options the earlier
+    choices leave (capped; `truncated` when more matched), for the dialog to render generically."""
+
+    key: str
+    label: str
+    options: list[ArtefactLinkBrowseOption]
     truncated: bool

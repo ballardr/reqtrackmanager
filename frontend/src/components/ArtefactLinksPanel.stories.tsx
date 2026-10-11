@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import type { ArtefactLinkFinderParams } from "../api/artefactLinks";
 import {
-  buildCandidate, buildGraph, buildGraphNode, buildLinksApi, buildOption, buildRelatedProject, LINKS_ARTEFACT_ID,
-  LINKS_PROJECT_ID,
+  buildBrowseStep, buildCandidate, buildGraph, buildGraphNode, buildLinksApi, buildOption, buildRelatedProject,
+  LINKS_ARTEFACT_ID, LINKS_PROJECT_ID,
 } from "../testing/artefactLinksFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ArtefactLinksPanel } from "./ArtefactLinksPanel";
@@ -167,11 +168,12 @@ export const AddsALinkChoosingRecordTypeRelationshipAndRecord: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
     const dialog = within(await within(document.body).findByRole("dialog"));
     await userEvent.selectOptions(await dialog.findByLabelText("Link to"), "decision");
-    // "Related to" is the default relationship when offered.
+    await dialog.findByRole("option", { name: "DEC-002 Use Redis" });
+    // The relationship is chosen after the record, from those usable for it; "Related to" is the default.
+    await expect(dialog.queryByLabelText("Relationship")).not.toBeInTheDocument();
+    await userEvent.selectOptions(dialog.getByLabelText("Record"), "dec-2");
     await waitFor(() => expect(dialog.getByLabelText("Relationship")).toHaveValue("lt-related:outgoing"));
     await userEvent.selectOptions(dialog.getByLabelText("Relationship"), "lt-impl:incoming");
-    await dialog.findByRole("option", { name: "DEC-002 Use Redis" });
-    await userEvent.selectOptions(dialog.getByLabelText("Record"), "dec-2");
     await userEvent.click(dialog.getByRole("button", { name: "Add link" }));
     await waitFor(() =>
       expect(args.api!.create).toHaveBeenCalledWith(LINKS_PROJECT_ID, "requirement", LINKS_ARTEFACT_ID, {
@@ -179,6 +181,128 @@ export const AddsALinkChoosingRecordTypeRelationshipAndRecord: Story = {
       }),
     );
     await waitFor(() => expect(args.onChanged).toHaveBeenCalled());
+  },
+};
+
+/** The finder searches every record type from two characters and labels each result with its type. */
+export const SearchesEveryRecordTypeFromTwoCharacters: Story = {
+  args: {
+    api: buildLinksApi({
+      candidates: fn(async (_p: string, _t: string, _i: string, params: ArtefactLinkFinderParams) => ({
+        items: params.otherType === undefined && params.query === "re"
+          ? [buildCandidate(), buildCandidate({ type: "pain_point", type_label: "Pain Point", id: "pp-9", label: "Reports are slow" })]
+          : [],
+        truncated: false,
+      })),
+    }),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    // Nothing is searched until a type is chosen or two characters are typed.
+    await expect(await dialog.findByText(/Type at least two characters to search every record type/)).toBeInTheDocument();
+    await expect(args.api!.candidates).not.toHaveBeenCalled();
+    await userEvent.type(dialog.getByLabelText("Search"), "r");
+    await expect(args.api!.candidates).not.toHaveBeenCalled();
+    await userEvent.type(dialog.getByLabelText("Search"), "e");
+    await dialog.findByRole("option", { name: "Decision: DEC-002 Use Redis" });
+    await expect(dialog.getByRole("option", { name: "Pain Point: Reports are slow" })).toBeInTheDocument();
+    await expect(args.api!.candidates).toHaveBeenLastCalledWith(LINKS_PROJECT_ID, "requirement", LINKS_ARTEFACT_ID, {
+      otherType: undefined, otherProjectId: undefined, selected: undefined, query: "re",
+    });
+    // Picking a result offers only the relationships usable for its type.
+    await userEvent.selectOptions(dialog.getByLabelText("Record"), "pp-9");
+    await waitFor(() => expect(dialog.getByLabelText("Relationship")).toHaveValue("lt-related:outgoing"));
+  },
+};
+
+/** A type's browse levels narrow the search step by step; changing an earlier level resets the later ones. */
+export const NarrowsATypeByItsBrowseLevels: Story = {
+  args: {
+    api: buildLinksApi({
+      options: fn(async () => [buildOption({ other_types: [{ type: "compliance_requirement", label: "Compliance standard clause" }] })]),
+      browse: fn(async (_p: string, _t: string, _i: string, params: ArtefactLinkFinderParams) => {
+        const chosen = params.selected ?? [];
+        if (chosen.length === 0) {
+          return buildBrowseStep({
+            key: "standard", label: "Standard",
+            options: [{ id: "std-1", label: "ISO-27001 Information security" }, { id: "std-2", label: "SOC-2 Trust services" }],
+          });
+        }
+        if (chosen.length === 1) {
+          return buildBrowseStep({
+            key: "version", label: "Version",
+            options: [{ id: `ver-${chosen[0][1]}`, label: "v2.0" }],
+          });
+        }
+        return null;
+      }),
+      candidates: fn(async () => ({
+        items: [buildCandidate({
+          type: "compliance_requirement", type_label: "Compliance standard clause", id: "clause-1",
+          label: "ISO-27001 v2.0 · A.5.15 Logical access control", project_id: null,
+        })],
+        truncated: false,
+      })),
+    }),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    // One type is offered, so it is preselected and its first level appears.
+    await userEvent.selectOptions(await dialog.findByLabelText("Standard"), "std-1");
+    await userEvent.selectOptions(await dialog.findByLabelText("Version"), "ver-std-1");
+    await waitFor(() =>
+      expect(args.api!.candidates).toHaveBeenLastCalledWith(LINKS_PROJECT_ID, "requirement", LINKS_ARTEFACT_ID, {
+        otherType: "compliance_requirement", otherProjectId: undefined,
+        selected: [["standard", "std-1"], ["version", "ver-std-1"]], query: undefined,
+      }),
+    );
+    // Changing the standard drops the version choice and offers the new standard's versions.
+    await userEvent.selectOptions(dialog.getByLabelText("Standard"), "std-2");
+    await waitFor(() => expect(dialog.getByLabelText("Version")).toHaveValue(""));
+    await expect(within(dialog.getByLabelText("Version")).getByRole("option", { name: "v2.0" })).toHaveValue("ver-std-2");
+    // Back to "Any standard" removes the later level altogether.
+    await userEvent.selectOptions(dialog.getByLabelText("Standard"), "");
+    await waitFor(() => expect(dialog.queryByLabelText("Version")).not.toBeInTheDocument());
+    // The record is chosen from the narrowed results; the relationship follows.
+    await userEvent.selectOptions(dialog.getByLabelText("Record"), "clause-1");
+    await waitFor(() => expect(dialog.getByLabelText("Relationship")).toHaveValue("lt-related:outgoing"));
+    await userEvent.click(dialog.getByRole("button", { name: "Add link" }));
+    await waitFor(() =>
+      expect(args.api!.create).toHaveBeenCalledWith(LINKS_PROJECT_ID, "requirement", LINKS_ARTEFACT_ID, {
+        link_type_id: "lt-related", direction: "outgoing", other_type: "compliance_requirement", other_id: "clause-1",
+        other_project_id: undefined,
+      }),
+    );
+  },
+};
+
+/** A long level offers its own filter so a long list (all standards, all components) is itself searchable. */
+export const FiltersALongBrowseLevel: Story = {
+  args: {
+    api: buildLinksApi({
+      options: fn(async () => [buildOption({ other_types: [{ type: "requirement", label: "Requirement" }] })]),
+      browse: fn(async (_p: string, _t: string, _i: string, params: ArtefactLinkFinderParams) =>
+        buildBrowseStep({
+          key: "component", label: "Component", truncated: true,
+          options: params.query ? [{ id: "c-7", label: "Navigation unit" }] : [{ id: "c-1", label: "Airframe" }],
+        })),
+    }),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await userEvent.type(await dialog.findByLabelText("Filter component options"), "nav");
+    await dialog.findByRole("option", { name: "Navigation unit" });
+    await expect(args.api!.browse).toHaveBeenLastCalledWith(
+      LINKS_PROJECT_ID, "requirement", LINKS_ARTEFACT_ID,
+      expect.objectContaining({ otherType: "requirement", query: "nav" }),
+    );
+    await expect(dialog.getByText(/Only the first options are shown/)).toBeInTheDocument();
   },
 };
 

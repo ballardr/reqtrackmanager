@@ -119,7 +119,7 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
     links_by_req: dict[UUID, list[str]] = {}
     if req_ids:
         # Requirement-to-requirement traceability links only — filtering on
-        # `source_type == REQUIREMENT` excludes untyped action links, which
+        # `source_type`/`target_type == REQUIREMENT` excludes untyped action links, which
         # also live in `artefact_links` but were never part of this CSV's
         # links column (an action's source is always a `RequirementAction`,
         # never a `Requirement`).
@@ -127,6 +127,7 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
             db.scalars(
                 select(ArtefactLink).where(
                     ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids),
+                    ArtefactLink.target_type == ArtefactType.REQUIREMENT,  # a decision or clause has no requirement code
                     ArtefactLink.source_project_id.is_(None),  # never another project's requirement code
                 )
             ).all()

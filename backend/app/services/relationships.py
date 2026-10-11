@@ -46,7 +46,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.relationship import ArtefactLink
@@ -292,3 +292,25 @@ def delete_link(db: Session, link: ArtefactLink) -> None:
     """Deletes an `ArtefactLink` row. Does not commit — same convention as
     `create_link` above."""
     db.delete(link)
+
+
+def delete_links_for_artefacts(db: Session, artefact_type: str, artefact_ids: Sequence[uuid.UUID]) -> int:
+    """Deletes every `ArtefactLink` touching any of `artefact_ids` of `artefact_type`, in
+    either direction and across projects, for an owner that hard-deletes records (most
+    artefacts are only ever archived). Links are polymorphic, so no foreign key does this
+    when the record goes. Does not commit.
+
+    Returns:
+        The number of links deleted.
+    """
+    if not artefact_ids:
+        return 0
+    result = db.execute(
+        delete(ArtefactLink).where(
+            or_(
+                (ArtefactLink.source_type == artefact_type) & ArtefactLink.source_id.in_(artefact_ids),
+                (ArtefactLink.target_type == artefact_type) & ArtefactLink.target_id.in_(artefact_ids),
+            )
+        )
+    )
+    return result.rowcount or 0

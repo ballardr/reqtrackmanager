@@ -7,7 +7,8 @@ targets without importing the models.
 
 Responsibilities:
 - Build an `ArtefactSummary` (name, status, archived flag, owner) per record
-  from its current version.
+  from its current version, with the type (Persona, Stakeholder) or status (Need)
+  facet the link finder's browse level reads.
 - Offer a one-query batch lookup scoped to a viewing project
   (`get_many_in_project`) that applies this module's visibility rules.
 
@@ -33,16 +34,21 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.modules.registry import ArtefactSummary, ArtefactSummaryProvider
+from app.modules.registry import ArtefactSummary, ArtefactSummaryProvider, BrowseLevel
 from app.modules.stakeholders.models import (
     Persona,
+    PersonaTypeDefinition,
     PersonaVersion,
+    ProjectPersonaType,
+    ProjectStakeholderType,
     Stakeholder,
     StakeholderNeed,
     StakeholderNeedVersion,
+    StakeholderTypeDefinition,
     StakeholderVersion,
 )
 from app.modules.stakeholders.service import hidden_persona_ids, hidden_stakeholder_ids
+from app.services.summary_facets import status_facet, two_tier_type_facets
 
 ARTEFACT_TYPE_LABELS: dict[str, str] = {
     "persona": "Persona",
@@ -52,17 +58,22 @@ ARTEFACT_TYPE_LABELS: dict[str, str] = {
 
 
 def _provider(
-    model: Any, version_model: Any, fk_name: str, hidden_ids: Callable[[Session, UUID], set[UUID]] | None
+    model: Any, version_model: Any, fk_name: str, hidden_ids: Callable[[Session, UUID], set[UUID]] | None,
+    type_models: tuple[Any, Any] | None, levels: tuple[BrowseLevel, ...],
 ) -> ArtefactSummaryProvider:
     """Provider for a versioned record (`Persona`, `Stakeholder`, `StakeholderNeed`).
 
     Args:
         model: The record model (has `id`, `project_id`, `is_archived`, and
             `organization_id` when `hidden_ids` is given).
-        version_model: Its version model (has `name`, `status`, `valid_to`).
+        version_model: Its version model (has `name`, `status`, `valid_to`, and
+            `org_type_id`/`project_type_id` when `type_models` is given).
         fk_name: The version model's foreign-key attribute to the record.
         hidden_ids: `(db, project_id) -> ids` of org-owned records hidden from
             the project; `None` for a project-only record type.
+        type_models: `(organisation type model, project type model)` for a typed record
+            (gives the `type` facet); `None` for one classified by status alone.
+        levels: The type's finder levels, matching the facets built here.
 
     Returns:
         The provider.
@@ -70,11 +81,26 @@ def _provider(
     fk = getattr(version_model, fk_name)
     org_owned = hidden_ids is not None
 
-    def summary(row: Any, version: Any) -> ArtefactSummary:
-        return ArtefactSummary(
-            id=row.id, project_id=row.project_id, organization_id=getattr(row, "organization_id", None),
-            label=version.name, status=version.status.value, is_archived=row.is_archived,
+    def build(db: Session, pairs: Sequence[Any]) -> list[ArtefactSummary]:
+        types = (
+            two_tier_type_facets(
+                db, type_models[0], type_models[1],
+                org_type_ids=[v.org_type_id for _, v in pairs], project_type_ids=[v.project_type_id for _, v in pairs],
+            )
+            if type_models is not None else {}
         )
+        out = []
+        for row, version in pairs:
+            facets = {"status": status_facet(version.status.value)}
+            if type_models is not None:
+                facets["type"] = (
+                    types.get(("org", version.org_type_id)) or types.get(("project", version.project_type_id)) or ("", "")
+                )
+            out.append(ArtefactSummary(
+                id=row.id, project_id=row.project_id, organization_id=getattr(row, "organization_id", None),
+                label=version.name, status=version.status.value, is_archived=row.is_archived, facets=facets,
+            ))
+        return out
 
     def query(*conditions: Any):
         return select(model, version_model).join(version_model, fk == model.id).where(
@@ -83,7 +109,7 @@ def _provider(
 
     def get(db: Session, record_id: UUID) -> ArtefactSummary | None:
         pair = db.execute(query(model.id == record_id)).first()
-        return None if pair is None else summary(*pair)
+        return None if pair is None else build(db, [pair])[0]
 
     def visible_conditions(db: Session, project_id: UUID) -> Any:
         if not org_owned:
@@ -93,7 +119,7 @@ def _provider(
 
     def visible(db: Session, project_id: UUID, pairs: Sequence[Any]) -> list[ArtefactSummary]:
         hidden = hidden_ids(db, project_id) if hidden_ids is not None else set()
-        return [summary(*p) for p in pairs if p[0].id not in hidden]
+        return build(db, [p for p in pairs if p[0].id not in hidden])
 
     def list_for_project(db: Session, project_id: UUID) -> list[ArtefactSummary]:
         pairs = db.execute(query(visible_conditions(db, project_id), model.is_archived.is_(False))).all()
@@ -103,11 +129,21 @@ def _provider(
         pairs = db.execute(query(model.id.in_(ids), visible_conditions(db, project_id))).all()
         return visible(db, project_id, pairs)
 
-    return ArtefactSummaryProvider(get=get, list_for_project=list_for_project, get_many_in_project=get_many_in_project)
+    return ArtefactSummaryProvider(
+        get=get, list_for_project=list_for_project, get_many_in_project=get_many_in_project, browse_levels=levels,
+    )
 
 
 ARTEFACT_SUMMARY_PROVIDERS: dict[str, ArtefactSummaryProvider] = {
-    "persona": _provider(Persona, PersonaVersion, "persona_id", hidden_persona_ids),
-    "stakeholder": _provider(Stakeholder, StakeholderVersion, "stakeholder_id", hidden_stakeholder_ids),
-    "stakeholder_need": _provider(StakeholderNeed, StakeholderNeedVersion, "need_id", None),
+    "persona": _provider(
+        Persona, PersonaVersion, "persona_id", hidden_persona_ids, (PersonaTypeDefinition, ProjectPersonaType),
+        (BrowseLevel("type", "Persona type"),),
+    ),
+    "stakeholder": _provider(
+        Stakeholder, StakeholderVersion, "stakeholder_id", hidden_stakeholder_ids,
+        (StakeholderTypeDefinition, ProjectStakeholderType), (BrowseLevel("type", "Stakeholder type"),),
+    ),
+    "stakeholder_need": _provider(
+        StakeholderNeed, StakeholderNeedVersion, "need_id", None, None, (BrowseLevel("status", "Status"),)
+    ),
 }

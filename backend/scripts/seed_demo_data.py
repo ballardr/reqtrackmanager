@@ -1984,6 +1984,12 @@ def main() -> None:
 
     drone_compliance = assign_compliance_standard(h_pm, org["id"], drone["id"], airworthiness_standard["id"], airworthiness_version["id"])
     grant_compliance_officer(h_pm, drone["id"], demo_engineer["user_id"])
+    # A requirement traces to the standard clause it derives from as an ordinary link (Platform Enhancements
+    # Phase 6c): visible in the requirement's Links panel, found with the "Add a link" finder.
+    create_artefact_link(
+        h_pm, drone["id"], "requirement", remote_id_req["id"], link_type_id=default_link_types["Derives from"]["id"],
+        other_type="compliance_requirement", other_id=remote_id_compliance_req["id"],
+    )
 
     compliance_pcrs = list_compliance_requirements(h_pm, drone["id"], drone_compliance["id"])
     remote_id_pcr = next(p for p in compliance_pcrs if p["requirement_id"] == remote_id_compliance_req["id"])

@@ -71,6 +71,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
+from app.models.relationship import ArtefactLink
+from app.models.requirement import Requirement
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.compliance.enums import (
     ComplianceApplicability,
@@ -81,6 +84,7 @@ from app.modules.compliance.enums import (
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
+    ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT,
     ARTEFACT_TYPE_EVIDENCE,
     ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
     ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
@@ -103,6 +107,7 @@ from app.modules.compliance.models import (
 from app.modules.compliance.service import materialize_assessment_rows
 from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.link_type_scope import resolve_link_type_scope
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -1250,7 +1255,96 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         for r in e["revalidations"]:
             r["revalidated_by_email"] = email(r.pop("_revalidated_by"))
 
-    return {"compliance_project_compliances": project_compliances_json, "compliance_evidence": evidence_json}, file_assets_by_id
+    return {
+        "compliance_project_compliances": project_compliances_json, "compliance_evidence": evidence_json,
+        "compliance_requirement_links": _export_requirement_links(db, project),
+    }, file_assets_by_id
+
+
+def _export_requirement_links(db: Session, project: Project) -> list[dict[str, Any]]:
+    """The project's core requirements' links to standard clauses (the generic `ArtefactLink`s a
+    requirement has to a `compliance_requirement`), each naming the requirement by `unique_code`,
+    the clause by `(standard_reference, version_label, requirement_key)` and the link type by its
+    forward name, since no id means anything in another deployment."""
+    rows = db.execute(
+        select(ArtefactLink, Requirement.unique_code, ComplianceRequirement, ComplianceStandardVersion, ComplianceStandard, User.email)
+        .join(Requirement, Requirement.id == ArtefactLink.source_id)
+        .join(ComplianceRequirement, ComplianceRequirement.id == ArtefactLink.target_id)
+        .join(ComplianceStandardVersion, ComplianceStandardVersion.id == ComplianceRequirement.standard_version_id)
+        .join(ComplianceStandard, ComplianceStandard.id == ComplianceStandardVersion.standard_id)
+        .join(User, User.id == ArtefactLink.created_by)
+        .where(
+            ArtefactLink.source_type == "requirement", ArtefactLink.target_type == ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT,
+            Requirement.project_id == project.id, ArtefactLink.link_type_id.is_not(None),
+            ArtefactLink.source_project_id.is_(None),  # same-project only: a bundle never embeds another project's link
+        )
+        .order_by(Requirement.unique_code, ComplianceStandard.reference, ArtefactLink.created_at)
+    ).all()
+    type_ids = {link.link_type_id for link, *_ in rows}
+    forward_name = {
+        lt.id: lt.forward_name
+        for lt in db.scalars(select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.id.in_(type_ids)))
+    } if type_ids else {}
+    return [
+        {
+            "requirement_unique_code": code, "standard_reference": standard.reference,
+            "version_label": version.version_label, "requirement_key": _requirement_key(clause),
+            "link_type_forward_name": forward_name.get(link.link_type_id), "created_by_email": email,
+        }
+        for link, code, clause, version, standard, email in rows
+    ]
+
+
+def _import_requirement_links(
+    db: Session, project: Project, data: dict[str, Any], current_user: User, users: UserResolver,
+    warnings: BundleImportWarnings,
+) -> None:
+    """Recreates the bundle's requirement -> standard clause links, resolving each end in the target:
+    the requirement by `unique_code` within the project, the clause by `(standard_reference,
+    version_label, requirement_key)` within the organisation, the link type by forward name among those
+    usable in the project. A link whose end or type cannot be resolved is skipped with a warning (never
+    remapped to something else); an existing identical link is not duplicated."""
+    link_type_id_by_name = {
+        scoped.link_type.forward_name: scoped.link_type.id
+        for scoped in resolve_link_type_scope(db, project) if scoped.shadowed_by is None
+    }
+    for item in data.get("compliance_requirement_links", []):
+        code, reference = item["requirement_unique_code"], item["standard_reference"]
+        requirement_id = db.scalar(
+            select(Requirement.id).where(Requirement.project_id == project.id, Requirement.unique_code == code)
+        )
+        clause_id = db.scalar(
+            select(ComplianceRequirement.id)
+            .join(ComplianceStandardVersion, ComplianceStandardVersion.id == ComplianceRequirement.standard_version_id)
+            .join(ComplianceStandard, ComplianceStandard.id == ComplianceStandardVersion.standard_id)
+            .where(
+                ComplianceStandard.organization_id == project.organization_id, ComplianceStandard.reference == reference,
+                ComplianceStandardVersion.version_label == item["version_label"],
+                ComplianceRequirement.name == item["requirement_key"].split("|", 1)[-1],
+                ComplianceRequirement.reference.is_(None) if item["requirement_key"].startswith("|")
+                else ComplianceRequirement.reference == item["requirement_key"].split("|", 1)[0],
+            ).limit(1)
+        )
+        link_type_id = link_type_id_by_name.get(item.get("link_type_forward_name"))
+        if requirement_id is None or clause_id is None or link_type_id is None:
+            warnings.add(
+                f"Link from requirement {code} to {reference} v{item['version_label']} clause "
+                f"{item['requirement_key'].split('|', 1)[-1]!r} was skipped: the requirement, the clause or the "
+                f"link type ({item.get('link_type_forward_name')!r}) does not exist in the target."
+            )
+            continue
+        if relationships.get_link_between(
+            db, source_type="requirement", source_id=requirement_id, target_type=ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT,
+            target_id=clause_id, link_type_id=link_type_id,
+        ) is not None:
+            continue
+        relationships.create_link(
+            db, source_type="requirement", source_id=requirement_id, target_type=ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT,
+            target_id=clause_id, link_type_id=link_type_id,
+            created_by=users.resolve(item.get("created_by_email"), required=False, context="Requirement link creator")
+            or current_user.id,
+            enforce_rules=False,  # replaying existing data, not a new user-chosen link
+        )
 
 
 def import_project_data(
@@ -1482,3 +1576,5 @@ def import_project_data(
                     db.add(ComplianceReviewEvidenceLink(
                         evidence_id=evidence_id, review_id=review.id, linked_by=current_user.id, created_at=datetime.now(UTC)
                     ))
+
+    _import_requirement_links(db, project, data, current_user, users, warnings)

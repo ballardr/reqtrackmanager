@@ -88,12 +88,12 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       // Still draft — no change-request notice, and Add link works directly.
       await expect(linkModal.getByText(/requires link changes to go through a change request/i)).toHaveCount(0);
       await linkModal.getByLabel("Link to").selectOption({ label: "Requirement" });
-      await linkModal.getByLabel("Relationship").selectOption({ label: "Related to" });
       await linkModal.getByLabel("Search").fill(reqBName);
       const targetSelect = linkModal.getByLabel("Record");
       await expect(targetSelect.locator("option", { hasText: reqBName })).toHaveCount(1);
       const targetValue = await targetSelect.locator("option", { hasText: reqBName }).getAttribute("value");
       await targetSelect.selectOption(targetValue!);
+      await linkModal.getByLabel("Relationship").selectOption({ label: "Related to" });
       await linkModal.getByRole("button", { name: "Add link" }).click();
       await expect(linkModal).not.toBeVisible();
       await expect(page.getByRole("link", { name: reqBName })).toBeVisible();
@@ -166,12 +166,12 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
       const modal = page.getByRole("dialog", { name: "Add a link" });
       await expect(modal.getByText(/requires link changes to go through a change request/i)).toBeVisible();
-      await modal.getByLabel("Relationship").selectOption({ label: "Depends on" });
       await modal.getByLabel("Search").fill(reqCName);
       const targetSelect = modal.getByLabel("Record");
       await expect(targetSelect.locator("option", { hasText: reqCName })).toHaveCount(1);
       const targetValue = await targetSelect.locator("option", { hasText: reqCName }).getAttribute("value");
       await targetSelect.selectOption(targetValue!);
+      await modal.getByLabel("Relationship").selectOption({ label: "Depends on" });
       const addButton = modal.getByRole("button", { name: "Propose link" });
       await expect(addButton).toBeDisabled();
       await modal.getByLabel("Reason for change").fill("New dependency found during review.");

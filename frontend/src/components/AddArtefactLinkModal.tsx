@@ -1,27 +1,35 @@
 /**
  * Module: components/AddArtefactLinkModal
  *
- * The "Add a link" dialog of the shared Links panel (`ArtefactLinksPanel`): choose
- * where the other record lives (this project, or an ancestor or descendant), what
- * kind of record it is, how it relates, and which record. A Modal rather than an
- * inline row because the aside is narrow and the form has four dependent fields
+ * The "Add a link" dialog of the shared Links panel (`ArtefactLinksPanel`): one
+ * finder for the record to link to, then the relationship. A Modal rather than an
+ * inline row because the aside is narrow and the form has several dependent fields
  * (style guide: a create flow is a layer, not a reflow of the page).
  *
- * Everything offered comes from the server and is filtered there: the relationship
- * choices are the link types usable from this artefact (restrictions, artefact-type
- * rules, hiding and the nesting scope already applied), the record types are those
- * the chosen relationships can reach, and the records are the ones the user may see.
- * The server re-checks all of it when the link is created.
+ * The finder is a search box plus a scope that narrows step by step:
+ * - nothing chosen searches every linkable record type (two characters or more);
+ * - choosing a record type limits the search to that type and lists its records;
+ * - each browse level that type declares ("Standard" -> "Version" -> "Requirement",
+ *   "Component" -> "Category", "Status") then narrows further, each optional.
+ * Search and the cascade are one control used to different depth, so both are
+ * always available for every type, and no per-type code lives here: the levels
+ * arrive from the server (`api.browse`), declared by the type's owner.
+ *
+ * The relationship is chosen after the record, from the link types usable between
+ * this record and the chosen one. Everything offered is filtered by the server
+ * (restrictions, artefact-type rules, hiding, nesting scope, what the user may see),
+ * which re-checks it all when the link is created.
  *
  * In `changeRequest` mode (the page artefact is an approved requirement in a project
  * that needs a change request for link changes) only requirements of the same project
  * can be proposed, because that is what an `add_link` change request carries; the
  * dialog asks for the reason and hands the link to `changeRequest.onPropose`.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
-  ArtefactLinkCandidates, ArtefactLinksApi, ArtefactLinkTypeOption, LinkCandidateProject, NewArtefactLink,
+  ArtefactLinkBrowseStep, ArtefactLinkCandidate, ArtefactLinkCandidates, ArtefactLinksApi, ArtefactLinkTypeOption,
+  LinkCandidateProject, NewArtefactLink,
 } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -38,6 +46,16 @@ export interface LinksChangeRequestMode {
 
 const REQUIREMENT = "requirement";
 const SEARCH_DEBOUNCE_MS = 250;
+const GLOBAL_MIN_QUERY = 2;
+const LEVEL_FILTER_THRESHOLD = 12;
+
+/** One browse level of the chosen record type: what the server offered and what the user picked. */
+interface Level extends ArtefactLinkBrowseStep {
+  /** The chosen option id, or "" for "any". */
+  value: string;
+  /** Text typed into the level's own filter. */
+  filter: string;
+}
 
 function optionKey(option: ArtefactLinkTypeOption): string {
   return `${option.link_type_id}:${option.direction}`;
@@ -48,6 +66,10 @@ function defaultOptionKey(options: ArtefactLinkTypeOption[], otherType: string):
   const usable = options.filter((o) => o.other_types.some((t) => t.type === otherType));
   const related = usable.find((o) => o.forward_name === "Related to" && o.reverse_name === "Related to");
   return optionKey(related ?? usable[0] ?? ({ link_type_id: "", direction: "outgoing" } as ArtefactLinkTypeOption));
+}
+
+function chosenPairs(levels: Level[]): Array<[string, string]> {
+  return levels.filter((l) => l.value).map((l) => [l.key, l.value]);
 }
 
 export function AddArtefactLinkModal({
@@ -74,13 +96,16 @@ export function AddArtefactLinkModal({
   const [otherProjectId, setOtherProjectId] = useState("");
   const [options, setOptions] = useState<ArtefactLinkTypeOption[] | null>(null);
   const [otherType, setOtherType] = useState("");
-  const [chosenKey, setChosenKey] = useState("");
+  const [levels, setLevels] = useState<Level[]>([]);
   const [searchText, setSearchText] = useState("");
   // Tagged with the search it answers, so a slow reply for an earlier search is never shown for a later one.
   const [loaded, setLoaded] = useState<{ key: string; result: ArtefactLinkCandidates } | null>(null);
   const [targetId, setTargetId] = useState("");
+  const [chosenKey, setChosenKey] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const levelRequest = useRef(0);
+  const filterTimer = useRef<number | undefined>(undefined);
 
   // Where the other record may live. Not offered when proposing through a change request.
   useEffect(() => {
@@ -107,10 +132,10 @@ export function AddArtefactLinkModal({
           : result;
         setOptions(usable);
         const types = new Set(usable.flatMap((o) => o.other_types.map((t) => t.type)));
-        const only = changeRequest ? REQUIREMENT : types.size === 1 ? [...types][0] : "";
-        setOtherType(only);
-        setChosenKey(only ? defaultOptionKey(usable, only) : "");
+        setOtherType(changeRequest ? REQUIREMENT : types.size === 1 ? [...types][0] : "");
+        setLevels([]);
         setTargetId("");
+        setChosenKey("");
         setSearchText("");
       })
       .catch((err) => {
@@ -126,14 +151,74 @@ export function AddArtefactLinkModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, projectId, artefactType, artefactId, otherProjectId, changeRequest]);
 
-  // The records of the chosen type, narrowed by the search text.
-  const searchKey = `${otherProjectId}|${otherType}|${searchText.trim()}`;
+  /** Loads the level after `base` (the levels already chosen) and appends it; a stale reply is dropped. */
+  const loadNextLevel = useCallback(
+    (type: string, base: Level[]) => {
+      const request = ++levelRequest.current;
+      api.browse(projectId, artefactType, artefactId, {
+        otherType: type, otherProjectId: otherProjectId || undefined, selected: chosenPairs(base),
+      })
+        .then((step) => {
+          if (request === levelRequest.current) setLevels(step ? [...base, { ...step, value: "", filter: "" }] : base);
+        })
+        .catch(() => {
+          if (request === levelRequest.current) setLevels(base);
+        });
+    },
+    [api, projectId, artefactType, artefactId, otherProjectId],
+  );
+
+  // A new record type (or project) starts the cascade again from its first level; whatever changed
+  // the type has already cleared the old levels. Waits for the relationships, whose arrival is what
+  // settles the type, so a reply for a superseded project can never repopulate the levels.
   useEffect(() => {
-    if (!otherType) return;
+    levelRequest.current += 1;
+    if (options !== null && otherType) loadNextLevel(otherType, []);
+  }, [loadNextLevel, otherType, options]);
+
+  function chooseLevel(index: number, value: string) {
+    const base = levels.slice(0, index + 1).map((level, i) => (i === index ? { ...level, value } : level));
+    setLevels(base);
+    setTargetId("");
+    if (value) loadNextLevel(otherType, base);
+    else levelRequest.current += 1;
+  }
+
+  /** Re-reads one level's options narrowed by the text typed into its own filter. */
+  function filterLevel(index: number, text: string) {
+    setLevels((current) => current.map((level, i) => (i === index ? { ...level, filter: text } : level)));
+    window.clearTimeout(filterTimer.current);
+    filterTimer.current = window.setTimeout(() => {
+      api.browse(projectId, artefactType, artefactId, {
+        otherType, otherProjectId: otherProjectId || undefined, selected: chosenPairs(levels.slice(0, index)),
+        query: text.trim() || undefined,
+      })
+        .then((step) => {
+          if (!step) return;
+          setLevels((current) =>
+            current.map((level, i) => (i === index ? { ...level, options: step.options, truncated: step.truncated } : level)),
+          );
+        })
+        .catch(() => undefined);
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  // The records that match the scope and the search text. The chosen browse options travel as
+  // `level:option,level:option` so the effect depends on a value, not a fresh array each render.
+  const selectedKey = chosenPairs(levels).map(([key, option]) => `${key}:${option}`).join(",");
+  const trimmedSearch = searchText.trim();
+  const searchKey = `${otherProjectId}|${otherType}|${selectedKey}|${trimmedSearch}`;
+  const searchable = !!otherType || trimmedSearch.length >= GLOBAL_MIN_QUERY;
+  useEffect(() => {
+    if (!searchable) return;
     let active = true;
+    const selected = selectedKey
+      ? selectedKey.split(",").map((part): [string, string] => [part.slice(0, part.indexOf(":")), part.slice(part.indexOf(":") + 1)])
+      : undefined;
     const timer = window.setTimeout(() => {
       api.candidates(projectId, artefactType, artefactId, {
-        otherType, otherProjectId: otherProjectId || undefined, query: searchText.trim() || undefined,
+        otherType: otherType || undefined, otherProjectId: otherProjectId || undefined, selected,
+        query: trimmedSearch || undefined,
       })
         .then((result) => {
           if (active) setLoaded({ key: searchKey, result });
@@ -141,32 +226,37 @@ export function AddArtefactLinkModal({
         .catch(() => {
           if (active) setLoaded({ key: searchKey, result: { items: [], truncated: false } });
         });
-    }, searchText ? SEARCH_DEBOUNCE_MS : 0);
+    }, trimmedSearch ? SEARCH_DEBOUNCE_MS : 0);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [api, projectId, artefactType, artefactId, otherType, otherProjectId, searchText, searchKey]);
-  const candidates = otherType && loaded?.key === searchKey ? loaded.result : null;
+  }, [api, projectId, artefactType, artefactId, otherType, otherProjectId, selectedKey, trimmedSearch, searchKey, searchable]);
+  const candidates = searchable && loaded?.key === searchKey ? loaded.result : null;
 
   const typeChoices = useMemo(() => {
     const seen = new Map<string, string>();
     for (const option of options ?? []) for (const t of option.other_types) if (!seen.has(t.type)) seen.set(t.type, t.label);
     return [...seen].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
   }, [options]);
+
+  const target: ArtefactLinkCandidate | undefined = candidates?.items.find((c) => c.id === targetId);
   const relationshipChoices = useMemo(
     () => (options ?? [])
-      .filter((o) => o.other_types.some((t) => t.type === otherType))
+      .filter((o) => target && o.other_types.some((t) => t.type === target.type))
       .map((o) => ({ value: optionKey(o), label: o.phrase })),
-    [options, otherType],
+    [options, target],
   );
-  const chosen = (options ?? []).find((o) => optionKey(o) === chosenKey);
+  const effectiveKey = target
+    ? relationshipChoices.some((c) => c.value === chosenKey) ? chosenKey : defaultOptionKey(options ?? [], target.type)
+    : "";
+  const chosen = (options ?? []).find((o) => optionKey(o) === effectiveKey);
   const reasonMissing = !!changeRequest && !reason.trim();
 
   async function submit() {
-    if (!chosen || !targetId) return;
+    if (!chosen || !target) return;
     const link: NewArtefactLink = {
-      link_type_id: chosen.link_type_id, direction: chosen.direction, other_type: otherType, other_id: targetId,
+      link_type_id: chosen.link_type_id, direction: chosen.direction, other_type: target.type, other_id: target.id,
       other_project_id: otherProjectId || undefined,
     };
     setSaving(true);
@@ -201,29 +291,43 @@ export function AddArtefactLinkModal({
           />
         )}
         {options !== null && options.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.noTypes}</p>}
-        {typeChoices.length > 1 && (
-          <LabeledSelect
-            label={strings.artefactLinks.otherTypeLabel}
-            value={otherType}
-            placeholder={strings.artefactLinks.otherTypePlaceholder}
-            onChange={(value) => {
-              setOtherType(value);
-              setChosenKey(value ? defaultOptionKey(options ?? [], value) : "");
-              setTargetId("");
-              setSearchText("");
-            }}
-            options={typeChoices}
-          />
-        )}
-        {otherType && (
+        {options !== null && options.length > 0 && (
           <>
-            <LabeledSelect
-              label={strings.artefactLinks.linkTypeLabel}
-              value={chosenKey}
-              onChange={setChosenKey}
-              placeholder={null}
-              options={relationshipChoices}
-            />
+            {!changeRequest && typeChoices.length > 1 && (
+              <LabeledSelect
+                label={strings.artefactLinks.otherTypeLabel}
+                value={otherType}
+                placeholder={strings.artefactLinks.otherTypePlaceholder}
+                onChange={(value) => {
+                  setOtherType(value);
+                  setLevels([]);
+                  setTargetId("");
+                  setChosenKey("");
+                }}
+                options={typeChoices}
+              />
+            )}
+            {levels.map((level, index) => (
+              <div key={level.key} className="stack" style={{ gap: "0.25rem" }}>
+                {(level.truncated || level.options.length > LEVEL_FILTER_THRESHOLD || level.filter) && (
+                  <input
+                    className="input"
+                    aria-label={strings.artefactLinks.levelFilterLabel(level.label)}
+                    placeholder={strings.artefactLinks.levelFilterLabel(level.label)}
+                    value={level.filter}
+                    onChange={(e) => filterLevel(index, e.target.value)}
+                  />
+                )}
+                <LabeledSelect
+                  label={level.label}
+                  value={level.value}
+                  placeholder={strings.artefactLinks.levelAny(level.label)}
+                  onChange={(value) => chooseLevel(index, value)}
+                  options={level.options.map((o) => ({ value: o.id, label: o.label }))}
+                />
+                {level.truncated && <span className="text-muted">{strings.artefactLinks.levelTruncated}</span>}
+              </div>
+            ))}
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.artefactLinks.searchLabel}
               <input
@@ -237,18 +341,35 @@ export function AddArtefactLinkModal({
                 }}
               />
             </label>
-            <LabeledSelect
-              label={strings.artefactLinks.targetLabel}
-              value={targetId}
-              onChange={setTargetId}
-              placeholder={strings.artefactLinks.targetPlaceholder}
-              options={(candidates?.items ?? []).map((c) => ({ value: c.id, label: c.label }))}
-            />
+            {!searchable && <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.searchPrompt}</p>}
+            {searchable && (
+              <LabeledSelect
+                label={strings.artefactLinks.targetLabel}
+                value={targetId}
+                onChange={(value) => {
+                  setTargetId(value);
+                  setChosenKey("");
+                }}
+                placeholder={strings.artefactLinks.targetPlaceholder}
+                options={(candidates?.items ?? []).map((c) => ({
+                  value: c.id, label: otherType ? c.label : `${c.type_label}: ${c.label}`,
+                }))}
+              />
+            )}
             {candidates !== null && candidates.items.length === 0 && (
               <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.noCandidates}</p>
             )}
             {candidates?.truncated && (
               <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.candidatesTruncated}</p>
+            )}
+            {target && (
+              <LabeledSelect
+                label={strings.artefactLinks.linkTypeLabel}
+                value={effectiveKey}
+                onChange={setChosenKey}
+                placeholder={null}
+                options={relationshipChoices}
+              />
             )}
           </>
         )}
@@ -263,7 +384,7 @@ export function AddArtefactLinkModal({
         )}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onClose}>{strings.common.cancel}</button>
-          <button className="btn btn-primary" disabled={!chosen || !targetId || saving || reasonMissing} onClick={submit}>
+          <button className="btn btn-primary" disabled={!chosen || !target || saving || reasonMissing} onClick={submit}>
             {changeRequest ? strings.artefactLinks.submitAddViaChangeRequest : strings.artefactLinks.submitAdd}
           </button>
         </div>

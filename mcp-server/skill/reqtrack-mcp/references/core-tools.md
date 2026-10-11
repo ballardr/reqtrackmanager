@@ -80,6 +80,12 @@ Gets a requirement's full version history — every prior state it has been in.
 
 Parameters: `project_id` (string), `requirement_id*` (string)
 
+## `list_artefact_link_browse` (read)
+
+Lists the next browse level of a record type, to narrow `search_artefact_link_candidates` step by step.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `other_type*` (string), `other_project_id` (string), `selected` (string), `q` (string)
+
 ## `list_artefact_link_types` (read)
 
 Lists the link types usable from an artefact, and what can sit at the other end: use before `create_artefact_link`.
@@ -165,6 +171,12 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 Lists requirements in a project, with the same filters the Requirements page's filter panel offers.
 
 Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean)
+
+## `search_artefact_link_candidates` (read)
+
+Finds the record to link an artefact to: use it to get the `other_id` that `create_artefact_link` needs.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `other_type` (string), `other_project_id` (string), `selected` (string), `q` (string)
 
 ## `update_requirement` (write)
 

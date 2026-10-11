@@ -1178,6 +1178,10 @@ class ArtefactSummary:
         is_archived: Whether the artefact is archived.
         organization_id: The owning organisation for an org-owned record,
             else `None`.
+        facets: The classifications the record carries for the scoped finder
+            (Phase 6c), `{level key: (option id, option label)}`, e.g.
+            `{"status": ("draft", "Draft")}`. Read by facet-derived `BrowseLevel`s
+            and by the default narrowing; excluded from equality and hashing.
     """
 
     id: uuid.UUID
@@ -1186,6 +1190,39 @@ class ArtefactSummary:
     status: str | None = None
     is_archived: bool = False
     organization_id: uuid.UUID | None = None
+    facets: Mapping[str, tuple[str, str]] = field(default_factory=dict, compare=False, repr=False)
+
+
+@dataclass(frozen=True)
+class BrowseLevel:
+    """One step of the scoped finder an artefact type offers when choosing a link
+    target (Platform Enhancements Phase 6c): "Standard" -> "Version" -> "Requirement",
+    "Component" -> "Category", or just "Status".
+
+    A type's levels are ordered and each is optional: the user may stop after any
+    level and search what is left. The owning module declares them, so the dialog
+    needs no per-type code.
+
+    Attributes:
+        key: Stable identifier of the level within its type (`"standard"`). For a
+            facet-derived level it is also the key in `ArtefactSummary.facets`.
+        label: Singular display name shown above the picker (`"Standard"`).
+        list_options: `(db, project_id, selected, query) -> [(option_id, label)]`: the
+            options of this level given the options already chosen at earlier levels
+            (`selected`: `{level key: option id}`), narrowed by the label text `query`
+            (may be empty). `project_id` is the project whose records are being
+            searched. Called only after the caller has been authorised to view the
+            type in that project; it must compute its options from `selected` alone
+            and never from anything the client could widen. It returns every match
+            (callers cap what they send, but validate a selection against the full
+            list). `None` (the default) derives the options from the facet `key` of
+            the records the provider offers for the project, which suits any
+            classification the records themselves carry (a status, a type).
+    """
+
+    key: str
+    label: str
+    list_options: Callable[[Session, uuid.UUID, Mapping[str, str], str], list[tuple[str, str]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -1206,11 +1243,22 @@ class ArtefactSummaryProvider:
             "which of these are visible here" without knowing them. When
             omitted, callers fall back to `get` per id and keep records
             whose `project_id` equals the project.
+        browse_levels: The ordered `BrowseLevel`s of the type's scoped finder
+            (Phase 6c). Every registered type declares at least one; a backend
+            coverage test fails otherwise, so a new type cannot ship search-only.
+        filter: Optional `(db, project_id, selected, query, limit) -> summaries`
+            narrowing the records offered by the options chosen at the levels
+            (`selected`: `{level key: option id}`) and the label text `query`. Must
+            return only records `list_for_project` would offer, at most `limit` + 2
+            (one more shows the result was cut, one allows for the page's own record
+            being dropped). When omitted, the finder narrows by the summaries' `facets`.
     """
 
     get: Callable[[Session, uuid.UUID], ArtefactSummary | None]
     list_for_project: Callable[[Session, uuid.UUID], list[ArtefactSummary]]
     get_many_in_project: Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], list[ArtefactSummary]] | None = None
+    browse_levels: tuple[BrowseLevel, ...] = ()
+    filter: Callable[[Session, uuid.UUID, Mapping[str, str], str, int], list[ArtefactSummary]] | None = None
 
 
 @dataclass(frozen=True)

@@ -132,6 +132,7 @@ from app.modules.decisions.service import (
 from app.modules.registry import (
     ArtefactSummary,
     ArtefactSummaryProvider,
+    BrowseLevel,
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
@@ -236,11 +237,28 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
     ).all())
 
 
-def _decision_summary(decision) -> ArtefactSummary:
-    return ArtefactSummary(
-        id=decision.id, project_id=decision.project_id, label=f"{decision.unique_code} {decision.title}",
-        status=decision.status.value, is_archived=decision.is_archived,
+def _decision_summaries(db: Session, decisions) -> list[ArtefactSummary]:
+    """Summaries for `decisions`, resolving each one's decision type name (the finder's
+    `decision_type` facet) in one query."""
+    from sqlalchemy import select
+
+    from app.modules.decisions.models import DecisionTypeDefinition
+
+    type_ids = {d.decision_type_id for d in decisions}
+    names = (
+        dict(db.execute(select(DecisionTypeDefinition.id, DecisionTypeDefinition.name).where(
+            DecisionTypeDefinition.id.in_(type_ids)
+        )).all())
+        if type_ids else {}
     )
+    return [
+        ArtefactSummary(
+            id=d.id, project_id=d.project_id, label=f"{d.unique_code} {d.title}", status=d.status.value,
+            is_archived=d.is_archived,
+            facets={"decision_type": (str(d.decision_type_id), names.get(d.decision_type_id, ""))},
+        )
+        for d in decisions
+    ]
 
 
 def _get_decision_summary(db: Session, decision_id: UUID) -> ArtefactSummary | None:
@@ -248,7 +266,7 @@ def _get_decision_summary(db: Session, decision_id: UUID) -> ArtefactSummary | N
     from app.modules.decisions.models import Decision
 
     decision = db.get(Decision, decision_id)
-    return None if decision is None else _decision_summary(decision)
+    return None if decision is None else _decision_summaries(db, [decision])[0]
 
 
 def _get_many_decision_summaries_in_project(
@@ -261,7 +279,7 @@ def _get_many_decision_summaries_in_project(
     from app.modules.decisions.models import Decision
 
     rows = db.scalars(select(Decision).where(Decision.id.in_(decision_ids), Decision.project_id == project_id)).all()
-    return [_decision_summary(d) for d in rows]
+    return _decision_summaries(db, rows)
 
 
 def _list_decision_summaries(db: Session, project_id: UUID) -> list[ArtefactSummary]:
@@ -274,7 +292,7 @@ def _list_decision_summaries(db: Session, project_id: UUID) -> list[ArtefactSumm
         select(Decision).where(Decision.project_id == project_id, Decision.is_archived.is_(False))
         .order_by(Decision.unique_code)
     ).all()
-    return [_decision_summary(d) for d in rows]
+    return _decision_summaries(db, rows)
 
 
 # Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
@@ -312,6 +330,7 @@ MODULE_DEFINITION = ModuleDefinition(
         DECISION_ARTEFACT_TYPE: ArtefactSummaryProvider(
             get=_get_decision_summary, list_for_project=_list_decision_summaries,
             get_many_in_project=_get_many_decision_summaries_in_project,
+            browse_levels=(BrowseLevel("decision_type", "Decision type"),),
         ),
     },
     artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},

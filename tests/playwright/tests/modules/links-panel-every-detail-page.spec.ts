@@ -76,10 +76,10 @@ async function addLink(page: import("@playwright/test").Page, relationship: stri
   await links(page).getByRole("button", { name: "Add link" }).click();
   const dialog = page.getByRole("dialog", { name: "Add a link" });
   await dialog.getByLabel("Link to").selectOption({ label: record.type });
-  await dialog.getByLabel("Relationship").selectOption({ label: relationship });
   const recordSelect = dialog.getByLabel("Record");
   await expect(recordSelect.locator("option", { hasText: record.label })).toHaveCount(1);
   await recordSelect.selectOption({ label: record.label });
+  await dialog.getByLabel("Relationship").selectOption({ label: relationship });
   await dialog.getByRole("button", { name: "Add link" }).click();
   await expect(dialog).not.toBeVisible();
 }

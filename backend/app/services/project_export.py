@@ -215,6 +215,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         db.scalars(
             select(ArtefactLink).where(
                 ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids),
+                ArtefactLink.target_type == ArtefactType.REQUIREMENT,
                 ArtefactLink.source_project_id.is_(None),
             )
         )

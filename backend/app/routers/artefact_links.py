@@ -5,7 +5,10 @@ Links on any artefact of a project:
 - `GET .../{type}/{id}/link-graph`: the records linked to it out to a few hops,
   with edge direction resolved against the organisation's link-type settings.
 - `GET .../{type}/{id}/link-types`: the link types usable from it.
-- `GET .../{type}/{id}/link-candidates`: the records a link could point at, searchable.
+- `GET .../{type}/{id}/link-candidates`: the records a link could point at, found by a
+  bounded search over every linkable type or within one type narrowed by browse levels.
+- `GET .../{type}/{id}/link-browse`: the next browse level of a type (standard -> version
+  -> requirement, component -> category, status, ...) given the choices so far.
 - `POST .../{type}/{id}/links` and `DELETE .../{type}/{id}/links/{link_id}`:
   generic link authoring from either end, whatever the artefact types.
 
@@ -27,6 +30,8 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_artefact_type_label
 from app.schemas.artefact_links import (
+    ArtefactLinkBrowseOption,
+    ArtefactLinkBrowseStepOut,
     ArtefactLinkCandidate,
     ArtefactLinkCandidatesOut,
     ArtefactLinkCreate,
@@ -38,14 +43,13 @@ from app.schemas.artefact_links import (
 from app.schemas.link_graph import LinkGraphDirection, LinkGraphOut
 from app.schemas.link_type import ArtefactTypeOut
 from app.services.link_authoring import (
-    CANDIDATE_LIMIT,
     create_link_for_artefact,
     delete_link_for_artefact,
-    list_link_candidates,
     related_project_or_404,
     require_visible_artefact,
     usable_options,
 )
+from app.services.link_browse import CANDIDATE_LIMIT, next_browse_step, parse_selected, search_link_candidates
 from app.services.link_graph import MAX_DEPTH, build_link_graph
 from app.services.link_types import ensure_org_seeds
 from app.services.rbac import require_project_view
@@ -151,37 +155,83 @@ def list_artefact_link_candidates(
     project_id: UUID,
     artefact_type: str,
     artefact_id: UUID,
-    other_type: str = Query(..., description="The artefact type to search."),
+    other_type: str | None = Query(
+        None, description="The artefact type to search; omit to search every linkable type (needs `q`, 2+ characters)."
+    ),
     other_project_id: UUID | None = Query(None, description="Search this ancestor or descendant project instead."),
+    selected: str | None = Query(
+        None, max_length=2000, description="Browse choices narrowing `other_type`, as `level:option,level:option`."
+    ),
     q: str | None = Query(None, max_length=100, description="Text the record's label must contain."),
     limit: int = Query(CANDIDATE_LIMIT, ge=1, le=CANDIDATE_LIMIT),
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ) -> ArtefactLinkCandidatesOut:
-    """Records of `other_type` this artefact could be linked to (the add row's target picker).
+    """Records this artefact could be linked to (the add dialog's finder).
 
-    Only records the caller may view in the searched project are returned; the artefact
-    itself and archived records are left out. Whether the link type allows the pairing is
-    checked when the link is created.
+    Without `other_type` this is a bounded search across every type a usable link type can
+    reach: it needs at least two characters of `q`, takes a few records per type and merges
+    them. With `other_type` it searches that type, narrowed by `selected` (the options chosen
+    at the type's browse levels). Only records the caller may view in the searched project
+    are returned; the artefact itself and archived records are left out. Whether the link
+    type allows the pairing is checked when the link is created.
 
     Raises:
         HTTPException: 404 the artefact is not visible, `other_type` is unregistered, or
-            `other_project_id` is not a related project the caller can open.
+            `other_project_id` is not a related project the caller can open; 400 an invalid
+            `selected`.
     """
     project = _project_or_404(db, project_id)
-    rows, truncated = list_link_candidates(
+    found, truncated = search_link_candidates(
         db, project=project, user_id=current_user.id, artefact_type=artefact_type, artefact_id=artefact_id,
-        other_type=other_type, other_project_id=other_project_id, query=q, limit=limit,
+        other_type=other_type, other_project_id=other_project_id, selected=parse_selected(selected), query=q,
+        limit=limit,
     )
     return ArtefactLinkCandidatesOut(
         items=[
             ArtefactLinkCandidate(
-                type=other_type, id=r.id, type_label=get_artefact_type_label(other_type), label=r.label,
-                status=r.status, project_id=r.project_id,
+                type=c.type, id=c.summary.id, type_label=get_artefact_type_label(c.type), label=c.summary.label,
+                status=c.summary.status, project_id=c.summary.project_id,
             )
-            for r in rows
+            for c in found
         ],
         truncated=truncated,
+    )
+
+
+@router.get("/{artefact_type}/{artefact_id}/link-browse", response_model=ArtefactLinkBrowseStepOut | None)
+def get_artefact_link_browse_step(
+    project_id: UUID,
+    artefact_type: str,
+    artefact_id: UUID,
+    other_type: str = Query(..., description="The artefact type being browsed."),
+    other_project_id: UUID | None = Query(None, description="Browse this ancestor or descendant project instead."),
+    selected: str | None = Query(None, max_length=2000, description="Choices so far, as `level:option,level:option`."),
+    q: str | None = Query(None, max_length=100, description="Text the options' labels must contain."),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+) -> ArtefactLinkBrowseStepOut | None:
+    """The next browse level of `other_type` given the choices so far, or `null` once the chain
+    is complete (or the type is not offered or viewable there).
+
+    Each level is computed from the previous choices only and a choice is checked against what
+    its level offered, so a client cannot widen a level by naming an option from elsewhere.
+
+    Raises:
+        HTTPException: 404 the artefact is not visible, `other_type` is unregistered, or
+            `other_project_id` is not a related project the caller can open; 400 an invalid
+            `selected`.
+    """
+    project = _project_or_404(db, project_id)
+    step = next_browse_step(
+        db, project=project, user_id=current_user.id, artefact_type=artefact_type, artefact_id=artefact_id,
+        other_type=other_type, other_project_id=other_project_id, selected=parse_selected(selected), query=q or "",
+    )
+    if step is None:
+        return None
+    return ArtefactLinkBrowseStepOut(
+        key=step.key, label=step.label, truncated=step.truncated,
+        options=[ArtefactLinkBrowseOption(id=option_id, label=label) for option_id, label in step.options],
     )
 
 

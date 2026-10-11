@@ -7,8 +7,8 @@
 import { fn } from "storybook/test";
 
 import type {
-  ArtefactLinkCandidate, ArtefactLinksApi, ArtefactLinkTypeOption, LinkCandidateProject, LinkGraph, LinkGraphEdge,
-  LinkGraphNode,
+  ArtefactLinkBrowseStep, ArtefactLinkCandidate, ArtefactLinksApi, ArtefactLinkTypeOption, LinkCandidateProject,
+  LinkGraph, LinkGraphEdge, LinkGraphNode,
 } from "../api/artefactLinks";
 
 export const LINKS_PROJECT_ID = "project-1";
@@ -56,6 +56,14 @@ export function buildCandidate(overrides: Partial<ArtefactLinkCandidate> = {}): 
   };
 }
 
+/** One browse level of a record type's scoped finder, with the options the earlier choices leave. */
+export function buildBrowseStep(overrides: Partial<ArtefactLinkBrowseStep> = {}): ArtefactLinkBrowseStep {
+  return {
+    key: "status", label: "Status", options: [{ id: "draft", label: "Draft" }, { id: "active", label: "Active" }],
+    truncated: false, ...overrides,
+  };
+}
+
 export function buildRelatedProject(overrides: Partial<LinkCandidateProject> = {}): LinkCandidateProject {
   return {
     id: "project-parent", name: "Programme", relation: "ancestor", distance: 1, label: "Parent: Programme",
@@ -63,12 +71,14 @@ export function buildRelatedProject(overrides: Partial<LinkCandidateProject> = {
   };
 }
 
-/** A fake API whose calls are spies; `graph`, `options` and `candidates` default to small fixed answers. */
+/** A fake API whose calls are spies; `graph`, `options` and `candidates` default to small fixed answers
+ * and `browse` to "no levels" (a record type with nothing to narrow by). */
 export function buildLinksApi(overrides: Partial<ArtefactLinksApi> = {}): ArtefactLinksApi {
   return {
     graph: fn(async () => buildGraph()),
     options: fn(async () => [buildOption()]),
     candidates: fn(async () => ({ items: [buildCandidate()], truncated: false })),
+    browse: fn(async () => null),
     projects: fn(async () => ({ items: [], truncated: false })),
     create: fn(async () => undefined),
     remove: fn(async () => undefined),

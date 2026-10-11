@@ -33,7 +33,7 @@ from app.database import get_db
 from app.deps import get_current_user_or_module_frame
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceStandardVersionStatus
-from app.modules.compliance.models import ComplianceRequirement
+from app.modules.compliance.models import ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT, ComplianceRequirement
 from app.modules.compliance.router._shared import (
     _get_requirement_or_404,
     _get_version_or_404,
@@ -53,6 +53,7 @@ from app.schemas.project import MoveDirection
 from app.services.audit import log_event
 from app.services.ordering import move_ordered
 from app.services.rbac import require_permission
+from app.services.relationships import delete_links_for_artefacts
 
 router = APIRouter(tags=["compliance-org-version-requirements"])
 
@@ -318,10 +319,21 @@ def delete_requirement(
 ):
     """Deletes a requirement (and, via the database's own `ON DELETE
     CASCADE`, its child requirements and their required actions — no
-    manual cascade code needed, per Phase 5's schema). 409 if the owning
-    version is no longer a draft."""
+    manual cascade code needed, per Phase 5's schema). Also removes the
+    generic `ArtefactLink`s (a core requirement's traceability links) that
+    point at the requirement or any descendant, which no foreign key does
+    because links are polymorphic. 409 if the owning version is no longer a
+    draft."""
     _, version, requirement = _get_requirement_or_404(db, organization_id, standard_id, version_id, requirement_id)
     _require_draft_version(version)
+    doomed = [requirement.id]
+    frontier = [requirement.id]
+    while frontier:
+        frontier = list(db.scalars(
+            select(ComplianceRequirement.id).where(ComplianceRequirement.parent_requirement_id.in_(frontier))
+        ).all())
+        doomed.extend(frontier)
+    delete_links_for_artefacts(db, ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT, doomed)
     log_event(db, entity_type="compliance_requirement", entity_id=requirement.id, action="deleted",
               actor_id=current_user.id, organization_id=organization_id, detail={"name": requirement.name})
     db.delete(requirement)

@@ -288,9 +288,8 @@ A 3px coloured left-border (`.entity-accent-row` for a `<tr>`, `.entity-accent-c
 | Requirement | `--color-entity-requirement` (indigo) | `RequirementsPage` rows/cards; `RequirementDetailPage`'s own requirement-link rows |
 | Action | `--color-entity-action` (teal) | `ProjectActionsPage` rows; `RequirementDetailPage`'s linked-actions rows |
 | Change Request | `--color-entity-change-request` (violet) | `ChangeRequestsPage` rows/cards |
-| Compliance | `--color-entity-compliance` (terracotta) | `RequirementTraceabilityLinksSection.tsx`'s compliance-requirement-link rows |
 
-The main payoff is a *mixed* list, not a homogeneous one — e.g. a requirement's aside shows the Links panel directly above compliance-requirement links, and the accent is what lets a user tell which is which without reading the text. **This set is deliberately not pre-sized for the full future-modules roadmap** ([docs/plans/future-modules-2026-09-overview.md](plans/future-modules-2026-09-overview.md) envisions up to a dozen artefact kinds across ten modules) — hand-picking that many mutually distinguishable, colourblind-safe hues today, for entities that don't exist yet and whose actual list-row shape is unknown, would be designing against a guess. A future module that needs this adds one token + one `ENTITY_ACCENT_COLOR` entry when it actually ships; it does not redesign this mechanism.
+The main payoff is a *mixed* list, not a homogeneous one, where the accent lets a user tell kinds apart without reading the text. **This set is deliberately not pre-sized for the full future-modules roadmap** ([docs/plans/future-modules-2026-09-overview.md](plans/future-modules-2026-09-overview.md) envisions up to a dozen artefact kinds across ten modules) — hand-picking that many mutually distinguishable, colourblind-safe hues today, for entities that don't exist yet and whose actual list-row shape is unknown, would be designing against a guess. A future module that needs this adds one token + one `ENTITY_ACCENT_COLOR` entry when it actually ships; it does not redesign this mechanism.
 
 ## Pattern: action menu
 
@@ -691,8 +690,8 @@ flowchart LR
 ```
 
 - **One component per pattern.** A page does not list its own links. It passes its `artefactType` and id to the panel; the link kinds offered come from the server (restriction-, rule- and nesting-filtered), so a new artefact type or link type needs no UI change.
-- **Page-specific actions go in the `actions` slot**, not in a parallel list: a dedicated action with its own meaning (Supersede) is a button beside "Add link" (`SupersedeAction`). Links that are not between two project records (Compliance's links to standard requirements) stay a module section in the same aside.
-- **Add is a Modal** ("Add a link": kind of record, relationship, searchable record, project when one exists above or below), per Principle 3; remove is a Tier-1 confirmation; every mutation gives a Toast.
+- **Page-specific actions go in the `actions` slot**, not in a parallel list: a dedicated action with its own meaning (Supersede) is a button beside "Add link" (`SupersedeAction`).
+- **Add is a Modal** ("Add a link": project when one exists above or below, then one finder for the record, then the relationship), per Principle 3. The finder is a search box over a scope that narrows step by step: no record type searches every type, a chosen type lists its records, and each browse level the type declares ("Standard" > "Version" > "Requirement", "Component" > "Category", "Status") narrows further, every level optional and reset when an earlier one changes. Levels come from the server; the dialog has no per-type code, and a long level offers its own filter. remove is a Tier-1 confirmation; every mutation gives a Toast.
 - **Status comes from label maps**, never raw values: core types use their own maps, modules register `artefactStatusLabels` on their `TierAModuleDefinition`; a status with no label shows no badge.
 - **Why not `SidePanel`:** `SidePanel` is an overlay for row detail, not a persistent column.
 

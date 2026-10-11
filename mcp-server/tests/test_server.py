@@ -45,6 +45,7 @@ READ_ONLY_TOOLS = {
     "list_organizations", "list_projects", "get_project",
     "list_requirements", "get_requirement", "get_requirement_history", "get_artefact_link_graph",
     "list_artefact_link_types", "list_link_candidate_projects",
+    "search_artefact_link_candidates", "list_artefact_link_browse",
     "list_change_requests", "get_change_request", "list_change_request_votes",
     "list_change_request_tasks", "list_change_request_comments",
     "list_requirement_comments", "list_notifications",
@@ -442,6 +443,24 @@ async def test_artefact_link_tools_round_trip_and_validate_arguments(admin_token
         assert {"requirement", "requirement_action"} <= {t["type"] for t in related["other_types"]}
         narrowed = (await client.call_tool("list_artefact_link_types", {**base, "other_type": "requirement"})).data
         assert any(o["phrase"] == "Related to" for o in narrowed)
+
+        # Finding the other record: a global search by text, one type narrowed by its browse levels.
+        found = (await client.call_tool("search_artefact_link_candidates", {**base, "q": "Link target"})).data
+        assert [(i["type"], i["id"]) for i in found["items"]] == [("requirement", ids[1])]
+        assert (await client.call_tool("search_artefact_link_candidates", {**base, "q": "L"})).data["items"] == []
+        level = (await client.call_tool("list_artefact_link_browse", {**base, "other_type": "requirement"})).data
+        assert level["key"] == "component" and level["options"]
+        narrowed_search = (await client.call_tool("search_artefact_link_candidates", {
+            **base, "other_type": "requirement", "selected": f"component:{level['options'][0]['id']}",
+        })).data
+        assert [i["id"] for i in narrowed_search["items"]] == [ids[1]]
+        for bad_call, bad_args in (
+            ("search_artefact_link_candidates", {"other_type": "Bad Type"}),
+            ("list_artefact_link_browse", {"other_type": "../x"}),
+            ("list_artefact_link_browse", {"other_type": "requirement", "selected": "component:not-an-option"}),
+        ):
+            with pytest.raises(ToolError):
+                await client.call_tool(bad_call, {**base, **bad_args})
 
         created = (await client.call_tool("create_artefact_link", {
             **base, "link_type_id": related["link_type_id"], "direction": related["direction"],

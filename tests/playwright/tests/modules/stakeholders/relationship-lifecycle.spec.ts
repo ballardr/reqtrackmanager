@@ -28,10 +28,10 @@ async function addLink(
   await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
   const dialog = page.getByRole("dialog", { name: "Add a link" });
   await dialog.getByLabel("Link to").selectOption({ label: record.type });
-  await dialog.getByLabel("Relationship").selectOption({ label: relationship });
   const recordSelect = dialog.getByLabel("Record");
   await expect(recordSelect.locator("option", { hasText: record.label })).toHaveCount(1);
   await recordSelect.selectOption({ label: record.label });
+  await dialog.getByLabel("Relationship").selectOption({ label: relationship });
   await dialog.getByRole("button", { name: "Add link" }).click();
   await expect(page.getByText("Link added.").last()).toBeVisible();
   await expect(dialog).not.toBeVisible();
@@ -109,10 +109,24 @@ test.describe("Stakeholders & Personas: links", () => {
       })
     ).json();
 
+    const projectApi = `${API_BASE_URL}/api/v1/projects/${project.id}`;
+    const component = await (await page.request.post(`${projectApi}/components`, { headers: adminHeaders, data: { name: "Software", prefix: "SW" } })).json();
+    const category = await (
+      await page.request.post(`${projectApi}/categories`, { headers: adminHeaders, data: { name: "Performance", prefix: "PERF", component_id: component.id } })
+    ).json();
+    const requirementName = `Technician safety ${suffix}`;
+    await page.request.post(`${projectApi}/requirements`, {
+      headers: adminHeaders, data: { name: requirementName, component_id: component.id, category_id: category.id },
+    });
+
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
     await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
     const dialog = page.getByRole("dialog", { name: "Add a link" });
     await dialog.getByLabel("Link to").selectOption({ label: "Requirement" });
+    // The relationships offered are those usable between a Persona and the chosen record.
+    const recordSelect = dialog.getByLabel("Record");
+    await expect(recordSelect.locator("option", { hasText: requirementName })).toHaveCount(1);
+    await recordSelect.selectOption({ label: await recordSelect.locator("option", { hasText: requirementName }).innerText() });
     const relationship = dialog.getByLabel("Relationship");
     await expect(relationship).toBeVisible();
     const options = await relationship.locator("option").allTextContents();

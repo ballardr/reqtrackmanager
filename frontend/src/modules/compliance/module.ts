@@ -2,7 +2,9 @@ import { createElement } from "react";
 
 import { t } from "../../i18n/strings";
 import type { TierAModuleDefinition } from "../types";
-import { COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL, COMPLIANCE_STATUS_LABEL } from "./types";
+import {
+  COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL, COMPLIANCE_STANDARD_VERSION_STATUS_LABEL, COMPLIANCE_STATUS_LABEL,
+} from "./types";
 import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
 import { ComplianceOrgOverviewTiles } from "./ComplianceOrgOverviewTiles";
 import { ComplianceProjectOverviewTiles } from "./ComplianceProjectOverviewTiles";
@@ -11,7 +13,6 @@ import { OrgComplianceDashboard } from "./OrgComplianceDashboard";
 import { OrgComplianceOutstandingPanel } from "./OrgComplianceOutstandingPanel";
 import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
-import { RequirementTraceabilityLinksSection } from "./RequirementTraceabilityLinksSection";
 import { StandardListPage } from "./StandardListPage";
 import { StandardNavSection } from "./StandardNavSection";
 import { StandardWorkspacePage } from "./StandardWorkspacePage";
@@ -126,16 +127,11 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * zero or more `MetricTile`s; `ProjectOverviewPage.tsx` renders it without
  * knowing compliance exists.
  *
- * `requirementDetailSections` (compliance-module-plan.md Phase 34): this
- * module's linked-compliance-requirements section (`RequirementTraceability
- * LinksSection.tsx`, with its own "Add" dialog), rendered in core's
- * `pages/RequirementDetailPage.tsx` aside below the shared Links panel. It is
- * not folded into that panel because these links are rows of this module's own
- * table pointing at organisation-level standard requirements, not `ArtefactLink`s.
- * V1 shipped only the core-requirement-initiated direction — a
- * compliance-requirement-side picker is deliberately deferred (Phase 34's own
- * scope note; see platform-review-2026-09 Phase 7's own decisions.md entry for the
- * user's explicit rejection of ever building that reverse direction).
+ * A core requirement's links to a standard's clauses are ordinary links (artefact
+ * type `compliance_requirement`, platform-enhancements Phase 6c): the shared Links
+ * panel shows and edits them, so this module contributes no requirement-page
+ * section for them. A clause belongs to an organisation-level standard, so its
+ * path is the Standards page rather than a project page.
  */
 const strings = t();
 
@@ -145,11 +141,13 @@ const projectCompliancePath = (projectId: string) => `/projects/${projectId}/mod
 export const moduleDefinition: TierAModuleDefinition = {
   key: "compliance",
   artefactPaths: {
+    compliance_requirement: () => "/standards",
     compliance_evidence: projectCompliancePath,
     project_compliance_requirement: projectCompliancePath,
     compliance_required_action_assessment: projectCompliancePath,
   },
   artefactStatusLabels: {
+    compliance_requirement: COMPLIANCE_STANDARD_VERSION_STATUS_LABEL,
     project_compliance_requirement: COMPLIANCE_STATUS_LABEL,
     compliance_required_action_assessment: COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL,
   },
@@ -205,13 +203,6 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "status",
       render: ({ projectId }) => createElement(ComplianceProjectOverviewTiles, { projectId }),
-    },
-  ],
-  requirementDetailSections: [
-    {
-      key: "traceability-links",
-      render: ({ projectId, requirementId, organizationId, refreshToken }) =>
-        createElement(RequirementTraceabilityLinksSection, { projectId, requirementId, organizationId, refreshToken }),
     },
   ],
   // Corrected out of `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR`

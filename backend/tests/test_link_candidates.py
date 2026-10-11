@@ -114,7 +114,8 @@ def test_candidates_reject_unknown_type_and_unseen_page_artefact(world):
     page = world.requirement(project)
     assert _candidates(world, project, (REQ, page), other_type="not_a_type").status_code == 404
     assert _candidates(world, project, (REQ, uuid.uuid4()), other_type=REQ).status_code == 404
-    assert _candidates(world, project, (REQ, page)).status_code == 422  # other_type is required
+    # Without other_type the search spans every type and needs a query, so none is an empty answer.
+    assert _labels(_candidates(world, project, (REQ, page))) == []
 
 
 def test_candidates_are_empty_for_a_module_disabled_in_the_project(client, admin_token):

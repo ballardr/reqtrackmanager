@@ -113,6 +113,7 @@ from app.modules.compliance.enums import (
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
+    ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT,
     ARTEFACT_TYPE_EVIDENCE,
     ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
     ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
@@ -183,6 +184,7 @@ ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, Complia
 # vs. "publish/retire one of its versions," even though the atom's
 # artefact-type label in the Role Management UI's permission picker reads
 # "project_compliance_requirement" rather than "compliance_requirement."
+COMPLIANCE_CLAUSE_VIEW_PERMISSION = encode_permission(ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT, PermissionLevel.VIEW.value)
 COMPLIANCE_EVIDENCE_VIEW_PERMISSION = encode_permission(ARTEFACT_TYPE_EVIDENCE, PermissionLevel.VIEW.value)
 COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION = encode_permission(ARTEFACT_TYPE_EVIDENCE, PermissionLevel.PROPOSE_CREATE.value)
 COMPLIANCE_EVIDENCE_MANAGE_PERMISSION = encode_permission(ARTEFACT_TYPE_EVIDENCE, PermissionLevel.MANAGE.value)

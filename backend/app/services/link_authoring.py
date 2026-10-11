@@ -13,8 +13,9 @@ Responsibilities:
   artefact-type rules allow it, and no approved requirement is being linked in a
   project that requires a change request for that.
 - Remove a link (`delete_link_for_artefact`) under the same gates.
-- Search the records a link could point at (`list_link_candidates`), applying the same
-  visibility rule as creation so the picker never offers what creation would refuse.
+- Share the authorisation helpers (`require_page_artefact`, `related_project_or_404`,
+  `linkable_types_for_project`) the finder reads in `services.link_browse` use, so the
+  picker never offers what creation would refuse.
 - Link across nesting: with `other_project_id` the other end may be in an ancestor
   or descendant project the caller can open (`related_project_or_404`). Each end is
   resolved, permission-checked and change-request-gated in its own project, the
@@ -40,21 +41,18 @@ import uuid
 from dataclasses import dataclass
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.enums import ArtefactType
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
-from app.models.requirement import Requirement, RequirementVersion
-from app.models.requirement_action import RequirementAction
+from app.models.requirement import Requirement
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.modules.registry import (
     ArtefactSummary,
     get_all_registered_artefact_types,
     get_artefact_type_label,
     get_module_registry,
-    list_artefact_summaries,
 )
 from app.services.audit import log_event
 from app.services.link_graph import ArtefactResolver
@@ -144,7 +142,7 @@ def _gate_requirement(db: Session, project: Project, artefact_type: str, artefac
         )
 
 
-def _require_page_artefact(
+def require_page_artefact(
     db: Session, resolver: ArtefactResolver, project: Project, artefact_type: str, artefact_id: uuid.UUID
 ) -> ArtefactSummary:
     """The page artefact's summary, or 404 unless it is a visible record of the project."""
@@ -161,7 +159,7 @@ def require_visible_artefact(
     db: Session, project: Project, user_id: uuid.UUID, artefact_type: str, artefact_id: uuid.UUID
 ) -> ArtefactSummary:
     """The artefact's summary, or 404 unless it is a visible record of `project` for the user."""
-    return _require_page_artefact(db, ArtefactResolver(db, project, user_id), project, artefact_type, artefact_id)
+    return require_page_artefact(db, ArtefactResolver(db, project, user_id), project, artefact_type, artefact_id)
 
 
 def _require_manage(resolver: ArtefactResolver, artefact_type: str) -> None:
@@ -213,7 +211,7 @@ def create_link_for_artefact(
             approved requirement.
     """
     resolver = ArtefactResolver(db, project, user_id)
-    _require_page_artefact(db, resolver, project, artefact_type, artefact_id)
+    require_page_artefact(db, resolver, project, artefact_type, artefact_id)
     _require_manage(resolver, artefact_type)
     if other_type not in get_all_registered_artefact_types():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Linked record not found.")
@@ -293,7 +291,7 @@ def delete_link_for_artefact(
             approved requirement is involved and a change request is required.
     """
     resolver = ArtefactResolver(db, project, user_id)
-    _require_page_artefact(db, resolver, project, artefact_type, artefact_id)
+    require_page_artefact(db, resolver, project, artefact_type, artefact_id)
     _require_manage(resolver, artefact_type)
     link = db.get(ArtefactLink, link_id)
     if link is None or (artefact_type, artefact_id) not in (
@@ -381,106 +379,3 @@ def existing_duplicate(
         db, source_type=target_type, source_id=target_id, target_type=source_type, target_id=source_id,
         link_type_id=link_type.id,
     ) is not None
-
-
-CANDIDATE_LIMIT = 50
-
-
-def list_link_candidates(
-    db: Session,
-    *,
-    project: Project,
-    user_id: uuid.UUID,
-    artefact_type: str,
-    artefact_id: uuid.UUID,
-    other_type: str,
-    other_project_id: uuid.UUID | None = None,
-    query: str | None = None,
-    limit: int = CANDIDATE_LIMIT,
-) -> tuple[list[ArtefactSummary], bool]:
-    """The records of `other_type` the page artefact could be linked to.
-
-    Args:
-        db: Active session (read only).
-        project: The project the request is scoped to (membership already checked).
-        user_id: The acting user.
-        artefact_type / artefact_id: The page artefact (excluded from the result).
-        other_type: The artefact type to search.
-        other_project_id: An ancestor or descendant project to search instead of `project`.
-        query: Case-insensitive text matched against the record's label.
-        limit: Maximum records returned.
-
-    Returns:
-        `(records, truncated)`: unarchived records the user holds `view` on in the searched
-        project whose module is enabled there, ordered by label; empty (not an error) when
-        the type is not offered in that project.
-
-    Raises:
-        HTTPException: 404 the page artefact is not visible, `other_type` is unregistered,
-            or `other_project_id` is not a related project the caller can open.
-    """
-    resolver = ArtefactResolver(db, project, user_id)
-    _require_page_artefact(db, resolver, project, artefact_type, artefact_id)
-    if other_type not in get_all_registered_artefact_types():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Linked record type not found.")
-    searched = project
-    if other_project_id is not None and other_project_id != project.id:
-        searched = related_project_or_404(db, project, user_id, other_project_id)
-    if other_type not in linkable_types_for_project(db, searched):
-        return [], False
-    if not ArtefactResolver(db, searched, user_id).holds(other_type, "view"):
-        return [], False
-    needle = (query or "").strip().lower()
-    if other_type == _REQUIREMENT:
-        rows = _requirement_candidates(db, searched.id, needle)
-    elif other_type == ArtefactType.REQUIREMENT_ACTION.value:
-        rows = _action_candidates(db, searched.id, needle)
-    else:
-        rows = [
-            s for s in list_artefact_summaries(db, searched.id, other_type)
-            if not s.is_archived and (not needle or needle in s.label.lower())
-        ]
-        # An organisation-owned record is only ever offered from the request project.
-        rows = [s for s in rows if s.project_id == searched.id or (s.project_id is None and searched is project)]
-    rows = [s for s in rows if (other_type, s.id) != (artefact_type, artefact_id)]
-    rows.sort(key=lambda s: s.label.lower())
-    return rows[:limit], len(rows) > limit
-
-
-def _requirement_candidates(db: Session, project_id: uuid.UUID, needle: str) -> list[ArtefactSummary]:
-    """Unarchived requirements of the project whose code or name contains `needle`."""
-    stmt = (
-        select(Requirement, RequirementVersion)
-        .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
-        .where(
-            Requirement.project_id == project_id, Requirement.is_archived.is_(False),
-            RequirementVersion.valid_to.is_(None),
-        )
-    )
-    if needle:
-        like = f"%{needle}%"
-        stmt = stmt.where(or_(Requirement.unique_code.ilike(like), RequirementVersion.name.ilike(like)))
-    return [
-        ArtefactSummary(
-            id=r.id, project_id=r.project_id, label=f"{r.unique_code} {v.name}", status=v.status.value,
-            is_archived=r.is_archived,
-        )
-        for r, v in db.execute(stmt.limit(CANDIDATE_LIMIT * 4)).all()
-    ]
-
-
-def _action_candidates(db: Session, project_id: uuid.UUID, needle: str) -> list[ArtefactSummary]:
-    """Unarchived actions of the project whose code or title contains `needle`."""
-    stmt = select(RequirementAction).where(
-        RequirementAction.project_id == project_id, RequirementAction.is_archived.is_(False)
-    )
-    if needle:
-        like = f"%{needle}%"
-        stmt = stmt.where(or_(RequirementAction.unique_code.ilike(like), RequirementAction.title.ilike(like)))
-    return [
-        ArtefactSummary(
-            id=a.id, project_id=a.project_id, label=f"{a.unique_code} {a.title}", status=a.outcome_status.value,
-            is_archived=a.is_archived,
-        )
-        for a in db.scalars(stmt.limit(CANDIDATE_LIMIT * 4)).all()
-    ]

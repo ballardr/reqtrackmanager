@@ -1733,28 +1733,6 @@ const en = {
     created: "Action created",
   },
   // The Compliance module's own strings that live inside core's shared
-  // Links card / link-picker modal (`RequirementTraceabilityLinksSection
-  // .tsx`, `ComplianceRequirementLinkPickerTab.tsx` — platform-review-
-  // 2026-09 Phase 7). Added when a human review flagged this module
-  // hardcoding plain English inline instead of going through `t()`/
-  // `useStrings()` like every core page does — no other language could
-  // ever be added otherwise. This section covers only the two files this
-  // phase touches; the rest of the Compliance module (its org-level admin
-  // panels, the Standard workspace, etc.) still hardcodes strings the same
-  // way and was NOT migrated here — that's a much larger, separate body of
-  // work, flagged to the user rather than silently left alongside a
-  // half-fixed corner of the same problem.
-  compliance: {
-    requirementLinksTitle: "Compliance requirement links",
-    noRequirementLinksYet: "No compliance requirement links yet.",
-    removeLink: "Remove link",
-    removeLinkTitle: "Remove compliance link",
-    removeLinkConfirm: "Remove this traceability link? This does not affect either {requirement}'s own content.",
-    standard: "Standard",
-    version: "Version",
-    targetRequirement: "{Requirement}",
-    couldNotCreateLink: "Could not create link.",
-  },
   // `ResourcePickerModal` (style guide "Pattern: resource picker dialog",
   // 2026-08 UX audit roadmap row 508) — a two-pane dialog for picking a
   // shared file from a source (today just org shared resources) and
@@ -1779,10 +1757,14 @@ const en = {
     projectLabel: "{Project}",
     thisProject: "This {project}",
     otherTypeLabel: "Link to",
-    otherTypePlaceholder: "Select a record type…",
+    otherTypePlaceholder: "Any record type",
     linkTypeLabel: "Relationship",
     searchLabel: "Search",
-    searchPlaceholder: "Search by code or name…",
+    searchPlaceholder: "Search by code, name or standard…",
+    searchPrompt: "Type at least two characters to search every record type, or choose a record type to list its records.",
+    levelAny: (level: string) => `Any ${level.toLowerCase()}`,
+    levelFilterLabel: (level: string) => `Filter ${level.toLowerCase()} options`,
+    levelTruncated: "Only the first options are shown. Type to filter.",
     targetLabel: "Record",
     targetPlaceholder: "Select a record…",
     noTypes: "No link types are available for this record here.",
