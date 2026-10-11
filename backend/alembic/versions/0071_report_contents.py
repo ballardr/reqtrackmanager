@@ -28,6 +28,7 @@ for other report types and the "all reports" row are dropped with the table
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0071"

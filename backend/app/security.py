@@ -15,7 +15,10 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from jose import JWTError, jwt
+from joserfc import jwt
+from joserfc.errors import JoseError
+from joserfc.jwk import OctKey
+from joserfc.jwt import JWTClaimsRegistry
 from passlib.context import CryptContext
 
 from app.config import get_settings
@@ -23,6 +26,47 @@ from app.config import get_settings
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 settings = get_settings()
+
+_exp_required = JWTClaimsRegistry(exp={"essential": True})
+
+
+def _encode_jwt(payload: dict[str, Any]) -> str:
+    """Signs `payload` as a JWT with the configured secret and algorithm.
+
+    Args:
+        payload: Claims to embed; `datetime` values (e.g. `exp`) are
+            converted to NumericDate by joserfc.
+
+    Returns:
+        The encoded JWT string.
+    """
+    return jwt.encode(
+        {"alg": settings.jwt_algorithm}, payload, OctKey.import_key(settings.jwt_secret),
+        algorithms=[settings.jwt_algorithm],
+    )
+
+
+def _decode_jwt(token: str) -> dict[str, Any] | None:
+    """Verifies a JWT's signature and expiry.
+
+    Only the configured algorithm is accepted (no `alg` confusion), and an
+    `exp` claim is mandatory.
+
+    Args:
+        token: The encoded JWT string.
+
+    Returns:
+        The claims dict, or `None` if the token is malformed, has a bad
+        signature, lacks `exp`, or has expired.
+    """
+    try:
+        decoded = jwt.decode(
+            token, OctKey.import_key(settings.jwt_secret), algorithms=[settings.jwt_algorithm],
+        )
+        _exp_required.validate(decoded.claims)
+    except JoseError:
+        return None
+    return decoded.claims
 
 PAT_PREFIX = "rtm_pat_"
 SCIM_TOKEN_PREFIX = "rtm_scim_"
@@ -72,7 +116,7 @@ def create_access_token(subject: str, token_version: int = 0, expires_minutes: i
     """
     expire = datetime.now(UTC) + timedelta(minutes=expires_minutes or settings.access_token_expire_minutes)
     payload = {"sub": subject, "exp": expire, "tv": token_version, "purpose": "access"}
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return _encode_jwt(payload)
 
 
 def create_2fa_challenge_token(subject: str) -> str:
@@ -86,7 +130,7 @@ def create_2fa_challenge_token(subject: str) -> str:
     """
     expire = datetime.now(UTC) + timedelta(minutes=5)
     payload = {"sub": subject, "exp": expire, "purpose": "2fa_challenge"}
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return _encode_jwt(payload)
 
 
 def create_oidc_state_token(organization_id: str, client_nonce: str, client: str = "app") -> str:
@@ -127,7 +171,7 @@ def create_oidc_state_token(organization_id: str, client_nonce: str, client: str
         "org_id": organization_id, "client_nonce": client_nonce, "client": client,
         "exp": expire, "purpose": "oidc_state",
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return _encode_jwt(payload)
 
 
 def create_email_unsubscribe_token(user_id: str) -> str:
@@ -152,7 +196,7 @@ def create_email_unsubscribe_token(user_id: str) -> str:
     """
     expire = datetime.now(UTC) + timedelta(days=730)
     payload = {"sub": user_id, "exp": expire, "purpose": "email_unsubscribe"}
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return _encode_jwt(payload)
 
 
 def decode_email_unsubscribe_token(token: str) -> str | None:
@@ -163,9 +207,8 @@ def decode_email_unsubscribe_token(token: str) -> str | None:
         or wasn't issued for this purpose (e.g. an access token replayed
         here, which must not be accepted).
     """
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError:
+    payload = _decode_jwt(token)
+    if payload is None:
         return None
     if payload.get("purpose") != "email_unsubscribe":
         return None
@@ -213,7 +256,7 @@ def create_module_frame_token(
         "project_id": project_id, "user_id": user_id,
         "exp": expire, "purpose": "module_frame",
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return _encode_jwt(payload)
 
 
 def decode_module_frame_token(token: str) -> dict[str, Any] | None:
@@ -224,9 +267,8 @@ def decode_module_frame_token(token: str) -> dict[str, Any] | None:
         or wasn't issued for this purpose (e.g. a normal access token
         replayed here, which must not be accepted).
     """
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError:
+    payload = _decode_jwt(token)
+    if payload is None:
         return None
     if payload.get("purpose") != "module_frame":
         return None
@@ -299,7 +341,4 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
     Returns:
         The decoded claims dict, or None if the token is invalid or expired.
     """
-    try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError:
-        return None
+    return _decode_jwt(token)

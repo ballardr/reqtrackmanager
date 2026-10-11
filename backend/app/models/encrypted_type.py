@@ -12,8 +12,7 @@ values are unreadable even to someone with direct database access but no
 `APP_SECRET_ENCRYPTION_KEY`.
 
 Uses Fernet (symmetric, authenticated encryption — AES-128-CBC + HMAC,
-built on `cryptography`, already a transitive dependency via
-`python-jose[cryptography]`), keyed from `Settings.app_secret_encryption_key`
+built on `cryptography`, a direct dependency in requirements.txt), keyed from `Settings.app_secret_encryption_key`
 via SHA-256 key derivation (turns an arbitrary-length configured secret into
 Fernet's required 32-byte key, the same way `jwt_secret` is an arbitrary
 string rather than a pre-formatted key).

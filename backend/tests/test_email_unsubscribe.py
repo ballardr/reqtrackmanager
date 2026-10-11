@@ -7,18 +7,14 @@ audit trail (SOC 2 logging policy; see docs/decisions.md)."""
 
 from datetime import UTC, datetime, timedelta
 
-from jose import jwt
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from app.models.notification import DigestMode
 from app.models.user import User
-from app.security import create_email_unsubscribe_token
+from app.security import _encode_jwt, create_email_unsubscribe_token
 from tests.conftest import auth_headers, create_org_user
-
-settings = get_settings()
 
 
 def _digest_mode(user_id: str) -> DigestMode:
@@ -96,7 +92,7 @@ def test_expired_token_is_rejected(client, admin_token, org_id):
     expired_payload = {
         "sub": user_id, "exp": datetime.now(UTC) - timedelta(days=1), "purpose": "email_unsubscribe",
     }
-    expired_token = jwt.encode(expired_payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    expired_token = _encode_jwt(expired_payload)
 
     resp = client.get(f"/api/v1/notifications/unsubscribe?token={expired_token}")
     assert resp.status_code == 200
@@ -107,9 +103,8 @@ def test_token_with_wrong_purpose_is_rejected(client, admin_token, org_id):
     """A session access token (or any other purpose-tagged token) must not
     be usable here — only a genuine `purpose: "email_unsubscribe"` token."""
     user_id = create_org_user(client, admin_token, org_id, "unsub_wrongpurpose@example.com")
-    not_an_unsubscribe_token = jwt.encode(
+    not_an_unsubscribe_token = _encode_jwt(
         {"sub": user_id, "exp": datetime.now(UTC) + timedelta(days=1), "purpose": "access", "tv": 0},
-        settings.jwt_secret, algorithm=settings.jwt_algorithm,
     )
     resp = client.get(f"/api/v1/notifications/unsubscribe?token={not_an_unsubscribe_token}")
     assert resp.status_code == 200
