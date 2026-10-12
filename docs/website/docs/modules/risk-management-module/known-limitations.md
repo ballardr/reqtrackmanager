@@ -1,16 +1,16 @@
 ---
-sidebar_position: 36
+sidebar_position: 38
 ---
 
 # Known limitations
 
 ## Not built yet
 
-- **No Risk reports.** There is no module report, and no organisation-wide risk dashboard or project-overview tile. The register and matrix on each project are the views today.
+- **No organisation-wide risk view.** The four [reports](./reports.md) are per project (use *Include child projects* to cover a hierarchy), and there is no organisation-wide risk dashboard or project-overview tile.
 - **Owner must be a user.** A Risk's owner can't yet be a group, so a Risk can lose its accountable owner when that person leaves. Shared group ownership is planned across the platform, not just here.
 - **Change detection covers Requirements only.** Editing or archiving a Requirement flags the treatments resting on it; changing a linked Action, or (once installed) a Design, does not yet.
 - **No Design or System Element links.** Reserved for the Engineering Design module. See [Treatment and relationships](./treatment-and-relationships.md#relationship-types).
-- **Not part of project or organisation export.** Risks aren't carried in a zip export and import yet, and the scoring levels a Risk references aren't part of an organisation export either.
+- **Export carries less than the live record.** Version history, comments, scoring configuration and links to anything but same-project Requirements are not carried; see [Export and import](./export-and-import.md).
 - **Change Impact analysis** isn't available; the planned module for it will read Risks when it exists.
 
 ## By design

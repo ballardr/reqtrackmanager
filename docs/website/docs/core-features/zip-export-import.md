@@ -18,6 +18,8 @@ flowchart LR
     New -.->|"secrets, e.g. SMTP/OIDC"| Manual["Re-entered by hand"]
 ```
 
+A module's own content is included when it has any, for example the Risks, reviews and treatment links of [Risk Management](../modules/risk-management-module/export-and-import.md) or the Personas of Stakeholders & Personas. Each module decides what travels and matches its references by name or code on import, warning where it cannot.
+
 ## What's excluded, and why
 
 Project-level **group membership** is deliberately excluded — only group structure (the groups themselves) is recreated on import, not who's in them — to avoid a cross-tenant privilege-escalation path where an exported bundle could silently grant access on import to accounts that exist in the target deployment but shouldn't inherit membership from the source. Members are re-added by hand after an import, the same as secrets.

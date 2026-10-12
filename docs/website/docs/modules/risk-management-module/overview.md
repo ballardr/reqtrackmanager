@@ -54,6 +54,8 @@ Each composes with roles that already carry equivalent authority: a server admin
 - [Scoring](./scoring.md) — the Likelihood × Consequence matrix, how a rating is derived, and how to configure it.
 - [Treatment and relationships](./treatment-and-relationships.md) — linking a Risk to Requirements, Actions and Decisions, and the difference between *linked* and *effectively treated*.
 - [Reviews and notifications](./reviews-and-notifications.md) — scheduled reviews, the overdue sweep, and what happens when a linked Requirement changes.
+- [Reports](./reports.md) — the risk register, exposure, treatment coverage and review schedule.
+- [Export and import](./export-and-import.md) — what travels in a project or organisation bundle, and what is matched by name.
 - [AI assistant (MCP) integration](./mcp-integration.md) — the tools an AI assistant can call.
 - [Known limitations](./known-limitations.md) — what this module doesn't do yet.
 

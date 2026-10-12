@@ -1340,6 +1340,8 @@ Read workflow:
 
 Write workflow: `create_risk` -> `update_risk` (set levels, owner, strategy) -> `transition_risk`. Link treatments with the core link tools (a requirement `Mitigates` the risk; the risk is `Treated by` an action), then `assess_risk_treatment`. Finish a review with `record_risk_review`.
 
+Reports (`risk_management_get_*_report`, project-level, read-only) answer cross-cutting questions in one call: the risk register (filter by status, type), risk exposure (inherent against residual rating, highest remaining risks, risks with no rating), treatment coverage (risks with no effective treatment, or resting on a verdict to reassess) and the review schedule (overdue, due soon, no review scheduled). Prefer a report over listing and fetching every risk.
+
 Rules and gotchas:
 - A move needs its facts first: `assessed` needs an inherent rating, `treatment_planned` an owner and strategy, `mitigated` a residual rating and at least one `effective` treatment, `accepted` a residual rating and acceptance criteria. A 409 names what is missing.
 - `transition_risk` to `accepted` is an approval: it needs the Risk Acceptor role and AI approval enabled on the project and organisation. Only do it when the user explicitly asks, and pass their reason as `comment`.
@@ -1439,3 +1441,27 @@ Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `outcome*
 Adds a comment to a Risk's discussion.
 
 Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `body*` (string, in body)
+
+#### `risk_management_get_risk_register_report` (read)
+
+Risk register: Every Risk with its type, status, owner, strategy, inherent and residual rating, and next review.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `status` (string, in query), `risk_type` (string, in query), `include_archived` (boolean, in query)
+
+#### `risk_management_get_risk_exposure_report` (read)
+
+Risk exposure: Inherent against residual rating across live Risks, the highest remaining Risks, and Risks with no rating.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)
+
+#### `risk_management_get_treatment_coverage_report` (read)
+
+Treatment coverage: Risks expected to be treated that have no effective treatment, or rest on a verdict to reassess.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)
+
+#### `risk_management_get_review_schedule_report` (read)
+
+Review schedule: Overdue and upcoming Risk reviews, and assessed Risks with no review scheduled.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `due_within_days` (integer, in query)

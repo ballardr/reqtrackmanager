@@ -9,6 +9,8 @@ Read workflow:
 
 Write workflow: `create_risk` -> `update_risk` (set levels, owner, strategy) -> `transition_risk`. Link treatments with the core link tools (a requirement `Mitigates` the risk; the risk is `Treated by` an action), then `assess_risk_treatment`. Finish a review with `record_risk_review`.
 
+Reports (`risk_management_get_*_report`, project-level, read-only) answer cross-cutting questions in one call: the risk register (filter by status, type), risk exposure (inherent against residual rating, highest remaining risks, risks with no rating), treatment coverage (risks with no effective treatment, or resting on a verdict to reassess) and the review schedule (overdue, due soon, no review scheduled). Prefer a report over listing and fetching every risk.
+
 Rules and gotchas:
 - A move needs its facts first: `assessed` needs an inherent rating, `treatment_planned` an owner and strategy, `mitigated` a residual rating and at least one `effective` treatment, `accepted` a residual rating and acceptance criteria. A 409 names what is missing.
 - `transition_risk` to `accepted` is an approval: it needs the Risk Acceptor role and AI approval enabled on the project and organisation. Only do it when the user explicitly asks, and pass their reason as `comment`.

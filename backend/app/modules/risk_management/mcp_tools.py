@@ -9,7 +9,8 @@ and audit logging apply unchanged; declaring a tool grants nothing.
 Responsibilities:
 - `build_mcp_tools`: read tools (risks, versions, treatments, reviews, comments,
   types, the scoring scheme) and write tools (create, update, lifecycle move,
-  treatment verdict, review, comment).
+  treatment verdict, review, comment), then the read-only `get_<slug>_report` tools
+  the report framework generates from `reports.REPORT_DEFINITIONS`.
 
 Design decisions:
 - Write-enabled, per the plan's 2026-09-22 instruction (Decided by: User). Writes
@@ -25,7 +26,9 @@ Design decisions:
 from __future__ import annotations
 
 from app.modules.registry import McpToolDefinition
+from app.modules.risk_management.reports import REPORT_DEFINITIONS
 from app.modules.risk_management.service import RISK_MODULE_KEY
+from app.services.report_framework import report_mcp_tools
 
 _PREFIX = f"/api/v1/projects/{{project_id}}/modules/{RISK_MODULE_KEY}"
 _RISKS = f"{_PREFIX}/risks"
@@ -178,4 +181,4 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             path_template=f"{_RISK}/comments",
             params=[_PROJECT_ID, _RISK_ID, _body("body", "string", "The comment text.", required=True)],
         ),
-    )
+    ) + report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PREFIX)

@@ -13,13 +13,14 @@ model as its Verification link target.
 override, 2026-10-12), 1 (data model, scoring, RBAC, project API, 2026-10-12),
 2 (lifecycle, 2026-10-12), 3 (relationships and treatment assessment,
 2026-10-12), 4 (reviews, change detection, MCP tools, 2026-10-12), 5
-(frontend UI, 2026-10-12) and 6 (docs website, 2026-10-12) complete: **the plan is
-closed**. Overview §46 groups this with Engineering Design as "Phase 5" (built
+(frontend UI, 2026-10-12), 6 (docs website, 2026-10-12), 7 (reports) and 8
+(bundle export/import), both added 2026-10-12 at the user's request, complete:
+**the plan is closed**. Overview §46 groups this with Engineering Design as "Phase 5" (built
 together, after Requirements & Libraries).
 
 ## Status / Resume Here
 
-8 / 8 phases complete (all done 2026-10-12). Plan closed.
+10 / 10 phases complete (all done 2026-10-12). Plan closed.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -31,6 +32,8 @@ together, after Requirements & Libraries).
 | 4 | Risk reviews + reassessment scheduling | [x] Complete (2026-10-12) |
 | 5 | Frontend UI | [x] Complete (2026-10-12) |
 | 6 | Docs website coverage | [x] Complete (2026-10-12) |
+| 7 | Reports (added after Phase 5 shipped without them) | [x] Complete (2026-10-12) |
+| 8 | Project and organisation bundle export/import (added likewise) | [x] Complete (2026-10-12) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -301,7 +304,8 @@ flowchart LR
   artefact path, status labels and inactive statuses, and Phase 5's detail page
   must serve that path), MCP tools (Phase 4), bundle export/import (matching
   Decisions and Context & Strategy; also the scoring levels a risk references
-  are not part of org export). `seed_e2e_dataset.py` gains risks with the
+  are not part of org export; **reports and bundle hooks were added later as
+  Phases 7 and 8**). `seed_e2e_dataset.py` gains risks with the
   Phase 5 specs that read them; the demo seed already has four Falcon-3 risks,
   one rating from a pinned non-monotonic cell (Rare × Catastrophic = High).
 - **Owner is user-only** (Phase 0 resolution 6): the shared principal mechanism
@@ -657,6 +661,73 @@ Management.
   version change notes showed raw enum values ("treatment_planned").
 - Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
   Management Phase 6".
+
+## Phase 7 — Reports
+
+Added 2026-10-12 at the user's explicit request (**Decided by: User**) after
+Phase 5 shipped without reports; the report set and rules below are **Decided
+by: Agent**, modelled on Decision Management's reports.
+
+**Why:** the register and matrix answer "what is this Risk" but not "what is our
+exposure, what has nothing proven against it, and which reviews slipped", the
+questions a Risk Manager is actually asked, and §11.6's reassessment promise is
+not checkable without them. **Outcome:** four project-level reports on the shared
+report framework, so they appear in the Reports page, export to PDF, Word and
+CSV, and are MCP tools with no UI or MCP code of their own.
+
+```mermaid
+flowchart LR
+    RK["reports.py<br/>4 collectors"] --> FW["Core report framework"]
+    FW --> UI["Reports page picker<br/>PDF / Word / CSV"]
+    FW --> MCP["get_*_report MCP tools"]
+    RK -. "per-project RatingContext" .-> SC["Scoring: bands + cell ratings"]
+    RK -. "verdicts" .-> TA["RiskTreatmentAssessment"]
+```
+
+- **RK1 Risk register**, **RK2 Risk exposure** (inherent against residual, the
+  highest remaining Risks, Risks with no rating), **RK3 Treatment coverage**
+  (no effective treatment, verdicts to reassess, links by verdict), **RK4 Review
+  schedule** (overdue, due soon, assessed with no review date, last reviewed).
+- **Project-level only.** The module's only org role (Risk Type Admin) administers
+  vocabulary, not risks, so it is not a sound gate for an aggregate across
+  projects; *Include child projects* covers a hierarchy.
+- **Each project is rated by its own matrix**, so a child with its own bands or
+  pinned cells is never rated by its parent's. Labels, not scores, are shown.
+- **Scope rules** stated on each report: Exposure counts Identified to Transferred
+  (history and left-the-picture states excluded); Coverage covers the states where
+  a treatment is expected (Accepted and Transferred are deliberate non-treatment);
+  Schedule treats a missing review date on an assessed Risk as a gap.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 7".
+
+## Phase 8 — Project and organisation bundle export/import
+
+Added 2026-10-12 at the user's explicit request (**Decided by: User**); the
+carried set and matching rules are **Decided by: Agent**. Phase 1 had left the
+hooks out "matching Decisions and Context & Strategy"; Stakeholders & Personas
+already use them, so the omission left Risks lost on a backup or migration.
+
+```mermaid
+flowchart LR
+    X["export.py hooks"] --> B[("Bundle: types, Risks, reviews,<br/>evidence, requirement links + verdicts")]
+    B --> I["Import: match by name or code"]
+    I -- "no match" --> W["Left unset + warning, never guessed"]
+```
+
+- **Carried:** org Risk types; per project, its type rows and each Risk's current
+  content, status, owner, review date, **original code** (the sequence counter is
+  advanced past the highest), evidence, the full review history with its rating
+  snapshots, archived state, and links to same-project Requirements with their
+  verdicts (including *needs reassessment* and its reason).
+- **Not carried:** version history and comments (a Risk arrives at version 1);
+  scoring configuration; links to Actions, Decisions, other Risks or other
+  projects (those records are not in the bundle).
+- **Matching:** type by name, scoring level by axis and name, requirement by code,
+  link type by name. An unmatched reference is left unset or skipped *with a
+  warning*, so an imported Risk reads "Not rated" rather than being silently
+  re-rated.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 8".
 
 ## Acceptance criteria (from overview §48, Risk Management subset)
 

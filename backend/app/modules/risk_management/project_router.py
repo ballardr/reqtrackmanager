@@ -32,6 +32,7 @@ from app.modules.risk_management import _shared as sh
 from app.modules.risk_management.enums import RiskStatus
 from app.modules.risk_management.models import ProjectRiskType, Risk, RiskReview
 from app.modules.risk_management.ratings import load_rating_context
+from app.modules.risk_management.reports import REPORT_ROUTERS
 from app.modules.risk_management.reviews import count_stale_treatments, list_reviews, record_review
 from app.modules.risk_management.schemas import (
     RiskCommentCreate,
@@ -76,6 +77,9 @@ from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled,
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{RISK_MODULE_KEY}", tags=["risk-management-project"])
 
 _require_view = require_project_subcomponent_enabled(RISK_MODULE_KEY, RISK_SUBCOMPONENT_KEY)
+
+# The module's reports (`reports.py`): generated routes at `/reports/<slug>`, under this router's prefix.
+router.include_router(REPORT_ROUTERS.project)
 
 
 def _project(db: Session, project_id: UUID) -> Project:

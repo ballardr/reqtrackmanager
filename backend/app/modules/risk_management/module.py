@@ -38,8 +38,11 @@ Registered contributions:
 - Phase 5: `frontend_manifest` (Tier A; `frontend/src/modules/risk_management/
   module.ts` serves the register and detail routes and the admin sections).
 
-Not provided by design: bundle export/import hooks, matching Decision Management
-and Context & Strategy.
+- Phase 7: `reports` (four project-level reports, `reports.py`; the framework
+  generates their routes, catalogue entries and `get_<slug>_report` MCP tools).
+- Phase 8: `org_bundle_hooks`/`project_bundle_hooks` (`export.py`): Risk types,
+  and each Risk's current content, attachments, reviews and requirement
+  treatment links with their verdicts.
 
 `default_enabled=False`: an organisation opts in explicitly, matching the other
 new modules.
@@ -60,13 +63,17 @@ from app.modules.registry import (
     LinkTypeSeed,
     ModuleDefinition,
     ModuleFrontendManifest,
+    ModuleOrgBundleHooks,
+    ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleScheduledJob,
     ModuleSubComponentDefinition,
 )
+from app.modules.risk_management import export as risk_export
 from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MANAGE_PERMISSION
 from app.modules.risk_management.alerts import NOTIFICATION_TYPES
 from app.modules.risk_management.mcp_tools import build_mcp_tools
+from app.modules.risk_management.reports import REPORT_DEFINITIONS
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
 from app.modules.risk_management.service import (
     RISK_ARTEFACT_TYPE,
@@ -190,6 +197,11 @@ MODULE_DEFINITION = ModuleDefinition(
         nav_icon="shield-alert",
     ),
     scoring_schemes=(RISK_SCORING_SCHEME,),
+    reports=REPORT_DEFINITIONS,
+    org_bundle_hooks=ModuleOrgBundleHooks(export=risk_export.export_org_data, import_=risk_export.import_org_data),
+    project_bundle_hooks=ModuleProjectBundleHooks(
+        export=risk_export.export_project_data, import_=risk_export.import_project_data,
+    ),
     notification_types=NOTIFICATION_TYPES,
     on_artefact_changed=_on_artefact_changed,
     scheduled_jobs=(ModuleScheduledJob(job_id="review_reminders", hour=3, minute=0, run=_run_review_notifications),),

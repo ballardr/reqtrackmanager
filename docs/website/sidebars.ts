@@ -159,6 +159,8 @@ const sidebars: SidebarsConfig = {
             'modules/risk-management-module/scoring',
             'modules/risk-management-module/treatment-and-relationships',
             'modules/risk-management-module/reviews-and-notifications',
+            'modules/risk-management-module/reports',
+            'modules/risk-management-module/export-and-import',
             'modules/risk-management-module/mcp-integration',
             'modules/risk-management-module/known-limitations',
           ],
