@@ -16,6 +16,15 @@ set -euo pipefail
 
 PROJECTS=(frontend docs/website)
 
+# A Playwright version bump (either lockfile) or an image-tag edit in ci.yml
+# must keep the two in step; see scripts/check-playwright-image-sync.py.
+if git diff --cached --name-only | grep -qE '^(\.github/workflows/ci\.yml|frontend/package-lock\.json|tests/playwright/package-lock\.json)$'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check-playwright-image-sync.py" || {
+    echo "pre-commit: fix the Playwright image tag in .github/workflows/ci.yml (or the lockfile), re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
 for project in "${PROJECTS[@]}"; do
   if ! git diff --cached --name-only | grep -qE "^${project}/(package\.json|package-lock\.json)$"; then
     continue
