@@ -11,7 +11,7 @@ const ACTION_TYPES: ComplianceActionType[] = [{ id: "at-1", organization_id: ORG
 
 const STANDARD: ComplianceStandard = {
   id: "std-1", organization_id: ORG_ID, reference: "ISO-27001", name: "ISO 27001",
-  description: "Information security management.", issuing_organisation: "ISO", owner_id: "user-1",
+  description: "Information security management.", issuing_organisation: "ISO", owner: { type: "user", id: "user-1", label: "Demo User", member_count: null, exists: true },
   creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null, applicability_default: "opt_in",
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
 };

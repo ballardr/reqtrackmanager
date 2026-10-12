@@ -92,8 +92,9 @@ External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -137,8 +138,10 @@ from app.modules.compliance.schemas import (
     AddedRequirementOut,
     ComplianceEvidenceOut,
     ComplianceRecentActivityOut,
+    ComplianceRequiredActionAssessmentOut,
     ComplianceRequirementSummaryOut,
     ComplianceReviewOut,
+    ComplianceStandardOut,
     ModifiedRequirementOut,
     NonCompliantRequirementOut,
     OutstandingRequiredActionOut,
@@ -153,8 +156,66 @@ from app.modules.compliance.schemas import (
     ReplacedRequirementOut,
     StandardVersionDiffOut,
 )
+from app.schemas.principal import PrincipalOut
 from app.services import relationships
 from app.services.permissions import encode_permission
+from app.services.principals import principal_labels, principal_ref
+
+# Resolved display data for principals, keyed by `(type, id)` (`services.principals.principal_labels`).
+PrincipalLabels = dict[tuple[str, uuid.UUID], PrincipalOut]
+
+
+def principal_labels_for(db: Session, rows: Sequence[Any], field: str) -> PrincipalLabels:
+    """Display data for the `field` principal (`owner`, `assignee`) of every row in `rows`, in one batch."""
+    return principal_labels(db, [principal_ref(getattr(r, f"{field}_type"), getattr(r, f"{field}_id")) for r in rows])
+
+
+def principal_of(labels: PrincipalLabels, row: Any, field: str) -> PrincipalOut | None:
+    """The resolved `field` principal of `row`, or None when the field is empty."""
+    principal_id = getattr(row, f"{field}_id")
+    return None if principal_id is None else labels[(getattr(row, f"{field}_type"), principal_id)]
+
+
+def standards_to_out(db: Session, standards: Sequence[ComplianceStandard]) -> list[ComplianceStandardOut]:
+    """Builds the responses for many standards, resolving every owner in one batch."""
+    labels = principal_labels_for(db, standards, "owner")
+    return [
+        ComplianceStandardOut(
+            id=s.id, organization_id=s.organization_id, reference=s.reference, name=s.name,
+            description=s.description, issuing_organisation=s.issuing_organisation,
+            owner=labels[(s.owner_type, s.owner_id)], creator_id=s.creator_id, is_archived=s.is_archived,
+            archived_at=s.archived_at, archived_by=s.archived_by, applicability_default=s.applicability_default,
+            created_at=s.created_at, updated_at=s.updated_at,
+        )
+        for s in standards
+    ]
+
+
+def standard_to_out(db: Session, standard: ComplianceStandard) -> ComplianceStandardOut:
+    """Builds the response for one standard (see `standards_to_out`)."""
+    return standards_to_out(db, [standard])[0]
+
+
+def assessments_to_out(
+    db: Session, assessments: Sequence[ComplianceRequiredActionAssessment]
+) -> list[ComplianceRequiredActionAssessmentOut]:
+    """Builds the responses for many required-action assessments, resolving every assignee in one batch."""
+    labels = principal_labels_for(db, assessments, "assignee")
+    return [
+        ComplianceRequiredActionAssessmentOut(
+            id=a.id, project_compliance_requirement_id=a.project_compliance_requirement_id,
+            required_action_id=a.required_action_id, assignee=principal_of(labels, a, "assignee"),
+            due_date=a.due_date, is_completed=a.is_completed, completed_at=a.completed_at,
+            completed_by=a.completed_by, notes=a.notes, created_at=a.created_at, updated_at=a.updated_at,
+        )
+        for a in assessments
+    ]
+
+
+def assessment_to_out(db: Session, assessment: ComplianceRequiredActionAssessment) -> ComplianceRequiredActionAssessmentOut:
+    """Builds the response for one required-action assessment (see `assessments_to_out`)."""
+    return assessments_to_out(db, [assessment])[0]
+
 
 ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, ComplianceApplicabilitySource]]
 
@@ -1102,7 +1163,9 @@ def compute_review_schedule_state(
     return "upcoming"
 
 
-def build_review_out(db: Session, review: ComplianceReview) -> ComplianceReviewOut:
+def build_review_out(
+    db: Session, review: ComplianceReview, labels: PrincipalLabels | None = None
+) -> ComplianceReviewOut:
     """Builds the response schema for one `ComplianceReview` row, filling in
     its computed `schedule_state`, current linked evidence ids, and (Phase
     40) its resolved standard/version identity — used by every endpoint
@@ -1116,7 +1179,13 @@ def build_review_out(db: Session, review: ComplianceReview) -> ComplianceReviewO
     `standard_id`/`standard_reference`/`standard_name` so a review can be
     filtered/grouped by standard the same way regardless of which kind it
     is; `standard_version_id`/`version_label` stay `None` for a
-    standard-level review since it isn't tied to one specific version."""
+    standard-level review since it isn't tied to one specific version.
+
+    Args:
+        labels: Pre-resolved owner labels (`principal_labels_for(db, reviews, "owner")`) when building
+            many; resolved here when omitted.
+    """
+    labels = labels if labels is not None else principal_labels_for(db, [review], "owner")
     linked_evidence_ids = list(
         db.scalars(
             select(ComplianceReviewEvidenceLink.evidence_id).where(ComplianceReviewEvidenceLink.review_id == review.id)
@@ -1143,7 +1212,7 @@ def build_review_out(db: Session, review: ComplianceReview) -> ComplianceReviewO
         frequency_label=review.frequency_label,
         recurrence_days=review.recurrence_days,
         next_due_date=review.next_due_date,
-        owner_id=review.owner_id,
+        owner=principal_of(labels, review, "owner"),
         status=review.status,
         schedule_state=compute_review_schedule_state(review),
         notes=review.notes,
@@ -1205,6 +1274,7 @@ def complete_review(
         frequency_label=review.frequency_label,
         recurrence_days=review.recurrence_days,
         next_due_date=date.today() + timedelta(days=review.recurrence_days),
+        owner_type=review.owner_type,
         owner_id=review.owner_id,
         created_by=actor_id,
     )
@@ -2467,6 +2537,7 @@ def list_outstanding_required_actions_for_project(
                 )
             ).all():
                 assessments_by_pcr.setdefault(assessment.project_compliance_requirement_id, []).append(assessment)
+        assignee_labels = principal_labels_for(db, [a for rows in assessments_by_pcr.values() for a in rows], "assignee")
         for pcr in pcrs:
             effective, _source = applicability[pcr.requirement_id]
             if effective != ComplianceApplicability.APPLICABLE:
@@ -2492,7 +2563,7 @@ def list_outstanding_required_actions_for_project(
                         required_action_id=required_action.id,
                         required_action_name=required_action.name,
                         is_mandatory=required_action.is_mandatory,
-                        assignee_id=assessment.assignee_id,
+                        assignee=principal_of(assignee_labels, assessment, "assignee"),
                         due_date=assessment.due_date,
                         notes=assessment.notes,
                     )

@@ -22,8 +22,8 @@ from app.modules.compliance.project_router._shared import (
     _get_evidence_or_404,
     _get_project_compliance_or_404,
     _require_officer,
-    _require_project_member_or_none,
     _require_view,
+    _validate_project_principal,
 )
 from app.modules.compliance.schemas import (
     ComplianceReviewCompleteRequest,
@@ -32,9 +32,15 @@ from app.modules.compliance.schemas import (
     ComplianceReviewOut,
     ComplianceReviewUpdate,
 )
-from app.modules.compliance.service import build_review_out, complete_review, list_reviews_due_for_project
+from app.modules.compliance.service import (
+    build_review_out,
+    complete_review,
+    list_reviews_due_for_project,
+    principal_labels_for,
+)
 from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.services.audit import log_event
+from app.services.principals import principal_columns
 
 router = APIRouter(tags=["compliance-project-reviews"])
 
@@ -64,11 +70,11 @@ def create_project_review(
 ):
     """Schedules a new review of a project's compliance assignment (§17)."""
     project_compliance = _get_project_compliance_or_404(db, project_id, project_compliance_id)
-    _require_project_member_or_none(db, project_id, payload.owner_id)
+    _validate_project_principal(db, project_id, payload.owner, "owner")
     review = ComplianceReview(
         project_compliance_id=project_compliance.id, frequency_label=payload.frequency_label,
-        recurrence_days=payload.recurrence_days, next_due_date=payload.next_due_date, owner_id=payload.owner_id,
-        notes=payload.notes, created_by=current_user.id,
+        recurrence_days=payload.recurrence_days, next_due_date=payload.next_due_date,
+        **principal_columns("owner", payload.owner), notes=payload.notes, created_by=current_user.id,
     )
     db.add(review)
     db.flush()
@@ -94,7 +100,8 @@ def list_project_reviews(
         .where(ComplianceReview.project_compliance_id == project_compliance.id)
         .order_by(ComplianceReview.created_at)
     ).all()
-    return [build_review_out(db, review) for review in reviews]
+    labels = principal_labels_for(db, reviews, "owner")
+    return [build_review_out(db, review, labels) for review in reviews]
 
 
 @router.get("/reviews-due", response_model=list[ComplianceReviewOut])
@@ -113,7 +120,8 @@ def list_reviews_due(
     `router.py`'s Phase 14 org-wide aggregation — moved there in Phase 14;
     behaviour unchanged."""
     reviews = list_reviews_due_for_project(db, project_id=project_id, include_upcoming=False)
-    return [build_review_out(db, review) for review in reviews]
+    labels = principal_labels_for(db, reviews, "owner")
+    return [build_review_out(db, review, labels) for review in reviews]
 
 
 @router.get("/reviews/{review_id}", response_model=ComplianceReviewOut)
@@ -137,14 +145,15 @@ def update_project_review(
     review = _get_project_review_or_404(db, project_id, review_id)
     if review.status != ComplianceReviewStatus.SCHEDULED:
         raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed and cannot be edited.")
-    _require_project_member_or_none(db, project_id, payload.owner_id)
+    _validate_project_principal(db, project_id, payload.owner, "owner")
     if review.next_due_date != payload.next_due_date:
         review.due_reminder_sent_at = None
         review.overdue_notified_at = None
     review.frequency_label = payload.frequency_label
     review.recurrence_days = payload.recurrence_days
     review.next_due_date = payload.next_due_date
-    review.owner_id = payload.owner_id
+    for column, value in principal_columns("owner", payload.owner).items():
+        setattr(review, column, value)
     review.notes = payload.notes
     log_event(db, entity_type="compliance_review", entity_id=review.id, action="updated",
               actor_id=current_user.id, project_id=project_id)

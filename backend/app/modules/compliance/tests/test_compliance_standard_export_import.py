@@ -270,7 +270,9 @@ def test_import_resolves_cross_standard_mapping_against_matching_target_standard
     resp = _import(client, target_token, target_org["id"], doc)
     assert resp.status_code == 201, resp.text
     result = resp.json()
-    assert result["warnings"] == []
+    # The source owner (the server admin) is not a member of the target organisation, so the standard
+    # is attributed to the importing user — the only warning; the mapping resolves silently.
+    assert [w for w in result["warnings"] if "owner" not in w] == []
     mappings = client.get(f"{_base(target_org['id'])}/requirement-mappings", headers=auth_headers(target_token)).json()
     assert len(mappings) == 1
     assert mappings[0]["to_requirement_id"] == target_child_b["id"]

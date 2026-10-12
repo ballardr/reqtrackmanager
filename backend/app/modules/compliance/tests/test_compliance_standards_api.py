@@ -100,16 +100,17 @@ def test_full_crud_happy_path(client, admin_token, org_id):
     standard = _create_standard(client, admin_token, org_id, reference="ISO-27001", name="Corporate Security Standard")
     assert standard["reference"] == "ISO-27001"
     assert standard["is_archived"] is False
-    # owner_id defaults to the creating user when omitted.
+    # owner defaults to the creating user when omitted.
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token))
     assert me.status_code == 200
-    assert standard["owner_id"] == me.json()["id"]
+    assert standard["owner"]["type"] == "user"
+    assert standard["owner"]["id"] == me.json()["id"]
 
-    # Update: name/description/issuing_organisation/owner_id, not reference.
+    # Update: name/description/issuing_organisation/owner, not reference.
     updated = client.patch(
         f"{_base(org_id)}/standards/{standard['id']}",
         json={"name": "Updated Standard Name", "description": "Updated.", "issuing_organisation": "ISO",
-              "owner_id": standard["owner_id"]},
+              "owner": {"type": "user", "id": standard["owner"]["id"]}},
         headers=auth_headers(admin_token),
     )
     assert updated.status_code == 200, updated.text

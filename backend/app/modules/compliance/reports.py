@@ -587,7 +587,7 @@ def collect_project_compliance_report(
                 .order_by(ComplianceReview.created_at)
             ).all()
         )
-        review_user_ids = {r.owner_id for r in reviews if r.owner_id} | {r.completed_by for r in reviews if r.completed_by}
+        review_user_ids = {r.completed_by for r in reviews if r.completed_by}
         review_emails = _emails_by_id(db, review_user_ids)
         for review in reviews:
             scope = f"{standard.name} (standard)" if review.standard_id else f"{project.name} (project)"

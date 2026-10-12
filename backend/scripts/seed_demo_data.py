@@ -581,7 +581,7 @@ def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
 
 def create_compliance_standard(
     headers: dict, org_id: str, *, reference: str, name: str, description: str = "",
-    issuing_organisation: str | None = None, owner_id: str | None = None,
+    issuing_organisation: str | None = None, owner: dict | None = None,
     initial_version_label: str = "1.0", initial_version_effective_date: str | None = None,
     initial_version_change_note: str = "",
 ) -> dict:
@@ -591,11 +591,11 @@ def create_compliance_standard(
     combined create-standard-with-first-version frontend flow. Use
     `list_compliance_versions` to fetch that first version's id rather than
     a separate `create_compliance_version` call, which would create a
-    redundant second version."""
+    redundant second version. `owner` is `{"type": "user" | "org_group", "id": ...}` (the creator when omitted)."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/modules/compliance/standards",
         json={"reference": reference, "name": name, "description": description,
-              "issuing_organisation": issuing_organisation, "owner_id": owner_id,
+              "issuing_organisation": issuing_organisation, "owner": owner,
               "initial_version_label": initial_version_label,
               "initial_version_effective_date": initial_version_effective_date,
               "initial_version_change_note": initial_version_change_note},
@@ -818,12 +818,13 @@ def list_required_action_assessments(headers: dict, project_id: str, project_com
 
 def update_required_action_assessment(
     headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, assessment_id: str, *,
-    assignee_id: str | None = None, due_date: str | None = None, notes: str = "",
+    assignee: dict | None = None, due_date: str | None = None, notes: str = "",
 ) -> dict:
+    """Updates a required action's assignee (`{"type": "user" | "org_group" | "project_group", "id": ...}`), due date and notes."""
     r = httpx.patch(
         f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
         f"{pcr_id}/required-action-assessments/{assessment_id}",
-        json={"assignee_id": assignee_id, "due_date": due_date, "notes": notes}, headers=headers, timeout=30,
+        json={"assignee": assignee, "due_date": due_date, "notes": notes}, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -859,12 +860,13 @@ def create_compliance_evidence(
 
 def create_compliance_review(
     headers: dict, project_id: str, project_compliance_id: str, *, frequency_label: str, next_due_date: str,
-    recurrence_days: int | None = None, owner_id: str | None = None, notes: str = "",
+    recurrence_days: int | None = None, owner: dict | None = None, notes: str = "",
 ) -> dict:
+    """Schedules a project review; `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/reviews",
         json={"frequency_label": frequency_label, "next_due_date": next_due_date, "recurrence_days": recurrence_days,
-              "owner_id": owner_id, "notes": notes},
+              "owner": owner, "notes": notes},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -2062,11 +2064,25 @@ def main() -> None:
     }
     review_action_type = compliance_action_types["Document Review"]
     test_action_type = compliance_action_types["Test"]
+    # A team can own a standard and be assigned its work (users-and-groups parity): an organisation group
+    # owns ASA-1 and its annual review, and a project group takes the logging required action below.
+    compliance_office = httpx.post(f"{BASE}/orgs/{org['id']}/groups", json={"name": "Compliance Office"}, headers=h_pm, timeout=30)
+    compliance_office.raise_for_status()
+    httpx.post(
+        f"{BASE}/orgs/{org['id']}/groups/{compliance_office.json()['id']}/members",
+        json={"user_id": demo_admin["user_id"]}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    verification_squad = httpx.post(f"{BASE}/projects/{drone['id']}/groups", json={"name": "Verification Squad"}, headers=h_pm, timeout=30)
+    verification_squad.raise_for_status()
+    httpx.post(
+        f"{BASE}/projects/{drone['id']}/groups/{verification_squad.json()['id']}/members",
+        json={"user_id": demo_engineer["user_id"]}, headers=h_pm, timeout=30,
+    ).raise_for_status()
     airworthiness_standard = create_compliance_standard(
         h_pm, org["id"], reference="ASA-1", name="Aerospace Safety & Airworthiness Standard",
         description="Solstice's internal airworthiness and regulatory-compliance standard for commercial "
         "drone platforms, incorporating FAA Part 107 remote-ID obligations.",
-        issuing_organisation="Solstice Compliance Board", owner_id=demo_admin["user_id"],
+        issuing_organisation="Solstice Compliance Board", owner={"type": "org_group", "id": compliance_office.json()["id"]},
         initial_version_label="1.0", initial_version_change_note="Initial release.",
     )
     airworthiness_version = list_compliance_versions(h_pm, org["id"], airworthiness_standard["id"])[0]
@@ -2158,8 +2174,8 @@ def main() -> None:
     logging_assessment = logging_assessments[0]
     update_required_action_assessment(
         h_pm, drone["id"], drone_compliance["id"], logging_pcr["id"], logging_assessment["id"],
-        assignee_id=demo_engineer["user_id"], due_date=(date.today() + timedelta(days=14)).isoformat(),
-        notes="Blocked on the new logging firmware build.",
+        assignee={"type": "project_group", "id": verification_squad.json()["id"]},
+        due_date=(date.today() + timedelta(days=14)).isoformat(), notes="Blocked on the new logging firmware build.",
     )
 
     print("  Attaching compliance evidence and scheduling the annual review...")
@@ -2172,7 +2188,8 @@ def main() -> None:
     )
     create_compliance_review(
         h_pm, drone["id"], drone_compliance["id"], frequency_label="Annual", recurrence_days=365,
-        next_due_date=(date.today() + timedelta(days=330)).isoformat(), owner_id=demo_admin["user_id"],
+        next_due_date=(date.today() + timedelta(days=330)).isoformat(),
+        owner={"type": "org_group", "id": compliance_office.json()["id"]},
         notes="Annual review of continued Part 107 remote-ID compliance.",
     )
 
@@ -2187,7 +2204,7 @@ def main() -> None:
         h_pm, org["id"], reference="EN 60529", name="EN 60529 — Degrees of Protection Provided by Enclosures (IP Code)",
         description="Solstice's internal reference standard for enclosure ingress-protection ratings on "
         "outdoor-operated hardware, based on the IEC/EN 60529 IP Code structure.",
-        issuing_organisation="International Electrotechnical Commission (IEC)", owner_id=demo_admin["user_id"],
+        issuing_organisation="International Electrotechnical Commission (IEC)", owner={"type": "user", "id": demo_admin["user_id"]},
         initial_version_label="1.0", initial_version_change_note="Initial release.",
     )
     ip_rating_version = list_compliance_versions(h_pm, org["id"], ip_rating_standard["id"])[0]
@@ -2245,7 +2262,7 @@ def main() -> None:
         h_pm, org["id"], reference="ISO/IEC 27001", name="ISO/IEC 27001 — Information Security Management System",
         description="Solstice's internal reference standard for information-security management controls, "
         "based on the ISO/IEC 27001 Annex A control-domain structure.",
-        issuing_organisation="International Organization for Standardization (ISO)", owner_id=demo_admin["user_id"],
+        issuing_organisation="International Organization for Standardization (ISO)", owner={"type": "user", "id": demo_admin["user_id"]},
         initial_version_label="1.0", initial_version_change_note="Initial release.",
     )
     infosec_version = list_compliance_versions(h_pm, org["id"], infosec_standard["id"])[0]

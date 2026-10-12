@@ -34,6 +34,16 @@ Both Compliance Manager and Compliance Officer compose with the roles that alrea
 
 For example, a security team that owns "ISO 27001:2022" end to end would typically hold Standards Manager on that one standard rather than the organisation-wide Compliance Manager role — they can author, publish, and retire its versions and manage its own membership, but can't touch a different team's standard, and don't automatically see every project's assessment the way a Compliance Manager would.
 
+## Groups as owners and assignees
+
+A standard's **Owner**, a required action's **Assignee** and a scheduled review's **Owner** can each be a user or a group, so a team can stay accountable when a person leaves. The record shows the group's name, its kind (Org group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the roles above still decide who can edit.
+
+- A standard is shared by every project, so its owner is a user or an organisation group, and a standard always has one. A standard-level review is organisation-wide too, so it takes the same two kinds.
+- A required action's assignee and a project-level review's owner can also be a group of that project.
+- Edit a standard's owner from its **Edit** dialog on the standard's Overview.
+- Deleting a group that still owns a standard asks the admin to hand it to a user or another group (an owner is required). A review owner or an assignee can instead be left empty.
+- Everyone in an assigned group is notified when one of its [reviews or required actions](./reviews-and-notifications.md#notification-triggers) comes due.
+
 ## In this section
 
 - [Data model and standards lifecycle](./data-model-and-lifecycle.md) — how a standard, its versions, and a project's assessment relate to each other, and how a standard moves from draft to published to retired.

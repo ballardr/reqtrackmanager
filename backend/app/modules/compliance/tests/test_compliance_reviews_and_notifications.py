@@ -274,7 +274,7 @@ def test_project_review_rbac_composition(client, admin_token, org_id):
 
 
 def test_project_review_owner_must_be_a_member_of_the_projects_organisation(client, admin_token, org_id):
-    """A review's `owner_id` feeds directly into `scheduler.py`'s daily
+    """A review's `owner` feeds directly into `scheduler.py`'s daily
     due-date sweep (`send_review_due_notifications`), which notifies
     whoever it names unconditionally — so a user with no relationship to
     this project's organisation at all must be rejected on both create and
@@ -290,7 +290,7 @@ def test_project_review_owner_must_be_a_member_of_the_projects_organisation(clie
 
     rejected = client.post(
         f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/reviews",
-        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": outsider_id},
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner": {"type": "user", "id": outsider_id}},
         headers=auth_headers(admin_token),
     )
     assert rejected.status_code == 400, rejected.text
@@ -299,7 +299,7 @@ def test_project_review_owner_must_be_a_member_of_the_projects_organisation(clie
     member_id = create_org_user(client, admin_token, org_id, "review-owner-member@example.com", role="member")
     created = client.post(
         f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/reviews",
-        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": member_id},
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner": {"type": "user", "id": member_id}},
         headers=auth_headers(admin_token),
     )
     assert created.status_code == 201, created.text
@@ -307,7 +307,7 @@ def test_project_review_owner_must_be_a_member_of_the_projects_organisation(clie
 
     rejected_update = client.patch(
         f"{_project_base(project['id'])}/reviews/{review_id}",
-        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": outsider_id},
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner": {"type": "user", "id": outsider_id}},
         headers=auth_headers(admin_token),
     )
     assert rejected_update.status_code == 400, rejected_update.text
@@ -350,7 +350,7 @@ def test_standard_review_rbac_and_lifecycle(client, admin_token, org_id):
 
 def test_standard_review_owner_must_be_an_org_member(client, admin_token, org_id):
     """Sibling of `test_project_review_owner_must_be_a_member_of_the_
-    projects_organisation` — a standard-level review's `owner_id` feeds the
+    projects_organisation` — a standard-level review's `owner` feeds the
     same unconditional `send_review_due_notifications` sweep; here the
     review itself is org-scoped rather than project-scoped, so the same
     org-membership guard applies directly rather than via a project's own
@@ -363,7 +363,7 @@ def test_standard_review_owner_must_be_an_org_member(client, admin_token, org_id
 
     rejected = client.post(
         f"{_base(org_id)}/standards/{standard['id']}/reviews",
-        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": other_admin_id},
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner": {"type": "user", "id": other_admin_id}},
         headers=auth_headers(admin_token),
     )
     assert rejected.status_code == 400, rejected.text
@@ -371,7 +371,7 @@ def test_standard_review_owner_must_be_an_org_member(client, admin_token, org_id
     member_id = create_org_user(client, admin_token, org_id, "standard-review-owner@example.com", role="member")
     created = client.post(
         f"{_base(org_id)}/standards/{standard['id']}/reviews",
-        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": member_id},
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner": {"type": "user", "id": member_id}},
         headers=auth_headers(admin_token),
     )
     assert created.status_code == 201, created.text
@@ -379,7 +379,7 @@ def test_standard_review_owner_must_be_an_org_member(client, admin_token, org_id
 
     rejected_update = client.patch(
         f"{_base(org_id)}/standards/{standard['id']}/reviews/{review_id}",
-        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": other_admin_id},
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner": {"type": "user", "id": other_admin_id}},
         headers=auth_headers(admin_token),
     )
     assert rejected_update.status_code == 400, rejected_update.text
@@ -592,7 +592,7 @@ def test_required_action_due_sweep_notifies_assignee(client, admin_token, org_id
     updated = client.patch(
         f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/requirements/{pcr_id}/"
         f"required-action-assessments/{assessment_id}",
-        json={"assignee_id": assignee_id, "due_date": (TODAY - timedelta(days=1)).isoformat()},
+        json={"assignee": {"type": "user", "id": assignee_id}, "due_date": (TODAY - timedelta(days=1)).isoformat()},
         headers=auth_headers(admin_token),
     )
     assert updated.status_code == 200, updated.text
@@ -632,7 +632,7 @@ def test_review_due_sweep_notifies_owner(client, admin_token, org_id):
 
     client.post(
         f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/reviews",
-        json={"frequency_label": "Annual", "next_due_date": (TODAY - timedelta(days=1)).isoformat(), "owner_id": owner_id},
+        json={"frequency_label": "Annual", "next_due_date": (TODAY - timedelta(days=1)).isoformat(), "owner": {"type": "user", "id": owner_id}},
         headers=auth_headers(admin_token),
     )
 

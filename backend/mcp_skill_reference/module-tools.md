@@ -32,6 +32,7 @@ Rules and gotchas:
 - `compliance_approve_requirement` and `compliance_reject_requirement` are approvals, gated by AI approval (see the main skill). Never call them unless the user asked for that specific requirement. `compliance_submit_requirement_for_approval` only queues a decision and is not gated.
 - Evidence can expire, so check `compliance_list_expiring_evidence` before reporting a project as compliant.
 - Delete tools (`compliance_delete_*`) are destructive: name the item and confirm first. Prefer the `archive_*` tools, which can be undone with `unarchive_*`.
+- A standard `owner`, a review `owner` and a required action `assignee` are `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. A standard and a standard-level review take users and organisation groups only; project reviews and assessments also take that project's groups. `null` clears an optional one; a standard always has an owner.
 - Standard member/group role assignment, bulk import and evidence file upload are not available through MCP.
 
 ### Tool list
@@ -106,13 +107,13 @@ Parameters: `organization_id*` (uuid, in path), `default_standards_manager_group
 
 Creates a new compliance standard, along with its mandatory first (draft) version.
 
-Parameters: `organization_id*` (uuid, in path), `reference*` (string, in body), `name*` (string, in body), `description` (string, in body), `issuing_organisation` (string, in body), `owner_id` (uuid, in body), `initial_version_label*` (string, in body), `initial_version_effective_date` (string, in body), `initial_version_change_note` (string, in body)
+Parameters: `organization_id*` (uuid, in path), `reference*` (string, in body), `name*` (string, in body), `description` (string, in body), `issuing_organisation` (string, in body), `owner` (object, in body), `initial_version_label*` (string, in body), `initial_version_effective_date` (string, in body), `initial_version_change_note` (string, in body)
 
 #### `compliance_update_standard` (write)
 
 Updates a compliance standard's name/description/issuing organisation/owner (its reference is immutable).
 
-Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `issuing_organisation` (string, in body), `owner_id*` (uuid, in body)
+Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `issuing_organisation` (string, in body), `owner*` (object, in body)
 
 #### `compliance_archive_standard` (write)
 
@@ -310,13 +311,13 @@ Parameters: `organization_id*` (uuid, in path), `project_id*` (uuid, in path), `
 
 Schedules a new review of a compliance standard itself (not a specific project's assignment).
 
-Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner_id` (uuid, in body), `notes` (string, in body)
+Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner` (object, in body), `notes` (string, in body)
 
 #### `compliance_update_standard_review` (write)
 
 Updates a scheduled (not yet completed) standard-level review.
 
-Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `review_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner_id` (uuid, in body), `notes` (string, in body)
+Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `review_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner` (object, in body), `notes` (string, in body)
 
 #### `compliance_delete_standard_review` (write)
 
@@ -370,7 +371,7 @@ Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in pa
 
 Updates a required action assessment's assignee/due date/notes (not its completion — use complete/uncomplete).
 
-Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in path), `pcr_id*` (uuid, in path), `assessment_id*` (uuid, in path), `assignee_id` (uuid, in body), `due_date` (string, in body), `notes` (string, in body)
+Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in path), `pcr_id*` (uuid, in path), `assessment_id*` (uuid, in path), `assignee` (object, in body), `due_date` (string, in body), `notes` (string, in body)
 
 #### `compliance_complete_required_action_assessment` (write)
 
@@ -454,13 +455,13 @@ Parameters: `project_id*` (uuid, in path), `evidence_id*` (uuid, in path), `file
 
 Schedules a new review of a project's compliance standard assignment.
 
-Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner_id` (uuid, in body), `notes` (string, in body)
+Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner` (object, in body), `notes` (string, in body)
 
 #### `compliance_update_project_review` (write)
 
 Updates a scheduled (not yet completed) project-level review.
 
-Parameters: `project_id*` (uuid, in path), `review_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner_id` (uuid, in body), `notes` (string, in body)
+Parameters: `project_id*` (uuid, in path), `review_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner` (object, in body), `notes` (string, in body)
 
 #### `compliance_delete_project_review` (write)
 

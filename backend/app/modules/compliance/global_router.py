@@ -79,7 +79,7 @@ from app.models.organization import UserOrgRole
 from app.models.user import User
 from app.modules.compliance.models import ComplianceStandard
 from app.modules.compliance.schemas import ComplianceNavVisibilityOut, ComplianceStandardOut
-from app.modules.compliance.service import get_effective_compliance_managers
+from app.modules.compliance.service import get_effective_compliance_managers, standard_to_out
 from app.modules.registry import is_module_enabled
 from app.services.rbac import require_org_access_and_module_enabled
 
@@ -146,7 +146,7 @@ def get_nav_visibility(
 @router.get("/standards/{standard_id}", response_model=ComplianceStandardOut)
 def get_standard_by_id(
     standard_id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
-) -> ComplianceStandard:
+) -> ComplianceStandardOut:
     """Resolves a compliance standard by id alone, with no `organization_id`
     in the path — the entry point the frontend's `/standards/:standardId`
     workspace uses to learn a standard's owning org before threading that id
@@ -172,4 +172,4 @@ def get_standard_by_id(
 
     require_org_access_and_module_enabled(db, current_user, standard.organization_id, _MODULE_KEY)
 
-    return standard
+    return standard_to_out(db, standard)

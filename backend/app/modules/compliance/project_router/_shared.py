@@ -25,29 +25,28 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.models import ComplianceEvidence, ComplianceRequiredActionAssessment, ProjectCompliance, ProjectComplianceRequirement
 from app.modules.compliance.service import get_effective_compliance_officers
+from app.schemas.principal import PrincipalRef
 from app.services import notifications
-from app.services.rbac import get_effective_org_roles, require_module_role, require_project_module_enabled
+from app.services.principals import validate_principal
+from app.services.rbac import require_module_role, require_project_module_enabled
 
 _require_officer = require_module_role("compliance", "compliance_officer")
 _require_view = require_project_module_enabled("compliance")
 
 
-def _require_project_member_or_none(db: Session, project_id: UUID, user_id: UUID | None) -> None:
-    """400s unless `user_id` is `None` or an effective member of the
-    project's own organisation — guards every `assignee_id`/`owner_id`
-    field this router accepts so a scheduled reminder (`scheduler.py`'s
-    daily sweeps) can never be pointed at an arbitrary user with no
-    relationship to this project at all, mirroring the codebase-wide "the
-    user must be a member of this project's organisation first" convention
-    (`routers/projects.py::add_member_source`'s identical check). Deliberately
-    org-scoped rather than project-role-scoped: an assignee/owner (e.g. a
-    Compliance Manager overseeing several projects) is not required to hold
-    a formal `ProjectRole` on this specific project."""
-    if user_id is None:
+def _validate_project_principal(db: Session, project_id: UUID, ref: PrincipalRef | None, field: str) -> None:
+    """400s unless `ref` is `None` or a principal that may be named on a record of this project: a member
+    of the project's organisation, a group of that organisation, or a group of this project
+    (`services.principals.validate_principal`). Guards every `assignee`/`owner` field this router
+    accepts so a scheduled reminder (`scheduler.py`'s daily sweeps) can never be pointed at someone with
+    no relationship to this project at all. Deliberately organisation-scoped rather than
+    project-role-scoped: an assignee/owner (e.g. a Compliance Manager overseeing several projects) is not
+    required to hold a formal `ProjectRole` on this specific project."""
+    if ref is None:
         return
     project = db.get(Project, project_id)
-    if project is not None and not get_effective_org_roles(db, user_id, project.organization_id):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "assignee/owner must be a member of this project's organisation.")
+    if project is not None:
+        validate_principal(db, ref, organization_id=project.organization_id, project_id=project_id, field=field)
 
 
 def _get_project_compliance_or_404(db: Session, project_id: UUID, project_compliance_id: UUID) -> ProjectCompliance:

@@ -88,7 +88,7 @@ const OUTSTANDING_ACTIONS: OutstandingRequiredAction[] = [
     project_compliance_requirement_id: "pcr-1", requirement_id: "req-1", requirement_reference: "A.5.15",
     requirement_name: "Access control", required_action_assessment_id: "raa-1", required_action_id: "ra-1",
     required_action_name: "Enable MFA for admin accounts", is_mandatory: true,
-    assignee_id: "user-1", due_date: "2026-10-01", notes: "",
+    assignee: { type: "user", id: "user-1", label: "Demo User", member_count: null, exists: true }, due_date: "2026-10-01", notes: "",
   },
 ];
 
@@ -97,7 +97,7 @@ const REVIEWS_DUE: ComplianceReview[] = [
     id: "rev-1", standard_id: "std-1", standard_version_id: "ver-1",
     standard_reference: "ISO-27001", standard_name: "ISO 27001", version_label: "v1.0",
     project_compliance_id: "pc-1", frequency_label: "Annual security review",
-    recurrence_days: 365, next_due_date: "2026-09-01", owner_id: null, status: "scheduled", schedule_state: "overdue",
+    recurrence_days: 365, next_due_date: "2026-09-01", owner: null, status: "scheduled", schedule_state: "overdue",
     notes: "", outcome: null, completed_at: null, completed_by: null, created_by: "user-1",
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", linked_evidence_ids: [],
   },

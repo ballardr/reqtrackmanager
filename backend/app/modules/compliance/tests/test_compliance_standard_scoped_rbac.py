@@ -121,7 +121,7 @@ def test_org_compliance_manager_satisfies_standard_manage_with_no_per_standard_g
     resp = client.patch(
         f"{_base(org_id)}/standards/{standard['id']}",
         json={"name": "Renamed via org override", "description": "", "issuing_organisation": None,
-              "owner_id": standard["owner_id"]},
+              "owner": {"type": "user", "id": standard["owner"]["id"]}},
         headers=auth_headers(manager_token),
     )
     assert resp.status_code == 200, resp.text

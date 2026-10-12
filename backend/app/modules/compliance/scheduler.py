@@ -66,6 +66,7 @@ from app.modules.compliance.service import (
     get_effective_compliance_officers,
 )
 from app.services import notifications
+from app.services.principals import principal_recipients, principal_ref
 
 #: Days before a required action's `due_date` that it is notified as
 #: approaching (§18's "Required Action approaching its due date") — a
@@ -137,7 +138,8 @@ def send_evidence_expiry_notifications(db: Session) -> None:
 
 def send_review_due_notifications(db: Session) -> None:
     """Daily sweep (§17, §18, §28): notifies the relevant compliance
-    officers/managers (plus the review's own `owner_id`, if set) when a
+    officers/managers (plus the review's owner, if set: the user, or every
+    member of the owning group) when a
     `SCHEDULED` `ComplianceReview` becomes due or overdue, at most once per
     notification per current `next_due_date` (`ComplianceReview.due_
     reminder_sent_at`/`overdue_notified_at`). Covers both standard-level
@@ -163,8 +165,7 @@ def send_review_due_notifications(db: Session) -> None:
                 continue
             organization_id = standard.organization_id
             recipients = get_effective_compliance_managers(db, organization_id)
-        if review.owner_id is not None:
-            recipients.add(review.owner_id)
+        recipients |= principal_recipients(db, [principal_ref(review.owner_type, review.owner_id)])
 
         if review.next_due_date < today:
             if review.overdue_notified_at is not None:
@@ -192,7 +193,8 @@ def send_review_due_notifications(db: Session) -> None:
 
 def send_required_action_due_notifications(db: Session) -> None:
     """Daily sweep (§6, §18, §28): notifies a required action's own
-    assignee (or, if unassigned, the owning project's compliance officers)
+    assignee (a user, or every member of an assigned group; or, if unassigned
+    or the assignee has no one left to notify, the owning project's compliance officers)
     when it is approaching or has passed its due date, at most once per
     notification per current `due_date` (`ComplianceRequiredActionAssessment.
     due_reminder_sent_at`/`overdue_notified_at`). Excludes already-completed
@@ -213,7 +215,9 @@ def send_required_action_due_notifications(db: Session) -> None:
         if project_compliance is None:
             continue
         project_id = project_compliance.project_id
-        recipients = {assessment.assignee_id} if assessment.assignee_id else get_effective_compliance_officers(db, project_id)
+        recipients = principal_recipients(db, [principal_ref(assessment.assignee_type, assessment.assignee_id)])
+        if not recipients:
+            recipients = get_effective_compliance_officers(db, project_id)
 
         if assessment.due_date < today:
             if assessment.overdue_notified_at is not None:

@@ -2087,3 +2087,16 @@ export interface PrincipalUsage {
 export function userPrincipal(userId: string | null | undefined): PrincipalRef | null {
   return userId ? { type: "user", id: userId } : null;
 }
+
+/** The `PrincipalRef` of a resolved principal, or null when the field is empty (seeds a form from a record). */
+export function principalRef(principal: Principal | null | undefined): PrincipalRef | null {
+  return principal ? { type: principal.type, id: principal.id } : null;
+}
+
+/**
+ * The record's own resolved view of a picked value while it is still the saved one, so `PrincipalPicker`
+ * shows a group's name and member count without listing it; undefined once the value differs.
+ */
+export function savedPrincipalDisplay(value: PrincipalRef | null, saved: Principal | null | undefined): Principal | undefined {
+  return saved && value && value.type === saved.type && value.id === saved.id ? saved : undefined;
+}

@@ -29,7 +29,7 @@
  * same convention every other frontend type in this codebase already uses).
  */
 
-import type { OrgUser } from "../../api/types";
+import type { OrgUser, Principal } from "../../api/types";
 
 /** Shared "id -> display name" lookup for the Project Compliance View's own
  * assignee/actor/owner fields — mirrors `RequirementDetailPage.tsx`'s own
@@ -158,7 +158,8 @@ export interface ComplianceStandard {
   name: string;
   description: string;
   issuing_organisation: string | null;
-  owner_id: string;
+  /** The accountable user or organisation group (never empty). */
+  owner: Principal;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -421,7 +422,7 @@ export interface ComplianceRequiredActionAssessment {
   id: string;
   project_compliance_requirement_id: string;
   required_action_id: string;
-  assignee_id: string | null;
+  assignee: Principal | null;
   due_date: string | null;
   is_completed: boolean;
   completed_at: string | null;
@@ -558,7 +559,7 @@ export interface ComplianceReview {
   frequency_label: string;
   recurrence_days: number | null;
   next_due_date: string;
-  owner_id: string | null;
+  owner: Principal | null;
   status: ComplianceReviewStatus;
   schedule_state: ComplianceReviewScheduleState | null;
   notes: string;
@@ -602,7 +603,7 @@ export interface OutstandingRequiredAction {
   required_action_id: string;
   required_action_name: string;
   is_mandatory: boolean;
-  assignee_id: string | null;
+  assignee: Principal | null;
   due_date: string | null;
   notes: string;
 }

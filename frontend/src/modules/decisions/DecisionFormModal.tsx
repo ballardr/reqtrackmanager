@@ -18,8 +18,8 @@
  */
 import { useState } from "react";
 
-import type { OrgUser, Principal, PrincipalRef } from "../../api/types";
-import { userPrincipal } from "../../api/types";
+import type { OrgUser, PrincipalRef } from "../../api/types";
+import { principalRef, savedPrincipalDisplay, userPrincipal } from "../../api/types";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { PrincipalPicker } from "../../components/PrincipalPicker";
@@ -38,17 +38,6 @@ const PROMPT_TO_FIELD: { promptKey: PromptKey; fieldKey: keyof DecisionFieldValu
   { promptKey: "assumptions_prompt", fieldKey: "assumptions", label: "Assumptions" },
   { promptKey: "constraints_prompt", fieldKey: "constraints", label: "Constraints" },
 ];
-
-/** The `PrincipalRef` of a resolved principal, or null when the field is empty. */
-function refOf(principal: Principal | null | undefined): PrincipalRef | null {
-  return principal ? { type: principal.type, id: principal.id } : null;
-}
-
-/** The record's own view of a picked value, so the picker shows a group's name and member count
- * without listing it; undefined once the value differs from what the record carried. */
-function displayFor(value: PrincipalRef | null, original: Principal | null | undefined): Principal | undefined {
-  return original && value && value.type === original.type && value.id === original.id ? original : undefined;
-}
 
 export function DecisionFormModal({
   initial,
@@ -87,8 +76,8 @@ export function DecisionFormModal({
   // during render" pattern — converges in one extra render.
   if (decisionTypeId === "" && decisionTypes[0]) setDecisionTypeId(decisionTypes[0].id);
   const [decisionDate, setDecisionDate] = useState(initial?.decision_date ?? "");
-  const [decisionMaker, setDecisionMaker] = useState<PrincipalRef | null>(refOf(initial?.decision_maker));
-  const [owner, setOwner] = useState<PrincipalRef | null>(initial ? refOf(initial.owner) : userPrincipal(currentUserId));
+  const [decisionMaker, setDecisionMaker] = useState<PrincipalRef | null>(principalRef(initial?.decision_maker));
+  const [owner, setOwner] = useState<PrincipalRef | null>(initial ? principalRef(initial.owner) : userPrincipal(currentUserId));
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(PROMPT_TO_FIELD.map((f) => [f.fieldKey, (initial?.[f.fieldKey] as string | null) ?? ""]))
   );
@@ -151,7 +140,7 @@ export function DecisionFormModal({
             organizationId={organizationId}
             projectId={projectId}
             value={decisionMaker}
-            display={displayFor(decisionMaker, initial?.decision_maker)}
+            display={savedPrincipalDisplay(decisionMaker, initial?.decision_maker)}
             onChange={setDecisionMaker}
             ariaLabel="Decision maker"
             placeholder="Search users and groups…"
@@ -164,7 +153,7 @@ export function DecisionFormModal({
             organizationId={organizationId}
             projectId={projectId}
             value={owner}
-            display={displayFor(owner, initial?.owner)}
+            display={savedPrincipalDisplay(owner, initial?.owner)}
             onChange={setOwner}
             ariaLabel="Owner"
             placeholder="Select an owner…"

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import type { OrgUser } from "../../api/types";
+import type { OrgGroup, OrgUser, ProjectGroup } from "../../api/types";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildFileAsset, withRouter, withToast } from "../../testing/storybook-helpers";
 import { RequirementAssessmentPanel } from "./RequirementAssessmentPanel";
@@ -46,7 +46,7 @@ const ACTION_DEF: ComplianceRequiredAction = {
 function actionAssessment(overrides: Partial<ComplianceRequiredActionAssessment> = {}): ComplianceRequiredActionAssessment {
   return {
     id: "aa-1", project_compliance_requirement_id: "pcr-1", required_action_id: "act-1",
-    assignee_id: null, due_date: null, is_completed: false, completed_at: null, completed_by: null, notes: "",
+    assignee: null, due_date: null, is_completed: false, completed_at: null, completed_by: null, notes: "",
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
   };
 }
@@ -64,6 +64,8 @@ function mockApis(pcrRow: ProjectComplianceRequirement, assessments: ComplianceR
       const needle = new URLSearchParams(path.split("?")[1]).get("q")?.toLowerCase() ?? "";
       return { members: ORG_USERS.filter((u) => u.display_name.toLowerCase().includes(needle)), external: null };
     }
+    if (path === `/api/v1/orgs/${ORG_ID}/groups`) return ORG_GROUPS;
+    if (path === `/api/v1/projects/${PROJECT_ID}/groups`) return PROJECT_GROUPS;
     if (path.includes("/link-graph")) {
       return buildGraph([[buildGraphNode({ type: "requirement", id: "r-9", type_label: "Requirement", label: "SW-SEC-014 Encrypt at rest", status: null })]]);
     }
@@ -136,6 +138,13 @@ function mockEvidenceApis(pcrRow: ProjectComplianceRequirement) {
   });
   spyOn(api, "patch").mockImplementation(async () => pcrRow);
 }
+
+const ORG_GROUPS: OrgGroup[] = [
+  { id: "group-1", name: "Compliance Office", member_user_ids: ["u2"], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
+];
+const PROJECT_GROUPS: ProjectGroup[] = [
+  { id: "pgroup-1", name: "Release board", roles: [], member_user_ids: ["u2"], member_org_group_ids: [], member_source_project_ids: [] },
+];
 
 const ORG_USERS: OrgUser[] = [
   {
@@ -244,7 +253,7 @@ export const RequiredActionAssigneeSearchAndAssign: Story = {
     await userEvent.click(body.getByText("Jamie Lee"));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance/${PC_ID}/requirements/pcr-1/required-action-assessments/aa-1`,
-      { assignee_id: "u2", due_date: null, notes: "" }
+      { assignee: { type: "user", id: "u2" }, due_date: null, notes: "" }
     ));
   },
 };
@@ -252,17 +261,46 @@ export const RequiredActionAssigneeSearchAndAssign: Story = {
 /** Unassigning an already-assigned required action clears it the same way
  * the old `<select>`'s empty "Unassigned" option did. */
 export const RequiredActionUnassign: Story = {
-  beforeEach: () => mockApis(pcr(), [actionAssessment({ assignee_id: "u1" })]),
+  beforeEach: () => mockApis(pcr(), [actionAssessment({ assignee: { type: "user", id: "u1", label: "Alex Morgan", member_count: null, exists: true } })]),
   args: { pcr: pcr(), orgUsers: ORG_USERS },
   play: async ({ canvasElement }) => {
     void canvasElement;
     const body = within(document.body);
-    await expect(body.getByText("Alex Morgan (alex.morgan@example.com)")).toBeInTheDocument();
+    await expect(body.getByText("Alex Morgan")).toBeInTheDocument();
     await userEvent.click(body.getByRole("button", { name: /Unassign: Assignee for Complete access review/ }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance/${PC_ID}/requirements/pcr-1/required-action-assessments/aa-1`,
-      { assignee_id: null, due_date: null, notes: "" }
+      { assignee: null, due_date: null, notes: "" }
     ));
+  },
+};
+
+/** A team can be assigned a required action: the project's groups are offered alongside the organisation's. */
+export const RequiredActionAssignedToAProjectGroup: Story = {
+  beforeEach: () => mockApis(pcr()),
+  args: { pcr: pcr(), orgUsers: ORG_USERS },
+  play: async ({ canvasElement }) => {
+    void canvasElement;
+    const body = within(document.body);
+    const input = body.getByRole("combobox", { name: /Assignee for Complete access review/ });
+    await userEvent.type(input, "release");
+    await userEvent.click(await body.findByText("Release board"));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance/${PC_ID}/requirements/pcr-1/required-action-assessments/aa-1`,
+      { assignee: { type: "project_group", id: "pgroup-1" }, due_date: null, notes: "" }
+    ));
+  },
+};
+
+/** A group assignee shows its name and kind rather than a single person. */
+export const RequiredActionGroupAssigneeIsNamed: Story = {
+  beforeEach: () => mockApis(pcr(), [actionAssessment({ assignee: { type: "org_group", id: "group-1", label: "Compliance Office", member_count: 4, exists: true } })]),
+  args: { pcr: pcr(), orgUsers: ORG_USERS },
+  play: async ({ canvasElement }) => {
+    void canvasElement;
+    const body = within(document.body);
+    await waitFor(() => expect(body.getByText("Compliance Office")).toBeInTheDocument());
+    await expect(body.getByText("Org group · 4 members")).toBeInTheDocument();
   },
 };
 

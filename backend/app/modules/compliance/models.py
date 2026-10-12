@@ -535,6 +535,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 from app.modules.compliance.enums import (
     ComplianceApplicability,
     ComplianceApprovalState,
@@ -566,10 +567,14 @@ class ComplianceStandard(UUIDPKMixin, TimestampMixin, Base):
         issuing_organisation: The external body that issues/owns this
             standard, where applicable (§2) — e.g. "ISO." `None` for an
             internally-authored standard.
-        owner_id: The user accountable for this standard (§2's "Owner"),
-            distinct from `creator_id` — mirrors `RequirementVersion.
-            owner_id` being distinct from `created_by`, since ownership may
-            be reassigned after creation while authorship never changes.
+        owner_type / owner_id: The principal accountable for this standard
+            (§2's "Owner") — a user or an organisation group
+            (`models.principal`); mandatory. Distinct from `creator_id` —
+            mirrors `RequirementVersion.owner_id` being distinct from
+            `created_by`, since ownership may be reassigned after creation
+            while authorship never changes. No foreign key;
+            `services.principals.validate_principal` checks it on write and
+            `module.py`'s `principal_references` guard group deletion.
         creator_id: The user who created this standard (audit fact, never
             reassigned).
         is_archived / archived_at / archived_by: Soft-delete / lifecycle
@@ -592,7 +597,7 @@ class ComplianceStandard(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "compliance_standards"
-    __table_args__ = (UniqueConstraint("organization_id", "reference"),)
+    __table_args__ = (UniqueConstraint("organization_id", "reference"), principal_check_constraint("owner"))
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
@@ -601,7 +606,8 @@ class ComplianceStandard(UUIDPKMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     issuing_organisation: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    owner_type: Mapped[str] = principal_type_column()
+    owner_id: Mapped[uuid.UUID] = principal_id_column()
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -802,8 +808,12 @@ class ComplianceRequiredAction(UUIDPKMixin, TimestampMixin, Base):
     requirement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="CASCADE"), index=True
     )
+    # Deferred so deleting an organisation (which cascades to both the org-level action types and,
+    # through the standards, these rows) is not rejected by whichever cascade branch runs first;
+    # an in-use type is still refused, at commit.
     action_type_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("compliance_action_type_definitions.id")
+        UUID(as_uuid=True),
+        ForeignKey("compliance_action_type_definitions.id", deferrable=True, initially="DEFERRED"),
     )
     name: Mapped[str] = mapped_column(String(500))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -1041,8 +1051,10 @@ class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
             requirement assessment.
         required_action_id: The `ComplianceRequiredAction` this row
             assesses.
-        assignee_id: Who is responsible for this required action, or
-            `None` if unassigned (§6's "Assignee").
+        assignee_type / assignee_id: The principal (a user, an organisation
+            group or a project group — `models.principal`) responsible for
+            this required action, both `None` if unassigned (§6's
+            "Assignee"). No foreign key; see `ComplianceStandard.owner_id`.
         due_date: Optional due date (§6).
         due_reminder_sent_at / overdue_notified_at: Phase 10 (§18/§28) sweep
             bookkeeping — stamped the first time the "approaching due
@@ -1063,6 +1075,7 @@ class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "compliance_required_action_assessments"
     __table_args__ = (
         UniqueConstraint("project_compliance_requirement_id", "required_action_id"),
+        principal_check_constraint("assignee", nullable=True),
         # Explicit, shortened index name: `index=True`'s auto-generated
         # `ix_compliance_required_action_assessments_project_compliance_
         # requirement_id` is 75 characters, over Postgres's 63-byte
@@ -1083,7 +1096,8 @@ class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
     required_action_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("compliance_required_actions.id"), index=True
     )
-    assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    assignee_type: Mapped[str | None] = principal_type_column(nullable=True)
+    assignee_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     due_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     overdue_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1256,8 +1270,12 @@ class ComplianceReview(UUIDPKMixin, TimestampMixin, Base):
         next_due_date: This cycle's due date (§17's "Next review date").
             Never itself computed as "upcoming/due/overdue" — see
             `service.py::compute_review_schedule_state`.
-        owner_id: Who is responsible for performing this review (§17's
-            "Review owner"), or `None` if not yet assigned.
+        owner_type / owner_id: The principal responsible for performing this
+            review (§17's "Review owner"), both `None` if not yet assigned.
+            A standard-level review is organisation-scoped (a user or an
+            organisation group); a project-level one may also name a group
+            of its project (`models.principal`). No foreign key; see
+            `ComplianceStandard.owner_id`.
         status: `SCHEDULED` or `COMPLETED` — see `ComplianceReviewStatus`'s
             own docstring for why there's no separate overdue/cancelled
             member.
@@ -1280,6 +1298,7 @@ class ComplianceReview(UUIDPKMixin, TimestampMixin, Base):
             "(standard_id IS NOT NULL) != (project_compliance_id IS NOT NULL)",
             name="ck_compliance_reviews_exactly_one_owner",
         ),
+        principal_check_constraint("owner", nullable=True),
     )
 
     standard_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -1291,7 +1310,8 @@ class ComplianceReview(UUIDPKMixin, TimestampMixin, Base):
     frequency_label: Mapped[str] = mapped_column(String(100))
     recurrence_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     next_due_date: Mapped[date] = mapped_column(Date)
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     status: Mapped[ComplianceReviewStatus] = mapped_column(
         str_enum(ComplianceReviewStatus, 20), default=ComplianceReviewStatus.SCHEDULED
     )
@@ -1427,8 +1447,10 @@ class ComplianceRequirementMapping(UUIDPKMixin, TimestampMixin, Base):
     to_requirement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="CASCADE"), index=True
     )
+    # Deferred for the same reason as `ComplianceRequiredAction.action_type_id`.
     relationship_type_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("compliance_mapping_relationship_types.id")
+        UUID(as_uuid=True),
+        ForeignKey("compliance_mapping_relationship_types.id", deferrable=True, initially="DEFERRED"),
     )
     notes: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
