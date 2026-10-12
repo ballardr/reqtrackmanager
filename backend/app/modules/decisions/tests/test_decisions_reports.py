@@ -122,7 +122,7 @@ def _backdate_status_entry(decision_id: str, days: int) -> None:
 def test_d1_register_lists_decisions_with_labels_people_and_supersession(client, admin_token):
     _, project, token = _setup(client, admin_token, "D1 Co")
     old = _approved(client, token, project["id"], "Use REST", decision_date="2026-01-10")
-    new = _decision(client, token, project["id"], "Use GraphQL", type_name="Design", decision_maker_id=_me(client, token))
+    new = _decision(client, token, project["id"], "Use GraphQL", type_name="Design", decision_maker={"type": "user", "id": _me(client, token)})
     _post(client, token, project["id"], new["id"], "supersessions", 201, old_decision_id=old["id"])
     _to_review(client, token, project["id"], new["id"])
     _post(client, token, project["id"], new["id"], "approve")
@@ -169,9 +169,9 @@ def test_d1_filters_by_status_type_dates_and_archive(client, admin_token):
 def test_d2_ageing_orders_by_wait_and_flags_overdue_and_missing_decision_maker(client, admin_token):
     _, project, token = _setup(client, admin_token, "D2 Co")
     me = _me(client, token)
-    stale = _decision(client, token, project["id"], "Stale call", decision_maker_id=me)
+    stale = _decision(client, token, project["id"], "Stale call", decision_maker={"type": "user", "id": me})
     fresh = _decision(client, token, project["id"], "Fresh call")
-    proposed = _decision(client, token, project["id"], "Just proposed", decision_maker_id=me)
+    proposed = _decision(client, token, project["id"], "Just proposed", decision_maker={"type": "user", "id": me})
     _decision(client, token, project["id"], "Still a draft")
     _to_review(client, token, project["id"], stale["id"])
     _to_review(client, token, project["id"], fresh["id"])

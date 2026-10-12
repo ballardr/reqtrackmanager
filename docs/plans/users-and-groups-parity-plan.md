@@ -1,15 +1,15 @@
 # Users and Groups on Parity — Plan
 
-**Status:** planned 2026-10-11; Phase 1 shipped 2026-10-12. **Decided by: User** (2026-10-11): groups can be selected wherever a user can (starting with a Decision's owner); both organisation groups and project groups; the other modules are updated too. The rule is also in `CLAUDE.md` ("Users and Groups on Parity").
+**Status:** planned 2026-10-11; Phases 1 and 2 shipped 2026-10-12. **Decided by: User** (2026-10-11): groups can be selected wherever a user can (starting with a Decision's owner); both organisation groups and project groups; the other modules are updated too. The rule is also in `CLAUDE.md` ("Users and Groups on Parity").
 
 ## Status / Resume Here
 
-1 / 6 phases complete. Phase 1 (the shared mechanism) is done; Phases 2 to 5 are independent of each other and can start. Phase 6 (core fields) is a proposal the user has not yet confirmed.
+2 / 6 phases complete. Phases 1 (the shared mechanism) and 2 (Decisions) are done; Phases 3 to 5 are independent of each other and can start. Phase 6 (core fields) is a proposal the user has not yet confirmed.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Shared principal mechanism: reference type, membership, picker, usage hook | [x] |
-| 2 | Decision Management: owner and decision maker (is Module 4 Phase 10) | [ ] |
+| 2 | Decision Management: owner and decision maker (is Module 4 Phase 10) | [x] |
 | 3 | Stakeholders and Personas: owner and champion | [ ] |
 | 4 | Context & Strategy: Pain Point, Guiding Principle and Open Question owners | [ ] |
 | 5 | Compliance: standard owner and required-action assignee | [ ] |
@@ -58,6 +58,10 @@ A generic core extension point, so no module hand-edits a core file and no modul
 **Delivered 2026-10-12, with these differences from the text above** (full account in `docs/decisions.md`): organisation deletion needs no usage-hook cleanup (every referencing row is in the same organisation and goes with it); export/import is provided as `principal_to_bundle` / `principal_from_bundle` helpers that each adopting module calls from its own bundle hook, since core does not serialise module rows; `PrincipalReference` gained an optional `live_filter` so older version rows are neither counted nor rewritten; the delete flow is `GroupInUseDialog` on the shared `DeleteInUseDialog`; and the Playwright test for deleting an in-use group lands with Phase 2, the first adopter, as stated above.
 
 ## 3. Phases 2 to 5 — module adoption
+
+**Phase 2 delivered 2026-10-12** (full account in `docs/decisions.md`): migration `0076` (module migration chain; the next free number is 0077); `owner` and `decision_maker` on the API are `PrincipalRef` in and `PrincipalOut` out, replacing `owner_id` / `decision_maker_id` (a deliberate breaking change to the Decisions API, called out so the next adopter does the same rather than carrying both shapes); filters `owner_type`+`owner_id`, `owner_mine`, `decision_maker_type`+`decision_maker_id`, `decision_maker_mine`; the owner gate is `is_principal_member`; D1 and D2 and D3 print `Name (Org group)` through the new `principal_text` helper; the module declares both fields in `principal_references`; the UI uses `PrincipalPicker` / `PrincipalBadge` on the form, list, quick view and detail page. Decisions has no export/import bundle, so `principal_to_bundle` / `principal_from_bundle` were not needed here, and its notifications do not exist, so no fan-out. The Playwright test for deleting an in-use group (deferred from Phase 1) is `tests/modules/decisions/decision-group-owners.spec.ts`.
+
+## 3a. Phases 2 to 5 — the checklist
 
 Each adoption follows the same checklist, so each is small once Phase 1 exists:
 

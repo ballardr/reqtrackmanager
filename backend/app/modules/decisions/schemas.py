@@ -46,6 +46,7 @@ from pydantic import BaseModel
 from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.service import DecisionDecisionLinkKind, DecisionRequirementLinkKind
 from app.schemas.file import FileAssetOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 # --- Decision Types (project-scoped) ----------------------------------------
 
@@ -113,17 +114,19 @@ class DecisionTemplateOut(BaseModel):
 
 
 class DecisionCreate(BaseModel):
-    """`owner_id` defaults to the creating user when omitted (mirrors
+    """`owner` defaults to the creating user when omitted (mirrors
     `ComplianceStandardCreate.owner_id`'s own default-to-creator
     convention) — a Decision always needs an owner, but there's no reason
-    to force the caller to name themselves explicitly."""
+    to force the caller to name themselves explicitly. `owner` and
+    `decision_maker` are principals: a user, an organisation group or a
+    project group of this project."""
 
     title: str
     decision_statement: str
     decision_type_id: UUID
     decision_date: date | None = None
-    decision_maker_id: UUID | None = None
-    owner_id: UUID | None = None
+    decision_maker: PrincipalRef | None = None
+    owner: PrincipalRef | None = None
     context: str | None = None
     options_considered: str | None = None
     chosen_option: str | None = None
@@ -145,8 +148,8 @@ class DecisionUpdate(BaseModel):
     decision_statement: str
     decision_type_id: UUID
     decision_date: date | None = None
-    decision_maker_id: UUID | None = None
-    owner_id: UUID
+    decision_maker: PrincipalRef | None = None
+    owner: PrincipalRef
     context: str | None = None
     options_considered: str | None = None
     chosen_option: str | None = None
@@ -169,8 +172,8 @@ class DecisionOut(BaseModel):
     decision_type_id: UUID
     status: DecisionStatus
     decision_date: date | None
-    decision_maker_id: UUID | None
-    owner_id: UUID
+    decision_maker: PrincipalOut | None
+    owner: PrincipalOut
     context: str | None
     options_considered: str | None
     chosen_option: str | None

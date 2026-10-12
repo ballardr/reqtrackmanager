@@ -37,6 +37,8 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
+import { RecordField, RecordFieldGroup } from "../../components/RecordDetailParts";
 import { Spinner } from "../../components/Spinner";
 import { SupersedeAction } from "../../components/SupersedeAction";
 import { useAuth } from "../../context/AuthContext";
@@ -127,7 +129,6 @@ export function DecisionDetailPage() {
   if (decision === null || project === null) return <Spinner />;
 
   const decisionType = decisionTypes.find((t) => t.id === decision.decision_type_id);
-  const userOptions = orgUsers.map((u) => ({ id: u.user_id, display_name: u.display_name }));
 
   return (
     <DetailLayout
@@ -171,14 +172,18 @@ export function DecisionDetailPage() {
         </div>
         <p className="text-muted" style={{ margin: 0 }}>{decisionType?.name ?? "—"}</p>
         <p style={{ margin: 0 }}>{decision.decision_statement}</p>
+        <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
+          <RecordFieldGroup label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
+          <RecordFieldGroup label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
+        </div>
 
-        {decision.context && <Field label="Context" value={decision.context} />}
-        {decision.options_considered && <Field label="Options considered" value={decision.options_considered} />}
-        {decision.chosen_option && <Field label="Chosen option" value={decision.chosen_option} />}
-        {decision.rationale && <Field label="Rationale" value={decision.rationale} />}
-        {decision.consequences && <Field label="Consequences" value={decision.consequences} />}
-        {decision.assumptions && <Field label="Assumptions" value={decision.assumptions} />}
-        {decision.constraints && <Field label="Constraints" value={decision.constraints} />}
+        {decision.context && <RecordField label="Context" value={decision.context} />}
+        {decision.options_considered && <RecordField label="Options considered" value={decision.options_considered} />}
+        {decision.chosen_option && <RecordField label="Chosen option" value={decision.chosen_option} />}
+        {decision.rationale && <RecordField label="Rationale" value={decision.rationale} />}
+        {decision.consequences && <RecordField label="Consequences" value={decision.consequences} />}
+        {decision.assumptions && <RecordField label="Assumptions" value={decision.assumptions} />}
+        {decision.constraints && <RecordField label="Constraints" value={decision.constraints} />}
 
         <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
           {decision.status === "draft" && (
@@ -251,7 +256,9 @@ export function DecisionDetailPage() {
         <DecisionFormModal
           initial={decision}
           decisionTypes={decisionTypes}
-          userOptions={userOptions}
+          orgUsers={orgUsers}
+          organizationId={project.organization_id}
+          projectId={projectId}
           currentUserId={user?.id}
           error={formError}
           onCancel={() => { setEditing(false); setFormError(null); }}
@@ -332,14 +339,5 @@ export function DecisionDetailPage() {
         />
       )}
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

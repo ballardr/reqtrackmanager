@@ -71,6 +71,12 @@ CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = ()
 DELETED_GROUP_LABEL = "Deleted group"
 UNKNOWN_USER_LABEL = "Unknown user"
 
+PRINCIPAL_TYPE_LABEL: dict[PrincipalType, str] = {
+    PrincipalType.USER: "User",
+    PrincipalType.ORG_GROUP: "Org group",
+    PrincipalType.PROJECT_GROUP: "Project group",
+}
+
 
 def all_principal_references() -> list[PrincipalReference]:
     """Core's declared principal fields followed by every module's."""
@@ -250,6 +256,28 @@ def principal_labels(
             exists=i in project_names,
         )
     return out
+
+
+def principal_ref(type_value: str | None, principal_id: uuid.UUID | None) -> PrincipalRef | None:
+    """A record's `<name>_type` / `<name>_id` columns as a `PrincipalRef`, or None for an empty field."""
+    if type_value is None or principal_id is None:
+        return None
+    return PrincipalRef(type=PrincipalType(type_value), id=principal_id)
+
+
+def principal_text(principal: PrincipalOut | None, *, empty: str = "") -> str:
+    """A principal as plain text for a report or export: a user's name, a group's name with its kind
+    (`Platform Team (Org group)`) so a group is never mistaken for a person.
+
+    Args:
+        principal: The resolved principal, or None for an empty field.
+        empty: Returned for an empty field.
+    """
+    if principal is None:
+        return empty
+    if principal.type is PrincipalType.USER:
+        return principal.label
+    return f"{principal.label} ({PRINCIPAL_TYPE_LABEL[principal.type]})"
 
 
 def principal_out(db: Session, type_value: str | None, principal_id: uuid.UUID | None) -> PrincipalOut | None:

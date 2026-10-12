@@ -18,8 +18,11 @@
  */
 import { useState } from "react";
 
-import { Modal } from "../../components/Modal";
+import type { OrgUser, Principal, PrincipalRef } from "../../api/types";
+import { userPrincipal } from "../../api/types";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { Modal } from "../../components/Modal";
+import { PrincipalPicker } from "../../components/PrincipalPicker";
 import type { Decision, DecisionFieldValues, DecisionTemplate, DecisionTypeDefinition } from "./types";
 
 type PromptKey =
@@ -36,16 +39,24 @@ const PROMPT_TO_FIELD: { promptKey: PromptKey; fieldKey: keyof DecisionFieldValu
   { promptKey: "constraints_prompt", fieldKey: "constraints", label: "Constraints" },
 ];
 
-interface UserOption {
-  id: string;
-  display_name: string;
+/** The `PrincipalRef` of a resolved principal, or null when the field is empty. */
+function refOf(principal: Principal | null | undefined): PrincipalRef | null {
+  return principal ? { type: principal.type, id: principal.id } : null;
+}
+
+/** The record's own view of a picked value, so the picker shows a group's name and member count
+ * without listing it; undefined once the value differs from what the record carried. */
+function displayFor(value: PrincipalRef | null, original: Principal | null | undefined): Principal | undefined {
+  return original && value && value.type === original.type && value.id === original.id ? original : undefined;
 }
 
 export function DecisionFormModal({
   initial,
   decisionTypes,
   templates,
-  userOptions,
+  orgUsers,
+  organizationId,
+  projectId,
   currentUserId,
   error,
   onCancel,
@@ -55,7 +66,12 @@ export function DecisionFormModal({
   decisionTypes: DecisionTypeDefinition[];
   /** Only offered in create mode — omitted (or empty) hides the picker. */
   templates?: DecisionTemplate[];
-  userOptions: UserOption[];
+  /** Organisation members, for the owner and decision maker pickers. */
+  orgUsers: OrgUser[];
+  /** Enables organisation-group listing and server-side user search. */
+  organizationId: string;
+  /** Enables project-group listing. */
+  projectId: string;
   currentUserId?: string;
   error?: string | null;
   onCancel: () => void;
@@ -71,8 +87,8 @@ export function DecisionFormModal({
   // during render" pattern — converges in one extra render.
   if (decisionTypeId === "" && decisionTypes[0]) setDecisionTypeId(decisionTypes[0].id);
   const [decisionDate, setDecisionDate] = useState(initial?.decision_date ?? "");
-  const [decisionMakerId, setDecisionMakerId] = useState(initial?.decision_maker_id ?? "");
-  const [ownerId, setOwnerId] = useState(initial?.owner_id ?? currentUserId ?? "");
+  const [decisionMaker, setDecisionMaker] = useState<PrincipalRef | null>(refOf(initial?.decision_maker));
+  const [owner, setOwner] = useState<PrincipalRef | null>(initial ? refOf(initial.owner) : userPrincipal(currentUserId));
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(PROMPT_TO_FIELD.map((f) => [f.fieldKey, (initial?.[f.fieldKey] as string | null) ?? ""]))
   );
@@ -90,13 +106,13 @@ export function DecisionFormModal({
       decision_statement: statement,
       decision_type_id: decisionTypeId,
       decision_date: decisionDate || null,
-      decision_maker_id: decisionMakerId || null,
-      owner_id: ownerId || null,
+      decision_maker: decisionMaker,
+      owner,
       ...(Object.fromEntries(PROMPT_TO_FIELD.map((f) => [f.fieldKey, fields[f.fieldKey] || null])) as Record<string, string | null>),
     } as DecisionFieldValues);
   }
 
-  const valid = title.trim() !== "" && statement.trim() !== "" && decisionTypeId !== "" && ownerId !== "";
+  const valid = title.trim() !== "" && statement.trim() !== "" && decisionTypeId !== "" && owner !== null;
 
   return (
     <Modal title={initial ? `Edit ${initial.unique_code}` : "New decision"} onClose={onCancel} size="lg">
@@ -128,20 +144,33 @@ export function DecisionFormModal({
           <span>Decision date (optional)</span>
           <input className="input" type="date" value={decisionDate} onChange={(e) => setDecisionDate(e.target.value)} />
         </label>
-        <LabeledSelect
-          label="Decision maker (optional)"
-          value={decisionMakerId}
-          onChange={setDecisionMakerId}
-          options={userOptions.map((u) => ({ value: u.id, label: u.display_name }))}
-          placeholder="Unassigned"
-        />
-        <LabeledSelect
-          label="Owner"
-          value={ownerId}
-          onChange={setOwnerId}
-          options={userOptions.map((u) => ({ value: u.id, label: u.display_name }))}
-          placeholder="Select an owner…"
-        />
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span>Decision maker (optional)</span>
+          <PrincipalPicker
+            orgUsers={orgUsers}
+            organizationId={organizationId}
+            projectId={projectId}
+            value={decisionMaker}
+            display={displayFor(decisionMaker, initial?.decision_maker)}
+            onChange={setDecisionMaker}
+            ariaLabel="Decision maker"
+            placeholder="Search users and groups…"
+          />
+        </div>
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span>Owner</span>
+          <PrincipalPicker
+            orgUsers={orgUsers}
+            organizationId={organizationId}
+            projectId={projectId}
+            value={owner}
+            display={displayFor(owner, initial?.owner)}
+            onChange={setOwner}
+            ariaLabel="Owner"
+            placeholder="Select an owner…"
+            clearLabel="Clear"
+          />
+        </div>
         {PROMPT_TO_FIELD.map((f) => (
           <label key={f.fieldKey} className="stack" style={{ gap: "0.25rem" }}>
             <span>{f.label}</span>

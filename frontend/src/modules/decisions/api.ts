@@ -11,7 +11,7 @@
  * endpoints clear that bar the same way Compliance's did).
  */
 import { api } from "../../api/client";
-import type { FileAsset } from "../../api/types";
+import type { FileAsset, PrincipalType } from "../../api/types";
 import type {
   Decision,
   DecisionComment,
@@ -57,8 +57,14 @@ export function deleteDecisionType(projectId: string, decisionTypeId: string, re
 export interface DecisionListFilters {
   decision_type_id?: string;
   status?: DecisionStatus;
+  /** Exactly this principal (a user, or a group with `owner_type`). */
+  owner_type?: PrincipalType;
   owner_id?: string;
+  /** The caller's own Decisions and those of the groups they belong to. */
+  owner_mine?: boolean;
+  decision_maker_type?: PrincipalType;
   decision_maker_id?: string;
+  decision_maker_mine?: boolean;
   search?: string;
   include_archived?: boolean;
 }
@@ -67,8 +73,16 @@ export function listDecisions(projectId: string, filters: DecisionListFilters = 
   const params = new URLSearchParams();
   if (filters.decision_type_id) params.set("decision_type_id", filters.decision_type_id);
   if (filters.status) params.set("status", filters.status);
-  if (filters.owner_id) params.set("owner_id", filters.owner_id);
-  if (filters.decision_maker_id) params.set("decision_maker_id", filters.decision_maker_id);
+  if (filters.owner_id) {
+    params.set("owner_id", filters.owner_id);
+    if (filters.owner_type) params.set("owner_type", filters.owner_type);
+  }
+  if (filters.owner_mine) params.set("owner_mine", "true");
+  if (filters.decision_maker_id) {
+    params.set("decision_maker_id", filters.decision_maker_id);
+    if (filters.decision_maker_type) params.set("decision_maker_type", filters.decision_maker_type);
+  }
+  if (filters.decision_maker_mine) params.set("decision_maker_mine", "true");
   if (filters.search) params.set("search", filters.search);
   if (filters.include_archived) params.set("include_archived", "true");
   const query = params.toString();

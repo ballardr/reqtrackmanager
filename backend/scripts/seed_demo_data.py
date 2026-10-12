@@ -1038,14 +1038,20 @@ def list_decision_types(headers: dict, project_id: str) -> dict[str, dict]:
 
 def create_decision(
     headers: dict, project_id: str, *, title: str, decision_statement: str, decision_type_id: str,
-    owner_id: str, decision_maker_id: str | None = None, context: str = "", options_considered: str = "",
-    chosen_option: str = "", rationale: str = "", consequences: str = "", decision_date: str | None = None,
+    owner_id: str | None = None, decision_maker_id: str | None = None, owner_group_id: str | None = None,
+    context: str = "", options_considered: str = "", chosen_option: str = "", rationale: str = "",
+    consequences: str = "", decision_date: str | None = None,
 ) -> dict:
+    """Creates a Decision. The owner is a user (`owner_id`) or an organisation group (`owner_group_id`);
+    the decision maker is a user."""
+    owner = {"type": "org_group", "id": owner_group_id} if owner_group_id else {"type": "user", "id": owner_id}
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/decisions",
         json={
             "title": title, "decision_statement": decision_statement, "decision_type_id": decision_type_id,
-            "owner_id": owner_id, "decision_maker_id": decision_maker_id, "decision_date": decision_date,
+            "owner": owner,
+            "decision_maker": {"type": "user", "id": decision_maker_id} if decision_maker_id else None,
+            "decision_date": decision_date,
             "context": context,
             "options_considered": options_considered, "chosen_option": chosen_option, "rationale": rationale,
             "consequences": consequences,
@@ -2296,6 +2302,16 @@ def main() -> None:
     # from Org Admin's Modules tab.
     enable_module(h_pm, org["id"], "decisions")
     drone_decision_types = list_decision_types(h_pm, drone["id"])
+    # A team can own a Decision (users-and-groups parity): this organisation group owns the OTA Decision below.
+    architecture_board = httpx.post(
+        f"{BASE}/orgs/{org['id']}/groups", json={"name": "Architecture Board"}, headers=h_pm, timeout=30,
+    )
+    architecture_board.raise_for_status()
+    for member in (demo_admin, demo_engineer):
+        httpx.post(
+            f"{BASE}/orgs/{org['id']}/groups/{architecture_board.json()['id']}/members",
+            json={"user_id": member["user_id"]}, headers=h_pm, timeout=30,
+        ).raise_for_status()
     single_fc_decision = create_decision(
         h_pm, drone["id"], title="Use a single flight controller with hot-swap failover",
         decision_statement="Falcon-3 will ship with one primary flight controller board and a cold-spare"
@@ -2343,7 +2359,7 @@ def main() -> None:
         h_pm, drone["id"], title="Migrate firmware OTA update channel to signed images",
         decision_statement="Not yet decided — evaluating whether to require cryptographically signed"
         " firmware images for over-the-air updates before the next fleet-wide rollout.",
-        decision_type_id=drone_decision_types["Engineering"]["id"], owner_id=demo_engineer["user_id"],
+        decision_type_id=drone_decision_types["Engineering"]["id"], owner_group_id=architecture_board.json()["id"],
         context="Current OTA channel accepts unsigned images verified only by a checksum, adequate for an"
         " internal test fleet but not for a customer-operated one.",
     )

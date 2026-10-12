@@ -35,6 +35,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -59,6 +60,7 @@ export function ProjectDecisionsPage() {
   const [statusFilter, setStatusFilter] = useState<DecisionStatus | "">("");
   const [decisionTypeFilter, setDecisionTypeFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [ownedByMe, setOwnedByMe] = useState(false);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -72,6 +74,7 @@ export function ProjectDecisionsPage() {
         status: statusFilter || undefined,
         decision_type_id: decisionTypeFilter || undefined,
         include_archived: includeArchived,
+        owner_mine: ownedByMe,
       }));
       setLoadError(null);
     } catch (err) {
@@ -92,13 +95,11 @@ export function ProjectDecisionsPage() {
   useEffect(() => {
     void reloadDecisions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, search, statusFilter, decisionTypeFilter, includeArchived]);
+  }, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decisions === null || project === null) return <Spinner />;
-
-  const userOptions = orgUsers.map((u) => ({ id: u.user_id, display_name: u.display_name }));
 
   const columns: DirectoryColumn<Decision>[] = [
     { key: "unique_code", label: "Code", render: (d) => d.unique_code },
@@ -113,7 +114,7 @@ export function ProjectDecisionsPage() {
     },
     {
       key: "owner", label: "Owner",
-      render: (d) => userOptions.find((u) => u.id === d.owner_id)?.display_name ?? "—",
+      render: (d) => <PrincipalBadge principal={d.owner} />,
     },
   ];
 
@@ -152,6 +153,7 @@ export function ProjectDecisionsPage() {
               ))}
             </select>
           </FilterField>
+          <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -160,7 +162,9 @@ export function ProjectDecisionsPage() {
         <DecisionFormModal
           decisionTypes={decisionTypes}
           templates={templates}
-          userOptions={userOptions}
+          orgUsers={orgUsers}
+          organizationId={project.organization_id}
+          projectId={projectId}
           currentUserId={user?.id}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}

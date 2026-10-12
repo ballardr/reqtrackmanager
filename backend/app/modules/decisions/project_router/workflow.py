@@ -60,6 +60,7 @@ from app.modules.decisions.service import (
     submit_decision_for_review,
 )
 from app.services.permissions import encode_permission
+from app.services.principals import is_principal_member, principal_ref
 from app.services.rbac import get_effective_permissions, permission_satisfied, require_ai_approvals_enabled
 
 router = APIRouter(tags=["decisions-workflow"])
@@ -87,8 +88,11 @@ def _require_approve_permission_for_decision(
 def _require_owner_of_decision_or_role(db: Session, current_user: User, project: Project, decision: Decision) -> None:
     """Gate for `propose`/`submit-for-review` — see this package's own
     `__init__.py` docstring for why this is a distinct, looser gate than
-    `_require_edit_role`."""
-    if current_user.id == decision.owner_id:
+    `_require_edit_role`. The owner is a principal, so the caller passes when
+    they are the owner user or an effective member of the owner group; a group
+    confers no right beyond this (they still need project access, checked
+    before this runs, and the approve permission is unchanged)."""
+    if is_principal_member(db, principal_ref(decision.owner_type, decision.owner_id), current_user.id):
         return
     _require_edit_role(db, current_user, project)
 
@@ -136,7 +140,7 @@ def propose_decision_endpoint(
     _apply_value_error_as_conflict(propose_decision, db, decision, current_user.id)
     db.commit()
     db.refresh(decision)
-    return _decision_to_out(decision)
+    return _decision_to_out(db, decision)
 
 
 @router.post("/{decision_id}/submit-for-review", response_model=DecisionOut)
@@ -150,7 +154,7 @@ def submit_decision_for_review_endpoint(
     _apply_value_error_as_conflict(submit_decision_for_review, db, decision, current_user.id)
     db.commit()
     db.refresh(decision)
-    return _decision_to_out(decision)
+    return _decision_to_out(db, decision)
 
 
 @router.post("/{decision_id}/approve", response_model=DecisionOut)
@@ -189,7 +193,7 @@ def approve_decision_endpoint(
     )
     db.commit()
     db.refresh(decision)
-    return _decision_to_out(decision)
+    return _decision_to_out(db, decision)
 
 
 @router.post("/{decision_id}/reject", response_model=DecisionOut)
@@ -223,4 +227,4 @@ def reject_decision_endpoint(
     )
     db.commit()
     db.refresh(decision)
-    return _decision_to_out(decision)
+    return _decision_to_out(db, decision)
