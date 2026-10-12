@@ -53,3 +53,13 @@ class TreatmentAssessmentStatus(str, enum.Enum):
     EFFECTIVE = "effective"
     INEFFECTIVE = "ineffective"
     NEEDS_REASSESSMENT = "needs_reassessment"
+
+
+class RiskReviewOutcome(str, enum.Enum):
+    """What a periodic review concluded about a risk (Phase 4). `CONFIRMED` means
+    the current assessment and treatment still stand; `REASSESSED` means the
+    reviewer changed the assessment, treatment or status as part of the review
+    (those edits are ordinary versions; the review records that they happened)."""
+
+    CONFIRMED = "confirmed"
+    REASSESSED = "reassessed"

@@ -1322,3 +1322,120 @@ Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path), `comment`
 Moves a Draft or Active Stakeholder Need to Retired.
 
 Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path), `comment` (string, in body)
+
+## Risk Management (`risk_management`)
+
+Record project Risks — statement, cause, risk event, consequence, owner, treatment strategy and acceptance criteria — with a configurable, org-shared type vocabulary and a configurable Likelihood × Consequence (optionally × Detectability) scoring matrix that derives each risk's inherent and residual rating. Every edit is a new version, so a risk's history is retained.
+
+### How to use these tools
+
+Record, assess, treat and review project risks.
+
+Model: a **risk** has a lifecycle (`identified` -> `assessed` -> `treatment_planned` -> `treatment_in_progress` -> `mitigated`, or an outcome such as `accepted`, `transferred`, `avoided`, `realised`, `rejected`, then `closed`). Its **inherent** and **residual** ratings are derived from Likelihood, Consequence and (optionally) Detectability levels; ratings are never set directly. A requirement, design or action that **mitigates or treats** the risk carries a verdict: `proposed` (just linked), `effective`, `ineffective` or `needs_reassessment`. Only `effective` counts as treatment. The owner or a Risk Manager also records periodic **reviews**.
+
+Read workflow:
+1. `risk_management_list_risks` (filter `effectively_treated=false` for untreated risks, `review_overdue=true` for overdue reviews), then `risk_management_get_risk` for detail and `allowed_next_statuses`.
+2. `risk_management_list_risk_treatments` for what treats it and why a verdict needs reassessment; `risk_management_list_risk_reviews` and `risk_management_list_risk_versions` for history.
+3. Before setting ratings call `risk_management_get_risk_scoring_scheme` for the level ids.
+
+Write workflow: `create_risk` -> `update_risk` (set levels, owner, strategy) -> `transition_risk`. Link treatments with the core link tools (a requirement `Mitigates` the risk; the risk is `Treated by` an action), then `assess_risk_treatment`. Finish a review with `record_risk_review`.
+
+Rules and gotchas:
+- A move needs its facts first: `assessed` needs an inherent rating, `treatment_planned` an owner and strategy, `mitigated` a residual rating and at least one `effective` treatment, `accepted` a residual rating and acceptance criteria. A 409 names what is missing.
+- `transition_risk` to `accepted` is an approval: it needs the Risk Acceptor role and AI approval enabled on the project and organisation. Only do it when the user explicitly asks, and pass their reason as `comment`.
+- An `accepted` risk's levels, acceptance criteria and strategy cannot be edited; move it back to `assessed` first.
+- A change to a linked requirement moves its `effective` verdict to `needs_reassessment`. Reassess it with `assess_risk_treatment`; do not simply re-mark it effective without checking the change.
+- `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none).
+- There is no delete tool. Do not invent level or type ids; read them.
+
+### Tool list
+
+#### `risk_management_list_risks` (read)
+
+Lists a project's Risks with status, derived inherent and residual ratings, owner, review date and whether each is effectively treated.
+
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `effectively_treated` (boolean, in query), `review_overdue` (boolean, in query)
+
+#### `risk_management_get_risk` (read)
+
+Fetches one Risk with its current content, ratings and legal next statuses.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path)
+
+#### `risk_management_list_risk_versions` (read)
+
+Lists a Risk's full version history, oldest first.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path)
+
+#### `risk_management_list_risk_treatments` (read)
+
+Lists the requirements, designs and actions that mitigate or treat a Risk, each with its verdict (proposed, effective, ineffective or needs_reassessment) and why a verdict needs reassessment.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path)
+
+#### `risk_management_list_risk_reviews` (read)
+
+Lists a Risk's recorded reviews, newest first, each with the ratings it was made against.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path)
+
+#### `risk_management_get_risk_review` (read)
+
+Fetches one recorded review of a Risk.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `review_id*` (uuid, in path)
+
+#### `risk_management_list_risk_comments` (read)
+
+Lists the comments on a Risk, oldest first.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path)
+
+#### `risk_management_list_risk_types` (read)
+
+Lists the project's effective Risk types (Safety, Technical, ...).
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `risk_management_get_risk_scoring_scheme` (read)
+
+Reads the Likelihood, Consequence and Detectability levels (ids and weights), default model, rating bands and per-cell ratings that apply to the project. Use it to find the level ids a risk takes.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `risk_management_create_risk` (write)
+
+Proposes a Risk in the Identified status. Any project member may; only the title is required.
+
+Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner_id` (uuid, in body), `review_date` (string, in body)
+
+#### `risk_management_update_risk` (write)
+
+Updates a Risk as a new version; only the fields supplied change. Needs the Risk Manager role.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `title` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner_id` (uuid, in body), `review_date` (string, in body), `change_note` (string, in body)
+
+#### `risk_management_transition_risk` (write)
+
+Moves a Risk along its lifecycle (get_risk lists allowed_next_statuses). Moving to accepted needs the Risk Acceptor role and, through MCP, the project's and organisation's AI-approval opt-in.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `status*` (string, in body), `comment` (string, in body)
+
+#### `risk_management_assess_risk_treatment` (write)
+
+Records whether one treatment link actually reduces the Risk: effective, ineffective, proposed or needs_reassessment. effective and ineffective need a rationale. The risk's owner or a Risk Manager only.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `link_id*` (uuid, in path), `status*` (string, in body), `rationale` (string, in body)
+
+#### `risk_management_record_risk_review` (write)
+
+Records a periodic review of a Risk and sets the date of the next one. A review cannot be 'confirmed' while a treatment needs reassessment. The risk's owner or a Risk Manager only.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `outcome*` (string, in body), `notes*` (string, in body), `next_review_date*` (string, in body)
+
+#### `risk_management_add_risk_comment` (write)
+
+Adds a comment to a Risk's discussion.
+
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `body*` (string, in body)

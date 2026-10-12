@@ -19,6 +19,8 @@ const org: Organization = {
 const notificationPrefs: NotificationPreference[] = [
   { type: "comment_added", ui_enabled: true, email_enabled: true },
   { type: "change_request_submitted", ui_enabled: true, email_enabled: false },
+  // A module-registered type: not in the core string table, so it is labelled by the backend.
+  { type: "risk_review_due", label: "Risk review due soon", ui_enabled: true, email_enabled: true },
 ];
 
 const myMemberships: MyMemberships = {
@@ -218,6 +220,17 @@ export const PatsTabCreateToken: Story = {
     await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(canvas.getByText("Token created")).toBeInTheDocument());
     await expect(canvas.getByText("rtm_pat_abc123")).toBeInTheDocument();
+  },
+};
+
+/** A notification type a module registered (not in the core string table) is listed under the label the backend sent. */
+export const NotificationsTabLabelsModuleTypes: Story = {
+  beforeEach: () => mockPreferencesApis("user-1"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Notification preferences" }));
+    await waitFor(() => expect(canvas.getByText("Risk review due soon")).toBeInTheDocument());
+    await expect(canvas.getByText("New comment on a followed item")).toBeInTheDocument();
   },
 };
 

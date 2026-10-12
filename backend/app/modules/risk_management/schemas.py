@@ -18,7 +18,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.modules.risk_management.enums import RiskStatus, TreatmentAssessmentStatus, TreatmentStrategy
+from app.modules.risk_management.enums import RiskReviewOutcome, RiskStatus, TreatmentAssessmentStatus, TreatmentStrategy
 from app.schemas.file import FileAssetOut
 
 
@@ -118,6 +118,7 @@ class RiskOut(BaseModel):
     version_number: int
     effective_treatment_count: int = 0
     is_effectively_treated: bool = False
+    is_review_overdue: bool = False
 
     created_at: datetime
     updated_at: datetime
@@ -198,6 +199,7 @@ class TreatmentOut(BaseModel):
     other_is_archived: bool
     status: TreatmentAssessmentStatus
     rationale: str
+    reassessment_reason: str = ""
     assessed_by: UUID | None
     assessed_at: datetime | None
 
@@ -207,3 +209,35 @@ class TreatmentListOut(BaseModel):
     items: list[TreatmentOut]
     hidden_count: int
     effective_count: int
+    needs_reassessment_count: int = 0
+
+
+class RiskReviewCreate(BaseModel):
+    """Records a review. `next_review_date` has no default on purpose: send a
+    future date to schedule the next review, or an explicit `null` for none."""
+
+    outcome: RiskReviewOutcome
+    notes: str = Field(min_length=1)
+    next_review_date: date | None
+
+
+class RiskReviewOut(BaseModel):
+    """One recorded review with the ratings it was made against."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    risk_id: UUID
+    risk_version_number: int
+    reviewed_by: UUID
+    reviewed_at: datetime
+    outcome: RiskReviewOutcome
+    notes: str
+    risk_status: RiskStatus
+    inherent_rating_label: str | None
+    inherent_rating_score: float | None
+    residual_rating_label: str | None
+    residual_rating_score: float | None
+    effective_treatment_count: int
+    scheduled_for: date | None
+    next_review_date: date | None

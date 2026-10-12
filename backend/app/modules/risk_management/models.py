@@ -19,6 +19,9 @@ management-plan.md Phase 1):
 - `RiskComment` / `RiskCommentFile` / `RiskFile` — module-local comment and
   attachment tables (resolution 8), since extending the core
   `ReviewTargetType` enum would be a per-module edit to a core file.
+- `RiskReview` — an immutable record of one periodic review with a snapshot of
+  the ratings it was made against (Phase 4), so history survives later changes
+  to the matrix.
 
 The inherent and residual ratings are never stored: they are derived on read
 from the level columns by core's scoring service, so re-weighting a level or
@@ -35,6 +38,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -48,7 +52,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.modules.risk_management.enums import RiskStatus, TreatmentAssessmentStatus, TreatmentStrategy
+from app.modules.risk_management.enums import (
+    RiskReviewOutcome,
+    RiskStatus,
+    TreatmentAssessmentStatus,
+    TreatmentStrategy,
+)
 
 
 class RiskTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
@@ -114,6 +123,10 @@ class Risk(UUIDPKMixin, TimestampMixin, Base):
             `services.sequences.generate_unique_code`.
         creator_id: Who created the record.
         is_archived / archived_at / archived_by: Soft-delete.
+        review_due_notified_for / review_overdue_notified_for: The `review_date`
+            value for which the "review due soon" / "review overdue" notification
+            was last sent. Bookkeeping so each sweep notifies once per date; a
+            rescheduled review (a new date) re-arms both with no reset step.
     """
 
     __tablename__ = "risks"
@@ -127,6 +140,8 @@ class Risk(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    review_due_notified_for: Mapped[date | None] = mapped_column(Date, nullable=True)
+    review_overdue_notified_for: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     versions: Mapped[list[RiskVersion]] = relationship(back_populates="risk", order_by="RiskVersion.version_number")
 
@@ -266,6 +281,9 @@ class RiskTreatmentAssessment(UUIDPKMixin, TimestampMixin, Base):
         status: The verdict; see `TreatmentAssessmentStatus`.
         assessed_by / assessed_at: Who gave the verdict, and when.
         rationale: Why (required for an effective or ineffective verdict).
+        reassessment_reason: Why the verdict was moved to `NEEDS_REASSESSMENT`
+            (which linked artefact changed, and how); empty otherwise and cleared
+            by the next verdict.
     """
 
     __tablename__ = "risk_treatment_assessments"
@@ -282,3 +300,46 @@ class RiskTreatmentAssessment(UUIDPKMixin, TimestampMixin, Base):
     assessed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     rationale: Mapped[str] = mapped_column(Text, default="")
+    reassessment_reason: Mapped[str] = mapped_column(Text, default="")
+
+
+class RiskReview(UUIDPKMixin, Base):
+    """One periodic review of a risk. Immutable once recorded: a correction is a
+    new review, so the history is a faithful record.
+
+    Attributes:
+        risk_id: The reviewed risk.
+        risk_version_number: The risk version the review assessed.
+        reviewed_by / reviewed_at: Who reviewed it, and when.
+        outcome: What the review concluded.
+        notes: The reviewer's findings (required).
+        risk_status: The risk's lifecycle status at the time.
+        inherent_rating_label / inherent_rating_score / residual_rating_label /
+            residual_rating_score: The derived ratings at the time (label and
+            0-1 normalised score; null when the risk was not scored). A snapshot,
+            because ratings are derived and change when the matrix is edited.
+        effective_treatment_count: How many treatment links were assessed
+            effective at the time.
+        scheduled_for: The `review_date` this review answered (null for an
+            unscheduled review).
+        next_review_date: The date the review set for the next one (null: none).
+    """
+
+    __tablename__ = "risk_reviews"
+
+    risk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("risks.id", ondelete="CASCADE"), index=True
+    )
+    risk_version_number: Mapped[int] = mapped_column(Integer)
+    reviewed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[RiskReviewOutcome] = mapped_column(str_enum(RiskReviewOutcome, 20))
+    notes: Mapped[str] = mapped_column(Text)
+    risk_status: Mapped[RiskStatus] = mapped_column(str_enum(RiskStatus, 30))
+    inherent_rating_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    inherent_rating_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    residual_rating_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    residual_rating_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    effective_treatment_count: Mapped[int] = mapped_column(Integer, default=0)
+    scheduled_for: Mapped[date | None] = mapped_column(Date, nullable=True)
+    next_review_date: Mapped[date | None] = mapped_column(Date, nullable=True)

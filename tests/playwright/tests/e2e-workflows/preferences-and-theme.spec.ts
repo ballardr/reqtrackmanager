@@ -90,6 +90,13 @@ test.describe("preferences: theme persistence, pronouns, landing page mode; help
       await expect(page.locator("main")).not.toBeEmpty();
     });
 
+    await test.step("notification types a module registers are listed under the label the backend sent", async () => {
+      await page.goto("/preferences/notifications");
+      await expect(page.getByRole("cell", { name: "Risk review due soon", exact: true })).toBeVisible();
+      await expect(page.getByRole("cell", { name: "Risk review overdue", exact: true })).toBeVisible();
+      await expect(page.getByRole("cell", { name: "Risk treatment needs reassessment", exact: true })).toBeVisible();
+    });
+
     await test.step("the access tab lists direct and inherited org-group membership", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const me = await (

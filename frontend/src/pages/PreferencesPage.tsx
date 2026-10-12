@@ -312,6 +312,11 @@ export function PreferencesPage() {
     setNotificationPrefsSaved(false);
   }
 
+  /** Core types are labelled by the (terminology-aware) string table; a module-registered type carries its own label. */
+  function notificationTypeLabel(p: NotificationPreference): string {
+    return (strings.notifications.types as Record<string, string>)[p.type] ?? p.label ?? p.type;
+  }
+
   function toggleAllNotificationPrefs(field: "ui_enabled" | "email_enabled") {
     const allEnabled = notificationPrefs.every((p) => p[field]);
     setNotificationPrefs((prefs) => prefs.map((p) => ({ ...p, [field]: !allEnabled })));
@@ -867,7 +872,7 @@ export function PreferencesPage() {
           <tbody>
             {notificationPrefs.map((p) => (
               <tr key={p.type}>
-                <td>{strings.notifications.types[p.type]}</td>
+                <td>{notificationTypeLabel(p)}</td>
                 <td>
                   <input
                     type="checkbox"

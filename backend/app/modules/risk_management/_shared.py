@@ -22,6 +22,7 @@ organisation.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -97,6 +98,10 @@ def risk_to_out(
         allowed_next_statuses=sorted(RISK_ALLOWED_TRANSITIONS[version.status], key=list(RiskStatus).index),
         owner_id=version.owner_id, review_date=version.review_date, version_number=version.version_number,
         effective_treatment_count=effective_treatments, is_effectively_treated=effective_treatments > 0,
+        is_review_overdue=(
+            version.review_date is not None and version.review_date < date.today()
+            and version.status != RiskStatus.CLOSED and not risk.is_archived
+        ),
         created_at=risk.created_at, updated_at=risk.updated_at,
     )
 

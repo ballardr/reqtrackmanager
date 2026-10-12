@@ -11,13 +11,14 @@ model as its Verification link target.
 
 **Status:** Phases 0 (2026-10-12, user sign-off), 1a (core per-cell rating
 override, 2026-10-12), 1 (data model, scoring, RBAC, project API, 2026-10-12),
-2 (lifecycle, 2026-10-12) and 3 (relationships and treatment assessment,
-2026-10-12) complete; Phase 4 is next. Overview §46 groups this with Engineering
+2 (lifecycle, 2026-10-12), 3 (relationships and treatment assessment,
+2026-10-12) and 4 (reviews, change detection, MCP tools, 2026-10-12) complete;
+Phase 5 (frontend UI) is next. Overview §46 groups this with Engineering
 Design as "Phase 5" (built together, after Requirements & Libraries).
 
 ## Status / Resume Here
 
-5 / 8 phases complete (Phases 0, 1a, 1, 2 and 3 done 2026-10-12). Phase 4 is next.
+6 / 8 phases complete (Phases 0, 1a, 1, 2, 3 and 4 done 2026-10-12). Phase 5 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -26,7 +27,7 @@ Design as "Phase 5" (built together, after Requirements & Libraries).
 | 1 | Data model: Risk, Risk Type, scoring registration, module RBAC | [x] Complete (2026-10-12) |
 | 2 | Risk lifecycle, treatment, and residual-risk tracking | [x] Complete (2026-10-12) |
 | 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [x] Complete (2026-10-12) |
-| 4 | Risk reviews + reassessment scheduling | [ ] Not started |
+| 4 | Risk reviews + reassessment scheduling | [x] Complete (2026-10-12) |
 | 5 | Frontend UI | [ ] Not started |
 | 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping |
 
@@ -500,6 +501,51 @@ gate is orthogonal to which RBAC role may call the endpoint). This is a
 judgment call at plan-time (**Decided by: Agent**) about *which* option
 (a)/(b) to pick; the underlying instruction to move this plan off
 read-only-only is **Decided by: User** (2026-09-22).
+
+**As built (2026-10-12):**
+
+```mermaid
+flowchart LR
+    RQ["Requirement edited / archived<br/>(core)"] --> HK["notify_artefact_changed"]
+    HK --> RH["Risk on_artefact_changed"]
+    RH --> TA["effective verdict -><br/>needs_reassessment + reason"]
+    RH --> N["notification to owner"]
+    SW["Daily sweep 03:00"] --> N
+    OWN["Owner or Risk Manager"] --> RV["POST reviews<br/>RiskReview + rating snapshot"]
+    RV --> RD["review_date moves<br/>(new RiskVersion)"]
+    TA -. "blocks 'confirmed'" .-> RV
+```
+
+- **Reviews.** `RiskReview` (migration `0075`, immutable): outcome `confirmed` or
+  `reassessed`, required notes, risk status, inherent/residual rating label and
+  score and effective-treatment count at the time, the `review_date` answered and
+  the `next_review_date` set. `POST/GET .../risks/{id}/reviews`, `GET
+  .../reviews/{review_id}`; the owner or a Risk Manager may record one. The next
+  date is required (nullable) and must be in the future; archived and closed risks
+  are not reviewed; `confirmed` is refused while any verdict `needs_reassessment`.
+  `RiskOut.is_review_overdue` and `GET risks?review_overdue=`.
+- **Notifications.** New generic core extension points: `ModuleDefinition.
+  notification_types` (core's closed `NotificationType` enum is untouched; the
+  columns became plain strings validated against core plus registered types) and
+  `on_artefact_changed` (`services/artefact_changes.py`). The module registers
+  `risk_review_due`, `risk_review_overdue`, `risk_treatment_needs_reassessment`, a
+  daily `scheduled_jobs` sweep (once per `review_date`, owner else Risk
+  Managers/project managers), and the change hook, which moves `effective` verdicts
+  resting on a changed requirement (content edit or archive) to `needs_reassessment`
+  with a reason, audit-logs it and notifies once. **Only requirements raise the
+  hook today**; Designs (Module 6) and Actions do not, so a change to a *Treated by*
+  action does not flag its verdict.
+- **MCP.** Nine read tools and six write tools (`create_risk`, `update_risk`,
+  `transition_risk`, `assess_risk_treatment`, `record_risk_review`,
+  `add_risk_comment`), `mcp_guidance.md`, the generated `module-tools.md`, and a
+  read-only `GET .../scoring-scheme` so an agent can find level ids. Acceptance
+  through `transition_risk` keeps the Risk Acceptor role and AI-approval gate.
+- **Phase 5 must:** deep-link a `risk` notification (`entity_type` `"risk"`) to the
+  detail page, surface `reassessment_reason` and `needs_reassessment_count`, show the
+  review history and a record-review form, and use `is_review_overdue` for the
+  register's overdue filter.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 4".
 
 ## Phase 5 — Frontend UI
 

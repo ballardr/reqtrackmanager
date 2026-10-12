@@ -200,6 +200,7 @@ def assess_treatment(
         db.add(row)
     row.status = status
     row.rationale = rationale
+    row.reassessment_reason = ""
     row.assessed_by = actor_id
     row.assessed_at = datetime.now(UTC)
     db.flush()

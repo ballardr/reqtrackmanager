@@ -2885,6 +2885,20 @@ def main() -> None:
         h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Impacts"]["id"],
         other_type="requirement", other_id=flight_log_req["id"],
     )
+    # Phase 4: the single-controller risk has been reviewed (its next review is a month out); the modem risk's
+    # scheduled review date has passed, so it shows as overdue and the review-due sweep has something to notify about.
+    httpx.post(
+        f"{risk_url}/{risk_single_controller['id']}/reviews",
+        json={
+            "outcome": "confirmed", "notes": "Diagnostics still cover the failure mode; the residual rating stands.",
+            "next_review_date": (date.today() + timedelta(days=30)).isoformat(),
+        },
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
+    httpx.put(
+        f"{risk_url}/{risk_modem['id']}", json={"review_date": (date.today() - timedelta(days=5)).isoformat()},
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
     print(f"  Risks: {risk_single_controller['unique_code']} {risk_single_controller['title']!r}"
           f" (inherent {risk_single_controller['inherent_rating']['label']}, residual {risk_single_controller['residual_rating']['label']}),"
           f" {risk_regulator['unique_code']} {risk_regulator['title']!r} (inherent {risk_regulator['inherent_rating']['label']}"

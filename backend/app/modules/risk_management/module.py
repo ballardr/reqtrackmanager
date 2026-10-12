@@ -2,9 +2,10 @@
 Module: modules.risk_management.module
 
 Registers the Risk Management module into the modular feature system's registry
-via `MODULE_DEFINITION` (docs/plans/module-03-risk-management-plan.md). Phases 1-3
+via `MODULE_DEFINITION` (docs/plans/module-03-risk-management-plan.md). Phases 1-4
 deliver the Risk artefact, its type vocabulary, the `risk` scoring scheme, module
-RBAC, the lifecycle and treatment relationships.
+RBAC, the lifecycle, treatment relationships, reviews with reassessment
+scheduling, and MCP tools.
 
 Registered contributions:
 - Roles (not additions to core enums): `risk_manager` (project; carries the FGAC
@@ -28,9 +29,15 @@ Registered contributions:
   are core defaults and need no seed. Relationships are made with the generic
   link endpoints; `treatment.py` adds the verdict on each treatment link.
 
+- Phase 4: `notification_types` (review due, review overdue, treatment needs
+  reassessment) so core's closed `NotificationType` enum is untouched;
+  `scheduled_jobs` (the daily review sweep); `on_artefact_changed`, which moves
+  effective treatment verdicts to `needs_reassessment` when the requirement or
+  design behind them changes; and `mcp_tools` with `mcp_guidance`.
+
 Not yet registered, by design: the frontend manifest beyond the artefact path
-(Phase 5) and MCP tools (Phase 4). Bundle export/import hooks are not provided
-either, matching Decision Management and Context & Strategy.
+(Phase 5). Bundle export/import hooks are not provided either, matching
+Decision Management and Context & Strategy.
 
 `default_enabled=False`: an organisation opts in explicitly, matching the other
 new modules.
@@ -38,6 +45,7 @@ new modules.
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -46,12 +54,16 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import LinkFlow
 from app.modules.registry import (
+    ArtefactChange,
     LinkTypeSeed,
     ModuleDefinition,
     ModuleRoleDefinition,
+    ModuleScheduledJob,
     ModuleSubComponentDefinition,
 )
 from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MANAGE_PERMISSION
+from app.modules.risk_management.alerts import NOTIFICATION_TYPES
+from app.modules.risk_management.mcp_tools import build_mcp_tools
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
 from app.modules.risk_management.service import (
     RISK_ARTEFACT_TYPE,
@@ -66,6 +78,9 @@ from app.modules.risk_management.treatment import (
     TREATED_BY_FORWARD,
     TREATED_BY_REVERSE,
 )
+
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
 
 # "Design" and "System Element" (Module 6) are listed so the link types accept them
 # the day those modules register; until then they are simply not offered.
@@ -110,6 +125,22 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     return resolve_risk_file_project_id(db, file_id)
 
 
+def _run_review_notifications(db: Session) -> None:
+    """`ModuleScheduledJob.run`: the daily review-due/overdue sweep; imported
+    lazily like `get_router`."""
+    from app.modules.risk_management.alerts import send_review_notifications
+
+    send_review_notifications(db)
+
+
+def _on_artefact_changed(db: Session, change: ArtefactChange) -> None:
+    """`ModuleDefinition.on_artefact_changed`: flags treatment verdicts resting on
+    the changed artefact for reassessment; imported lazily like `get_router`."""
+    from app.modules.risk_management.alerts import on_artefact_changed
+
+    on_artefact_changed(db, change)
+
+
 def _seed_org_defaults(db: Session, organization_id: UUID) -> None:
     """`ModuleDefinition.on_org_created`: seeds the default Risk types."""
     RISK_TYPES.seed_defaults(db, organization_id)
@@ -150,6 +181,11 @@ MODULE_DEFINITION = ModuleDefinition(
     link_type_seeds=LINK_TYPE_SEEDS,
     sub_components=(ModuleSubComponentDefinition(key=RISK_SUBCOMPONENT_KEY, name="Risks", default_enabled=True),),
     scoring_schemes=(RISK_SCORING_SCHEME,),
+    notification_types=NOTIFICATION_TYPES,
+    on_artefact_changed=_on_artefact_changed,
+    scheduled_jobs=(ModuleScheduledJob(job_id="review_reminders", hour=3, minute=0, run=_run_review_notifications),),
+    mcp_tools=build_mcp_tools(),
+    mcp_guidance=_MCP_GUIDANCE,
     roles=(
         ModuleRoleDefinition(
             role_key="risk_manager", name="Risk Manager",

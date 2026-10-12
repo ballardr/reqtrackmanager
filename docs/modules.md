@@ -351,6 +351,9 @@ class ModuleDefinition:
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
+    notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
+    on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None  # react to another module's artefact changing (§4h)
+    scheduled_jobs: tuple[ModuleScheduledJob, ...] = ()  # daily sweeps core's scheduler runs for you
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     mcp_guidance: str = ""  # agent usage guidance, required when mcp_tools is non-empty
@@ -858,6 +861,39 @@ flowchart LR
   `ScoringCellRatingsEditor` (inside `ScoringModelBands`) edits cell ratings.
 
 ---
+
+### 4h. Notification types and change hooks (Module 3 Phase 4)
+
+Two generic extension points let a module send its own notifications and react
+to changes elsewhere, without editing a core file.
+
+```mermaid
+flowchart LR
+    ED["Edit or archive a requirement<br/>(core service)"] --> N["notify_artefact_changed"]
+    N -- "ArtefactChange" --> H["each module's on_artefact_changed"]
+    H --> V["flag dependents<br/>(Risk: verdict -> needs_reassessment)"]
+    H --> NO["notifications.notify(type=module key)"]
+    SJ["scheduled_jobs<br/>(daily sweep)"] --> NO
+    NO --> P["preferences list<br/>core + registered types"]
+```
+
+- **`notification_types`** declares `NotificationTypeDefinition(key, label)`
+  kinds (prefix the key with the module key, e.g. `risk_review_due`).
+  `Notification.type` and `NotificationPreference.type` are plain strings
+  validated against core's `NotificationType` plus every registered module's
+  declarations (`get_all_notification_types`), so a module never adds a member
+  to core's closed enum. `services.notifications.notify` accepts either form and
+  raises `ValueError` for an unregistered key. The preferences API returns
+  `label` for module types; core types are labelled by the frontend string table.
+- **`on_artefact_changed`** is called with an `ArtefactChange` (`artefact_type`,
+  `artefact_id`, `project_id`, `kind` of `content_changed` or `archived`,
+  `summary`, `actor_id`) by `services.artefact_changes.notify_artefact_changed`,
+  inside the changing request's transaction (never commit). It is raised today
+  for requirements (a content edit, or archival); any artefact owner can call
+  `notify_artefact_changed` the same way, with no import of the consuming module.
+  A hook that raises is logged and rolled back to a savepoint, so a dependent's
+  bookkeeping can never fail the edit. Risk uses it to detect that the artefact
+  behind an effective treatment verdict changed; it flags, it does not rewrite.
 
 ## 5. Frontend integration: Tier A and Tier B
 

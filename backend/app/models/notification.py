@@ -6,6 +6,10 @@ rows back the in-UI notification centre (C-N-02); `NotificationPreference`
 lets a user opt in/out of each notification type per channel (C-N-04);
 `User.email_digest_mode` (added in models.user) controls whether email
 notifications go out instantly, as a daily digest, or not at all (C-N-05).
+
+`type` is stored as a plain string: the core `NotificationType` values plus any
+kind a module declares on `ModuleDefinition.notification_types`, validated by
+`services.notifications.resolve_notification_type`.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.models.base import UUIDPKMixin, str_enum
+from app.models.base import UUIDPKMixin
 
 
 class NotificationType(str, enum.Enum):
@@ -44,12 +48,10 @@ class NotificationType(str, enum.Enum):
     PROJECT_MEMBERS_CHANGED_BY_ORG = "project_members_changed_by_org"
 
     # Compliance Module (docs/compliance-module-plan.md Phase 10; docs/
-    # Compliance_Module_Requirements.md §18) — every event §18 lists.
-    # `app.modules.compliance` sends these; kept in this shared core enum
-    # (not a module-owned one) since `Notification.type`/`NotificationPreference.
-    # type` are core, module-agnostic tables every notification (core or
-    # module-contributed) shares — the same reason `NotificationType` itself
-    # was never made per-module.
+    # Compliance_Module_Requirements.md §18) — every event §18 lists. These
+    # predate the registry-backed mechanism below and stay here; a module added
+    # since declares its kinds on `ModuleDefinition.notification_types` instead
+    # of adding members to this enum.
     COMPLIANCE_REQUIRED_ACTION_DUE_SOON = "compliance_required_action_due_soon"
     COMPLIANCE_REQUIRED_ACTION_OVERDUE = "compliance_required_action_overdue"
     COMPLIANCE_TARGET_DATE_APPROACHING = "compliance_target_date_approaching"
@@ -86,7 +88,7 @@ class Notification(UUIDPKMixin, Base):
     __tablename__ = "notifications"
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    type: Mapped[NotificationType] = mapped_column(str_enum(NotificationType, 50))
+    type: Mapped[str] = mapped_column(String(50))
     title: Mapped[str] = mapped_column(String(255))
     body: Mapped[str] = mapped_column(Text, default="")
     project_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -106,6 +108,6 @@ class NotificationPreference(UUIDPKMixin, Base):
     __table_args__ = (UniqueConstraint("user_id", "type"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    type: Mapped[NotificationType] = mapped_column(str_enum(NotificationType, 50))
+    type: Mapped[str] = mapped_column(String(50))
     ui_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

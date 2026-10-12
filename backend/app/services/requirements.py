@@ -22,6 +22,8 @@ from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
+from app.modules.registry import ArtefactChange
+from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
 from app.services.rbac import lock_project_for_update
 
 # C-G-11: completion is an overlay marker on top of APPROVED, not a
@@ -206,6 +208,11 @@ def apply_new_version(
     change is a safe point to re-arm the reminder rather than risk silently
     carrying forward a "reminder already sent" flag for a date that may no
     longer even be the same review target.
+
+    When the new version changes what the requirement says (name, description,
+    reasoning, clarification or level), or moves it to `ARCHIVED`, every module's
+    `on_artefact_changed` hook is told (`services.artefact_changes`), so anything
+    that depends on the requirement can be flagged for review.
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
@@ -236,14 +243,29 @@ def apply_new_version(
         review_reminder_sent_at=None,
     )
     db.add(new_version)
+    changed_fields = requirement_content_changed(current_version, new_version)
+    if new_version.status == RequirementStatus.ARCHIVED and current_version.status != RequirementStatus.ARCHIVED:
+        _announce_change(db, requirement, actor, "archived", "archived")
+    elif changed_fields:
+        _announce_change(db, requirement, actor, "content_changed", f"changed {', '.join(changed_fields)}")
     return new_version
 
 
+def _announce_change(db: Session, requirement: Requirement, actor: User, kind: str, what: str) -> None:
+    """Tells the modules a requirement changed (see `notify_artefact_changed`)."""
+    notify_artefact_changed(db, ArtefactChange(
+        artefact_type="requirement", artefact_id=requirement.id, project_id=requirement.project_id,
+        kind=kind, summary=f"{requirement.unique_code} {what}", actor_id=actor.id,
+    ))
+
+
 def archive_requirement(db: Session, requirement: Requirement, actor: User) -> None:
-    """Soft-archives a requirement, preserving its full version history (C-A-06)."""
+    """Soft-archives a requirement, preserving its full version history (C-A-06),
+    and tells the modules (a dependent may now rest on an archived requirement)."""
     requirement.is_archived = True
     requirement.archived_at = datetime.now(UTC)
     requirement.archived_by = actor.id
+    _announce_change(db, requirement, actor, "archived", "archived")
 
 
 def unarchive_requirement(db: Session, requirement: Requirement, actor: User) -> None:
