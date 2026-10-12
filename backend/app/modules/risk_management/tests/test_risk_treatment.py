@@ -33,7 +33,7 @@ from app.modules.risk_management.tests._helpers import (
     project_base,
     setup,
 )
-from tests.conftest import auth_headers, create_org_user
+from tests.conftest import auth_headers, create_org_user, create_project
 
 
 def _treatments(client, token, project_id, risk_id) -> dict:
@@ -392,3 +392,60 @@ def test_another_projects_or_tenants_risk_has_no_treatments_for_you(client, admi
     own = f"{project_base(project['id'])}/risks/{risk['id']}/treatments"
     assert client.get(own, headers=auth_headers(other_token)).status_code in (403, 404)
     assert other_org["id"] != org["id"]
+
+
+# --- Cross-level (parent/child project) treatments -----------------------------
+
+
+def _risk_with_parent_requirement(client, admin_token, org_name):
+    """A child-project risk mitigated by a requirement in its parent project.
+
+    Returns:
+        `(org, parent, child, org admin token, risk, link id, requirement id)`.
+    """
+    org, parent, token = setup(client, admin_token, org_name)
+    client.patch(f"/api/v1/projects/{parent['id']}", json={"can_be_parent": True}, headers=auth_headers(token))
+    child = create_project(client, token, org["id"], f"{org_name} Child", parent_project_id=parent["id"])
+    risk = create_risk(client, token, child["id"])
+    requirement = create_requirement(client, token, parent["id"], "Parent mitigation")
+    resp = client.post(
+        f"/api/v1/projects/{child['id']}/artefacts/risk/{risk['id']}/links",
+        json={
+            "link_type_id": link_type_id(client, token, org["id"], "Mitigates"), "direction": "incoming",
+            "other_type": "requirement", "other_id": requirement, "other_project_id": parent["id"],
+        },
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return org, parent, child, token, risk, resp.json()["id"], requirement
+
+
+def test_a_parent_projects_requirement_can_be_assessed_as_a_childs_risk_treatment(client, admin_token):
+    _org, _parent, child, token, risk, link_id, requirement = _risk_with_parent_requirement(
+        client, admin_token, "Risk Treat Nested Co"
+    )
+    [item] = _treatments(client, token, child["id"], risk["id"])["items"]
+    assert item["link_id"] == link_id and item["other_id"] == requirement and "Parent mitigation" in item["label"]
+    assert assess(client, token, child["id"], risk["id"], link_id).status_code == 200
+    body = _treatments(client, token, child["id"], risk["id"])
+    assert body["effective_count"] == 1 and body["hidden_count"] == 0
+
+
+def test_a_cross_level_treatment_is_hidden_from_a_user_who_cannot_open_the_parent(client, admin_token):
+    org, _parent, child, token, risk, _link_id, _req = _risk_with_parent_requirement(
+        client, admin_token, "Risk Treat Nested Hidden Co"
+    )
+    _user_id, member_token = add_member(client, token, org["id"], child["id"], "nested-child-only@example.com")
+    body = _treatments(client, member_token, child["id"], risk["id"])
+    assert body["items"] == [] and body["hidden_count"] == 1 and body["effective_count"] == 0
+
+
+def test_a_cross_level_treatment_goes_dormant_when_the_projects_are_unnested(client, admin_token):
+    _org, _parent, child, token, risk, link_id, _req = _risk_with_parent_requirement(
+        client, admin_token, "Risk Treat Nested Dormant Co"
+    )
+    assert assess(client, token, child["id"], risk["id"], link_id).status_code == 200
+    resp = client.patch(f"/api/v1/projects/{child['id']}", json={"parent_project_id": None}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    body = _treatments(client, token, child["id"], risk["id"])
+    assert body["items"] == [] and body["effective_count"] == 0

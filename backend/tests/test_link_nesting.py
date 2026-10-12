@@ -743,6 +743,10 @@ _REVIEWED_LINK_READERS = {
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
     "modules/compliance/export.py": "same-project requirement -> clause links only (source_project_id is null)",
+    "modules/risk_management/treatment.py": (
+        "deliberately includes cross-level treatment links; dormant ones are skipped (is_link_live) and the far end "
+        "is shown only if ArtefactResolver says the caller can see it, else counted as hidden"
+    ),
     "services/link_type_usage.py": "counts and moves links of a type; authority covers both ends",
     "services/org_deletion.py": "removes every link of a deleted organisation",
     "services/project_export.py": "same-project links only; counts the rest for the manifest",

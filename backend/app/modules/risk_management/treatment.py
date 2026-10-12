@@ -40,7 +40,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
@@ -208,15 +208,24 @@ def assess_treatment(
 
 
 def effective_treatment_counts(db: Session, risk_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
-    """`{risk_id: number of effective treatment links}` (risks with none are absent)."""
+    """`{risk_id: number of effective treatment links}` (risks with none are absent).
+
+    A verdict on a dormant cross-level link (its two projects no longer share an
+    ancestry line) is not counted, matching the links `list_treatment_links` shows.
+    """
     if not risk_ids:
         return {}
     rows = db.execute(
-        select(RiskTreatmentAssessment.risk_id, func.count())
+        select(RiskTreatmentAssessment.risk_id, ArtefactLink)
+        .join(ArtefactLink, ArtefactLink.id == RiskTreatmentAssessment.link_id)
         .where(
             RiskTreatmentAssessment.risk_id.in_(risk_ids),
             RiskTreatmentAssessment.status == TreatmentAssessmentStatus.EFFECTIVE,
         )
-        .group_by(RiskTreatmentAssessment.risk_id)
     ).all()
-    return {risk_id: count for risk_id, count in rows}
+    chain_cache: dict[uuid.UUID, list[uuid.UUID]] = {}
+    counts: dict[uuid.UUID, int] = {}
+    for risk_id, link in rows:
+        if is_link_live(db, link, chain_cache):
+            counts[risk_id] = counts.get(risk_id, 0) + 1
+    return counts
