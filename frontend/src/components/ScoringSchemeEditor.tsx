@@ -150,6 +150,11 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
             mutate(() => orgScoringApi.setBands(orgId, schemeKey, model, bands), "Rating bands saved.", applySchemeResult)}
           onReset={(model) =>
             mutate(() => orgScoringApi.setBands(orgId, schemeKey, model, null), "Rating bands reset.", applySchemeResult)}
+          isCellsCustom={(m) => m.cell_ratings_source === "org"}
+          onSaveCells={(model, cells) =>
+            mutate(() => orgScoringApi.setCellRatings(orgId, schemeKey, model, cells), "Cell ratings saved.", applySchemeResult)}
+          onResetCells={(model) =>
+            mutate(() => orgScoringApi.setCellRatings(orgId, schemeKey, model, null), "Cell ratings reset.", applySchemeResult)}
         />
       </section>
     </div>

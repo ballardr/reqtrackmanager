@@ -807,6 +807,7 @@ flowchart LR
     SVC --> T1[("scoring_levels<br/>org only")]
     SVC --> T2[("scoring_model_defaults<br/>org + project")]
     SVC --> T3[("scoring_bands<br/>org + project")]
+    SVC --> T4[("scoring_cell_ratings<br/>org + project, two-axis models")]
     SVC --> API["/orgs/{id}/scoring-schemes/{key}<br/>/projects/{id}/scoring-schemes/{key}"]
     API --> UI["ScoringSchemeEditor · ProjectScoringSettings<br/>embedded in the module's admin sections"]
 ```
@@ -821,6 +822,20 @@ flowchart LR
   (score ÷ maximum), so they survive re-weighting.
 - **Default model and bands** resolve project → nearest ancestor → org →
   module default (the nested-projects fallback rule). No rows = inherit.
+- **Cell ratings (Module 3 Phase 1a).** Thresholds on a product can't
+  reproduce a non-monotonic matrix (a 5 × 1 cell rated differently from its
+  score), so a **two-axis** model may also carry explicit
+  `(first-axis level, second-axis level) → band label` rows
+  (`scoring_cell_ratings`, `PUT .../models/{model}/cell-ratings`, same
+  org/project endpoints and gating as bands). The label must exist in the
+  scope's effective bands (bands a scope's own cells still use can't be
+  removed or renamed); a set is all-or-nothing and resolves project →
+  ancestor → org with no system default; a deleted level takes its cells
+  with it. In `services.scoring.compute_score`, pass `level_ids` and
+  `cell_ratings` (from `resolve_effective_cell_ratings`/`to_cell_ratings`) and
+  a pinned cell wins over the thresholds for that cell only. A *blend* of
+  several cells (an average across personas, say) is not a cell, so it keeps
+  the threshold bands; a single scored entry keeps its cell band.
 - **Gating:** reads need org membership (org endpoints) or project
   view-or-manage (project endpoints); org writes need org admin or the
   scheme's `admin_role_key` module role; project writes need
@@ -836,7 +851,8 @@ flowchart LR
 - **UI:** embed `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
   (project) in your own `orgAdminSections`/`projectAdminSections`, passing
   your scheme key. `ScoringLevelPicker`, `ScoringModelSwitcher` and
-  `ScoringMatrixChart` are the shared scoring/viewing components.
+  `ScoringMatrixChart` are the shared scoring/viewing components;
+  `ScoringCellRatingsEditor` (inside `ScoringModelBands`) edits cell ratings.
 
 ---
 

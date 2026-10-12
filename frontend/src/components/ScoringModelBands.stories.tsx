@@ -38,3 +38,27 @@ export const SwitchModelAndSave: Story = {
     await expect(args.onSave).toHaveBeenCalledWith("sxf", expect.arrayContaining([{ label: "Minimal", min_score: 0, tone: "muted" }]));
   },
 };
+
+/** A two-axis model with cell handlers edits cells in place of the read-only preview. */
+export const TwoAxisModelEditsCellRatings: Story = {
+  args: { isCellsCustom: () => false, onSaveCells: fn(async () => {}), onResetCells: fn(async () => {}) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Model" }), "sxf");
+    await userEvent.selectOptions(
+      canvas.getByRole("combobox", { name: "Rating for Severity Blocker, Frequency Rare" }), "Critical",
+    );
+    await userEvent.click(canvas.getByRole("button", { name: "Save cell ratings" }));
+    await expect(args.onSaveCells).toHaveBeenCalledWith("sxf", [{ first_level_id: "sev-5", second_level_id: "freq-1", band_label: "Critical" }]);
+  },
+};
+
+/** A three-axis model has no single grid to pin cells on, so it keeps the preview. */
+export const ThreeAxisModelHasNoCellEditor: Story = {
+  args: { isCellsCustom: () => false, onSaveCells: fn(async () => {}), onResetCells: fn(async () => {}) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Save cell ratings" })).not.toBeInTheDocument();
+    await expect(canvas.getByText(/Preview at the top level of the remaining axes/)).toBeInTheDocument();
+  },
+};

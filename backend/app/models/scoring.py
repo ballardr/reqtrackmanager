@@ -18,6 +18,10 @@ never a closed core enum a module would need a value added to.
 - `ScoringBand` — rating bands for one (scheme, model): an org set
   (`project_id IS NULL`) and/or per-project override sets. A set is
   all-or-nothing; no rows means "inherit".
+- `ScoringCellRating` — explicit per-cell band overrides for a two-axis
+  model (Module 3 Phase 1a): an (axis-1 level, axis-2 level) → band label
+  mapping, same org/project all-or-nothing set semantics as bands. A cell
+  with no row falls back to the threshold bands.
 
 Resolution (project → nearest ancestor → org → registry default) lives in
 `app.services.scoring`, following `resolve_effective_action_types`.
@@ -130,3 +134,53 @@ class ScoringBand(UUIDPKMixin, TimestampMixin, Base):
     min_score: Mapped[Decimal] = mapped_column(Numeric(6, 4))
     tone: Mapped[str] = mapped_column(String(20))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ScoringCellRating(UUIDPKMixin, TimestampMixin, Base):
+    """One explicit cell of an org-level (`project_id` NULL) or project-level
+    cell-rating set for a two-axis (scheme, model).
+
+    The cell is named by the two level ids (in the model's axis order) rather
+    than by weights, so re-weighting a level keeps its overrides. The rating
+    is the *label* of a band in the effective band set (not a rating of its
+    own), so cell colours always come from the band palette; a label that no
+    longer exists is ignored at resolution (the cell falls back to
+    thresholds). Deleting a level cascades its cells away.
+
+    Attributes:
+        organization_id: The owning organisation.
+        project_id: The overriding project, or `None` for the org set.
+        scheme_key: Registered scoring scheme key.
+        model_key: Registered two-axis model key within the scheme.
+        first_level_id: Level on the model's first axis.
+        second_level_id: Level on the model's second axis.
+        band_label: Label of the band this cell is rated as.
+    """
+
+    __tablename__ = "scoring_cell_ratings"
+    __table_args__ = (
+        Index(
+            "uq_scoring_cell_ratings_org", "organization_id", "scheme_key", "model_key", "first_level_id",
+            "second_level_id", unique=True, postgresql_where=text("project_id IS NULL"),
+        ),
+        Index(
+            "uq_scoring_cell_ratings_project", "project_id", "scheme_key", "model_key", "first_level_id",
+            "second_level_id", unique=True, postgresql_where=text("project_id IS NOT NULL"),
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    scheme_key: Mapped[str] = mapped_column(String(64))
+    model_key: Mapped[str] = mapped_column(String(64))
+    first_level_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="CASCADE")
+    )
+    second_level_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="CASCADE")
+    )
+    band_label: Mapped[str] = mapped_column(String(100))

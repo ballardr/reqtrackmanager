@@ -20,6 +20,11 @@ Responsibilities:
   project → nearest ancestor → org → registry default, following
   `services.project_hierarchy.resolve_effective_action_types` (always on,
   independent of RBAC inheritance).
+- Per-cell rating overrides for two-axis models (Module 3 Phase 1a): an
+  explicit (level, level) -> band label mapping that takes precedence over
+  the threshold bands for that cell, resolved and written like bands. Only a
+  single cell's own score uses it; a blended score (a roll-up of several
+  cells) has no cell, so it keeps the threshold bands.
 - Score maths: a model's score is the product of its axes' level weights;
   it is "not scored under this model" if any of those inputs is missing.
   Bands use the normalised score (score ÷ the model's maximum possible
@@ -54,7 +59,7 @@ from sqlalchemy.orm import Session
 
 from app.models.organization import Organization
 from app.models.project import Project
-from app.models.scoring import ScoringBand, ScoringLevel, ScoringModelDefault
+from app.models.scoring import ScoringBand, ScoringCellRating, ScoringLevel, ScoringModelDefault
 from app.modules.registry import (
     RegisteredScoringScheme,
     ScoringModelDefinition,
@@ -116,6 +121,29 @@ class BandValue:
     label: str
     min_score: float
     tone: str
+
+
+@dataclass(frozen=True)
+class CellRatings:
+    """A resolved per-cell rating set for one two-axis model.
+
+    Attributes:
+        cells: `(first axis level id, second axis level id) -> band label`.
+    """
+
+    cells: Mapping[tuple[UUID, UUID], str]
+
+    def band(self, model: ScoringModelDefinition, level_ids: Mapping[str, UUID | None], bands: list[BandValue]) -> BandValue | None:
+        """Returns the band explicitly set for the cell `level_ids` names, or
+        `None` if the model isn't two-axis, an input is missing, the cell has
+        no override, or its band label is no longer in `bands`."""
+        if len(model.axis_keys) != 2:
+            return None
+        first, second = (level_ids.get(key) for key in model.axis_keys)
+        if first is None or second is None:
+            return None
+        label = self.cells.get((first, second))
+        return next((b for b in bands if b.label == label), None) if label is not None else None
 
 
 @dataclass(frozen=True)
@@ -428,9 +456,14 @@ def _to_band_values(rows: list[ScoringBand]) -> list[BandValue]:
 
 def resolve_effective_bands(
     db: Session, organization_id: UUID, scheme: ScoringSchemeDefinition, model_key: str,
-    project_id: UUID | None = None,
+    project_id: UUID | None = None, *, inherit_only: bool = False,
 ) -> tuple[list[BandValue], str]:
     """Resolves the rating bands for one model.
+
+    Args:
+        inherit_only: Skip the scope itself (`project_id`, or the org set
+            when `project_id` is `None`) and resolve what it would inherit
+            were its own set cleared.
 
     Returns:
         `(bands, source)`, `source` being "project", "ancestor", "org",
@@ -443,10 +476,12 @@ def resolve_effective_bands(
     model = _require_model(scheme, model_key)
     if project_id is not None:
         for index, pid in enumerate(_project_lookup_chain(db, project_id)):
+            if inherit_only and index == 0:
+                continue
             rows = _band_rows(db, organization_id, pid, scheme.key, model_key)
             if rows:
                 return _to_band_values(rows), "project" if index == 0 else "ancestor"
-    rows = _band_rows(db, organization_id, None, scheme.key, model_key)
+    rows = [] if inherit_only and project_id is None else _band_rows(db, organization_id, None, scheme.key, model_key)
     if rows:
         return _to_band_values(rows), "org"
     if model.default_bands:
@@ -509,6 +544,17 @@ def set_bands(
             validate_scoring_bands([(b.label, b.min_score, b.tone) for b in bands])
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    own_cells = _cell_rows(db, organization_id, project_id, scheme.key, model_key)
+    if own_cells:
+        available = {b.label for b in bands} if bands is not None else {
+            b.label for b in resolve_effective_bands(db, organization_id, scheme, model_key, project_id, inherit_only=True)[0]
+        }
+        missing = sorted({c.band_label for c in own_cells} - available)
+        if missing:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Cell ratings still use band(s) {', '.join(missing)}; change those cells first.",
+            )
     project_clause = ScoringBand.project_id.is_(None) if project_id is None else ScoringBand.project_id == project_id
     db.execute(delete(ScoringBand).where(
         ScoringBand.organization_id == organization_id, project_clause,
@@ -524,6 +570,129 @@ def set_bands(
               organization_id=organization_id, project_id=project_id,
               detail={"scheme": scheme.key, "model": model_key,
                       "bands": [b.label for b in bands] if bands is not None else None})
+
+
+# --- Per-cell rating overrides -----------------------------------------------
+
+
+@dataclass(frozen=True)
+class CellRatingValue:
+    """One cell of a cell-rating set, as written or resolved.
+
+    Attributes:
+        first_level_id: Level on the model's first axis.
+        second_level_id: Level on the model's second axis.
+        band_label: Label of the band the cell is rated as.
+    """
+
+    first_level_id: UUID
+    second_level_id: UUID
+    band_label: str
+
+
+def _cell_rows(db: Session, organization_id: UUID, project_id: UUID | None, scheme_key: str, model_key: str) -> list[ScoringCellRating]:
+    """Returns one scope's stored cell-rating set (may be empty)."""
+    project_clause = (
+        ScoringCellRating.project_id.is_(None) if project_id is None else ScoringCellRating.project_id == project_id
+    )
+    return list(db.scalars(
+        select(ScoringCellRating).where(
+            ScoringCellRating.organization_id == organization_id, project_clause,
+            ScoringCellRating.scheme_key == scheme_key, ScoringCellRating.model_key == model_key,
+        ).order_by(ScoringCellRating.created_at, ScoringCellRating.id)
+    ).all())
+
+
+def resolve_effective_cell_ratings(
+    db: Session, organization_id: UUID, scheme: ScoringSchemeDefinition, model_key: str,
+    project_id: UUID | None = None,
+) -> tuple[list[CellRatingValue], str]:
+    """Resolves the cell-rating set for one model along project → nearest
+    ancestor → org (a set is all-or-nothing: the first scope with any cell
+    wins whole). There is no system default.
+
+    Returns:
+        `(cells, source)`, `source` being "project", "ancestor", "org" or
+        "none". Always `([], "none")` for a model that isn't two-axis.
+
+    Raises:
+        HTTPException: 400 for an unknown model.
+    """
+    model = _require_model(scheme, model_key)
+    if len(model.axis_keys) != 2:
+        return [], "none"
+    scopes: list[tuple[UUID | None, str]] = []
+    if project_id is not None:
+        scopes = [(pid, "project" if i == 0 else "ancestor") for i, pid in enumerate(_project_lookup_chain(db, project_id))]
+    scopes.append((None, "org"))
+    for scope_id, source in scopes:
+        rows = _cell_rows(db, organization_id, scope_id, scheme.key, model_key)
+        if rows:
+            return [CellRatingValue(r.first_level_id, r.second_level_id, r.band_label) for r in rows], source
+    return [], "none"
+
+
+def to_cell_ratings(cells: list[CellRatingValue]) -> CellRatings:
+    """Wraps a resolved set for `compute_score`."""
+    return CellRatings({(c.first_level_id, c.second_level_id): c.band_label for c in cells})
+
+
+def set_cell_ratings(
+    db: Session, organization_id: UUID, scheme: ScoringSchemeDefinition, model_key: str,
+    cells: list[CellRatingValue] | None, *, project_id: UUID | None, actor_id: UUID,
+) -> None:
+    """Replaces (or, with `cells` `None`/empty, clears so it inherits) the
+    org's or a project's cell-rating set for one two-axis model, and
+    audit-logs it.
+
+    Raises:
+        HTTPException: 400 for an unknown or non-two-axis model, a level
+            that isn't this org's level on the right axis of this scheme, a
+            duplicate cell, or a band label not in the scope's effective
+            band set.
+    """
+    model = _require_model(scheme, model_key)
+    if len(model.axis_keys) != 2:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cell ratings need a model with exactly two axes.")
+    if cells:
+        first_axis, second_axis = model.axis_keys
+        by_id = {
+            lvl.id: lvl for lvl in db.scalars(select(ScoringLevel).where(
+                ScoringLevel.organization_id == organization_id, ScoringLevel.scheme_key == scheme.key,
+                ScoringLevel.axis_key.in_(model.axis_keys),
+            )).all()
+        }
+        seen: set[tuple[UUID, UUID]] = set()
+        for cell in cells:
+            first, second = by_id.get(cell.first_level_id), by_id.get(cell.second_level_id)
+            if first is None or first.axis_key != first_axis or second is None or second.axis_key != second_axis:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "A cell names a level that is not on this model's axes.")
+            if (cell.first_level_id, cell.second_level_id) in seen:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "A cell is listed more than once.")
+            seen.add((cell.first_level_id, cell.second_level_id))
+        labels = {b.label for b in resolve_effective_bands(db, organization_id, scheme, model_key, project_id)[0]}
+        unknown = sorted({c.band_label for c in cells} - labels)
+        if unknown:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"Unknown rating band(s): {', '.join(unknown)}. Use a label from the rating bands.",
+            )
+    project_clause = (
+        ScoringCellRating.project_id.is_(None) if project_id is None else ScoringCellRating.project_id == project_id
+    )
+    db.execute(delete(ScoringCellRating).where(
+        ScoringCellRating.organization_id == organization_id, project_clause,
+        ScoringCellRating.scheme_key == scheme.key, ScoringCellRating.model_key == model_key,
+    ))
+    for cell in cells or []:
+        db.add(ScoringCellRating(
+            organization_id=organization_id, project_id=project_id, scheme_key=scheme.key, model_key=model_key,
+            first_level_id=cell.first_level_id, second_level_id=cell.second_level_id, band_label=cell.band_label,
+        ))
+    _flush_or_conflict(db)
+    log_event(db, entity_type="scoring_cell_rating_set", entity_id=project_id or organization_id,
+              action="set" if cells else "reset", actor_id=actor_id,
+              organization_id=organization_id, project_id=project_id,
+              detail={"scheme": scheme.key, "model": model_key, "cells": len(cells or [])})
 
 
 # --- Score maths -------------------------------------------------------------
@@ -547,6 +716,7 @@ def max_axis_weights(levels_by_axis: Mapping[str, list[ScoringLevel]]) -> dict[s
 def compute_score(
     model: ScoringModelDefinition, weights: Mapping[str, Decimal | None],
     max_weights: Mapping[str, Decimal], bands: list[BandValue],
+    *, level_ids: Mapping[str, UUID | None] | None = None, cell_ratings: CellRatings | None = None,
 ) -> ScoreResult | None:
     """Scores one set of inputs under `model`.
 
@@ -556,6 +726,10 @@ def compute_score(
             not scored on that axis).
         max_weights: Each axis's top weight (`max_axis_weights`).
         bands: The model's resolved rating bands.
+        level_ids: The chosen level id per axis key; with `cell_ratings`,
+            lets an explicit cell rating decide the band.
+        cell_ratings: The model's resolved cell-rating set, if any. An
+            override wins over the thresholds for its cell only.
 
     Returns:
         The score, or `None` ("not scored under this model") if any of the
@@ -571,7 +745,8 @@ def compute_score(
         raw *= weight
         maximum *= top
     normalised = float(raw / maximum)
-    return ScoreResult(raw=raw, normalised=normalised, band=band_for(normalised, bands))
+    band = cell_ratings.band(model, level_ids or {}, bands) if cell_ratings is not None else None
+    return ScoreResult(raw=raw, normalised=normalised, band=band or band_for(normalised, bands))
 
 
 # --- API read model -----------------------------------------------------------
@@ -593,9 +768,11 @@ def build_scheme_config(
     models = []
     for model in scheme.models:
         bands, source = resolve_effective_bands(db, organization_id, scheme, model.key, project_id)
+        cells, cells_source = resolve_effective_cell_ratings(db, organization_id, scheme, model.key, project_id)
         models.append({
             "key": model.key, "label": model.label, "axis_keys": list(model.axis_keys),
             "bands": [b.__dict__ for b in bands], "bands_source": source,
+            "cell_ratings": [c.__dict__ for c in cells], "cell_ratings_source": cells_source,
         })
     return {
         "key": scheme.key, "label": scheme.label, "module_key": registered.module_key,

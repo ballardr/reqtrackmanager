@@ -69,7 +69,7 @@ from app.models.requirement_link_type import (
     ProjectLinkTypeVisibility,
     RequirementLinkTypeDefinition,
 )
-from app.models.scoring import ScoringBand, ScoringLevel, ScoringModelDefault
+from app.models.scoring import ScoringBand, ScoringCellRating, ScoringLevel, ScoringModelDefault
 from app.models.sequence import ProjectSequenceCounter
 from app.models.server_role import UserServerRole
 from app.models.user import User
@@ -133,6 +133,7 @@ __all__ = [
     "RequirementVersion",
     "ProjectSequenceCounter",
     "ScoringBand",
+    "ScoringCellRating",
     "ScoringLevel",
     "ScoringModelDefault",
     "UserServerRole",

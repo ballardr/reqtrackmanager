@@ -3,7 +3,7 @@ Module: routers.orgs.scoring
 
 Organisation-level endpoints of the generic scoring-matrix mechanism
 (Module 1 Phase 10): read a scheme's effective configuration, edit its
-axis levels, and set the org default model and rating bands. Scheme keys
+axis levels, and set the org default model, rating bands and per-cell rating overrides. Scheme keys
 come from the module registry; every route 404s unless the caller is an
 org member and the scheme's owning module is enabled for the org.
 
@@ -28,6 +28,7 @@ from app.models.user import User
 from app.modules.registry import RegisteredScoringScheme, get_all_registered_scoring_schemes, is_module_enabled
 from app.schemas.scoring import (
     ScoringBandsIn,
+    ScoringCellRatingsIn,
     ScoringDefaultModelIn,
     ScoringLevelCreate,
     ScoringLevelOut,
@@ -183,5 +184,26 @@ def set_org_scoring_bands(
     ]
     scoring.set_bands(db, organization_id, registered.scheme, model_key, bands,
                       project_id=None, actor_id=current_user.id)
+    db.commit()
+    return scoring.build_scheme_config(db, organization_id, registered)
+
+
+@router.put(
+    "/{organization_id}/scoring-schemes/{scheme_key}/models/{model_key}/cell-ratings",
+    response_model=ScoringSchemeOut,
+)
+def set_org_scoring_cell_ratings(
+    organization_id: UUID, scheme_key: str, model_key: str, payload: ScoringCellRatingsIn, request: Request,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Replaces the org's per-cell rating overrides for one two-axis model,
+    or clears them (`null`) so cells use the rating bands' thresholds."""
+    registered = _load_scheme(db, current_user, organization_id, scheme_key, request)
+    _require_scheme_admin(db, current_user, organization_id, registered)
+    cells = None if payload.cells is None else [
+        scoring.CellRatingValue(c.first_level_id, c.second_level_id, c.band_label) for c in payload.cells
+    ]
+    scoring.set_cell_ratings(db, organization_id, registered.scheme, model_key, cells,
+                             project_id=None, actor_id=current_user.id)
     db.commit()
     return scoring.build_scheme_config(db, organization_id, registered)

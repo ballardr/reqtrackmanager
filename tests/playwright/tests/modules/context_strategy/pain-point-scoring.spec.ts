@@ -22,7 +22,8 @@ function section(page: Page, heading: string) {
  * afterwards by `deleteOrgOnCleanup`.
  */
 async function setup(page: Page, request: APIRequestContext) {
-  const suffix = Date.now();
+  // Random part: two tests of this file can start in the same millisecond on different workers.
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const adminEmail = `e2e-pp-scoring-${suffix}@example.com`;
   const login = await request.post(`${API_BASE_URL}/api/v1/auth/login`, {
     data: { email: "admin@example.com", password: "ChangeMe123!" },
@@ -126,6 +127,60 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
       await bands.getByRole("button", { name: "Use inherited value" }).click();
       await expect(page.getByText("Rating bands reset.")).toBeVisible();
       await expect(bands.getByText("Inherited from organisation")).toBeVisible();
+    });
+  });
+
+  /**
+   * Job to be done: docs/plans/module-03-risk-management-plan.md Phase 1a —
+   * an org admin pins individual cells of a two-axis model to a band (so a
+   * non-monotonic matrix can be reproduced); projects inherit the set and
+   * can override and reset it.
+   */
+  test("org admin pins matrix cells to a band; a project inherits, overrides and resets", async ({ page, request }) => {
+    const { org, child } = await setup(page, request);
+    const blockerRare = /Severity Blocker, Frequency Rare/;
+
+    await test.step("org: pin Blocker x Rare to Critical, which its score alone would not earn", async () => {
+      await page.goto(`/orgs/${org.id}/admin`);
+      await selectOrgAdminGroup(page, "Pain Point Scoring");
+      const bands = section(page, "Rating bands");
+      await bands.getByRole("combobox", { name: "Model" }).selectOption({ label: "Severity × Frequency" });
+      // A cell's text includes its picker options, so check its accessible name (which names the band).
+      await expect(bands.getByRole("cell", { name: blockerRare })).toHaveAttribute("aria-label", /: Medium, /);
+      await bands.getByRole("combobox", { name: "Rating for Severity Blocker, Frequency Rare" }).selectOption("Critical");
+      await bands.getByRole("button", { name: "Save cell ratings" }).click();
+      await expect(page.getByText("Cell ratings saved.")).toBeVisible();
+      await expect(bands.getByRole("cell", { name: /Severity Blocker, Frequency Rare: Critical/ })).toBeVisible();
+      await expect(bands.getByRole("button", { name: "Reset to module default" }).last()).toBeVisible();
+    });
+
+    await test.step("project: inherits the org's set, overrides it, then returns to inheriting", async () => {
+      await page.goto(`/projects/${child.id}/admin`);
+      await selectProjectAdminGroup(page, "Pain Point Scoring");
+      const bands = section(page, "Rating bands");
+      await bands.getByRole("combobox", { name: "Model" }).selectOption({ label: "Severity × Frequency" });
+      await expect(bands.getByRole("cell", { name: /Severity Blocker, Frequency Rare: Critical/ })).toBeVisible();
+      await expect(bands.getByText("Inherited from organisation").last()).toBeVisible();
+
+      await bands.getByRole("combobox", { name: "Rating for Severity Blocker, Frequency Rare" }).selectOption("Low");
+      await bands.getByRole("button", { name: "Save cell ratings" }).click();
+      await expect(page.getByText("Cell ratings saved.")).toBeVisible();
+      await expect(bands.getByRole("cell", { name: /Severity Blocker, Frequency Rare: Low/ })).toBeVisible();
+
+      await bands.getByRole("button", { name: "Use inherited value" }).last().click();
+      await expect(page.getByText("Cell ratings reset.")).toBeVisible();
+      await expect(bands.getByRole("cell", { name: /Severity Blocker, Frequency Rare: Critical/ })).toBeVisible();
+    });
+
+    await test.step("org: clearing the set returns the cell to its threshold band", async () => {
+      await page.goto(`/orgs/${org.id}/admin`);
+      await selectOrgAdminGroup(page, "Pain Point Scoring");
+      const bands = section(page, "Rating bands");
+      await bands.getByRole("combobox", { name: "Model" }).selectOption({ label: "Severity × Frequency" });
+      await bands.getByRole("button", { name: "Reset to module default" }).last().click();
+      await expect(page.getByText("Cell ratings reset.")).toBeVisible();
+      // A cell's text includes its picker options, so check its accessible name (which names the band).
+      await expect(bands.getByRole("cell", { name: blockerRare })).toHaveAttribute("aria-label", /: Medium, /);
     });
   });
 });

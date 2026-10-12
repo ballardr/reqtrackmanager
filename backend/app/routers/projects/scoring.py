@@ -4,8 +4,8 @@ Module: routers.projects.scoring
 Project-level endpoints of the generic scoring-matrix mechanism (Module 1
 Phase 10): read a scheme's effective configuration for a project (levels
 are the org's; default model and bands resolve project → nearest ancestor
-→ org → system), and set or clear the project's own default-model and band
-overrides.
+→ org → system), and set or clear the project's own default-model, band and
+per-cell rating overrides.
 
 Reads need project view-or-manage; writes need project-settings management
 (project managers/administrators, org admins). Every route 404s unless the
@@ -25,7 +25,7 @@ from app.deps import get_current_user
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import RegisteredScoringScheme, is_module_enabled_for_project
-from app.schemas.scoring import ScoringBandsIn, ScoringDefaultModelIn, ScoringSchemeOut
+from app.schemas.scoring import ScoringBandsIn, ScoringCellRatingsIn, ScoringDefaultModelIn, ScoringSchemeOut
 from app.services import scoring
 from app.services.rbac import require_project_manage, require_project_view_or_manage
 
@@ -86,5 +86,23 @@ def set_project_scoring_bands(
     ]
     scoring.set_bands(db, project.organization_id, registered.scheme, model_key, bands,
                       project_id=project.id, actor_id=current_user.id)
+    db.commit()
+    return scoring.build_scheme_config(db, project.organization_id, registered, project)
+
+
+@router.put("/{project_id}/scoring-schemes/{scheme_key}/models/{model_key}/cell-ratings", response_model=ScoringSchemeOut)
+def set_project_scoring_cell_ratings(
+    project_id: UUID, scheme_key: str, model_key: str, payload: ScoringCellRatingsIn,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Overrides the project's per-cell ratings for one two-axis model, or
+    clears the override (`null`) so it inherits."""
+    registered = _load_scheme(db, project_id, scheme_key)
+    cells = None if payload.cells is None else [
+        scoring.CellRatingValue(c.first_level_id, c.second_level_id, c.band_label) for c in payload.cells
+    ]
+    scoring.set_cell_ratings(db, project.organization_id, registered.scheme, model_key, cells,
+                             project_id=project.id, actor_id=current_user.id)
     db.commit()
     return scoring.build_scheme_config(db, project.organization_id, registered, project)

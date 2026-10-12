@@ -10338,3 +10338,35 @@ flowchart LR
 - **Frontend.** `dompurify` ^3.4.16; `source-map-js` 1.2.2 and `brace-expansion` 5.0.12 via lockfile refresh; `katex` forced to ^0.18.2 with an `overrides` entry because `mermaid` (latest 12.1.0) still declares `^0.16.47` and only 0.18.2+ is patched. `npm audit`: 0 vulnerabilities; `tsc` and `vite build` pass.
 - **docs/website.** `overrides` added for `tinypool` (^2.1.2, major bump from 1.1.1 — `npm audit fix --force` would have *downgraded* Docusaurus to 3.7.0, rejected), `http-cache-semantics` (^4.3.0, the advisory lists no patched version but 4.3.0 is outside the affected range), `postcss-selector-parser` (^7.1.6; cssnano 6 asked for 6.x), `proxy-addr`, `fast-uri`, `dompurify`, `katex`, `source-map-js`; `serialize-javascript` 7.1.2 and `shell-quote` 1.12.0 by lockfile refresh. `docusaurus build` succeeds.
 - **Still open: `braces` (GHSA-vfj7-8cjw-p6xm, alert 45).** Affects all versions through the latest (3.0.3); no patch exists. Reached only via build-time globbing (`micromatch`/`chokidar`) in the docs website's dev tooling, never shipped or fed untrusted patterns. Re-check when upstream releases a fix; remove the alert's reliance on this note then.
+
+## Module 13 generalised from Product Tiers to Product Variants (2026-10-12)
+
+**Decided by: User** (generalisation); **Decided by: Agent** (naming and shape below). Plan: [module-13-product-variants-plan.md](plans/module-13-product-variants-plan.md) (renamed from `module-13-product-tiers-plan.md`).
+
+- **Why:** tiers only cover commercial software packaging. Hardware alternatives (e.g. Iridium vs LTE telemetry modules) are unordered, and a tiers-only model would need a rework to express them.
+- **Shape (proposed, confirmed in Phase 0):** Variant Group (ordered or unordered) → Variant. Tiers are the ordered case. Applicability stays a relationship, not a Requirement field.
+- **Reserved names:** Module 1's reserved `intentional_in`/`removed_by` links now target a Variant. Module 1's "Tier" report columns and note text are renamed in Module 13 Phase 3, not before, since nothing populates them yet.
+
+## Module 3 (Risk Management) Phase 0 sign-off (2026-10-12)
+
+Plan: [module-03-risk-management-plan.md](plans/module-03-risk-management-plan.md), "Phase 0 resolutions". Design only; no code changed.
+
+- **Per-cell rating override (core).** **Decided by: User.** Offered "accept product-of-weights banding" and chose to build explicit cell-by-cell ratings instead, so an organisation can reproduce a non-monotonic matrix. Becomes **Phase 1a**, a core scoring extension that Pain Points and Stakeholders also receive. Shape (names a band, two-axis models only, org + project, all-or-nothing, ancestor fallback): **Decided by: Agent.**
+- **Treatment effectiveness.** **Decided by: User.** A module-owned `RiskTreatmentAssessment` keyed to the Mitigated-by link, not a risk-only column on core `ArtefactLink` (module boundary).
+- **Lifecycle.** **Decided by: User.** Branching terminal outcomes, with `Accepted` needing a distinct risk-acceptor role and the `allow_ai_approvals` gate.
+- **History.** **Decided by: User.** `RiskVersion` table plus review snapshots, replacing the plan's audit-log-only history.
+- **Nested projects.** Risk types have no ancestor fallback (org list is the base every project sees, as Module 2). **Decided by: Agent.**
+- **Users and groups parity.** Owner is a principal; if the shared mechanism has not landed at Phase 1, ship user-only and log the gap here. **Decided by: Agent.**
+- **Challenge raised and accepted:** the original Q4 assumed audit-log history was enough; ratings over time would only be reconstructable from event payloads, against the "history retained" acceptance criterion.
+
+## Core scoring: per-cell rating override (Module 3 Phase 1a, 2026-10-12)
+
+**Decided by: User** (build the override; see the Phase 0 entry above). Everything below is **Decided by: Agent**. Plan: [module-03-risk-management-plan.md](plans/module-03-risk-management-plan.md), "Phase 1a".
+
+- **Storage.** `scoring_cell_ratings` (org rows `project_id IS NULL`, project rows otherwise), keyed by the two level ids (model's axis order) with `ON DELETE CASCADE` FKs, plus a `band_label`. Level ids, not weights, so re-weighting keeps the matrix; labels, not band ids, because `set_bands` replaces a whole set (ids are not stable).
+- **Rating = an existing band.** The override names a band in the scope's effective set rather than inventing a rating, so colours stay in the band palette. Validated on save; bands a scope's own cells use can't be removed or renamed (400, change cells first). Another scope later dropping the label is not blocked (it would couple unrelated scopes' saves); the cell silently falls back to thresholds, and the editor shows the threshold band.
+- **Two-axis models only.** The editor is a grid; a three-axis model has no single grid, so it keeps threshold bands. Nested projects: same walk as bands (project, nearest ancestor, org), a set is all-or-nothing, no system default.
+- **Blends are not cells.** A single scored entry keeps its cell band; worst case returns the worst entry (with its band); a weighted or plain average across several personas takes threshold bands. Alternative considered: map the blended score to the nearest cell. Rejected as unexplainable to a reader.
+- **Not exported.** Org export carries no scoring configuration today (levels, bands and model defaults are not exported either), so cell ratings follow the same rule.
+- **Identify, verify, remediate (writes on shared config).** Risks: a level or band id from another org (service resolves levels by `organization_id`, tested with a foreign org's levels: 400); a non-manager writing (same `_require_scheme_admin`/`require_project_manage` as bands, tested 403 for a member); cross-org path access (404/403 tested); concurrent saves (unique index violation turns into 409 via `_flush_or_conflict`); a deleted level (cascade, tested); audit (`scoring_cell_rating_set`, tested). No change to authentication, secrets or retention.
+- **Verification.** Backend: 5 new scoring tests, 2 Pain Point scoring tests, 1 R1 report test; Storybook: editor, chart and bands stories; Playwright: org pins a cell, a project inherits, overrides and resets. The Pain Point scoring, stakeholder lifecycle and report specs pass. During the run one stakeholder-lifecycle test ("links Personas from the Stakeholder...") failed once in a combined run and passed on two re-runs; not reproduced, cause unknown.

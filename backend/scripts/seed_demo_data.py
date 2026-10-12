@@ -1288,6 +1288,17 @@ def set_project_scoring_default_model(headers: dict, project_id: str, scheme: st
     return r.json()
 
 
+def set_project_scoring_cell_ratings(headers: dict, project_id: str, scheme: str, model: str, cells: list[dict]) -> dict:
+    """Overrides a project's per-cell ratings for a two-axis model (generic
+    scoring-matrix core, Module 3 Phase 1a)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/scoring-schemes/{scheme}/models/{model}/cell-ratings", json={"cells": cells},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # --- Context & Strategy module helpers, Phase 4 (docs/plans/module-01-
 # context-and-strategy-plan.md Phase 4 — Guiding Principles) -----------------
 
@@ -2639,6 +2650,12 @@ def main() -> None:
           " personas of different weights (one persona left unscored), an all-personas Blocker, an intentional"
           " limitation, and an unscored Pain Point...")
     pp_levels = get_pain_point_levels(h_pm, drone["id"])
+    print("  Falcon-3 pins the Severity × Frequency cell Blocker × Rare to High (its score alone would only earn"
+          " Medium): a blocker is never a minor problem, however rare (Module 3 Phase 1a cell ratings)...")
+    set_project_scoring_cell_ratings(h_pm, drone["id"], "pain_point", "sxf", [{
+        "first_level_id": pp_levels["severity"]["Blocker"], "second_level_id": pp_levels["frequency"]["Rare"],
+        "band_label": "High",
+    }])
     set_pain_point_scores(h_pm, drone["id"], pp_accepted["id"], [
         score_entry(pp_levels, persona_inspector["id"], severity="Major", frequency="Frequent", confidence="High"),
         score_entry(pp_levels, drone_operator_persona["id"], severity="Moderate", frequency="Constant", confidence="Medium"),

@@ -4,7 +4,7 @@ Module: schemas.scoring
 Request/response models for the generic scoring-matrix API (Module 1
 Phase 10): a scheme's effective configuration (axes with levels, models
 with bands, default model with its resolution source), level CRUD, and the
-default-model/band override payloads. See `services.scoring`.
+default-model/band/cell-rating override payloads. See `services.scoring`.
 """
 
 from __future__ import annotations
@@ -51,14 +51,30 @@ class ScoringBandOut(BaseModel):
     tone: str
 
 
+class ScoringCellRatingIn(BaseModel):
+    """One cell of a cell-rating payload: the band the (first-axis level,
+    second-axis level) cell is rated as."""
+
+    first_level_id: UUID
+    second_level_id: UUID
+    band_label: str = Field(min_length=1, max_length=100)
+
+
+class ScoringCellRatingOut(ScoringCellRatingIn):
+    """One resolved cell rating."""
+
+
 class ScoringModelOut(BaseModel):
-    """A model with its effective bands and where they came from."""
+    """A model with its effective bands, cell ratings and where each came
+    from. `cell_ratings` is always empty for a model that isn't two-axis."""
 
     key: str
     label: str
     axis_keys: list[str]
     bands: list[ScoringBandOut]
     bands_source: ResolutionSource
+    cell_ratings: list[ScoringCellRatingOut]
+    cell_ratings_source: ResolutionSource
 
 
 class ScoringSchemeOut(BaseModel):
@@ -103,3 +119,10 @@ class ScoringBandsIn(BaseModel):
     """Replaces a band set; `null` clears the override so it inherits."""
 
     bands: list[ScoringBandIn] | None
+
+
+class ScoringCellRatingsIn(BaseModel):
+    """Replaces a model's cell-rating set; `null` (or an empty list) clears
+    the override so it inherits."""
+
+    cells: list[ScoringCellRatingIn] | None

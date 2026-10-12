@@ -58,6 +58,7 @@ export function buildStakeholderScheme(): ScoringScheme {
     models: [{
       key: "influence_x_interest", label: "Influence × Interest", axis_keys: ["influence", "interest"],
       bands: [{ label: "Low", min_score: 0, tone: "muted" }], bands_source: "system",
+      cell_ratings: [], cell_ratings_source: "none",
     }],
     system_default_model_key: "influence_x_interest", default_model_key: "influence_x_interest",
     default_model_source: "system",

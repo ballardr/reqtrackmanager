@@ -59,6 +59,7 @@ from app.modules.registry import ScoringModelDefinition, ScoringSchemeDefinition
 from app.services.audit import log_event
 from app.services.scoring import (
     BandValue,
+    CellRatings,
     ScoreResult,
     band_for,
     compute_score,
@@ -66,7 +67,9 @@ from app.services.scoring import (
     list_levels,
     max_axis_weights,
     resolve_effective_bands,
+    resolve_effective_cell_ratings,
     resolve_effective_model,
+    to_cell_ratings,
 )
 
 PERSONA_TARGET_TYPE = "persona"
@@ -330,14 +333,21 @@ def _row_weights(ctx: ScoringContext, row: PainPointScore) -> dict[str, Decimal 
     return out
 
 
+def _row_level_ids(row: PainPointScore) -> dict[str, uuid.UUID | None]:
+    """Maps each axis to the id of the row's chosen level (`None` = unscored)."""
+    return {axis: getattr(row, f"{axis}_level_id") for axis in _AXIS_KEYS}
+
+
 def _resolve_entry(
     ctx: ScoringContext, row: PainPointScore, model: ScoringModelDefinition, bands: list[BandValue],
+    cells: CellRatings | None = None,
 ) -> EntrySummary:
-    """Resolves one stored row against its target and the chosen model."""
+    """Resolves one stored row against its target and the chosen model
+    (`cells`: the model's per-cell rating overrides, if any)."""
     weights = _row_weights(ctx, row)
     severity = weights.get(SEVERITY_AXIS)
     is_blocker = severity is not None and ctx.top_severity_weight is not None and severity == ctx.top_severity_weight
-    score = compute_score(model, weights, ctx.max_weights, bands)
+    score = compute_score(model, weights, ctx.max_weights, bands, level_ids=_row_level_ids(row), cell_ratings=cells)
     if row.target_id is None:
         return EntrySummary(row, None, None, TargetStatus.ALL, score, is_blocker)
     target = ctx.targets.get(row.target_id)
@@ -359,10 +369,16 @@ def rollup_scores(
     ctx: ScoringContext, entries: list[EntrySummary], model: ScoringModelDefinition,
     method: RollupMethod, bands: list[BandValue],
 ) -> ScoreResult | None:
-    """Combines the scored entries under `method`, or `None` if none is scored."""
+    """Combines the scored entries under `method`, or `None` if none is scored.
+
+    A single scored entry is returned as is, so its explicit cell rating (if
+    any) survives; a blend of several entries is not one cell, so it takes
+    the threshold bands."""
     scored = [e for e in entries if e.score is not None]
     if not scored:
         return None
+    if len(scored) == 1:
+        return scored[0].score
     maximum = Decimal(1)
     for axis_key in model.axis_keys:
         maximum *= ctx.max_weights[axis_key]
@@ -380,13 +396,13 @@ def rollup_scores(
 
 def summarise(
     ctx: ScoringContext, pain_point_id: uuid.UUID, rows: list[PainPointScore], model: ScoringModelDefinition,
-    method: RollupMethod, bands: list[BandValue],
+    method: RollupMethod, bands: list[BandValue], cells: CellRatings | None = None,
 ) -> PainPointScoringSummary:
     """Rolls a Pain Point's rows up under `model` and `method`."""
     summary = PainPointScoringSummary(pain_point_id=pain_point_id, scope="none")
     if not rows:
         return summary
-    summary.entries = [_resolve_entry(ctx, row, model, bands) for row in rows]
+    summary.entries = [_resolve_entry(ctx, row, model, bands, cells) for row in rows]
     summary.scope = "all_personas" if any(e.target_status is TargetStatus.ALL for e in summary.entries) else "per_persona"
     counted = [e for e in summary.entries if e.target_status is not TargetStatus.INACTIVE]
     summary.counted = len(counted)
@@ -409,6 +425,9 @@ def build_pain_point_scoring(
         One summary per Pain Point, in input order.
     """
     bands, _ = resolve_effective_bands(db, ctx.project.organization_id, ctx.scheme, model.key, ctx.project.id)
+    cells = to_cell_ratings(
+        resolve_effective_cell_ratings(db, ctx.project.organization_id, ctx.scheme, model.key, ctx.project.id)[0]
+    )
     rows_by_pp: dict[uuid.UUID, list[PainPointScore]] = {}
     if pain_points:
         for row in db.scalars(
@@ -416,4 +435,4 @@ def build_pain_point_scoring(
             .order_by(PainPointScore.target_id.is_(None).desc(), PainPointScore.created_at)
         ).all():
             rows_by_pp.setdefault(row.pain_point_id, []).append(row)
-    return [summarise(ctx, p.id, rows_by_pp.get(p.id, []), model, method, bands) for p in pain_points]
+    return [summarise(ctx, p.id, rows_by_pp.get(p.id, []), model, method, bands, cells) for p in pain_points]

@@ -119,13 +119,14 @@ The page never fails on a missing persona.
 
 ## Configuring scoring
 
-Levels belong to the organisation; a project can change only the default model and the rating bands.
+Levels belong to the organisation; a project can change only the default model, the rating bands and the cell ratings.
 
 | Setting | Organisation (**Org Management → Pain Point Scoring**) | Project (**Project Admin → Pain Point Scoring**) |
 | --- | --- | --- |
 | Levels per input (name, weight, guidance) | Edit, add, delete (at least two per input; deleting an in-use level asks where to move its scores) | Read-only |
 | Default model | Set, or reset to the module default | Override, or use the inherited value |
 | Rating bands per model | Set, or reset to the module defaults | Override, or use the inherited value |
+| Cell ratings per two-axis model | Pin cells to a band, or reset | Override, or use the inherited value |
 
 | Organisation scoring settings | Project scoring settings |
 | --- | --- |
@@ -138,6 +139,13 @@ Levels belong to the organisation; a project can change only the default model a
 | Severity × Frequency | 20% | 40% | 60% |
 | Severity × Confidence | 30% | 50% | 80% |
 | Severity × Frequency × Confidence | 15% | 30% | 50% |
+
+**Cell ratings** let you set the band of individual cells in a two-axis model's grid, for when thresholds on the score don't match how your organisation rates risk. For example, a Blocker that happens Rarely scores 25% (Medium), but you may rate it High. Under **Rating bands**, choose a two-axis model (Severity × Frequency or Severity × Confidence), pick a band in a cell's list, and select **Save cell ratings**. Cells left on **Thresholds** keep the band their score earns.
+
+- A cell can only use a band that exists, so save band changes first, and a band that cells still use can't be removed or renamed.
+- A cell rating changes the band only, never the score.
+- A Pain Point's own score uses its cell's rating. A figure that blends several personas (a weighted or plain average) isn't one cell, so it uses the threshold bands; **Worst case** and a single scored persona keep the cell's rating.
+- The three-axis model has no single grid, so it uses thresholds only.
 
 A project that hasn't overridden a setting inherits it, and the page says where from:
 

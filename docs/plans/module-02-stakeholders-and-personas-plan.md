@@ -10,15 +10,15 @@ re-derive it, and does not need Module 1 for that purpose.
 §10 "Module 2 — Stakeholders & Personas".
 
 **Status:** Phases 0, 1.1, 1.2, 2, 3 and 3b complete (all 2026-10-05; Phase 0 had user
-sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 4 is next. Phase 1 was split
+sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) is next, then Phase 4. Phase 1 was split
 into 1.1 (Persona) and 1.2 (Stakeholder) so Module 1 Phase 11's dependency,
 which needs only Personas, unblocked first. Built ahead of the overview's §46 order because Module 1's
 Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-6 / 10 phases complete (plus the unnumbered Phase 3b, project stakeholder visibility). **Phases 0–3 and 7a are done, so the module can ship; Phase 4 (Engagements: data
-model, backend, erasure) is next, with 5, 6 and 7b after it.** The user asked for the docs phase to be pulled ahead of Phases 4–6
+6 / 10 phases complete (plus the unnumbered Phase 3b, project stakeholder visibility, done, and the unnumbered Phases 3c, Stakeholder Groups, and 3d, custom attributes, not started). **Phases 0–3 and 7a are done, so the module can ship; Phase 3c (Stakeholder Groups, added 2026-10-12) is next, then Phase 4 (Engagements: data
+model, backend, erasure), with 5, 6 and 7b after it.** 3d (generic custom attributes) follows 3c; its org-level definition model needs user sign-off before building. The user asked for the docs phase to be pulled ahead of Phases 4–6
 (**Decided by: User**, 2026-10-05): Phase 7a documents what Phases 0–3 shipped, and Phase 7b extends the
 same section once Phases 4–6 land.
 Phase 1.1 (Persona, 2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder,
@@ -36,6 +36,8 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 2 | Stakeholder Needs (as first-class records) | [x] Complete (2026-10-05) |
 | 3 | Relationships + remaining frontend UI + MCP | [x] Complete (2026-10-05) |
 | 3b | Project visibility of org Stakeholders and Personas (hide per project) | [x] Complete (2026-10-05) |
+| 3c | Stakeholder Groups (many-to-many, nested): sort, filter, group-by | [ ] Not started — do before Phase 4 so Engagements can target groups |
+| 3d | Custom attributes on Stakeholders and Personas (generic custom fields) | [ ] Not started — after 3c; confirm org-level definition model first, see its section |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
 | 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
 | 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06 |
@@ -314,6 +316,97 @@ flowchart LR
     items, so a gap the stakeholder caused is distinguishable from
     neglect. **Decided by: Agent.**
 
+### Phase 0 addendum 3 (2026-10-12) — grouping and sort dimensions
+
+Raised by the user: stakeholders should be groupable, in several groups at
+once, with nested groups. Useful for Engagements, and for sorting/grouping by a
+dimension no field provides (client, business group). "Maybe custom columns."
+
+```mermaid
+flowchart TD
+    C[Group: Client<br/>exclusive children] --> A[Acme]
+    C --> B[Beta Ltd]
+    A --> A1[Acme — Finance]
+    BG[Group: Business group] --> OPS[Operations]
+    ST1[Stakeholder X] --- A1
+    ST1 --- OPS
+    ST2[Stakeholder Y] --- B
+    ST2 --- OPS
+    ST1 -. transitively in .-> A
+    ST1 -. transitively in .-> C
+```
+
+23. **A dedicated, lightweight `StakeholderGroup` record**, not a
+    free-text field and not a new `kind` of Stakeholder. **Decided by:
+    Agent.** The existing free-text `organisation_group` can't be filtered,
+    nested or multi-valued. A group is classification, so it gets none of the
+    Stakeholder/Persona machinery: no version table, comments or lifecycle.
+    Changes go through `services/audit.py`.
+24. **Tree of groups, many-to-many membership.** Each group has at most one
+    parent (`parent_group_id`); a stakeholder can belong to any number of
+    groups. **Decided by: Agent.** *Why a tree, not a DAG:* "nested" is
+    satisfied, multi-membership already covers "in two places", and a
+    multi-parent graph adds cycle detection and ambiguous roll-ups for little
+    gain. Membership is transitive upward: being in "Acme — Finance" means
+    being in "Acme" and "Client" for filtering and reports. Walks are
+    cycle-safe and depth-capped, reusing the approach in
+    `services.project_hierarchy`.
+25. **Root groups act as sort/group-by dimensions, which is the answer to
+    "custom columns" for categorical data.** "Client" and "Business group" are
+    just root groups; the list can group or sort by any root, and the value
+    shown is the stakeholder's branch under it. **Decided by: Agent.** Two
+    consequences:
+    - *Multi-membership makes a sort key ambiguous* (a stakeholder in two
+      branches of one root has two values). A group can therefore be marked
+      `exclusive_children`: a stakeholder may sit in at most one of its direct
+      child branches, so it behaves like a single-valued column (Client). The
+      service rejects a second branch with a 409 naming the existing one.
+      Without the flag, grouping lists the stakeholder under each branch and
+      sorting uses the alphabetically first.
+    - *Non-categorical* attributes (a contract value, a free-text region)
+      still need real custom fields: Phase 3d.
+26. **Scope follows Stakeholder:** org or project, one of `organization_id`/
+    `project_id`. **Decided by: Agent.** Hard rules, to prevent a project's
+    data leaking into the shared org record:
+    - an org group's parent and members are org-scoped only;
+    - a project group's parent may be an org group or a project group of the
+      same project, and members may be org or project stakeholders;
+    - a stakeholder hidden for a project (Phase 3b) is omitted from that
+      project's view of a group, and cannot be added to one there;
+    - cross-org references are always rejected.
+27. **Nested-projects check (CLAUDE.md): no ancestor fallback.** Groups are
+    records, not a per-project vocabulary with an "empty means inherit"
+    reading, and org-scoped groups already reach every project in the org.
+    **Decided by: Agent.** Not seeded on project or org creation either: there
+    is no sensible default taxonomy.
+28. **Groups are not principals.** They hold stakeholders, grant no
+    permissions, and are distinct from org/project user groups (CLAUDE.md,
+    "Users and Groups on Parity"). **Decided by: Agent.** Parity is still
+    honoured: anywhere Phase 4–6 would take a stakeholder as a participant or
+    filter, a stakeholder group is accepted too (items 29–30). The UI and
+    docs say "Stakeholder group" throughout to avoid confusion with user
+    groups.
+29. **Engagements target a group by expansion, as a snapshot.** Picking a
+    group in the participant picker adds its current effective members as
+    individual participants, and records an "audience" link to the group.
+    **Decided by: Agent.** *Why:* an engagement is a historical record, and
+    live membership would silently change who "attended" later. The snapshot
+    is editable, so a no-show can be removed.
+30. **Reports and lists filter and group by stakeholder group**: S1 and S4 gain
+    a group filter and a group-by-dimension option, and the list view gets a
+    Groups column, filter and group-by. **Decided by: Agent.** *Why:* "which
+    of Acme's people have we not spoken to" is the motivating case.
+31. **RBAC:** the same gate as managing a Stakeholder (`stakeholder_owner` or
+    the FGAC `(stakeholder, manage)` grant) for org and project groups
+    respectively, with org admins plus the org-level module role for org
+    scope. **Decided by: Agent.** Groups register as an artefact type
+    (`stakeholder_group`) so they can be an `ArtefactLink` target (e.g. a
+    Requirement "affects" a group) and appear in FGAC.
+32. **Deleting a group** removes its memberships (never the stakeholders) and
+    promotes its child groups to its parent. **Decided by: Agent.** Two-tier
+    confirm that states the member and child counts. Stakeholder hard delete
+    (Phase 1.2) must also remove that stakeholder's memberships.
+
 ## Phase 1.1 — Persona
 
 **Scope** (per Phase 0 resolutions 1–6, 8, 10, 11):
@@ -564,13 +657,118 @@ and `include_hidden`; `StakeholderOut` `project_hidden`/`hidden_source`/
 control on the project Stakeholders page; pytest, Playwright, Storybook; demo
 and e2e seeds; docs website + decisions log.
 
+## Phase 3c — Stakeholder Groups (many-to-many, nested)
+
+**Scope** (Phase 0 addendum 3, items 23–32):
+- Models and a migration (take the next free revision number across the core
+  and module migration dirs): `StakeholderGroup` (name, description, scope
+  discriminator, nullable `parent_group_id`, `exclusive_children`, sort order)
+  and `StakeholderGroupMember(group_id, stakeholder_id)`, unique per pair.
+  Registered artefact type `stakeholder_group`.
+- Service: cycle-safe, depth-capped ancestor/descendant walks; effective
+  (transitive) membership; the scope rules in item 26 and the
+  `exclusive_children` check in item 25; delete with child promotion (item 32);
+  a hide-aware read path built on `list_project_visible_stakeholders`.
+- Stakeholder hard delete (`erase_stakeholder`) removes memberships; bundle
+  export/import carries groups and memberships (by name path, with a warning if
+  a member is missing on import).
+- Org and project routers, audit events through `services/audit.py` (ids only),
+  `stakeholder_owner`/FGAC gate (item 31). Stakeholder list endpoints gain
+  `group_id` (includes descendants by default, `direct_only=true` to turn that
+  off) and `group_by`/`sort` by a root group.
+- A one-off "create groups from Organisation / group text" action that proposes
+  groups from the distinct values of the existing free-text field and
+  populates memberships on confirm. The text field stays.
+- MCP: `list_stakeholder_groups`, `create_stakeholder_group`,
+  `update_stakeholder_group`, `delete_stakeholder_group`,
+  `add_stakeholder_to_group`, `remove_stakeholder_from_group`, and a `group_id`
+  filter on `list_stakeholders`. Update `mcp-server`'s skill or the module's
+  `mcp_guidance.md` and regenerate the reference, per CLAUDE.md.
+- Frontend: a group tree manager (create, rename, move, mark exclusive, delete
+  as a two-tier confirm), a shared tree picker for membership on the
+  Stakeholder form and detail page, and a Groups column, filter and group-by
+  control on the Stakeholder list. Check for an existing tree or multi-select
+  component and extract it into a shared one if it's not already (CLAUDE.md
+  shared-component rule). Group names go through the generic
+  chip/badge component, not a per-page copy.
+- Seeds: both scripts get an org taxonomy (e.g. Client with exclusive
+  children, Business group) and stakeholders spread across it, including one in
+  several groups and one project-scoped group nested under an org group.
+- Docs website: a *Stakeholder groups* page under the module, with the
+  diagram in addendum 3, plus the Stakeholder page's list controls. Decision
+  log entry (including the dated Decided-by tags) in `docs/decisions.md`.
+- Tests: pytest for scope rules (org group can't hold a project stakeholder,
+  cross-org rejected), cycle and depth guards, transitive membership,
+  `exclusive_children` conflict, delete promotion, Phase 3b hidden-stakeholder
+  omission, erasure completeness, RBAC and cross-org isolation; Playwright for
+  tree management, multi-group assignment and list filter/group-by; Storybook
+  for every new component.
+
+**Why:** the free-text organisation/group field can't be filtered, nested or
+repeated, so stakeholders can't be sorted by client or business group, and an
+engagement can't be aimed at "everyone at Acme". *Risk addressed:*
+classification kept in a spreadsheet, and inconsistent spellings of the same
+group. *Outcome:* any dimension a team cares about is a group tree that lists,
+reports and engagements all use.
+
+## Phase 3d — Custom attributes on Stakeholders and Personas
+
+**Why:** the product should fit each team's workflow rather than impose a fixed
+field set. Groups (Phase 3c) cover categorical sorting; custom attributes cover
+what categories can't: numbers, dates, free text, checkboxes. *Risk addressed:*
+teams keeping side spreadsheets for the columns they actually sort by.
+*Outcome:* users define their own typed fields on Stakeholders and Personas, and
+can show, sort and filter by them. **Decided by: User** (wants the system
+non-opinionated); the design below is **Decided by: Agent**.
+
+**Design: generalise the existing custom-field system, don't add a second one.**
+- `CustomFieldDefinition.entity_kind` (`backend/app/models/custom_field.py`) is
+  a closed enum (`requirement`, `change_request`). Adding `stakeholder` to it
+  would be a per-module hand-edit of a core enum, which CLAUDE.md forbids. So
+  `entity_kind` becomes a plain value validated against a registry-merged set,
+  as `ArtefactLink.source_type` is, and this module registers `stakeholder` and
+  `persona`. Requirements and Change Requests keep behaving exactly as now
+  (migration plus their existing tests unchanged). Any later module gets
+  custom fields by registering a kind.
+- Definitions are project-scoped today, but Stakeholders and Personas can be
+  org-scoped and shared. So definitions gain an org tier: an org base list
+  (as with Phase 1.1's two-tier types) plus project additions. A record has one
+  set of values, stored in a `custom_fields` JSONB column on
+  `StakeholderVersion`/`PersonaVersion`, as Requirements do, so changes land in
+  the existing version history.
+- A project-added definition applies to project-scoped records of that project
+  only; org-scoped records show the org list. (Else a project's field would
+  appear on a shared record that other projects see.)
+- **Nested-projects check (CLAUDE.md):** project additions fall back to the
+  nearest ancestor project's, the Action Types rule. Record the decision in
+  `docs/decisions.md` during implementation.
+- Field types: reuse the existing four (short text, long text, checkbox, list).
+  Adding number and date is needed for sorting to be meaningful, and benefits
+  Requirements too, so it's in scope.
+- List views gain user-chosen custom columns, sorting and filtering by them,
+  with the choice remembered per viewer. Reports S1/S4 can group or filter by an
+  attribute.
+- MCP: attributes appear in get/create/update stakeholder and persona tools;
+  update the skill and regenerate the reference.
+- Also: bundle export/import, both seed scripts (a few realistic attributes),
+  docs website page, pytest (registry validation, org vs project visibility,
+  inheritance, history, regression for Requirements/CRs), Playwright and
+  Storybook.
+
+**Open for the user to confirm before building:** whether an org admin
+defining org-level fields (shown on every shared stakeholder) is the right
+default, versus fields that exist only per project. I recommend the two-tier
+model above because it matches how types already work.
+
 ## Phase 4 — Engagements (+ research extras): data model, backend, erasure
 
-**Scope** (addendum 14, 15 and addendum 2, item 20):
+**Scope** (addendum 14, 15 and addendum 2, item 20; plus addendum 3, item 29):
 - `Engagement` registered artefact type (`engagement`), always on:
   - fields: title, channel, date, facilitator/logged by, scope, summary,
     notes, consent recorded, retain-until;
-  - participants: Stakeholders, via `ArtefactLink`;
+  - participants: Stakeholders, via `ArtefactLink`, or a Stakeholder Group
+    expanded to its current members at log time with an "audience" link
+    (addendum 3, item 29);
   - personas covered;
   - links to Pain Points, Needs and Open Questions ("raised by",
     "answered by");
@@ -598,7 +796,8 @@ log from contact to Pain Points and Needs.
 
 **Scope:** an engagement list, detail page and create form (as a layer);
 the "Log contact" quick-add on Stakeholder and Persona pages; an engagement
-timeline on the Stakeholder detail page; participant/persona pickers; the
+timeline on the Stakeholder detail page; participant/persona pickers, with an
+"add everyone in group" option from the Phase 3c tree picker; the
 prompts editor, findings and anonymous participants when the extras are
 enabled; and the delete confirm. Use shared components and label maps.
 Playwright and Storybook.
@@ -623,6 +822,10 @@ views and MCP.
 | S3 | **Need coverage** | Needs with no Requirement; Requirements tracing to no Need, Stakeholder or Persona. Interim until Module 7. |
 | S4 | **Engagement staleness** | Stakeholders whose last engagement is older than their own target cadence (or who have none), sorted by Influence, with availability constraints shown. One-off and Ad hoc are excluded. Personas with no engagement in N months. Needs Phase 4. |
 | S5 | **Engagement & research yield** | Engagements by channel and persona; findings, Pain Points and Needs raised by engagements versus none. The findings part needs the research extras. Needs Phase 4. |
+
+**Stakeholder groups (Phase 3c, addendum 3, item 30):** S1 and S4 accept a
+group filter (descendants included) and a group-by-dimension option, so
+"which of Acme's people are overdue" is one report.
 
 **Access control:** the same rules as Module 1 Phase 12: module enablement
 and FGAC read on project reports; org variants need the org-reports
@@ -738,6 +941,10 @@ tools, with screenshots of each new screen.
   Questions. Research extras add prompts, findings and anonymous
   participants. A Stakeholder's or engagement's personal data can be
   hard-deleted.
+- *(Phase 0 addendum 3)* Stakeholders can belong to several nested Stakeholder
+  Groups; lists and reports filter and group by them, a root group with
+  exclusive children behaves as a single-valued sort column, and an
+  Engagement can add a whole group's members as participants.
 - *(Phase 0 addendum 2)* Stakeholders have a target cadence and
   availability constraints, and S4 flags stakeholders overdue against
   their own cadence.

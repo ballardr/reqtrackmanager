@@ -45,6 +45,29 @@ export const WithPointsAndCellClick: Story = {
   },
 };
 
+/** A non-monotonic matrix: Blocker x Rare scores 0.25 (Medium by threshold) but is pinned Critical. */
+export const CellRatingOverridesTheThreshold: Story = {
+  args: { cellRatings: [{ first_level_id: "sev-5", second_level_id: "freq-1", band_label: "Critical" }] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByLabelText(/Severity Blocker, Frequency Rare: Critical, 0 items/)).toBeInTheDocument();
+    // Neighbouring cells keep their threshold band.
+    await expect(canvas.getByLabelText(/Severity Blocker, Frequency Occasional: High, 0 items/)).toBeInTheDocument();
+  },
+};
+
+/** Editable: every cell gets a band picker; picking reports the cell's levels. */
+export const EditableCells: Story = {
+  args: { onCellRatingChange: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Rating for Severity Minor, Frequency Frequent" }), "High");
+    await expect(args.onCellRatingChange).toHaveBeenCalledWith("sev-2", "freq-3", "High");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Rating for Severity Minor, Frequency Frequent" }), "Thresholds");
+    await expect(args.onCellRatingChange).toHaveBeenLastCalledWith("sev-2", "freq-3", null);
+  },
+};
+
 /** No bands configured: cells stay neutral but still name themselves. */
 export const NoBands: Story = {
   args: { bands: [] },
