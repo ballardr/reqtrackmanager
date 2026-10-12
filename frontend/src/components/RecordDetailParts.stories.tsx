@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 
-import type { OrgUser } from "../api/types";
-import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "./RecordDetailParts";
+import type { OrgUser, Principal } from "../api/types";
+import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "./RecordDetailParts";
 
 const ORG_USERS: OrgUser[] = [
   {
@@ -36,31 +36,51 @@ export const FieldGroupLabelsArbitraryContent: Story = {
   },
 };
 
-export const PersonFieldEditableShowsAPicker: Story = {
+const onUnassign = fn();
+const TEAM: Principal = { type: "org_group", id: "g1", label: "Platform team", member_count: 3, exists: true };
+const JAMIE: Principal = { type: "user", id: "user-2", label: "Jamie Lee", member_count: null, exists: true };
+
+export const PrincipalFieldEditableShowsAPicker: Story = {
   render: () => (
-    <RecordPersonField label="Owner" ariaLabel="Record owner" userId={null} orgUsers={ORG_USERS} readOnly={false} onChange={fn()} />
+    <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={null} orgUsers={ORG_USERS} readOnly={false} onChange={fn()} />
   ),
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByLabelText("Record owner")).toBeInTheDocument();
   },
 };
 
-export const PersonFieldReadOnlyShowsTheName: Story = {
-  render: () => (
-    <RecordPersonField label="Owner" ariaLabel="Record owner" userId="user-2" orgUsers={ORG_USERS} readOnly onChange={fn()} />
-  ),
+export const PrincipalFieldReadOnlyShowsAUserName: Story = {
+  render: () => <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={JAMIE} orgUsers={ORG_USERS} readOnly onChange={fn()} />,
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Jamie Lee")).toBeInTheDocument();
     await expect(within(canvasElement).queryByLabelText("Record owner")).not.toBeInTheDocument();
   },
 };
 
-export const PersonFieldReadOnlyUnassigned: Story = {
-  render: () => (
-    <RecordPersonField label="Owner" ariaLabel="Record owner" userId={null} orgUsers={ORG_USERS} readOnly onChange={fn()} />
-  ),
+export const PrincipalFieldReadOnlyNamesAGroupWithItsKind: Story = {
+  render: () => <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={TEAM} orgUsers={ORG_USERS} readOnly onChange={fn()} />,
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Platform team")).toBeInTheDocument();
+    await expect(within(canvasElement).getByText("Org group · 3 members")).toBeInTheDocument();
+  },
+};
+
+export const PrincipalFieldReadOnlyUnassigned: Story = {
+  render: () => <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={null} orgUsers={ORG_USERS} readOnly onChange={fn()} />,
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Unassigned")).toBeInTheDocument();
+  },
+};
+
+/** An assigned group shows its name and kind, with an Unassign action that clears the field. */
+export const PrincipalFieldEditableUnassignsAGroup: Story = {
+  render: () => (
+    <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={TEAM} orgUsers={ORG_USERS} readOnly={false} onChange={onUnassign} />
+  ),
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Platform team")).toBeInTheDocument();
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /Unassign/ }));
+    await expect(onUnassign).toHaveBeenCalledWith(null);
   },
 };
 

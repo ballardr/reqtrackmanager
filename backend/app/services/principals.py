@@ -265,6 +265,16 @@ def principal_ref(type_value: str | None, principal_id: uuid.UUID | None) -> Pri
     return PrincipalRef(type=PrincipalType(type_value), id=principal_id)
 
 
+def principal_columns(field: str, ref: PrincipalRef | None) -> dict[str, Any]:
+    """A principal as the `<field>_type` / `<field>_id` column values of a record (both None for an empty field).
+
+    Args:
+        field: Base name of the pair (`owner` for `owner_type`/`owner_id`).
+        ref: The principal, or None to clear the field.
+    """
+    return {f"{field}_type": ref.type.value if ref else None, f"{field}_id": ref.id if ref else None}
+
+
 def principal_text(principal: PrincipalOut | None, *, empty: str = "") -> str:
     """A principal as plain text for a report or export: a user's name, a group's name with its kind
     (`Platform Team (Org group)`) so a group is never mistaken for a person.
@@ -387,7 +397,9 @@ def prepare_group_deletion(
     reassigned = cleared = 0
     for reference in all_principal_references():
         type_column, id_column = _columns(reference)
-        ids = db.scalars(select(reference.model.id).where(_naming_rows_clause(reference, group))).all()
+        record_column = getattr(reference.model, reference.record_id_field)
+        rows = db.execute(select(reference.model.id, record_column).where(_naming_rows_clause(reference, group))).all()
+        ids = [row_id for row_id, _ in rows]
         if not ids:
             continue
         values = (
@@ -395,9 +407,9 @@ def prepare_group_deletion(
             if replacement is not None else {type_column.key: None, id_column.key: None}
         )
         db.execute(update(reference.model).where(reference.model.id.in_(ids)).values(**values))
-        for row_id in ids:
+        for _, record_id in rows:
             log_event(
-                db, entity_type=reference.audit_entity_type, entity_id=row_id,
+                db, entity_type=reference.audit_entity_type, entity_id=record_id,
                 action="principal_reassigned" if replacement is not None else "principal_cleared", actor_id=actor_id,
                 organization_id=organization_id, project_id=project_id,
                 detail={
@@ -438,15 +450,18 @@ def principal_from_bundle(
     organization_id: uuid.UUID,
     project_id: uuid.UUID | None,
     fallback_user_id: uuid.UUID,
+    required: bool = True,
 ) -> tuple[PrincipalRef | None, str | None]:
     """Resolves a bundled principal in the importing organisation.
 
     A user is matched by email among the organisation's members, an org group by name, a project group
     by name within `project_id`. Anything that cannot be matched falls back to `fallback_user_id`
-    (the importing user) with a warning; an import never fails because of it.
+    (the importing user) with a warning; an import never fails because of it. For an optional field
+    (`required=False`) it is left empty instead, as an unmatched optional user always has been.
 
     Returns:
-        `(ref, warning)`: `ref` is None only when `data` is empty; `warning` is set on a fallback.
+        `(ref, warning)`: `ref` is None when `data` is empty (or unmatched and optional); `warning` is set
+        when a fallback or an empty result stands in for an unmatched principal.
     """
     if not data:
         return None, None
@@ -467,6 +482,8 @@ def principal_from_bundle(
         )
     if found is not None:
         return PrincipalRef(type=PrincipalType(kind), id=found), None
+    if not required:
+        return None, f"{kind or 'principal'} '{name}' was not found in this organisation; left unset."
     return (
         PrincipalRef(type=PrincipalType.USER, id=fallback_user_id),
         f"{kind or 'principal'} '{name}' was not found in this organisation; assigned to the importing user.",

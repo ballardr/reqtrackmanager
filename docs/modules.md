@@ -915,7 +915,7 @@ flowchart LR
     S --> D["DELETE groups/{id} (replace or clear)"]
 ```
 
-Deleting a group is blocked (409) while a declared field names it, until every row is handed to a replacement or an optional field is cleared; a `mandatory` field always needs a replacement. Set `live_filter` on a versioned table so only current rows count; older versions keep the recorded id and show as a deleted group. Actor fields (`created_by`, `decided_by`) are not principals. A group confers no right of its own: use membership only as one more way to satisfy an "is the owner" check.
+Deleting a group is blocked (409) while a declared field names it, until every row is handed to a replacement or an optional field is cleared; a `mandatory` field always needs a replacement. Set `live_filter` on a versioned table so only current rows count; older versions keep the recorded id and show as a deleted group; on a version table also set `record_id_field` (`"persona_id"`) so the audit event names the record, not the version row (Stakeholders & Personas does both). Actor fields (`created_by`, `decided_by`) are not principals. A group confers no right of its own: use membership only as one more way to satisfy an "is the owner" check.
 
 ## 5. Frontend integration: Tier A and Tier B
 

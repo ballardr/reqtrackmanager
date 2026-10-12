@@ -24,6 +24,7 @@ from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import _need_shared as nd
+from app.modules.stakeholders._principals import NEED_PRINCIPAL_FIELDS, versions_out
 from app.modules.stakeholders._shared import get_visible_holder
 from app.modules.stakeholders.enums import NeedStatus
 from app.modules.stakeholders.models import StakeholderNeed
@@ -73,7 +74,7 @@ def _get(db: Session, project_id: UUID, need_id: UUID) -> StakeholderNeed:
 
 
 def _out(db: Session, need: StakeholderNeed) -> NeedOut:
-    return nd.need_to_out(need, get_current_need_version(db, need.id))
+    return nd.need_to_out(db, need, get_current_need_version(db, need.id))
 
 
 # --- Need CRUD ---------------------------------------------------------------
@@ -95,7 +96,7 @@ def list_needs(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     _project(db, project_id)
-    return [_out(db, n) for n in list_project_needs(db, project_id, include_archived=include_archived)]
+    return nd.needs_to_out(db, list_project_needs(db, project_id, include_archived=include_archived))
 
 
 @router.get("/needs/{need_id}", response_model=NeedOut)
@@ -120,7 +121,7 @@ def list_need_versions(
     project_id: UUID, need_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     _project(db, project_id)
-    return _get(db, project_id, need_id).versions
+    return versions_out(db, NeedVersionOut, _get(db, project_id, need_id).versions, NEED_PRINCIPAL_FIELDS)
 
 
 @router.post("/needs/{need_id}/archive", response_model=NeedOut)

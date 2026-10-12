@@ -56,6 +56,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 from app.modules.stakeholders.enums import (
     NeedStatus,
     PersonaScope,
@@ -182,10 +183,13 @@ class PersonaVersion(UUIDPKMixin, Base):
             null or positive. Null means "no opinion" and every persona is
             then weighted equally.
         status: Lifecycle state.
-        owner_id: The user responsible for the record.
-        champion_id: The colleague accountable for keeping the persona
-            accurate (Phase 0 resolution 13); descriptive only, grants no
-            permissions.
+        owner_type / owner_id: The principal (a user, an organisation group or,
+            on a project persona, a project group — `models.principal`) responsible
+            for the record. No foreign key; `services.principals.validate_principal`
+            checks it on write and `module.py`'s `principal_references` guard group deletion.
+        champion_type / champion_id: The principal accountable for keeping the
+            persona accurate (Phase 0 resolution 13); same shape as the owner,
+            descriptive only, grants no permissions.
         change_note: Free-text reason for the change.
         created_by / created_at: Who made this snapshot, and when.
     """
@@ -194,6 +198,8 @@ class PersonaVersion(UUIDPKMixin, Base):
     __table_args__ = (
         UniqueConstraint("persona_id", "version_number"),
         CheckConstraint("weight IS NULL OR weight > 0", name="ck_persona_versions_weight_positive"),
+        principal_check_constraint("owner", nullable=True),
+        principal_check_constraint("champion", nullable=True),
         CheckConstraint(
             "org_type_id IS NULL OR project_type_id IS NULL", name="ck_persona_versions_one_type_reference"
         ),
@@ -223,8 +229,10 @@ class PersonaVersion(UUIDPKMixin, Base):
     constraints: Mapped[str] = mapped_column(Text, default="")
     weight: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[PersonaStatus] = mapped_column(str_enum(PersonaStatus, 20), default=PersonaStatus.DRAFT)
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    champion_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+    champion_type: Mapped[str | None] = principal_type_column(nullable=True)
+    champion_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     change_note: Mapped[str] = mapped_column(Text, default="")
 
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -467,7 +475,7 @@ class StakeholderVersion(UUIDPKMixin, Base):
             can't block on history (the scheme's usage hooks only manage
             *current* versions).
         status: Lifecycle state.
-        owner_id: The user responsible for the record.
+        owner_type / owner_id: The principal responsible for the record (see `PersonaVersion`).
         user_id: The platform user this stakeholder is, if any
             (resolution 13); descriptive only, grants no permissions.
         change_note: Free-text reason for the change.
@@ -480,6 +488,7 @@ class StakeholderVersion(UUIDPKMixin, Base):
         CheckConstraint(
             "org_type_id IS NULL OR project_type_id IS NULL", name="ck_stakeholder_versions_one_type_reference"
         ),
+        principal_check_constraint("owner", nullable=True),
         Index(
             "ix_stakeholder_versions_current", "stakeholder_id", unique=False,
             postgresql_where=sa_text("valid_to IS NULL"),
@@ -519,7 +528,8 @@ class StakeholderVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[StakeholderStatus] = mapped_column(str_enum(StakeholderStatus, 20), default=StakeholderStatus.DRAFT)
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     change_note: Mapped[str] = mapped_column(Text, default="")
 
@@ -611,7 +621,7 @@ class StakeholderNeedVersion(UUIDPKMixin, Base):
             separate from the requirement that answers it).
         rationale: Why it matters, its source or evidence.
         status: Lifecycle state.
-        owner_id: The user responsible for the record.
+        owner_type / owner_id: The principal responsible for the record (see `PersonaVersion`).
         change_note: Free-text reason for the change.
         created_by / created_at: Who made this snapshot, and when.
     """
@@ -619,6 +629,7 @@ class StakeholderNeedVersion(UUIDPKMixin, Base):
     __tablename__ = "stakeholder_need_versions"
     __table_args__ = (
         UniqueConstraint("need_id", "version_number"),
+        principal_check_constraint("owner", nullable=True),
         Index(
             "ix_stakeholder_need_versions_current", "need_id", unique=False,
             postgresql_where=sa_text("valid_to IS NULL"),
@@ -636,7 +647,8 @@ class StakeholderNeedVersion(UUIDPKMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="")
     rationale: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[NeedStatus] = mapped_column(str_enum(NeedStatus, 20), default=NeedStatus.DRAFT)
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     change_note: Mapped[str] = mapped_column(Text, default="")
 
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

@@ -1077,6 +1077,7 @@ Write workflow: `create_*` -> `update_*` -> `activate_*`; `retire_*` ends use. L
 Rules and gotchas:
 - All tools are project-scoped (`project_id`).
 - Shared (organisation) personas and stakeholders can be hidden per project with `set_*_visibility`; `reset_*_visibility` removes the project override. This only changes this project's view, not the shared record. Pass `include_hidden=true` to list hidden ones.
+- `owner` (and a persona's `champion`) is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a record; responses return the same shape plus `label`. A shared (organisation) record cannot name a project group. `null` clears it.
 - A hidden persona is no longer scored or linkable in that project, so check before linking.
 - Retire rather than delete; there are no delete tools.
 - No tool here is an approval, so none is gated by AI approval, but writes still need write mode and the caller's module role.
@@ -1219,13 +1220,13 @@ Parameters: `project_id*` (uuid, in path), `persona_id*` (uuid, in path)
 
 Creates a project-scoped Persona in Draft status.
 
-Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `persona_type_id` (uuid, in body), `role_title` (string, in body), `goals` (string, in body), `needs` (string, in body), `behaviours` (string, in body), `context_environment` (string, in body), `skills_proficiency` (string, in body), `frequency_of_use` (string, in body), `constraints` (string, in body), `weight` (number, in body), `owner_id` (uuid, in body), `champion_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `persona_type_id` (uuid, in body), `role_title` (string, in body), `goals` (string, in body), `needs` (string, in body), `behaviours` (string, in body), `context_environment` (string, in body), `skills_proficiency` (string, in body), `frequency_of_use` (string, in body), `constraints` (string, in body), `weight` (number, in body), `owner` (object, in body), `champion` (object, in body)
 
 #### `stakeholders_update_persona` (write)
 
 Updates a project-scoped Persona; only the fields supplied change.
 
-Parameters: `project_id*` (uuid, in path), `persona_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `persona_type_id` (uuid, in body), `role_title` (string, in body), `goals` (string, in body), `needs` (string, in body), `behaviours` (string, in body), `context_environment` (string, in body), `skills_proficiency` (string, in body), `frequency_of_use` (string, in body), `constraints` (string, in body), `weight` (number, in body), `owner_id` (uuid, in body), `champion_id` (uuid, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `persona_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `persona_type_id` (uuid, in body), `role_title` (string, in body), `goals` (string, in body), `needs` (string, in body), `behaviours` (string, in body), `context_environment` (string, in body), `skills_proficiency` (string, in body), `frequency_of_use` (string, in body), `constraints` (string, in body), `weight` (number, in body), `owner` (object, in body), `champion` (object, in body), `change_note` (string, in body)
 
 #### `stakeholders_activate_persona` (write)
 
@@ -1267,13 +1268,13 @@ Parameters: `project_id*` (uuid, in path), `stakeholder_id*` (uuid, in path)
 
 Creates a project-scoped Stakeholder in Draft status.
 
-Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `stakeholder_type_id` (uuid, in body), `role` (string, in body), `organisation_group` (string, in body), `interests` (string, in body), `responsibilities` (string, in body), `goals_needs` (string, in body), `priorities` (string, in body), `constraints` (string, in body), `workflows_scenarios` (string, in body), `contact_info` (string, in body), `target_cadence` (string, in body), `availability_constraints` (string, in body), `influence_level_id` (uuid, in body), `interest_level_id` (uuid, in body), `owner_id` (uuid, in body), `user_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `stakeholder_type_id` (uuid, in body), `role` (string, in body), `organisation_group` (string, in body), `interests` (string, in body), `responsibilities` (string, in body), `goals_needs` (string, in body), `priorities` (string, in body), `constraints` (string, in body), `workflows_scenarios` (string, in body), `contact_info` (string, in body), `target_cadence` (string, in body), `availability_constraints` (string, in body), `influence_level_id` (uuid, in body), `interest_level_id` (uuid, in body), `owner` (object, in body), `user_id` (uuid, in body)
 
 #### `stakeholders_update_stakeholder` (write)
 
 Updates a project-scoped Stakeholder; only the fields supplied change.
 
-Parameters: `project_id*` (uuid, in path), `stakeholder_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `stakeholder_type_id` (uuid, in body), `role` (string, in body), `organisation_group` (string, in body), `interests` (string, in body), `responsibilities` (string, in body), `goals_needs` (string, in body), `priorities` (string, in body), `constraints` (string, in body), `workflows_scenarios` (string, in body), `contact_info` (string, in body), `target_cadence` (string, in body), `availability_constraints` (string, in body), `influence_level_id` (uuid, in body), `interest_level_id` (uuid, in body), `owner_id` (uuid, in body), `user_id` (uuid, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `stakeholder_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `stakeholder_type_id` (uuid, in body), `role` (string, in body), `organisation_group` (string, in body), `interests` (string, in body), `responsibilities` (string, in body), `goals_needs` (string, in body), `priorities` (string, in body), `constraints` (string, in body), `workflows_scenarios` (string, in body), `contact_info` (string, in body), `target_cadence` (string, in body), `availability_constraints` (string, in body), `influence_level_id` (uuid, in body), `interest_level_id` (uuid, in body), `owner` (object, in body), `user_id` (uuid, in body), `change_note` (string, in body)
 
 #### `stakeholders_activate_stakeholder` (write)
 
@@ -1303,13 +1304,13 @@ Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path)
 
 Creates a Stakeholder Need in Draft status.
 
-Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `rationale` (string, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `rationale` (string, in body), `owner` (object, in body)
 
 #### `stakeholders_update_stakeholder_need` (write)
 
 Updates a Stakeholder Need; only the fields supplied change.
 
-Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `rationale` (string, in body), `owner_id` (uuid, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `rationale` (string, in body), `owner` (object, in body), `change_note` (string, in body)
 
 #### `stakeholders_activate_stakeholder_need` (write)
 

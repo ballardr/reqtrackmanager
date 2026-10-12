@@ -3,15 +3,15 @@
  *
  * Small presentational pieces the versioned-record detail pages (Stakeholders'
  * Persona/Stakeholder/Need, Risk Management's Risk) render the same way: a
- * labelled read-only field, a labelled person picker (a `PrincipalPicker`, or
- * a plain name when the record is read-only), and the version-history table.
+ * labelled read-only field, a labelled "who" picker (a `PrincipalPicker`, or
+ * a `PrincipalBadge` when the record is read-only), and the version-history table.
  * Kept together so the pages differ only in which fields they show, not in how
  * a field looks.
  */
 import type { ReactNode } from "react";
 
-import type { OrgUser } from "../api/types";
-import { userPrincipal } from "../api/types";
+import type { OrgUser, Principal, PrincipalRef } from "../api/types";
+import { PrincipalBadge } from "./PrincipalBadge";
 import { PrincipalPicker } from "./PrincipalPicker";
 
 /** A labelled, multi-line read-only value. */
@@ -35,30 +35,35 @@ export function RecordFieldGroup({ label, children, gap = "0.25rem" }: { label: 
 }
 
 /**
- * A labelled "which user" field: a user-only `PrincipalPicker`, or just the user's name
- * (or "Unassigned") when `readOnly`.
+ * A labelled "who" field: a `PrincipalPicker` (a user, an organisation group and, when `projectId`
+ * is given, a project group), or just a `PrincipalBadge` when `readOnly`. An organisation-scoped
+ * record passes no `projectId`, so it cannot name a project group.
  *
- * @param onChange Called with the picked user id, or "" when unassigned.
+ * @param principal The field's resolved current value (the record's own `PrincipalOut`).
+ * @param projectId The record's project, enabling project-group choices; omit for an organisation-level record.
+ * @param onChange Called with the picked principal, or null when unassigned.
  */
-export function RecordPersonField({
-  label, ariaLabel, userId, orgUsers, organizationId, readOnly, onChange,
+export function RecordPrincipalField({
+  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange,
 }: {
   label: string;
   ariaLabel: string;
-  userId: string | null;
+  principal: Principal | null;
   orgUsers: OrgUser[];
   organizationId?: string;
+  projectId?: string;
   readOnly: boolean;
-  onChange: (userId: string) => void;
+  onChange: (principal: PrincipalRef | null) => void;
 }) {
   return (
     <RecordFieldGroup label={label}>
       {readOnly ? (
-        <span>{orgUsers.find((u) => u.user_id === userId)?.display_name ?? "Unassigned"}</span>
+        <PrincipalBadge principal={principal} />
       ) : (
         <PrincipalPicker
-          kinds={["user"]} orgUsers={orgUsers} organizationId={organizationId} value={userPrincipal(userId)}
-          onChange={(principal) => onChange(principal?.id ?? "")} ariaLabel={ariaLabel}
+          orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
+          kinds={projectId ? undefined : ["user", "org_group"]}
+          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel}
         />
       )}
     </RecordFieldGroup>

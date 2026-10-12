@@ -6,8 +6,8 @@
  * edit (distinguished by whether `initial` is passed) and by the org and
  * project scopes (`scopeLabel` only changes the title).
  *
- * `owner_id`/`user_id` are not fields here — `StakeholderDetailPage` assigns
- * owner through `RecordPersonField`, and `user_id` is set by "create from org
+ * `owner`/`user_id` are not fields here — `StakeholderDetailPage` assigns
+ * owner through `RecordPrincipalField`, and `user_id` is set by "create from org
  * user". Influence and Interest use the shared `ScoringLevelPicker` over the
  * org's `stakeholder` scheme (`scheme`; omitted if it couldn't be loaded).
  * Once both are set, the form shows the suggested engagement cadence for that

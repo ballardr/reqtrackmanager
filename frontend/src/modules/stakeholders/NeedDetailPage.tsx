@@ -20,12 +20,13 @@ import { api } from "../../api/client";
 import type { OrgUser, Project, Requirement } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailLayout } from "../../components/DetailLayout";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectNeedApi, projectPersonaApi, projectStakeholderApi } from "./api";
 import { NeedFormModal } from "./NeedFormModal";
-import { RecordField, RecordPersonField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
 import { RepresentationPanel } from "./RepresentationPanel";
@@ -156,11 +157,12 @@ export function NeedDetailPage() {
         {need.description && <RecordField label="Need" value={need.description} />}
         {need.rationale && <RecordField label="Rationale" value={need.rationale} />}
 
-        <RecordPersonField
-          label="Owner" ariaLabel="Need owner" userId={need.owner_id} orgUsers={orgUsers} organizationId={organizationId}
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Need owner" principal={need.owner} orgUsers={orgUsers} organizationId={organizationId}
+          projectId={projectId}
           readOnly={false}
-          onChange={(ownerId) =>
-            run(() => projectNeedApi.update(projectId, need.id, { owner_id: ownerId || null }), "Owner updated.", "Could not update this Stakeholder Need's owner.")
+          onChange={(owner) =>
+            run(() => projectNeedApi.update(projectId, need.id, { owner }), "Owner updated.", "Could not update this Stakeholder Need's owner.")
           }
         />
 
@@ -202,7 +204,10 @@ export function NeedDetailPage() {
           }
         />
 
-        <VersionHistoryTable versions={versions} columns={[{ header: "Status", render: (v) => NEED_STATUS_LABEL[v.status] }]} />
+        <VersionHistoryTable versions={versions} columns={[
+          { header: "Status", render: (v) => NEED_STATUS_LABEL[v.status] },
+          { header: "Owner", render: (v) => <PrincipalBadge principal={v.owner} placeholder="—" /> },
+        ]} />
 
         <RecordDiscussion
           api={projectNeedApi}

@@ -25,6 +25,7 @@ from app.database import get_db
 from app.models.organization import Organization
 from app.models.user import User
 from app.modules.stakeholders import _shared as sh
+from app.modules.stakeholders._principals import PERSONA_PRINCIPAL_FIELDS, versions_out
 from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
 from app.modules.stakeholders.models import Persona, PersonaTypeDefinition
 from app.modules.stakeholders.schemas import (
@@ -175,10 +176,7 @@ def list_org_personas(
     query = select(Persona).where(Persona.organization_id == organization_id, Persona.scope == _SCOPE)
     if not include_archived:
         query = query.where(Persona.is_archived.is_(False))
-    return [
-        sh.persona_to_out(db, p, get_current_persona_version(db, p.id))
-        for p in db.scalars(query.order_by(Persona.created_at)).all()
-    ]
+    return sh.personas_to_out(db, db.scalars(query.order_by(Persona.created_at)).all())
 
 
 @router.get("/personas/{persona_id}", response_model=PersonaOut)
@@ -204,7 +202,7 @@ def update_org_persona(
 def list_org_persona_versions(
     organization_id: UUID, persona_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return _get(db, organization_id, persona_id).versions
+    return versions_out(db, PersonaVersionOut, _get(db, organization_id, persona_id).versions, PERSONA_PRINCIPAL_FIELDS)
 
 
 @router.post("/personas/{persona_id}/archive", response_model=PersonaOut)

@@ -1469,6 +1469,8 @@ class PrincipalReference:
             selects the rows that are current. Rows it excludes (older versions of
             a versioned record) are neither counted nor changed on deletion; they
             keep the group's id and display as a deleted group. Omit when every row is current.
+        record_id_field: Column holding the id of the record the audit event is about, for a
+            versioned record whose rows are versions (`"persona_id"`). Defaults to the row's own `id`.
     """
 
     model: type
@@ -1477,6 +1479,7 @@ class PrincipalReference:
     audit_entity_type: str
     mandatory: bool = False
     live_filter: Callable[[], Any] | None = None
+    record_id_field: str = "id"
 
 
 @dataclass(frozen=True)

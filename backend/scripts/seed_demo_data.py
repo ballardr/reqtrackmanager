@@ -2690,6 +2690,8 @@ def main() -> None:
         description="Flies Falcon-3 beyond visual line of sight from an operations centre.",
         goals="Keep every flight within the certified envelope.", needs="Unambiguous status for the redundant"
         " flight controllers.", frequency_of_use="Several flights per shift", weight=2.0,
+        # A team can own a Persona (users-and-groups parity): the Architecture Board owns this one.
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},
     )
     activate_project_persona(h_pm, drone["id"], drone_operator_persona["id"])
     set_project_persona_weight_override(h_pm, drone["id"], persona_inspector["id"], 5.0)
@@ -2771,6 +2773,7 @@ def main() -> None:
     levels = get_stakeholder_levels(h_pm, org["id"])
     stakeholder_authority = create_stakeholder(
         h_pm, org_id=org["id"], activate=True, represents=(persona_auditor["id"],), name="Pat Okafor",
+        owner={"type": "user", "id": demo_engineer["user_id"]},
         stakeholder_type_id=get_stakeholder_type_id(h_pm, org_id=org["id"], name="Regulator"),
         role="Certification auditor", organisation_group="Civil Aviation Authority",
         interests="Evidence that the airworthiness case is complete and traceable.",
@@ -2807,6 +2810,7 @@ def main() -> None:
     need_status_display = create_need(
         h_pm, drone["id"], activate=True, holders=(("stakeholder", stakeholder_fleet["id"]), ("persona", drone_operator_persona["id"])),
         requirement_ids=(flight_log_req["id"],), name="Trust the flight status at a glance",
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},
         description="My pilots must be able to tell, in under a second, whether the redundant flight controllers agree.",
         rationale="Two incidents last year where a pilot misread a degraded-channel warning.",
     )

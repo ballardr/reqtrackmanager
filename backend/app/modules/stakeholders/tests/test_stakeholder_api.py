@@ -110,17 +110,18 @@ def test_update_can_clear_nullable_fields(client, admin_token):
     user_id = create_org_user(client, token, org["id"], "owner@clear-s.example.com")
     levels = _levels(client, token, org["id"])
     created = _create_project_stakeholder(
-        client, token, project["id"], owner_id=user_id, influence_level_id=levels["influence"]["High"],
+        client, token, project["id"], owner={"type": "user", "id": user_id},
+        influence_level_id=levels["influence"]["High"],
     )
-    assert created["owner_id"] == user_id and created["influence_level_id"] == levels["influence"]["High"]
+    assert created["owner"]["id"] == user_id and created["influence_level_id"] == levels["influence"]["High"]
     url = f"{_project_base(project['id'])}/stakeholders/{created['id']}"
     resp = client.put(
-        url, json={"owner_id": None, "target_cadence": None, "influence_level_id": None, "contact_info": None},
+        url, json={"owner": None, "target_cadence": None, "influence_level_id": None, "contact_info": None},
         headers=auth_headers(token),
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["owner_id"] is None and body["target_cadence"] is None and body["influence_level_id"] is None
+    assert body["owner"] is None and body["target_cadence"] is None and body["influence_level_id"] is None
     assert body["contact_info"] == ""  # a text field clears to empty, never null
 
 
@@ -137,8 +138,8 @@ def test_owner_and_user_must_be_org_members(client, admin_token):
     other_org, _ = create_org_admin_in(client, admin_token, "Stakeholder People B Co")
     outsider = create_org_user(client, admin_token, other_org["id"], "outsider@sb.example.com")
     base = _project_base(project["id"]) + "/stakeholders"
-    for field in ("owner_id", "user_id"):
-        resp = client.post(base, json={**_PAYLOAD, field: outsider}, headers=auth_headers(token))
+    for field, value in (("owner", {"type": "user", "id": outsider}), ("user_id", outsider)):
+        resp = client.post(base, json={**_PAYLOAD, field: value}, headers=auth_headers(token))
         assert resp.status_code == 400, (field, resp.text)
 
 

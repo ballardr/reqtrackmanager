@@ -12,6 +12,7 @@ Write workflow: `create_*` -> `update_*` -> `activate_*`; `retire_*` ends use. L
 Rules and gotchas:
 - All tools are project-scoped (`project_id`).
 - Shared (organisation) personas and stakeholders can be hidden per project with `set_*_visibility`; `reset_*_visibility` removes the project override. This only changes this project's view, not the shared record. Pass `include_hidden=true` to list hidden ones.
+- `owner` (and a persona's `champion`) is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a record; responses return the same shape plus `label`. A shared (organisation) record cannot name a project group. `null` clears it.
 - A hidden persona is no longer scored or linkable in that project, so check before linking.
 - Retire rather than delete; there are no delete tools.
 - No tool here is an approval, so none is gated by AI approval, but writes still need write mode and the caller's module role.

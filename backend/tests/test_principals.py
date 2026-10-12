@@ -387,3 +387,18 @@ def test_bundle_round_trip_and_fallback_to_importing_user(client, admin_token, o
         db, {"type": "project_group", "name": "PG"}, organization_id=org, project_id=None, fallback_user_id=importer
     )
     assert ref.id == importer and warning
+
+    # An optional field is left empty rather than invented as the importer's.
+    for data in [{"type": "user", "email": "nobody@example.com"}, {"type": "org_group", "name": "No such group"}]:
+        ref, warning = principals.principal_from_bundle(
+            db, data, organization_id=org, project_id=pid, fallback_user_id=importer, required=False
+        )
+        assert ref is None and "left unset" in warning
+
+
+def test_principal_columns_expand_a_ref_or_clear_the_field():
+    ident = uuid.uuid4()
+    assert principals.principal_columns("owner", PrincipalRef(type=PrincipalType.ORG_GROUP, id=ident)) == {
+        "owner_type": "org_group", "owner_id": ident,
+    }
+    assert principals.principal_columns("owner", None) == {"owner_type": None, "owner_id": None}

@@ -89,6 +89,11 @@ class UserResolver:
         self._warnings = warnings
         self._cache: dict[str, UUID | None] = {}
 
+    @property
+    def importing_user_id(self) -> UUID:
+        """The user performing the import, the fallback for an unmatched required reference."""
+        return self._importing_user.id
+
     def _lookup(self, email: str) -> UUID | None:
         normalized = email.strip().lower()
         if not normalized:

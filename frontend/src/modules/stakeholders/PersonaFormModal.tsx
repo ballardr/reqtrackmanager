@@ -6,8 +6,8 @@
  * edit (distinguished by whether `initial` is passed) and by the org and
  * project scopes (`scopeLabel` only changes the title).
  *
- * `owner_id`/`champion_id` are not fields here — `PersonaDetailPage` assigns
- * them through `AssigneePicker`. `weight` is optional: blank means "no
+ * `owner`/`champion` are not fields here — `PersonaDetailPage` assigns
+ * them through `RecordPrincipalField`. `weight` is optional: blank means "no
  * weight", which scoring treats as equal weighting. `change_note` only
  * renders when editing. Every field has a visible label (principle 13).
  */

@@ -111,7 +111,7 @@ PERSONA_TYPES = TypeVocabulary(
 PERSONA_CONTENT_FIELDS: tuple[str, ...] = (
     "name", "description", "org_type_id", "project_type_id", "role_title", "goals", "needs", "behaviours",
     "context_environment", "skills_proficiency", "frequency_of_use", "constraints", "weight", "status",
-    "owner_id", "champion_id",
+    "owner_type", "owner_id", "champion_type", "champion_id",
 )
 
 PERSONA_ALLOWED_TRANSITIONS: dict[PersonaStatus, frozenset[PersonaStatus]] = {
@@ -414,8 +414,8 @@ STAKEHOLDER_TYPES = TypeVocabulary(
 STAKEHOLDER_CONTENT_FIELDS: tuple[str, ...] = (
     "name", "description", "org_type_id", "project_type_id", "role", "organisation_group", "interests",
     "responsibilities", "goals_needs", "priorities", "constraints", "workflows_scenarios", "contact_info",
-    "target_cadence", "availability_constraints", "influence_level_id", "interest_level_id", "status", "owner_id",
-    "user_id",
+    "target_cadence", "availability_constraints", "influence_level_id", "interest_level_id", "status", "owner_type",
+    "owner_id", "user_id",
 )
 
 STAKEHOLDER_ALLOWED_TRANSITIONS: dict[StakeholderStatus, frozenset[StakeholderStatus]] = {
@@ -915,7 +915,7 @@ def resolve_stakeholder_file_project_id(db: Session, file_id: uuid.UUID) -> uuid
 # Stakeholder Need (Phase 2)
 # =============================================================================
 
-NEED_CONTENT_FIELDS: tuple[str, ...] = ("name", "description", "rationale", "status", "owner_id")
+NEED_CONTENT_FIELDS: tuple[str, ...] = ("name", "description", "rationale", "status", "owner_type", "owner_id")
 
 NEED_ALLOWED_TRANSITIONS: dict[NeedStatus, frozenset[NeedStatus]] = {
     NeedStatus.DRAFT: frozenset({NeedStatus.ACTIVE, NeedStatus.RETIRED}),

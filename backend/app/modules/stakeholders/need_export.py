@@ -32,6 +32,7 @@ from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.user import User
+from app.modules.stakeholders._principals import NEED_PRINCIPAL_FIELDS, principals_from_bundle, principals_to_bundle
 from app.modules.stakeholders.enums import NeedStatus, PersonaScope, StakeholderScope
 from app.modules.stakeholders.models import Persona, Stakeholder, StakeholderNeed, StakeholderNeedFile
 from app.modules.stakeholders.service import (
@@ -73,8 +74,8 @@ def _need_json(db: Session, need: StakeholderNeed, project: Project, emails: dic
         if requirement is not None:
             codes.append(requirement.unique_code)
     return {
-        **{f: getattr(v, f) for f in _TEXT_FIELDS}, "status": v.status.value, "owner_email": emails.get(v.owner_id),
-        "created_by_email": emails.get(need.creator_id), "is_archived": need.is_archived,
+        **{f: getattr(v, f) for f in _TEXT_FIELDS}, "status": v.status.value,
+        **principals_to_bundle(db, v, NEED_PRINCIPAL_FIELDS), "created_by_email": emails.get(need.creator_id), "is_archived": need.is_archived,
         "archived_at": _j(need.archived_at), "created_at": _j(need.created_at), "holders": holders,
         "requirement_unique_codes": codes,
     }
@@ -85,8 +86,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     needs = list(db.scalars(
         select(StakeholderNeed).where(StakeholderNeed.project_id == project.id).order_by(StakeholderNeed.created_at)
     ).all())
-    user_ids = {need.creator_id for need in needs} | {get_current_need_version(db, n.id).owner_id for n in needs}
-    user_ids.discard(None)
+    user_ids = {need.creator_id for need in needs}
     emails = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(user_ids)))} if user_ids else {}
     assets: dict[UUID, FileAsset] = {}
     out = []
@@ -137,7 +137,10 @@ def import_project_data(
         creator = db.get(User, creator_id)
         need = create_need(
             db, project_id=project.id, creator=creator,
-            owner_id=users.resolve(n.get("owner_email"), required=False, context=f"{context} owner"),
+            **principals_from_bundle(
+                db, n, NEED_PRINCIPAL_FIELDS, organization_id=organization_id, project_id=project.id, users=users,
+                warnings=warnings, context=context,
+            ),
             **{f: n.get(f, "") for f in _TEXT_FIELDS},
         )
         version = get_current_need_version(db, need.id)

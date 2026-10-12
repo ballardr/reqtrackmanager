@@ -20,7 +20,7 @@ A Need is **optional**. Use it where the distinction matters; skip it where a di
 | Name | A short title for the need. |
 | Need | The need in the Stakeholder's or Persona's own words. |
 | Rationale | Why it matters, where it came from, or the evidence for it. |
-| Owner | The person who maintains the record. |
+| Owner | Who maintains the record: a user or a group (see [Groups as owners](./persona.md#groups-as-owners)). |
 
 A Need is deliberately thin. It has no priority or severity: those belong to the Requirement it gives rise to and to scoring elsewhere.
 

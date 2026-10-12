@@ -26,7 +26,7 @@
  * (`RecordLifecycleControls`). Every mutating control always renders
  * regardless of role; the backend enforces `persona_owner`/
  * `org_persona_owner` and a 403 surfaces as a toast. Owner and champion use
- * `RecordPersonField`; assigning sends a partial update carrying only that
+ * `RecordPrincipalField` (a user or a group; a project group only on a project persona); assigning sends a partial update carrying only that
  * field. Attachments and comments are `RecordDiscussion`, version history is
  * `VersionHistoryTable`, and the Stakeholders that represent this persona are
  * `RepresentedByPanel`.
@@ -40,13 +40,14 @@ import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailLayout } from "../../components/DetailLayout";
 import { OverridePill } from "../../components/OverridePill";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgPersonaApi, orgPersonaTypeApi, projectNeedApi, projectPersonaApi } from "./api";
 import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { PersonaFormModal } from "./PersonaFormModal";
-import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
@@ -280,18 +281,19 @@ export function PersonaDetailPage() {
           )}
         </RecordFieldGroup>
 
-        <RecordPersonField
-          label="Owner" ariaLabel="Persona owner" userId={persona.owner_id} orgUsers={orgUsers}
-          organizationId={ownerOrgId} readOnly={readOnlyInProject}
-          onChange={(ownerId) =>
-            run(() => scopedApi.update(scopeId, persona.id, { owner_id: ownerId || null }), "Owner updated.", "Could not update this Persona's owner.")
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Persona owner" principal={persona.owner} orgUsers={orgUsers}
+          organizationId={ownerOrgId} projectId={persona.scope === "project" ? projectId : undefined} readOnly={readOnlyInProject}
+          onChange={(owner) =>
+            run(() => scopedApi.update(scopeId, persona.id, { owner }), "Owner updated.", "Could not update this Persona's owner.")
           }
         />
-        <RecordPersonField
-          label="Champion (keeps this persona accurate)" ariaLabel="Persona champion" userId={persona.champion_id}
-          orgUsers={orgUsers} organizationId={ownerOrgId} readOnly={readOnlyInProject}
-          onChange={(championId) =>
-            run(() => scopedApi.update(scopeId, persona.id, { champion_id: championId || null }), "Champion updated.", "Could not update this Persona's champion.")
+        <RecordPrincipalField
+          label="Champion (keeps this persona accurate)" ariaLabel="Persona champion" principal={persona.champion}
+          orgUsers={orgUsers} organizationId={ownerOrgId} projectId={persona.scope === "project" ? projectId : undefined}
+          readOnly={readOnlyInProject}
+          onChange={(champion) =>
+            run(() => scopedApi.update(scopeId, persona.id, { champion }), "Champion updated.", "Could not update this Persona's champion.")
           }
         />
 
@@ -327,6 +329,8 @@ export function PersonaDetailPage() {
           columns={[
             { header: "Status", render: (v) => PERSONA_STATUS_LABEL[v.status] },
             { header: "Weight", render: (v) => v.weight ?? "—" },
+            { header: "Owner", render: (v) => <PrincipalBadge principal={v.owner} placeholder="—" /> },
+            { header: "Champion", render: (v) => <PrincipalBadge principal={v.champion} placeholder="—" /> },
           ]}
         />
 

@@ -21,13 +21,23 @@ or filenames, and `erase_stakeholder_endpoint` hard-deletes the record.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 
 from fastapi import HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
 from app.models.user import User
+from app.modules.stakeholders._principals import (
+    STAKEHOLDER_PRINCIPAL_FIELDS,
+    Labels,
+    expand_sent,
+    principals_of,
+    resolve_labels,
+    validate_principals,
+)
 from app.modules.stakeholders._shared import apply_value_error_as_conflict, validate_people, visibility_fields
 from app.modules.stakeholders.enums import StakeholderScope, StakeholderStatus
 from app.modules.stakeholders.models import (
@@ -84,7 +94,8 @@ STAKEHOLDER_ATTACHMENTS = att.AttachmentKit(
 
 
 def stakeholder_to_out(
-    db: Session, stakeholder: Stakeholder, version: StakeholderVersion, *, project_id: uuid.UUID | None = None
+    db: Session, stakeholder: Stakeholder, version: StakeholderVersion, *, project_id: uuid.UUID | None = None,
+    labels: Labels | None = None,
 ) -> StakeholderOut:
     """Merges a stakeholder with its current version. When `project_id` is given
     (project router) and the stakeholder is an org one, also resolves its
@@ -106,10 +117,26 @@ def stakeholder_to_out(
         constraints=version.constraints, workflows_scenarios=version.workflows_scenarios,
         contact_info=version.contact_info, target_cadence=version.target_cadence,
         availability_constraints=version.availability_constraints, influence_level_id=version.influence_level_id,
-        interest_level_id=version.interest_level_id, status=version.status, owner_id=version.owner_id,
+        interest_level_id=version.interest_level_id, status=version.status,
+        **principals_of(
+            labels if labels is not None else resolve_labels(db, [version], STAKEHOLDER_PRINCIPAL_FIELDS),
+            version, STAKEHOLDER_PRINCIPAL_FIELDS,
+        ),
         user_id=version.user_id, version_number=version.version_number, created_at=stakeholder.created_at,
         updated_at=stakeholder.updated_at, **hidden,
     )
+
+
+def stakeholders_to_out(
+    db: Session, stakeholders: Sequence[Stakeholder], *, project_id: uuid.UUID | None = None
+) -> list[StakeholderOut]:
+    """`stakeholder_to_out` for many stakeholders, resolving every owner in one batch."""
+    versions = [get_current_stakeholder_version(db, s.id) for s in stakeholders]
+    labels = resolve_labels(db, versions, STAKEHOLDER_PRINCIPAL_FIELDS)
+    return [
+        stakeholder_to_out(db, s, v, project_id=project_id, labels=labels)
+        for s, v in zip(stakeholders, versions, strict=True)
+    ]
 
 
 def get_stakeholder_in_scope(
@@ -160,13 +187,19 @@ def require_stakeholder_type_admin(db: Session, current_user: User, *, organizat
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Stakeholder Type Admin (or org admin) may do this.")
 
 
-def _validate_refs(db: Session, organization_id: uuid.UUID, content: dict) -> None:
-    """Owner/user tenancy and scoring-level checks for a payload's fields.
+def _validate_refs(
+    db: Session, organization_id: uuid.UUID, project_id: uuid.UUID | None, content: dict, payload: BaseModel,
+) -> None:
+    """Owner/user tenancy and scoring-level checks for a payload's fields. `content` holds the
+    fields being written (all of them on create, only those sent on update); the owner is read
+    from `payload` because `content` has it as a plain dict.
 
     Raises:
         HTTPException: 400 on the first violation.
     """
-    validate_people(db, organization_id, content.get("owner_id"), content.get("user_id"))
+    if "owner" in content:
+        validate_principals(db, organization_id, project_id, owner=payload.owner)
+    validate_people(db, organization_id, content.get("user_id"))
     try:
         validate_scoring_levels(
             db, organization_id, influence_level_id=content.get("influence_level_id"),
@@ -183,7 +216,8 @@ def create_stakeholder_from_payload(
     """Validates a create payload, creates the stakeholder, audit-logs (no
     personal data), commits and returns the API shape."""
     content = payload.model_dump(exclude={"stakeholder_type_id"})
-    _validate_refs(db, organization_id, content)
+    _validate_refs(db, organization_id, project_id, content, payload)
+    expand_sent(payload, content, STAKEHOLDER_PRINCIPAL_FIELDS)
     try:
         org_type_id, project_type_id = resolve_stakeholder_type_refs(
             db, scope, organization_id=organization_id, project_id=project_id, type_id=payload.stakeholder_type_id,
@@ -242,7 +276,8 @@ def update_stakeholder_from_payload(
     for text_field in _TEXT_FIELDS:
         if text_field in sent and sent[text_field] is None:
             sent[text_field] = ""
-    _validate_refs(db, organization_id, sent)
+    _validate_refs(db, organization_id, project_id, sent, payload)
+    expand_sent(payload, sent, STAKEHOLDER_PRINCIPAL_FIELDS)
     if "stakeholder_type_id" in sent:
         try:
             sent["org_type_id"], sent["project_type_id"] = resolve_stakeholder_type_refs(
