@@ -38,33 +38,19 @@ from app.modules.context_strategy.tests.test_context_strategy_open_question_api 
 )
 from app.modules.context_strategy.tests.test_context_strategy_pain_point_api import _PAYLOAD_FIELDS as _PP_PAYLOAD
 from app.modules.context_strategy.tests.test_context_strategy_pain_point_api import _create_pain_point
-from tests.conftest import auth_headers, build_alembic_config, create_org_admin_in, create_org_user, create_project
+from tests.conftest import (
+    auth_headers,
+    build_alembic_config,
+    create_org_admin_in,
+    create_org_group,
+    create_org_user,
+    create_project,
+    create_project_group,
+)
 
 
 def _user(user_id) -> dict:
     return {"type": "user", "id": str(user_id)}
-
-
-def _org_group(client, token, org_id, name, *, users=()) -> str:
-    h = auth_headers(token)
-    resp = client.post(f"/api/v1/orgs/{org_id}/groups", json={"name": name}, headers=h)
-    assert resp.status_code in (200, 201), resp.text
-    gid = resp.json()["id"]
-    for user_id in users:
-        r = client.post(f"/api/v1/orgs/{org_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
-        assert r.status_code == 204, r.text
-    return gid
-
-
-def _project_group(client, token, project_id, name, *, users=()) -> str:
-    h = auth_headers(token)
-    resp = client.post(f"/api/v1/projects/{project_id}/groups", json={"name": name}, headers=h)
-    assert resp.status_code in (200, 201), resp.text
-    gid = resp.json()["id"]
-    for user_id in users:
-        r = client.post(f"/api/v1/projects/{project_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
-        assert r.status_code == 204, r.text
-    return gid
 
 
 def _me(client, token) -> str:
@@ -92,8 +78,8 @@ def _update_open_question(client, token, project_id, open_question_id, **extra):
 def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(client, admin_token):
     org, project, token = _setup(client, admin_token, "CS Principal Kinds Co")
     member = create_org_user(client, token, org["id"], "cs_kinds_member@sp.example.com")
-    team = _org_group(client, token, org["id"], "Platform Team", users=[member])
-    squad = _project_group(client, token, project["id"], "Squad", users=[member])
+    team = create_org_group(client, token, org["id"], "Platform Team", users=[member])
+    squad = create_project_group(client, token, project["id"], "Squad", users=[member])
     h = auth_headers(token)
 
     pain_point = _create_pain_point(client, token, project["id"])
@@ -129,7 +115,7 @@ def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(clien
 def test_update_switches_and_clears_owners_and_a_response_is_a_valid_request_body(client, admin_token):
     org, project, token = _setup(client, admin_token, "CS Principal Update Co")
     me = _me(client, token)
-    team = _org_group(client, token, org["id"], "Owners")
+    team = create_org_group(client, token, org["id"], "Owners")
     h = auth_headers(token)
 
     pain_point = _create_pain_point(client, token, project["id"])
@@ -162,7 +148,7 @@ def test_update_switches_and_clears_owners_and_a_response_is_a_valid_request_bod
 
 def test_an_organisation_guiding_principle_takes_user_and_org_group_owners(client, admin_token):
     org, project, token = _setup(client, admin_token, "CS Principal Org GP Co")
-    team = _org_group(client, token, org["id"], "Org Wide")
+    team = create_org_group(client, token, org["id"], "Org Wide")
     principle = _create_org_guiding_principle(client, token, org["id"], owner={"type": "org_group", "id": team})
     assert principle["owner"]["label"] == "Org Wide"
     h = auth_headers(token)
@@ -178,10 +164,10 @@ def test_an_organisation_guiding_principle_takes_user_and_org_group_owners(clien
 def test_foreign_and_wrong_scope_principals_are_rejected(client, admin_token):
     org, project, token = _setup(client, admin_token, "CS Principal Reject Co")
     other_project = create_project(client, token, org["id"], "Other Project")
-    elsewhere = _project_group(client, token, other_project["id"], "Elsewhere")
-    own = _project_group(client, token, project["id"], "Own Squad")
+    elsewhere = create_project_group(client, token, other_project["id"], "Elsewhere")
+    own = create_project_group(client, token, project["id"], "Own Squad")
     other_org, other_token = create_org_admin_in(client, admin_token, "CS Principal Foreign Co")
-    foreign_group = _org_group(client, other_token, other_org["id"], "Foreign Team")
+    foreign_group = create_org_group(client, other_token, other_org["id"], "Foreign Team")
     foreign_user = create_org_user(client, other_token, other_org["id"], "cs_foreign_owner@sp.example.com")
     h = auth_headers(token)
     pain_point = _create_pain_point(client, token, project["id"])
@@ -206,7 +192,8 @@ def test_foreign_and_wrong_scope_principals_are_rejected(client, admin_token):
     org_url = _gp_org_base(org["id"]) + "/guiding-principles"
     project_group_owner = {"type": "project_group", "id": own}
     assert client.post(org_url, json={**_GP_PAYLOAD, "owner": project_group_owner}, headers=h).status_code == 400
-    good = _create_org_guiding_principle(client, token, org["id"], owner={"type": "org_group", "id": _org_group(client, token, org["id"], "Good")})
+    good_team = create_org_group(client, token, org["id"], "Good")
+    good = _create_org_guiding_principle(client, token, org["id"], owner={"type": "org_group", "id": good_team})
     assert client.put(f"{org_url}/{good['id']}", json={**_GP_PAYLOAD, "owner": project_group_owner}, headers=h).status_code == 400
     assert _update_pain_point(client, token, project["id"], pain_point, owner=project_group_owner).status_code == 200
     assert _update_open_question(client, token, project["id"], question["id"], owner=project_group_owner).status_code == 200
@@ -218,7 +205,7 @@ def test_foreign_and_wrong_scope_principals_are_rejected(client, admin_token):
 def test_deleting_an_owner_group_counts_current_versions_blocks_reassigns_and_audits_the_record(client, admin_token):
     org, project, token = _setup(client, admin_token, "CS Principal Delete Co")
     me = _me(client, token)
-    team = _org_group(client, token, org["id"], "Doomed Team")
+    team = create_org_group(client, token, org["id"], "Doomed Team")
     h = auth_headers(token)
     group = {"type": "org_group", "id": team}
     pain_point = _create_pain_point(client, token, project["id"])
@@ -256,17 +243,17 @@ def test_deleting_an_owner_group_counts_current_versions_blocks_reassigns_and_au
 def test_clear_optional_empties_owners_and_a_project_group_can_be_replaced(client, admin_token):
     org, project, token = _setup(client, admin_token, "CS Principal Clear Co")
     h = auth_headers(token)
-    team = _org_group(client, token, org["id"], "Clear Team")
+    team = create_org_group(client, token, org["id"], "Clear Team")
     question = _create_open_question(client, token, project["id"])
     _update_open_question(client, token, project["id"], question["id"], owner={"type": "org_group", "id": team})
     resp = client.delete(f"/api/v1/orgs/{org['id']}/groups/{team}", params={"clear_optional": "true"}, headers=h)
     assert resp.status_code == 204, resp.text
     assert client.get(f"{_project_base(project['id'])}/open-questions/{question['id']}", headers=h).json()["owner"] is None
 
-    squad = _project_group(client, token, project["id"], "Doomed Squad")
+    squad = create_project_group(client, token, project["id"], "Doomed Squad")
     pain_point = _create_pain_point(client, token, project["id"])
     _update_pain_point(client, token, project["id"], pain_point, owner={"type": "project_group", "id": squad})
-    successor = _org_group(client, token, org["id"], "Successor")
+    successor = create_org_group(client, token, org["id"], "Successor")
     url = f"/api/v1/projects/{project['id']}/groups/{squad}"
     assert client.delete(url, headers=h).status_code == 409
     done = client.delete(url, params={"replacement_type": "org_group", "replacement_id": successor}, headers=h)
@@ -290,7 +277,7 @@ def _section(report, key) -> dict:
 
 def test_open_question_register_prints_and_groups_by_owner_principal(client, admin_token):
     org, project, token = _setup(client, admin_token, "CS Principal R4 Co")
-    team = _org_group(client, token, org["id"], "Triage Team")
+    team = create_org_group(client, token, org["id"], "Triage Team")
     group = {"type": "org_group", "id": team}
     for text_ in ("First?", "Second?"):
         created = _create_open_question(client, token, project["id"], question=text_)
@@ -314,7 +301,7 @@ def test_guiding_principle_usage_report_prints_a_group_owner(client, admin_token
     from app.modules.context_strategy.models import GuidingPrincipleVersion
 
     org, project, token = _setup(client, admin_token, "CS Principal R6 Co")
-    team = _org_group(client, token, org["id"], "Principle Stewards")
+    team = create_org_group(client, token, org["id"], "Principle Stewards")
     principle = _create_project_guiding_principle(client, token, project["id"], owner={"type": "org_group", "id": team})
     with SessionLocal() as db:
         db.execute(update(GuidingPrincipleVersion).where(

@@ -329,7 +329,7 @@ export const LockedRequirementIsReadOnlyForManager: Story = {
 
 export const ReviewSectionRecordOutcome: Story = {
   beforeEach: () => {
-    mockRequirementDetailApis(["project_manager"], { review_date: "2026-03-01", reviewer_id: null });
+    mockRequirementDetailApis(["project_manager"], { review_date: "2026-03-01", reviewer: null });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -785,7 +785,7 @@ export const VersionHistoryShowsLabelledStatus: Story = {
       history: [
         {
           version_number: 1, name: "Reset password", reasoning: "r", clarification: "", description: "",
-          status: "reviewed", owner_id: "user-1", target_stage_id: "s1", level: "requirement",
+          status: "reviewed", owner: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, target_stage_id: "s1", level: "requirement",
           change_note: "Initial submission", change_request_id: null, created_by: "user-1",
           created_at: "2026-01-01T00:00:00Z", valid_to: "2026-01-02T00:00:00Z",
         },
@@ -817,7 +817,7 @@ export const HistoryActivityToggleSwitchesViews: Story = {
       history: [
         {
           version_number: 1, name: "Reset password", reasoning: "r", clarification: "", description: "",
-          status: "reviewed", owner_id: "user-1", target_stage_id: "s1", level: "requirement",
+          status: "reviewed", owner: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, target_stage_id: "s1", level: "requirement",
           change_note: "Initial submission", change_request_id: null, created_by: "user-1",
           created_at: "2026-01-01T00:00:00Z", valid_to: "2026-01-02T00:00:00Z",
         },
@@ -944,7 +944,7 @@ export const CreateActionAssigneeSearchAndAssign: Story = {
     await userEvent.click(panel.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/actions/create-and-link`,
-      { title: "Confirm access review", description: "", action_type_id: "at1", assignee_id: "u2", due_date: null }
+      { title: "Confirm access review", description: "", action_type_id: "at1", assignee: { type: "user", id: "u2" }, due_date: null }
     ));
   },
 };

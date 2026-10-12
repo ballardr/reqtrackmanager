@@ -27,6 +27,7 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useAuth } from "../../context/AuthContext";
@@ -132,8 +133,6 @@ export function ProjectRisksPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (risks === null || project === null) return <Spinner />;
 
-  const userOptions = orgUsers.map((u) => ({ id: u.user_id, display_name: u.display_name }));
-  const ownerName = (id: string | null) => userOptions.find((u) => u.id === id)?.display_name ?? "—";
 
   const columns: DirectoryColumn<Risk>[] = [
     { key: "code", label: "Code", render: (r) => r.unique_code },
@@ -152,7 +151,7 @@ export function ProjectRisksPage() {
         </FilterBadge>
       ),
     },
-    { key: "owner", label: "Owner", render: (r) => ownerName(r.owner_id) },
+    { key: "owner", label: "Owner", render: (r) => <PrincipalBadge principal={r.owner} placeholder="—" /> },
     {
       key: "review", label: "Next review",
       render: (r) => r.review_date
@@ -247,7 +246,9 @@ export function ProjectRisksPage() {
         <RiskFormModal
           scheme={scheme}
           riskTypes={riskTypes}
-          userOptions={userOptions}
+          orgUsers={orgUsers}
+          organizationId={project.organization_id}
+          projectId={projectId}
           currentUserId={user?.id}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}

@@ -142,7 +142,7 @@ def test_stakeholder_cannot_approve_requirement_via_direct_edit(client, admin_to
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": requirement["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"], "status": "approved",
+            "owner": requirement["owner"], "status": "approved",
         },
         headers=auth_headers(token),
     )
@@ -161,7 +161,7 @@ def test_project_administrator_cannot_approve_requirement_via_direct_edit(client
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": requirement["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"], "status": "approved",
+            "owner": requirement["owner"], "status": "approved",
         },
         headers=auth_headers(token),
     )
@@ -178,7 +178,7 @@ def test_project_manager_can_approve_requirement_via_direct_edit(client, admin_t
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": requirement["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"], "status": "approved",
+            "owner": requirement["owner"], "status": "approved",
         },
         headers=auth_headers(token),
     )
@@ -207,7 +207,7 @@ def test_direct_edit_cannot_jump_straight_to_completed(client, admin_token, org_
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": requirement["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"], "status": "completed",
+            "owner": requirement["owner"], "status": "completed",
         },
         headers=auth_headers(admin_token),
     )

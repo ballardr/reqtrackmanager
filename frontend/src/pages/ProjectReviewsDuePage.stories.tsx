@@ -15,12 +15,12 @@ const items: RequirementDueForReview[] = [
   {
     requirement_id: "req-1", project_id: "project-1", unique_code: "AUTH-LOG-001",
     name: "Users can reset a forgotten password", review_date: "2026-03-01",
-    reviewer_id: "user-1", reviewer_name: "Alex Morgan", component_id: "c1", component_name: "Authentication",
+    reviewer: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, component_id: "c1", component_name: "Authentication",
   },
   {
     requirement_id: "req-2", project_id: "project-1", unique_code: "RPT-EXP-004",
     name: "Nightly export job", review_date: "2026-03-05",
-    reviewer_id: null, reviewer_name: null, component_id: "c2", component_name: "Reporting",
+    reviewer: null, component_id: "c2", component_name: "Reporting",
   },
 ];
 

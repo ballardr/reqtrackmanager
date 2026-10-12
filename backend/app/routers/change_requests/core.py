@@ -48,6 +48,7 @@ from app.services.audit import log_event
 from app.services.change_request_links import ProposedLinkProblem, check_proposed_link, describe_links
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.principals import principal_columns, principal_out, validate_principal
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
@@ -101,12 +102,14 @@ def _to_out(
         requires_approval=cr.status in OPEN_CR_STATUSES,
         proposed_review_date=version.proposed_review_date,
         proposed_review_lead_days=version.proposed_review_lead_days,
-        proposed_reviewer_id=version.proposed_reviewer_id,
+        proposed_reviewer=principal_out(db, version.proposed_reviewer_type, version.proposed_reviewer_id),
         proposed_action_link_id=version.proposed_action_link_id,
         proposed_action_title=version.proposed_action_title,
         proposed_action_description=version.proposed_action_description,
         proposed_action_type_id=version.proposed_action_type_id,
-        proposed_action_assignee_id=version.proposed_action_assignee_id,
+        proposed_action_assignee=principal_out(
+            db, version.proposed_action_assignee_type, version.proposed_action_assignee_id
+        ),
         proposed_action_due_date=version.proposed_action_due_date,
         proposed_links=describe_links(db, project, current_user_id, list(version.proposed_links)) if project else [],
         proposed_link_count=len(version.proposed_links),
@@ -355,6 +358,11 @@ def create_change_request(
                     status.HTTP_400_BAD_REQUEST, "proposed_category_id does not belong to proposed_component_id."
                 )
 
+    for person_field in ("proposed_action_assignee", "proposed_reviewer"):
+        validate_principal(
+            db, getattr(payload, person_field), organization_id=project.organization_id, project_id=project_id,
+            field=person_field,
+        )
     _validate_proposed_links(db, project, payload, creator_id=payload.creator_id or current_user.id)
 
     if payload.proposed_attachment_file_ids:
@@ -403,12 +411,12 @@ def create_change_request(
         created_by=current_user.id, created_at=datetime.now(UTC),
         proposed_review_date=payload.proposed_review_date,
         proposed_review_lead_days=payload.proposed_review_lead_days,
-        proposed_reviewer_id=payload.proposed_reviewer_id,
+        **principal_columns("proposed_reviewer", payload.proposed_reviewer),
         proposed_action_link_id=payload.proposed_action_link_id,
         proposed_action_title=payload.proposed_action_title,
         proposed_action_description=payload.proposed_action_description,
         proposed_action_type_id=payload.proposed_action_type_id,
-        proposed_action_assignee_id=payload.proposed_action_assignee_id,
+        **principal_columns("proposed_action_assignee", payload.proposed_action_assignee),
         proposed_action_due_date=payload.proposed_action_due_date,
         proposed_link_id=payload.proposed_link_id,
     )

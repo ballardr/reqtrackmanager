@@ -53,7 +53,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.models.user import User
 from app.modules.registry import ReportDefinition, ReportParamDefinition
 from app.modules.risk_management.enums import RiskStatus, TreatmentAssessmentStatus
 from app.modules.risk_management.labels import (
@@ -66,6 +65,7 @@ from app.modules.risk_management.models import Risk, RiskReview, RiskTreatmentAs
 from app.modules.risk_management.ratings import RiskRating, load_rating_context, rate_version
 from app.modules.risk_management.service import RISK_SUBCOMPONENT_KEY, RISK_TYPES
 from app.modules.risk_management.treatment import effective_treatment_counts, treatment_link_ids
+from app.services.principals import principal_labels, principal_ref, principal_text
 from app.services.report_framework import (
     ReportContext,
     ReportMetric,
@@ -117,7 +117,7 @@ class RiskRow:
         risk / version / project: The identity row, its current version and its project.
         inherent / residual: The derived ratings (`None` when not scored).
         type_name: The risk's effective type name ("" when untyped).
-        owner: The owner's display name ("" when none).
+        owner: The owner as text (`principal_text`: a user's name, or a group's name with its kind; "" when none).
         effective: How many treatment links are assessed effective.
     """
 
@@ -152,8 +152,7 @@ def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = Fals
     if not include_archived:
         query = query.where(Risk.is_archived.is_(False))
     pairs = db.execute(query).all()
-    owner_ids = {v.owner_id for _, v in pairs if v.owner_id is not None}
-    owners = {u.id: u.display_name for u in db.scalars(select(User).where(User.id.in_(owner_ids))).all()} if owner_ids else {}
+    owners = principal_labels(db, [principal_ref(v.owner_type, v.owner_id) for _, v in pairs])
     effective = effective_treatment_counts(db, [r.id for r, _ in pairs])
     contexts = {p.id: load_rating_context(db, p) for p in projects}
     type_names: dict[uuid.UUID, str] = {}
@@ -167,7 +166,8 @@ def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = Fals
         rows.append(RiskRow(
             risk, version, by_id[risk.project_id], inherent, residual,
             type_names.get(version.project_type_id, "") if version.project_type_id else "",
-            owners.get(version.owner_id, "") if version.owner_id else "", effective.get(risk.id, 0),
+            principal_text(owners.get((version.owner_type, version.owner_id))) if version.owner_id else "",
+            effective.get(risk.id, 0),
         ))
     rows.sort(key=lambda r: (r.project.name.lower(), r.risk.unique_code))
     return projects, rows

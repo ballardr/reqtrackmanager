@@ -900,7 +900,7 @@ flowchart LR
 
 ### 4i. Principal references: a field that names a user or a group (Users and groups parity, Phase 1)
 
-A module field that names an owner, assignee or reviewer is built as a **principal**: a `<name>_type` / `<name>_id` column pair (`models/principal.py` helpers) holding a user, an organisation group or a project group, written through `services/principals.py` (`validate_principal`, `is_principal_member`, `principal_filter_clause`, `principal_recipients`, `principal_labels`, `principal_to_bundle` / `principal_from_bundle`). Declare each pair so core can find what still names a group without importing the module:
+A module field that names an owner, assignee or reviewer is built as a **principal**: a `<name>_type` / `<name>_id` column pair (`models/principal.py` helpers) holding a user, an organisation group or a project group, written through `services/principals.py` (`validate_principal`, `is_principal_member`, `principal_filter_clause`, `principal_recipients`, `principal_labels`, `principal_to_bundle` / `principal_from_bundle`; a bundle importer calls `principal_columns_from_bundle`, which also reads an older bundle's `<field>_email`). Declare each pair so core can find what still names a group without importing the module:
 
 ```python
 PrincipalReference(model=Decision, field="owner", label="decision owners",

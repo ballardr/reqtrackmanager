@@ -9,6 +9,8 @@ exact file this module produces is re-importable via
 `routers.requirements.import_requirements` without hand-editing: `unique_code`,
 `status`, `links`, and `attachments` are included for reference but ignored
 on import (see that endpoint's docstring for the full column contract).
+An owner or reviewer is a user (`owner_email`, `reviewer_email`) or a group (`owner_group`,
+`reviewer_group`, written as `Name (Org group)` / `Name (Project group)`); only one of the pair is filled.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.custom_field import CustomFieldDefinition, CustomFieldEntityKind
-from app.models.enums import ArtefactType
+from app.models.enums import ArtefactType, PrincipalType
 from app.models.file import FileAsset, RequirementFile
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.relationship import ArtefactLink
@@ -29,13 +31,14 @@ from app.models.requirement import Requirement, RequirementKeyword, RequirementV
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.services.csv_safety import csv_safe
+from app.services.principals import principal_labels, principal_ref, principal_text
 
 CUSTOM_FIELD_COLUMN_PREFIX = "cf_"
 
 STATIC_COLUMNS = [
     "unique_code", "name", "reasoning", "clarification", "description",
     "component_prefix", "category_prefix", "level", "target_version",
-    "owner_email", "keywords", "review_date", "review_lead_days", "reviewer_email",
+    "owner_email", "owner_group", "keywords", "review_date", "review_lead_days", "reviewer_email", "reviewer_group",
 ]
 # Present in an export for reference/round-trip convenience but never read
 # back on import: `status` has its own workflow-transition rules (import
@@ -103,8 +106,20 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
             ).all()
         }
 
-    user_ids = {v.owner_id for v in versions.values()} | {v.reviewer_id for v in versions.values() if v.reviewer_id}
-    users = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
+    people = principal_labels(
+        db, [principal_ref(v.owner_type, v.owner_id) for v in versions.values()]
+        + [principal_ref(v.reviewer_type, v.reviewer_id) for v in versions.values()]
+    )
+    user_ids = {i for t, i in people if t == PrincipalType.USER.value}
+    emails = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
+
+    def person_cells(type_value: str | None, principal_id: UUID | None) -> tuple[str, str]:
+        """The (email, group) cells for an owner/reviewer: a user fills the first, a group the second."""
+        if principal_id is None:
+            return "", ""
+        if type_value == PrincipalType.USER.value:
+            return emails.get(principal_id, ""), ""
+        return "", principal_text(people[(type_value, principal_id)])
 
     keywords_by_req: dict[UUID, list[str]] = {}
     if req_ids:
@@ -178,14 +193,16 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
         component = components.get(req.component_id)
         category = categories.get(req.category_id)
         stage = stages.get(version.target_stage_id)
+        owner_email, owner_group = person_cells(version.owner_type, version.owner_id)
+        reviewer_email, reviewer_group = person_cells(version.reviewer_type, version.reviewer_id)
         row = [
             _cell(req.unique_code), _cell(version.name), _cell(version.reasoning),
             _cell(version.clarification), _cell(version.description),
             _cell(component.prefix if component else ""), _cell(category.prefix if category else ""),
             _cell(version.level.value), _cell(stage.name if stage else ""),
-            _cell(users.get(version.owner_id, "")), _cell(";".join(keywords_by_req.get(req.id, []))),
+            _cell(owner_email), _cell(owner_group), _cell(";".join(keywords_by_req.get(req.id, []))),
             _cell(version.review_date.isoformat() if version.review_date else ""),
-            _cell(version.review_lead_days), _cell(users.get(version.reviewer_id, "") if version.reviewer_id else ""),
+            _cell(version.review_lead_days), _cell(reviewer_email), _cell(reviewer_group),
         ]
         for definition in definitions:
             row.append(_cell(version.custom_fields.get(str(definition.id), "")))

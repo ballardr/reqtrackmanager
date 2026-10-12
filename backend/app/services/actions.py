@@ -18,6 +18,7 @@ importing a private helper from another.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -29,7 +30,9 @@ from app.models.project import Project
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.schemas.action import RequirementActionOut
+from app.schemas.principal import PrincipalOut
 from app.services import engagement
+from app.services.principals import principal_labels, principal_ref
 from app.services.rbac import lock_project_for_update
 
 
@@ -98,7 +101,15 @@ def get_requirement_action_in_project(db: Session, project_id: UUID, action_id: 
     return action
 
 
-def action_to_out(db: Session, action: RequirementAction, comment_count: int | None = None) -> RequirementActionOut:
+def assignee_labels(db: Session, actions: Sequence[RequirementAction]) -> dict[tuple[str, UUID], PrincipalOut]:
+    """Display data for the assignee of every action in `actions`, in one batch."""
+    return principal_labels(db, [principal_ref(a.assignee_type, a.assignee_id) for a in actions])
+
+
+def action_to_out(
+    db: Session, action: RequirementAction, comment_count: int | None = None,
+    labels: dict[tuple[str, UUID], PrincipalOut] | None = None,
+) -> RequirementActionOut:
     """Builds the API response shape for an action, including its
     discussion thread's comment count (not a column on `RequirementAction`
     itself, so it can't just fall out of `from_attributes`).
@@ -108,11 +119,14 @@ def action_to_out(db: Session, action: RequirementAction, comment_count: int | N
         action: The action.
         comment_count: Precomputed by list callers (`engagement.
             get_comment_counts`); queried when omitted.
+        labels: Pre-resolved assignee labels (`assignee_labels`) when building many; resolved here when omitted.
     """
+    labels = labels if labels is not None else assignee_labels(db, [action])
     return RequirementActionOut(
         id=action.id, project_id=action.project_id, unique_code=action.unique_code,
         action_type_id=action.action_type_id, title=action.title, description=action.description,
-        outcome_status=action.outcome_status, assignee_id=action.assignee_id, due_date=action.due_date,
+        outcome_status=action.outcome_status, due_date=action.due_date,
+        assignee=labels[(action.assignee_type, action.assignee_id)] if action.assignee_id else None,
         completed_at=action.completed_at, completed_by=action.completed_by, creator_id=action.creator_id,
         is_archived=action.is_archived, archived_at=action.archived_at, archived_by=action.archived_by,
         created_at=action.created_at, updated_at=action.updated_at,

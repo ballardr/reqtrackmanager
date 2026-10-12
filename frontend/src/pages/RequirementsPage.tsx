@@ -19,7 +19,14 @@ import type {
   RequirementStatus,
 } from "../api/types";
 import { loadOfferedLinkTypes } from "../api/linkTypes";
-import { ENTITY_ACCENT_COLOR, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE, linkTypesFor } from "../api/types";
+import {
+  ENTITY_ACCENT_COLOR,
+  REQUIREMENT_LEVEL_LABEL,
+  REQUIREMENT_STATUS_LABEL,
+  REQUIREMENT_STATUS_TONE,
+  linkTypesFor,
+  principalRef,
+} from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
@@ -533,7 +540,7 @@ export function RequirementsPage() {
         description: r.description,
         component_id: r.component_id,
         category_id: r.category_id,
-        owner_id: r.owner_id,
+        owner: principalRef(r.owner),
         target_stage_id: targetStageId,
         level: r.level,
         keywords: r.keywords,
@@ -541,7 +548,7 @@ export function RequirementsPage() {
         change_note: "Bulk move to stage.",
         review_date: r.review_date,
         review_lead_days: r.review_lead_days,
-        reviewer_id: r.reviewer_id,
+        reviewer: principalRef(r.reviewer),
       })
     );
   }

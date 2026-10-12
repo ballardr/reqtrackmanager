@@ -43,6 +43,7 @@ function mockActionDetailApis(action: RequirementAction) {
       return buildGraph([[node, { phrase: null, dedicated: true }]]);
     }
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
+    if (path.endsWith("/groups")) return [] as never;
     if (path.includes("/users")) return [orgUser];
     throw new Error(`unmocked path: ${path}`);
   });
@@ -60,6 +61,27 @@ const meta: Meta<typeof ActionDetailPage> = {
 export default meta;
 
 type Story = StoryObj<typeof ActionDetailPage>;
+
+/** A group assignee shows its name, kind and member count, and saving sends it back as a typed principal. */
+export const GroupAssigneeIsShownAndSavedAsAPrincipal: Story = {
+  beforeEach: () => {
+    mockActionDetailApis(buildRequirementAction({
+      id: ACTION_ID, title: "Review password reset flow", action_type_id: "at1",
+      assignee: { type: "org_group", id: "group-1", label: "QA Team", member_count: 3, exists: true },
+    }));
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("QA Team")).toBeInTheDocument());
+    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/actions/${ACTION_ID}`,
+      expect.objectContaining({ assignee: { type: "org_group", id: "group-1" } }),
+    ));
+  },
+};
 
 export const PendingActionWithLinkedRequirement: Story = {
   beforeEach: () => {

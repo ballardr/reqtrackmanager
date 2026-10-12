@@ -15,7 +15,7 @@ const RISKS: Risk[] = [
     inherent_rating: { scoring_model_key: "lxc", raw: 5, normalised: 0.2, label: "High", tone: "warning" },
     residual_likelihood_level_id: "lik-1", residual_consequence_level_id: "con-2",
     residual_rating: { scoring_model_key: "lxc", raw: 2, normalised: 0.08, label: "Low", tone: "muted" },
-    is_effectively_treated: true, effective_treatment_count: 1, owner_id: "user-2", review_date: "2020-01-01", is_review_overdue: true,
+    is_effectively_treated: true, effective_treatment_count: 1, owner: { type: "org_group", id: "group-1", label: "Safety Board", member_count: 2, exists: true }, review_date: "2020-01-01", is_review_overdue: true,
   }),
 ];
 
@@ -25,6 +25,7 @@ function mockApis(risks: Risk[] = RISKS) {
     if (path.includes("/risk-types")) return RISK_TYPES;
     if (path.split("?")[0].endsWith("/modules/risk_management/risks")) return risks;
     if (path.includes("/users")) return ORG_USERS;
+    if (path.endsWith("/groups")) return [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { id: PROJECT_ID, organization_id: "org-1" };
     throw new Error(`Unmocked GET: ${path}`);
   });
@@ -53,7 +54,8 @@ export const RegisterShowsRatingsStatusOwnerAndOverdue: Story = {
     await expect(row.getByText("High")).toHaveClass("badge--warning");
     await expect(row.getByText("Low")).toHaveClass("badge--muted");
     await expect(row.getByText("Mitigated")).toBeInTheDocument();
-    await expect(row.getByText("Sam Rivera")).toBeInTheDocument();
+    await expect(row.getByText("Safety Board")).toBeInTheDocument();
+    await expect(row.getByText("Org group · 2 members")).toBeInTheDocument();
     await expect(row.getByText("Overdue")).toBeInTheDocument();
     await expect(within(table).getByRole("link", { name: "RSK-001" })).toHaveAttribute(
       "href", `/projects/${PROJECT_ID}/modules/risk_management/risks/risk-1`,
@@ -130,7 +132,7 @@ export const NewRiskPostsTheForm: Story = {
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/modules/risk_management/risks`,
-        expect.objectContaining({ title: "Vendor lock-in", owner_id: "user-1" }),
+        expect.objectContaining({ title: "Vendor lock-in", owner: { type: "user", id: "user-1" } }),
       ),
     );
   },

@@ -12,6 +12,10 @@ The bell icon in the top bar shows recent notifications — project joins, stage
 
 If an organisation admin (or anyone holding the org-level **grant roles** permission) adds or removes a project member without being a project manager or administrator of that project, the project's managers and administrators — including inherited ones — get a **Project members changed** notification. It covers direct member grants, by-email invites, organisation-group or project-group role grants, and project-group edits (adding or removing members, deleting a group). Changes made by the project's own managers, and changes to who is *inside* an organisation group, do not notify. Several changes by the same person within ten minutes are merged into one unread notification, so adding a whole team does not flood anyone. Like any type, it can be switched off per person under **Preferences**.
 
+## Watching a requirement or change request
+
+**Subscribe** on a requirement or change request to be told about its comments. A project manager or administrator can also add a **group** under *Watching groups*: everyone in that group who can view the project is then told too, and a change to the group's membership takes effect straight away. A group member without access to the project is never notified, and deleting a group removes its watching.
+
 ## Per-type preferences and digests
 
 **Preferences → Notification preferences** lets each person choose, per notification type, whether they want it in-app, by email, or both, and whether email notifications arrive instantly or batched into a daily digest — so nobody has to choose between "know everything immediately" and "silence."

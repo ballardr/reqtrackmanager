@@ -9,6 +9,7 @@ management (C-M-01, C-G-09).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
@@ -17,13 +18,15 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import RequirementLevel, RequirementStatus
+from app.models.enums import PrincipalType, RequirementLevel, RequirementStatus
 from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
 from app.modules.registry import ArtefactChange
+from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
+from app.services.principals import principal_columns, principal_labels, principal_ref
 from app.services.rbac import lock_project_for_update
 
 # C-G-11: completion is an overlay marker on top of APPROVED, not a
@@ -110,6 +113,16 @@ def generate_unique_code(db: Session, project: Project, component: ProjectCompon
     return f"{component.prefix}-{category.prefix}-{seq:03d}"
 
 
+def version_people(db: Session, versions: Iterable[RequirementVersion]) -> dict[tuple[str, UUID], PrincipalOut]:
+    """Display data for the owner and reviewer of every version in `versions`, in one batch, keyed by
+    `(type, id)` (`services.principals.principal_labels`)."""
+    refs = []
+    for version in versions:
+        refs.append(principal_ref(version.owner_type, version.owner_id))
+        refs.append(principal_ref(version.reviewer_type, version.reviewer_id))
+    return principal_labels(db, refs)
+
+
 def create_requirement(
     db: Session,
     project: Project,
@@ -121,7 +134,7 @@ def create_requirement(
     reasoning: str,
     clarification: str,
     description: str = "",
-    owner_id: UUID | None,
+    owner: PrincipalRef | None,
     keywords: list[str],
     sort_order: int,
     target_stage_id: UUID,
@@ -130,7 +143,7 @@ def create_requirement(
     creator_override_id: UUID | None = None,
     review_date: date | None = None,
     review_lead_days: int | None = None,
-    reviewer_id: UUID | None = None,
+    reviewer: PrincipalRef | None = None,
 ) -> Requirement:
     """Creates a requirement and its initial (version 1) content snapshot.
 
@@ -142,6 +155,8 @@ def create_requirement(
             becomes `requirement.creator_id` instead of `creator.id` — lets
             a PM re-attribute authorship at creation time (C-A-11) without
             falsifying the audit trail of who technically made the request.
+        owner: The responsible principal (the caller has validated it); the creator when omitted.
+        reviewer: The principal accountable for the scheduled review, or None.
     """
     unique_code = generate_unique_code(db, project, component, category)
     requirement = Requirement(
@@ -156,10 +171,11 @@ def create_requirement(
         requirement_id=requirement.id, version_number=1, valid_from=now, valid_to=None,
         name=name, reasoning=reasoning, clarification=clarification, description=description,
         status=RequirementStatus.DRAFT,
-        owner_id=owner_id or creator.id, target_stage_id=target_stage_id, level=level,
+        **principal_columns("owner", owner or PrincipalRef(type=PrincipalType.USER, id=creator.id)),
+        target_stage_id=target_stage_id, level=level,
         sort_order=sort_order, created_by=creator.id, created_at=now,
         change_note="Initial creation.", custom_fields=custom_fields or {},
-        review_date=review_date, review_lead_days=review_lead_days, reviewer_id=reviewer_id,
+        review_date=review_date, review_lead_days=review_lead_days, **principal_columns("reviewer", reviewer),
     )
     db.add(version)
 
@@ -180,7 +196,7 @@ def apply_new_version(
     clarification: str | None = None,
     description: str | None = None,
     status_value: RequirementStatus | None = None,
-    owner_id: UUID | None = None,
+    owner: PrincipalRef | None = None,
     target_stage_id: UUID | None = None,
     target_stage_explicitly_set: bool = False,
     level: RequirementLevel | None = None,
@@ -191,8 +207,8 @@ def apply_new_version(
     review_date_explicitly_set: bool = False,
     review_lead_days: int | None = None,
     review_lead_days_explicitly_set: bool = False,
-    reviewer_id: UUID | None = None,
-    reviewer_id_explicitly_set: bool = False,
+    reviewer: PrincipalRef | None = None,
+    reviewer_explicitly_set: bool = False,
 ) -> RequirementVersion:
     """Closes the current version and inserts a new one with the given changes.
 
@@ -202,6 +218,9 @@ def apply_new_version(
     nullable in the schema, so their `*_explicitly_set` flags disambiguate
     "clear this field" (pass the value as None with the flag True) from
     "leave it unchanged" (the flag stays False).
+
+    `owner` and `reviewer` are principals (the caller has validated them); `reviewer`, like the other
+    nullable fields, is cleared by passing None with `reviewer_explicitly_set`.
 
     `review_reminder_sent_at` always resets to unset on a new version — it's
     tied to whatever `review_date` this version carries, and any version
@@ -227,7 +246,10 @@ def apply_new_version(
         clarification=clarification if clarification is not None else current_version.clarification,
         description=description if description is not None else current_version.description,
         status=status_value if status_value is not None else current_version.status,
-        owner_id=owner_id if owner_id is not None else current_version.owner_id,
+        **(
+            principal_columns("owner", owner) if owner is not None
+            else {"owner_type": current_version.owner_type, "owner_id": current_version.owner_id}
+        ),
         target_stage_id=target_stage_id if target_stage_explicitly_set else current_version.target_stage_id,
         level=level if level is not None else current_version.level,
         approval_authority_id=actor.id if status_value == RequirementStatus.APPROVED else current_version.approval_authority_id,
@@ -239,7 +261,10 @@ def apply_new_version(
         custom_fields=custom_fields if custom_fields is not None else current_version.custom_fields,
         review_date=review_date if review_date_explicitly_set else current_version.review_date,
         review_lead_days=review_lead_days if review_lead_days_explicitly_set else current_version.review_lead_days,
-        reviewer_id=reviewer_id if reviewer_id_explicitly_set else current_version.reviewer_id,
+        **(
+            principal_columns("reviewer", reviewer) if reviewer_explicitly_set
+            else {"reviewer_type": current_version.reviewer_type, "reviewer_id": current_version.reviewer_id}
+        ),
         review_reminder_sent_at=None,
     )
     db.add(new_version)

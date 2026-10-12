@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 
 from app.models.action_type import ActionTypeDefinition
 from app.models.custom_field import CustomFieldDefinition
-from app.models.enums import RequirementStatus, StageStatus
+from app.models.enums import PrincipalType, RequirementStatus, StageStatus
 from app.models.project import (
     Project,
     ProjectCategory,
@@ -137,10 +137,14 @@ def clone_project(
             )
         )
 
+    # Old project group id -> its copy in the new project, so a requirement owned by (or assigned for review
+    # to) one of the template's project groups is owned by the copy, not by a group of another project.
+    group_id_map: dict[UUID, UUID] = {}
     for group in db.scalars(select(ProjectGroup).where(ProjectGroup.project_id == source.id)).all():
         new_group = ProjectGroup(project_id=new_project.id, name=group.name)
         db.add(new_group)
         db.flush()
+        group_id_map[group.id] = new_group.id
         # Roles (PR7, docs/decisions.md): a group's role(s) live in the
         # separate ProjectGroupRole grant table now, not a scalar column on
         # ProjectGroup itself — copy every role the template's group holds,
@@ -220,7 +224,7 @@ def clone_project(
                 # level, unlike target, has no such cross-project ambiguity
                 # and copies straight across.
                 target_stage_id=new_scoping_stage.id, level=current_version.level,
-                owner_id=current_version.owner_id, sort_order=current_version.sort_order,
+                **_cloned_owner(current_version, group_id_map, creator), sort_order=current_version.sort_order,
                 created_by=creator.id, created_at=now, change_note=f"Copied from template project '{source.name}'.",
                 custom_fields=remapped_custom_fields,
             )
@@ -230,3 +234,15 @@ def clone_project(
             db.add(RequirementKeyword(requirement_id=new_requirement.id, keyword=keyword))
 
     return new_project
+
+
+def _cloned_owner(version: RequirementVersion, group_id_map: dict[UUID, UUID], creator: User) -> dict:
+    """The owner columns for a requirement cloned into a new project. A user or an organisation group carries
+    across unchanged; a project group becomes its copy in the new project; a group the template no longer has
+    leaves the creator as owner. (Review scheduling is not cloned, so neither is the reviewer.)"""
+    type_value, principal_id = version.owner_type, version.owner_id
+    if type_value == PrincipalType.PROJECT_GROUP.value:
+        principal_id = group_id_map.get(principal_id)
+    if principal_id is None:
+        type_value, principal_id = PrincipalType.USER.value, creator.id
+    return {"owner_type": type_value, "owner_id": principal_id}

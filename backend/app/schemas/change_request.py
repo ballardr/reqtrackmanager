@@ -22,6 +22,7 @@ from app.models.enums import (
     RequirementLevel,
 )
 from app.schemas.artefact_links import LinkOrientation
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 #: Field names a MODIFY_REQUIREMENT change request may list in
 #: `changed_fields` — matching RequirementVersion's own attribute names,
@@ -29,6 +30,9 @@ from app.schemas.artefact_links import LinkOrientation
 #: The single source of truth both `ChangeRequestCreate`'s validator and
 #: `routers/change_requests.py::decide_change_request`'s approval-
 #: application logic key off of, so the two can never drift apart.
+#: `reviewer_id` stays the wire name of the reviewer field even though the
+#: reviewer is now a principal (user or group): it names the field, and
+#: renaming it would break every stored `changed_fields` list.
 CHANGEABLE_REQUIREMENT_FIELDS = frozenset({
     "name", "reasoning", "clarification", "description", "target_stage_id", "level",
     "review_date", "review_lead_days", "reviewer_id", "custom_fields", "attachments",
@@ -129,7 +133,7 @@ class ChangeRequestCreate(BaseModel):
     creator_id: UUID | None = None  # PM-only override (C-A-12)
     proposed_review_date: date | None = None  # C-R-06
     proposed_review_lead_days: int | None = None
-    proposed_reviewer_id: UUID | None = None  # C-R-10
+    proposed_reviewer: PrincipalRef | None = None  # C-R-10
     # ADD_ACTION-only (item 514) — see `ChangeRequestVersion`'s docstring
     # for the mutually-exclusive link-existing-vs-create-new split.
     # Also REMOVE_ACTION's only field (Platform review 2026-09, Phase 8):
@@ -138,7 +142,7 @@ class ChangeRequestCreate(BaseModel):
     proposed_action_title: str | None = None
     proposed_action_description: str | None = None
     proposed_action_type_id: UUID | None = None
-    proposed_action_assignee_id: UUID | None = None
+    proposed_action_assignee: PrincipalRef | None = None
     proposed_action_due_date: date | None = None
     # Links to create on approval (Platform Enhancements Phase 6b): the whole
     # payload of an ADD_LINK request (at least one), optional on NEW_REQUIREMENT
@@ -176,12 +180,12 @@ class ChangeRequestOut(BaseModel):
     requires_approval: bool = False
     proposed_review_date: date | None = None
     proposed_review_lead_days: int | None = None
-    proposed_reviewer_id: UUID | None = None
+    proposed_reviewer: PrincipalOut | None = None
     proposed_action_link_id: UUID | None = None
     proposed_action_title: str | None = None
     proposed_action_description: str | None = None
     proposed_action_type_id: UUID | None = None
-    proposed_action_assignee_id: UUID | None = None
+    proposed_action_assignee: PrincipalOut | None = None
     proposed_action_due_date: date | None = None
     # Filled on the detail read and after a mutation; the list view carries only the count.
     proposed_links: list[ProposedLinkOut] = []
@@ -212,13 +216,15 @@ class ChangeRequestDecision(BaseModel):
 
 class ChangeRequestTaskCreate(BaseModel):
     description: str
-    assignee_id: UUID | None = None
+    assignee: PrincipalRef | None = None
     due_date: date | None = None
 
 
 class ChangeRequestTaskUpdate(BaseModel):
+    """Edit payload; a field left out (null) is unchanged, so a task's assignee can be replaced but not cleared."""
+
     description: str | None = None
-    assignee_id: UUID | None = None
+    assignee: PrincipalRef | None = None
     due_date: date | None = None
     is_done: bool | None = None
 
@@ -227,9 +233,11 @@ class ChangeRequestTaskOut(BaseModel):
     id: UUID
     change_request_id: UUID
     description: str
-    assignee_id: UUID | None = None
+    assignee: PrincipalOut | None = None
     due_date: date | None = None
     is_done: bool
+    # Whether the requesting user may mark this task done: a project manager, or (any one) member of the assignee.
+    can_mark_done: bool = False
     completed_at: datetime | None = None
     created_by: UUID
     created_at: datetime

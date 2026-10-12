@@ -22,7 +22,7 @@ import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay, userPrincipal } from "../../api/types";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
-import { PrincipalPicker } from "../../components/PrincipalPicker";
+import { PrincipalFormField } from "../../components/PrincipalFormField";
 import type { Decision, DecisionFieldValues, DecisionTemplate, DecisionTypeDefinition } from "./types";
 
 type PromptKey =
@@ -133,33 +133,29 @@ export function DecisionFormModal({
           <span>Decision date (optional)</span>
           <input className="input" type="date" value={decisionDate} onChange={(e) => setDecisionDate(e.target.value)} />
         </label>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span>Decision maker (optional)</span>
-          <PrincipalPicker
-            orgUsers={orgUsers}
-            organizationId={organizationId}
-            projectId={projectId}
-            value={decisionMaker}
-            display={savedPrincipalDisplay(decisionMaker, initial?.decision_maker)}
-            onChange={setDecisionMaker}
-            ariaLabel="Decision maker"
-            placeholder="Search users and groups…"
-          />
-        </div>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span>Owner</span>
-          <PrincipalPicker
-            orgUsers={orgUsers}
-            organizationId={organizationId}
-            projectId={projectId}
-            value={owner}
-            display={savedPrincipalDisplay(owner, initial?.owner)}
-            onChange={setOwner}
-            ariaLabel="Owner"
-            placeholder="Select an owner…"
-            clearLabel="Clear"
-          />
-        </div>
+        <PrincipalFormField
+          label="Decision maker (optional)"
+          orgUsers={orgUsers}
+          organizationId={organizationId}
+          projectId={projectId}
+          value={decisionMaker}
+          display={savedPrincipalDisplay(decisionMaker, initial?.decision_maker)}
+          onChange={setDecisionMaker}
+          ariaLabel="Decision maker"
+          placeholder="Search users and groups…"
+        />
+        <PrincipalFormField
+          label="Owner"
+          orgUsers={orgUsers}
+          organizationId={organizationId}
+          projectId={projectId}
+          value={owner}
+          display={savedPrincipalDisplay(owner, initial?.owner)}
+          onChange={setOwner}
+          ariaLabel="Owner"
+          placeholder="Select an owner…"
+          clearLabel="Clear"
+        />
         {PROMPT_TO_FIELD.map((f) => (
           <label key={f.fieldKey} className="stack" style={{ gap: "0.25rem" }}>
             <span>{f.label}</span>

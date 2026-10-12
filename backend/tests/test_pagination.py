@@ -246,7 +246,7 @@ def test_my_reviews_due_paginates_reports_total_and_includes_project_name(client
             f"/api/v1/projects/{project['id']}/requirements",
             json={
                 "name": f"Req {i}", "component_id": component_id, "category_id": category_id,
-                "review_date": str(date.today() - timedelta(days=1)), "reviewer_id": reviewer_id,
+                "review_date": str(date.today() - timedelta(days=1)), "reviewer": {"type": "user", "id": reviewer_id},
             },
             headers=auth_headers(admin_token),
         )

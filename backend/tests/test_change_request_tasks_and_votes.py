@@ -84,7 +84,7 @@ def test_assignee_can_mark_their_own_task_done_without_manager_rights(client, ad
 
     task = client.post(
         f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/tasks",
-        json={"description": "Investigate", "assignee_id": member_id}, headers=auth_headers(admin_token),
+        json={"description": "Investigate", "assignee": {"type": "user", "id": member_id}}, headers=auth_headers(admin_token),
     ).json()
 
     resp = client.patch(

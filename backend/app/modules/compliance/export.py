@@ -70,7 +70,6 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import PrincipalType
 from app.models.file import FileAsset
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
@@ -106,11 +105,10 @@ from app.modules.compliance.models import (
     ProjectComplianceRequirement,
 )
 from app.modules.compliance.service import materialize_assessment_rows
-from app.schemas.principal import PrincipalRef
 from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.link_type_scope import resolve_link_type_scope
-from app.services.principals import principal_columns, principal_from_bundle, principal_to_bundle
+from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -144,36 +142,6 @@ def _dt(value: str | None) -> datetime | None:
 
 def _date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
-
-
-def _import_principal(
-    db: Session, data: dict[str, Any], field: str, *, organization_id: UUID, project_id: UUID | None,
-    users: UserResolver, warnings: BundleImportWarnings, context: str, required: bool,
-) -> dict[str, Any]:
-    """The `<field>_type` / `<field>_id` columns for a bundled people field (a standard's owner, a review's
-    owner, an assessment's assignee), resolved in the importing organisation or project.
-
-    A group or user that cannot be matched falls back to the importing user for a mandatory field and is
-    left empty for an optional one, either way with a warning. A bundle written before groups existed
-    carries `<field>_email` instead of `<field>`.
-
-    Args:
-        project_id: The importing project for project-scoped records; None for an organisation-scoped
-            one (which cannot name a project group).
-        required: True for a mandatory field.
-    """
-    entry = data.get(field)
-    if entry is None and data.get(f"{field}_email"):
-        entry = {"type": PrincipalType.USER.value, "email": data[f"{field}_email"]}
-    ref, warning = principal_from_bundle(
-        db, entry, organization_id=organization_id, project_id=project_id,
-        fallback_user_id=users.importing_user_id, required=required,
-    )
-    if warning:
-        warnings.add(f"{context}: {warning}")
-    if ref is None and required:
-        ref = PrincipalRef(type=PrincipalType.USER, id=users.importing_user_id)
-    return principal_columns(field, ref)
 
 
 def _requirement_key(requirement: ComplianceRequirement) -> str:
@@ -514,7 +482,7 @@ def _import_compliance_standards(
         standard = ComplianceStandard(
             organization_id=org.id, reference=reference, name=s["name"], description=s.get("description", ""),
             issuing_organisation=s.get("issuing_organisation"),
-            **_import_principal(
+            **principal_columns_from_bundle(
                 db, s, "owner", organization_id=org.id, project_id=None, users=users, warnings=warnings,
                 context=f"Compliance standard {reference} owner", required=True,
             ),
@@ -983,7 +951,7 @@ def import_standard_data(
     standard = ComplianceStandard(
         organization_id=org.id, reference=reference, name=standard_data["name"],
         description=standard_data.get("description", ""), issuing_organisation=standard_data.get("issuing_organisation"),
-        **_import_principal(
+        **principal_columns_from_bundle(
             db, standard_data, "owner", organization_id=org.id, project_id=None, users=users, warnings=warnings,
             context=f"Compliance standard {reference} owner", required=True,
         ),
@@ -1576,7 +1544,7 @@ def import_project_data(
                         f"{r_data['requirement_key']!r} was not found — its recorded assessment was skipped."
                     )
                     continue
-                for column, value in _import_principal(
+                for column, value in principal_columns_from_bundle(
                     db, a_data, "assignee", organization_id=project.organization_id, project_id=project.id,
                     users=users, warnings=warnings, context=f"Required action {a_data['required_action_key']} assignee",
                     required=False,
@@ -1604,7 +1572,7 @@ def import_project_data(
                 project_compliance_id=project_compliance.id, standard_id=None,
                 frequency_label=rv_data.get("frequency_label", ""), recurrence_days=rv_data.get("recurrence_days"),
                 next_due_date=_date(rv_data.get("next_due_date")) or date.today(),
-                **_import_principal(
+                **principal_columns_from_bundle(
                     db, rv_data, "owner", organization_id=project.organization_id, project_id=project.id,
                     users=users, warnings=warnings, context="Compliance review owner", required=False,
                 ),

@@ -33,6 +33,12 @@ class PrincipalOut(BaseModel):
     exists: bool = True
 
 
+class WatcherCreate(BaseModel):
+    """Adds a group as a watcher of a requirement or change request (its members all follow it)."""
+
+    group: PrincipalRef
+
+
 class PrincipalUsageItem(BaseModel):
     """One kind of record that names a group, and how many."""
 

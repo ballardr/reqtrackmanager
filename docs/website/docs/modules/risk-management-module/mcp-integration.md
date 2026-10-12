@@ -30,6 +30,8 @@ Treatment links are made with the core link tools (a Requirement *Mitigates* the
 | "Mark the diagnostics treatment on RSK-001 as effective." | `assess_risk_treatment` |
 | "Record a confirmed review of RSK-001, next one in a month." | `record_risk_review` |
 
+A Risk's `owner` is `{"type": "user" | "org_group" | "project_group", "id": …}` on create and update, and comes back with the owner's name and kind.
+
 The same facts and gotchas appear to the assistant as the module's usage guide in the [Agent skill](../../api-integrations/ai-assistants-mcp/agent-skill.mdx), including which statuses need which facts and why an acceptance should only be made on the user's explicit instruction.
 
 ## Where this fits

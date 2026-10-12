@@ -10,7 +10,7 @@ function reviewItem(overrides: Partial<RequirementDueForReview>): RequirementDue
   return {
     requirement_id: "req-1", project_id: "project-1", project_name: "Atlas Platform", unique_code: "AUTH-LOG-001",
     name: "Users can reset a forgotten password", review_date: "2026-03-01",
-    reviewer_id: "user-1", reviewer_name: "Alex Morgan", component_id: "component-1", component_name: "Authentication",
+    reviewer: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, component_id: "component-1", component_name: "Authentication",
     ...overrides,
   };
 }

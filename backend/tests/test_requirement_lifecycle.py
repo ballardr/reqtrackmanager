@@ -87,7 +87,7 @@ def test_direct_edit_rejected_once_locked(client, admin_token, org_id):
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": "Direct edit attempt", "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"],
+            "owner": requirement["owner"],
         },
         headers=auth_headers(admin_token),
     )
@@ -103,7 +103,7 @@ def test_direct_edit_allowed_before_lock(client, admin_token, org_id):
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": "Edited during scoping", "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"], "change_note": "typo fix",
+            "owner": requirement["owner"], "change_note": "typo fix",
         },
         headers=auth_headers(admin_token),
     )
@@ -530,7 +530,7 @@ def test_target_stage_and_level_persist_through_create_update_and_change_request
         f"/api/v1/projects/{project['id']}/requirements/{created['id']}",
         json={
             "name": created["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": created["owner_id"], "target_stage_id": second_stage["id"], "level": "requirement",
+            "owner": created["owner"], "target_stage_id": second_stage["id"], "level": "requirement",
         },
         headers=auth_headers(admin_token),
     ).json()
@@ -542,7 +542,7 @@ def test_target_stage_and_level_persist_through_create_update_and_change_request
         f"/api/v1/projects/{project['id']}/requirements/{created['id']}",
         json={
             "name": "Ship the widget (renamed)", "component_id": component_id, "category_id": category_id,
-            "owner_id": created["owner_id"], "level": "requirement",
+            "owner": created["owner"], "level": "requirement",
         },
         headers=auth_headers(admin_token),
     ).json()

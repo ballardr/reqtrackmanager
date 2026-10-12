@@ -13,6 +13,7 @@ import type {
   CustomFieldDefinition,
   FileAsset,
   OrgUser,
+  PrincipalRef,
   Project,
   ProjectStage,
   Requirement,
@@ -24,12 +25,15 @@ import {
   CHANGEABLE_FIELD_LABEL,
   CHANGEABLE_REQUIREMENT_FIELDS,
   ENTITY_ACCENT_COLOR,
+  principalRef,
   REQUIREMENT_LEVEL_LABEL,
+  savedPrincipalDisplay,
 } from "../api/types";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { PrincipalPicker } from "../components/PrincipalPicker";
 import { Modal } from "../components/Modal";
 import { ProposedLinksEditor } from "../components/ProposedLinksEditor";
 import { SortableHeader } from "../components/SortableHeader";
@@ -71,7 +75,7 @@ interface ProposedFields {
   level: RequirementLevel;
   reviewDate: string;
   reviewLeadDays: string;
-  reviewerId: string;
+  reviewer: PrincipalRef | null;
 }
 
 const BLANK_PROPOSED: ProposedFields = {
@@ -83,7 +87,7 @@ const BLANK_PROPOSED: ProposedFields = {
   level: "requirement",
   reviewDate: "",
   reviewLeadDays: "",
-  reviewerId: "",
+  reviewer: null,
 };
 
 /** Change request list and creation form (introduction, C-G-03), with
@@ -114,6 +118,7 @@ export function ChangeRequestsPage() {
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
   const [orgResources, setOrgResources] = useState<FileAsset[]>([]);
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
@@ -236,6 +241,7 @@ export function ChangeRequestsPage() {
       if (firstOwnCategory) setCategoryId(firstOwnCategory.id);
     }
     try {
+      setOrganizationId(proj.organization_id);
       const [users, resources] = await Promise.all([
         api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`),
         api.get<FileAsset[]>(`/api/v1/orgs/${proj.organization_id}/resources`),
@@ -309,7 +315,7 @@ export function ChangeRequestsPage() {
       level: selectedRequirement.level,
       reviewDate: selectedRequirement.review_date ?? "",
       reviewLeadDays: selectedRequirement.review_lead_days != null ? String(selectedRequirement.review_lead_days) : "",
-      reviewerId: selectedRequirement.reviewer_id ?? "",
+      reviewer: principalRef(selectedRequirement.reviewer),
     });
     setCustomFieldValues(selectedRequirement.custom_fields);
     setChangedFields(new Set());
@@ -372,7 +378,7 @@ export function ChangeRequestsPage() {
           proposed_review_date: changedFields.has("review_date") ? proposed.reviewDate || null : null,
           proposed_review_lead_days:
             changedFields.has("review_lead_days") && proposed.reviewLeadDays ? Number(proposed.reviewLeadDays) : null,
-          proposed_reviewer_id: changedFields.has("reviewer_id") ? proposed.reviewerId || null : null,
+          proposed_reviewer: changedFields.has("reviewer_id") ? proposed.reviewer : null,
           proposed_attachment_file_ids: changedFields.has("attachments") ? attachmentFileIds : [],
           custom_fields: changedFields.has("custom_fields") ? customFieldValues : {},
           proposed_links: proposedLinksPayload(),
@@ -391,7 +397,7 @@ export function ChangeRequestsPage() {
           proposed_level: proposed.level,
           proposed_review_date: proposed.reviewDate || null,
           proposed_review_lead_days: proposed.reviewLeadDays ? Number(proposed.reviewLeadDays) : null,
-          proposed_reviewer_id: proposed.reviewerId || null,
+          proposed_reviewer: proposed.reviewer,
           reason,
           custom_fields: customFieldValues,
           proposed_links: proposedLinksPayload(),
@@ -526,18 +532,12 @@ export function ChangeRequestsPage() {
         );
       case "reviewer_id":
         return (
-          <select
-            className="input"
-            value={proposed.reviewerId}
-            onChange={(e) => setProposed((p) => ({ ...p, reviewerId: e.target.value }))}
-          >
-            <option value="">{strings.reviews.unassigned}</option>
-            {orgUsers.map((u) => (
-              <option key={u.user_id} value={u.user_id}>
-                {u.display_name} ({u.email})
-              </option>
-            ))}
-          </select>
+          <PrincipalPicker
+            orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
+            value={proposed.reviewer} display={savedPrincipalDisplay(proposed.reviewer, selectedRequirement?.reviewer)}
+            onChange={(reviewer) => setProposed((p) => ({ ...p, reviewer }))}
+            ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
+          />
         );
       case "custom_fields":
         return (

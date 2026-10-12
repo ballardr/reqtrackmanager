@@ -43,8 +43,10 @@ from tests.conftest import (
     auth_headers,
     build_alembic_config,
     create_org_admin_in,
+    create_org_group,
     create_org_user,
     create_project,
+    create_project_group,
     login,
 )
 
@@ -54,28 +56,6 @@ PASSWORD = "Password123!"
 
 def _user(user_id) -> dict:
     return {"type": "user", "id": str(user_id)}
-
-
-def _org_group(client, token, org_id, name, *, users=()) -> str:
-    h = auth_headers(token)
-    resp = client.post(f"/api/v1/orgs/{org_id}/groups", json={"name": name}, headers=h)
-    assert resp.status_code in (200, 201), resp.text
-    gid = resp.json()["id"]
-    for user_id in users:
-        r = client.post(f"/api/v1/orgs/{org_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
-        assert r.status_code == 204, r.text
-    return gid
-
-
-def _project_group(client, token, project_id, name, *, users=()) -> str:
-    h = auth_headers(token)
-    resp = client.post(f"/api/v1/projects/{project_id}/groups", json={"name": name}, headers=h)
-    assert resp.status_code in (200, 201), resp.text
-    gid = resp.json()["id"]
-    for user_id in users:
-        r = client.post(f"/api/v1/projects/{project_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
-        assert r.status_code == 204, r.text
-    return gid
 
 
 def _me(client, token) -> str:
@@ -112,10 +92,10 @@ def _schedule_standard_review(client, token, org_id, standard_id, **extra):
 # --- Standard owner --------------------------------------------------------------------------------------
 
 
-def test_standard_owner_defaults_to_the_creator_and_takes_an_org_group(client, admin_token, org_id):
+def test_standard_owner_defaults_to_the_creator_and_takes_ancreate_org_group(client, admin_token, org_id):
     me = _me(client, admin_token)
     member = create_org_user(client, admin_token, org_id, "std-owner-member@example.com")
-    team = _org_group(client, admin_token, org_id, "Standards Board", users=[member])
+    team = create_org_group(client, admin_token, org_id, "Standards Board", users=[member])
     h = auth_headers(admin_token)
 
     default = _create_standard(client, admin_token, org_id, reference="OWN-DEFAULT")
@@ -139,10 +119,10 @@ def test_standard_owner_defaults_to_the_creator_and_takes_an_org_group(client, a
 
 def test_standard_owner_is_mandatory_and_must_belong_to_the_organisation(client, admin_token, org_id):
     other_org, other_token = create_org_admin_in(client, admin_token, "Std Owner Foreign Org")
-    foreign_group = _org_group(client, other_token, other_org["id"], "Foreign Group")
+    foreign_group = create_org_group(client, other_token, other_org["id"], "Foreign Group")
     foreign_user = _me(client, other_token)
     project = create_project(client, admin_token, org_id, name="Std Owner Project")
-    project_group = _project_group(client, admin_token, project["id"], "Project Squad")
+    project_group = create_project_group(client, admin_token, project["id"], "Project Squad")
     standard = _create_standard(client, admin_token, org_id, reference="OWN-RULES")
     h = auth_headers(admin_token)
     url = f"{_base(org_id)}/standards/{standard['id']}"
@@ -174,8 +154,8 @@ def test_standard_owner_is_mandatory_and_must_belong_to_the_organisation(client,
 def test_required_action_assignee_takes_each_kind_and_is_cleared(client, admin_token, org_id):
     project, assignment, pcr_id, assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
     member = create_org_user(client, admin_token, org_id, "assignee-kinds@example.com")
-    team = _org_group(client, admin_token, org_id, "Test Engineers", users=[member])
-    squad = _project_group(client, admin_token, project["id"], "Release Squad", users=[member])
+    team = create_org_group(client, admin_token, org_id, "Test Engineers", users=[member])
+    squad = create_project_group(client, admin_token, project["id"], "Release Squad", users=[member])
     url = _assessment_url(project["id"], assignment["id"], pcr_id, assessment_id)
     h = auth_headers(admin_token)
 
@@ -214,9 +194,9 @@ def test_required_action_assignee_rejects_foreign_and_other_project_principals(c
     url = _assessment_url(project["id"], assignment["id"], pcr_id, assessment_id)
 
     for bad in (
-        {"type": "org_group", "id": _org_group(client, other_token, other_org["id"], "Foreign")},
+        {"type": "org_group", "id": create_org_group(client, other_token, other_org["id"], "Foreign")},
         _user(_me(client, other_token)),
-        {"type": "project_group", "id": _project_group(client, admin_token, other_project["id"], "Elsewhere")},
+        {"type": "project_group", "id": create_project_group(client, admin_token, other_project["id"], "Elsewhere")},
         {"type": "project_group", "id": str(uuid.uuid4())},
     ):
         assert _patch_assessment(client, admin_token, url, assignee=bad).status_code == 400, bad
@@ -229,8 +209,8 @@ def test_required_action_assignee_rejects_foreign_and_other_project_principals(c
 def test_project_review_owner_takes_each_kind_and_recurrence_keeps_it(client, admin_token, org_id):
     project, assignment, _pcr_id, _assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
     member = create_org_user(client, admin_token, org_id, "review-kinds@example.com")
-    team = _org_group(client, admin_token, org_id, "Review Office", users=[member])
-    squad = _project_group(client, admin_token, project["id"], "Review Squad", users=[member])
+    team = create_org_group(client, admin_token, org_id, "Review Office", users=[member])
+    squad = create_project_group(client, admin_token, project["id"], "Review Squad", users=[member])
     h = auth_headers(admin_token)
 
     created = _schedule_project_review(
@@ -268,16 +248,17 @@ def test_project_review_owner_takes_each_kind_and_recurrence_keeps_it(client, ad
     assert due.status_code == 200
 
 
-def test_standard_level_review_owner_cannot_be_a_project_group(client, admin_token, org_id):
+def test_standard_level_review_owner_cannot_be_acreate_project_group(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id, name="Std Review Project")
-    squad = _project_group(client, admin_token, project["id"], "Std Review Squad")
-    team = _org_group(client, admin_token, org_id, "Std Review Office")
+    squad = create_project_group(client, admin_token, project["id"], "Std Review Squad")
+    team = create_org_group(client, admin_token, org_id, "Std Review Office")
     other_org, other_token = create_org_admin_in(client, admin_token, "Std Review Foreign Org")
     standard = _create_standard(client, admin_token, org_id, reference="REV-OWN")
 
     assert _schedule_standard_review(client, admin_token, org_id, standard["id"], owner={"type": "project_group", "id": squad}).status_code == 400
+    foreign = create_org_group(client, other_token, other_org["id"], "Foreign")
     assert _schedule_standard_review(
-        client, admin_token, org_id, standard["id"], owner={"type": "org_group", "id": _org_group(client, other_token, other_org["id"], "Foreign")},
+        client, admin_token, org_id, standard["id"], owner={"type": "org_group", "id": foreign},
     ).status_code == 400
     created = _schedule_standard_review(client, admin_token, org_id, standard["id"], owner={"type": "org_group", "id": team})
     assert created.status_code == 201, created.text
@@ -297,8 +278,8 @@ def test_review_and_required_action_sweeps_notify_every_member_of_a_group(client
     alice = create_org_user(client, admin_token, org_id, "sweep-alice@example.com")
     bob = create_org_user(client, admin_token, org_id, "sweep-bob@example.com")
     carol = create_org_user(client, admin_token, org_id, "sweep-carol@example.com")
-    team = _org_group(client, admin_token, org_id, "Sweep Office", users=[alice, bob])
-    squad = _project_group(client, admin_token, project["id"], "Sweep Squad", users=[bob, carol])
+    team = create_org_group(client, admin_token, org_id, "Sweep Office", users=[alice, bob])
+    squad = create_project_group(client, admin_token, project["id"], "Sweep Squad", users=[bob, carol])
     tokens = {n: login(client, f"sweep-{n}@example.com", PASSWORD) for n in ("alice", "bob", "carol")}
     yesterday = (TODAY - timedelta(days=1)).isoformat()
 
@@ -326,7 +307,7 @@ def test_review_and_required_action_sweeps_notify_every_member_of_a_group(client
 
 def test_deleting_an_org_group_that_owns_a_standard_needs_a_replacement(client, admin_token, org_id):
     me = _me(client, admin_token)
-    team = _org_group(client, admin_token, org_id, "Doomed Board")
+    team = create_org_group(client, admin_token, org_id, "Doomed Board")
     project, assignment, pcr_id, assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
     standard = _create_standard(client, admin_token, org_id, reference="DOOMED", owner={"type": "org_group", "id": team})
     review = _schedule_standard_review(client, admin_token, org_id, standard["id"], owner={"type": "org_group", "id": team}).json()
@@ -360,7 +341,7 @@ def test_deleting_an_org_group_that_owns_a_standard_needs_a_replacement(client, 
 
 def test_deleting_a_project_group_can_clear_optional_assignees_and_owners(client, admin_token, org_id):
     project, assignment, pcr_id, assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
-    squad = _project_group(client, admin_token, project["id"], "Doomed Squad")
+    squad = create_project_group(client, admin_token, project["id"], "Doomed Squad")
     h = auth_headers(admin_token)
     assessment_url = _assessment_url(project["id"], assignment["id"], pcr_id, assessment_id)
     assert _patch_assessment(client, admin_token, assessment_url, assignee={"type": "project_group", "id": squad}).status_code == 200
@@ -394,8 +375,8 @@ def _project_bundle_round_trip(client, token, org_id, project_id, name):
 def test_project_bundle_carries_group_assignees_and_review_owners_by_name(client, admin_token, org_id):
     standard, version, _parent, child, _pa, child_action = _setup_published_standard_with_tree(client, admin_token, org_id)
     project = create_project(client, admin_token, org_id, name="Compliance Principal Bundle Source")
-    team = _org_group(client, admin_token, org_id, "Bundle Office")
-    squad = _project_group(client, admin_token, project["id"], "Bundle Squad")
+    team = create_org_group(client, admin_token, org_id, "Bundle Office")
+    squad = create_project_group(client, admin_token, project["id"], "Bundle Squad")
     h = auth_headers(admin_token)
     assignment = client.post(
         f"{_base(org_id)}/projects/{project['id']}/project-compliance",
@@ -437,8 +418,8 @@ def test_project_bundle_carries_group_assignees_and_review_owners_by_name(client
 
 def test_project_bundle_leaves_an_unmatched_assignee_and_owner_empty_with_a_warning(client, admin_token, org_id):
     project, assignment, pcr_id, assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
-    squad = _project_group(client, admin_token, project["id"], "Vanishing Squad")
-    team = _org_group(client, admin_token, org_id, "Vanishing Office")
+    squad = create_project_group(client, admin_token, project["id"], "Vanishing Squad")
+    team = create_org_group(client, admin_token, org_id, "Vanishing Office")
     assert _patch_assessment(
         client, admin_token, _assessment_url(project["id"], assignment["id"], pcr_id, assessment_id),
         assignee={"type": "project_group", "id": squad},
@@ -478,7 +459,7 @@ def test_project_bundle_leaves_an_unmatched_assignee_and_owner_empty_with_a_warn
 
 
 def test_standard_export_carries_an_org_group_owner_by_name_and_falls_back_when_missing(client, admin_token, org_id):
-    team = _org_group(client, admin_token, org_id, "Exported Board")
+    team = create_org_group(client, admin_token, org_id, "Exported Board")
     standard, *_ = _build_standard_with_tree(client, admin_token, org_id, reference="EXP-OWN")
     h = auth_headers(admin_token)
     assert client.patch(
@@ -491,7 +472,7 @@ def test_standard_export_carries_an_org_group_owner_by_name_and_falls_back_when_
 
     # A target organisation with a same-named group gets it as owner, with no warning about the owner.
     matching_org, matching_token = create_org_admin_in(client, admin_token, "Std Owner Matching Target")
-    matching_team = _org_group(client, matching_token, matching_org["id"], "Exported Board")
+    matching_team = create_org_group(client, matching_token, matching_org["id"], "Exported Board")
     matched = _import(client, matching_token, matching_org["id"], document)
     assert matched.status_code == 201, matched.text
     assert matched.json()["standard"]["owner"]["id"] == matching_team
@@ -514,7 +495,7 @@ def test_standard_export_carries_an_org_group_owner_by_name_and_falls_back_when_
 
 
 def test_org_bundle_carries_a_group_owner_into_a_new_organisation(client, admin_token, org_id):
-    team = _org_group(client, admin_token, org_id, "Org Bundle Board")
+    team = create_org_group(client, admin_token, org_id, "Org Bundle Board")
     _create_standard(client, admin_token, org_id, reference="ORG-BUNDLE-OWN", owner={"type": "org_group", "id": team})
     exported = client.get(f"/api/v1/orgs/{org_id}/export", headers=auth_headers(admin_token))
     assert exported.status_code == 200

@@ -40,6 +40,8 @@ Registered contributions:
 
 - Phase 7: `reports` (four project-level reports, `reports.py`; the framework
   generates their routes, catalogue entries and `get_<slug>_report` MCP tools).
+- Users and groups on parity: `principal_references` declares the risk owner, so
+  an in-use group cannot be deleted without reassigning or clearing it.
 - Phase 8: `org_bundle_hooks`/`project_bundle_hooks` (`export.py`): Risk types,
   and each Risk's current content, attachments, reviews and requirement
   treatment links with their verdicts.
@@ -68,11 +70,13 @@ from app.modules.registry import (
     ModuleRoleDefinition,
     ModuleScheduledJob,
     ModuleSubComponentDefinition,
+    PrincipalReference,
 )
 from app.modules.risk_management import export as risk_export
 from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MANAGE_PERMISSION
 from app.modules.risk_management.alerts import NOTIFICATION_TYPES
 from app.modules.risk_management.mcp_tools import build_mcp_tools
+from app.modules.risk_management.models import RiskVersion
 from app.modules.risk_management.reports import REPORT_DEFINITIONS
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
 from app.modules.risk_management.service import (
@@ -109,6 +113,18 @@ LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
         allowed_source_types=("decision",), allowed_target_types=(RISK_ARTEFACT_TYPE,),
     ),
 )
+
+
+def _principal_references() -> tuple[PrincipalReference, ...]:
+    """The owner field, which may name a user or a group (`services.principals`). It is optional and lives
+    on version rows, so only the current version is counted or reassigned (`live_filter`) and the audit
+    event is about the risk (`record_id_field`)."""
+    return (
+        PrincipalReference(
+            model=RiskVersion, field="owner", label="risk owners", audit_entity_type=RISK_ARTEFACT_TYPE,
+            live_filter=lambda: RiskVersion.valid_to.is_(None), record_id_field="risk_id",
+        ),
+    )
 
 
 def get_router() -> APIRouter | None:
@@ -205,6 +221,7 @@ MODULE_DEFINITION = ModuleDefinition(
     notification_types=NOTIFICATION_TYPES,
     on_artefact_changed=_on_artefact_changed,
     scheduled_jobs=(ModuleScheduledJob(job_id="review_reminders", hour=3, minute=0, run=_run_review_notifications),),
+    principal_references=_principal_references(),
     mcp_tools=build_mcp_tools(),
     mcp_guidance=_MCP_GUIDANCE,
     roles=(

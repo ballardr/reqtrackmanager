@@ -35,6 +35,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 
 class Requirement(UUIDPKMixin, TimestampMixin, Base):
@@ -100,10 +101,17 @@ class RequirementVersion(UUIDPKMixin, Base):
     Attributes:
         valid_from / valid_to: Effective time interval; valid_to is null for
             the current version (temporal model per solution-architecture.md).
-        owner_id: The user responsible for the requirement content
-            (C-G-13).
+        owner_type / owner_id: The principal (a user, an organisation group
+            or one of the project's groups — `models.principal`) responsible
+            for the requirement content (C-G-13). Mandatory. No foreign key;
+            `services.principals.validate_principal` checks it on write and
+            `CORE_PRINCIPAL_REFERENCES` guards group deletion.
         approval_authority_id: The user who approved this version, set when
-            status transitions to approved (C-G-13).
+            status transitions to approved (C-G-13). Always a user: it records
+            who approved (an actor), it is never assigned.
+        reviewer_type / reviewer_id: Optional principal accountable for the
+            requirement's scheduled review (C-R-10). Any one member of a
+            reviewer group may record the review.
         change_request_id: If this version resulted from an approved change
             request rather than a direct scoping-stage edit, points to it
             (enforces C-G-12).
@@ -112,7 +120,11 @@ class RequirementVersion(UUIDPKMixin, Base):
     """
 
     __tablename__ = "requirement_versions"
-    __table_args__ = (UniqueConstraint("requirement_id", "version_number"),)
+    __table_args__ = (
+        UniqueConstraint("requirement_id", "version_number"),
+        principal_check_constraint("owner"),
+        principal_check_constraint("reviewer", nullable=True),
+    )
 
     requirement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
@@ -147,7 +159,8 @@ class RequirementVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE"), nullable=False
     )
     level: Mapped[RequirementLevel] = mapped_column(str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT)
-    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    owner_type: Mapped[str] = principal_type_column()
+    owner_id: Mapped[uuid.UUID] = principal_id_column()
     approval_authority_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
@@ -170,7 +183,8 @@ class RequirementVersion(UUIDPKMixin, Base):
     # request — the same CR-gated path already used by name/reasoning/etc.
     review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     review_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewer_type: Mapped[str | None] = principal_type_column(nullable=True)
+    reviewer_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     review_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

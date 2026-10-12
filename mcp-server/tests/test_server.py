@@ -567,7 +567,7 @@ async def test_update_requirement_rejects_edits_to_a_locked_requirement(admin_to
             json={
                 "name": current["name"], "reasoning": current["reasoning"], "clarification": current["clarification"],
                 "description": current["description"], "component_id": current["component_id"],
-                "category_id": current["category_id"], "owner_id": current["owner_id"], "status": "approved",
+                "category_id": current["category_id"], "owner": current["owner"], "status": "approved",
                 "level": current["level"], "keywords": current["keywords"], "custom_fields": current["custom_fields"],
             },
             headers=headers, timeout=10,

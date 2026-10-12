@@ -1317,7 +1317,8 @@ export interface Requirement {
   clarification: string;
   description: string;
   status: RequirementStatus;
-  owner_id: string;
+  /** A user, an organisation group or a project group, resolved for display. */
+  owner: Principal;
   component_id: string;
   category_id: string;
   target_stage_id: string;
@@ -1341,7 +1342,8 @@ export interface Requirement {
   requires_approval: boolean;
   review_date: string | null;
   review_lead_days: number | null;
-  reviewer_id: string | null;
+  /** Accountable for the scheduled review; any one member of a group may record it. */
+  reviewer: Principal | null;
 }
 
 export type RequirementReviewOutcome = "met" | "failed";
@@ -1365,8 +1367,7 @@ export interface RequirementDueForReview {
   unique_code: string;
   name: string;
   review_date: string;
-  reviewer_id: string | null;
-  reviewer_name: string | null;
+  reviewer: Principal | null;
   component_id: string;
   component_name: string;
 }
@@ -1378,7 +1379,7 @@ export interface RequirementVersionEntry {
   clarification: string;
   description: string;
   status: RequirementStatus;
-  owner_id: string;
+  owner: Principal;
   target_stage_id: string;
   level: RequirementLevel;
   change_note: string;
@@ -1431,7 +1432,8 @@ export interface RequirementAction {
   title: string;
   description: string;
   outcome_status: RequirementActionOutcome;
-  assignee_id: string | null;
+  /** A user, an organisation group or a project group, resolved for display. */
+  assignee: Principal | null;
   due_date: string | null;
   completed_at: string | null;
   completed_by: string | null;
@@ -1514,7 +1516,7 @@ export interface ChangeRequest {
   requires_approval: boolean;
   proposed_review_date: string | null;
   proposed_review_lead_days: number | null;
-  proposed_reviewer_id: string | null;
+  proposed_reviewer: Principal | null;
   /** Which fields this MODIFY_REQUIREMENT change request actually proposes
    * to change — empty for NEW_REQUIREMENT change requests, which always
    * propose every field. See `CHANGEABLE_REQUIREMENT_FIELDS` above. */
@@ -1528,7 +1530,7 @@ export interface ChangeRequest {
   proposed_action_title: string | null;
   proposed_action_description: string | null;
   proposed_action_type_id: string | null;
-  proposed_action_assignee_id: string | null;
+  proposed_action_assignee: Principal | null;
   proposed_action_due_date: string | null;
   /** Links this request proposes (new, modify and add-link kinds), created on
    * approval as the approver chooses. Filled on the detail read; the list view
@@ -1575,9 +1577,11 @@ export interface ChangeRequestTask {
   id: string;
   change_request_id: string;
   description: string;
-  assignee_id: string | null;
+  assignee: Principal | null;
   due_date: string | null;
   is_done: boolean;
+  /** Whether the requesting user may mark it done: a project manager, or a member of the assignee. */
+  can_mark_done: boolean;
   completed_at: string | null;
   created_by: string;
   created_at: string;
@@ -2081,6 +2085,11 @@ export interface PrincipalUsage {
   total: number;
   mandatory_total: number;
   items: { label: string; count: number; mandatory: boolean }[];
+}
+
+/** A principal as plain text for a dropdown option: a user's name, or a group's name with its kind. */
+export function principalText(principal: Principal): string {
+  return principal.type === "user" ? principal.label : `${principal.label} (${PRINCIPAL_TYPE_LABEL[principal.type]})`;
 }
 
 /** A user as a `PrincipalRef`, or null for an empty id (the shape older user-only fields use). */

@@ -225,6 +225,33 @@ def org_id(client, admin_token) -> str:
     return resp.json()[0]["id"]
 
 
+def create_org_group(client, token, org_id, name, *, users=(), nested=()) -> str:
+    """Creates an organisation group with the given user members and nested org groups; returns its id."""
+    h = auth_headers(token)
+    resp = client.post(f"/api/v1/orgs/{org_id}/groups", json={"name": name}, headers=h)
+    assert resp.status_code in (200, 201), resp.text
+    gid = resp.json()["id"]
+    for user_id in users:
+        r = client.post(f"/api/v1/orgs/{org_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
+        assert r.status_code == 204, r.text
+    for child in nested:
+        r = client.post(f"/api/v1/orgs/{org_id}/groups/{gid}/members", json={"member_org_group_id": str(child)}, headers=h)
+        assert r.status_code == 204, r.text
+    return gid
+
+
+def create_project_group(client, token, project_id, name, *, users=()) -> str:
+    """Creates a project group with the given user members; returns its id."""
+    h = auth_headers(token)
+    resp = client.post(f"/api/v1/projects/{project_id}/groups", json={"name": name}, headers=h)
+    assert resp.status_code in (200, 201), resp.text
+    gid = resp.json()["id"]
+    for user_id in users:
+        r = client.post(f"/api/v1/projects/{project_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
+        assert r.status_code == 204, r.text
+    return gid
+
+
 def create_org_user(client, admin_token, org_id, email, password="Password123!", role="member") -> str:
     """Creates a user in the org with the given org role. Returns the user id."""
     resp = client.post(

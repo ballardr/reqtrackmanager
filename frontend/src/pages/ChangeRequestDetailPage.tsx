@@ -13,6 +13,7 @@ import type {
   ChangeRequestVoteTally,
   Comment,
   OrgUser,
+  PrincipalRef,
   Project,
   ProjectStage,
   Requirement,
@@ -23,11 +24,15 @@ import {
   CHANGE_REQUEST_STATUS_LABEL,
   CHANGE_REQUEST_STATUS_TONE,
   CHANGEABLE_FIELD_LABEL,
+  principalText,
   REQUIREMENT_LEVEL_LABEL,
 } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { ApproveChangeRequestDialog } from "../components/ApproveChangeRequestDialog";
 import { CommentThread } from "../components/CommentThread";
+import { PrincipalBadge } from "../components/PrincipalBadge";
+import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
+import { PrincipalFormField } from "../components/PrincipalFormField";
 import { Modal } from "../components/Modal";
 import { ProposedLinksSection } from "../components/ProposedLinksSection";
 import { Spinner } from "../components/Spinner";
@@ -64,6 +69,8 @@ export function ChangeRequestDetailPage() {
   const [activity, setActivity] = useState<ChangeEntry[]>([]);
   const [tasks, setTasks] = useState<ChangeRequestTask[]>([]);
   const [newTaskDescription, setNewTaskDescription] = useState("");
+  const [newTaskAssignee, setNewTaskAssignee] = useState<PrincipalRef | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
   const [showVoteComments, setShowVoteComments] = useState(false);
@@ -127,6 +134,7 @@ export function ChangeRequestDetailPage() {
     }
     try {
       const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
+      setOrganizationId(proj.organization_id);
       setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`));
     } catch {
       // No org role at all (rare) — reviewer names just fall back to raw ids.
@@ -135,8 +143,11 @@ export function ChangeRequestDetailPage() {
 
   async function addTask() {
     if (!newTaskDescription.trim()) return;
-    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`, { description: newTaskDescription });
+    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`, {
+      description: newTaskDescription, assignee: newTaskAssignee,
+    });
     setNewTaskDescription("");
+    setNewTaskAssignee(null);
     reload();
   }
 
@@ -195,7 +206,7 @@ export function ChangeRequestDetailPage() {
       case "review_lead_days":
         return cr.proposed_review_lead_days != null ? String(cr.proposed_review_lead_days) : "";
       case "reviewer_id":
-        return userDisplayName(cr.proposed_reviewer_id);
+        return cr.proposed_reviewer ? principalText(cr.proposed_reviewer) : strings.reviews.unassigned;
       case "custom_fields":
         return Object.keys(cr.custom_fields).length > 0 ? JSON.stringify(cr.custom_fields) : "";
       case "attachments":
@@ -271,6 +282,12 @@ export function ChangeRequestDetailPage() {
         <h1 style={{ margin: 0 }}>{title}</h1>
         <SubscribeButton subscribed={cr.is_subscribed} onToggle={toggleSubscription} />
       </div>
+      {projectId && (
+        <WatchingGroupsPanel
+          recordPath={`/api/v1/projects/${projectId}/change-requests/${crId}`}
+          organizationId={organizationId} projectId={projectId} canManage={canManageTasks}
+        />
+      )}
       <div className="side-grid">
       <div className="stack">
       <div className="card stack">
@@ -320,7 +337,7 @@ export function ChangeRequestDetailPage() {
                   <strong>{strings.actions.actionType}:</strong> {actionTypeName(cr.proposed_action_type_id)}
                 </p>
                 <p>
-                  <strong>{strings.actions.assignee}:</strong> {userDisplayName(cr.proposed_action_assignee_id)}
+                  <strong>{strings.actions.assignee}:</strong> <PrincipalBadge principal={cr.proposed_action_assignee} placeholder={strings.reviews.unassigned} />
                 </p>
                 {cr.proposed_action_due_date && (
                   <p>
@@ -485,18 +502,24 @@ export function ChangeRequestDetailPage() {
           <label key={task.id} className="row" style={{ gap: "0.5rem" }}>
             <input
               type="checkbox" checked={task.is_done}
-              disabled={!(canManageTasks || task.assignee_id === user?.id)}
+              disabled={!(canManageTasks || task.can_mark_done)}
               onChange={() => toggleTaskDone(task)}
             />
             <span style={{ textDecoration: task.is_done ? "line-through" : "none" }}>{task.description}</span>
+            {task.assignee && <PrincipalBadge principal={task.assignee} />}
             {task.due_date && <span className="text-muted">({task.due_date})</span>}
           </label>
         ))}
         {canManageTasks && (
-          <div className="row">
+          <div className="row" style={{ alignItems: "flex-end" }}>
             <input
               className="input" placeholder={strings.changeRequests.taskDescription}
               value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)}
+            />
+            <PrincipalFormField
+              label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
+              value={newTaskAssignee} onChange={setNewTaskAssignee} ariaLabel={`${strings.changeRequests.newTask} ${strings.actions.assignee}`}
+              placeholder={strings.reviews.unassigned}
             />
             <button className="btn" onClick={addTask}>
               {strings.changeRequests.newTask}

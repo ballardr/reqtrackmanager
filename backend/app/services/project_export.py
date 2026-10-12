@@ -118,6 +118,7 @@ from app.services.bundle_common import (
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
 from app.services.report_content import bundle_entries, content_entries, replace_scope_content
@@ -317,11 +318,9 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     # above, rather than N+1 queries per row.
     user_ids: set[UUID] = set()
     for v in versions:
-        user_ids |= {v.owner_id, v.created_by}
+        user_ids |= {v.created_by}
         if v.approval_authority_id:
             user_ids.add(v.approval_authority_id)
-        if v.reviewer_id:
-            user_ids.add(v.reviewer_id)
     for r in requirements:
         user_ids.add(r.creator_id)
         if r.archived_by:
@@ -336,12 +335,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             user_ids.add(cr.decided_by)
     for v in cr_versions:
         user_ids.add(v.created_by)
-        if v.proposed_reviewer_id:
-            user_ids.add(v.proposed_reviewer_id)
     for t in cr_tasks:
         user_ids.add(t.created_by)
-        if t.assignee_id:
-            user_ids.add(t.assignee_id)
     for v in cr_votes:
         user_ids.add(v.user_id)
     for c in requirement_comments_raw + cr_comments_raw:
@@ -377,11 +372,12 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "version_number": v.version_number, "valid_from": _j(v.valid_from), "valid_to": _j(v.valid_to),
             "name": v.name, "reasoning": v.reasoning, "clarification": v.clarification, "description": v.description,
             "status": v.status.value, "target_stage": stage_name_by_id.get(v.target_stage_id), "level": v.level.value,
-            "owner_email": email(v.owner_id), "approval_authority_email": email(v.approval_authority_id),
+            "owner": principal_to_bundle(db, v.owner_type, v.owner_id), "approval_authority_email": email(v.approval_authority_id),
             "sort_order": v.sort_order, "custom_fields": custom_fields_by_name(v.custom_fields),
             "change_request_ref": cr_ref_by_id.get(v.change_request_id) if v.change_request_id else None,
             "change_note": v.change_note, "review_date": _j(v.review_date), "review_lead_days": v.review_lead_days,
-            "reviewer_email": email(v.reviewer_id), "created_by_email": email(v.created_by), "created_at": _j(v.created_at),
+            "reviewer": principal_to_bundle(db, v.reviewer_type, v.reviewer_id),
+            "created_by_email": email(v.created_by), "created_at": _j(v.created_at),
         }
 
     def serialize_comment(c: ReviewComment) -> dict:
@@ -433,7 +429,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
                 "proposed_target_stage": stage_name_by_id.get(v.proposed_target_stage_id) if v.proposed_target_stage_id else None,
                 "proposed_level": v.proposed_level.value if v.proposed_level else None,
                 "proposed_review_date": _j(v.proposed_review_date), "proposed_review_lead_days": v.proposed_review_lead_days,
-                "proposed_reviewer_email": email(v.proposed_reviewer_id), "changed_fields": v.changed_fields, "reason": v.reason,
+                "proposed_reviewer": principal_to_bundle(db, v.proposed_reviewer_type, v.proposed_reviewer_id),
+                "changed_fields": v.changed_fields, "reason": v.reason,
                 "custom_fields": custom_fields_by_name(v.custom_fields),
                 "created_by_email": email(v.created_by), "created_at": _j(v.created_at),
             })
@@ -444,7 +441,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "decision_note": cr.decision_note, "versions": cr_versions_json,
             "tasks": [
                 {
-                    "description": t.description, "assignee_email": email(t.assignee_id), "due_date": _j(t.due_date),
+                    "description": t.description, "assignee": principal_to_bundle(db, t.assignee_type, t.assignee_id),
+                    "due_date": _j(t.due_date),
                     "is_done": t.is_done, "completed_at": _j(t.completed_at), "created_by_email": email(t.created_by),
                 }
                 for t in cr_tasks_by_cr.get(cr.id, [])
@@ -818,14 +816,18 @@ def apply_project_data(
                 description=v.get("description", ""), status=RequirementStatus(v["status"]),
                 target_stage_id=stage_id_by_name.get(v.get("target_stage")) or fallback_stage_id,
                 level=RequirementLevel(v["level"]),
-                owner_id=users.resolve(v.get("owner_email"), required=True, context=f"Requirement {r['unique_code']} v{v['version_number']} owner"),
+                **principal_columns_from_bundle(
+                    db, v, "owner", organization_id=project.organization_id, project_id=project.id, users=users,
+                    warnings=warnings, context=f"Requirement {r['unique_code']} v{v['version_number']} owner", required=True,
+                ),
                 approval_authority_id=users.resolve(
                     v.get("approval_authority_email"), required=False, context=f"Requirement {r['unique_code']} v{v['version_number']} approver"
                 ),
                 sort_order=v.get("sort_order", 0), custom_fields=remap_custom_fields(v.get("custom_fields"), "requirement"),
                 change_note=v.get("change_note", ""), review_date=_date(v.get("review_date")), review_lead_days=v.get("review_lead_days"),
-                reviewer_id=users.resolve(
-                    v.get("reviewer_email"), required=False, context=f"Requirement {r['unique_code']} v{v['version_number']} reviewer"
+                **principal_columns_from_bundle(
+                    db, v, "reviewer", organization_id=project.organization_id, project_id=project.id, users=users,
+                    warnings=warnings, context=f"Requirement {r['unique_code']} v{v['version_number']} reviewer", required=False,
                 ),
                 created_by=users.resolve(
                     v.get("created_by_email"), required=True, context=f"Requirement {r['unique_code']} v{v['version_number']} author"
@@ -930,8 +932,9 @@ def apply_project_data(
                 proposed_target_stage_id=stage_id_by_name.get(v["proposed_target_stage"]) if v.get("proposed_target_stage") else None,
                 proposed_level=RequirementLevel(v["proposed_level"]) if v.get("proposed_level") else None,
                 proposed_review_date=_date(v.get("proposed_review_date")), proposed_review_lead_days=v.get("proposed_review_lead_days"),
-                proposed_reviewer_id=users.resolve(
-                    v.get("proposed_reviewer_email"), required=False, context=f"Change request {cr['ref']} v{v['version_number']} proposed reviewer"
+                **principal_columns_from_bundle(
+                    db, v, "proposed_reviewer", organization_id=project.organization_id, project_id=project.id, users=users,
+                    warnings=warnings, context=f"Change request {cr['ref']} v{v['version_number']} proposed reviewer", required=False,
                 ),
                 proposed_attachment_file_ids=[], changed_fields=v.get("changed_fields", []) or [], reason=v.get("reason", ""),
                 custom_fields=remap_custom_fields(v.get("custom_fields"), "change_request"),
@@ -943,7 +946,10 @@ def apply_project_data(
         for t in cr.get("tasks", []):
             db.add(ChangeRequestTask(
                 change_request_id=change_request.id, description=t["description"],
-                assignee_id=users.resolve(t.get("assignee_email"), required=False, context=f"Change request {cr['ref']} task assignee"),
+                **principal_columns_from_bundle(
+                    db, t, "assignee", organization_id=project.organization_id, project_id=project.id, users=users,
+                    warnings=warnings, context=f"Change request {cr['ref']} task assignee", required=False,
+                ),
                 due_date=_date(t.get("due_date")), is_done=t.get("is_done", False), completed_at=_dt(t.get("completed_at")),
                 created_by=users.resolve(t.get("created_by_email"), required=True, context=f"Change request {cr['ref']} task creator"),
             ))

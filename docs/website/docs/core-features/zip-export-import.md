@@ -18,6 +18,8 @@ flowchart LR
     New -.->|"secrets, e.g. SMTP/OIDC"| Manual["Re-entered by hand"]
 ```
 
+Owners, reviewers and task assignees are written as a user's email or a group's name and matched in the importing organisation; one that cannot be matched becomes the importing user (an owner) or is left empty (a reviewer or assignee), with a warning.
+
 A module's own content is included when it has any, for example the Risks, reviews and treatment links of [Risk Management](../modules/risk-management-module/export-and-import.md) or the Personas of Stakeholders & Personas. Each module decides what travels and matches its references by name or code on import, warning where it cannot.
 
 ## What's excluded, and why

@@ -3,7 +3,9 @@ Module: schemas.action
 
 Request/response models for requirement actions (`RequirementAction`) and
 their many-to-many links to requirements (untyped `ArtefactLink` rows,
-`models.relationship`).
+`models.relationship`). The assignee is a principal: requests send a
+`PrincipalRef` (`{type, id}`; null clears it) and responses return a resolved
+`PrincipalOut` (users and groups on parity).
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.models.enums import RequirementActionOutcome
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 
 class RequirementActionCreate(BaseModel):
@@ -24,7 +27,7 @@ class RequirementActionCreate(BaseModel):
     title: str
     description: str = ""
     action_type_id: UUID
-    assignee_id: UUID | None = None
+    assignee: PrincipalRef | None = None
     due_date: date | None = None
 
 
@@ -36,7 +39,7 @@ class RequirementActionUpdate(BaseModel):
     title: str
     description: str = ""
     action_type_id: UUID
-    assignee_id: UUID | None = None
+    assignee: PrincipalRef | None = None
     due_date: date | None = None
     outcome_status: RequirementActionOutcome | None = None
 
@@ -57,7 +60,7 @@ class RequirementActionOut(BaseModel):
     title: str
     description: str
     outcome_status: RequirementActionOutcome
-    assignee_id: UUID | None = None
+    assignee: PrincipalOut | None = None
     due_date: date | None = None
     completed_at: datetime | None = None
     completed_by: UUID | None = None

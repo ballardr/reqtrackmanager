@@ -40,11 +40,13 @@ from app.services import engagement
 from app.services.actions import (
     action_to_out,
     apply_outcome_transition,
+    assignee_labels,
     generate_unique_code,
     get_requirement_action_in_project,
 )
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.principals import principal_columns, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
 from app.services.relationships import get_all_links as get_all_artefact_links
@@ -95,9 +97,10 @@ def create_action(
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     _validate_action_type(db, project_id, payload.action_type_id)
+    validate_principal(db, payload.assignee, organization_id=project.organization_id, project_id=project_id, field="assignee")
     action = RequirementAction(
         project_id=project_id, unique_code=generate_unique_code(project), action_type_id=payload.action_type_id,
-        title=payload.title, description=payload.description, assignee_id=payload.assignee_id,
+        title=payload.title, description=payload.description, **principal_columns("assignee", payload.assignee),
         due_date=payload.due_date, creator_id=current_user.id,
     )
     db.add(action)
@@ -125,7 +128,8 @@ def list_actions(
         query = query.where(RequirementAction.action_type_id == action_type_id)
     actions = db.scalars(query.order_by(RequirementAction.unique_code)).all()
     counts = engagement.get_comment_counts(db, ReviewTargetType.ACTION, [a.id for a in actions])
-    return [action_to_out(db, a, counts.get(a.id, 0)) for a in actions]
+    labels = assignee_labels(db, actions)
+    return [action_to_out(db, a, counts.get(a.id, 0), labels) for a in actions]
 
 
 @router.get("/{action_id}", response_model=RequirementActionOut)
@@ -186,14 +190,16 @@ def update_action(
     _require_edit_role(db, current_user, project_id)
     action = get_requirement_action_in_project(db, project_id, action_id)
     _validate_action_type(db, project_id, payload.action_type_id)
+    project = db.get(Project, project_id)
+    validate_principal(db, payload.assignee, organization_id=project.organization_id, project_id=project_id, field="assignee")
     action.title = payload.title
     action.description = payload.description
     action.action_type_id = payload.action_type_id
-    action.assignee_id = payload.assignee_id
+    for column, value in principal_columns("assignee", payload.assignee).items():
+        setattr(action, column, value)
     action.due_date = payload.due_date
     if payload.outcome_status is not None and payload.outcome_status != action.outcome_status:
         apply_outcome_transition(action, payload.outcome_status, current_user)
-    project = db.get(Project, project_id)
     log_event(db, entity_type="requirement_action", entity_id=action.id, action="updated",
               actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
               detail={"outcome_status": action.outcome_status.value})

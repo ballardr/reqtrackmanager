@@ -32,38 +32,15 @@ from tests.conftest import (
     auth_headers,
     build_alembic_config,
     create_org_admin_in,
+    create_org_group,
     create_org_user,
     create_project,
+    create_project_group,
 )
 
 
 def _user_ref(user_id) -> dict:
     return {"type": "user", "id": str(user_id)}
-
-
-def _org_group(client, token, org_id, name, *, users=(), nested=()) -> str:
-    h = auth_headers(token)
-    resp = client.post(f"/api/v1/orgs/{org_id}/groups", json={"name": name}, headers=h)
-    assert resp.status_code in (200, 201), resp.text
-    gid = resp.json()["id"]
-    for user_id in users:
-        r = client.post(f"/api/v1/orgs/{org_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
-        assert r.status_code == 204, r.text
-    for child in nested:
-        r = client.post(f"/api/v1/orgs/{org_id}/groups/{gid}/members", json={"member_org_group_id": str(child)}, headers=h)
-        assert r.status_code == 204, r.text
-    return gid
-
-
-def _project_group(client, token, project_id, name, *, users=()) -> str:
-    h = auth_headers(token)
-    resp = client.post(f"/api/v1/projects/{project_id}/groups", json={"name": name}, headers=h)
-    assert resp.status_code in (200, 201), resp.text
-    gid = resp.json()["id"]
-    for user_id in users:
-        r = client.post(f"/api/v1/projects/{project_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
-        assert r.status_code == 204, r.text
-    return gid
 
 
 def _decision(client, token, project_id, type_id, **extra) -> dict:
@@ -91,8 +68,8 @@ def test_create_with_each_principal_kind_and_group_display(client, admin_token):
     org, project, token = _setup(client, admin_token, "Decision Principal Kinds Co")
     type_id = _first_decision_type_id(client, token, project["id"])
     member = create_org_user(client, token, org["id"], "kinds_member@example.com")
-    team = _org_group(client, token, org["id"], "Platform Team", users=[member])
-    squad = _project_group(client, token, project["id"], "Squad", users=[member])
+    team = create_org_group(client, token, org["id"], "Platform Team", users=[member])
+    squad = create_project_group(client, token, project["id"], "Squad", users=[member])
 
     by_user = _decision(client, token, project["id"], type_id, owner=_user_ref(member))
     assert by_user["owner"]["type"] == "user" and by_user["owner"]["id"] == member
@@ -123,7 +100,7 @@ def test_update_switches_owner_to_a_group_and_clears_the_decision_maker(client, 
     org, project, token = _setup(client, admin_token, "Decision Principal Update Co")
     type_id = _first_decision_type_id(client, token, project["id"])
     me = client.get("/api/v1/auth/me", headers=auth_headers(token)).json()["id"]
-    team = _org_group(client, token, org["id"], "Owners")
+    team = create_org_group(client, token, org["id"], "Owners")
     decision = _decision(client, token, project["id"], type_id, decision_maker=_user_ref(me))
 
     resp = _put(client, token, project["id"], decision, owner={"type": "org_group", "id": team}, decision_maker=None)
@@ -138,7 +115,7 @@ def test_update_switches_owner_to_a_group_and_clears_the_decision_maker(client, 
 def test_update_round_trips_the_response_as_the_request(client, admin_token):
     """A client may PUT back what it GET (extra display fields on the principal are ignored)."""
     org, project, token = _setup(client, admin_token, "Decision Principal Round Trip Co")
-    team = _org_group(client, token, org["id"], "Round Trip Team")
+    team = create_org_group(client, token, org["id"], "Round Trip Team")
     decision = _decision(
         client, token, project["id"], _first_decision_type_id(client, token, project["id"]),
         owner={"type": "org_group", "id": team},
@@ -155,9 +132,9 @@ def test_foreign_and_wrong_project_principals_are_rejected(client, admin_token):
     org, project, token = _setup(client, admin_token, "Decision Principal Reject Co")
     type_id = _first_decision_type_id(client, token, project["id"])
     other_project = create_project(client, token, org["id"], "Other Project")
-    elsewhere = _project_group(client, token, other_project["id"], "Elsewhere")
+    elsewhere = create_project_group(client, token, other_project["id"], "Elsewhere")
     other_org, other_token = create_org_admin_in(client, admin_token, "Decision Principal Foreign Org")
-    foreign_group = _org_group(client, other_token, other_org["id"], "Foreign Team")
+    foreign_group = create_org_group(client, other_token, other_org["id"], "Foreign Team")
     foreign_user = create_org_user(client, other_token, other_org["id"], "foreign_owner@example.com")
 
     for bad in (
@@ -202,9 +179,9 @@ def test_owner_group_members_pass_the_propose_gate_and_non_members_do_not(client
     squad_id, squad = _add_plain_member(client, admin, org["id"], project["id"], "gate_squad@example.com")
     _outsider_id, outsider = _add_plain_member(client, admin, org["id"], project["id"], "gate_outsider@example.com")
 
-    inner = _org_group(client, admin, org["id"], "Inner", users=[nested_id])
-    team = _org_group(client, admin, org["id"], "Team", users=[direct_id], nested=[inner])
-    squad_group = _project_group(client, admin, project["id"], "Squad", users=[squad_id])
+    inner = create_org_group(client, admin, org["id"], "Inner", users=[nested_id])
+    team = create_org_group(client, admin, org["id"], "Team", users=[direct_id], nested=[inner])
+    squad_group = create_project_group(client, admin, project["id"], "Squad", users=[squad_id])
 
     cases = [
         (direct, {"type": "org_group", "id": team}, True),
@@ -223,7 +200,7 @@ def test_removed_group_member_loses_the_owner_gate(client, admin_token):
     org, project, admin = _setup(client, admin_token, "Decision Principal Removed Co")
     type_id = _first_decision_type_id(client, admin, project["id"])
     member_id, member = _add_plain_member(client, admin, org["id"], project["id"], "gate_removed@example.com")
-    team = _org_group(client, admin, org["id"], "Removable", users=[member_id])
+    team = create_org_group(client, admin, org["id"], "Removable", users=[member_id])
     decision = _decision(client, admin, project["id"], type_id, owner={"type": "org_group", "id": team})
 
     removed = client.delete(f"/api/v1/orgs/{org['id']}/groups/{team}/members/{member_id}", headers=auth_headers(admin))
@@ -235,7 +212,7 @@ def test_a_group_owner_confers_no_approval_or_edit_right(client, admin_token):
     org, project, admin = _setup(client, admin_token, "Decision Principal No Approval Co")
     type_id = _first_decision_type_id(client, admin, project["id"])
     member_id, member = _add_plain_member(client, admin, org["id"], project["id"], "gate_noapprove@example.com")
-    team = _org_group(client, admin, org["id"], "Owners", users=[member_id])
+    team = create_org_group(client, admin, org["id"], "Owners", users=[member_id])
     decision = _decision(client, admin, project["id"], type_id, owner={"type": "org_group", "id": team})
     _advance_to_under_review(client, admin, project["id"], decision["id"])
 
@@ -251,8 +228,8 @@ def test_owner_and_decision_maker_filters_including_mine(client, admin_token):
     type_id = _first_decision_type_id(client, admin, project["id"])
     member_id, member = _add_plain_member(client, admin, org["id"], project["id"], "filter_member@example.com")
     other_id, _other = _add_plain_member(client, admin, org["id"], project["id"], "filter_other@example.com")
-    team = _org_group(client, admin, org["id"], "Filter Team", users=[member_id])
-    squad = _project_group(client, admin, project["id"], "Filter Squad", users=[member_id])
+    team = create_org_group(client, admin, org["id"], "Filter Team", users=[member_id])
+    squad = create_project_group(client, admin, project["id"], "Filter Squad", users=[member_id])
 
     mine_direct = _decision(client, admin, project["id"], type_id, owner=_user_ref(member_id))
     mine_org = _decision(client, admin, project["id"], type_id, owner={"type": "org_group", "id": team})
@@ -280,7 +257,7 @@ def test_deleting_an_owner_group_is_blocked_then_reassigns_and_clears(client, ad
     org, project, admin = _setup(client, admin_token, "Decision Principal Delete Co")
     type_id = _first_decision_type_id(client, admin, project["id"])
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin)).json()["id"]
-    team = _org_group(client, admin, org["id"], "Doomed Team")
+    team = create_org_group(client, admin, org["id"], "Doomed Team")
     owned = _decision(client, admin, project["id"], type_id, owner={"type": "org_group", "id": team})
     made = _decision(client, admin, project["id"], type_id, decision_maker={"type": "org_group", "id": team})
     group_url = f"/api/v1/orgs/{org['id']}/groups/{team}"
@@ -310,7 +287,7 @@ def test_deleting_an_owner_group_is_blocked_then_reassigns_and_clears(client, ad
 def test_clear_optional_empties_only_decision_makers(client, admin_token):
     org, project, admin = _setup(client, admin_token, "Decision Principal Clear Co")
     type_id = _first_decision_type_id(client, admin, project["id"])
-    team = _org_group(client, admin, org["id"], "Maker Team")
+    team = create_org_group(client, admin, org["id"], "Maker Team")
     made = _decision(client, admin, project["id"], type_id, decision_maker={"type": "org_group", "id": team})
 
     resp = client.delete(f"/api/v1/orgs/{org['id']}/groups/{team}", params={"clear_optional": "true"}, headers=auth_headers(admin))
@@ -321,12 +298,12 @@ def test_clear_optional_empties_only_decision_makers(client, admin_token):
 def test_deleting_a_project_group_owner_requires_replacement(client, admin_token):
     org, project, admin = _setup(client, admin_token, "Decision Principal Project Group Delete Co")
     type_id = _first_decision_type_id(client, admin, project["id"])
-    squad = _project_group(client, admin, project["id"], "Doomed Squad")
+    squad = create_project_group(client, admin, project["id"], "Doomed Squad")
     decision = _decision(client, admin, project["id"], type_id, owner={"type": "project_group", "id": squad})
     url = f"/api/v1/projects/{project['id']}/groups/{squad}"
 
     assert client.delete(url, headers=auth_headers(admin)).status_code == 409
-    replacement = _org_group(client, admin, org["id"], "Successor")
+    replacement = create_org_group(client, admin, org["id"], "Successor")
     done = client.delete(
         url, params={"replacement_type": "org_group", "replacement_id": replacement}, headers=auth_headers(admin),
     )
@@ -341,8 +318,8 @@ def test_deleting_a_project_group_owner_requires_replacement(client, admin_token
 def test_reports_name_a_group_with_its_kind(client, admin_token):
     org, project, admin = _setup(client, admin_token, "Decision Principal Reports Co")
     type_id = _first_decision_type_id(client, admin, project["id"])
-    team = _org_group(client, admin, org["id"], "Review Board")
-    squad = _project_group(client, admin, project["id"], "Delivery Squad")
+    team = create_org_group(client, admin, org["id"], "Review Board")
+    squad = create_project_group(client, admin, project["id"], "Delivery Squad")
     decision = _decision(
         client, admin, project["id"], type_id, owner={"type": "org_group", "id": team},
         decision_maker={"type": "project_group", "id": squad}, decision_date="2026-01-05",

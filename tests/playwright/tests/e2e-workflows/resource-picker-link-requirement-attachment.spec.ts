@@ -144,7 +144,7 @@ test("link an organisation shared resource onto a requirement via the resource p
       headers: orgAdminHeaders,
       data: {
         name: requirement.name, reasoning: requirement.reasoning, clarification: "",
-        component_id: component.id, category_id: category.id, owner_id: orgAdminUserId, status: "approved", keywords: [],
+        component_id: component.id, category_id: category.id, owner: { type: "user", id: orgAdminUserId }, status: "approved", keywords: [],
         change_note: "E2E: locking to prove the resource-picker trigger hides once locked.",
       },
     });

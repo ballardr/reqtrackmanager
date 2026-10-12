@@ -30,7 +30,7 @@ import { useEffect, useState } from "react";
 import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay } from "../../api/types";
 import { Modal } from "../../components/Modal";
-import { PrincipalPicker } from "../../components/PrincipalPicker";
+import { PrincipalFormField } from "../../components/PrincipalFormField";
 import type { ComplianceStandard } from "./types";
 
 export interface StandardFormValues {
@@ -192,19 +192,17 @@ export function StandardFormModal({
           <input className="input" value={issuingOrganisation} onChange={(e) => setIssuingOrganisation(e.target.value)} />
         </label>
         {initial && (
-          <div className="stack" style={{ gap: "0.25rem" }}>
-            <span>Owner</span>
-            <PrincipalPicker
-              kinds={["user", "org_group"]}
-              orgUsers={orgUsers}
-              organizationId={resolvedOrgId}
-              value={owner}
-              display={savedPrincipalDisplay(owner, initial.owner)}
-              onChange={setOwner}
-              ariaLabel="Standard owner"
-              placeholder="Select an owner…"
-            />
-          </div>
+          <PrincipalFormField
+            label="Owner"
+            kinds={["user", "org_group"]}
+            orgUsers={orgUsers}
+            organizationId={resolvedOrgId}
+            value={owner}
+            display={savedPrincipalDisplay(owner, initial.owner)}
+            onChange={setOwner}
+            ariaLabel="Standard owner"
+            placeholder="Select an owner…"
+          />
         )}
         {!initial && (
           <>

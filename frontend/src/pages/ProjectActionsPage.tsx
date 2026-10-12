@@ -3,10 +3,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { ActionTypeDefinition, OrgUser, Project, RequirementAction, RequirementActionOutcome } from "../api/types";
+import type {
+  ActionTypeDefinition,
+  OrgUser,
+  PrincipalRef,
+  Project,
+  RequirementAction,
+  RequirementActionOutcome,
+} from "../api/types";
 import { ENTITY_ACCENT_COLOR, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_ACTION_OUTCOME_TONE } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { PrincipalBadge } from "../components/PrincipalBadge";
+import { PrincipalFormField } from "../components/PrincipalFormField";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
@@ -33,6 +42,7 @@ export function ProjectActionsPage() {
   const [actions, setActions] = useState<RequirementAction[] | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
   const [outcomeFilter, setOutcomeFilter] = useState<RequirementActionOutcome | "">("");
   const [typeFilter, setTypeFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -48,7 +58,7 @@ export function ProjectActionsPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newActionTypeId, setNewActionTypeId] = useState("");
-  const [newAssigneeId, setNewAssigneeId] = useState("");
+  const [newAssignee, setNewAssignee] = useState<PrincipalRef | null>(null);
   const [newDueDate, setNewDueDate] = useState("");
 
   function listParams(): string {
@@ -94,6 +104,7 @@ export function ProjectActionsPage() {
     (async () => {
       try {
         const project = await api.get<Project>(`/api/v1/projects/${projectId}`);
+        setOrganizationId(project.organization_id);
         setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${project.organization_id}/users`));
       } catch {
         // No org role reachable for this user — assignee names simply
@@ -109,12 +120,12 @@ export function ProjectActionsPage() {
         title: newTitle,
         description: newDescription,
         action_type_id: newActionTypeId,
-        assignee_id: newAssigneeId || null,
+        assignee: newAssignee,
         due_date: newDueDate || null,
       });
       setNewTitle("");
       setNewDescription("");
-      setNewAssigneeId("");
+      setNewAssignee(null);
       setNewDueDate("");
       setShowNewForm(false);
       reload();
@@ -146,10 +157,6 @@ export function ProjectActionsPage() {
 
   function actionTypeName(id: string) {
     return actionTypes.find((t2) => t2.id === id)?.name ?? "—";
-  }
-  function assigneeName(id: string | null) {
-    if (!id) return strings.reviews.unassigned;
-    return orgUsers.find((u) => u.user_id === id)?.display_name ?? id;
   }
 
   return (
@@ -186,20 +193,13 @@ export function ProjectActionsPage() {
                 ))}
               </select>
             </label>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.actions.assignee}
-              <select
-                className="input" aria-label={strings.actions.assignee}
-                value={newAssigneeId} onChange={(e) => setNewAssigneeId(e.target.value)}
-              >
-                <option value="">{strings.reviews.unassigned}</option>
-                {orgUsers.map((u) => (
-                  <option key={u.user_id} value={u.user_id}>
-                    {u.display_name} ({u.email})
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div style={{ flex: 1 }}>
+              <PrincipalFormField
+                label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
+                value={newAssignee} onChange={setNewAssignee} ariaLabel={strings.actions.assignee}
+                placeholder={strings.reviews.unassigned}
+              />
+            </div>
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
               {strings.actions.dueDate}
               <input className="input" type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)} />
@@ -265,7 +265,7 @@ export function ProjectActionsPage() {
                           {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
                         </FilterBadge>
                       </td>
-                      <td className="text-muted">{assigneeName(a.assignee_id)}</td>
+                      <td className="text-muted"><PrincipalBadge principal={a.assignee} placeholder={strings.reviews.unassigned} /></td>
                       <td className="text-muted">{a.due_date ?? "—"}</td>
                     </tr>
                   ))}

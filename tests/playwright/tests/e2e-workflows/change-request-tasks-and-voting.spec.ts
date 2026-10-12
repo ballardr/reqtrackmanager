@@ -9,13 +9,12 @@ import { loginAs, logout, openProject, PERSONAS, PROJECT_NAMES, searchChangeRequ
  * decision (C-G-12's separation of duties still applies to the actual
  * approve/reject action).
  *
- * Note: the "New task" form on ChangeRequestDetailPage only collects a free
- * -text description — there is no assignee picker or due-date input in the
- * UI, even though `ChangeRequestTask` supports both (C-R-04) and the
- * backend lets a task's own assignee toggle `is_done` without manager
- * rights. The assignee-only-toggle guarantee below is proven by assigning
- * the task via a direct API call (the only way to set it at all today) and
- * then toggling it through the real UI as that assignee.
+ * Note: the "New task" form on ChangeRequestDetailPage collects a description
+ * and an optional assignee (a user or a group); there is no due-date input in
+ * the UI, even though `ChangeRequestTask` supports one (C-R-04). The
+ * assignee-only-toggle guarantee below is proven by assigning the task via a
+ * direct API call and then toggling it through the real UI as that assignee;
+ * `core-group-people.spec.ts` covers assigning to a group from the form.
  */
 test.describe("change-request tasks and stakeholder voting", () => {
   test("PM manages tasks; stakeholders cast advisory votes that don't touch the CR's real status", async ({ page }) => {
@@ -90,7 +89,7 @@ test.describe("change-request tasks and stakeholder voting", () => {
       const task = await taskResp.json();
       await page.request.patch(
         `http://localhost:8000/api/v1/projects/${projectId}/change-requests/${crId}/tasks/${task.id}`,
-        { headers: { Authorization: `Bearer ${pmToken}` }, data: { assignee_id: stakeholderId } }
+        { headers: { Authorization: `Bearer ${pmToken}` }, data: { assignee: { type: "user", id: stakeholderId } } }
       );
 
       await logout(page);

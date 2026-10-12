@@ -35,33 +35,19 @@ from app.modules.stakeholders.tests.test_persona_api import (
     _setup,
 )
 from app.modules.stakeholders.tests.test_stakeholder_api import _create_org_stakeholder, _create_project_stakeholder
-from tests.conftest import auth_headers, build_alembic_config, create_org_admin_in, create_org_user, create_project
+from tests.conftest import (
+    auth_headers,
+    build_alembic_config,
+    create_org_admin_in,
+    create_org_group,
+    create_org_user,
+    create_project,
+    create_project_group,
+)
 
 
 def _user(user_id) -> dict:
     return {"type": "user", "id": str(user_id)}
-
-
-def _org_group(client, token, org_id, name, *, users=()) -> str:
-    h = auth_headers(token)
-    resp = client.post(f"/api/v1/orgs/{org_id}/groups", json={"name": name}, headers=h)
-    assert resp.status_code in (200, 201), resp.text
-    gid = resp.json()["id"]
-    for user_id in users:
-        r = client.post(f"/api/v1/orgs/{org_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
-        assert r.status_code == 204, r.text
-    return gid
-
-
-def _project_group(client, token, project_id, name, *, users=()) -> str:
-    h = auth_headers(token)
-    resp = client.post(f"/api/v1/projects/{project_id}/groups", json={"name": name}, headers=h)
-    assert resp.status_code in (200, 201), resp.text
-    gid = resp.json()["id"]
-    for user_id in users:
-        r = client.post(f"/api/v1/projects/{project_id}/groups/{gid}/members", json={"user_id": str(user_id)}, headers=h)
-        assert r.status_code == 204, r.text
-    return gid
 
 
 def _me(client, token) -> str:
@@ -74,8 +60,8 @@ def _me(client, token) -> str:
 def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(client, admin_token):
     org, project, token = _setup(client, admin_token, "Stakeholder Principal Kinds Co")
     member = create_org_user(client, token, org["id"], "kinds_member@sp.example.com")
-    team = _org_group(client, token, org["id"], "Platform Team", users=[member])
-    squad = _project_group(client, token, project["id"], "Squad", users=[member])
+    team = create_org_group(client, token, org["id"], "Platform Team", users=[member])
+    squad = create_project_group(client, token, project["id"], "Squad", users=[member])
 
     persona = _create_project_persona(
         client, token, project["id"], owner={"type": "org_group", "id": team}, champion={"type": "project_group", "id": squad},
@@ -101,7 +87,7 @@ def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(clien
 def test_update_switches_and_clears_principals_and_versions_keep_each_owner(client, admin_token):
     org, project, token = _setup(client, admin_token, "Stakeholder Principal Update Co")
     me = _me(client, token)
-    team = _org_group(client, token, org["id"], "Owners")
+    team = create_org_group(client, token, org["id"], "Owners")
     persona = _create_project_persona(client, token, project["id"], owner=_user(me), champion=_user(me))
     url = f"{_project_base(project['id'])}/personas/{persona['id']}"
     h = auth_headers(token)
@@ -127,7 +113,7 @@ def test_update_switches_and_clears_principals_and_versions_keep_each_owner(clie
 
 def test_stakeholder_and_need_versions_show_group_owners(client, admin_token):
     org, project, token = _setup(client, admin_token, "Stakeholder Principal Versions Co")
-    team = _org_group(client, token, org["id"], "Version Team")
+    team = create_org_group(client, token, org["id"], "Version Team")
     h = auth_headers(token)
     stakeholder = _create_project_stakeholder(client, token, project["id"], owner={"type": "org_group", "id": team})
     client.put(f"{_project_base(project['id'])}/stakeholders/{stakeholder['id']}", json={"role": "Sponsor"}, headers=h)
@@ -146,10 +132,10 @@ def test_stakeholder_and_need_versions_show_group_owners(client, admin_token):
 def test_foreign_and_wrong_scope_principals_are_rejected(client, admin_token):
     org, project, token = _setup(client, admin_token, "Stakeholder Principal Reject Co")
     other_project = create_project(client, token, org["id"], "Other Project")
-    elsewhere = _project_group(client, token, other_project["id"], "Elsewhere")
-    own = _project_group(client, token, project["id"], "Own Squad")
+    elsewhere = create_project_group(client, token, other_project["id"], "Elsewhere")
+    own = create_project_group(client, token, project["id"], "Own Squad")
     other_org, other_token = create_org_admin_in(client, admin_token, "Stakeholder Principal Foreign Co")
-    foreign_group = _org_group(client, other_token, other_org["id"], "Foreign Team")
+    foreign_group = create_org_group(client, other_token, other_org["id"], "Foreign Team")
     foreign_user = create_org_user(client, other_token, other_org["id"], "foreign_owner@sp.example.com")
     h = auth_headers(token)
 
@@ -172,7 +158,7 @@ def test_foreign_and_wrong_scope_principals_are_rejected(client, admin_token):
     project_group_owner = {"type": "project_group", "id": own}
     assert client.post(org_url + "/personas", json={"name": "P", "owner": project_group_owner}, headers=h).status_code == 400
     assert client.post(org_url + "/stakeholders", json={"name": "S", "owner": project_group_owner}, headers=h).status_code == 400
-    good = _create_org_persona(client, token, org["id"], owner={"type": "org_group", "id": _org_group(client, token, org["id"], "Org Wide")})
+    good = _create_org_persona(client, token, org["id"], owner={"type": "org_group", "id": create_org_group(client, token, org["id"], "Org Wide")})
     assert client.put(
         f"{org_url}/personas/{good['id']}", json={"owner": project_group_owner}, headers=h,
     ).status_code == 400
@@ -185,7 +171,7 @@ def test_foreign_and_wrong_scope_principals_are_rejected(client, admin_token):
 def test_deleting_an_owner_group_counts_current_versions_blocks_reassigns_and_audits_the_record(client, admin_token):
     org, project, token = _setup(client, admin_token, "Stakeholder Principal Delete Co")
     me = _me(client, token)
-    team = _org_group(client, token, org["id"], "Doomed Team")
+    team = create_org_group(client, token, org["id"], "Doomed Team")
     h = auth_headers(token)
     persona = _create_project_persona(
         client, token, project["id"], owner={"type": "org_group", "id": team}, champion={"type": "org_group", "id": team},
@@ -224,15 +210,15 @@ def test_deleting_an_owner_group_counts_current_versions_blocks_reassigns_and_au
 def test_clear_optional_empties_owners_and_a_project_group_can_be_replaced(client, admin_token):
     org, project, token = _setup(client, admin_token, "Stakeholder Principal Clear Co")
     h = auth_headers(token)
-    team = _org_group(client, token, org["id"], "Clear Team")
+    team = create_org_group(client, token, org["id"], "Clear Team")
     persona = _create_project_persona(client, token, project["id"], owner={"type": "org_group", "id": team})
     resp = client.delete(f"/api/v1/orgs/{org['id']}/groups/{team}", params={"clear_optional": "true"}, headers=h)
     assert resp.status_code == 204, resp.text
     assert client.get(f"{_project_base(project['id'])}/personas/{persona['id']}", headers=h).json()["owner"] is None
 
-    squad = _project_group(client, token, project["id"], "Doomed Squad")
+    squad = create_project_group(client, token, project["id"], "Doomed Squad")
     stakeholder = _create_project_stakeholder(client, token, project["id"], owner={"type": "project_group", "id": squad})
-    successor = _org_group(client, token, org["id"], "Successor")
+    successor = create_org_group(client, token, org["id"], "Successor")
     url = f"/api/v1/projects/{project['id']}/groups/{squad}"
     assert client.delete(url, headers=h).status_code == 409
     done = client.delete(url, params={"replacement_type": "org_group", "replacement_id": successor}, headers=h)
@@ -266,8 +252,8 @@ def test_project_bundle_matches_groups_by_name_and_warns_when_a_group_is_missing
     org, project, token = _setup(client, admin_token, "Stakeholder Principal Bundle Co")
     h = auth_headers(token)
     me = _me(client, token)
-    team = _org_group(client, token, org["id"], "Bundle Team")
-    squad = _project_group(client, token, project["id"], "Bundle Squad")
+    team = create_org_group(client, token, org["id"], "Bundle Team")
+    squad = create_project_group(client, token, project["id"], "Bundle Squad")
     _create_project_persona(
         client, token, project["id"], name="Round trip",
         owner={"type": "org_group", "id": team}, champion={"type": "project_group", "id": squad},
@@ -314,7 +300,7 @@ def test_project_bundle_matches_groups_by_name_and_warns_when_a_group_is_missing
 
 def test_org_bundle_leaves_an_unmatched_group_empty_with_a_warning(client, admin_token):
     org, project, token = _setup(client, admin_token, "Stakeholder Principal Org Bundle Co")
-    team = _org_group(client, token, org["id"], "Source Only Team")
+    team = create_org_group(client, token, org["id"], "Source Only Team")
     _create_org_persona(client, token, org["id"], name="Org owned", owner={"type": "org_group", "id": team})
     content = _export(client, token, f"/api/v1/orgs/{org['id']}/export")
 

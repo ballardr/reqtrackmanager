@@ -28,12 +28,11 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.models.enums import PrincipalType
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services.bundle_common import BundleImportWarnings, UserResolver
 from app.services.principals import (
     principal_columns,
-    principal_from_bundle,
+    principal_columns_from_bundle,
     principal_labels,
     principal_ref,
     principal_to_bundle,
@@ -137,14 +136,8 @@ def principals_from_bundle(
     """
     columns: dict[str, Any] = {}
     for field in fields:
-        entry = data.get(field)
-        if entry is None and data.get(f"{field}_email"):
-            entry = {"type": PrincipalType.USER.value, "email": data[f"{field}_email"]}
-        ref, warning = principal_from_bundle(
-            db, entry, organization_id=organization_id, project_id=project_id,
-            fallback_user_id=users.importing_user_id, required=False,
-        )
-        if warning:
-            warnings.add(f"{context} {field}: {warning}")
-        columns.update(principal_columns(field, ref))
+        columns.update(principal_columns_from_bundle(
+            db, data, field, organization_id=organization_id, project_id=project_id, users=users, warnings=warnings,
+            context=f"{context} {field}", required=False,
+        ))
     return columns

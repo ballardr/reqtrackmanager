@@ -83,7 +83,7 @@ def test_requirement_full_lifecycle_create_get_update_delete(client, admin_token
         json={
             "name": "Lifecycle requirement (updated)", "reasoning": "", "clarification": "",
             "component_id": component_id, "category_id": category_id, "keywords": [], "custom_fields": {},
-            "owner_id": me["id"],
+            "owner": {"type": "user", "id": me["id"]},
         },
         headers=auth_headers(admin_token),
     )

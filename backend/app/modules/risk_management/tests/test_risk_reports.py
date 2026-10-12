@@ -10,7 +10,7 @@ entries and the generated MCP tools. Every test builds its own organisation.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
 from app.modules.registry import build_mcp_tool_manifest
@@ -25,6 +25,7 @@ from app.modules.risk_management.tests._helpers import (
     mitigate_with_requirement,
     project_base,
     setup,
+    user_ref,
 )
 from tests.conftest import auth_headers, create_org_admin_in, create_project
 
@@ -77,7 +78,8 @@ def _scored(client, token, project, *, inherent: tuple[str, str] | None, residua
 
 
 def _days(n: int) -> str:
-    return (date.today() + timedelta(days=n)).isoformat()
+    """A date `n` days from today as the app sees it: reports are dated in UTC, not the host's timezone."""
+    return (datetime.now(UTC).date() + timedelta(days=n)).isoformat()
 
 
 # --- RK1 --------------------------------------------------------------------------
@@ -89,7 +91,7 @@ def test_rk1_register_lists_risks_with_labels_ratings_and_owner(client, admin_to
     types = {t["name"]: t["id"] for t in client.get(project_base(project["id"]) + "/risk-types", headers=auth_headers(token)).json()}
     treated = _scored(
         client, token, project, inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), title="Controller fails",
-        risk_type_id=types["Safety"], owner_id=me, treatment_strategy="mitigate", review_date=_days(10),
+        risk_type_id=types["Safety"], owner=user_ref(me), treatment_strategy="mitigate", review_date=_days(10),
     )
     _move(client, token, project["id"], treated["id"], "assessed")
     unscored = create_risk(client, token, project["id"], title="Vague worry")
@@ -251,7 +253,7 @@ def test_rk4_shows_when_a_risk_was_last_reviewed(client, admin_token):
     )
     assert resp.status_code == 201, resp.text
     report = _report(client, token, project["id"], "review-schedule", due_within_days=5)
-    assert _col(_section(report, "due_soon"), "Last reviewed") == [date.today().isoformat()]
+    assert _col(_section(report, "due_soon"), "Last reviewed") == [datetime.now(UTC).date().isoformat()]  # the app stamps UTC dates
 
 
 # --- Cross-cutting ----------------------------------------------------------------

@@ -17,4 +17,5 @@ Rules and gotchas:
 - An `accepted` risk's levels, acceptance criteria and strategy cannot be edited; move it back to `assessed` first.
 - A change to a linked requirement moves its `effective` verdict to `needs_reassessment`. Reassess it with `assess_risk_treatment`; do not simply re-mark it effective without checking the change.
 - `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none).
+- A risk's `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. `null` clears it. Members of an owner group may assess treatments and record reviews, as the owner can.
 - There is no delete tool. Do not invent level or type ids; read them.

@@ -48,7 +48,7 @@ flowchart TD
 
 While a change request is open, anyone with access can:
 
-- Add **tasks** — a short description, an optional assignee and due date, and a done/not-done checkbox — for tracking follow-up work the change implies, like updating a spec sheet once it's approved.
+- Add **tasks** — a short description, an optional assignee (a user or a group) and due date, and a done/not-done checkbox. Any one member of an assigned group can tick the task done — for tracking follow-up work the change implies, like updating a spec sheet once it's approved.
 - Cast an **advisory stakeholder vote** (approve/reject, with an optional comment). This is a visible signal for whoever makes the actual decision; it never itself approves or rejects the change request. **View comments** next to the vote tally shows every comment left with a vote.
 
 Like a requirement, every change request also carries its own threaded **discussion** — informal comments distinct from tasks and stakeholder votes — so the reasoning behind a decision lives next to the change itself.

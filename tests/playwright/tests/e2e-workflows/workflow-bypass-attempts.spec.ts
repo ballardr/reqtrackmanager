@@ -103,7 +103,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
         headers: pmHeaders,
         data: {
           name: "Renamed via raw API bypass attempt", reasoning: "x", component_id: "00000000-0000-0000-0000-000000000000",
-          category_id: "00000000-0000-0000-0000-000000000000", owner_id: "00000000-0000-0000-0000-000000000000", keywords: [],
+          category_id: "00000000-0000-0000-0000-000000000000", owner: { type: "user", id: "00000000-0000-0000-0000-000000000000" }, keywords: [],
         },
       });
       expect(resp.status()).toBe(409);

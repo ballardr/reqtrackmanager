@@ -19,7 +19,7 @@ function version(n: number, overrides: Partial<RiskVersion> = {}): RiskVersion {
     treatment_strategy: "mitigate", acceptance_criteria: "",
     inherent_likelihood_level_id: "lik-4", inherent_consequence_level_id: "con-4", inherent_detectability_level_id: null,
     residual_likelihood_level_id: null, residual_consequence_level_id: null, residual_detectability_level_id: null,
-    status: "assessed", owner_id: "user-1", review_date: null, change_note: "", created_by: "user-1", created_at: "2026-01-10T09:00:00Z",
+    status: "assessed", owner: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, review_date: null, change_note: "", created_by: "user-1", created_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };
 }
@@ -35,6 +35,7 @@ function mockApis(current: Risk) {
     if (path.endsWith("/comments") || path.endsWith("/files")) return [];
     if (path.includes(`/artefacts/risk/${RISK_ID}/link-graph`)) return buildGraph([[LINKED]]);
     if (path.includes("/users")) return ORG_USERS;
+    if (path.endsWith("/groups")) return [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { id: PROJECT_ID, organization_id: "org-1" };
     throw new Error(`Unmocked GET: ${path}`);
   });

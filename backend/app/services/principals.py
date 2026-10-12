@@ -42,16 +42,20 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, false, func, or_, select, update
+from sqlalchemy import and_, delete, false, func, or_, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.models.enums import PrincipalType
+from app.models.change_request import ChangeRequest, ChangeRequestTask, ChangeRequestVersion
+from app.models.engagement import Subscription
+from app.models.enums import ChangeRequestStatus, PrincipalType
 from app.models.organization import OrgGroup
 from app.models.project import Project, ProjectGroup
+from app.models.requirement import RequirementVersion
+from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.modules.registry import PrincipalReference, get_module_principal_references
 from app.schemas.principal import PrincipalOut, PrincipalRef, PrincipalUsageItem, PrincipalUsageOut
@@ -64,9 +68,50 @@ from app.services.rbac import (
     project_group_ids_for_user,
 )
 
-# Core fields built as principals (Phase 6 of the plan adds the requirement,
-# action and change-request fields here).
-CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = ()
+if TYPE_CHECKING:
+    from app.services.bundle_common import BundleImportWarnings, UserResolver
+
+
+
+def _open_change_request_versions() -> ColumnElement[bool]:
+    """Versions of change requests that are still open: a decided request keeps the group id it was
+    decided with (shown as a deleted group), because rewriting a decided proposal would rewrite history."""
+    return ChangeRequestVersion.change_request_id.in_(
+        select(ChangeRequest.id).where(ChangeRequest.status.in_(
+            [ChangeRequestStatus.DRAFT, ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW]
+        ))
+    )
+
+
+# Core fields built as principals (Phase 6 of the plan). A module's own fields are declared on its
+# `ModuleDefinition.principal_references` instead.
+CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = (
+    PrincipalReference(
+        model=RequirementVersion, field="owner", label="requirement owners", audit_entity_type="requirement",
+        mandatory=True, live_filter=lambda: RequirementVersion.valid_to.is_(None), record_id_field="requirement_id",
+    ),
+    PrincipalReference(
+        model=RequirementVersion, field="reviewer", label="requirement reviewers", audit_entity_type="requirement",
+        live_filter=lambda: RequirementVersion.valid_to.is_(None), record_id_field="requirement_id",
+    ),
+    PrincipalReference(
+        model=RequirementAction, field="assignee", label="action assignees", audit_entity_type="requirement_action",
+    ),
+    PrincipalReference(
+        model=ChangeRequestVersion, field="proposed_action_assignee", label="change request action assignees",
+        audit_entity_type="change_request", live_filter=_open_change_request_versions,
+        record_id_field="change_request_id",
+    ),
+    PrincipalReference(
+        model=ChangeRequestVersion, field="proposed_reviewer", label="change request reviewers",
+        audit_entity_type="change_request", live_filter=_open_change_request_versions,
+        record_id_field="change_request_id",
+    ),
+    PrincipalReference(
+        model=ChangeRequestTask, field="assignee", label="change request task assignees",
+        audit_entity_type="change_request_task", live_filter=lambda: ChangeRequestTask.is_done.is_(False),
+    ),
+)
 
 DELETED_GROUP_LABEL = "Deleted group"
 UNKNOWN_USER_LABEL = "Unknown user"
@@ -290,11 +335,87 @@ def principal_text(principal: PrincipalOut | None, *, empty: str = "") -> str:
     return f"{principal.label} ({PRINCIPAL_TYPE_LABEL[principal.type]})"
 
 
+def revalidated_principal(
+    db: Session, type_value: str | None, principal_id: uuid.UUID | None, *,
+    organization_id: uuid.UUID, project_id: uuid.UUID | None, field: str = "principal",
+) -> PrincipalRef | None:
+    """A principal stored earlier (a change request's proposal) if it is still valid, else None: the group was
+    deleted or the user left the organisation between the proposal and its approval. The approval goes ahead;
+    the field is simply left unassigned.
+    """
+    ref = principal_ref(type_value, principal_id)
+    try:
+        validate_principal(db, ref, organization_id=organization_id, project_id=project_id, field=field)
+    except HTTPException:
+        return None
+    return ref
+
+
+def revalidated_principal_columns(
+    db: Session, field: str, type_value: str | None, principal_id: uuid.UUID | None, *,
+    organization_id: uuid.UUID, project_id: uuid.UUID | None,
+) -> dict[str, Any]:
+    """The `<field>_type` / `<field>_id` columns for a principal stored earlier (a change request's
+    proposal), emptied when it is no longer valid: the group was deleted or the user left the organisation
+    between the proposal and its approval. The approval goes ahead; the field is simply left unassigned.
+
+    Args:
+        field: Base name of the pair on the record being written (`assignee`).
+        type_value / principal_id: The stored pair.
+        organization_id / project_id: Where the record is being written (see `validate_principal`).
+    """
+    ref = revalidated_principal(
+        db, type_value, principal_id, organization_id=organization_id, project_id=project_id, field=field
+    )
+    return principal_columns(field, ref)
+
+
 def principal_out(db: Session, type_value: str | None, principal_id: uuid.UUID | None) -> PrincipalOut | None:
     """One resolved principal for a response, or None when the field is empty."""
     if type_value is None or principal_id is None:
         return None
     return principal_labels(db, [(type_value, principal_id)])[(type_value, principal_id)]
+
+
+def group_ref_from_text(
+    db: Session, text_value: str, *, organization_id: uuid.UUID, project_id: uuid.UUID | None
+) -> tuple[PrincipalRef | None, str | None]:
+    """Resolves a group named in a spreadsheet cell: `Name (Org group)`, `Name (Project group)` (the form
+    `principal_text` writes, so an export re-imports) or a bare `Name` (an organisation group first, then
+    one of the project's groups).
+
+    Args:
+        text_value: The cell text.
+        organization_id: The importing organisation.
+        project_id: The importing project, or None when only organisation groups are valid.
+
+    Returns:
+        `(ref, error)`: exactly one is set; `error` is a message naming what was wrong.
+    """
+    name = text_value.strip()
+    wanted: PrincipalType | None = None
+    for kind, label in ((PrincipalType.ORG_GROUP, PRINCIPAL_TYPE_LABEL[PrincipalType.ORG_GROUP]),
+                        (PrincipalType.PROJECT_GROUP, PRINCIPAL_TYPE_LABEL[PrincipalType.PROJECT_GROUP])):
+        suffix = f" ({label})"
+        if name.endswith(suffix):
+            name, wanted = name[: -len(suffix)].strip(), kind
+            break
+    matches: list[PrincipalRef] = []
+    if wanted in (None, PrincipalType.ORG_GROUP):
+        matches += [
+            PrincipalRef(type=PrincipalType.ORG_GROUP, id=i)
+            for i in db.scalars(select(OrgGroup.id).where(OrgGroup.organization_id == organization_id, OrgGroup.name == name))
+        ]
+    if project_id is not None and wanted in (None, PrincipalType.PROJECT_GROUP) and not matches:
+        matches += [
+            PrincipalRef(type=PrincipalType.PROJECT_GROUP, id=i)
+            for i in db.scalars(select(ProjectGroup.id).where(ProjectGroup.project_id == project_id, ProjectGroup.name == name))
+        ]
+    if len(matches) == 1:
+        return matches[0], None
+    if not matches:
+        return None, f"Unknown group '{text_value.strip()}'."
+    return None, f"Group '{text_value.strip()}' is ambiguous; add ' (Org group)' or ' (Project group)'."
 
 
 # --- Deleting a group that still owns records -------------------------------------------------
@@ -379,6 +500,8 @@ def prepare_group_deletion(
         HTTPException: 409 when records still name the group and neither a replacement nor
             `clear_optional` covers them; 400 when the replacement is invalid or is the group itself.
     """
+    # A group's watching subscriptions are not records it owns: they simply go with it.
+    db.execute(delete(Subscription).where(Subscription.subscriber_type == group.type.value, Subscription.subscriber_id == group.id))
     usage = compute_usage(db, group)
     if usage.total == 0:
         return GroupDeletionResult()
@@ -488,3 +611,38 @@ def principal_from_bundle(
         PrincipalRef(type=PrincipalType.USER, id=fallback_user_id),
         f"{kind or 'principal'} '{name}' was not found in this organisation; assigned to the importing user.",
     )
+
+
+def principal_columns_from_bundle(
+    db: Session, data: dict[str, Any], field: str, *, organization_id: uuid.UUID, project_id: uuid.UUID | None,
+    users: UserResolver, warnings: BundleImportWarnings, context: str, required: bool,
+) -> dict[str, Any]:
+    """The `<field>_type` / `<field>_id` columns for a record's bundled principal field, resolved in the
+    importing organisation or project, with any fallback warning recorded.
+
+    A group or user that cannot be matched falls back to the importing user for a mandatory field and is
+    left empty for an optional one, either way with a warning. A bundle written before groups existed
+    carries `<field>_email` instead of `<field>`.
+
+    Args:
+        data: The bundled record.
+        field: Base name of the pair (`owner` for `owner_type`/`owner_id`).
+        project_id: The importing project for project-scoped records; None for an organisation-scoped
+            one (which cannot name a project group).
+        users: The import's user resolver (supplies the importing user).
+        warnings: Collects the fallback warning.
+        context: Prefix of the warning (what record and field this is).
+        required: True for a mandatory field.
+    """
+    entry = data.get(field)
+    if entry is None and data.get(f"{field}_email"):
+        entry = {"type": PrincipalType.USER.value, "email": data[f"{field}_email"]}
+    ref, warning = principal_from_bundle(
+        db, entry, organization_id=organization_id, project_id=project_id,
+        fallback_user_id=users.importing_user_id, required=required,
+    )
+    if warning:
+        warnings.add(f"{context}: {warning}")
+    if ref is None and required:
+        ref = PrincipalRef(type=PrincipalType.USER, id=users.importing_user_id)
+    return principal_columns(field, ref)

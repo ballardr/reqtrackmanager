@@ -27,6 +27,7 @@ from app.modules.risk_management.tests._helpers import (
     levels,
     project_base,
     setup,
+    user_ref,
 )
 from app.services.permissions import encode_permission
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project
@@ -47,7 +48,7 @@ def test_create_assigns_sequential_codes_and_starts_identified_and_unscored(clie
     assert first["status"] == "identified" and first["version_number"] == 1 and first["project_id"] == project["id"]
     assert first["title"] == PAYLOAD["title"] and first["statement"] == PAYLOAD["statement"]
     assert first["inherent_rating"] is None and first["residual_rating"] is None
-    assert first["risk_type_id"] is None and first["treatment_strategy"] is None and first["owner_id"] is None
+    assert first["risk_type_id"] is None and first["treatment_strategy"] is None and first["owner"] is None
     assert [r["unique_code"] for r in client.get(_risks(project["id"]), headers=auth_headers(token)).json()] == ["RSK-001", "RSK-002"]
     assert client.get(f"{_risks(project['id'])}/{first['id']}", headers=auth_headers(token)).json()["id"] == first["id"]
 
@@ -73,15 +74,15 @@ def test_partial_update_versions_history_and_clearing(client, admin_token):
     owner = create_org_user(client, token, org["id"], "owner@risk-update.example.com")
     url = f"{_risks(project['id'])}/{risk['id']}"
 
-    resp = client.put(url, json={"cause": "Refined cause", "owner_id": owner, "change_note": "why"}, headers=h)
+    resp = client.put(url, json={"cause": "Refined cause", "owner": user_ref(owner), "change_note": "why"}, headers=h)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["cause"] == "Refined cause" and body["owner_id"] == owner and body["version_number"] == 2
+    assert body["cause"] == "Refined cause" and body["owner"]["id"] == owner and body["owner"]["label"] and body["version_number"] == 2
     assert body["title"] == PAYLOAD["title"] and body["treatment_strategy"] == "mitigate"  # carried forward
     assert body["review_date"] == "2026-12-01"
 
-    cleared = client.put(url, json={"treatment_strategy": None, "owner_id": None, "review_date": None, "statement": None}, headers=h).json()
-    assert cleared["treatment_strategy"] is None and cleared["owner_id"] is None and cleared["review_date"] is None
+    cleared = client.put(url, json={"treatment_strategy": None, "owner": None, "review_date": None, "statement": None}, headers=h).json()
+    assert cleared["treatment_strategy"] is None and cleared["owner"] is None and cleared["review_date"] is None
     assert cleared["statement"] == "" and cleared["version_number"] == 3
 
     versions = client.get(url + "/versions", headers=h).json()
@@ -168,8 +169,8 @@ def test_owner_must_belong_to_the_organisation(client, admin_token):
     outsider = create_org_user(client, other_token, other_org["id"], "outsider@risk-owner.example.com")
     insider = create_org_user(client, token, org["id"], "insider@risk-owner.example.com")
     h = auth_headers(token)
-    assert client.post(_risks(project["id"]), json={**PAYLOAD, "owner_id": outsider}, headers=h).status_code == 400
-    assert client.post(_risks(project["id"]), json={**PAYLOAD, "owner_id": insider}, headers=h).json()["owner_id"] == insider
+    assert client.post(_risks(project["id"]), json={**PAYLOAD, "owner": user_ref(outsider)}, headers=h).status_code == 400
+    assert client.post(_risks(project["id"]), json={**PAYLOAD, "owner": user_ref(insider)}, headers=h).json()["owner"]["id"] == insider
 
 
 # --- Types -------------------------------------------------------------------

@@ -81,7 +81,7 @@ RISK_TYPES = TypeVocabulary(
 # Versioned content fields `apply_new_version` carries forward.
 RISK_CONTENT_FIELDS: tuple[str, ...] = (
     "title", "statement", "cause", "risk_event", "consequence", "project_type_id", "treatment_strategy",
-    "acceptance_criteria", *LEVEL_COLUMN_AXES, "status", "owner_id", "review_date",
+    "acceptance_criteria", *LEVEL_COLUMN_AXES, "status", "owner_type", "owner_id", "review_date",
 )
 
 

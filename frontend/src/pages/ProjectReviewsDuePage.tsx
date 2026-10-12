@@ -3,7 +3,9 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Component, RequirementDueForReview } from "../api/types";
-import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { principalText } from "../api/types";
+import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { PrincipalBadge } from "../components/PrincipalBadge";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
 
@@ -16,7 +18,9 @@ export function ProjectReviewsDuePage() {
   const [items, setItems] = useState<RequirementDueForReview[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
   const [componentId, setComponentId] = useState("");
-  const [reviewerId, setReviewerId] = useState("");
+  // "<type>:<id>" of the chosen reviewer (a user or a group), or "".
+  const [reviewerKey, setReviewerKey] = useState("");
+  const [mineOnly, setMineOnly] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -27,14 +31,21 @@ export function ProjectReviewsDuePage() {
     if (!projectId) return;
     const params = new URLSearchParams();
     if (componentId) params.set("component_id", componentId);
-    if (reviewerId) params.set("reviewer_id", reviewerId);
+    if (reviewerKey) {
+      const [type, id] = reviewerKey.split(":");
+      params.set("reviewer_type", type);
+      params.set("reviewer_id", id);
+    }
+    if (mineOnly) params.set("reviewer_mine", "true");
     api
       .get<RequirementDueForReview[]>(`/api/v1/projects/${projectId}/requirements/reviews/due?${params.toString()}`)
       .then(setItems);
-  }, [projectId, componentId, reviewerId]);
+  }, [projectId, componentId, reviewerKey, mineOnly]);
 
   const reviewers = Array.from(
-    new Map((items ?? []).filter((i) => i.reviewer_id).map((i) => [i.reviewer_id as string, i.reviewer_name as string])).entries()
+    new Map(
+      (items ?? []).flatMap((i) => (i.reviewer ? [[`${i.reviewer.type}:${i.reviewer.id}`, principalText(i.reviewer)] as const] : []))
+    ).entries()
   );
 
   if (!items) return <Spinner />;
@@ -68,7 +79,7 @@ export function ProjectReviewsDuePage() {
                       </td>
                       <td>{item.component_name}</td>
                       <td>{item.review_date}</td>
-                      <td>{item.reviewer_name ?? strings.reviews.unassigned}</td>
+                      <td><PrincipalBadge principal={item.reviewer} placeholder={strings.reviews.unassigned} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -87,13 +98,14 @@ export function ProjectReviewsDuePage() {
             </select>
           </FilterField>
           <FilterField label="Reviewer">
-            <select className="input" value={reviewerId} onChange={(e) => setReviewerId(e.target.value)}>
+            <select className="input" value={reviewerKey} onChange={(e) => setReviewerKey(e.target.value)}>
               <option value="">{strings.reviews.allReviewers}</option>
-              {reviewers.map(([id, name]) => (
-                <option key={id} value={id}>{name}</option>
+              {reviewers.map(([key, name]) => (
+                <option key={key} value={key}>{name}</option>
               ))}
             </select>
           </FilterField>
+          <FilterCheckbox label={strings.reviews.assignedToMe} checked={mineOnly} onChange={setMineOnly} />
         </FilterPanel>
       </div>
     </div>

@@ -22,7 +22,7 @@ import { principalRef, savedPrincipalDisplay } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
-import { PrincipalPicker } from "../../components/PrincipalPicker";
+import { PrincipalFormField } from "../../components/PrincipalFormField";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
@@ -196,13 +196,10 @@ function ReviewFormModal({
           <span>Recurs every (days, optional)</span>
           <input className="input" type="number" min={1} value={recurrenceDays} onChange={(e) => setRecurrenceDays(e.target.value)} />
         </label>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span>Owner</span>
-          <PrincipalPicker
-            orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
-            value={owner} display={savedPrincipalDisplay(owner, initial?.owner)} onChange={setOwner} ariaLabel="Review owner"
-          />
-        </div>
+        <PrincipalFormField
+          label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
+          value={owner} display={savedPrincipalDisplay(owner, initial?.owner)} onChange={setOwner} ariaLabel="Review owner"
+        />
         <label className="stack" style={{ gap: "0.25rem" }}>
           <span>Notes</span>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />

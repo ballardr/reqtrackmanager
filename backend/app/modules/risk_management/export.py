@@ -33,7 +33,9 @@ Design decisions (all Decided by: Agent):
 - A verdict travels with its link, including `needs_reassessment` and its
   reason, so a bundle does not quietly turn an unresolved doubt into trust.
 - Cross-references use portable keys, never database ids: type names, level
-  axis+name, requirement codes, user emails.
+  axis+name, requirement codes, user emails; an owner is `{type, email | name}`
+  (`services.principals`), and one the target cannot match is left unset with a
+  warning. Bundles written before groups existed carry `owner_email`, still read.
 - Org-level merge skips a type the organisation already has, so re-import is
   idempotent. Org-level files cannot travel (the org hook receives no bytes).
 
@@ -77,6 +79,7 @@ from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES, RISK_SCORING_
 from app.modules.risk_management.service import RISK_ARTEFACT_TYPE, RISK_TYPES
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.relationships import create_link, get_all_links
 from app.services.scoring import list_levels, seed_missing_scoring_levels
 
@@ -204,7 +207,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     }
     user_ids: set[UUID | None] = set()
     for risk, version in pairs:
-        user_ids |= {risk.creator_id, risk.archived_by, version.owner_id, version.created_by}
+        user_ids |= {risk.creator_id, risk.archived_by, version.created_by}
         user_ids |= {r.reviewed_by for r in reviews_by_risk.get(risk.id, [])}
     user_ids |= {a.assessed_by for a in verdicts_by_link.values()}
     user_ids |= {lk.created_by for r in risk_ids for lk in get_all_links(db, RISK_ARTEFACT_TYPE, r)}
@@ -217,7 +220,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "type_name": RISK_TYPES.display_name(db, org_type_id=None, project_type_id=version.project_type_id),
             "treatment_strategy": version.treatment_strategy.value if version.treatment_strategy else None,
             "levels": {column: levels.get(getattr(version, column)) for column in LEVEL_COLUMN_AXES if getattr(version, column)},
-            "status": version.status.value, "owner_email": emails.get(version.owner_id), "review_date": _j(version.review_date),
+            "status": version.status.value,
+            "owner": principal_to_bundle(db, version.owner_type, version.owner_id), "review_date": _j(version.review_date),
             "created_by_email": emails.get(risk.creator_id), "created_at": _j(risk.created_at),
             "is_archived": risk.is_archived, "archived_at": _j(risk.archived_at), "archived_by_email": emails.get(risk.archived_by),
             "review_notified_for": {"due": _j(risk.review_due_notified_for), "overdue": _j(risk.review_overdue_notified_for)},
@@ -346,7 +350,10 @@ def import_project_data(
             **{f: entry.get(f, "") for f in _TEXT_FIELDS if f != "title"}, project_type_id=type_row.id if type_row else None,
             treatment_strategy=TreatmentStrategy(entry["treatment_strategy"]) if entry.get("treatment_strategy") else None,
             status=RiskStatus(entry.get("status", "identified")),
-            owner_id=users.resolve(entry.get("owner_email"), required=False, context=f"Risk {code} owner"),
+            **principal_columns_from_bundle(
+                db, entry, "owner", organization_id=organization_id, project_id=project.id, users=users,
+                warnings=warnings, context=f"Risk {code} owner", required=False,
+            ),
             review_date=_date(entry.get("review_date")), change_note="Imported from bundle.", created_by=creator_id, created_at=now,
             **{c: levels.get(c) for c in LEVEL_COLUMN_AXES},
         ))

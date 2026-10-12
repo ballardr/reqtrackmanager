@@ -242,15 +242,18 @@ def create_requirement(
 def set_requirement_status(
     headers: dict, project_id: str, requirement: dict, status_value: str,
     *, review_date: str | None = None, reviewer_id: str | None = None,
+    owner: dict | None = None, reviewer: dict | None = None,
 ) -> dict:
     """Direct edit setting `status` (and optionally a review schedule) on a
     still-unlocked requirement — mirrors what a PM moving a requirement
-    through draft -> reviewed -> approved would actually click through."""
+    through draft -> reviewed -> approved would actually click through.
+    `owner` / `reviewer` are `{"type": "user" | "org_group" | "project_group", "id": ...}`; `reviewer_id` is the
+    shorthand for a user reviewer. The owner is carried over from the requirement when omitted."""
     body = {
         "name": requirement["name"], "reasoning": requirement["reasoning"],
         "clarification": requirement.get("clarification", ""),
         "component_id": requirement["component_id"], "category_id": requirement["category_id"],
-        "owner_id": requirement.get("owner_id") or requirement["creator_id"],
+        "owner": owner or requirement.get("owner") or {"type": "user", "id": requirement["creator_id"]},
         "status": status_value, "keywords": requirement.get("keywords", []),
         "custom_fields": requirement.get("custom_fields", {}),
         "change_note": f"Marked {status_value} during scoping.",
@@ -258,7 +261,9 @@ def set_requirement_status(
     if review_date is not None:
         body["review_date"] = review_date
     if reviewer_id is not None:
-        body["reviewer_id"] = reviewer_id
+        body["reviewer"] = {"type": "user", "id": reviewer_id}
+    if reviewer is not None:
+        body["reviewer"] = reviewer
     r = httpx.put(f"{BASE}/projects/{project_id}/requirements/{requirement['id']}", json=body, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
@@ -361,7 +366,7 @@ def create_change_request(
 
 def create_add_action_change_request(
     headers: dict, project_id: str, requirement_id: str, *,
-    action_title: str, action_description: str, action_type_id: str, reason: str, assignee_id: str | None = None,
+    action_title: str, action_description: str, action_type_id: str, reason: str, assignee: dict | None = None,
 ) -> dict:
     """An ADD_ACTION change request (2026-08 UX audit roadmap item 514) —
     only valid once `requirement_id` is already locked (status APPROVED,
@@ -371,7 +376,7 @@ def create_add_action_change_request(
     body = {
         "kind": "add_action", "requirement_id": requirement_id, "reason": reason,
         "proposed_action_title": action_title, "proposed_action_description": action_description,
-        "proposed_action_type_id": action_type_id, "proposed_action_assignee_id": assignee_id,
+        "proposed_action_type_id": action_type_id, "proposed_action_assignee": assignee,
     }
     r = httpx.post(f"{BASE}/projects/{project_id}/change-requests", json=body, headers=headers, timeout=30)
     r.raise_for_status()
@@ -408,10 +413,11 @@ def cast_vote(headers: dict, project_id: str, cr_id: str, vote: str, comment: st
     return r.json()
 
 
-def create_cr_task(headers: dict, project_id: str, cr_id: str, description: str, assignee_id: str | None = None, due_date: str | None = None) -> dict:
+def create_cr_task(headers: dict, project_id: str, cr_id: str, description: str, assignee: dict | None = None, due_date: str | None = None) -> dict:
+    """Adds a task to a change request; `assignee` is `{"type": "user" | "org_group" | "project_group", "id": ...}`."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/change-requests/{cr_id}/tasks",
-        json={"description": description, "assignee_id": assignee_id, "due_date": due_date},
+        json={"description": description, "assignee": assignee, "due_date": due_date},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -503,13 +509,14 @@ def create_requirement_link(headers: dict, project_id: str, requirement_id: str,
 
 def create_and_link_action(
     headers: dict, project_id: str, requirement_id: str, *, title: str, description: str, action_type_id: str,
-    assignee_id: str | None = None, due_date: str | None = None,
+    assignee: dict | None = None, due_date: str | None = None,
 ) -> dict:
+    """Creates an action and links it to a requirement; `assignee` is a principal reference (user or group)."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements/{requirement_id}/actions/create-and-link",
         json={
             "title": title, "description": description, "action_type_id": action_type_id,
-            "assignee_id": assignee_id, "due_date": due_date,
+            "assignee": assignee, "due_date": due_date,
         },
         headers=headers, timeout=30,
     )
@@ -530,7 +537,7 @@ def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_sta
         f"{BASE}/projects/{project_id}/actions/{action['id']}",
         json={
             "title": action["title"], "description": action["description"], "action_type_id": action["action_type_id"],
-            "assignee_id": action.get("assignee_id"), "due_date": action.get("due_date"),
+            "assignee": action.get("assignee"), "due_date": action.get("due_date"),
             "outcome_status": outcome_status,
         },
         headers=headers, timeout=30,
@@ -1641,7 +1648,8 @@ def create_risk(
     residual: tuple[str, str] | None = None, **fields,
 ) -> dict:
     """Creates a project Risk (it starts Identified). `inherent`/`residual` are `(likelihood, consequence)` level names
-    from the `risk` scoring scheme, turned into the matching level ids."""
+    from the `risk` scoring scheme, turned into the matching level ids. `owner` is
+    `{"type": "user" | "org_group" | "project_group", "id": ...}`."""
     for prefix, chosen in (("inherent", inherent), ("residual", residual)):
         if chosen is not None:
             fields[f"{prefix}_likelihood_level_id"] = levels["likelihood"][chosen[0]]
@@ -1806,7 +1814,7 @@ def main() -> None:
         "identification rule, ahead of the compliance deadline.",
         action_type_id=drone_action_types["Review"]["id"],
         reason="Compliance deadline requires a documented review of the broadcast module, not just informal sign-off.",
-        assignee_id=demo_engineer["user_id"],
+        assignee={"type": "user", "id": demo_engineer["user_id"]},
     )
     submit_change_request(h_pm, drone["id"], firmware_review_cr["id"])
     decide_change_request(h_pm, drone["id"], firmware_review_cr["id"], approve=True,
@@ -1849,7 +1857,7 @@ def main() -> None:
         title="Wind tunnel stability test at 45 km/h sustained gust",
         description="Bench validation of airframe stability at the specified sustained gust threshold, "
         "ahead of the Verification & Validation stage.",
-        action_type_id=drone_action_types["Test"]["id"], assignee_id=demo_stakeholder["user_id"],
+        action_type_id=drone_action_types["Test"]["id"], assignee={"type": "user", "id": demo_stakeholder["user_id"]},
         due_date=(date.today() + timedelta(days=3)).isoformat(),
     )
     set_action_outcome(h_pm, drone["id"], wind_test, "failed")
@@ -1914,8 +1922,8 @@ def main() -> None:
                     "38 minutes still clears every current route's return-to-home margin per the Q3 telemetry — no objection from the ops side.")
     cast_vote(h(login("demo.stakeholder@example.com", PASSWORD)), drone["id"], drone_cr["id"], "approve",
               "Confirmed against current route data.")
-    create_cr_task(h_pm, drone["id"], drone_cr["id"], "Update the customer-facing spec sheet once approved.",
-                   assignee_id=demo_engineer["user_id"], due_date=(date.today() + timedelta(days=7)).isoformat())
+    drone_cr_task = create_cr_task(h_pm, drone["id"], drone_cr["id"], "Update the customer-facing spec sheet once approved.",
+                                   assignee={"type": "user", "id": demo_engineer["user_id"]}, due_date=(date.today() + timedelta(days=7)).isoformat())
 
     print("Creating 'Falcon-3 Avionics Subsystem' as a sub-project of Falcon-3 (hierarchical projects)...")
     # Demonstrates both RBAC-cascade directions from the same small fixture
@@ -2029,7 +2037,7 @@ def main() -> None:
         "theoretically achievable, before the next customer review.",
         action_type_id=cloud_action_types["Test"]["id"], reason="Need evidence against the tightened target "
         "before the next customer review, not just the infra team's headroom estimate.",
-        assignee_id=demo_engineer["user_id"],
+        assignee={"type": "user", "id": demo_engineer["user_id"]},
     )
     submit_change_request(h_pm, cloud["id"], latency_action_cr["id"])
     decide_change_request(h_pm, cloud["id"], latency_action_cr["id"], approve=True,
@@ -2340,6 +2348,24 @@ def main() -> None:
             f"{BASE}/orgs/{org['id']}/groups/{architecture_board.json()['id']}/members",
             json={"user_id": member["user_id"]}, headers=h_pm, timeout=30,
         ).raise_for_status()
+    # Core records can name a team too (users-and-groups parity): the Architecture Board owns a draft requirement
+    # and the Verification Squad reviews it and takes the wind-tunnel test; the board also takes a change request task
+    # and watches the OTA requirement's discussion.
+    set_requirement_status(
+        h_pm, drone["id"], drone_reqs["Operate in ambient temperatures between -10C and 45C"], "draft",
+        review_date=(date.today() + timedelta(days=21)).isoformat(),
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},
+        reviewer={"type": "project_group", "id": verification_squad.json()["id"]},
+    )
+    set_action_outcome(h_pm, drone["id"], {**wind_test, "assignee": {"type": "project_group", "id": verification_squad.json()["id"]}}, "failed")
+    httpx.patch(
+        f"{BASE}/projects/{drone['id']}/change-requests/{drone_cr['id']}/tasks/{drone_cr_task['id']}",
+        json={"assignee": {"type": "org_group", "id": architecture_board.json()["id"]}}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    httpx.post(
+        f"{BASE}/projects/{drone['id']}/requirements/{preflight_req['id']}/watchers",
+        json={"group": {"type": "org_group", "id": architecture_board.json()["id"]}}, headers=h_pm, timeout=30,
+    ).raise_for_status()
     single_fc_decision = create_decision(
         h_pm, drone["id"], title="Use a single flight controller with hot-swap failover",
         decision_statement="Falcon-3 will ship with one primary flight controller board and a cold-spare"
@@ -2888,7 +2914,8 @@ def main() -> None:
         "band_label": "High",
     }])
     risk_single_controller = create_risk(
-        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Safety"]["id"], owner_id=demo_admin["user_id"],
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Safety"]["id"],
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},  # a team owns the safety risk (users-and-groups parity)
         title="Flight controller fails in flight",
         statement="If the flight controller fails during a flight over people, the drone falls uncontrolled.",
         cause="Single flight controller board with no in-flight redundancy.", risk_event="Loss of flight control.",
@@ -2897,14 +2924,14 @@ def main() -> None:
         inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
     )
     risk_modem = create_risk(
-        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner_id=demo_admin["user_id"],
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner={"type": "user", "id": demo_admin["user_id"]},
         title="Cellular modem supplier misses delivery",
         statement="If the single-sourced modem arrives late, integration testing slips and the certification date is at risk.",
         risk_event="Late delivery of the telemetry modem.", consequence="Integration slips by several weeks.",
         treatment_strategy="mitigate", inherent=("Likely", "Moderate"), residual=("Possible", "Minor"),
     )
     risk_regulator = create_risk(
-        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Compliance"]["id"], owner_id=demo_admin["user_id"],
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Compliance"]["id"], owner={"type": "user", "id": demo_admin["user_id"]},
         title="Regulator withdraws BVLOS approval",
         statement="If the regulator withdraws beyond-visual-line-of-sight approval, populated-corridor contracts cannot be flown.",
         consequence="The core commercial route is lost.", inherent=("Rare", "Catastrophic"), residual=("Rare", "Catastrophic"),

@@ -48,15 +48,29 @@ If the [Stakeholders & Personas module](../modules/stakeholders-personas-module/
 
 If the [Risk Management module](../modules/risk-management-module/overview.md) is enabled, a requirement can be recorded as mitigating a Risk, and the Risk's owner can judge whether it actually reduces that Risk — see [Risk Management → Treatment and relationships](../modules/risk-management-module/treatment-and-relationships.md). Editing such a requirement flags that judgement for reassessment.
 
+## Owners, reviewers and groups
+
+Every requirement has an **owner**, defaulting to whoever created it, and may have an assigned **reviewer**. Either can be a user, an organisation group or one of the project's groups, so a team stays accountable when one person leaves. The page shows a group's name, its kind (Org group or Project group) and how many people it stands for, and the version history records who owned each version. An owner is required, so a requirement can never be left without one.
+
+```mermaid
+flowchart LR
+    G["Reviewer: a group"] --> M1["Any one member<br/>records the review"]
+    M1 --> R["The review records that member,<br/>not the group"]
+    G --> N["Reminder goes to every<br/>active member"]
+    G --> L["Appears on each member's<br/>My reviews due"]
+```
+
+A group confers no extra right. It only stands in where the requirement asks for "the owner" or "the reviewer"; editing a requirement still needs an editing role on the project.
+
 ## Review scheduling and completion
 
-A requirement can carry a review date and an assigned reviewer. Once the date passes, it appears on the assigned reviewer's **My reviews due** page and the project's own reviews-due page until someone records an outcome — met, or failed with a required comment explaining why — from the requirement's detail page.
+A requirement can carry a review date and an assigned reviewer. Once the date passes, it appears on the assigned reviewer's **My reviews due** page (for a group reviewer, on every member's page) and the project's own reviews-due page until someone records an outcome — met, or failed with a required comment explaining why — from the requirement's detail page. When the reviewer is a group, any one member can record the outcome, and the review keeps the name of the member who did. The reviews-due page can be narrowed to one reviewer (a user or a group) or to reviews assigned to you or your groups; the reminder goes to every active member of a reviewer group, or to the project managers when the group has no one to tell.
 
 Separately from approval, a project manager can mark an approved requirement **Completed** (and uncomplete it to correct a mistake), tracking which approved requirements have actually been delivered and verified rather than just baselined.
 
 ## CSV import and export
 
-Click **Import CSV** on the Requirements page, choose a file, then map its columns to the required fields (name, component, category — matched by prefix within that component — plus optional reasoning, level, and target version). A live preview shows the first few rows under the mapping before anything uploads, with required fields called out; **Download template** produces a starter CSV pre-filled with the project's own component/category prefixes. Rows that omit a target version default to the project's first stage, the same as creating a requirement directly. Export works the same way in reverse — a full-fidelity CSV of every field, including custom field values and target stage — so requirements can round-trip to and from a spreadsheet without hand-retyping anything.
+Click **Import CSV** on the Requirements page, choose a file, then map its columns to the required fields (name, component, category — matched by prefix within that component — plus optional reasoning, level, and target version). A live preview shows the first few rows under the mapping before anything uploads, with required fields called out; **Download template** produces a starter CSV pre-filled with the project's own component/category prefixes. Rows that omit a target version default to the project's first stage, the same as creating a requirement directly. Export works the same way in reverse — a full-fidelity CSV of every field, including custom field values and target stage — so requirements can round-trip to and from a spreadsheet without hand-retyping anything. Owners and reviewers are written to `owner_email` / `reviewer_email` for a user and to `owner_group` / `reviewer_group` for a group (as `Name (Org group)` or `Name (Project group)`), and either pair is read back on import; give one or the other, not both.
 
 ## Where this fits
 

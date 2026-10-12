@@ -895,7 +895,7 @@ def main() -> None:
         json={
             "name": locked_req["name"], "reasoning": locked_req["reasoning"], "clarification": "",
             "component_id": locked_req["component_id"], "category_id": locked_req["category_id"],
-            "owner_id": locked_req["owner_id"], "status": "approved", "keywords": [],
+            "owner": locked_req["owner"], "status": "approved", "keywords": [],
             "change_note": "E2E seed: locking for change-request workflow testing.",
         },
         headers=h_ab, timeout=30,

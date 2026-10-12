@@ -35,6 +35,7 @@ from app.models.custom_field import CustomFieldEntityKind, CustomFieldType
 from app.models.engagement import Subscription
 from app.models.enums import (
     ChangeRequestStatus,
+    PrincipalType,
     ProjectRole,
     RequirementLevel,
     RequirementStatus,
@@ -45,6 +46,7 @@ from app.models.project import Project, ProjectCategory, ProjectComponent, Proje
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project import MoveDirection
 from app.schemas.requirement import (
     RequirementCreate,
@@ -60,6 +62,7 @@ from app.services.bundle_common import enforce_upload_size_limit
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.downloads import filename_safe
+from app.services.principals import group_ref_from_text, validate_principal
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirement_csv import (
     CUSTOM_FIELD_COLUMN_PREFIX,
@@ -75,6 +78,7 @@ from app.services.requirements import (
     is_locked,
     set_keywords,
     unarchive_requirement,
+    version_people,
 )
 
 router = APIRouter(tags=["requirements-core"])
@@ -120,6 +124,7 @@ class _ListPrefetch:
         subscribed: Requirement ids the caller is subscribed to.
         comment_counts: Comment count per requirement id (absent = 0).
         open_change_request: Requirement ids with an open change request.
+        people: Resolved owner and reviewer (`services.principals.principal_labels`), keyed by `(type, id)`.
     """
 
     versions: dict[UUID, RequirementVersion] = field(default_factory=dict)
@@ -127,6 +132,7 @@ class _ListPrefetch:
     subscribed: set[UUID] = field(default_factory=set)
     comment_counts: dict[UUID, int] = field(default_factory=dict)
     open_change_request: set[UUID] = field(default_factory=set)
+    people: dict[tuple[str, UUID], PrincipalOut] = field(default_factory=dict)
 
 
 def _prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id: UUID) -> _ListPrefetch:
@@ -148,12 +154,14 @@ def _prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id
         prefetch.versions[version.requirement_id] = version
     if len(prefetch.versions) != len(set(requirement_ids)):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
+    prefetch.people = version_people(db, prefetch.versions.values())
     for requirement_id, keyword in db.execute(select(RequirementKeyword.requirement_id, RequirementKeyword.keyword).where(
         RequirementKeyword.requirement_id.in_(requirement_ids),
     )).all():
         prefetch.keywords.setdefault(requirement_id, []).append(keyword)
     prefetch.subscribed = set(db.scalars(select(Subscription.entity_id).where(
-        Subscription.user_id == current_user_id, Subscription.entity_type == "requirement",
+        Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
+        Subscription.entity_type == "requirement",
         Subscription.entity_id.in_(requirement_ids),
     )).all())
     prefetch.comment_counts = engagement.get_comment_counts(db, ReviewTargetType.REQUIREMENT, requirement_ids)
@@ -173,11 +181,13 @@ def _to_out(
     (from `_prefetch_for_list`) when serialising many rows, so these come
     from batched lookups instead of per-row queries."""
     if prefetch is not None:
+        people = prefetch.people
         keywords = prefetch.keywords.get(requirement.id, [])
         subscribed = requirement.id in prefetch.subscribed
         comment_count = prefetch.comment_counts.get(requirement.id, 0)
         open_cr = requirement.id in prefetch.open_change_request
     else:
+        people = version_people(db, [version])
         keywords = get_keywords(db, requirement.id)
         subscribed = engagement.is_subscribed(db, current_user_id, "requirement", requirement.id)
         comment_count = engagement.get_comment_count(db, ReviewTargetType.REQUIREMENT, requirement.id)
@@ -186,7 +196,7 @@ def _to_out(
         id=requirement.id, project_id=requirement.project_id, unique_code=requirement.unique_code,
         name=version.name, reasoning=version.reasoning, clarification=version.clarification,
         description=version.description,
-        status=version.status, owner_id=version.owner_id, component_id=requirement.component_id,
+        status=version.status, owner=people[(version.owner_type, version.owner_id)], component_id=requirement.component_id,
         category_id=requirement.category_id, target_stage_id=version.target_stage_id, level=version.level,
         sort_order=version.sort_order, creator_id=requirement.creator_id,
         is_archived=requirement.is_archived, is_locked=is_locked(version),
@@ -198,7 +208,8 @@ def _to_out(
         comment_count=comment_count,
         has_open_change_request=open_cr,
         requires_approval=version.status in REQUIRES_APPROVAL_STATUSES,
-        review_date=version.review_date, review_lead_days=version.review_lead_days, reviewer_id=version.reviewer_id,
+        review_date=version.review_date, review_lead_days=version.review_lead_days,
+        reviewer=people[(version.reviewer_type, version.reviewer_id)] if version.reviewer_id else None,
     )
 
 
@@ -236,6 +247,11 @@ def create_requirement_endpoint(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid target_stage_id.")
 
     custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, payload.custom_fields)
+    for person_field in ("owner", "reviewer"):
+        validate_principal(
+            db, getattr(payload, person_field), organization_id=project.organization_id, project_id=project_id,
+            field=person_field,
+        )
 
     creator_override_id = None
     if payload.creator_id is not None:
@@ -249,10 +265,10 @@ def create_requirement_endpoint(
         db, project, component, category, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
         description=payload.description,
-        owner_id=payload.owner_id, keywords=payload.keywords, sort_order=count,
+        owner=payload.owner, keywords=payload.keywords, sort_order=count,
         target_stage_id=target_stage_id, level=payload.level,
         custom_fields=custom_fields, creator_override_id=creator_override_id,
-        review_date=payload.review_date, review_lead_days=payload.review_lead_days, reviewer_id=payload.reviewer_id,
+        review_date=payload.review_date, review_lead_days=payload.review_lead_days, reviewer=payload.reviewer,
     )
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="created",
               actor_id=current_user.id, project_id=project_id)
@@ -388,10 +404,13 @@ async def import_requirements(
     `reasoning`, `clarification`, `description`, `level`
     ("requirement"/"recommended", defaults to "requirement"),
     `target_version` (must match an existing `ProjectStage.name`, defaults
-    to the project's earliest stage), `owner_email` (must match an existing
-    user's email; blank falls back to the importing user, same as a normal
-    create), `keywords` (`;`-separated), `review_date` (`YYYY-MM-DD`),
-    `review_lead_days` (integer), `reviewer_email`, and one
+    to the project's earliest stage), `owner_email` (must match a member of
+    the project's organisation; blank falls back to the importing user, same as
+    a normal create) or `owner_group` (an organisation group or one of this
+    project's groups, as `Name (Org group)` / `Name (Project group)` or a bare
+    name; not both), `keywords` (`;`-separated), `review_date` (`YYYY-MM-DD`),
+    `review_lead_days` (integer), `reviewer_email` or `reviewer_group` (as the
+    owner columns), and one
     `cf_<custom field name>` column per the project's requirement custom
     field definitions (validated the same way `POST` (create) validates
     them — see `validate_custom_field_values`).
@@ -453,6 +472,33 @@ async def import_requirements(
             email_cache[normalized] = db.scalar(select(User).where(User.email == normalized))
         return email_cache[normalized]
 
+    def _person_from_row(person_field: str) -> tuple[PrincipalRef | None, str | None]:
+        """The owner or reviewer a CSV row names: `<field>_email` (a user of this organisation) or
+        `<field>_group` (an organisation group or one of this project's groups); at most one.
+        Returns `(principal, None)`, or `(None, error message)` for a row that cannot be imported.
+        """
+        email = (row.get(f"{person_field}_email") or "").strip()
+        group = (row.get(f"{person_field}_group") or "").strip()
+        if email and group:
+            return None, f"Give either {person_field}_email or {person_field}_group, not both."
+        ref: PrincipalRef | None = None
+        if email:
+            user = _lookup_user(email)
+            if user is None:
+                return None, f"Unknown {person_field}_email '{email}'."
+            ref = PrincipalRef(type=PrincipalType.USER, id=user.id)
+        elif group:
+            ref, problem = group_ref_from_text(db, group, organization_id=project.organization_id, project_id=project_id)
+            if ref is None:
+                return None, problem
+        try:
+            validate_principal(
+                db, ref, organization_id=project.organization_id, project_id=project_id, field=person_field,
+            )
+        except HTTPException as exc:
+            return None, str(exc.detail)
+        return ref, None
+
     for row_num, row in enumerate(reader, start=2):  # header is row 1
         name = (row.get("name") or "").strip()
         component_prefix = (row.get("component_prefix") or "").strip()
@@ -489,23 +535,16 @@ async def import_requirements(
             errors.append(RequirementImportError(row=row_num, message="Project has no stages; cannot assign a target."))
             continue
 
-        owner_email = (row.get("owner_email") or "").strip()
-        owner_id = None
-        if owner_email:
-            owner = _lookup_user(owner_email)
-            if owner is None:
-                errors.append(RequirementImportError(row=row_num, message=f"Unknown owner_email '{owner_email}'."))
-                continue
-            owner_id = owner.id
-
-        reviewer_email = (row.get("reviewer_email") or "").strip()
-        reviewer_id = None
-        if reviewer_email:
-            reviewer = _lookup_user(reviewer_email)
-            if reviewer is None:
-                errors.append(RequirementImportError(row=row_num, message=f"Unknown reviewer_email '{reviewer_email}'."))
-                continue
-            reviewer_id = reviewer.id
+        people: dict[str, PrincipalRef | None] = {}
+        people_error = None
+        for person_field in ("owner", "reviewer"):
+            person, people_error = _person_from_row(person_field)
+            if people_error is not None:
+                break
+            people[person_field] = person
+        if people_error is not None:
+            errors.append(RequirementImportError(row=row_num, message=people_error))
+            continue
 
         review_date_raw = (row.get("review_date") or "").strip()
         review_date_value = None
@@ -552,9 +591,9 @@ async def import_requirements(
             db, project, component, category, current_user,
             name=name, reasoning=(row.get("reasoning") or "").strip(),
             clarification=(row.get("clarification") or "").strip(), description=(row.get("description") or "").strip(),
-            owner_id=owner_id, keywords=keywords, sort_order=count, target_stage_id=target_stage_id, level=level,
+            owner=people["owner"], keywords=keywords, sort_order=count, target_stage_id=target_stage_id, level=level,
             custom_fields=custom_fields, review_date=review_date_value, review_lead_days=review_lead_days_value,
-            reviewer_id=reviewer_id,
+            reviewer=people["reviewer"],
         )
         count += 1
         created += 1
@@ -643,18 +682,24 @@ def update_requirement(
             "This requirement is approved; changes must be made via a change request.",
         )
     custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, payload.custom_fields)
+    project = db.get(Project, project_id)
+    for person_field in ("owner", "reviewer"):
+        validate_principal(
+            db, getattr(payload, person_field), organization_id=project.organization_id, project_id=project_id,
+            field=person_field,
+        )
     new_version = apply_new_version(
         db, requirement, current_version, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
         description=payload.description,
-        status_value=payload.status, owner_id=payload.owner_id,
+        status_value=payload.status, owner=payload.owner,
         target_stage_id=payload.target_stage_id, target_stage_explicitly_set=payload.target_stage_id is not None,
         level=payload.level,
         change_note=payload.change_note or "Direct edit during scoping.",
         custom_fields=custom_fields,
         review_date=payload.review_date, review_date_explicitly_set=True,
         review_lead_days=payload.review_lead_days, review_lead_days_explicitly_set=True,
-        reviewer_id=payload.reviewer_id, reviewer_id_explicitly_set=True,
+        reviewer=payload.reviewer, reviewer_explicitly_set=True,
     )
     if payload.component_id != requirement.component_id or payload.category_id != requirement.category_id:
         component = db.get(ProjectComponent, payload.component_id)
@@ -740,10 +785,12 @@ def requirement_history(
         .where(RequirementVersion.requirement_id == requirement_id)
         .order_by(RequirementVersion.version_number)
     ).all()
+    people = version_people(db, versions)
     return [
         RequirementVersionOut(
             version_number=v.version_number, name=v.name, reasoning=v.reasoning,
-            clarification=v.clarification, description=v.description, status=v.status, owner_id=v.owner_id,
+            clarification=v.clarification, description=v.description, status=v.status,
+            owner=people[(v.owner_type, v.owner_id)],
             target_stage_id=v.target_stage_id, level=v.level,
             change_note=v.change_note, change_request_id=v.change_request_id,
             custom_fields=v.custom_fields,

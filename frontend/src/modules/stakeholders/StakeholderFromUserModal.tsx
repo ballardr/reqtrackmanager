@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import type { OrgUser } from "../../api/types";
 import { userPrincipal } from "../../api/types";
-import { PrincipalPicker } from "../../components/PrincipalPicker";
+import { PrincipalFormField } from "../../components/PrincipalFormField";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { TextField } from "./RecordFormFields";
@@ -43,13 +43,10 @@ export function StakeholderFromUserModal({
         <p className="text-muted" style={{ margin: 0 }}>
           Creates a Stakeholder with this person's name and email filled in, linked to their account.
         </p>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span>Organisation user</span>
-          <PrincipalPicker
-            kinds={["user"]} orgUsers={orgUsers} value={userPrincipal(userId)} onChange={(principal) => setUserId(principal?.id ?? null)}
-            ariaLabel="Organisation user" placeholder="Search users…"
-          />
-        </div>
+        <PrincipalFormField
+          label="Organisation user" kinds={["user"]} orgUsers={orgUsers} value={userPrincipal(userId)}
+          onChange={(principal) => setUserId(principal?.id ?? null)} ariaLabel="Organisation user" placeholder="Search users…"
+        />
         <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={typeOptions} placeholder="No type" />
         <TextField label="Role" value={role} onChange={setRole} />
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}

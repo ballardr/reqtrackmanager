@@ -1351,6 +1351,7 @@ Rules and gotchas:
 - An `accepted` risk's levels, acceptance criteria and strategy cannot be edited; move it back to `assessed` first.
 - A change to a linked requirement moves its `effective` verdict to `needs_reassessment`. Reassess it with `assess_risk_treatment`; do not simply re-mark it effective without checking the change.
 - `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none).
+- A risk's `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. `null` clears it. Members of an owner group may assess treatments and record reviews, as the owner can.
 - There is no delete tool. Do not invent level or type ids; read them.
 
 ### Tool list
@@ -1413,13 +1414,13 @@ Parameters: `project_id*` (uuid, in path)
 
 Proposes a Risk in the Identified status. Any project member may; only the title is required.
 
-Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner_id` (uuid, in body), `review_date` (string, in body)
+Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner` (object, in body), `review_date` (string, in body)
 
 #### `risk_management_update_risk` (write)
 
 Updates a Risk as a new version; only the fields supplied change. Needs the Risk Manager role.
 
-Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `title` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner_id` (uuid, in body), `review_date` (string, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `title` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner` (object, in body), `review_date` (string, in body), `change_note` (string, in body)
 
 #### `risk_management_transition_risk` (write)
 

@@ -309,7 +309,6 @@ const en = {
     noComponentsOrCategories: "This {project} has no {components} or {categories} yet.",
     configureComponentsFirst: "Add one in {Project} Admin before creating {requirements}.",
     noCategoriesForComponent: "No {categories} under this {component} yet — add one in {Project} Admin.",
-    reviewerNoLongerMember: "no longer a member",
     makeChangeRequest: "Make {changeRequest}",
     changedBy: "Changed by",
     targetVersion: "Target version",
@@ -342,6 +341,17 @@ const en = {
     bulkResultSuccess: (n: number) => `${n} updated`,
     bulkResultPartial: (n: number, failed: number) => `${n} updated, ${failed} failed`,
   },
+  watchers: {
+    title: "Watching groups",
+    explanation: "Everyone in these groups who can view this project is told about new comments.",
+    none: "No group is watching.",
+    add: "Add a group…",
+    added: "Watching group added.",
+    removed: "Watching group removed.",
+    addFailed: "Could not add the group.",
+    removeFailed: "Could not remove the group.",
+    stopWatching: "Stop watching",
+  },
   reviews: {
     projectTitle: "{Requirements} due for review",
     myTitle: "My reviews due",
@@ -351,6 +361,7 @@ const en = {
     unassigned: "Unassigned",
     allComponents: "All {components}",
     allReviewers: "All reviewers",
+    assignedToMe: "Assigned to me or my groups",
   },
   changeRequests: {
     title: "{ChangeRequests}",

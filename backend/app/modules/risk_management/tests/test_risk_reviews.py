@@ -15,7 +15,7 @@ MCP tools.
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -41,6 +41,7 @@ from app.modules.risk_management.tests._helpers import (
     mitigate_with_requirement,
     project_base,
     setup,
+    user_ref,
 )
 from tests.conftest import auth_headers, create_project
 
@@ -143,7 +144,7 @@ def test_the_owner_may_review_but_a_plain_member_may_not(client, admin_token):
     owner_id, owner_token = _owner(client, token, org, project)
     _other_id, other_token = _owner(client, token, org, project)
     manager_id, manager_token = _owner(client, token, org, project, role="risk_manager")
-    risk = create_risk(client, token, project["id"], owner_id=owner_id)
+    risk = create_risk(client, token, project["id"], owner=user_ref(owner_id))
 
     assert _review(client, other_token, project["id"], risk["id"]).status_code == 403
     assert _review(client, owner_token, project["id"], risk["id"]).status_code == 201
@@ -160,7 +161,7 @@ def test_review_validation(client, admin_token):
     assert client.post(url, json={"outcome": "confirmed", "notes": "x"}, headers=auth_headers(token)).status_code == 422
     assert client.post(url, json={"outcome": "confirmed", "notes": "", "next_review_date": None}, headers=auth_headers(token)).status_code == 422
     assert _review(client, token, project["id"], risk["id"], notes="   ").status_code == 409
-    assert _review(client, token, project["id"], risk["id"], next_review=date.today().isoformat()).status_code == 409
+    assert _review(client, token, project["id"], risk["id"], next_review=datetime.now(UTC).date().isoformat()).status_code == 409
     assert _review(client, token, project["id"], risk["id"], next_review=_tomorrow_plus(-3)).status_code == 409
     assert client.get(url, headers=auth_headers(token)).json() == []
 
@@ -252,9 +253,9 @@ def test_overdue_flag_and_filter(client, admin_token):
 def test_the_sweep_notifies_the_owner_once_per_review_date_and_rearms_on_reschedule(client, admin_token):
     org, project, token = setup(client, admin_token, "Risk Rev Sweep Co")
     owner_id, owner_token = _owner(client, token, org, project)
-    due = create_risk(client, token, project["id"], owner_id=owner_id, review_date=_tomorrow_plus(3))
-    overdue = create_risk(client, token, project["id"], owner_id=owner_id, review_date=_tomorrow_plus(-4))
-    later = create_risk(client, token, project["id"], owner_id=owner_id, review_date=_tomorrow_plus(60))
+    due = create_risk(client, token, project["id"], owner=user_ref(owner_id), review_date=_tomorrow_plus(3))
+    overdue = create_risk(client, token, project["id"], owner=user_ref(owner_id), review_date=_tomorrow_plus(-4))
+    later = create_risk(client, token, project["id"], owner=user_ref(owner_id), review_date=_tomorrow_plus(60))
 
     _sweep()
     _sweep()  # idempotent
@@ -287,17 +288,17 @@ def test_an_unowned_risk_notifies_risk_managers_and_project_managers(client, adm
 def test_the_sweep_skips_closed_archived_and_module_disabled_risks(client, admin_token):
     org, project, token = setup(client, admin_token, "Risk Rev Skip Co")
     owner_id, owner_token = _owner(client, token, org, project)
-    closed = create_risk(client, token, project["id"], owner_id=owner_id, review_date=_tomorrow_plus(-1))
+    closed = create_risk(client, token, project["id"], owner=user_ref(owner_id), review_date=_tomorrow_plus(-1))
     for status in ("rejected", "closed"):
         assert client.post(_url(project["id"], closed["id"]) + "/transition", json={"status": status},
                            headers=auth_headers(token)).status_code == 200
-    archived = create_risk(client, token, project["id"], owner_id=owner_id, review_date=_tomorrow_plus(-1))
+    archived = create_risk(client, token, project["id"], owner=user_ref(owner_id), review_date=_tomorrow_plus(-1))
     assert client.post(_url(project["id"], archived["id"]) + "/archive", headers=auth_headers(token)).status_code == 200
 
     _sweep()
     assert _notifications(client, owner_token, REVIEW_OVERDUE_TYPE) == []
 
-    create_risk(client, token, project["id"], owner_id=owner_id, review_date=_tomorrow_plus(-1))
+    create_risk(client, token, project["id"], owner=user_ref(owner_id), review_date=_tomorrow_plus(-1))
     off = client.put(f"/api/v1/orgs/{org['id']}/modules/risk_management", json={"enabled": False}, headers=auth_headers(token))
     assert off.status_code == 200, off.text
     _sweep()
@@ -312,7 +313,7 @@ def _edit_requirement(client, token, project_id, requirement_id, **changes):
     body = {
         "name": current["name"], "reasoning": current["reasoning"], "clarification": current["clarification"],
         "description": current["description"], "component_id": current["component_id"],
-        "category_id": current["category_id"], "owner_id": current["owner_id"], **changes,
+        "category_id": current["category_id"], "owner": current["owner"], **changes,
     }
     resp = client.put(f"/api/v1/projects/{project_id}/requirements/{requirement_id}", json=body, headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
@@ -326,7 +327,7 @@ def _treatment_status(client, token, project_id, risk_id, link_id) -> dict:
 def test_editing_a_mitigating_requirement_sends_the_verdict_back_and_notifies_once(client, admin_token):
     org, project, token = setup(client, admin_token, "Risk Rev Detect Co")
     owner_id, owner_token = _owner(client, token, org, project)
-    risk = create_risk(client, token, project["id"], owner_id=owner_id)
+    risk = create_risk(client, token, project["id"], owner=user_ref(owner_id))
     link_id, requirement_id = mitigate_with_requirement(client, token, org, project, risk["id"])
     assert assess(client, token, project["id"], risk["id"], link_id).status_code == 200
     assert _risk(client, token, project["id"], risk["id"])["is_effectively_treated"] is True
@@ -355,7 +356,7 @@ def test_editing_a_mitigating_requirement_sends_the_verdict_back_and_notifies_on
 def test_only_effective_verdicts_are_sent_back(client, admin_token):
     org, project, token = setup(client, admin_token, "Risk Rev Detect Scope Co")
     owner_id, owner_token = _owner(client, token, org, project)
-    risk = create_risk(client, token, project["id"], owner_id=owner_id)
+    risk = create_risk(client, token, project["id"], owner=user_ref(owner_id))
     proposed_link, proposed_req = mitigate_with_requirement(client, token, org, project, risk["id"])
     ineffective_link, ineffective_req = mitigate_with_requirement(client, token, org, project, risk["id"])
     assert assess(client, token, project["id"], risk["id"], ineffective_link, status="ineffective", rationale="No.").status_code == 200
@@ -371,7 +372,7 @@ def test_only_effective_verdicts_are_sent_back(client, admin_token):
 def test_an_edit_that_does_not_change_what_the_requirement_says_is_ignored(client, admin_token):
     org, project, token = setup(client, admin_token, "Risk Rev Detect Noop Co")
     owner_id, owner_token = _owner(client, token, org, project)
-    risk = create_risk(client, token, project["id"], owner_id=owner_id)
+    risk = create_risk(client, token, project["id"], owner=user_ref(owner_id))
     link_id, requirement_id = mitigate_with_requirement(client, token, org, project, risk["id"])
     assert assess(client, token, project["id"], risk["id"], link_id).status_code == 200
 
@@ -430,7 +431,7 @@ def test_a_change_in_another_project_flags_the_verdict_but_the_notification_does
     assert client.patch(f"/api/v1/projects/{parent['id']}", json={"can_be_parent": True}, headers=auth_headers(token)).status_code == 200
     child = create_project(client, token, org["id"], "Risk Rev Detect Cross Child", parent_project_id=parent["id"])
     owner_id, owner_token = _owner(client, token, org, child)
-    risk = create_risk(client, token, child["id"], owner_id=owner_id)
+    risk = create_risk(client, token, child["id"], owner=user_ref(owner_id))
     requirement_id = create_requirement(client, token, parent["id"], "Ancestor mitigation")
     resp = client.post(
         f"/api/v1/projects/{child['id']}/artefacts/risk/{risk['id']}/links",
@@ -472,7 +473,7 @@ def test_module_notification_types_appear_in_preferences_and_can_be_set(client, 
 def test_an_opted_out_module_notification_is_hidden_in_the_list(client, admin_token):
     org, project, token = setup(client, admin_token, "Risk Rev Optout Co")
     owner_id, owner_token = _owner(client, token, org, project)
-    create_risk(client, token, project["id"], owner_id=owner_id, review_date=_tomorrow_plus(-1))
+    create_risk(client, token, project["id"], owner=user_ref(owner_id), review_date=_tomorrow_plus(-1))
     assert client.put(f"/api/v1/notifications/preferences/{REVIEW_OVERDUE_TYPE}", json={"ui_enabled": False, "email_enabled": True},
                       headers=auth_headers(owner_token)).status_code == 200
 
