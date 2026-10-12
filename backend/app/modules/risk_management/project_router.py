@@ -11,8 +11,10 @@ may propose (create) a risk; `_shared.require_risk_manage` (project Risk Manager
 role or FGAC grant) to edit, archive, attach evidence or change the project's
 types. The lifecycle `transition` endpoint needs the Risk Manager role, except a
 move to `ACCEPTED`, which needs the Risk Acceptor role and (via MCP) the
-org+project AI-approval gate. Links and reviews are later phases. A risk's files
-resolve through `service.resolve_risk_file_project_id`.
+org+project AI-approval gate. Relationships are made through the generic artefact
+link endpoints; this router lists a risk's treatment links and records the verdict
+on each (`treatment.py`): the risk's owner or a Risk Manager may assess. Reviews are
+a later phase. A risk's files resolve through `service.resolve_risk_file_project_id`.
 """
 
 from __future__ import annotations
@@ -39,6 +41,9 @@ from app.modules.risk_management.schemas import (
     RiskTransitionRequest,
     RiskUpdate,
     RiskVersionOut,
+    TreatmentAssessmentRequest,
+    TreatmentListOut,
+    TreatmentOut,
 )
 from app.modules.risk_management.service import (
     RISK_ARTEFACT_TYPE,
@@ -50,10 +55,17 @@ from app.modules.risk_management.service import (
     list_project_risks,
     unarchive_risk,
 )
+from app.modules.risk_management.treatment import (
+    TreatmentLink,
+    assess_treatment,
+    effective_treatment_counts,
+    far_type_label,
+    list_treatment_links,
+)
 from app.schemas.file import FileAssetOut
 from app.schemas.type_vocabulary import EffectiveTypeOut, ProjectTypeCreate, ProjectTypeOut, ProjectTypeOverrideUpdate
 from app.services.audit import log_event
-from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
+from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled, require_project_subcomponent_enabled
 
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{RISK_MODULE_KEY}", tags=["risk-management-project"])
 
@@ -156,13 +168,22 @@ def create_risk(
 
 @router.get("/risks", response_model=list[RiskOut])
 def list_risks(
-    project_id: UUID, include_archived: bool = False, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, include_archived: bool = False, effectively_treated: bool | None = None,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """The project's risks with derived ratings; archived ones only with `include_archived`."""
+    """The project's risks with derived ratings; archived ones only with
+    `include_archived`. `effectively_treated=false` answers "which risks have no
+    effective treatment yet", `true` the opposite."""
     project = _project(db, project_id)
     ctx = load_rating_context(db, project)
     risks = list_project_risks(db, project_id, include_archived=include_archived)
-    return [sh.risk_to_out(db, r, get_current_risk_version(db, r.id), ctx) for r in risks]
+    counts = effective_treatment_counts(db, [r.id for r in risks])
+    if effectively_treated is not None:
+        risks = [r for r in risks if (counts.get(r.id, 0) > 0) == effectively_treated]
+    return [
+        sh.risk_to_out(db, r, get_current_risk_version(db, r.id), ctx, effective_treatments=counts.get(r.id, 0))
+        for r in risks
+    ]
 
 
 @router.get("/risks/{risk_id}", response_model=RiskOut)
@@ -241,6 +262,77 @@ def unarchive(project_id: UUID, risk_id: UUID, current_user: User = Depends(_req
               project_id=project_id)
     db.commit()
     return sh.current_risk_out(db, risk, project)
+
+
+# --- Treatment links and their assessment ------------------------------------
+
+
+def _treatment_out(treatment: TreatmentLink) -> TreatmentOut:
+    """The API shape of one treatment link."""
+    verdict = treatment.assessment
+    return TreatmentOut(
+        link_id=treatment.link.id, relationship=treatment.phrase, other_type=treatment.other_type,
+        other_type_label=far_type_label(treatment), other_id=treatment.other.id,
+        other_project_id=treatment.other.project_id, label=treatment.other.label,
+        other_status=treatment.other.status, other_is_archived=treatment.other.is_archived,
+        status=treatment.status, rationale=verdict.rationale if verdict else "",
+        assessed_by=verdict.assessed_by if verdict else None, assessed_at=verdict.assessed_at if verdict else None,
+    )
+
+
+@router.get("/risks/{risk_id}/treatments", response_model=TreatmentListOut)
+def list_risk_treatments(
+    project_id: UUID, risk_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The risk's treatment links (requirements, designs and actions that mitigate
+    or treat it), each with its verdict; `proposed` until someone assesses it. Far
+    ends the caller cannot view are counted in `hidden_count`, not described."""
+    project = _project(db, project_id)
+    risk = _get(db, project_id, risk_id)
+    items, hidden = list_treatment_links(db, project, risk.id, current_user.id)
+    return TreatmentListOut(
+        items=[_treatment_out(t) for t in items], hidden_count=hidden,
+        effective_count=effective_treatment_counts(db, [risk.id]).get(risk.id, 0),
+    )
+
+
+@router.put("/risks/{risk_id}/treatments/{link_id}", response_model=TreatmentOut)
+def assess_risk_treatment(
+    project_id: UUID, risk_id: UUID, link_id: UUID, payload: TreatmentAssessmentRequest,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Records whether one treatment link effectively reduces the risk. The risk's
+    owner or a Risk Manager may assess. `effective` and `ineffective` need a
+    rationale (409 otherwise); 404 for a link that is not a visible treatment link
+    of this risk; 409 on an archived risk."""
+    project = _project(db, project_id)
+    risk = _get(db, project_id, risk_id)
+    if get_current_risk_version(db, risk.id).owner_id != current_user.id:
+        sh.require_risk_manage(db, current_user, project)
+    lock_row_for_update(db, Risk, risk.id)
+    db.refresh(risk)
+    if risk.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "An archived risk's treatments cannot be assessed; unarchive it first.")
+    items, _hidden = list_treatment_links(db, project, risk.id, current_user.id)
+    target = next((t for t in items if t.link.id == link_id), None)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Treatment link not found.")
+    previous = target.status
+    sh.apply_value_error_as_conflict(
+        assess_treatment, db, risk_id=risk.id, link_id=link_id, status=payload.status, rationale=payload.rationale,
+        actor_id=current_user.id,
+    )
+    log_event(
+        db, entity_type=RISK_ARTEFACT_TYPE, entity_id=risk.id, action="treatment_assessed", actor_id=current_user.id,
+        project_id=project_id,
+        detail={
+            "link_id": str(link_id), "other_type": target.other_type, "other_id": str(target.other.id),
+            "from": previous.value, "to": payload.status.value,
+        },
+    )
+    db.commit()
+    refreshed, _ = list_treatment_links(db, project, risk.id, current_user.id)
+    return _treatment_out(next(t for t in refreshed if t.link.id == link_id))
 
 
 # --- Comments ----------------------------------------------------------------

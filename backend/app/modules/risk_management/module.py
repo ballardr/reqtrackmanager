@@ -2,9 +2,9 @@
 Module: modules.risk_management.module
 
 Registers the Risk Management module into the modular feature system's registry
-via `MODULE_DEFINITION` (docs/plans/module-03-risk-management-plan.md). Phases 1-2
+via `MODULE_DEFINITION` (docs/plans/module-03-risk-management-plan.md). Phases 1-3
 deliver the Risk artefact, its type vocabulary, the `risk` scoring scheme, module
-RBAC and the lifecycle.
+RBAC, the lifecycle and treatment relationships.
 
 Registered contributions:
 - Roles (not additions to core enums): `risk_manager` (project; carries the FGAC
@@ -21,9 +21,14 @@ Registered contributions:
   migration backfills existing organisations.
 - One sub-component, `risk`, so a project can switch it off without disabling the
   whole module.
+- `artefact_summary_providers` (`summaries.py`), so a risk is shown and followed
+  from any link, and `link_type_seeds` (`LINK_TYPE_SEEDS`): "Treated by"
+  (risk -> action), "Impacts" (risk -> requirement/design), and a Risk target for
+  the Decision module's "Addresses". "Mitigates", "Verified by" and "Related to"
+  are core defaults and need no seed. Relationships are made with the generic
+  link endpoints; `treatment.py` adds the verdict on each treatment link.
 
-Not yet registered, by design: the artefact summary provider and link-type seeds
-(Phase 3, when a risk first becomes linkable from the UI), the frontend manifest
+Not yet registered, by design: the frontend manifest beyond the artefact path
 (Phase 5) and MCP tools (Phase 4). Bundle export/import hooks are not provided
 either, matching Decision Management and Context & Strategy.
 
@@ -39,7 +44,13 @@ from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.registry import ModuleDefinition, ModuleRoleDefinition, ModuleSubComponentDefinition
+from app.models.enums import LinkFlow
+from app.modules.registry import (
+    LinkTypeSeed,
+    ModuleDefinition,
+    ModuleRoleDefinition,
+    ModuleSubComponentDefinition,
+)
 from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MANAGE_PERMISSION
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
 from app.modules.risk_management.service import (
@@ -47,6 +58,31 @@ from app.modules.risk_management.service import (
     RISK_MODULE_KEY,
     RISK_SUBCOMPONENT_KEY,
     RISK_TYPES,
+)
+from app.modules.risk_management.summaries import RISK_SUMMARY_PROVIDER
+from app.modules.risk_management.treatment import (
+    IMPACTS_FORWARD,
+    IMPACTS_REVERSE,
+    TREATED_BY_FORWARD,
+    TREATED_BY_REVERSE,
+)
+
+# "Design" and "System Element" (Module 6) are listed so the link types accept them
+# the day those modules register; until then they are simply not offered.
+LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
+    LinkTypeSeed(
+        TREATED_BY_FORWARD, TREATED_BY_REVERSE, LinkFlow.NONE,
+        allowed_source_types=(RISK_ARTEFACT_TYPE,), allowed_target_types=("requirement_action",),
+    ),
+    LinkTypeSeed(
+        IMPACTS_FORWARD, IMPACTS_REVERSE, LinkFlow.NONE,
+        allowed_source_types=(RISK_ARTEFACT_TYPE,), allowed_target_types=("requirement", "design", "system_element"),
+    ),
+    # Merges into Decision Management's "Addresses" (decision -> pain point): a Decision may address a Risk.
+    LinkTypeSeed(
+        "Addresses", "Is addressed by", LinkFlow.NONE,
+        allowed_source_types=("decision",), allowed_target_types=(RISK_ARTEFACT_TYPE,),
+    ),
 )
 
 
@@ -110,6 +146,8 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_types=(RISK_ARTEFACT_TYPE,),
     artefact_type_labels={RISK_ARTEFACT_TYPE: "Risk"},
     artefact_ids_in_organization=_artefact_ids_in_organization,
+    artefact_summary_providers={RISK_ARTEFACT_TYPE: RISK_SUMMARY_PROVIDER},
+    link_type_seeds=LINK_TYPE_SEEDS,
     sub_components=(ModuleSubComponentDefinition(key=RISK_SUBCOMPONENT_KEY, name="Risks", default_enabled=True),),
     scoring_schemes=(RISK_SCORING_SCHEME,),
     roles=(

@@ -2853,6 +2853,38 @@ def main() -> None:
         h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Performance"]["id"], title="Gimbal vibration degrades imagery",
         statement="Rotor vibration may blur inspection imagery at the gimbal's maximum zoom.",
     )
+    # Phase 3: treatment links and their verdicts. A link alone only "proposes" a treatment; the project manager
+    # (a Risk Manager) attests the pre-flight diagnostics are effective, leaves the return-to-home link proposed, and
+    # the modem risk is treated by a dual-sourcing action that is linked but not yet assessed.
+    risk_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
+    risk_url = f"{BASE}/projects/{drone['id']}/modules/risk_management/risks"
+    effective_link = create_artefact_link(
+        h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Mitigates"]["id"],
+        other_type="requirement", other_id=preflight_req["id"], direction="incoming",
+    )
+    httpx.put(
+        f"{risk_url}/{risk_single_controller['id']}/treatments/{effective_link['id']}",
+        json={"status": "effective", "rationale": "Diagnostics detect a degraded controller on the ground, before launch."},
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
+    create_artefact_link(
+        h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Mitigates"]["id"],
+        other_type="requirement", other_id=return_to_home_req["id"], direction="incoming",
+    )
+    modem_action_types = httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()
+    modem_action = create_and_link_action(
+        h_pm, drone["id"], gps_req["id"], title="Qualify a second cellular modem supplier",
+        description="Dual-source the telemetry modem so one late delivery cannot stall integration.",
+        action_type_id=modem_action_types[0]["id"],
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "risk", risk_modem["id"], link_type_id=risk_link_types["Treated by"]["id"],
+        other_type="requirement_action", other_id=modem_action["id"],
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Impacts"]["id"],
+        other_type="requirement", other_id=flight_log_req["id"],
+    )
     print(f"  Risks: {risk_single_controller['unique_code']} {risk_single_controller['title']!r}"
           f" (inherent {risk_single_controller['inherent_rating']['label']}, residual {risk_single_controller['residual_rating']['label']}),"
           f" {risk_regulator['unique_code']} {risk_regulator['title']!r} (inherent {risk_regulator['inherent_rating']['label']}"

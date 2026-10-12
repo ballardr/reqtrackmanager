@@ -18,7 +18,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.modules.risk_management.enums import RiskStatus, TreatmentStrategy
+from app.modules.risk_management.enums import RiskStatus, TreatmentAssessmentStatus, TreatmentStrategy
 from app.schemas.file import FileAssetOut
 
 
@@ -116,6 +116,8 @@ class RiskOut(BaseModel):
     owner_id: UUID | None
     review_date: date | None
     version_number: int
+    effective_treatment_count: int = 0
+    is_effectively_treated: bool = False
 
     created_at: datetime
     updated_at: datetime
@@ -173,3 +175,35 @@ class RiskCommentOut(BaseModel):
     created_at: datetime
     edited_at: datetime | None = None
     attachments: list[FileAssetOut] = []
+
+
+class TreatmentAssessmentRequest(BaseModel):
+    """A verdict on one treatment link. A rationale is required for `effective`
+    and `ineffective`."""
+    status: TreatmentAssessmentStatus
+    rationale: str = ""
+
+
+class TreatmentOut(BaseModel):
+    """One treatment link of a risk with its far end and verdict. `status` is
+    `proposed` when nobody has assessed the link yet."""
+    link_id: UUID
+    relationship: str
+    other_type: str
+    other_type_label: str
+    other_id: UUID
+    other_project_id: UUID | None
+    label: str
+    other_status: str | None
+    other_is_archived: bool
+    status: TreatmentAssessmentStatus
+    rationale: str
+    assessed_by: UUID | None
+    assessed_at: datetime | None
+
+
+class TreatmentListOut(BaseModel):
+    """A risk's visible treatment links; `hidden_count` links point at records the caller cannot see."""
+    items: list[TreatmentOut]
+    hidden_count: int
+    effective_count: int

@@ -22,6 +22,7 @@ from app.models.custom_role import CustomRoleDefinition, CustomRolePermission, U
 from app.modules.risk_management.enums import RiskStatus
 from app.modules.risk_management.service import RISK_ALLOWED_TRANSITIONS
 from app.modules.risk_management.tests._helpers import (
+    add_effective_treatment,
     add_member,
     create_risk,
     grant_project_role,
@@ -59,7 +60,9 @@ def _score(client, token, project, risk, *, residual: bool = False) -> dict:
 
 
 def _ready(client, token, org, project, risk, *, owner: str | None = None) -> dict:
-    """Fills everything every guard needs: both ratings, owner, strategy, criteria."""
+    """Fills everything every guard needs: both ratings, owner, strategy, criteria
+    and one effective treatment."""
+    add_effective_treatment(client, token, org, project, risk["id"])
     _score(client, token, project, risk)
     _score(client, token, project, risk, residual=True)
     owner = owner or create_owner(client, token, org)
@@ -235,6 +238,7 @@ def test_mitigated_needs_a_residual_rating(client, admin_token):
     resp = _move(client, token, project["id"], risk["id"], "mitigated")
     assert resp.status_code == 409 and "residual rating" in resp.text
     _score(client, token, project, risk, residual=True)
+    add_effective_treatment(client, token, org, project, risk["id"])
     assert _move(client, token, project["id"], risk["id"], "mitigated").status_code == 200
 
 

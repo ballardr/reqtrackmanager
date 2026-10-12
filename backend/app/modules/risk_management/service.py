@@ -13,7 +13,8 @@ Business logic for the Risk Management module (Phases 1-2):
 - `resolve_risk_file_project_id`, the file-ownership hook.
 - The lifecycle (Phase 2): the branching `RISK_ALLOWED_TRANSITIONS` table, the
   per-target guards (`check_transition_guards`) and `transition_risk`, plus the
-  `ACCEPTED` content lock (`check_accepted_content_unchanged`).
+  `ACCEPTED` content lock (`check_accepted_content_unchanged`). `MITIGATED` also
+  needs an effective treatment (Phase 3, `treatment.py`).
 
 Design decisions:
 - Status is versioned content but is not editable through the update API: a
@@ -207,13 +208,23 @@ RISK_ALLOWED_TRANSITIONS: dict[RiskStatus, frozenset[RiskStatus]] = {
 ACCEPTED_LOCKED_FIELDS: tuple[str, ...] = (*LEVEL_COLUMN_AXES, "acceptance_criteria", "treatment_strategy")
 
 
-def check_transition_guards(version: RiskVersion, target: RiskStatus, ctx: RatingContext) -> None:
+def check_transition_guards(
+    version: RiskVersion, target: RiskStatus, ctx: RatingContext, *, effective_treatments: int = 0
+) -> None:
     """Checks the facts the target state demands of a risk's current content.
 
     - `ASSESSED`: an inherent rating (every axis the project's model needs is set).
     - `TREATMENT_PLANNED`: an owner and a treatment strategy.
-    - `MITIGATED`: a residual rating.
+    - `MITIGATED`: a residual rating and at least one treatment link assessed
+      effective (a risk is mitigated by something that works, not by a link).
     - `ACCEPTED`: a residual rating and written acceptance criteria.
+
+    Args:
+        version: The risk's current version.
+        target: The state being moved to.
+        ctx: The project's rating context.
+        effective_treatments: How many of the risk's treatment links are
+            assessed effective (`treatment.effective_treatment_counts`).
 
     Raises:
         ValueError: Naming what is missing.
@@ -229,6 +240,8 @@ def check_transition_guards(version: RiskVersion, target: RiskStatus, ctx: Ratin
             missing.append("a treatment strategy")
     if target in (RiskStatus.MITIGATED, RiskStatus.ACCEPTED) and residual is None:
         missing.append("a residual rating (set every residual scoring level the project's model needs)")
+    if target == RiskStatus.MITIGATED and effective_treatments == 0:
+        missing.append("a treatment assessed effective (link a mitigating requirement, design or action and assess it)")
     if target == RiskStatus.ACCEPTED and not version.acceptance_criteria.strip():
         missing.append("acceptance criteria")
     if missing:
@@ -273,7 +286,11 @@ def transition_risk(
         raise ValueError("An archived risk cannot change status; unarchive it first.")
     if target not in RISK_ALLOWED_TRANSITIONS[current.status]:
         raise ValueError(f"Cannot move a Risk from '{current.status.value}' to '{target.value}'.")
-    check_transition_guards(current, target, ctx)
+    from app.modules.risk_management.treatment import effective_treatment_counts
+
+    check_transition_guards(
+        current, target, ctx, effective_treatments=effective_treatment_counts(db, [risk.id]).get(risk.id, 0)
+    )
     note = comment.strip() or f"Status: {current.status.value} -> {target.value}."
     return apply_new_version(db, risk, current, actor, changes={"status": target}, change_note=note)
 

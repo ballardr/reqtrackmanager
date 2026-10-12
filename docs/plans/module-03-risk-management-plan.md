@@ -10,13 +10,14 @@ model as its Verification link target.
 §11 "Module 3 — Risk Management".
 
 **Status:** Phases 0 (2026-10-12, user sign-off), 1a (core per-cell rating
-override, 2026-10-12), 1 (data model, scoring, RBAC, project API, 2026-10-12)
-and 2 (lifecycle, 2026-10-12) complete; Phase 3 is next. Overview §46 groups this with Engineering
+override, 2026-10-12), 1 (data model, scoring, RBAC, project API, 2026-10-12),
+2 (lifecycle, 2026-10-12) and 3 (relationships and treatment assessment,
+2026-10-12) complete; Phase 4 is next. Overview §46 groups this with Engineering
 Design as "Phase 5" (built together, after Requirements & Libraries).
 
 ## Status / Resume Here
 
-4 / 8 phases complete (Phases 0, 1a, 1 and 2 done 2026-10-12). Phase 3 is next.
+5 / 8 phases complete (Phases 0, 1a, 1, 2 and 3 done 2026-10-12). Phase 4 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -24,7 +25,7 @@ Design as "Phase 5" (built together, after Requirements & Libraries).
 | 1a | Core scoring: per-cell rating override (added by Phase 0) | [x] Complete (2026-10-12) |
 | 1 | Data model: Risk, Risk Type, scoring registration, module RBAC | [x] Complete (2026-10-12) |
 | 2 | Risk lifecycle, treatment, and residual-risk tracking | [x] Complete (2026-10-12) |
-| 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [ ] Not started |
+| 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [x] Complete (2026-10-12) |
 | 4 | Risk reviews + reassessment scheduling | [ ] Not started |
 | 5 | Frontend UI | [ ] Not started |
 | 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping |
@@ -389,6 +390,49 @@ is what makes a risk register more than a list; it's what lets a later
 Reporting query answer "which risks have no effective mitigation yet"
 (one of overview §47.9's named AI-assisted-analysis candidates, and — even
 without AI — a plain query any Risk Manager needs routinely).
+
+**As built (2026-10-12):**
+
+```mermaid
+flowchart LR
+    REQ["Requirement / Design"] -- "Mitigates (core default)" --> R["Risk"]
+    R -- "Treated by (seeded)" --> ACT["Action"]
+    R -- "Verified by (core)" --> ACT
+    R -- "Impacts (seeded)" --> REQ
+    DEC["Decision"] -- "Addresses (merged seed)" --> R
+    R -- "Related to (core)" --> CMP["Compliance requirement"]
+    REQ -. "treatment link" .-> TA["RiskTreatmentAssessment<br/>proposed / effective /<br/>ineffective / needs_reassessment"]
+    ACT -. "treatment link" .-> TA
+    TA --> G["Mitigated guard +<br/>is_effectively_treated"]
+```
+
+- **No Risk-specific link endpoints.** Relationships are made, listed and removed
+  through the generic artefact link system; the module adds link-type seeds, a
+  `risk` summary provider (so a risk is shown and followed from any link and
+  appears in the finder, with status and type browse levels), and the verdict.
+- **Names differ from this section's wording** (Decided by: Agent): `Mitigated by`
+  is the reverse phrase of the core `Mitigates`, and `Affects` is `Impacts`
+  (`Is impacted by`), to avoid duplicate or mirror-image phrases next to existing
+  link types. `Verified by` and `Related to` (Compliance) are core defaults.
+  Design and System Element are named in `Impacts`' targets for Module 6.
+- **Treatment links** are `Mitigates` (risk is the target) and `Treated by` (risk
+  is the source); only they carry a verdict. `RiskTreatmentAssessment`
+  (`link_id` unique, cascading FK to `artefact_links`; migration `0074`) holds
+  `status`, `assessed_by/at` and `rationale`. A link with no row is `proposed`.
+- **API** (`/api/v1/projects/{id}/modules/risk_management/`): `GET
+  risks/{id}/treatments` (links with far end and verdict; unseen far ends are only
+  counted) and `PUT risks/{id}/treatments/{link_id}` (the risk's owner or a Risk
+  Manager; `effective`/`ineffective` need a rationale). `RiskOut` gains
+  `effective_treatment_count` and `is_effectively_treated`, and `GET risks` takes
+  `effectively_treated` for "which risks have no effective mitigation yet".
+- **`Mitigated` guard** now needs at least one effective treatment (deferred from
+  Phase 2). Phase 4's change detection sets `needs_reassessment`, which already
+  fails the guard.
+- **Decision to Risk:** a seed merging into Decision Management's `Addresses`;
+  migration `0074` widens existing organisations' restricted `Addresses` to accept
+  `risk`.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 3". Demo seed gains treatment links with one effective verdict.
 
 ## Phase 4 — Risk reviews + reassessment scheduling
 

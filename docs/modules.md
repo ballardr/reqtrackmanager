@@ -1025,6 +1025,13 @@ ModuleDefinition(
 - `dedicated_endpoint=True` marks a type with a fixed meaning and its own action
   (supersession flips a status): the generic link endpoints neither offer, create nor
   delete it, and your own action passes `enforce_rules=False` to `create_link`.
+- A seed can extend another module's link type without importing it: seeds
+  sharing a `forward_name` merge, so Risk Management declares `"Addresses"` with
+  `allowed_source_types=("decision",)`, `allowed_target_types=("risk",)` and the
+  type accepts Risk targets as well as Decision Management's Pain Point. Seeds
+  never touch a type an organisation already has, so a module widening an
+  existing restricted type ships a data migration for existing organisations
+  too (Risk Management's `0074`).
 - A module declaring `artefact_types` also needs `artefact_summary_providers`,
   `artefact_type_labels` (§4f) and, on the frontend, `artefactPaths`, so the type can
   be shown and followed from a link; `tests/test_artefact_type_routes.py` and

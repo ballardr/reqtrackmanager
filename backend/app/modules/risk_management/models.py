@@ -14,6 +14,8 @@ management-plan.md Phase 1):
   the same shape as Persona/Stakeholder types. `RiskVersion` references a
   project type row (a passthrough row is created the first time an org type is
   chosen), so it carries one type column, not two.
+- `RiskTreatmentAssessment` — the verdict on one treatment link (Phase 3,
+  resolution 3), kept here so `ArtefactLink` needs no risk-only column.
 - `RiskComment` / `RiskCommentFile` / `RiskFile` — module-local comment and
   attachment tables (resolution 8), since extending the core
   `ReviewTargetType` enum would be a per-module edit to a core file.
@@ -46,7 +48,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.modules.risk_management.enums import RiskStatus, TreatmentStrategy
+from app.modules.risk_management.enums import RiskStatus, TreatmentAssessmentStatus, TreatmentStrategy
 
 
 class RiskTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
@@ -250,3 +252,33 @@ class RiskFile(UUIDPKMixin, Base):
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class RiskTreatmentAssessment(UUIDPKMixin, TimestampMixin, Base):
+    """Whether one treatment link (a requirement, design or action that
+    mitigates or treats the risk) is judged to actually reduce it, as opposed to
+    merely being linked. A link with no row is implicitly `PROPOSED`.
+
+    Attributes:
+        link_id: The `ArtefactLink` assessed; deleting the link deletes this row.
+        risk_id: The risk the link treats (denormalised from the link so the
+            "is this risk effectively treated" query needs no link join).
+        status: The verdict; see `TreatmentAssessmentStatus`.
+        assessed_by / assessed_at: Who gave the verdict, and when.
+        rationale: Why (required for an effective or ineffective verdict).
+    """
+
+    __tablename__ = "risk_treatment_assessments"
+
+    link_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("artefact_links.id", ondelete="CASCADE"), unique=True
+    )
+    risk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("risks.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[TreatmentAssessmentStatus] = mapped_column(
+        str_enum(TreatmentAssessmentStatus, 30), default=TreatmentAssessmentStatus.PROPOSED
+    )
+    assessed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    rationale: Mapped[str] = mapped_column(Text, default="")

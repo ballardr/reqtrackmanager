@@ -41,3 +41,15 @@ class TreatmentStrategy(str, enum.Enum):
     TRANSFER = "transfer"
     AVOID = "avoid"
     ACCEPT = "accept"
+
+
+class TreatmentAssessmentStatus(str, enum.Enum):
+    """A risk owner's verdict on whether one treatment link actually reduces
+    the risk (Phase 0 resolution 3). A treatment link with no assessment row is
+    implicitly `PROPOSED`; only `EFFECTIVE` counts toward the risk being treated.
+    `NEEDS_REASSESSMENT` marks a verdict that may no longer hold."""
+
+    PROPOSED = "proposed"
+    EFFECTIVE = "effective"
+    INEFFECTIVE = "ineffective"
+    NEEDS_REASSESSMENT = "needs_reassessment"

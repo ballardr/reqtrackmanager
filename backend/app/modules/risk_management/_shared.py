@@ -55,6 +55,7 @@ from app.modules.risk_management.service import (
     transition_risk,
     validate_levels,
 )
+from app.modules.risk_management.treatment import effective_treatment_counts
 from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.permissions import encode_permission
@@ -77,9 +78,12 @@ def _rating_out(rating: RiskRating | None) -> RiskRatingOut | None:
     return RiskRatingOut(**rating.__dict__) if rating is not None else None
 
 
-def risk_to_out(db: Session, risk: Risk, version: RiskVersion, ctx: RatingContext) -> RiskOut:
+def risk_to_out(
+    db: Session, risk: Risk, version: RiskVersion, ctx: RatingContext, *, effective_treatments: int = 0
+) -> RiskOut:
     """Merges a risk with its current version and derived ratings. `ctx` is
-    loaded once per request (`load_rating_context`)."""
+    loaded once per request (`load_rating_context`); `effective_treatments` is
+    the risk's count from `treatment.effective_treatment_counts`."""
     inherent, residual = rate_version(ctx, version)
     return RiskOut(
         id=risk.id, project_id=risk.project_id, unique_code=risk.unique_code, creator_id=risk.creator_id,
@@ -92,13 +96,17 @@ def risk_to_out(db: Session, risk: Risk, version: RiskVersion, ctx: RatingContex
         inherent_rating=_rating_out(inherent), residual_rating=_rating_out(residual), status=version.status,
         allowed_next_statuses=sorted(RISK_ALLOWED_TRANSITIONS[version.status], key=list(RiskStatus).index),
         owner_id=version.owner_id, review_date=version.review_date, version_number=version.version_number,
+        effective_treatment_count=effective_treatments, is_effectively_treated=effective_treatments > 0,
         created_at=risk.created_at, updated_at=risk.updated_at,
     )
 
 
 def current_risk_out(db: Session, risk: Risk, project: Project) -> RiskOut:
     """The API shape of one risk, loading its version and rating context."""
-    return risk_to_out(db, risk, get_current_risk_version(db, risk.id), load_rating_context(db, project))
+    return risk_to_out(
+        db, risk, get_current_risk_version(db, risk.id), load_rating_context(db, project),
+        effective_treatments=effective_treatment_counts(db, [risk.id]).get(risk.id, 0),
+    )
 
 
 def get_risk_in_project(db: Session, project_id: uuid.UUID, risk_id: uuid.UUID) -> Risk:
