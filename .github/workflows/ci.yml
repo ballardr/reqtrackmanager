@@ -160,15 +160,18 @@ jobs:
       # written correctly — and then simply never call process.exit(),
       # hanging indefinitely instead of returning. A bare `npm run` with no
       # timeout would hang this step (and the whole job) forever on a run
-      # that already succeeded. 180s is generous headroom over the ~10s this
-      # suite actually takes; a genuine hang before producing a report still
-      # fails loudly (no vitest-report.xml to check, so the raw exit status
-      # propagates), and a real per-test failure is caught explicitly by
-      # parsing the JUnit output rather than assumed away.
+      # that already succeeded. 600s is headroom over the ~4-5 minutes the
+      # full ~220-story suite takes on a CI runner (the earlier "~10s" figure
+      # was measured while the Playwright/image version drift meant no story
+      # ran at all, and a 180s cap then killed a healthy run mid-suite before
+      # it could write a report); a genuine hang before producing a report
+      # still fails loudly (no vitest-report.xml to check, so the raw exit
+      # status propagates), and a real per-test failure is caught explicitly
+      # by parsing the JUnit output rather than assumed away.
       - name: Run frontend tests with coverage
         run: |
           set +e
-          timeout 180 npm run test-storybook -- --coverage
+          timeout 600 npm run test-storybook -- --coverage
           status=$?
           set -e
           if [ $status -eq 0 ]; then

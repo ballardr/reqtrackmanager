@@ -1870,6 +1870,33 @@ def main() -> None:
     # identity, not owned by either one — see models.requirement_action).
     link_action(h_pm, drone["id"], preflight_req["id"], wind_test["id"])
 
+    # Teams used by the group-parity demos below. Created (and the requirement edit made) before the Scoping
+    # baseline because baselining approves every draft requirement, which locks it against direct edits.
+    # A team can own a Decision (users-and-groups parity): the organisation group owns the OTA Decision further down.
+    architecture_board = httpx.post(
+        f"{BASE}/orgs/{org['id']}/groups", json={"name": "Architecture Board"}, headers=h_pm, timeout=30,
+    )
+    architecture_board.raise_for_status()
+    for member in (demo_admin, demo_engineer):
+        httpx.post(
+            f"{BASE}/orgs/{org['id']}/groups/{architecture_board.json()['id']}/members",
+            json={"user_id": member["user_id"]}, headers=h_pm, timeout=30,
+        ).raise_for_status()
+    verification_squad = httpx.post(f"{BASE}/projects/{drone['id']}/groups", json={"name": "Verification Squad"}, headers=h_pm, timeout=30)
+    verification_squad.raise_for_status()
+    httpx.post(
+        f"{BASE}/projects/{drone['id']}/groups/{verification_squad.json()['id']}/members",
+        json={"user_id": demo_engineer["user_id"]}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    # Core records can name a team too: the Architecture Board owns a draft requirement and the Verification Squad
+    # reviews it (the squad also takes the wind-tunnel test, and the board a change request task, further down).
+    set_requirement_status(
+        h_pm, drone["id"], drone_reqs["Operate in ambient temperatures between -10C and 45C"], "draft",
+        review_date=(date.today() + timedelta(days=21)).isoformat(),
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},
+        reviewer={"type": "project_group", "id": verification_squad.json()["id"]},
+    )
+
     print("Approving the Scoping stage baseline for Falcon-3...")
     scoping_stage = httpx.get(f"{BASE}/projects/{drone['id']}/stages", headers=h_pm, timeout=30).json()[0]
     transition_stage(h_pm, drone["id"], scoping_stage["id"], "review")
@@ -2079,12 +2106,6 @@ def main() -> None:
     httpx.post(
         f"{BASE}/orgs/{org['id']}/groups/{compliance_office.json()['id']}/members",
         json={"user_id": demo_admin["user_id"]}, headers=h_pm, timeout=30,
-    ).raise_for_status()
-    verification_squad = httpx.post(f"{BASE}/projects/{drone['id']}/groups", json={"name": "Verification Squad"}, headers=h_pm, timeout=30)
-    verification_squad.raise_for_status()
-    httpx.post(
-        f"{BASE}/projects/{drone['id']}/groups/{verification_squad.json()['id']}/members",
-        json={"user_id": demo_engineer["user_id"]}, headers=h_pm, timeout=30,
     ).raise_for_status()
     airworthiness_standard = create_compliance_standard(
         h_pm, org["id"], reference="ASA-1", name="Aerospace Safety & Airworthiness Standard",
@@ -2338,25 +2359,6 @@ def main() -> None:
     # from Org Admin's Modules tab.
     enable_module(h_pm, org["id"], "decisions")
     drone_decision_types = list_decision_types(h_pm, drone["id"])
-    # A team can own a Decision (users-and-groups parity): this organisation group owns the OTA Decision below.
-    architecture_board = httpx.post(
-        f"{BASE}/orgs/{org['id']}/groups", json={"name": "Architecture Board"}, headers=h_pm, timeout=30,
-    )
-    architecture_board.raise_for_status()
-    for member in (demo_admin, demo_engineer):
-        httpx.post(
-            f"{BASE}/orgs/{org['id']}/groups/{architecture_board.json()['id']}/members",
-            json={"user_id": member["user_id"]}, headers=h_pm, timeout=30,
-        ).raise_for_status()
-    # Core records can name a team too (users-and-groups parity): the Architecture Board owns a draft requirement
-    # and the Verification Squad reviews it and takes the wind-tunnel test; the board also takes a change request task
-    # and watches the OTA requirement's discussion.
-    set_requirement_status(
-        h_pm, drone["id"], drone_reqs["Operate in ambient temperatures between -10C and 45C"], "draft",
-        review_date=(date.today() + timedelta(days=21)).isoformat(),
-        owner={"type": "org_group", "id": architecture_board.json()["id"]},
-        reviewer={"type": "project_group", "id": verification_squad.json()["id"]},
-    )
     set_action_outcome(h_pm, drone["id"], {**wind_test, "assignee": {"type": "project_group", "id": verification_squad.json()["id"]}}, "failed")
     httpx.patch(
         f"{BASE}/projects/{drone['id']}/change-requests/{drone_cr['id']}/tasks/{drone_cr_task['id']}",
