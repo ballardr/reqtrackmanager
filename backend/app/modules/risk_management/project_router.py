@@ -9,7 +9,9 @@ CRUD/archive/versions/comments/files and the project's Risk type vocabulary
 RBAC: sub-component enablement and project membership to view; any project member
 may propose (create) a risk; `_shared.require_risk_manage` (project Risk Manager
 role or FGAC grant) to edit, archive, attach evidence or change the project's
-types. Lifecycle transitions, links and reviews are later phases. A risk's files
+types. The lifecycle `transition` endpoint needs the Risk Manager role, except a
+move to `ACCEPTED`, which needs the Risk Acceptor role and (via MCP) the
+org+project AI-approval gate. Links and reviews are later phases. A risk's files
 resolve through `service.resolve_risk_file_project_id`.
 """
 
@@ -21,9 +23,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_request_channel
 from app.models.project import Project
 from app.models.user import User
 from app.modules.risk_management import _shared as sh
+from app.modules.risk_management.enums import RiskStatus
 from app.modules.risk_management.models import ProjectRiskType, Risk
 from app.modules.risk_management.ratings import load_rating_context
 from app.modules.risk_management.schemas import (
@@ -32,6 +36,7 @@ from app.modules.risk_management.schemas import (
     RiskCommentUpdate,
     RiskCreate,
     RiskOut,
+    RiskTransitionRequest,
     RiskUpdate,
     RiskVersionOut,
 )
@@ -48,7 +53,7 @@ from app.modules.risk_management.service import (
 from app.schemas.file import FileAssetOut
 from app.schemas.type_vocabulary import EffectiveTypeOut, ProjectTypeCreate, ProjectTypeOut, ProjectTypeOverrideUpdate
 from app.services.audit import log_event
-from app.services.rbac import require_project_subcomponent_enabled
+from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
 
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{RISK_MODULE_KEY}", tags=["risk-management-project"])
 
@@ -185,6 +190,31 @@ def list_risk_versions(project_id: UUID, risk_id: UUID, current_user: User = Dep
     """A risk's full version history, oldest first."""
     _project(db, project_id)
     return _get(db, project_id, risk_id).versions
+
+
+@router.post("/risks/{risk_id}/transition", response_model=RiskOut)
+def transition(
+    project_id: UUID, risk_id: UUID, payload: RiskTransitionRequest,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    channel: str = Depends(get_request_channel),
+):
+    """Moves a risk along its lifecycle (`RiskOut.allowed_next_statuses` lists the
+    legal targets). Needs the Risk Manager role; moving to `ACCEPTED` needs the
+    Risk Acceptor role instead, and reached through the MCP server additionally
+    needs this project and its organisation to have enabled AI approval (a plain
+    UI/API call is unaffected by that flag). 409 for an illegal move or an unmet
+    precondition (e.g. no residual rating)."""
+    project = _project(db, project_id)
+    if payload.status == RiskStatus.ACCEPTED:
+        if channel == "mcp":
+            require_ai_approvals_enabled(db, project)
+        sh.require_risk_accept(db, current_user, project)
+    else:
+        sh.require_risk_manage(db, current_user, project)
+    return sh.transition_risk_from_payload(
+        db, _get(db, project_id, risk_id), payload.status, payload.comment, current_user, project,
+        via_mcp=channel == "mcp" and payload.status == RiskStatus.ACCEPTED,
+    )
 
 
 @router.post("/risks/{risk_id}/archive", response_model=RiskOut)

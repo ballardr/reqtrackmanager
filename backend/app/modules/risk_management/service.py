@@ -1,7 +1,7 @@
 """
 Module: modules.risk_management.service
 
-Business logic for the Risk Management module, Phase 1:
+Business logic for the Risk Management module (Phases 1-2):
 
 - Risk CRUD as an identity row plus temporal `RiskVersion` snapshots
   (`create_risk`, `apply_new_version`), archive/unarchive, and the project-wide
@@ -11,11 +11,20 @@ Business logic for the Risk Management module, Phase 1:
 - Validation of the six scoring-level references against the organisation's
   `risk` scheme (`validate_levels`).
 - `resolve_risk_file_project_id`, the file-ownership hook.
+- The lifecycle (Phase 2): the branching `RISK_ALLOWED_TRANSITIONS` table, the
+  per-target guards (`check_transition_guards`) and `transition_risk`, plus the
+  `ACCEPTED` content lock (`check_accepted_content_unchanged`).
 
 Design decisions:
 - Status is versioned content but is not editable through the update API: a
-  risk is created `IDENTIFIED`, and the lifecycle transitions are Phase 2's.
-- No content lock yet; each edit is a new version, so history is complete.
+  risk is created `IDENTIFIED` and only `transition_risk` moves it, so every move
+  is validated, audited and visible in the version history.
+- Guards sit on the *target* state, so a forward move and a move back to the same
+  state demand the same facts (Decided by: Agent, Phase 2).
+- While `ACCEPTED`, the assessment an acceptor signed off (inherent/residual
+  levels, acceptance criteria, strategy) cannot be edited in place; the risk must
+  be moved back first. Otherwise a Risk Manager could change the residual rating
+  after the acceptor approved it, which defeats the separate acceptor role.
 - A risk's type is optional (Decided by: Agent): quick capture matters more than
   a category at the moment of identification.
 """
@@ -39,6 +48,7 @@ from app.modules.risk_management.models import (
     RiskTypeDefinition,
     RiskVersion,
 )
+from app.modules.risk_management.ratings import RatingContext, rate_version
 from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES, RISK_SCORING_SCHEME_KEY
 from app.services.sequences import generate_unique_code
 from app.services.type_vocabulary import TypeVocabulary
@@ -165,6 +175,107 @@ def apply_new_version(
     db.add(new_version)
     db.flush()
     return new_version
+
+
+# --- Lifecycle (Phase 2) ------------------------------------------------------
+
+_S = RiskStatus
+# The alternative outcomes a risk can reach once assessed; each leads to CLOSED.
+_OUTCOMES = frozenset({_S.ACCEPTED, _S.TRANSFERRED, _S.AVOIDED, _S.REALISED, _S.REJECTED})
+_ACTIVE = (_S.ASSESSED, _S.TREATMENT_PLANNED, _S.TREATMENT_IN_PROGRESS)
+
+# Legal moves (plan Phase 0 resolution 4; exact table Decided by: Agent). Forward
+# along the main line, the outcomes from any assessed-or-later working state
+# (`REJECTED` also straight from `IDENTIFIED`), a settled risk may still be
+# `REALISED`, and a reassessment moves a risk back to any earlier working state.
+# `CLOSED` reopens to `ASSESSED`; a wrongly `REJECTED` risk returns to `IDENTIFIED`.
+RISK_ALLOWED_TRANSITIONS: dict[RiskStatus, frozenset[RiskStatus]] = {
+    _S.IDENTIFIED: frozenset({_S.ASSESSED, _S.REJECTED}),
+    _S.ASSESSED: frozenset({_S.TREATMENT_PLANNED}) | _OUTCOMES,
+    _S.TREATMENT_PLANNED: frozenset({_S.ASSESSED, _S.TREATMENT_IN_PROGRESS}) | _OUTCOMES,
+    _S.TREATMENT_IN_PROGRESS: frozenset({_S.ASSESSED, _S.TREATMENT_PLANNED, _S.MITIGATED}) | _OUTCOMES,
+    _S.MITIGATED: frozenset({*_ACTIVE, _S.CLOSED, _S.REALISED}),
+    _S.ACCEPTED: frozenset({*_ACTIVE, _S.CLOSED, _S.REALISED}),
+    _S.TRANSFERRED: frozenset({*_ACTIVE, _S.CLOSED, _S.REALISED}),
+    _S.AVOIDED: frozenset({*_ACTIVE, _S.CLOSED}),
+    _S.REALISED: frozenset({*_ACTIVE, _S.CLOSED}),
+    _S.REJECTED: frozenset({_S.IDENTIFIED, _S.CLOSED}),
+    _S.CLOSED: frozenset({_S.ASSESSED}),
+}
+
+# Fields frozen while a risk is ACCEPTED (see the module docstring).
+ACCEPTED_LOCKED_FIELDS: tuple[str, ...] = (*LEVEL_COLUMN_AXES, "acceptance_criteria", "treatment_strategy")
+
+
+def check_transition_guards(version: RiskVersion, target: RiskStatus, ctx: RatingContext) -> None:
+    """Checks the facts the target state demands of a risk's current content.
+
+    - `ASSESSED`: an inherent rating (every axis the project's model needs is set).
+    - `TREATMENT_PLANNED`: an owner and a treatment strategy.
+    - `MITIGATED`: a residual rating.
+    - `ACCEPTED`: a residual rating and written acceptance criteria.
+
+    Raises:
+        ValueError: Naming what is missing.
+    """
+    inherent, residual = rate_version(ctx, version)
+    missing: list[str] = []
+    if target == RiskStatus.ASSESSED and inherent is None:
+        missing.append("an inherent rating (set every inherent scoring level the project's model needs)")
+    if target == RiskStatus.TREATMENT_PLANNED:
+        if version.owner_id is None:
+            missing.append("an owner")
+        if version.treatment_strategy is None:
+            missing.append("a treatment strategy")
+    if target in (RiskStatus.MITIGATED, RiskStatus.ACCEPTED) and residual is None:
+        missing.append("a residual rating (set every residual scoring level the project's model needs)")
+    if target == RiskStatus.ACCEPTED and not version.acceptance_criteria.strip():
+        missing.append("acceptance criteria")
+    if missing:
+        raise ValueError(f"A risk needs {' and '.join(missing)} before it can be {target.value.replace('_', ' ')}.")
+
+
+def check_accepted_content_unchanged(current: RiskVersion, changes: dict[str, Any]) -> None:
+    """Rejects an in-place edit of an accepted risk's signed-off assessment.
+
+    Raises:
+        ValueError: If `current` is `ACCEPTED` and `changes` alters a locked field.
+    """
+    if current.status != RiskStatus.ACCEPTED:
+        return
+    changed = [f for f in ACCEPTED_LOCKED_FIELDS if f in changes and changes[f] != getattr(current, f)]
+    if changed:
+        raise ValueError(
+            "An accepted risk's assessment cannot be edited in place; move it back to Assessed first "
+            f"(would change: {', '.join(changed)})."
+        )
+
+
+def transition_risk(
+    db: Session, risk: Risk, current: RiskVersion, target: RiskStatus, actor: User, ctx: RatingContext,
+    *, comment: str = "",
+) -> RiskVersion:
+    """Moves a risk to `target` as a new version.
+
+    The caller has locked the risk row, re-read `current` under that lock and
+    checked the actor's role for `target`. Does not commit or audit-log.
+
+    Args:
+        current: The risk's current version.
+        ctx: The project's rating context (for the guards).
+        comment: Becomes the version's change note (a default note otherwise).
+
+    Raises:
+        ValueError: If the risk is archived, the move is not in
+            `RISK_ALLOWED_TRANSITIONS`, or a guard fails.
+    """
+    if risk.is_archived:
+        raise ValueError("An archived risk cannot change status; unarchive it first.")
+    if target not in RISK_ALLOWED_TRANSITIONS[current.status]:
+        raise ValueError(f"Cannot move a Risk from '{current.status.value}' to '{target.value}'.")
+    check_transition_guards(current, target, ctx)
+    note = comment.strip() or f"Status: {current.status.value} -> {target.value}."
+    return apply_new_version(db, risk, current, actor, changes={"status": target}, change_note=note)
 
 
 def archive_risk(risk: Risk, actor: User) -> None:

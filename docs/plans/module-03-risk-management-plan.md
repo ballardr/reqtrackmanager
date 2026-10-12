@@ -10,20 +10,20 @@ model as its Verification link target.
 §11 "Module 3 — Risk Management".
 
 **Status:** Phases 0 (2026-10-12, user sign-off), 1a (core per-cell rating
-override, 2026-10-12) and 1 (data model, scoring, RBAC, project API,
-2026-10-12) complete; Phase 2 is next. Overview §46 groups this with Engineering
+override, 2026-10-12), 1 (data model, scoring, RBAC, project API, 2026-10-12)
+and 2 (lifecycle, 2026-10-12) complete; Phase 3 is next. Overview §46 groups this with Engineering
 Design as "Phase 5" (built together, after Requirements & Libraries).
 
 ## Status / Resume Here
 
-3 / 8 phases complete (Phases 0, 1a and 1 done 2026-10-12). Phase 2 is next.
+4 / 8 phases complete (Phases 0, 1a, 1 and 2 done 2026-10-12). Phase 3 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: scoring-model shape & open questions | [x] Complete (2026-10-12) |
 | 1a | Core scoring: per-cell rating override (added by Phase 0) | [x] Complete (2026-10-12) |
 | 1 | Data model: Risk, Risk Type, scoring registration, module RBAC | [x] Complete (2026-10-12) |
-| 2 | Risk lifecycle, treatment, and residual-risk tracking | [ ] Not started |
+| 2 | Risk lifecycle, treatment, and residual-risk tracking | [x] Complete (2026-10-12) |
 | 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [ ] Not started |
 | 4 | Risk reviews + reassessment scheduling | [ ] Not started |
 | 5 | Frontend UI | [ ] Not started |
@@ -319,6 +319,55 @@ mitigate [risks]... a first-class risk allows the project to determine
 whether mitigation is complete, whether residual risk is acceptable."
 Without an explicit lifecycle, "is this risk actually closed out" has no
 authoritative answer.
+
+**As built (2026-10-12):**
+
+```mermaid
+stateDiagram-v2
+    [*] --> Identified
+    Identified --> Assessed: inherent rating
+    Identified --> Rejected
+    Assessed --> TreatmentPlanned: owner + strategy
+    TreatmentPlanned --> TreatmentInProgress
+    TreatmentInProgress --> Mitigated: residual rating
+    Assessed --> Accepted: acceptor, residual + criteria
+    Assessed --> Transferred
+    Assessed --> Avoided
+    Assessed --> Realised
+    Assessed --> Rejected
+    Mitigated --> Closed
+    Accepted --> Closed
+    Transferred --> Closed
+    Avoided --> Closed
+    Realised --> Closed
+    Rejected --> Closed
+    Closed --> Assessed: reopen
+```
+
+The diagram shows the forward and reopen moves; the outcomes are also reachable
+from Treatment Planned and Treatment in Progress, a Mitigated, Accepted or
+Transferred risk can still become Realised, and a reassessment moves a risk back
+to any earlier working state (`service.RISK_ALLOWED_TRANSITIONS` is the source of
+truth).
+
+- **API.** `POST .../risks/{id}/transition` `{status, comment}`; `RiskOut` gains
+  `allowed_next_statuses`. 409 for an illegal move, an unmet guard or an archived
+  risk. Each move is a new `RiskVersion` and a `status_changed` audit event.
+- **Guards (on the target state).** Assessed: inherent rating. Treatment
+  Planned: owner and treatment strategy. Mitigated: residual rating. Accepted:
+  residual rating and acceptance criteria.
+- **Acceptance.** New project role `risk_acceptor` (FGAC `(risk,
+  approve_baseline)`); `risk_manager` makes every other move and cannot accept.
+  Through MCP, accepting also needs the org+project `allow_ai_approvals` gate
+  (applied in the endpoint, so Phase 4 only has to declare the tool).
+- **Accepted lock.** `PUT` cannot change levels, acceptance criteria or strategy
+  of an Accepted risk (409); move it back to Assessed first.
+- **Residual-risk tracking** is the existing residual levels plus the Mitigated
+  and Accepted guards; residual is never auto-recalculated. **Phase 3 must add**
+  the "mitigated needs an *effective* treatment" guard once treatment assessments
+  exist, and offer residual-vs-inherent reporting if wanted.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 2".
 
 ## Phase 3 — Risk-to-engineering relationships (mitigation vs. mere linkage)
 

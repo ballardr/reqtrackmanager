@@ -7,8 +7,8 @@ Type-vocabulary schemas are the shared ones in `app.schemas.type_vocabulary`.
 
 `RiskUpdate` is partial: only fields present in the request body change, so a
 nullable field (type, strategy, any level, owner, review date) can be cleared
-by sending an explicit `null`. `status` is not editable here (Phase 2's
-lifecycle endpoints own it).
+by sending an explicit `null`. `status` is not editable here (the lifecycle
+transition endpoint owns it).
 """
 
 from __future__ import annotations
@@ -64,6 +64,14 @@ class RiskUpdate(BaseModel):
     change_note: str = ""
 
 
+class RiskTransitionRequest(BaseModel):
+    """A lifecycle move. `comment` is recorded as the new version's change note
+    and in the audit event."""
+
+    status: RiskStatus
+    comment: str = ""
+
+
 class RiskRatingOut(BaseModel):
     """A derived rating (never stored). `label`/`tone` are the effective band
     (or per-cell override); `normalised` is the score on a 0-1 scale."""
@@ -104,6 +112,7 @@ class RiskOut(BaseModel):
     inherent_rating: RiskRatingOut | None
     residual_rating: RiskRatingOut | None
     status: RiskStatus
+    allowed_next_statuses: list[RiskStatus]
     owner_id: UUID | None
     review_date: date | None
     version_number: int

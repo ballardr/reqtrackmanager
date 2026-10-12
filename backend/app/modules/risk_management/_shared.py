@@ -8,9 +8,11 @@ the shared `services.module_attachments` kit.
 
 RBAC (plan Phase 0 resolution 10): viewing needs the sub-component enabled and
 project membership; any project member may *propose* (create) a risk, which
-starts `IDENTIFIED`; edit, archive, attachment and project-type changes need the
-project `risk_manager` role or a Fine-Grained Access Control `(risk, manage)`
-grant; the org Risk type vocabulary needs `risk_type_admin`.
+starts `IDENTIFIED`; edit, archive, attachment, project-type and lifecycle
+changes need the project `risk_manager` role or a Fine-Grained Access Control
+`(risk, manage)` grant; moving a risk to `ACCEPTED` instead needs the distinct
+`risk_acceptor` role or a `(risk, approve_baseline)` grant (and, via MCP, the
+AI-approval gate); the org Risk type vocabulary needs `risk_type_admin`.
 
 Tenancy: every lookup is scoped to the project in the URL, so another tenant's
 ids look absent (404), and a level or owner must belong to the project's
@@ -28,6 +30,7 @@ from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.user import User
+from app.modules.risk_management.enums import RiskStatus
 from app.modules.risk_management.models import (
     Risk,
     RiskComment,
@@ -40,13 +43,16 @@ from app.modules.risk_management.ratings import RatingContext, RiskRating, load_
 from app.modules.risk_management.schemas import RiskCommentOut, RiskCreate, RiskOut, RiskRatingOut, RiskUpdate
 from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES
 from app.modules.risk_management.service import (
+    RISK_ALLOWED_TRANSITIONS,
     RISK_ARTEFACT_TYPE,
     RISK_MODULE_KEY,
     RISK_TYPES,
     apply_new_version,
+    check_accepted_content_unchanged,
     create_risk,
     get_current_risk_version,
     resolve_risk_type,
+    transition_risk,
     validate_levels,
 )
 from app.services import module_attachments as att
@@ -61,6 +67,7 @@ from app.services.rbac import (
 )
 
 RISK_MANAGE_PERMISSION = encode_permission(RISK_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
+RISK_ACCEPT_PERMISSION = encode_permission(RISK_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 _TEXT_FIELDS = ("statement", "cause", "risk_event", "consequence", "acceptance_criteria")
 
@@ -83,6 +90,7 @@ def risk_to_out(db: Session, risk: Risk, version: RiskVersion, ctx: RatingContex
         treatment_strategy=version.treatment_strategy, acceptance_criteria=version.acceptance_criteria,
         **{column: getattr(version, column) for column in LEVEL_COLUMN_AXES},
         inherent_rating=_rating_out(inherent), residual_rating=_rating_out(residual), status=version.status,
+        allowed_next_statuses=sorted(RISK_ALLOWED_TRANSITIONS[version.status], key=list(RiskStatus).index),
         owner_id=version.owner_id, review_date=version.review_date, version_number=version.version_number,
         created_at=risk.created_at, updated_at=risk.updated_at,
     )
@@ -118,6 +126,25 @@ def require_risk_manage(db: Session, current_user: User, project: Project) -> No
     if permission_satisfied(held, RISK_MANAGE_PERMISSION):
         return
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Risk Manager (or admin/manager) may do this.")
+
+
+def require_risk_accept(db: Session, current_user: User, project: Project) -> None:
+    """Gate for moving a risk to `ACCEPTED`: the project `risk_acceptor` role
+    (composing with server admin, org admin and project manager) or an FGAC
+    `(risk, approve_baseline)` grant. `risk_manager` alone does not suffice:
+    accepting residual risk is a separate sign-off from managing the risk.
+
+    Raises:
+        HTTPException: 403 if neither holds.
+    """
+    if user_satisfies_module_role(
+        db, current_user, RISK_MODULE_KEY, "risk_acceptor", organization_id=project.organization_id, project_id=project.id,
+    ):
+        return
+    held = get_effective_permissions(db, current_user.id, organization_id=project.organization_id, project_id=project.id)
+    if permission_satisfied(held, RISK_ACCEPT_PERMISSION):
+        return
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Risk Acceptor (or admin/manager) may accept a risk.")
 
 
 def require_risk_type_admin(db: Session, current_user: User, *, organization_id: uuid.UUID) -> None:
@@ -201,9 +228,38 @@ def update_risk_from_payload(db: Session, risk: Risk, payload: RiskUpdate, actor
     _resolve_references(db, project, sent)
     lock_row_for_update(db, Risk, risk.id)
     current = get_current_risk_version(db, risk.id)
+    apply_value_error_as_conflict(check_accepted_content_unchanged, current, sent)
     apply_new_version(db, risk, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=RISK_ARTEFACT_TYPE, entity_id=risk.id, action="updated", actor_id=actor.id,
               project_id=risk.project_id)
+    db.commit()
+    return current_risk_out(db, risk, project)
+
+
+def transition_risk_from_payload(
+    db: Session, risk: Risk, target: RiskStatus, comment: str, actor: User, project: Project, *, via_mcp: bool = False,
+) -> RiskOut:
+    """Moves a risk to `target` (caller has checked the actor's role for it),
+    audit-logs, commits and returns the API shape. Locks the risk row first so
+    two concurrent moves cannot both pass the transition check.
+
+    Raises:
+        HTTPException: 409 if the move is illegal, the risk is archived, or a
+            guard fails.
+    """
+    lock_row_for_update(db, Risk, risk.id)
+    db.refresh(risk)
+    current = get_current_risk_version(db, risk.id)
+    previous = current.status
+    ctx = load_rating_context(db, project)
+    apply_value_error_as_conflict(transition_risk, db, risk, current, target, actor, ctx, comment=comment)
+    detail: dict = {"from": previous.value, "to": target.value}
+    if comment.strip():
+        detail["comment"] = comment.strip()
+    if via_mcp:
+        detail["via"] = "mcp"
+    log_event(db, entity_type=RISK_ARTEFACT_TYPE, entity_id=risk.id, action="status_changed", actor_id=actor.id,
+              project_id=risk.project_id, detail=detail)
     db.commit()
     return current_risk_out(db, risk, project)
 

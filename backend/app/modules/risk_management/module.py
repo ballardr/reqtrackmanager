@@ -2,17 +2,17 @@
 Module: modules.risk_management.module
 
 Registers the Risk Management module into the modular feature system's registry
-via `MODULE_DEFINITION` (docs/plans/module-03-risk-management-plan.md). Phase 1
-delivers the Risk artefact, its type vocabulary, the `risk` scoring scheme and
-module RBAC.
+via `MODULE_DEFINITION` (docs/plans/module-03-risk-management-plan.md). Phases 1-2
+deliver the Risk artefact, its type vocabulary, the `risk` scoring scheme, module
+RBAC and the lifecycle.
 
 Registered contributions:
 - Roles (not additions to core enums): `risk_manager` (project; carries the FGAC
-  `(risk, manage)` atom) gates edit/archive/evidence/project types, and
-  `risk_type_admin` (org; also administers the `risk` scoring scheme's levels,
-  bands and cell ratings) gates the org type vocabulary. Any project member may
-  propose a risk. The distinct *risk acceptor* role (plan resolution 4) is added
-  with the lifecycle in Phase 2, where it first has something to gate.
+  `(risk, manage)` atom) gates edit/archive/evidence/project types/lifecycle
+  moves, `risk_acceptor` (project; carries `(risk, approve_baseline)`) gates the
+  move to Accepted, and `risk_type_admin` (org; also administers the `risk`
+  scoring scheme's levels, bands and cell ratings) gates the org type
+  vocabulary. Any project member may propose a risk.
 - `artefact_types=("risk",)`, so a risk is a valid `ArtefactLink` endpoint, gets
   FGAC atoms and unique codes (`RSK-001`).
 - `scoring_schemes`: the Likelihood/Consequence/Detectability `risk` scheme
@@ -40,7 +40,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.registry import ModuleDefinition, ModuleRoleDefinition, ModuleSubComponentDefinition
-from app.modules.risk_management._shared import RISK_MANAGE_PERMISSION
+from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MANAGE_PERMISSION
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
 from app.modules.risk_management.service import (
     RISK_ARTEFACT_TYPE,
@@ -120,6 +120,14 @@ MODULE_DEFINITION = ModuleDefinition(
                 "Any project member may propose a Risk."
             ),
             scope="project", permissions=(RISK_MANAGE_PERMISSION,),
+        ),
+        ModuleRoleDefinition(
+            role_key="risk_acceptor", name="Risk Acceptor",
+            description=(
+                "Accepts a Risk's residual risk (moves it to Accepted). Distinct from Risk Manager: accepting is a "
+                "separate sign-off from managing the risk."
+            ),
+            scope="project", permissions=(RISK_ACCEPT_PERMISSION,),
         ),
         ModuleRoleDefinition(
             role_key="risk_type_admin", name="Risk Type Admin",

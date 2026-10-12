@@ -16,8 +16,7 @@ class RiskStatus(str, enum.Enum):
     The main line is `IDENTIFIED -> ASSESSED -> TREATMENT_PLANNED ->
     TREATMENT_IN_PROGRESS -> MITIGATED -> CLOSED`. `ACCEPTED`, `TRANSFERRED`,
     `AVOIDED`, `REALISED` and `REJECTED` are alternative outcomes that lead to
-    `CLOSED`. The full set is declared now so the column never needs widening;
-    the transition table and its enforcement belong to Phase 2.
+    `CLOSED`. The legal moves are `service.RISK_ALLOWED_TRANSITIONS`.
     """
 
     IDENTIFIED = "identified"

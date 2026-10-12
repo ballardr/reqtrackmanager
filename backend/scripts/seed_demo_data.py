@@ -1632,6 +1632,19 @@ def create_risk(
     return r.json()
 
 
+def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str) -> dict:
+    """Moves a Risk through the given lifecycle statuses in order (Module 3 Phase 2) and returns the last response."""
+    out: dict = {}
+    for status in statuses:
+        r = httpx.post(
+            f"{BASE}/projects/{project_id}/modules/risk_management/risks/{risk_id}/transition",
+            json={"status": status}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+        out = r.json()
+    return out
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -2817,7 +2830,7 @@ def main() -> None:
         acceptance_criteria="Dual-redundant architecture certified; no single fault leads to loss of control.",
         inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
     )
-    create_risk(
+    risk_modem = create_risk(
         h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner_id=demo_admin["user_id"],
         title="Cellular modem supplier misses delivery",
         statement="If the single-sourced modem arrives late, integration testing slips and the certification date is at risk.",
@@ -2828,8 +2841,14 @@ def main() -> None:
         h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Compliance"]["id"], owner_id=demo_admin["user_id"],
         title="Regulator withdraws BVLOS approval",
         statement="If the regulator withdraws beyond-visual-line-of-sight approval, populated-corridor contracts cannot be flown.",
-        consequence="The core commercial route is lost.", inherent=("Rare", "Catastrophic"), treatment_strategy="accept",
+        consequence="The core commercial route is lost.", inherent=("Rare", "Catastrophic"), residual=("Rare", "Catastrophic"),
+        treatment_strategy="accept", acceptance_criteria="Approval conditions are tracked quarterly; contracts allow a re-route.",
     )
+    # Spread the register across the lifecycle: one in treatment, one assessed, one formally accepted (the project
+    # manager satisfies the Risk Acceptor role), and the unscored one left Identified.
+    transition_risk(h_pm, drone["id"], risk_single_controller["id"], "assessed", "treatment_planned", "treatment_in_progress")
+    transition_risk(h_pm, drone["id"], risk_modem["id"], "assessed")
+    transition_risk(h_pm, drone["id"], risk_regulator["id"], "assessed", "accepted")
     risk_unscored = create_risk(
         h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Performance"]["id"], title="Gimbal vibration degrades imagery",
         statement="Rotor vibration may blur inspection imagery at the gimbal's maximum zoom.",
