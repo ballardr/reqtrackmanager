@@ -5,7 +5,7 @@ Helpers behind the project-scoped Stakeholder Need router
 (`need_project_router.py`), mirroring `_stakeholder_shared.py`: the bodies the
 router's routes would otherwise inline — the manage gate, the API shape,
 create/update/lifecycle, and the "has need" / "gives rise to" link operations.
-Comments and files go through the shared `_attachments` kit.
+Comments and files go through the shared `services.module_attachments` kit.
 
 RBAC (Phase 0 resolution 6): viewing is gated by sub-component enablement
 alone; create/edit/archive/retire/link need the project `stakeholder_need_owner`
@@ -29,7 +29,6 @@ from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.user import User
-from app.modules.stakeholders import _attachments as att
 from app.modules.stakeholders._shared import (
     apply_value_error_as_conflict,
     get_visible_holder,
@@ -67,9 +66,10 @@ from app.modules.stakeholders.service import (
     list_need_requirement_links,
     transition_need,
 )
+from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.permissions import encode_permission
-from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
+from app.services.rbac import get_effective_permissions, lock_row_for_update, permission_satisfied, user_satisfies_module_role
 from app.services.relationships import delete_link
 from app.services.requirements import get_current_version as get_current_requirement_version
 
@@ -149,6 +149,7 @@ def update_need_from_payload(
         if text_field in sent and sent[text_field] is None:
             sent[text_field] = ""
     validate_people(db, project.organization_id, sent.get("owner_id"))
+    lock_row_for_update(db, StakeholderNeed, need.id)
     current = get_current_need_version(db, need.id)
     apply_need_new_version(db, need, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="updated", actor_id=actor.id,
@@ -161,6 +162,7 @@ def transition_need_endpoint(
     db: Session, need: StakeholderNeed, new_status: NeedStatus, actor: User, *, action: str, comment: str | None
 ) -> NeedOut:
     """Runs a lifecycle transition (409 if illegal), commits and returns the API shape."""
+    lock_row_for_update(db, StakeholderNeed, need.id)
     current = get_current_need_version(db, need.id)
     apply_value_error_as_conflict(transition_need, db, need, current, new_status, actor, action=action, comment=comment)
     db.commit()

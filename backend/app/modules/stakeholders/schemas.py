@@ -177,63 +177,6 @@ class PersonaCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-class PersonaTypeCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-
-
-class PersonaTypeUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    is_active: bool | None = None
-
-
-class PersonaTypeOut(BaseModel):
-    """An org-scoped `PersonaTypeDefinition` row."""
-
-    model_config = {"from_attributes": True}
-
-    id: UUID
-    organization_id: UUID
-    name: str
-    sort_order: int
-    is_active: bool
-
-
-class EffectiveTypeOut(BaseModel):
-    """One row of a project's merged type list (`type_vocabulary.EffectiveType`)."""
-
-    model_config = {"from_attributes": True}
-
-    id: UUID
-    name: str
-    display_order: int
-    is_enabled: bool
-    source: str
-
-
-class ProjectTypeCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    display_order: int | None = None
-
-
-class ProjectTypeOverrideUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    display_order: int | None = None
-    is_enabled: bool | None = None
-
-
-class ProjectTypeOut(BaseModel):
-    """A raw project type row (override or project-local)."""
-
-    model_config = {"from_attributes": True}
-
-    id: UUID
-    project_id: UUID
-    org_type_id: UUID | None
-    name_override: str | None
-    display_order_override: int | None
-    is_enabled: bool
-
-
 # --- Stakeholder (Phase 1.2) --------------------------------------------------
 
 
@@ -409,9 +352,6 @@ class RepresentsCreate(BaseModel):
 
 # These schemas are identical for every artefact in this module; Stakeholder
 # reuses the Persona ones under its own names.
-StakeholderTypeCreate = PersonaTypeCreate
-StakeholderTypeUpdate = PersonaTypeUpdate
-StakeholderTypeOut = PersonaTypeOut
 
 StakeholderTransitionRequest = PersonaTransitionRequest
 StakeholderCommentCreate = PersonaCommentCreate

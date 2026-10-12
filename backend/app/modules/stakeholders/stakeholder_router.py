@@ -43,9 +43,6 @@ from app.modules.stakeholders.schemas import (
     StakeholderFromUserCreate,
     StakeholderOut,
     StakeholderTransitionRequest,
-    StakeholderTypeCreate,
-    StakeholderTypeOut,
-    StakeholderTypeUpdate,
     StakeholderUpdate,
     StakeholderVersionOut,
 )
@@ -63,6 +60,7 @@ from app.modules.stakeholders.service import (
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.project import MoveDirection
+from app.schemas.type_vocabulary import OrgTypeCreate, OrgTypeOut, OrgTypeUpdate
 from app.services.audit import log_event
 from app.services.ordering import move_ordered
 from app.services.rbac import require_org_subcomponent_enabled
@@ -100,7 +98,7 @@ def _get_type(db: Session, organization_id: UUID, type_id: UUID) -> StakeholderT
     return row
 
 
-@router.get("/stakeholder-types", response_model=list[StakeholderTypeOut])
+@router.get("/stakeholder-types", response_model=list[OrgTypeOut])
 def list_stakeholder_types(organization_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
     """Lists the organisation's Stakeholder types, including inactive ones (an
     admin needs to see and re-activate them)."""
@@ -110,9 +108,9 @@ def list_stakeholder_types(organization_id: UUID, current_user: User = Depends(_
     ).all()
 
 
-@router.post("/stakeholder-types", response_model=StakeholderTypeOut, status_code=status.HTTP_201_CREATED)
+@router.post("/stakeholder-types", response_model=OrgTypeOut, status_code=status.HTTP_201_CREATED)
 def create_stakeholder_type(
-    organization_id: UUID, payload: StakeholderTypeCreate,
+    organization_id: UUID, payload: OrgTypeCreate,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     sh.require_stakeholder_type_admin(db, current_user, organization_id=organization_id)
@@ -127,7 +125,7 @@ def create_stakeholder_type(
     return row
 
 
-@router.post("/stakeholder-types/{type_id}/move", response_model=StakeholderTypeOut)
+@router.post("/stakeholder-types/{type_id}/move", response_model=OrgTypeOut)
 def move_stakeholder_type(
     organization_id: UUID, type_id: UUID, payload: MoveDirection,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
@@ -144,9 +142,9 @@ def move_stakeholder_type(
     return result
 
 
-@router.patch("/stakeholder-types/{type_id}", response_model=StakeholderTypeOut)
+@router.patch("/stakeholder-types/{type_id}", response_model=OrgTypeOut)
 def update_stakeholder_type(
-    organization_id: UUID, type_id: UUID, payload: StakeholderTypeUpdate,
+    organization_id: UUID, type_id: UUID, payload: OrgTypeUpdate,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Renames and/or activates/deactivates a type. References are by id, so

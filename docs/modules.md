@@ -795,7 +795,7 @@ knows these fields exist.
 
 ### 4d. Scoring schemes: configurable scoring matrices (Module 1 Phase 10)
 
-A module that scores something (Pain Points and Stakeholders today; Risk, Module 3, next)
+A module that scores something (Pain Points, Stakeholders and Risks today)
 registers a `ScoringSchemeDefinition` on `ModuleDefinition.scoring_schemes`
 instead of building its own matrix tables. Core owns storage, resolution,
 maths, API and UI; the module only declares keys and defaults.
@@ -848,6 +848,9 @@ flowchart LR
   `influence_level_id`/`interest_level_id`, the hooks count and move only
   *current* versions, and a historic version's reference is cleared by the
   foreign key's `ON DELETE SET NULL` instead of rewriting history.
+  Risk Management (Module 3) follows the same pattern with six level columns (inherent and residual
+  Likelihood, Consequence and Detectability) and derives each risk's rating at read time
+  (`modules/risk_management/ratings.py`), so nothing about a rating is stored.
 - **UI:** embed `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
   (project) in your own `orgAdminSections`/`projectAdminSections`, passing
   your scheme key. `ScoringLevelPicker`, `ScoringModelSwitcher` and

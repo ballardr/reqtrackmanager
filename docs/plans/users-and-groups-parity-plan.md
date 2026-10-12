@@ -41,6 +41,7 @@ flowchart LR
 | Stakeholders | Persona version `owner_id`, `champion_id`; Stakeholder version `owner_id`; Stakeholder Need version `owner_id` | 3 |
 | Context & Strategy | `PainPoint.owner_id`, Guiding Principle version `owner_id`, `OpenQuestion.owner_id` | 4 |
 | Compliance | `ComplianceStandard.owner_id` (mandatory), required-action assessment `assignee_id`, review `owner_id` | 5 |
+| Risk Management | `RiskVersion.owner_id` (shipped user-only in Module 3 Phase 1; later Risk phases add reviewer fields that should be built as principals directly) | 5b — follow the Phase 5 checklist once Phase 1 exists |
 | Core | `Requirement.owner_id` (mandatory), `approval_authority_id`, `reviewer_id`; `RequirementAction.assignee_id`; change request `proposed_reviewer_id`, `proposed_action_assignee_id`, task `assignee_id`; `Subscription.user_id` | 6 |
 
 ## 2. Phase 1 — Shared principal mechanism

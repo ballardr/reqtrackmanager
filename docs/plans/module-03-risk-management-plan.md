@@ -9,19 +9,20 @@ model as its Verification link target.
 **Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
 §11 "Module 3 — Risk Management".
 
-**Status:** Phases 0 (2026-10-12, user sign-off) and 1a (core per-cell
-rating override, 2026-10-12) complete; Phase 1 is next. Overview §46 groups this with Engineering
+**Status:** Phases 0 (2026-10-12, user sign-off), 1a (core per-cell rating
+override, 2026-10-12) and 1 (data model, scoring, RBAC, project API,
+2026-10-12) complete; Phase 2 is next. Overview §46 groups this with Engineering
 Design as "Phase 5" (built together, after Requirements & Libraries).
 
 ## Status / Resume Here
 
-2 / 8 phases complete (Phases 0 and 1a done 2026-10-12). Phase 1 is next.
+3 / 8 phases complete (Phases 0, 1a and 1 done 2026-10-12). Phase 2 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: scoring-model shape & open questions | [x] Complete (2026-10-12) |
 | 1a | Core scoring: per-cell rating override (added by Phase 0) | [x] Complete (2026-10-12) |
-| 1 | Data model: Risk, Risk Type, scoring registration, module RBAC | [ ] Not started |
+| 1 | Data model: Risk, Risk Type, scoring registration, module RBAC | [x] Complete (2026-10-12) |
 | 2 | Risk lifecycle, treatment, and residual-risk tracking | [ ] Not started |
 | 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [ ] Not started |
 | 4 | Risk reviews + reassessment scheduling | [ ] Not started |
@@ -236,28 +237,73 @@ example to the Risk scheme's own seed.
 
 ## Phase 1 — Data model: Risk, Risk Type, configurable scoring, module RBAC
 
-**Scope** (fields §11.2, types §11.3, per Phase 0's resolution): risk
-statement, cause, risk event, consequence, category/type (FK to
-configurable type), likelihood, consequence/severity (both FK'd to the
-configured matrix's levels), inherent risk rating (derived), owner,
-treatment strategy, review date, evidence/comments (reused pattern),
-revision/history (audit-log based, per the other modules' Q4-equivalent
-resolution), a `RiskVersion` history table, and the `risk` scoring scheme
-registration (Phase 0 resolutions 1 and 5); the bespoke `RiskMatrixDefinition`/
-`RiskRatingBand` tables are not built.
+**Scope** (fields §11.2, types §11.3, per Phase 0's resolutions): the `Risk`/
+`RiskVersion` tables, the two-tier Risk type vocabulary, the `risk` scoring
+scheme registration, the module RBAC, and the project-scoped API (CRUD,
+versions, archive, comments, evidence files) plus the org-scoped type API.
+Lifecycle transitions, relationships, reviews, MCP tools and the UI are
+Phases 2 to 5.
 
 **Why:** §11.1 — without a first-class Risk artefact, "a risk should not be
 reduced to a free-text field on a requirement" is exactly the failure mode
-this closes: today, nothing in this codebase represents risk as a queryable
-entity at all (confirmed — no `Risk`-shaped model exists), so any
-requirement rationale mentioning risk is unstructured prose with no
-ownership, no rating, no review schedule.
+this closes: nothing in this codebase represented risk as a queryable entity,
+so any requirement rationale mentioning risk was unstructured prose with no
+ownership, no rating, no review schedule. **Outcome:** a project can record,
+version, type, own and rate risks, with the rating following whatever matrix
+the organisation or project has configured.
 
-**Roles:** Risk Manager/Owner (Manage), project members (Propose), no
-distinct Approve role explicitly named in §11.7 beyond ownership — confirm
-whether risk *acceptance* (moving to `Mitigated/Accepted`) needs a distinct
-Approve-level role in Phase 0, since accepting residual risk is arguably as
-consequential as approving a requirement.
+```mermaid
+flowchart LR
+    R["Risk<br/>RSK-nnn identity"] --> V["RiskVersion<br/>content, status, 6 level ids"]
+    V -- "level ids" --> S["Core scoring 'risk' scheme<br/>org levels, bands, cell ratings"]
+    V --> RT["rate_version()<br/>derived on read"]
+    S --> RT
+    V -- "project_type_id" --> PT["ProjectRiskType<br/>passthrough or local"]
+    PT --> OT["RiskTypeDefinition<br/>org list"]
+    R --> C["RiskComment / RiskFile<br/>evidence"]
+```
+
+**As built (2026-10-12):**
+
+- **Module** `risk_management` (`backend/app/modules/risk_management/`),
+  artefact type and sub-component `risk`, codes `RSK-001`. Migration `0073`
+  creates seven tables and backfills the twelve default types for existing
+  organisations; `on_org_created` seeds new ones.
+- **Fields.** Title (added: a statement is too long for a list or link),
+  statement, cause, risk event, consequence (text), optional type, treatment
+  strategy (`mitigate`/`transfer`/`avoid`/`accept`), acceptance criteria,
+  inherent and residual Likelihood/Consequence/Detectability level ids,
+  status, owner, review date. The two ratings are never stored.
+- **Scoring.** Scheme `risk`: five-level Likelihood, Consequence and
+  Detectability (higher Detectability weight = harder to detect, FMEA style),
+  models `lxc` (default) and `lxcxd`. Default bands put products 1-4 Low, 5-9
+  Medium, 10-16 High and 20+ Critical on the 5x5 grid. A model that needs an
+  axis a risk has no level for leaves that rating `null`. Level deletion uses
+  the `count_level_usage`/`reassign_level_usage` hooks on current versions.
+- **RBAC.** Any project member proposes (creates in `Identified`);
+  `risk_manager` (project, FGAC `(risk, manage)`) edits, archives, attaches
+  evidence and manages the project's types; `risk_type_admin` (org) manages the
+  org types and the scheme's levels, bands and cell ratings. Comments are open
+  to any member (author-only edit). Status is not editable through `PUT`.
+- **API.** `/api/v1/projects/{id}/modules/risk_management/`: `risks` (CRUD,
+  `versions`, `archive`/`unarchive`, `comments`, `files`) and `risk-types`;
+  `/api/v1/orgs/{id}/modules/risk_management/risk-types`.
+- **Shared code moved to core** so no module imports another's package:
+  `services/type_vocabulary.py`, `services/module_attachments.py`,
+  `schemas/type_vocabulary.py`; Stakeholders were moved onto them.
+- **Deliberately not yet registered:** the `risk_acceptor` role (Phase 2, where
+  it first gates something), artefact summary provider and link-type seeds
+  (Phase 3, when a risk becomes linkable), frontend manifest and routes
+  (Phase 5; `frontend/src/modules/risk_management/module.ts` registers only the
+  artefact path, status labels and inactive statuses, and Phase 5's detail page
+  must serve that path), MCP tools (Phase 4), bundle export/import (matching
+  Decisions and Context & Strategy; also the scoring levels a risk references
+  are not part of org export). `seed_e2e_dataset.py` gains risks with the
+  Phase 5 specs that read them; the demo seed already has four Falcon-3 risks,
+  one rating from a pinned non-monotonic cell (Rare × Catastrophic = High).
+- **Owner is user-only** (Phase 0 resolution 6): the shared principal mechanism
+  has not landed. The gap is logged in `docs/decisions.md` and is closed by
+  [users-and-groups-parity-plan.md](users-and-groups-parity-plan.md).
 
 ## Phase 2 — Risk lifecycle, treatment, and residual-risk tracking
 

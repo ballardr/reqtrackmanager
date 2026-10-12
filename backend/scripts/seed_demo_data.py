@@ -1603,6 +1603,35 @@ def add_stakeholder_relationship(
     return r.json()
 
 
+def list_effective_risk_types(headers: dict, project_id: str) -> dict[str, dict]:
+    """Returns a project's effective Risk types, keyed by name (Module 3 Phase 1)."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/modules/risk_management/risk-types", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {t["name"]: t for t in r.json()}
+
+
+def get_risk_levels(headers: dict, project_id: str) -> dict[str, dict[str, str]]:
+    """Returns the `risk` scoring scheme's level ids as axis key -> level name -> id."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/scoring-schemes/risk", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
+
+
+def create_risk(
+    headers: dict, project_id: str, levels: dict[str, dict[str, str]], *, inherent: tuple[str, str] | None = None,
+    residual: tuple[str, str] | None = None, **fields,
+) -> dict:
+    """Creates a project Risk (it starts Identified). `inherent`/`residual` are `(likelihood, consequence)` level names
+    from the `risk` scoring scheme, turned into the matching level ids."""
+    for prefix, chosen in (("inherent", inherent), ("residual", residual)):
+        if chosen is not None:
+            fields[f"{prefix}_likelihood_level_id"] = levels["likelihood"][chosen[0]]
+            fields[f"{prefix}_consequence_level_id"] = levels["consequence"][chosen[1]]
+    r = httpx.post(f"{BASE}/projects/{project_id}/modules/risk_management/risks", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -2769,6 +2798,47 @@ def main() -> None:
     ):
         add_stakeholder_relationship(h_pm, drone["id"], holder_kind, holder_id, kind, target_type, target_id)
 
+    print("Seeding Risk Management (Module 3 Phase 1) — enabling the module, then a small Falcon-3 risk register."
+          " Falcon-3 pins the Likelihood x Consequence cell Rare x Catastrophic to High (its score alone would only earn"
+          " Medium): a catastrophe is never a minor risk, however unlikely...")
+    enable_module(h_pm, org["id"], "risk_management")
+    risk_types = list_effective_risk_types(h_pm, drone["id"])
+    risk_levels = get_risk_levels(h_pm, drone["id"])
+    set_project_scoring_cell_ratings(h_pm, drone["id"], "risk", "lxc", [{
+        "first_level_id": risk_levels["likelihood"]["Rare"], "second_level_id": risk_levels["consequence"]["Catastrophic"],
+        "band_label": "High",
+    }])
+    risk_single_controller = create_risk(
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Safety"]["id"], owner_id=demo_admin["user_id"],
+        title="Flight controller fails in flight",
+        statement="If the flight controller fails during a flight over people, the drone falls uncontrolled.",
+        cause="Single flight controller board with no in-flight redundancy.", risk_event="Loss of flight control.",
+        consequence="Injury to bystanders and loss of the airframe.", treatment_strategy="mitigate",
+        acceptance_criteria="Dual-redundant architecture certified; no single fault leads to loss of control.",
+        inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
+    )
+    create_risk(
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner_id=demo_admin["user_id"],
+        title="Cellular modem supplier misses delivery",
+        statement="If the single-sourced modem arrives late, integration testing slips and the certification date is at risk.",
+        risk_event="Late delivery of the telemetry modem.", consequence="Integration slips by several weeks.",
+        treatment_strategy="mitigate", inherent=("Likely", "Moderate"), residual=("Possible", "Minor"),
+    )
+    risk_regulator = create_risk(
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Compliance"]["id"], owner_id=demo_admin["user_id"],
+        title="Regulator withdraws BVLOS approval",
+        statement="If the regulator withdraws beyond-visual-line-of-sight approval, populated-corridor contracts cannot be flown.",
+        consequence="The core commercial route is lost.", inherent=("Rare", "Catastrophic"), treatment_strategy="accept",
+    )
+    risk_unscored = create_risk(
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Performance"]["id"], title="Gimbal vibration degrades imagery",
+        statement="Rotor vibration may blur inspection imagery at the gimbal's maximum zoom.",
+    )
+    print(f"  Risks: {risk_single_controller['unique_code']} {risk_single_controller['title']!r}"
+          f" (inherent {risk_single_controller['inherent_rating']['label']}, residual {risk_single_controller['residual_rating']['label']}),"
+          f" {risk_regulator['unique_code']} {risk_regulator['title']!r} (inherent {risk_regulator['inherent_rating']['label']}"
+          f" from its pinned cell), plus {risk_unscored['unique_code']} captured with no assessment yet and a modem supply-chain risk")
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -2815,6 +2885,9 @@ def main() -> None:
           " plus 2 organisation Stakeholders (Pat Okafor, Regulator — High influence/Medium interest, quarterly, represents"
           " Compliance Auditor; and Lee Harbour, hidden from Falcon-3 to show per-project visibility) and 1 Falcon-3"
           " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot)")
+    print("  Risk Management (enabled org-wide): 4 Risks on Falcon-3 (RSK-001 flight controller failure — High inherent,"
+          " Medium residual; a supply-chain risk; the regulator risk, whose Rare x Catastrophic cell is pinned to High; and one"
+          " Identified risk with no assessment), with the Likelihood x Consequence matrix and 12 default Risk types")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,12 @@
 """
-Module: modules.stakeholders._attachments
+Module: services.module_attachments
 
-Comment-thread and file-attachment operations shared by every artefact in this
-module (Persona, Stakeholder). Each artefact has its own module-local tables
-(Phase 0 resolution 8), so the operations are parameterised by an
-`AttachmentKit` naming those tables rather than copied per artefact.
+Comment-thread and file-attachment operations shared by every module artefact
+that keeps its own module-local comment and file tables (Persona, Stakeholder,
+Stakeholder Need, Risk). The operations are parameterised by an
+`AttachmentKit` naming those tables rather than copied per artefact. Lives in
+core so a module never imports another module's package (the modular feature
+system boundary).
 
 All operations are scope-agnostic: an artefact is "org-scoped" exactly when it has
 an `organization_id` set (a project-only artefact such as a Need has none), which decides whether uploads are org shared

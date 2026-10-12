@@ -37,7 +37,6 @@ from app.modules.stakeholders import _shared as sh
 from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
 from app.modules.stakeholders.models import Persona, ProjectPersonaType
 from app.modules.stakeholders.schemas import (
-    EffectiveTypeOut,
     PersonaCommentCreate,
     PersonaCommentOut,
     PersonaCommentUpdate,
@@ -47,9 +46,6 @@ from app.modules.stakeholders.schemas import (
     PersonaUpdate,
     PersonaVersionOut,
     PersonaWeightSet,
-    ProjectTypeCreate,
-    ProjectTypeOut,
-    ProjectTypeOverrideUpdate,
     VisibilitySet,
 )
 from app.modules.stakeholders.service import (
@@ -65,6 +61,7 @@ from app.modules.stakeholders.service import (
     unarchive_persona,
 )
 from app.schemas.file import FileAssetOut
+from app.schemas.type_vocabulary import EffectiveTypeOut, ProjectTypeCreate, ProjectTypeOut, ProjectTypeOverrideUpdate
 from app.services.audit import log_event
 from app.services.rbac import require_project_subcomponent_enabled
 

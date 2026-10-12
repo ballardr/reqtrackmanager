@@ -5,7 +5,7 @@ Helpers shared by the org-scoped (`stakeholder_router.py`) and project-scoped
 (`stakeholder_project_router.py`) Stakeholder routers, mirroring `_shared.py`
 for Personas: the routers declare their own routes and these hold the bodies
 the two would otherwise duplicate. Comments and files go through the shared
-`_attachments` kit.
+`services.module_attachments` kit.
 
 RBAC (Phase 0 resolution 6): viewing is gated by sub-component enablement
 alone; create/edit/archive/retire/erase need the scope's owner role
@@ -28,7 +28,6 @@ from sqlalchemy.orm import Session
 from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
 from app.models.user import User
-from app.modules.stakeholders import _attachments as att
 from app.modules.stakeholders._shared import apply_value_error_as_conflict, validate_people, visibility_fields
 from app.modules.stakeholders.enums import StakeholderScope, StakeholderStatus
 from app.modules.stakeholders.models import (
@@ -63,9 +62,10 @@ from app.modules.stakeholders.service import (
     transition_stakeholder,
     validate_scoring_levels,
 )
+from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.permissions import encode_permission
-from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
+from app.services.rbac import get_effective_permissions, lock_row_for_update, permission_satisfied, user_satisfies_module_role
 
 STAKEHOLDER_MANAGE_PERMISSION = encode_permission(STAKEHOLDER_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
 
@@ -251,6 +251,7 @@ def update_stakeholder_from_payload(
             )
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    lock_row_for_update(db, Stakeholder, stakeholder.id)
     current = get_current_stakeholder_version(db, stakeholder.id)
     apply_stakeholder_new_version(db, stakeholder, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=STAKEHOLDER_ARTEFACT_TYPE, entity_id=stakeholder.id, action="updated",
@@ -264,6 +265,7 @@ def transition_stakeholder_endpoint(
     comment: str | None,
 ) -> StakeholderOut:
     """Runs a lifecycle transition (409 if illegal), commits and returns the API shape."""
+    lock_row_for_update(db, Stakeholder, stakeholder.id)
     current = get_current_stakeholder_version(db, stakeholder.id)
     apply_value_error_as_conflict(
         transition_stakeholder, db, stakeholder, current, new_status, actor, action=action, comment=comment

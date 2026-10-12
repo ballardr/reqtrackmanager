@@ -27,7 +27,6 @@ from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.user import User
-from app.modules.stakeholders import _attachments as att
 from app.modules.stakeholders.enums import PersonaScope, PersonaStatus, StakeholderScope
 from app.modules.stakeholders.models import (
     Persona,
@@ -55,9 +54,16 @@ from app.modules.stakeholders.service import (
     resolve_persona_weight_with_source,
     transition_persona,
 )
+from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.permissions import encode_permission
-from app.services.rbac import get_effective_org_roles, get_effective_permissions, permission_satisfied, user_satisfies_module_role
+from app.services.rbac import (
+    get_effective_org_roles,
+    get_effective_permissions,
+    lock_row_for_update,
+    permission_satisfied,
+    user_satisfies_module_role,
+)
 
 PERSONA_MANAGE_PERMISSION = encode_permission(PERSONA_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
 
@@ -182,7 +188,7 @@ def validate_people(db: Session, organization_id: uuid.UUID, *user_ids: uuid.UUI
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Owner/champion must be a member of this organisation.")
 
 
-# --- Comments and files (shared kit, see `_attachments`) ---------------------
+# --- Comments and files (shared kit, see `services.module_attachments`) ---------------------
 
 PERSONA_ATTACHMENTS = att.AttachmentKit(
     artefact_type=PERSONA_ARTEFACT_TYPE, label="Persona", comment_model=PersonaComment,
@@ -209,7 +215,7 @@ async def attach_to_comment(
     db: Session, persona: Persona, comment_id: uuid.UUID, user: User, file: UploadFile, *, organization_id: uuid.UUID,
     **scope_ids,
 ) -> FileAsset:
-    """Author-only comment attachment (see `_attachments.attach_to_comment`)."""
+    """Author-only comment attachment (see `module_attachments.attach_to_comment`)."""
     return await att.attach_to_comment(
         db, PERSONA_ATTACHMENTS, persona, comment_id, user, file, organization_id=organization_id, **scope_ids
     )
@@ -298,6 +304,7 @@ def update_persona_from_payload(
             )
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    lock_row_for_update(db, Persona, persona.id)
     current = get_current_persona_version(db, persona.id)
     apply_persona_new_version(db, persona, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="updated", actor_id=actor.id,
@@ -312,6 +319,7 @@ def transition_persona_endpoint(
 ) -> PersonaOut:
     """Runs a lifecycle transition (409 if illegal), commits and returns the
     API shape."""
+    lock_row_for_update(db, Persona, persona.id)
     current = get_current_persona_version(db, persona.id)
     apply_value_error_as_conflict(transition_persona, db, persona, current, new_status, actor, action=action, comment=comment)
     db.commit()
