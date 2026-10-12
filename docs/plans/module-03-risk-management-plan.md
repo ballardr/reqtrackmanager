@@ -12,13 +12,14 @@ model as its Verification link target.
 **Status:** Phases 0 (2026-10-12, user sign-off), 1a (core per-cell rating
 override, 2026-10-12), 1 (data model, scoring, RBAC, project API, 2026-10-12),
 2 (lifecycle, 2026-10-12), 3 (relationships and treatment assessment,
-2026-10-12), 4 (reviews, change detection, MCP tools, 2026-10-12) and 5
-(frontend UI, 2026-10-12) complete; Phase 6 (docs website) is next. Overview §46 groups this with Engineering
-Design as "Phase 5" (built together, after Requirements & Libraries).
+2026-10-12), 4 (reviews, change detection, MCP tools, 2026-10-12), 5
+(frontend UI, 2026-10-12) and 6 (docs website, 2026-10-12) complete: **the plan is
+closed**. Overview §46 groups this with Engineering Design as "Phase 5" (built
+together, after Requirements & Libraries).
 
 ## Status / Resume Here
 
-7 / 8 phases complete (Phases 0, 1a, 1, 2, 3, 4 and 5 done 2026-10-12). Phase 6 is next.
+8 / 8 phases complete (all done 2026-10-12). Plan closed.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -29,7 +30,7 @@ Design as "Phase 5" (built together, after Requirements & Libraries).
 | 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [x] Complete (2026-10-12) |
 | 4 | Risk reviews + reassessment scheduling | [x] Complete (2026-10-12) |
 | 5 | Frontend UI | [x] Complete (2026-10-12) |
-| 6 | Docs website coverage | [ ] Not started — Phase 5 has shipped |
+| 6 | Docs website coverage | [x] Complete (2026-10-12) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -640,10 +641,22 @@ under-scope or miss amid everything else Phase 5 ships.
   list view, a Risk detail page showing its scoring matrix and lifecycle
   state, and the review/reassessment scheduling UI.
 
-**Status:** not started — Phase 5 (frontend) has shipped, so it can proceed;
-there was no real user-facing workflow to document accurately before then,
-the same reasoning Decision Management's own Phase 6 and Compliance's
-docs-site page both used. Not a blocker for any other phase.
+**As built (2026-10-12):** a nested *Risk Management module* category under
+Modules (`docs/website/docs/modules/risk-management-module/`): Overview,
+Data model and lifecycle, Scoring, Treatment and relationships, Reviews and
+notifications, MCP integration and Known limitations, with Mermaid diagrams
+(lifecycle, verdict flow, change detection) and six screenshots (register,
+matrix, detail, treatments and reviews, record-review dialog, organisation
+Risk Scoring). Module lists (Modules overview, Roadmap, glossary, MCP overview
+and Agent skill) and the Requirements management page now mention Risk
+Management.
+
+- Capturing against the real app exposed two things, both fixed here: the demo
+  seed's Risk block had never run end to end (it linked through the `Mitigates`
+  type Falcon-3 hides, and attached an action to an approved requirement), and
+  version change notes showed raw enum values ("treatment_planned").
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 6".
 
 ## Acceptance criteria (from overview §48, Risk Management subset)
 

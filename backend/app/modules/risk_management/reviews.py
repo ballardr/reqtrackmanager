@@ -41,6 +41,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.modules.risk_management.enums import RiskReviewOutcome, RiskStatus, TreatmentAssessmentStatus
+from app.modules.risk_management.labels import RISK_REVIEW_OUTCOME_LABEL
 from app.modules.risk_management.models import Risk, RiskReview, RiskTreatmentAssessment, RiskVersion
 from app.modules.risk_management.ratings import RatingContext, rate_version
 from app.modules.risk_management.service import apply_new_version
@@ -112,9 +113,11 @@ def record_review(
     )
     db.add(review)
     if next_review_date != current.review_date:
+        outcome_label = RISK_REVIEW_OUTCOME_LABEL.get(outcome.value, outcome.value)
+        next_date = next_review_date.isoformat() if next_review_date else "none"
         apply_new_version(
             db, risk, current, actor, changes={"review_date": next_review_date},
-            change_note=f"Reviewed ({outcome.value}); next review {next_review_date.isoformat() if next_review_date else 'none'}.",
+            change_note=f"Reviewed ({outcome_label}); next review {next_date}.",
         )
     db.flush()
     return review

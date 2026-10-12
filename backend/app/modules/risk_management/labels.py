@@ -38,6 +38,11 @@ TREATMENT_ASSESSMENT_STATUS_LABEL: dict[str, str] = {
     "needs_reassessment": "Needs reassessment",
 }
 
+RISK_REVIEW_OUTCOME_LABEL: dict[str, str] = {
+    "confirmed": "Confirmed",
+    "reassessed": "Reassessed",
+}
+
 
 def risk_status_label(value: str) -> str:
     """Returns the display label for a `RiskStatus` value (the raw value if unmapped)."""

@@ -80,11 +80,11 @@ Two optional HTTP headers on the MCP connection — `X-Default-Organization-Id` 
 
 ## Module-contributed tools
 
-Module tools are numerous (about 200 across Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas), so this page does not itemise them. The [Agent skill](./agent-skill.mdx) includes a generated, always-current list with usage guidance for each module.
+Module tools are numerous (over 200 across Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management), so this page does not itemise them. The [Agent skill](./agent-skill.mdx) includes a generated, always-current list with usage guidance for each module.
 
 Beyond the tools above, a backend module can declare its own tools that this server registers automatically, without any module-specific code living in the MCP server itself — see [Modules → Building your own module](../../modules/building-your-own-module.md#module-contributed-mcp-tools) for the mechanism.
 
-**Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas use this so far.** Compliance's MCP surface was write-enabled 2026-09-22 (see [decisions.md](https://github.com/ballardr/reqtrackmanager/blob/main/docs/decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry); Decision Management's approve/reject actions got the identical gated treatment the same day, as an explicit follow-up (see that same doc's "Decision Management MCP approval gate" entry) — its other mutating actions remain undeclared.
+**Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management use this so far.** Compliance's MCP surface was write-enabled 2026-09-22 (see [decisions.md](https://github.com/ballardr/reqtrackmanager/blob/main/docs/decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry); Decision Management's approve/reject actions got the identical gated treatment the same day, as an explicit follow-up (see that same doc's "Decision Management MCP approval gate" entry) — its other mutating actions remain undeclared.
 
 Compliance contributes 76 tools: 10 read-only —
 

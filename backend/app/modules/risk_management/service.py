@@ -43,6 +43,7 @@ from app.models.project import Project
 from app.models.scoring import ScoringLevel
 from app.models.user import User
 from app.modules.risk_management.enums import RiskStatus
+from app.modules.risk_management.labels import risk_status_label
 from app.modules.risk_management.models import (
     ProjectRiskType,
     Risk,
@@ -291,7 +292,7 @@ def transition_risk(
     check_transition_guards(
         current, target, ctx, effective_treatments=effective_treatment_counts(db, [risk.id]).get(risk.id, 0)
     )
-    note = comment.strip() or f"Status: {current.status.value} -> {target.value}."
+    note = comment.strip() or f"Status: {risk_status_label(current.status.value)} -> {risk_status_label(target.value)}."
     return apply_new_version(db, risk, current, actor, changes={"status": target}, change_note=note)
 
 

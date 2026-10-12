@@ -2556,7 +2556,8 @@ def main() -> None:
     )
 
     print("Seeding a project-level link type on Falcon-3 (Phase 5c): \"Is verified by\" (a requirement is verified by"
-          " another), inherited by the Avionics sub-project, and Falcon-3 hides the organisation's \"Mitigates\"...")
+          " another), inherited by the Avionics sub-project, and Falcon-3 hides the organisation's"
+          " \"Equivalent to\" (not \"Mitigates\": Risk treatment links need it)...")
     verified_by = create_project_link_type(
         h_pm, drone["id"], forward_name="Is verified by", reverse_name="Verifies", flow="forward_is_downstream",
     )
@@ -2564,7 +2565,7 @@ def main() -> None:
         h_pm, drone["id"], "requirement", gps_req["id"], link_type_id=verified_by["id"],
         other_type="requirement", other_id=flight_time_req["id"],
     )
-    set_link_type_visibility(h_pm, drone["id"], chain_link_types["Mitigates"]["id"], True)
+    set_link_type_visibility(h_pm, drone["id"], chain_link_types["Equivalent to"]["id"], True)
 
     print("Seeding Pain Point scoring config (Module 1 Phase 10) — org keeps the seeded Severity/Frequency/"
           "Confidence levels and module-default model; Falcon-3 overrides its default model to S×F...")
@@ -2872,11 +2873,18 @@ def main() -> None:
         other_type="requirement", other_id=return_to_home_req["id"], direction="incoming",
     )
     modem_action_types = httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()
-    modem_action = create_and_link_action(
-        h_pm, drone["id"], gps_req["id"], title="Qualify a second cellular modem supplier",
-        description="Dual-source the telemetry modem so one late delivery cannot stall integration.",
-        action_type_id=modem_action_types[0]["id"],
+    # A standalone action: every Falcon-3 requirement is approved by now, so none accepts a direct attachment.
+    modem_action_response = httpx.post(
+        f"{BASE}/projects/{drone['id']}/actions",
+        json={
+            "title": "Qualify a second cellular modem supplier",
+            "description": "Dual-source the telemetry modem so one late delivery cannot stall integration.",
+            "action_type_id": modem_action_types[0]["id"],
+        },
+        headers=h_pm, timeout=30,
     )
+    modem_action_response.raise_for_status()
+    modem_action = modem_action_response.json()
     create_artefact_link(
         h_pm, drone["id"], "risk", risk_modem["id"], link_type_id=risk_link_types["Treated by"]["id"],
         other_type="requirement_action", other_id=modem_action["id"],

@@ -4,7 +4,7 @@ sidebar_position: 5
 
 # Roadmap
 
-Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas are the modules built on ReqTrackManager's [module system](./overview.md) today, and a number of further modules are being explored to extend the product beyond them and core requirements management. Everything below is a proposed direction, not a commitment — none of it is scheduled, none of it has started, and the list itself may change as each one is worked through in more detail. The order below is alphabetical and implies nothing about which, if any, comes first.
+Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management are the modules built on ReqTrackManager's [module system](./overview.md) today, and a number of further modules are being explored to extend the product beyond them and core requirements management. Everything below is a proposed direction, not a commitment — none of it is scheduled, none of it has started, and the list itself may change as each one is worked through in more detail. The order below is alphabetical and implies nothing about which, if any, comes first.
 
 | Module | What it would add |
 | --- | --- |
@@ -14,7 +14,6 @@ Compliance, Decision Management, Context & Strategy, and Stakeholders & Personas
 | On-behalf-of recording | Recording that a decision or approval was actually made by someone other than the account updating the system, with a required reason and optional supporting evidence — for situations like a decision made in a meeting, where a project manager is the one transcribing someone else's call. |
 | Reporting & Analysis | Configurable, generated outputs — business requirements documents, engineering specifications, gap analyses, traceability/coverage/compliance reports, decision logs, review packages — built from whichever of these modules a deployment has enabled. |
 | Requirement types & libraries | Richer requirement typing (business/stakeholder/project-level) and organisation-level, reusable, versioned requirement sets that a project can adopt and baseline — deepening [Requirements management](../core-features/requirements-management.md) rather than replacing it. |
-| Risk Management | Risks with categories, causes/events/consequences, configurable likelihood/severity ratings, ownership, treatment and mitigation, residual risk, and links to requirements, design, decisions, and verification. |
 | Stakeholders & Personas — remaining parts | Extending the [Stakeholders & Personas module](./stakeholders-personas-module/overview.md) that's already shipped with a record of contacts and research (emails, calls, workshops, interviews, surveys) feeding Pain Points and Needs, engagement-cadence tracking, and stakeholder and Persona reports. |
 | Traceability | Configurable traceability rules and mandatory relationships between artefact types, with validation, matrices, coverage reporting, and documented exceptions, within and across projects. |
 
@@ -22,4 +21,4 @@ Several of these would share common underlying infrastructure — most notably a
 
 ## Where this fits
 
-See [Overview](./overview.md) for how the module system these would build on already works, and [Compliance module](./compliance-module/overview.md) / [Decision Management module](./decision-management-module/overview.md) / [Context & Strategy module](./context-strategy-module/overview.md) / [Stakeholders & Personas module](./stakeholders-personas-module/overview.md) for the modules shipped today.
+See [Overview](./overview.md) for how the module system these would build on already works, and [Compliance module](./compliance-module/overview.md) / [Decision Management module](./decision-management-module/overview.md) / [Context & Strategy module](./context-strategy-module/overview.md) / [Stakeholders & Personas module](./stakeholders-personas-module/overview.md) / [Risk Management module](./risk-management-module/overview.md) for the modules shipped today.

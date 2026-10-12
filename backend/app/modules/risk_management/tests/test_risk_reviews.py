@@ -119,7 +119,7 @@ def test_a_manager_records_a_review_that_snapshots_ratings_and_sets_the_next_dat
     assert after["review_date"] == _tomorrow_plus(45)
     assert after["version_number"] == before["version_number"] + 1
     versions = client.get(_url(project["id"], risk["id"]) + "/versions", headers=auth_headers(token)).json()
-    assert "Reviewed (confirmed)" in versions[-1]["change_note"]
+    assert "Reviewed (Confirmed)" in versions[-1]["change_note"]
 
 
 def test_a_review_can_clear_the_schedule_and_does_not_add_a_version_if_the_date_is_unchanged(client, admin_token):

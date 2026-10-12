@@ -135,7 +135,7 @@ def test_default_change_note_describes_the_move(client, admin_token):
     risk = _score_and_create(client, token, project)
     assert _move(client, token, project["id"], risk["id"], "assessed").status_code == 200
     versions = client.get(_url(project["id"], risk["id"]) + "/versions", headers=auth_headers(token)).json()
-    assert versions[-1]["change_note"] == "Status: identified -> assessed."
+    assert versions[-1]["change_note"] == "Status: Identified -> Assessed."
 
 
 def _score_and_create(client, token, project):
