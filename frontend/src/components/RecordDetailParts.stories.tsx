@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, within } from "storybook/test";
 
-import type { OrgUser } from "../../api/types";
+import type { OrgUser } from "../api/types";
 import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "./RecordDetailParts";
 
 const ORG_USERS: OrgUser[] = [
@@ -11,7 +11,7 @@ const ORG_USERS: OrgUser[] = [
   },
 ];
 
-const meta: Meta = { title: "Modules/Stakeholders/RecordDetailParts" };
+const meta: Meta = { title: "Components/RecordDetailParts" };
 export default meta;
 
 type Story = StoryObj;

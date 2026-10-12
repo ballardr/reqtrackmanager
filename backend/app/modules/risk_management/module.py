@@ -35,9 +35,11 @@ Registered contributions:
   effective treatment verdicts to `needs_reassessment` when the requirement or
   design behind them changes; and `mcp_tools` with `mcp_guidance`.
 
-Not yet registered, by design: the frontend manifest beyond the artefact path
-(Phase 5). Bundle export/import hooks are not provided either, matching
-Decision Management and Context & Strategy.
+- Phase 5: `frontend_manifest` (Tier A; `frontend/src/modules/risk_management/
+  module.ts` serves the register and detail routes and the admin sections).
+
+Not provided by design: bundle export/import hooks, matching Decision Management
+and Context & Strategy.
 
 `default_enabled=False`: an organisation opts in explicitly, matching the other
 new modules.
@@ -57,6 +59,7 @@ from app.modules.registry import (
     ArtefactChange,
     LinkTypeSeed,
     ModuleDefinition,
+    ModuleFrontendManifest,
     ModuleRoleDefinition,
     ModuleScheduledJob,
     ModuleSubComponentDefinition,
@@ -180,6 +183,12 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers={RISK_ARTEFACT_TYPE: RISK_SUMMARY_PROVIDER},
     link_type_seeds=LINK_TYPE_SEEDS,
     sub_components=(ModuleSubComponentDefinition(key=RISK_SUBCOMPONENT_KEY, name="Risks", default_enabled=True),),
+    frontend_manifest=ModuleFrontendManifest(
+        tier="installed",
+        nav_label="Risks",
+        nav_path=f"/projects/{{project_id}}/modules/{RISK_MODULE_KEY}/risks",
+        nav_icon="shield-alert",
+    ),
     scoring_schemes=(RISK_SCORING_SCHEME,),
     notification_types=NOTIFICATION_TYPES,
     on_artefact_changed=_on_artefact_changed,

@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
-import { notificationLink } from "../api/types";
+import { getNotificationLink } from "../modules/artefactPaths";
 import { t } from "../i18n/strings";
 import { Tooltip } from "./Tooltip";
 
@@ -45,7 +45,7 @@ export function NotificationBell() {
 
   function openNotification(n: Notification) {
     if (!n.read_at) markRead(n.id);
-    const link = notificationLink(n);
+    const link = getNotificationLink(n);
     if (link) {
       setOpen(false);
       navigate(link);
@@ -101,7 +101,7 @@ export function NotificationBell() {
             <div
               key={n.id}
               className="card"
-              style={{ cursor: notificationLink(n) ? "pointer" : "default", opacity: n.read_at ? 0.6 : 1 }}
+              style={{ cursor: getNotificationLink(n) ? "pointer" : "default", opacity: n.read_at ? 0.6 : 1 }}
               onClick={() => openNotification(n)}
             >
               <div style={{ fontWeight: n.read_at ? 400 : 700 }}>{n.title}</div>

@@ -17,7 +17,7 @@ import { useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { OverridePill } from "../../components/OverridePill";
-import { RecordFieldGroup } from "./RecordDetailParts";
+import { RecordFieldGroup } from "../../components/RecordDetailParts";
 
 export function RecordVisibilityControl({
   record,

@@ -30,6 +30,7 @@ import {
   type LucideIcon,
   Puzzle,
   Scale,
+  ShieldAlert,
   ShieldCheck,
   Target,
   Telescope,
@@ -40,6 +41,7 @@ import {
 const ICONS_BY_NAME: Record<string, LucideIcon> = {
   puzzle: Puzzle,
   "shield-check": ShieldCheck,
+  "shield-alert": ShieldAlert,
   scale: Scale,
   compass: Compass,
   telescope: Telescope,

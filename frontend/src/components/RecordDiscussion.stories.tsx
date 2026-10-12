@@ -1,16 +1,26 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
-import { buildFileAsset, buildUser, withAuth, withToast } from "../../testing/storybook-helpers";
+import { buildFileAsset, buildUser, withAuth, withToast } from "../testing/storybook-helpers";
 import { RecordDiscussion, type DiscussionApi } from "./RecordDiscussion";
-import type { PersonaComment } from "./types";
+import type { FileAsset } from "../api/types";
 
-const COMMENT: PersonaComment = {
-  id: "c1", persona_id: "p1", author_id: "user-1", author_display_name: "Alex Morgan", body: "First thoughts",
+interface RecordComment {
+  id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: FileAsset[];
+}
+
+const COMMENT: RecordComment = {
+  id: "c1", author_id: "user-1", author_display_name: "Alex Morgan", body: "First thoughts",
   created_at: "2026-01-10T09:00:00Z", edited_at: null, attachments: [],
 };
 
-function makeApi(overrides: Partial<DiscussionApi<PersonaComment>> = {}): DiscussionApi<PersonaComment> {
+function makeApi(overrides: Partial<DiscussionApi<RecordComment>> = {}): DiscussionApi<RecordComment> {
   return {
     listComments: fn(async () => [COMMENT]),
     addComment: fn(async (_id: string, _rid: string, body: string) => ({ ...COMMENT, id: "c2", body })),
@@ -25,7 +35,7 @@ function makeApi(overrides: Partial<DiscussionApi<PersonaComment>> = {}): Discus
 }
 
 const meta: Meta<typeof RecordDiscussion> = {
-  title: "Modules/Stakeholders/RecordDiscussion",
+  title: "Components/RecordDiscussion",
   component: RecordDiscussion,
   decorators: [withAuth(buildUser({ id: "user-1" })), withToast()],
   args: { scopeId: "project-1", recordId: "p1", noun: "Persona", currentUserId: "user-1", attachmentsReadOnly: false },

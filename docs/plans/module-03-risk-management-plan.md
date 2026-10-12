@@ -12,13 +12,13 @@ model as its Verification link target.
 **Status:** Phases 0 (2026-10-12, user sign-off), 1a (core per-cell rating
 override, 2026-10-12), 1 (data model, scoring, RBAC, project API, 2026-10-12),
 2 (lifecycle, 2026-10-12), 3 (relationships and treatment assessment,
-2026-10-12) and 4 (reviews, change detection, MCP tools, 2026-10-12) complete;
-Phase 5 (frontend UI) is next. Overview §46 groups this with Engineering
+2026-10-12), 4 (reviews, change detection, MCP tools, 2026-10-12) and 5
+(frontend UI, 2026-10-12) complete; Phase 6 (docs website) is next. Overview §46 groups this with Engineering
 Design as "Phase 5" (built together, after Requirements & Libraries).
 
 ## Status / Resume Here
 
-6 / 8 phases complete (Phases 0, 1a, 1, 2, 3 and 4 done 2026-10-12). Phase 5 is next.
+7 / 8 phases complete (Phases 0, 1a, 1, 2, 3, 4 and 5 done 2026-10-12). Phase 6 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -28,8 +28,8 @@ Design as "Phase 5" (built together, after Requirements & Libraries).
 | 2 | Risk lifecycle, treatment, and residual-risk tracking | [x] Complete (2026-10-12) |
 | 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [x] Complete (2026-10-12) |
 | 4 | Risk reviews + reassessment scheduling | [x] Complete (2026-10-12) |
-| 5 | Frontend UI | [ ] Not started |
-| 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping |
+| 5 | Frontend UI | [x] Complete (2026-10-12) |
+| 6 | Docs website coverage | [ ] Not started — Phase 5 has shipped |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -556,6 +556,27 @@ notifications surfaced consistently with existing notification patterns.
 Playwright e2e + Storybook coverage per standing requirements; enum/status
 values through label maps.
 
+**As built (2026-10-12):**
+
+```mermaid
+flowchart LR
+    NAV["Nav: Risks<br/>(backend frontend_manifest)"] --> REG["Register<br/>table + filters"]
+    NAV --> MX["Matrix tab<br/>ScoringMatrixChart"]
+    MX -- "cell click" --> REG
+    REG --> DET["Detail page"]
+    DET --> TR["Treatments<br/>proposed / effective"]
+    DET --> RV["Reviews + record review"]
+    DET --> LP["Links panel (generic)"]
+    NT["Notification<br/>entity_type risk"] -- "getNotificationLink" --> DET
+```
+
+- **Module** `frontend/src/modules/risk_management/`: `ProjectRisksPage`, `RiskDetailPage`, `RiskFormModal`, `RiskLifecycleControls`, `RiskTreatmentsPanel`, `RiskReviewsPanel`, `RiskMatrix`, `RiskRatingBadge`, org/project `RiskTypesPanel`s, `api.ts`, `useRiskScheme`, `riskFields`, and `module.ts` (routes, admin sections for types and scoring). The nav entry comes from the backend `frontend_manifest` (icon `shield-alert`).
+- **Matrix** is core's shared chart on the scheme's two-axis model, so it follows the organisation's bands and pinned cells; a cell click narrows the register.
+- **Core touches (all generic):** `RecordDetailParts`/`RecordDiscussion` moved from Stakeholders to `components/`; `getNotificationLink` resolves a notification's `entity_type` through any module's `artefactPaths` (used by the bell and the notifications page); one new nav icon.
+- **Phase 4's "Phase 5 must" list:** notification deep link, `reassessment_reason` and `needs_reassessment_count` (treatments panel), review history and record-review dialog, `is_review_overdue` filter and badge: all done.
+- **Not built:** an org-wide risk dashboard and a project-overview tile (not in the plan). Docs website is Phase 6.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk Management Phase 5".
+
 ## Phase 6 — Docs website coverage
 
 Added 2026-09-21 at the user's explicit instruction, applied across every
@@ -619,8 +640,8 @@ under-scope or miss amid everything else Phase 5 ships.
   list view, a Risk detail page showing its scoring matrix and lifecycle
   state, and the review/reassessment scheduling UI.
 
-**Status:** not started — depends on Phase 5 (frontend) actually shipping;
-there is no real user-facing workflow to document accurately before then,
+**Status:** not started — Phase 5 (frontend) has shipped, so it can proceed;
+there was no real user-facing workflow to document accurately before then,
 the same reasoning Decision Management's own Phase 6 and Compliance's
 docs-site page both used. Not a blocker for any other phase.
 

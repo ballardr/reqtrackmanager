@@ -1,8 +1,8 @@
 /**
- * Module: modules/stakeholders/RecordDiscussion
+ * Module: components/RecordDiscussion
  *
  * The Attachments and Comments blocks at the foot of a record's detail page,
- * shared by every record kind in this module: it loads the record's comments
+ * shared by every record detail page whose API has the comment/file calls below (Stakeholders, Risk Management): it loads the record's comments
  * and directly attached files itself, and wires `FileAttachmentList` and
  * `ArtefactCommentsSection` to the record's API. A load failure is a toast;
  * the page above keeps working.
@@ -14,10 +14,10 @@
  */
 import { useEffect, useState } from "react";
 
-import type { FileAsset } from "../../api/types";
-import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
-import { FileAttachmentList } from "../../components/FileAttachmentList";
-import { toErrorMessage, useToast } from "../../context/ToastContext";
+import type { FileAsset } from "../api/types";
+import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
+import { FileAttachmentList } from "./FileAttachmentList";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 
 /** A comment as `ArtefactCommentsSection` needs it. */
 interface DiscussionComment {

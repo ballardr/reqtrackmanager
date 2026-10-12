@@ -410,3 +410,15 @@ def test_risk_is_a_registered_artefact_type_with_roles_and_scheme():
     assert roles["risk_manager"].scope == "project" and roles["risk_manager"].permissions
     assert roles["risk_type_admin"].scope == "org"
     assert [s.key for s in MODULE_DEFINITION.sub_components] == ["risk"]
+
+
+def test_the_project_nav_offers_the_risk_register(client, admin_token):
+    """Phase 5: the module's `frontend_manifest` puts a "Risks" nav entry pointing at the register route the
+    frontend serves (`frontend/src/modules/risk_management/module.ts`)."""
+    _, project, token = setup(client, admin_token, "Risk Nav Co")
+    resp = client.get(f"/api/v1/projects/{project['id']}/enabled-modules", headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    manifest = next(m for m in resp.json() if m["module_key"] == "risk_management")["frontend_manifest"]
+    assert manifest["tier"] == "installed" and manifest["nav_label"] == "Risks"
+    assert manifest["nav_path"] == f"/projects/{project['id']}/modules/risk_management/risks"
+    assert manifest["nav_icon"] == "shield-alert"

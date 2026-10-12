@@ -885,6 +885,9 @@ flowchart LR
   to core's closed enum. `services.notifications.notify` accepts either form and
   raises `ValueError` for an unregistered key. The preferences API returns
   `label` for module types; core types are labelled by the frontend string table.
+  To make a notification clickable, send the record's registered artefact type as
+  `entity_type` and its id as `entity_id`: the frontend's `getNotificationLink`
+  opens it through the owning module's `artefactPaths`, with no core change.
 - **`on_artefact_changed`** is called with an `ArtefactChange` (`artefact_type`,
   `artefact_id`, `project_id`, `kind` of `content_changed` or `archived`,
   `summary`, `actor_id`) by `services.artefact_changes.notify_artefact_changed`,

@@ -10,19 +10,40 @@
  * backend registers must resolve here, or it could be linked yet unreachable
  * (`artefactPaths.stories.tsx` guards this).
  */
-import { REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
+import {
+  notificationLink, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_STATUS_LABEL, type Notification,
+} from "../api/types";
 import { installedModules } from "./registry";
+
+/** The detail route a module declares for `artefactType` in `projectId`, or `null` when none does. */
+function getModuleArtefactPath(artefactType: string, projectId: string, id: string): string | null {
+  for (const module of installedModules) {
+    const path = module.artefactPaths?.[artefactType];
+    if (path) return path(projectId, id);
+  }
+  return null;
+}
 
 /** The detail route of a record of `artefactType` in `projectId`, or `null`
  * when no installed module (and not core) can say where it lives. */
 export function getArtefactPath(artefactType: string, projectId: string, id: string): string | null {
   if (artefactType === "requirement") return `/projects/${projectId}/requirements/${id}`;
   if (artefactType === "requirement_action") return `/projects/${projectId}/actions/${id}`;
-  for (const module of installedModules) {
-    const path = module.artefactPaths?.[artefactType];
-    if (path) return path(projectId, id);
+  return getModuleArtefactPath(artefactType, projectId, id);
+}
+
+/**
+ * Where clicking a notification navigates: a notification about a record a module owns (its
+ * `entity_type` is that module's registered artefact type) opens that record's page via the
+ * module's `artefactPaths`; anything else keeps the core resolution (`notificationLink`).
+ * `null` means the notification is not navigable.
+ */
+export function getNotificationLink(n: Notification): string | null {
+  if (n.project_id && n.entity_type && n.entity_id) {
+    const modulePath = getModuleArtefactPath(n.entity_type, n.project_id, n.entity_id);
+    if (modulePath) return modulePath;
   }
-  return null;
+  return notificationLink(n);
 }
 
 const CORE_STATUS_LABELS: Record<string, Record<string, string>> = {
