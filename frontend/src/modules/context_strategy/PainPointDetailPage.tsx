@@ -44,22 +44,22 @@
  * Confidence scoring and the chosen-when-viewing roll-up) and an
  * "Intentional" badge for deliberate limitations.
  *
- * **Owner assignment via a dedicated `AssigneePicker`, not a
+ * **Owner assignment via a dedicated `RecordPrincipalField`, not a
  * `PainPointFormModal` field (Decided by: Agent)** — see `types.ts`'s own
- * docstring on `PainPointFieldValues` for why. This page loads this
- * project's organisation's user list once (for `AssigneePicker`'s own
+ * docstring on `PainPointFieldValues` for why. The owner is a user, an
+ * organisation group or a project group. This page loads this
+ * project's organisation's user list once (for the picker's own
  * search/display needs) and calls `projectPainPointApi.update` directly with
- * the current content fields plus the newly chosen `owner_id`.
+ * the current content fields plus the newly chosen `owner`.
  */
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
-import type { FileAsset, OrgUser, Project } from "../../api/types";
-import { userPrincipal } from "../../api/types";
+import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
-import { PrincipalPicker } from "../../components/PrincipalPicker";
+import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -185,7 +185,7 @@ export function PainPointDetailPage() {
     if (!projectId || !painPoint) return;
     setFormError(null);
     try {
-      const updated = await projectPainPointApi.update(projectId, painPoint.id, { ...values, owner_id: painPoint.owner_id });
+      const updated = await projectPainPointApi.update(projectId, painPoint.id, { ...values, owner: painPoint.owner });
       showToast("Pain Point updated.");
       setEditing(false);
       setPainPoint(updated);
@@ -194,13 +194,13 @@ export function PainPointDetailPage() {
     }
   }
 
-  async function assignOwner(ownerId: string) {
+  async function assignOwner(owner: PrincipalRef | null) {
     if (!projectId || !painPoint) return;
     try {
       const updated = await projectPainPointApi.update(projectId, painPoint.id, {
         pain_point_type_id: painPoint.pain_point_type_id, title: painPoint.title, description: painPoint.description,
         source: painPoint.source, impact: painPoint.impact, evidence: painPoint.evidence, priority: painPoint.priority,
-        date_identified: painPoint.date_identified, owner_id: ownerId || null,
+        date_identified: painPoint.date_identified, owner,
       });
       showToast("Owner updated.");
       setPainPoint(updated);
@@ -250,17 +250,10 @@ export function PainPointDetailPage() {
         {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
         {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
 
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Owner</span>
-          <PrincipalPicker
-            kinds={["user"]}
-            orgUsers={orgUsers}
-            organizationId={project?.organization_id}
-            value={userPrincipal(painPoint.owner_id)}
-            onChange={(principal) => assignOwner(principal?.id ?? "")}
-            ariaLabel="Pain Point owner"
-          />
-        </div>
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
+          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
+        />
 
         <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
           {painPoint.status === "submitted" && (

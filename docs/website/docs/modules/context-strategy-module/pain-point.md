@@ -27,7 +27,7 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 | `impact` | Its impact. |
 | `evidence` | Supporting evidence (in addition to any file attachments). |
 | `priority` | `low` / `medium` / `high`. |
-| `owner_id` | Who owns this Pain Point, if assigned. |
+| `owner` | Who owns this Pain Point, if assigned: a user or a group (see [Groups as owners](./overview.md#groups-as-owners)). |
 | `date_identified` | Defaults to today if omitted at creation. |
 | `is_intentional` | Marks a **deliberate limitation** (for example, a restriction in a lower product tier that drives upgrades). It is still scored, but isn't something to fix, so the list can hide it. |
 | `status` | Lifecycle state, below. |

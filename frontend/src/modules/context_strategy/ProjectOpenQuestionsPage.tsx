@@ -83,7 +83,7 @@ export function ProjectOpenQuestionsPage() {
   const filtered = openQuestions.filter((q) => {
     if (openOnly && !OPEN_QUESTION_OPEN_STATUSES.includes(q.status)) return false;
     if (overdueOnly && !(q.due_date !== null && q.due_date < today)) return false;
-    if (unownedOnly && q.owner_id !== null) return false;
+    if (unownedOnly && q.owner !== null) return false;
     if (statusFilter && q.status !== statusFilter) return false;
     if (priorityFilter && q.priority !== priorityFilter) return false;
     if (search && !q.question.toLowerCase().includes(search.toLowerCase())) return false;

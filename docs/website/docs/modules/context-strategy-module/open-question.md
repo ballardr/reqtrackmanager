@@ -19,7 +19,7 @@ An **Open Question** records something that still needs deciding before a Strate
 | `context` | Background context. |
 | `evidence` | Supporting evidence (in addition to any file attachments). |
 | `priority` | `low` / `medium` / `high`. |
-| `owner_id` | Who is driving this question to resolution, if assigned. |
+| `owner` | Who is driving this question to resolution, if assigned: a user or a group (see [Groups as owners](./overview.md#groups-as-owners)). |
 | `due_date` | The due/review date, if set. |
 | `status` | Lifecycle state, below. |
 

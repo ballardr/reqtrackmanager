@@ -135,7 +135,7 @@ def test_create_and_get_project_guiding_principle(client, admin_token):
     assert guiding_principle["version_number"] == 1
     assert guiding_principle["is_locked"] is False
     assert guiding_principle["priority"] == "high"
-    assert guiding_principle["owner_id"] is None
+    assert guiding_principle["owner"] is None
 
     resp = client.get(
         f"{_project_base(project['id'])}/guiding-principles/{guiding_principle['id']}",
@@ -192,29 +192,29 @@ def test_update_project_guiding_principle_creates_a_new_version(client, admin_to
 
 
 def test_update_project_guiding_principle_can_assign_and_clear_owner(client, admin_token):
-    """`owner_id` is nullable, so both assigning it and explicitly clearing
+    """`owner` is nullable, so both assigning it and explicitly clearing
     it (not just leaving it unspecified) must actually persist — the
-    `owner_id_explicitly_set` disambiguation this field needs (see
+    `owner_explicitly_set` disambiguation this field needs (see
     `service.apply_guiding_principle_new_version`'s own docstring)."""
     org, project, org_admin_token = _setup(client, admin_token, "CtxGuidingPrinciple Owner Co")
     guiding_principle = _create_project_guiding_principle(client, org_admin_token, project["id"])
     user_id = create_org_user(client, org_admin_token, org["id"], "gp_owner_candidate@example.com")
 
-    payload = {**_PAYLOAD, "owner_id": user_id}
+    payload = {**_PAYLOAD, "owner": {"type": "user", "id": user_id}}
     resp = client.put(
         f"{_project_base(project['id'])}/guiding-principles/{guiding_principle['id']}", json=payload,
         headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["owner_id"] == user_id
+    assert resp.json()["owner"]["id"] == user_id
 
-    payload = {**_PAYLOAD, "owner_id": None}
+    payload = {**_PAYLOAD, "owner": None}
     resp = client.put(
         f"{_project_base(project['id'])}/guiding-principles/{guiding_principle['id']}", json=payload,
         headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["owner_id"] is None
+    assert resp.json()["owner"] is None
 
 
 def test_plain_member_cannot_edit_a_guiding_principle(client, admin_token):

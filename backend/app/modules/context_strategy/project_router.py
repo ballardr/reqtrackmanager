@@ -123,7 +123,10 @@ from app.modules.context_strategy._shared import (
     get_pain_point_in_scope,
     get_strategy_in_scope,
     guiding_principle_to_out,
+    guiding_principle_versions_out,
+    guiding_principles_to_out,
     open_question_to_out,
+    owner_labels,
     pain_point_to_out,
     require_approve_permission,
     require_future_state_approve_permission,
@@ -312,6 +315,7 @@ from app.modules.context_strategy.service import (
 from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.principals import validate_principal
 from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.relationships import get_all_links
 
@@ -1417,7 +1421,8 @@ def list_project_pain_points(
     if not include_archived:
         query = query.where(PainPoint.is_archived.is_(False))
     pain_points = db.scalars(query.order_by(PainPoint.created_at)).all()
-    return [pain_point_to_out(db, p) for p in pain_points]
+    labels = owner_labels(db, pain_points)
+    return [pain_point_to_out(db, p, labels) for p in pain_points]
 
 
 @router.get("/pain-points/{pain_point_id}", response_model=PainPointOut)
@@ -1454,10 +1459,13 @@ def update_project_pain_point(
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    validate_principal(
+        db, payload.owner, organization_id=project.organization_id, project_id=project_id, field="owner",
+    )
     update_pain_point(
         db, pain_point, pain_point_type=pain_point_type, title=payload.title, description=payload.description,
         source=payload.source, impact=payload.impact, evidence=payload.evidence, priority=payload.priority,
-        owner_id=payload.owner_id, owner_id_explicitly_set=True, date_identified=payload.date_identified,
+        owner=payload.owner, owner_explicitly_set=True, date_identified=payload.date_identified,
         is_intentional=payload.is_intentional,
     )
     log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="updated",
@@ -1948,16 +1956,19 @@ def create_project_guiding_principle(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    validate_principal(
+        db, payload.owner, organization_id=project.organization_id, project_id=project_id, field="owner",
+    )
     guiding_principle = create_guiding_principle(
         db, scope=_GP_SCOPE, organization_id=project.organization_id, project_id=project_id, creator=current_user,
         name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
-        priority=payload.priority, owner_id=payload.owner_id,
+        priority=payload.priority, owner=payload.owner,
     )
     log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="created",
               actor_id=current_user.id, project_id=project_id, detail={"name": payload.name})
     db.commit()
     db.refresh(guiding_principle)
-    return guiding_principle_to_out(guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id))
+    return guiding_principle_to_out(db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id))
 
 
 @router.get("/guiding-principles", response_model=list[GuidingPrincipleOut])
@@ -1971,9 +1982,7 @@ def list_project_guiding_principles(
     if not include_archived:
         query = query.where(GuidingPrinciple.is_archived.is_(False))
     guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
-    return [
-        guiding_principle_to_out(gp, get_current_guiding_principle_version(db, gp.id)) for gp in guiding_principles
-    ]
+    return guiding_principles_to_out(db, guiding_principles)
 
 
 @router.get("/guiding-principles/{guiding_principle_id}", response_model=GuidingPrincipleOut)
@@ -1983,7 +1992,7 @@ def get_project_guiding_principle(
 ):
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2006,17 +2015,20 @@ def update_project_guiding_principle(
             status.HTTP_409_CONFLICT,
             "This Guiding Principle is past review; its content can no longer be edited in place.",
         )
+    validate_principal(
+        db, payload.owner, organization_id=project.organization_id, project_id=project_id, field="owner",
+    )
     apply_guiding_principle_new_version(
         db, guiding_principle, current_version, current_user,
         name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
-        priority=payload.priority, owner_id=payload.owner_id, owner_id_explicitly_set=True,
+        priority=payload.priority, owner=payload.owner, owner_explicitly_set=True,
         change_note=payload.change_note,
     )
     log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="updated",
               actor_id=current_user.id, project_id=project_id)
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2026,7 +2038,7 @@ def list_project_guiding_principle_versions(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
-    return list(guiding_principle.versions)
+    return guiding_principle_versions_out(db, guiding_principle.versions)
 
 
 @router.post("/guiding-principles/{guiding_principle_id}/archive", response_model=GuidingPrincipleOut)
@@ -2046,7 +2058,7 @@ def archive_project_guiding_principle(
               actor_id=current_user.id, project_id=project_id)
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2067,7 +2079,7 @@ def unarchive_project_guiding_principle(
               actor_id=current_user.id, project_id=project_id)
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2086,7 +2098,7 @@ def propose_project_guiding_principle(
     apply_value_error_as_conflict(propose_guiding_principle, db, guiding_principle, current_version, current_user)
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2113,7 +2125,7 @@ def send_project_guiding_principle_back(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2133,7 +2145,7 @@ def approve_project_guiding_principle(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2161,7 +2173,7 @@ def activate_project_guiding_principle(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2181,7 +2193,7 @@ def supersede_project_guiding_principle(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2207,7 +2219,7 @@ def retire_project_guiding_principle(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -2460,7 +2472,7 @@ def create_project_open_question(
               actor_id=current_user.id, project_id=project_id, detail={"question": payload.question})
     db.commit()
     db.refresh(open_question)
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 @router.get("/open-questions", response_model=list[OpenQuestionOut])
@@ -2472,7 +2484,8 @@ def list_project_open_questions(
     if not include_archived:
         query = query.where(OpenQuestion.is_archived.is_(False))
     open_questions = db.scalars(query.order_by(OpenQuestion.created_at)).all()
-    return [open_question_to_out(oq) for oq in open_questions]
+    labels = owner_labels(db, open_questions)
+    return [open_question_to_out(db, oq, labels) for oq in open_questions]
 
 
 @router.get("/open-questions/{open_question_id}", response_model=OpenQuestionOut)
@@ -2481,7 +2494,7 @@ def get_project_open_question(
     current_user: User = Depends(_require_open_question_view), db: Session = Depends(get_db),
 ):
     open_question = _get_open_question(db, project_id, open_question_id)
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 @router.put("/open-questions/{open_question_id}", response_model=OpenQuestionOut)
@@ -2503,15 +2516,18 @@ def update_project_open_question(
             status.HTTP_409_CONFLICT,
             "This Open Question has reached a terminal outcome; its content can no longer be edited.",
         )
+    validate_principal(
+        db, payload.owner, organization_id=project.organization_id, project_id=project_id, field="owner",
+    )
     update_open_question(
         db, open_question, question=payload.question, context=payload.context, evidence=payload.evidence,
-        priority=payload.priority, owner_id=payload.owner_id, owner_id_explicitly_set=True,
+        priority=payload.priority, owner=payload.owner, owner_explicitly_set=True,
         due_date=payload.due_date, due_date_explicitly_set=True,
     )
     log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question.id, action="updated",
               actor_id=current_user.id, project_id=project_id)
     db.commit()
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 @router.post("/open-questions/{open_question_id}/archive", response_model=OpenQuestionOut)
@@ -2528,7 +2544,7 @@ def archive_project_open_question(
     log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question.id, action="archived",
               actor_id=current_user.id, project_id=project_id)
     db.commit()
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 @router.post("/open-questions/{open_question_id}/unarchive", response_model=OpenQuestionOut)
@@ -2545,7 +2561,7 @@ def unarchive_project_open_question(
     log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question.id, action="unarchived",
               actor_id=current_user.id, project_id=project_id)
     db.commit()
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 # --- Open Question lifecycle (branching) --------------------------------------
@@ -2563,7 +2579,7 @@ def investigate_project_open_question(
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(investigate_open_question, db, open_question, current_user, comment=payload.comment)
     db.commit()
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 @router.post("/open-questions/{open_question_id}/mark-ready-for-decision", response_model=OpenQuestionOut)
@@ -2579,7 +2595,7 @@ def mark_project_open_question_ready_for_decision(
         mark_open_question_ready_for_decision, db, open_question, current_user, comment=payload.comment,
     )
     db.commit()
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 @router.post("/open-questions/{open_question_id}/withdraw", response_model=OpenQuestionOut)
@@ -2596,7 +2612,7 @@ def withdraw_project_open_question(
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(withdraw_open_question, db, open_question, current_user, comment=payload.comment)
     db.commit()
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 @router.post("/open-questions/{open_question_id}/resolve", response_model=OpenQuestionOut)
@@ -2622,7 +2638,7 @@ def resolve_project_open_question(
     )
     apply_value_error_as_conflict(resolve_open_question, db, open_question, current_user, comment=payload.comment)
     db.commit()
-    return open_question_to_out(open_question)
+    return open_question_to_out(db, open_question)
 
 
 # --- Open Question comments ----------------------------------------------------

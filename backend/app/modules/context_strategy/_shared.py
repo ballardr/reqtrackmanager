@@ -66,6 +66,8 @@ own docstring for the full reasoning.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -91,6 +93,7 @@ from app.modules.context_strategy.schemas import (
     ContextStrategyLinkOut,
     FutureStateOut,
     GuidingPrincipleOut,
+    GuidingPrincipleVersionOut,
     OpenQuestionOut,
     PainPointOut,
     StrategyOut,
@@ -110,10 +113,15 @@ from app.modules.context_strategy.service import (
     is_open_question_locked,
     is_pain_point_locked,
 )
+from app.schemas.principal import PrincipalOut
 from app.services.permissions import encode_permission
+from app.services.principals import principal_labels, principal_ref
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
 
 MODULE_KEY = "context_strategy"
+
+# Resolved display data for owners, keyed by `(owner_type, owner_id)` (`services.principals.principal_labels`).
+OwnerLabels = dict[tuple[str, uuid.UUID], PrincipalOut]
 
 # Fine-Grained Access Control's unscoped `(strategy, approve_baseline)`
 # permission atom — Strategy has no sub-type dimension analogous to
@@ -405,11 +413,26 @@ def _effective_pain_point_type_name(db: Session, project_pain_point_type: Projec
     return org_type.name if org_type is not None else "Unknown type"
 
 
-def pain_point_to_out(db: Session, pain_point: PainPoint) -> PainPointOut:
+def owner_labels(db: Session, rows: Sequence[Any]) -> OwnerLabels:
+    """Display data for the owner of every row in `rows` (anything with `owner_type` / `owner_id`), in one batch."""
+    return principal_labels(db, [principal_ref(r.owner_type, r.owner_id) for r in rows])
+
+
+def owner_of(labels: OwnerLabels, row: Any) -> PrincipalOut | None:
+    """The resolved owner of `row`, or None when it has no owner."""
+    return None if row.owner_id is None else labels[(row.owner_type, row.owner_id)]
+
+
+def pain_point_to_out(db: Session, pain_point: PainPoint, labels: OwnerLabels | None = None) -> PainPointOut:
     """Builds the API-facing shape for a `PainPoint` — no separate version
     row to merge in (see `models.py`'s own docstring), so this reads
     `pain_point`'s own columns directly plus its effective type name
-    (`_effective_pain_point_type_name`)."""
+    (`_effective_pain_point_type_name`) and its resolved owner.
+
+    Args:
+        labels: Pre-resolved owner labels (`owner_labels`) when building many; resolved here when omitted.
+    """
+    labels = labels if labels is not None else owner_labels(db, [pain_point])
     project_pain_point_type = db.get(ProjectPainPointType, pain_point.pain_point_type_id)
     type_name = (
         _effective_pain_point_type_name(db, project_pain_point_type) if project_pain_point_type is not None else ""
@@ -420,7 +443,7 @@ def pain_point_to_out(db: Session, pain_point: PainPoint) -> PainPointOut:
         archived_at=pain_point.archived_at, archived_by=pain_point.archived_by,
         title=pain_point.title, description=pain_point.description, source=pain_point.source,
         impact=pain_point.impact, evidence=pain_point.evidence, priority=pain_point.priority,
-        status=pain_point.status, owner_id=pain_point.owner_id, date_identified=pain_point.date_identified,
+        status=pain_point.status, owner=owner_of(labels, pain_point), date_identified=pain_point.date_identified,
         is_intentional=pain_point.is_intentional, is_locked=is_pain_point_locked(pain_point),
         created_at=pain_point.created_at, updated_at=pain_point.updated_at,
     )
@@ -488,20 +511,51 @@ def require_pain_point_decide_permission(
 # --- Guiding Principles (Phase 4) --------------------------------------------
 
 
-def guiding_principle_to_out(guiding_principle: GuidingPrinciple, version: GuidingPrincipleVersion) -> GuidingPrincipleOut:
+def guiding_principle_to_out(
+    db: Session, guiding_principle: GuidingPrinciple, version: GuidingPrincipleVersion,
+    labels: OwnerLabels | None = None,
+) -> GuidingPrincipleOut:
     """Merges a `GuidingPrinciple` identity row with its current
     `GuidingPrincipleVersion`'s content into the API-facing shape — exact
-    mirror of `strategy_to_out`/`future_state_to_out`."""
+    mirror of `strategy_to_out`/`future_state_to_out`, plus the resolved owner.
+
+    Args:
+        labels: Pre-resolved owner labels (`owner_labels`) when building many; resolved here when omitted.
+    """
+    labels = labels if labels is not None else owner_labels(db, [version])
     return GuidingPrincipleOut(
         id=guiding_principle.id, scope=guiding_principle.scope, organization_id=guiding_principle.organization_id,
         project_id=guiding_principle.project_id, creator_id=guiding_principle.creator_id,
         is_archived=guiding_principle.is_archived, archived_at=guiding_principle.archived_at,
         archived_by=guiding_principle.archived_by,
         name=version.name, principle_statement=version.principle_statement, rationale=version.rationale,
-        priority=version.priority, status=version.status, owner_id=version.owner_id,
+        priority=version.priority, status=version.status, owner=owner_of(labels, version),
         version_number=version.version_number, is_locked=is_guiding_principle_locked(version),
         created_at=guiding_principle.created_at, updated_at=guiding_principle.updated_at,
     )
+
+
+def guiding_principles_to_out(db: Session, guiding_principles: Sequence[GuidingPrinciple]) -> list[GuidingPrincipleOut]:
+    """Builds the list response, loading each current version and resolving every owner in one batch."""
+    versions = [get_current_guiding_principle_version(db, gp.id) for gp in guiding_principles]
+    labels = owner_labels(db, versions)
+    return [guiding_principle_to_out(db, gp, v, labels) for gp, v in zip(guiding_principles, versions, strict=True)]
+
+
+def guiding_principle_versions_out(
+    db: Session, versions: Sequence[GuidingPrincipleVersion]
+) -> list[GuidingPrincipleVersionOut]:
+    """Builds the version-history response, resolving every owner in one batch."""
+    labels = owner_labels(db, versions)
+    return [
+        GuidingPrincipleVersionOut(
+            id=v.id, guiding_principle_id=v.guiding_principle_id, version_number=v.version_number,
+            valid_from=v.valid_from, valid_to=v.valid_to, name=v.name, principle_statement=v.principle_statement,
+            rationale=v.rationale, priority=v.priority, status=v.status, owner=owner_of(labels, v),
+            change_note=v.change_note, created_by=v.created_by, created_at=v.created_at,
+        )
+        for v in versions
+    ]
 
 
 def get_guiding_principle_in_scope(
@@ -583,18 +637,23 @@ def require_guiding_principle_approve_permission(
 # --- Open Questions (Phase 5) -------------------------------------------------
 
 
-def open_question_to_out(open_question: OpenQuestion) -> OpenQuestionOut:
+def open_question_to_out(db: Session, open_question: OpenQuestion, labels: OwnerLabels | None = None) -> OpenQuestionOut:
     """Builds the API-facing shape for an `OpenQuestion` — no separate
     version row to merge in (see `models.py`'s own docstring), so this
     reads `open_question`'s own columns directly — exact mirror of
     `pain_point_to_out`, simpler since Open Question has no type reference
-    to also resolve."""
+    to also resolve.
+
+    Args:
+        labels: Pre-resolved owner labels (`owner_labels`) when building many; resolved here when omitted.
+    """
+    labels = labels if labels is not None else owner_labels(db, [open_question])
     return OpenQuestionOut(
         id=open_question.id, project_id=open_question.project_id, creator_id=open_question.creator_id,
         is_archived=open_question.is_archived, archived_at=open_question.archived_at,
         archived_by=open_question.archived_by, question=open_question.question, context=open_question.context,
         evidence=open_question.evidence, priority=open_question.priority, status=open_question.status,
-        owner_id=open_question.owner_id, due_date=open_question.due_date, is_locked=is_open_question_locked(open_question),
+        owner=owner_of(labels, open_question), due_date=open_question.due_date, is_locked=is_open_question_locked(open_question),
         created_at=open_question.created_at, updated_at=open_question.updated_at,
     )
 

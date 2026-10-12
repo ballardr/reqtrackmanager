@@ -8,9 +8,9 @@
  * "create-as-a-layer" principle.
  *
  * Fewer fields than `StrategyFormModal.tsx` — no `time_horizon` equivalent,
- * and `owner_id` is deliberately **not** a field here (see `types.ts`'s own
+ * and `owner` is deliberately **not** a field here (see `types.ts`'s own
  * docstring on `GuidingPrincipleFieldValues` — `GuidingPrincipleDetailPage.tsx`'s
- * dedicated `AssigneePicker` assigns it directly, mirroring
+ * dedicated `RecordPrincipalField` assigns it directly, mirroring
  * `PainPointFormModal.tsx`'s identical exclusion). `change_note` only
  * renders in edit mode, same asymmetry as `StrategyFormModal.tsx`.
  */

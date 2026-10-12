@@ -1,17 +1,17 @@
 # Users and Groups on Parity — Plan
 
-**Status:** planned 2026-10-11; Phases 1 to 3 shipped 2026-10-12. **Decided by: User** (2026-10-11): groups can be selected wherever a user can (starting with a Decision's owner); both organisation groups and project groups; the other modules are updated too. The rule is also in `CLAUDE.md` ("Users and Groups on Parity").
+**Status:** planned 2026-10-11; Phases 1 to 4 shipped 2026-10-12. **Decided by: User** (2026-10-11): groups can be selected wherever a user can (starting with a Decision's owner); both organisation groups and project groups; the other modules are updated too. The rule is also in `CLAUDE.md` ("Users and Groups on Parity").
 
 ## Status / Resume Here
 
-3 / 6 phases complete. Phases 1 (the shared mechanism), 2 (Decisions) and 3 (Stakeholders and Personas) are done; Phases 4 and 5 are independent of each other and can start. Phase 6 (core fields) is a proposal the user has not yet confirmed.
+4 / 6 phases complete. Phases 1 (the shared mechanism), 2 (Decisions), 3 (Stakeholders and Personas) and 4 (Context & Strategy) are done; Phase 5 can start. Phase 6 (core fields) is a proposal the user has not yet confirmed.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Shared principal mechanism: reference type, membership, picker, usage hook | [x] |
 | 2 | Decision Management: owner and decision maker (is Module 4 Phase 10) | [x] |
 | 3 | Stakeholders and Personas: owner and champion | [x] |
-| 4 | Context & Strategy: Pain Point, Guiding Principle and Open Question owners | [ ] |
+| 4 | Context & Strategy: Pain Point, Guiding Principle and Open Question owners | [x] |
 | 5 | Compliance: standard owner and required-action assignee | [ ] |
 | 6 | Core fields: requirement, action and change-request people, subscriptions (**proposed, needs confirmation**) | [ ] |
 
@@ -62,6 +62,8 @@ A generic core extension point, so no module hand-edits a core file and no modul
 **Phase 2 delivered 2026-10-12** (full account in `docs/decisions.md`): migration `0076` (module migration chain; the next free number is 0077); `owner` and `decision_maker` on the API are `PrincipalRef` in and `PrincipalOut` out, replacing `owner_id` / `decision_maker_id` (a deliberate breaking change to the Decisions API, called out so the next adopter does the same rather than carrying both shapes); filters `owner_type`+`owner_id`, `owner_mine`, `decision_maker_type`+`decision_maker_id`, `decision_maker_mine`; the owner gate is `is_principal_member`; D1 and D2 and D3 print `Name (Org group)` through the new `principal_text` helper; the module declares both fields in `principal_references`; the UI uses `PrincipalPicker` / `PrincipalBadge` on the form, list, quick view and detail page. Decisions has no export/import bundle, so `principal_to_bundle` / `principal_from_bundle` were not needed here, and its notifications do not exist, so no fan-out. The Playwright test for deleting an in-use group (deferred from Phase 1) is `tests/modules/decisions/decision-group-owners.spec.ts`.
 
 **Phase 3 delivered 2026-10-12** (full account in `docs/decisions.md`): migration `0077` (the next free number is 0078) backfills every version row; `owner` / `champion` on the API are `PrincipalRef` in and `PrincipalOut` out, for Persona, Stakeholder and Need, including the version-history endpoints and the MCP tools; a project group is valid only on a project-scoped record, so an organisation-level Persona or Stakeholder names users and organisation groups only; the four fields declare `principal_references` with `live_filter` (current version) and the new generic `record_id_field` so the audit event names the record, not its version row; bundles carry `{type, email | name}` and an unmatched optional principal is left empty with a warning (`principal_from_bundle(required=False)`); the UI uses a shared `RecordPrincipalField` in place of the user-only `RecordPersonField`, and the history tables show owner and champion. No owner gate, notification or owner filter exists in this module, so none was added. The Playwright test is `tests/modules/stakeholders/group-owners.spec.ts`.
+
+**Phase 4 delivered 2026-10-12** (full account in `docs/decisions.md`): migration `0078` (the next free number is 0079) backfills every row, including all Guiding Principle versions; `owner` on the API is `PrincipalRef` in and `PrincipalOut` out for Pain Point, Guiding Principle (and its version history) and Open Question, and the MCP tools; Pain Point and Open Question take users, organisation groups and the project's groups, while an organisation-level Guiding Principle takes users and organisation groups only; **the old owner was never validated, so a user from another organisation could be named — `validate_principal` now closes that on every write path**; the three fields declare `principal_references` (Guiding Principle with `live_filter` and `record_id_field`); R4 and R6 print the owner with its kind, and a group owner is an owner, not a gap, in R4's Unowned table and By owner counts; the UI uses the shared `RecordPrincipalField` on the three detail pages and the shared `VersionHistoryTable` for Guiding Principle history. This module has no export/import bundle, no owner gate and no notifications, so those parts of the checklist did not apply. The Playwright test is `tests/modules/context_strategy/group-owners.spec.ts`.
 
 ## 3a. Phases 2 to 5 — the checklist
 

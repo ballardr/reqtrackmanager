@@ -13,7 +13,7 @@ function guidingPrinciple(overrides: Partial<GuidingPrinciple> = {}): GuidingPri
     id: "gp-1", scope: "project", organization_id: null, project_id: PROJECT_ID, creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, name: "Field data is captured once",
     principle_statement: "Every field observation is recorded exactly once, at the point of inspection.",
-    rationale: "", priority: "high", status: "active", owner_id: null, version_number: 3, is_locked: true,
+    rationale: "", priority: "high", status: "active", owner: null, version_number: 3, is_locked: true,
     created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };

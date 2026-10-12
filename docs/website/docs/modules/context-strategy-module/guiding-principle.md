@@ -23,7 +23,7 @@ Exactly one of `organization_id`/`project_id` is set — `scope` is `organizatio
 | `principle_statement` | The principle itself. |
 | `rationale` | Why this principle exists. |
 | `priority` | `low` / `medium` / `high`. |
-| `owner_id` | Who owns this principle, if assigned. |
+| `owner` | Who owns this principle, if assigned: a user or a group (see [Groups as owners](./overview.md#groups-as-owners)). |
 | `status` | Lifecycle state, below. |
 
 Unlike Pain Point, a Guiding Principle has no `type` field or configurable type vocabulary at all.

@@ -54,7 +54,7 @@ export const EditExisting: Story = {
       is_archived: false, archived_at: null, archived_by: null,
       question: "Should we standardise on a single battery vendor?",
       context: "Two vendors are currently qualified.", evidence: "",
-      priority: "high", status: "open", owner_id: null, due_date: "2026-03-01", is_locked: false,
+      priority: "high", status: "open", owner: null, due_date: "2026-03-01", is_locked: false,
       created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
     } satisfies OpenQuestion,
   },

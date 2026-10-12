@@ -180,6 +180,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 from app.modules.context_strategy.enums import (
     FutureStateScope,
     FutureStateStatus,
@@ -630,9 +631,12 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
             `PainPointFile`/`PainPointCommentFile` attachments).
         priority: `enums.PainPointPriority`.
         status: `enums.PainPointStatus` — the branching lifecycle.
-        owner_id: The user responsible for resolving this Pain Point,
-            assigned by a `pain_point_manager` during/after triage
-            (§6.5) — `NULL` until assigned.
+        owner_type / owner_id: The principal (a user, or a project group —
+            `models.principal`) responsible for resolving this Pain Point,
+            assigned by a `pain_point_manager` during/after triage (§6.5) —
+            both `NULL` until assigned. No foreign key;
+            `services.principals.validate_principal` checks it on write and
+            `module.py`'s `principal_references` guard group deletion.
         date_identified: When the problem was first identified — defaults
             to the creation date if not supplied (`service.create_pain_point`).
         is_intentional: A deliberate limitation (e.g. in a lower product
@@ -645,6 +649,7 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "pain_points"
+    __table_args__ = (principal_check_constraint("owner", nullable=True),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     pain_point_type_id: Mapped[uuid.UUID] = mapped_column(
@@ -660,7 +665,8 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
         str_enum(PainPointPriority, 20), default=PainPointPriority.MEDIUM
     )
     status: Mapped[PainPointStatus] = mapped_column(str_enum(PainPointStatus, 20), default=PainPointStatus.SUBMITTED)
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     date_identified: Mapped[date] = mapped_column(Date)
     is_intentional: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_text("false"))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -840,8 +846,9 @@ class GuidingPrincipleVersion(UUIDPKMixin, Base):
         status: Lifecycle state — see `enums.GuidingPrincipleStatus`. Lives
             here, not on `GuidingPrinciple`, for the same reason `Strategy
             Version.status` does (see module docstring).
-        owner_id: The user responsible for this principle — `NULL` if
-            unassigned. Versioned along with every other content field
+        owner_type / owner_id: The principal (a user, an organisation group or,
+            on a project principle, a project group — `models.principal`)
+            responsible for this principle — `NULL` if unassigned. Versioned along with every other content field
             (Phase 0 Q4's full version-history model applies to the whole
             row here, unlike `PainPoint.owner_id`, which has no version
             table to live on).
@@ -853,6 +860,7 @@ class GuidingPrincipleVersion(UUIDPKMixin, Base):
     __tablename__ = "guiding_principle_versions"
     __table_args__ = (
         UniqueConstraint("guiding_principle_id", "version_number"),
+        principal_check_constraint("owner", nullable=True),
         Index(
             "ix_guiding_principle_versions_current", "guiding_principle_id", unique=False,
             postgresql_where=sa_text("valid_to IS NULL"),
@@ -875,7 +883,8 @@ class GuidingPrincipleVersion(UUIDPKMixin, Base):
     status: Mapped[GuidingPrincipleStatus] = mapped_column(
         str_enum(GuidingPrincipleStatus, 20), default=GuidingPrincipleStatus.DRAFT
     )
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     change_note: Mapped[str] = mapped_column(Text, default="")
 
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -961,7 +970,8 @@ class OpenQuestion(UUIDPKMixin, TimestampMixin, Base):
             mirroring `PainPoint.evidence`.
         priority: `enums.OpenQuestionPriority`.
         status: `enums.OpenQuestionStatus` — the branching lifecycle.
-        owner_id: The user responsible for driving this question to
+        owner_type / owner_id: The principal (a user, or a project group —
+            `models.principal`) responsible for driving this question to
             resolution, assigned by an `open_question_owner` (§9.4's
             "Question Owner / Project Manager": Assign) — `NULL` until
             assigned.
@@ -973,6 +983,7 @@ class OpenQuestion(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "open_questions"
+    __table_args__ = (principal_check_constraint("owner", nullable=True),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
 
@@ -983,7 +994,8 @@ class OpenQuestion(UUIDPKMixin, TimestampMixin, Base):
         str_enum(OpenQuestionPriority, 20), default=OpenQuestionPriority.MEDIUM
     )
     status: Mapped[OpenQuestionStatus] = mapped_column(str_enum(OpenQuestionStatus, 20), default=OpenQuestionStatus.OPEN)
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -608,6 +608,7 @@ Write workflow:
 Rules and gotchas:
 - Decisive tools are approvals, gated by AI approval (see the main skill): `approve_strategy`, `approve_future_state`, `activate_guiding_principle`, `retire_guiding_principle`, `resolve_open_question`. Only call them when the user asked for that specific item.
 - Everything here is project-scoped (`project_id`). Organisation-level strategies, future states and principles are not reachable through MCP.
+- `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a pain point, guiding principle or open question; responses return the same shape plus `label`. `null` clears it. On update, send the owner you want to keep, since an omitted owner is cleared.
 - Reports take `include_children` to roll up child projects.
 - Comments and file uploads are not available through MCP.
 
@@ -737,7 +738,7 @@ Parameters: `project_id*` (uuid, in path), `pain_point_type_id*` (uuid, in body)
 
 Updates a Pain Point's content.
 
-Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `pain_point_type_id*` (uuid, in body), `title*` (string, in body), `description` (string, in body), `source` (string, in body), `impact` (string, in body), `evidence` (string, in body), `priority` (string, in body), `is_intentional` (boolean, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `pain_point_type_id*` (uuid, in body), `title*` (string, in body), `description` (string, in body), `source` (string, in body), `impact` (string, in body), `evidence` (string, in body), `priority` (string, in body), `is_intentional` (boolean, in body), `owner` (object, in body)
 
 #### `context_strategy_list_pain_point_scores` (read)
 
@@ -761,13 +762,13 @@ Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `sc
 
 Creates a new Guiding Principle in Draft status.
 
-Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `principle_statement*` (string, in body), `rationale` (string, in body), `priority` (string, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `principle_statement*` (string, in body), `rationale` (string, in body), `priority` (string, in body), `owner` (object, in body)
 
 #### `context_strategy_update_guiding_principle` (write)
 
 Replaces a Guiding Principle's content, creating a new version.
 
-Parameters: `project_id*` (uuid, in path), `guiding_principle_id*` (uuid, in path), `name*` (string, in body), `principle_statement*` (string, in body), `rationale` (string, in body), `priority` (string, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `guiding_principle_id*` (uuid, in path), `name*` (string, in body), `principle_statement*` (string, in body), `rationale` (string, in body), `priority` (string, in body), `owner` (object, in body)
 
 #### `context_strategy_create_open_question` (write)
 
@@ -779,7 +780,7 @@ Parameters: `project_id*` (uuid, in path), `question*` (string, in body), `conte
 
 Updates an Open Question's content.
 
-Parameters: `project_id*` (uuid, in path), `open_question_id*` (uuid, in path), `question*` (string, in body), `context` (string, in body), `evidence` (string, in body), `priority` (string, in body), `due_date` (string, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `open_question_id*` (uuid, in path), `question*` (string, in body), `context` (string, in body), `evidence` (string, in body), `priority` (string, in body), `due_date` (string, in body), `owner` (object, in body)
 
 #### `context_strategy_create_strategy_relationship` (write)
 

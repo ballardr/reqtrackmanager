@@ -391,7 +391,7 @@ def test_r4_overdue_unowned_and_resolved_excluded(client, admin_token):
     done = client.post(_cs(pid) + "/open-questions", json={"question": "Done?"}, headers=auth_headers(token)).json()
     me = client.get("/api/v1/auth/me", headers=auth_headers(token)).json()["id"]
     upd = client.put(
-        f"{_cs(pid)}/open-questions/{owned['id']}", json={"question": "Owned?", "priority": "low", "owner_id": me},
+        f"{_cs(pid)}/open-questions/{owned['id']}", json={"question": "Owned?", "priority": "low", "owner": {"type": "user", "id": me}},
         headers=auth_headers(token),
     )
     assert upd.status_code == 200, upd.text

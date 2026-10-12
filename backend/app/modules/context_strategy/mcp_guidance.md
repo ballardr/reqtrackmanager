@@ -17,5 +17,6 @@ Write workflow:
 Rules and gotchas:
 - Decisive tools are approvals, gated by AI approval (see the main skill): `approve_strategy`, `approve_future_state`, `activate_guiding_principle`, `retire_guiding_principle`, `resolve_open_question`. Only call them when the user asked for that specific item.
 - Everything here is project-scoped (`project_id`). Organisation-level strategies, future states and principles are not reachable through MCP.
+- `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a pain point, guiding principle or open question; responses return the same shape plus `label`. `null` clears it. On update, send the owner you want to keep, since an omitted owner is cleared.
 - Reports take `include_children` to roll up child projects.
 - Comments and file uploads are not available through MCP.

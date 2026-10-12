@@ -12,11 +12,11 @@
  * concept to add in edit mode — `PainPointFieldValues` is identical for both
  * calls.
  *
- * **`owner_id` is deliberately not a field here (Decided by: Agent).**
+ * **`owner` is deliberately not a field here (Decided by: Agent).**
  * Source overview §6.5 places "Assign owner" on the manager tier as its own
  * distinct capability, not part of the create/edit content form — see
  * `types.ts`'s own docstring on `PainPointFieldValues`. `PainPointDetailPage.tsx`
- * assigns it directly via its own `AssigneePicker` control instead.
+ * assigns it directly via its own `PrincipalPicker` control instead.
  */
 import { useState } from "react";
 

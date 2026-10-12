@@ -31,7 +31,7 @@
  * while they are.
  */
 import { api } from "../../api/client";
-import type { FileAsset } from "../../api/types";
+import type { FileAsset, PrincipalRef } from "../../api/types";
 import type {
   ContextStrategyLink,
   EffectivePainPointType,
@@ -393,7 +393,7 @@ export const projectPainPointApi = {
   get(projectId: string, painPointId: string) {
     return api.get<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}`);
   },
-  update(projectId: string, painPointId: string, values: PainPointFieldValues & { owner_id: string | null }) {
+  update(projectId: string, painPointId: string, values: PainPointFieldValues & { owner: PrincipalRef | null }) {
     return api.put<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}`, values);
   },
   // --- Per-persona scoring (Phase 11) ---------------------------------------
@@ -485,16 +485,16 @@ export const projectPainPointApi = {
 // project-scoped twin, the same condition that justified Strategy's/Future
 // State's own factory shape and does not apply to Pain Point (project-scoped
 // only). `update()` below deliberately takes `values: GuidingPrincipleFieldValues
-// & { owner_id: string | null }`, not just `GuidingPrincipleFieldValues`
+// & { owner: PrincipalRef | null }`, not just `GuidingPrincipleFieldValues`
 // (unlike `buildStrategyApi.update`/`buildFutureStateApi.update`, whose own
 // field-value types already include every field the backend's full-replace
-// `PUT` expects) — `owner_id` is deliberately excluded from
+// `PUT` expects) — `owner` is deliberately excluded from
 // `GuidingPrincipleFieldValues` itself (`types.ts`'s own docstring), but the
 // backend's `GuidingPrincipleUpdate` schema still requires it on every `PUT`
 // (defaulting to `None` if omitted, which would silently clear an existing
 // owner on every plain content edit) — every call site must pass the
-// Guiding Principle's own current `owner_id` through explicitly, the same
-// discipline `projectPainPointApi.update`'s identical `& { owner_id: string
+// Guiding Principle's own current `owner` through explicitly, the same
+// discipline `projectPainPointApi.update`'s identical `& { owner: PrincipalRef
 // | null }` extension already establishes for Pain Point.
 
 export interface GuidingPrincipleListFilters {
@@ -508,13 +508,13 @@ function buildGuidingPrincipleApi(base: (id: string) => string) {
       const query = filters.include_archived ? "?include_archived=true" : "";
       return api.get<GuidingPrinciple[]>(`${base(id)}/guiding-principles${query}`);
     },
-    create(id: string, values: Omit<GuidingPrincipleFieldValues, "change_note"> & { owner_id?: string | null }) {
+    create(id: string, values: Omit<GuidingPrincipleFieldValues, "change_note"> & { owner?: PrincipalRef | null }) {
       return api.post<GuidingPrinciple>(`${base(id)}/guiding-principles`, values);
     },
     get(id: string, guidingPrincipleId: string) {
       return api.get<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}`);
     },
-    update(id: string, guidingPrincipleId: string, values: GuidingPrincipleFieldValues & { owner_id: string | null }) {
+    update(id: string, guidingPrincipleId: string, values: GuidingPrincipleFieldValues & { owner: PrincipalRef | null }) {
       return api.put<GuidingPrinciple>(`${base(id)}/guiding-principles/${guidingPrincipleId}`, values);
     },
     listVersions(id: string, guidingPrincipleId: string) {
@@ -627,7 +627,7 @@ export const projectOpenQuestionApi = {
   get(projectId: string, openQuestionId: string) {
     return api.get<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}`);
   },
-  update(projectId: string, openQuestionId: string, values: OpenQuestionFieldValues & { owner_id: string | null }) {
+  update(projectId: string, openQuestionId: string, values: OpenQuestionFieldValues & { owner: PrincipalRef | null }) {
     return api.put<OpenQuestion>(`${projectBase(projectId)}/open-questions/${openQuestionId}`, values);
   },
   archive(projectId: string, openQuestionId: string) {

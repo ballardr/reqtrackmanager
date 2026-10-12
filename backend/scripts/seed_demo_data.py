@@ -1211,6 +1211,17 @@ def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
     return r.json()
 
 
+def assign_owner(headers: dict, project_id: str, path: str, record: dict, fields: tuple[str, ...], owner: dict) -> dict:
+    """Sets the owner of a Pain Point (`pain-points`) or Open Question (`open-questions`): both are full-replace
+    edits, so the record's own `fields` are sent back with the `owner` principal (`{"type", "id"}`)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/{path}/{record['id']}",
+        json={**{f: record[f] for f in fields}, "owner": owner}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def triage_pain_point(headers: dict, project_id: str, pain_point_id: str) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/triage",
@@ -2492,6 +2503,18 @@ def main() -> None:
         evidence="14 SLA-breach support tickets in the last quarter, all citing report delay as root cause.",
         priority="high", date_identified="2026-08-15",
     )
+    # A team can own a Pain Point (users-and-groups parity): a project group, since a Pain Point is project-scoped.
+    field_ops = httpx.post(f"{BASE}/projects/{drone['id']}/groups", json={"name": "Field Operations Squad"}, headers=h_pm, timeout=30)
+    field_ops.raise_for_status()
+    httpx.post(
+        f"{BASE}/projects/{drone['id']}/groups/{field_ops.json()['id']}/members",
+        json={"user_id": demo_engineer["user_id"]}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    assign_owner(
+        h_pm, drone["id"], "pain-points", pp_accepted,
+        ("pain_point_type_id", "title", "description", "source", "impact", "evidence", "priority", "date_identified", "is_intentional"),
+        {"type": "project_group", "id": field_ops.json()["id"]},
+    )
     triage_pain_point(h_pm, drone["id"], pp_accepted["id"])
     accept_pain_point(h_pm, drone["id"], pp_accepted["id"])
     address_pain_point(h_pm, drone["id"], pp_accepted["id"])
@@ -2599,7 +2622,7 @@ def main() -> None:
         rationale="Utility/infrastructure inspection sites the organisation's Strategy above targets frequently"
         " have unreliable or absent network coverage; a platform that fails unsafely offline cannot win"
         " populated-corridor contracts regardless of its certification status.",
-        priority="high",
+        priority="high", owner={"type": "org_group", "id": architecture_board.json()["id"]},
     )
     propose_and_approve_org_guiding_principle(
         h_pm, org["id"], org_guiding_principle["id"],
@@ -2616,7 +2639,7 @@ def main() -> None:
         rationale="Directly addresses the accepted 'field inspectors re-key paper reports' Pain Point above —"
         " re-keying is both an SLA-breach risk and a transcription-error risk in the compliance record, so this"
         " principle exists to stop new features from reintroducing the same failure mode.",
-        priority="high", owner_id=demo_engineer["user_id"],
+        priority="high", owner={"type": "user", "id": demo_engineer["user_id"]},
     )
     propose_and_approve_project_guiding_principle(
         h_pm, drone["id"], drone_guiding_principle["id"],
@@ -2635,6 +2658,11 @@ def main() -> None:
         evidence="Procurement flagged a 6-week lead-time gap for the secondary vendor last quarter; the"
         " primary vendor has never missed a delivery window in 18 months.",
         priority="high", due_date=(date.today() + timedelta(days=21)).isoformat(),
+    )
+    assign_owner(
+        h_pm, drone["id"], "open-questions", oq_battery_vendor,
+        ("question", "context", "evidence", "priority", "due_date"),
+        {"type": "org_group", "id": architecture_board.json()["id"]},
     )
     investigate_open_question(h_pm, drone["id"], oq_battery_vendor["id"])
     mark_open_question_ready_for_decision(h_pm, drone["id"], oq_battery_vendor["id"])
