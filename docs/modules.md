@@ -898,6 +898,25 @@ flowchart LR
   bookkeeping can never fail the edit. Risk uses it to detect that the artefact
   behind an effective treatment verdict changed; it flags, it does not rewrite.
 
+### 4i. Principal references: a field that names a user or a group (Users and groups parity, Phase 1)
+
+A module field that names an owner, assignee or reviewer is built as a **principal**: a `<name>_type` / `<name>_id` column pair (`models/principal.py` helpers) holding a user, an organisation group or a project group, written through `services/principals.py` (`validate_principal`, `is_principal_member`, `principal_filter_clause`, `principal_recipients`, `principal_labels`, `principal_to_bundle` / `principal_from_bundle`). Declare each pair so core can find what still names a group without importing the module:
+
+```python
+PrincipalReference(model=Decision, field="owner", label="decision owners",
+                   audit_entity_type="decision", mandatory=True)
+```
+
+```mermaid
+flowchart LR
+    M["ModuleDefinition.principal_references"] --> S["services.principals"]
+    C["CORE_PRINCIPAL_REFERENCES"] --> S
+    S --> U["GET groups/{id}/usage"]
+    S --> D["DELETE groups/{id} (replace or clear)"]
+```
+
+Deleting a group is blocked (409) while a declared field names it, until every row is handed to a replacement or an optional field is cleared; a `mandatory` field always needs a replacement. Set `live_filter` on a versioned table so only current rows count; older versions keep the recorded id and show as a deleted group. Actor fields (`created_by`, `decided_by`) are not principals. A group confers no right of its own: use membership only as one more way to satisfy an "is the owner" check.
+
 ## 5. Frontend integration: Tier A and Tier B
 
 A module's UI is registered one of two ways, chosen per module:

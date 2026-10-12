@@ -60,9 +60,10 @@ import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
 import type { FileAsset, OrgUser, Project } from "../../api/types";
+import { userPrincipal } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
-import { AssigneePicker } from "../../components/AssigneePicker";
+import { PrincipalPicker } from "../../components/PrincipalPicker";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -224,11 +225,12 @@ export function OpenQuestionDetailPage() {
 
         <div className="stack" style={{ gap: "0.25rem" }}>
           <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Owner</span>
-          <AssigneePicker
+          <PrincipalPicker
+            kinds={["user"]}
             orgUsers={orgUsers}
             organizationId={project?.organization_id}
-            assigneeId={openQuestion.owner_id}
-            onChange={assignOwner}
+            value={userPrincipal(openQuestion.owner_id)}
+            onChange={(principal) => assignOwner(principal?.id ?? "")}
             ariaLabel="Open Question owner"
           />
         </div>

@@ -740,6 +740,16 @@ const en = {
     deleteGroupTitle: (name: string) => `Delete "${name}"?`,
     deleteGroupMessage: "This removes the group and every membership under it. Direct roles and other groups' memberships are unaffected. This cannot be undone.",
     groupDeleted: "Group deleted",
+    groupInUseSummary: (name: string, listing: string) => `“${name}” is still named on ${listing}.`,
+    groupInUseMoveHeading: "Hand them to someone else",
+    groupInUseMoveHint: "Everything that names this group moves to the person or group you choose, then the group is deleted.",
+    groupInUseReplacement: "New owner",
+    groupInUseClear: "Clear",
+    groupInUseClearHeading: "Or leave them empty",
+    groupInUseClearButton: "Clear them and delete…",
+    groupInUseClearDescription: "Optional fields that name this group are left empty. Required fields cannot be cleared.",
+    groupInUseClearBlocked: "Some of these fields are required, so a replacement is needed.",
+    groupInUseClearConfirm: (name: string) => `Type the group's name to delete “${name}” and leave the optional fields empty.`,
     // member_source_project_ids groups (Phase 5) — extends the existing
     // `viaProjectMembers` line with a link to the referenced {project}'s
     // own new Members page and a clarifying sentence that this isn't a

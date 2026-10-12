@@ -11,7 +11,8 @@
 import { useState } from "react";
 
 import type { OrgUser } from "../../api/types";
-import { AssigneePicker } from "../../components/AssigneePicker";
+import { userPrincipal } from "../../api/types";
+import { PrincipalPicker } from "../../components/PrincipalPicker";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { TextField } from "./RecordFormFields";
@@ -44,8 +45,8 @@ export function StakeholderFromUserModal({
         </p>
         <div className="stack" style={{ gap: "0.25rem" }}>
           <span>Organisation user</span>
-          <AssigneePicker
-            orgUsers={orgUsers} assigneeId={userId} onChange={(id) => setUserId(id || null)}
+          <PrincipalPicker
+            kinds={["user"]} orgUsers={orgUsers} value={userPrincipal(userId)} onChange={(principal) => setUserId(principal?.id ?? null)}
             ariaLabel="Organisation user" placeholder="Search users…"
           />
         </div>

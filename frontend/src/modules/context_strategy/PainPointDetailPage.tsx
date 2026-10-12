@@ -56,9 +56,10 @@ import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
 import type { FileAsset, OrgUser, Project } from "../../api/types";
+import { userPrincipal } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
-import { AssigneePicker } from "../../components/AssigneePicker";
+import { PrincipalPicker } from "../../components/PrincipalPicker";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -251,11 +252,12 @@ export function PainPointDetailPage() {
 
         <div className="stack" style={{ gap: "0.25rem" }}>
           <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Owner</span>
-          <AssigneePicker
+          <PrincipalPicker
+            kinds={["user"]}
             orgUsers={orgUsers}
             organizationId={project?.organization_id}
-            assigneeId={painPoint.owner_id}
-            onChange={assignOwner}
+            value={userPrincipal(painPoint.owner_id)}
+            onChange={(principal) => assignOwner(principal?.id ?? "")}
             ariaLabel="Pain Point owner"
           />
         </div>

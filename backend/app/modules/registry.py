@@ -1447,6 +1447,39 @@ class ReportDefinition:
 
 
 @dataclass(frozen=True)
+class PrincipalReference:
+    """A column pair on a module's own model that holds a principal (a user,
+    an organisation group or a project group — `services.principals`).
+
+    Declared via `ModuleDefinition.principal_references` so core can answer
+    "what still names this group?" without importing the module: deleting a
+    group is blocked while anything names it, and offers to reassign (a
+    mandatory field) or clear (an optional one).
+
+    Attributes:
+        model: The mapped class; it needs an `id` primary key and the columns
+            `<field>_type` and `<field>_id` (`models.principal` helpers).
+        field: Base name of the pair (`owner` for `owner_type`/`owner_id`).
+        label: Plural noun for what the rows are, shown in the in-use dialog
+            ("decision owners").
+        audit_entity_type: `AuditEvent.entity_type` for the record, used when a
+            reassignment or clear is audited per row.
+        mandatory: True when the field cannot be left empty, so deletion needs a replacement.
+        live_filter: Optional zero-argument callable returning a SQL condition that
+            selects the rows that are current. Rows it excludes (older versions of
+            a versioned record) are neither counted nor changed on deletion; they
+            keep the group's id and display as a deleted group. Omit when every row is current.
+    """
+
+    model: type
+    field: str
+    label: str
+    audit_entity_type: str
+    mandatory: bool = False
+    live_filter: Callable[[], Any] | None = None
+
+
+@dataclass(frozen=True)
 class ModuleDefinition:
     """Declares a single module — first-party or third-party — to the
     modular feature system's registry.
@@ -1907,6 +1940,11 @@ class ModuleDefinition:
             another module's artefact (e.g. Risk flagging a mitigation for
             reassessment) with no import of that artefact's module. It must be
             cheap when the change is irrelevant to it.
+        principal_references: Columns on this module's models that hold a principal
+            (`PrincipalReference`). Lets core block deleting a group that still owns
+            records and reassign them (`services.principals`) with no import of the
+            module. Declare every owner/assignee/reviewer-style field built as a
+            principal; actor fields (`created_by`, `decided_by`) are not principals.
         mcp_guidance: Hand-written Markdown telling an AI agent how to use this
             module's MCP tools (typical workflows, lifecycle order, which tools
             are gated, gotchas). Embedded per module in the agent skill's
@@ -1958,6 +1996,7 @@ class ModuleDefinition:
     link_type_seeds: tuple[LinkTypeSeed, ...] = field(default=())
     notification_types: tuple[NotificationTypeDefinition, ...] = field(default=())
     on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None
+    principal_references: tuple[PrincipalReference, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -3229,6 +3268,18 @@ def run_org_group_deletion_hooks(db: Session, org_group_id: uuid.UUID) -> str | 
         if message is not None:
             return message
     return None
+
+
+def get_module_principal_references() -> list[PrincipalReference]:
+    """Every registered module's `principal_references`, in registry order.
+
+    Core's own principal fields are added separately
+    (`services.principals.all_principal_references`).
+    """
+    refs: list[PrincipalReference] = []
+    for definition in get_module_registry().values():
+        refs.extend(definition.principal_references)
+    return refs
 
 
 def get_module_artefact_ids_in_organization(db: Session, organization_id: uuid.UUID) -> set[uuid.UUID]:

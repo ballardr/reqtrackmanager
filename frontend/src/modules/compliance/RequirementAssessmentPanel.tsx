@@ -33,8 +33,8 @@ import { useEffect, useState } from "react";
 
 import { api } from "../../api/client";
 import type { FileAsset, OrgUser } from "../../api/types";
-import { activityActionLabel } from "../../api/types";
-import { AssigneePicker } from "../../components/AssigneePicker";
+import { activityActionLabel, userPrincipal } from "../../api/types";
+import { PrincipalPicker } from "../../components/PrincipalPicker";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Modal } from "../../components/Modal";
 import { ResourcePickerModal } from "../../components/ResourcePickerModal";
@@ -396,11 +396,12 @@ export function RequirementAssessmentPanel({
                     <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
                       <div className="stack" style={{ gap: "0.2rem" }}>
                         <span className="text-muted" style={{ fontSize: "0.8rem" }}>Assignee</span>
-                        <AssigneePicker
+                        <PrincipalPicker
+                          kinds={["user"]}
                           orgUsers={orgUsers}
                           organizationId={orgId}
-                          assigneeId={assessment.assignee_id}
-                          onChange={(userId) => updateActionAssignee(assessment, userId)}
+                          value={userPrincipal(assessment.assignee_id)}
+                          onChange={(principal) => updateActionAssignee(assessment, principal?.id ?? "")}
                           ariaLabel={`Assignee for ${def?.name ?? "required action"}`}
                         />
                       </div>

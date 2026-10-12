@@ -1,14 +1,14 @@
 # Users and Groups on Parity — Plan
 
-**Status:** planned 2026-10-11, not started. **Decided by: User** (2026-10-11): groups can be selected wherever a user can (starting with a Decision's owner); both organisation groups and project groups; the other modules are updated too. The rule is also in `CLAUDE.md` ("Users and Groups on Parity").
+**Status:** planned 2026-10-11; Phase 1 shipped 2026-10-12. **Decided by: User** (2026-10-11): groups can be selected wherever a user can (starting with a Decision's owner); both organisation groups and project groups; the other modules are updated too. The rule is also in `CLAUDE.md` ("Users and Groups on Parity").
 
 ## Status / Resume Here
 
-0 / 6 phases complete. Phase 1 (the shared mechanism) comes first; Phases 2 to 5 are independent of each other once it exists. Phase 6 (core fields) is a proposal the user has not yet confirmed.
+1 / 6 phases complete. Phase 1 (the shared mechanism) is done; Phases 2 to 5 are independent of each other and can start. Phase 6 (core fields) is a proposal the user has not yet confirmed.
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | Shared principal mechanism: reference type, membership, picker, usage hook | [ ] |
+| 1 | Shared principal mechanism: reference type, membership, picker, usage hook | [x] |
 | 2 | Decision Management: owner and decision maker (is Module 4 Phase 10) | [ ] |
 | 3 | Stakeholders and Personas: owner and champion | [ ] |
 | 4 | Context & Strategy: Pain Point, Guiding Principle and Open Question owners | [ ] |
@@ -54,6 +54,8 @@ A generic core extension point, so no module hand-edits a core file and no modul
 - **Usage hook.** A declarative `ModuleDefinition.principal_references` (model plus the type/id column pair, and whether the field is mandatory) so core can answer "what uses this group?" without importing any module. It drives: blocking deletion of an in-use group with the shared `DeleteInUseDialog` and a reassign step (an optional field can be cleared, a mandatory one must be reassigned); organisation deletion cleanup; and organisation/project export and import (a group is referenced by ref, not raw id; a group missing on import falls back to the importing user with a warning, never failing the import). Mirrors `artefact_ids_in_organization`.
 - **Safety.** A group from another organisation is always rejected; a group never confers more than its members hold individually; a project group is only valid in its own project; removing someone from a group removes what the group gave them; an owner group shows its name, not a guessed single person.
 - **Tests:** unit and API tests for every validation branch, nested-group membership (transitive org groups, one-level project groups, removed member, cycle-safe), the filter clause, the usage hook, deletion block and reassign, cross-organisation rejection; Storybook for `PrincipalPicker` and `PrincipalBadge`; Playwright is covered by Phase 2's first adopter. SOC 2 access-control and multi-tenant isolation policies consulted; record identify, verify and remediate in `docs/decisions.md`.
+
+**Delivered 2026-10-12, with these differences from the text above** (full account in `docs/decisions.md`): organisation deletion needs no usage-hook cleanup (every referencing row is in the same organisation and goes with it); export/import is provided as `principal_to_bundle` / `principal_from_bundle` helpers that each adopting module calls from its own bundle hook, since core does not serialise module rows; `PrincipalReference` gained an optional `live_filter` so older version rows are neither counted nor rewritten; the delete flow is `GroupInUseDialog` on the shared `DeleteInUseDialog`; and the Playwright test for deleting an in-use group lands with Phase 2, the first adopter, as stated above.
 
 ## 3. Phases 2 to 5 — module adoption
 

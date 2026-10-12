@@ -2047,3 +2047,42 @@ export interface SystemVersion {
   git_sha: string;
   build_date: string;
 }
+
+// --- Principals (users and groups on parity) ---------------------------------------------------
+// A field that names "who" (an owner, assignee, reviewer) is a user, an organisation group or a
+// project group; see backend `services/principals.py`.
+
+export type PrincipalType = "user" | "org_group" | "project_group";
+
+export const PRINCIPAL_TYPE_LABEL: Record<PrincipalType, string> = {
+  user: "User",
+  org_group: "Org group",
+  project_group: "Project group",
+};
+
+/** What a form sends for a principal field. */
+export interface PrincipalRef {
+  type: PrincipalType;
+  id: string;
+}
+
+/** A principal resolved for display (the server's `PrincipalOut`). */
+export interface Principal extends PrincipalRef {
+  label: string;
+  /** Effective members of a group; null for a user. */
+  member_count: number | null;
+  /** False once a group was deleted but a history row still names it. */
+  exists: boolean;
+}
+
+/** The server's answer to "what still names this group" (`GET .../groups/{id}/usage`). */
+export interface PrincipalUsage {
+  total: number;
+  mandatory_total: number;
+  items: { label: string; count: number; mandatory: boolean }[];
+}
+
+/** A user as a `PrincipalRef`, or null for an empty id (the shape older user-only fields use). */
+export function userPrincipal(userId: string | null | undefined): PrincipalRef | null {
+  return userId ? { type: "user", id: userId } : null;
+}

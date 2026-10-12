@@ -25,6 +25,10 @@ export interface DeleteInUseRemoveOption {
   description: string;
   /** Why it is unavailable; set to disable it. */
   blockedReason?: string;
+  /** Heading of this section (default: "Or delete what uses it too"). */
+  heading?: string;
+  /** Label of the button that starts it (default: "Delete the links too…"). */
+  buttonLabel?: string;
   /** Tier-2 confirmation: the exact text to type (the item's name). */
   confirmText: string;
   confirmMessage: string;
@@ -64,6 +68,9 @@ export function DeleteInUseDialog({
   onKeepChange,
   onDeleteKeeping,
   moveBlockedReason,
+  renderMovePicker,
+  moveHeading,
+  moveHint,
   onClose,
 }: {
   title: string;
@@ -83,6 +90,12 @@ export function DeleteInUseDialog({
   onDeleteKeeping?: () => Promise<void>;
   /** Why moving is unavailable (e.g. links held by projects the caller cannot manage); set to disable it. */
   moveBlockedReason?: string;
+  /** Replaces the candidate `<select>` with a searchable control, for a replacement set too large to list
+   * (people and groups); its value is the chosen replacement id passed to `onMove`. */
+  renderMovePicker?: (picker: { value: string; onChange: (id: string) => void; disabled: boolean }) => ReactNode;
+  /** Override the move section's heading and hint (default: "Move what uses it to another one"). */
+  moveHeading?: string;
+  moveHint?: string;
   onClose: () => void;
 }) {
   const [keepChecked, setKeepChecked] = useState(true);
@@ -158,27 +171,31 @@ export function DeleteInUseDialog({
           )}
           {!justDelete && (
           <section className="stack" style={{ gap: "0.5rem" }}>
-            <strong>{strings.admin.deleteInUseMoveHeading}</strong>
-            <span className="text-muted">{strings.admin.deleteInUseMoveHint}</span>
-            {candidates.length === 0 ? (
+            <strong>{moveHeading ?? strings.admin.deleteInUseMoveHeading}</strong>
+            <span className="text-muted">{moveHint ?? strings.admin.deleteInUseMoveHint}</span>
+            {candidates.length === 0 && !renderMovePicker ? (
               <span className="text-muted">{strings.admin.deleteInUseNoCandidates}</span>
             ) : (
               <div className="row">
-                <select
-                  className="input"
-                  style={{ maxWidth: 360 }}
-                  aria-label={strings.admin.reassignExistingTo}
-                  value={replacementId}
-                  onChange={(e) => setReplacementId(e.target.value)}
-                  disabled={busy}
-                >
-                  <option value="">—</option>
-                  {candidates.map((c) => (
-                    <option key={c.id} value={c.id} disabled={c.disabledReason !== undefined}>
-                      {c.disabledReason ? strings.admin.deleteInUseCandidateBlocked(c.label, c.disabledReason) : c.label}
-                    </option>
-                  ))}
-                </select>
+                {renderMovePicker ? (
+                  renderMovePicker({ value: replacementId, onChange: setReplacementId, disabled: busy })
+                ) : (
+                  <select
+                    className="input"
+                    style={{ maxWidth: 360 }}
+                    aria-label={strings.admin.reassignExistingTo}
+                    value={replacementId}
+                    onChange={(e) => setReplacementId(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="">—</option>
+                    {candidates.map((c) => (
+                      <option key={c.id} value={c.id} disabled={c.disabledReason !== undefined}>
+                        {c.disabledReason ? strings.admin.deleteInUseCandidateBlocked(c.label, c.disabledReason) : c.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button
                   className="btn btn-danger"
                   disabled={!replacementId || busy || moveBlockedReason !== undefined}
@@ -204,7 +221,7 @@ export function DeleteInUseDialog({
           )}
           {remove && !justDelete && (
             <section className="stack" style={{ gap: "0.5rem" }}>
-              <strong>{strings.admin.deleteInUseRemoveHeading}</strong>
+              <strong>{remove.heading ?? strings.admin.deleteInUseRemoveHeading}</strong>
               <span className="text-muted">{remove.description}</span>
               <div className="row">
                 <button
@@ -213,7 +230,7 @@ export function DeleteInUseDialog({
                   title={remove.blockedReason ? `${strings.admin.deleteInUseRemoveBlockedPrefix}${remove.blockedReason}` : undefined}
                   onClick={() => setConfirmingRemove(true)}
                 >
-                  {strings.admin.deleteInUseRemoveButton}
+                  {remove.buttonLabel ?? strings.admin.deleteInUseRemoveButton}
                 </button>
                 {remove.blockedReason && (
                   <span className="text-muted">

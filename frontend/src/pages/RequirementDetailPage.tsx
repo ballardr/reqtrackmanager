@@ -26,10 +26,11 @@ import {
   REQUIREMENT_LEVEL_LABEL,
   REQUIREMENT_STATUS_LABEL,
   REQUIREMENT_STATUS_TONE,
+  userPrincipal,
 } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { ArtefactLinksPanel, type LinksChangeRequestMode } from "../components/ArtefactLinksPanel";
-import { AssigneePicker } from "../components/AssigneePicker";
+import { PrincipalPicker } from "../components/PrincipalPicker";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
@@ -1132,11 +1133,12 @@ export function RequirementDetailPage() {
             </label>
             <div className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.assignee}
-              <AssigneePicker
+              <PrincipalPicker
+                kinds={["user"]}
                 orgUsers={orgUsers}
                 organizationId={organizationId ?? undefined}
-                assigneeId={newActionAssigneeId}
-                onChange={setNewActionAssigneeId}
+                value={userPrincipal(newActionAssigneeId)}
+                onChange={(principal) => setNewActionAssigneeId(principal?.id ?? "")}
                 ariaLabel={strings.actions.assignee}
               />
             </div>

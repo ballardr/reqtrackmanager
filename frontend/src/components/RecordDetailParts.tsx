@@ -3,7 +3,7 @@
  *
  * Small presentational pieces the versioned-record detail pages (Stakeholders'
  * Persona/Stakeholder/Need, Risk Management's Risk) render the same way: a
- * labelled read-only field, a labelled person picker (an `AssigneePicker`, or
+ * labelled read-only field, a labelled person picker (a `PrincipalPicker`, or
  * a plain name when the record is read-only), and the version-history table.
  * Kept together so the pages differ only in which fields they show, not in how
  * a field looks.
@@ -11,7 +11,8 @@
 import type { ReactNode } from "react";
 
 import type { OrgUser } from "../api/types";
-import { AssigneePicker } from "./AssigneePicker";
+import { userPrincipal } from "../api/types";
+import { PrincipalPicker } from "./PrincipalPicker";
 
 /** A labelled, multi-line read-only value. */
 export function RecordField({ label, value }: { label: string; value: string }) {
@@ -34,7 +35,7 @@ export function RecordFieldGroup({ label, children, gap = "0.25rem" }: { label: 
 }
 
 /**
- * A labelled "which user" field: an `AssigneePicker`, or just the user's name
+ * A labelled "which user" field: a user-only `PrincipalPicker`, or just the user's name
  * (or "Unassigned") when `readOnly`.
  *
  * @param onChange Called with the picked user id, or "" when unassigned.
@@ -55,7 +56,10 @@ export function RecordPersonField({
       {readOnly ? (
         <span>{orgUsers.find((u) => u.user_id === userId)?.display_name ?? "Unassigned"}</span>
       ) : (
-        <AssigneePicker orgUsers={orgUsers} organizationId={organizationId} assigneeId={userId} onChange={onChange} ariaLabel={ariaLabel} />
+        <PrincipalPicker
+          kinds={["user"]} orgUsers={orgUsers} organizationId={organizationId} value={userPrincipal(userId)}
+          onChange={(principal) => onChange(principal?.id ?? "")} ariaLabel={ariaLabel}
+        />
       )}
     </RecordFieldGroup>
   );

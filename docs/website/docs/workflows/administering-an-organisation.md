@@ -19,7 +19,7 @@ The **Users** section lists every member, with access-review filters useful for 
 
 **Groups** let you assign organisation-level roles to a set of users at once rather than one at a time — the same building block [project groups](./administering-a-project.md#project-groups) use one level down.
 
-To delete a group, open it from **Groups** and choose **Delete group**. Its members lose every role and project access the group gave them, and it's removed from any group it was nested in. Access they hold some other way is unaffected. Deletion can't be undone. It's refused when an enabled module depends on the group: for example, Compliance blocks deleting the organisation's fallback compliance-managers group while a standard relies on it.
+To delete a group, open it from **Groups** and choose **Delete group**. Its members lose every role and project access the group gave them, and it's removed from any group it was nested in. Access they hold some other way is unaffected. Deletion can't be undone. It's refused when an enabled module depends on the group: for example, Compliance blocks deleting the organisation's fallback compliance-managers group while a standard relies on it. A group that is still named as an owner or assignee on records can't be deleted outright: the dialog lists what names it, and you either hand all of it to another person or group, or (when none of the fields is required) clear the optional ones. The same applies to a project's groups.
 
 Deleting a group never leaves a project without a Project Manager. Every project always keeps at least one manager who holds the role directly, and group-granted managers don't count toward that minimum.
 

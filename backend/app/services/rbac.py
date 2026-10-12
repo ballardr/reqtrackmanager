@@ -360,6 +360,14 @@ def _all_user_org_group_ids(db: Session, user_id: UUID) -> frozenset[UUID]:
     return _memoized(("org_group_ids", user_id), compute)
 
 
+def effective_org_group_ids_for_user(db: Session, user_id: UUID) -> frozenset[UUID]:
+    """Every org group the user belongs to, directly or by nesting (ancestors
+    of their direct groups), across organisations — the inverse of
+    `effective_org_group_member_ids`. Memoized inside `memoize_user_lookups`.
+    """
+    return _all_user_org_group_ids(db, user_id)
+
+
 def is_org_admin(db: Session, user_id: UUID, organization_id: UUID) -> bool:
     """Returns True if the user holds the org_admin role in the organisation."""
     return OrgRole.ORG_ADMIN in get_effective_org_roles(db, user_id, organization_id)
@@ -499,6 +507,93 @@ def effective_org_group_member_ids(db: Session, org_group_id: UUID) -> set[UUID]
             )
         ).all()
     )
+
+
+def effective_project_group_member_ids(db: Session, project_group_id: UUID) -> set[UUID]:
+    """Every user who is a member of `project_group_id`: its direct user
+    members, the (transitive) members of each nested org group, and the
+    direct members of each referenced source project.
+
+    Membership is independent of whether the group currently holds a role
+    (unlike `_direct_project_member_ids_base`, which counts a group only
+    while it grants something): a role-less group is still a named team, so
+    it can be named as an owner (`services.principals`). The same
+    same-organisation re-checks as the role resolution apply to the nested
+    org groups and source projects, as defense in depth over the write-time
+    checks. Returns an empty set for a group that no longer exists.
+    """
+    group = db.get(ProjectGroup, project_group_id)
+    if group is None:
+        return set()
+    organization_id = db.scalar(select(Project.organization_id).where(Project.id == group.project_id))
+    members = db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == group.id)).all()
+    user_ids: set[UUID] = {m.user_id for m in members if m.user_id is not None}
+
+    org_group_ids = {m.org_group_id for m in members if m.org_group_id is not None}
+    if org_group_ids:
+        same_org = set(
+            db.scalars(
+                select(OrgGroup.id).where(OrgGroup.id.in_(org_group_ids), OrgGroup.organization_id == organization_id)
+            ).all()
+        )
+        if same_org:
+            all_group_ids = same_org | _descendant_org_group_ids(db, same_org)
+            user_ids.update(
+                db.scalars(
+                    select(OrgGroupMember.user_id).where(
+                        OrgGroupMember.org_group_id.in_(all_group_ids), OrgGroupMember.user_id.is_not(None)
+                    )
+                ).all()
+            )
+
+    source_ids = {m.source_project_id for m in members if m.source_project_id is not None}
+    if source_ids:
+        same_org_sources = set(
+            db.scalars(
+                select(Project.id).where(Project.id.in_(source_ids), Project.organization_id == organization_id)
+            ).all()
+        )
+        for source_id in same_org_sources:
+            user_ids |= _direct_project_member_ids_base(db, source_id)
+    return user_ids
+
+
+def project_group_ids_for_user(db: Session, user_id: UUID, project_id: UUID) -> set[UUID]:
+    """Ids of the project groups in `project_id` the user is an effective member of
+    (the inverse of `effective_project_group_member_ids`; same membership rules).
+    """
+    organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
+    rows = db.execute(
+        select(ProjectGroupMember.project_group_id, ProjectGroupMember.user_id, ProjectGroupMember.org_group_id,
+               ProjectGroupMember.source_project_id)
+        .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
+        .where(ProjectGroup.project_id == project_id)
+    ).all()
+    user_org_groups = _all_user_org_group_ids(db, user_id)
+    org_group_ok: set[UUID] = set()
+    candidate_org_groups = {r.org_group_id for r in rows if r.org_group_id in user_org_groups}
+    if candidate_org_groups:
+        org_group_ok = set(
+            db.scalars(
+                select(OrgGroup.id).where(OrgGroup.id.in_(candidate_org_groups), OrgGroup.organization_id == organization_id)
+            ).all()
+        )
+    source_ok: dict[UUID, bool] = {}
+    found: set[UUID] = set()
+    for row in rows:
+        if row.user_id == user_id or (row.org_group_id is not None and row.org_group_id in org_group_ok):
+            found.add(row.project_group_id)
+        elif row.source_project_id is not None:
+            if row.source_project_id not in source_ok:
+                same_org = db.scalar(
+                    select(Project.organization_id).where(Project.id == row.source_project_id)
+                ) == organization_id
+                source_ok[row.source_project_id] = same_org and user_id in _direct_project_member_ids_base(
+                    db, row.source_project_id
+                )
+            if source_ok[row.source_project_id]:
+                found.add(row.project_group_id)
+    return found
 
 
 def would_create_org_group_cycle(db: Session, parent_group_id: UUID, child_group_id: UUID) -> bool:
