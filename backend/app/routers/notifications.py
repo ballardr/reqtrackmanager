@@ -19,8 +19,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.notification import DigestMode, Notification, NotificationPreference, NotificationType
+from app.models.notification import DigestMode, Notification, NotificationPreference
 from app.models.user import User
+from app.modules.registry import get_all_notification_types
 from app.schemas.notification import NotificationOut, NotificationPreferenceOut, NotificationPreferenceUpdate
 from app.security import decode_email_unsubscribe_token
 from app.services.audit import log_event
@@ -105,19 +106,22 @@ def list_preferences(current_user: User = Depends(get_current_user), db: Session
     }
     return [
         NotificationPreferenceOut(
-            type=t,
+            type=t, label=label,
             ui_enabled=existing[t].ui_enabled if t in existing else True,
             email_enabled=existing[t].email_enabled if t in existing else True,
         )
-        for t in NotificationType
+        for t, label in get_all_notification_types().items()
     ]
 
 
 @router.put("/preferences/{notification_type}", response_model=NotificationPreferenceOut)
 def set_preference(
-    notification_type: NotificationType, payload: NotificationPreferenceUpdate,
+    notification_type: str, payload: NotificationPreferenceUpdate,
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
+    labels = get_all_notification_types()
+    if notification_type not in labels:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown notification type.")
     pref = db.scalar(
         select(NotificationPreference).where(
             NotificationPreference.user_id == current_user.id, NotificationPreference.type == notification_type
@@ -129,7 +133,10 @@ def set_preference(
     pref.ui_enabled = payload.ui_enabled
     pref.email_enabled = payload.email_enabled
     db.commit()
-    return NotificationPreferenceOut(type=notification_type, ui_enabled=pref.ui_enabled, email_enabled=pref.email_enabled)
+    return NotificationPreferenceOut(
+        type=notification_type, label=labels[notification_type], ui_enabled=pref.ui_enabled,
+        email_enabled=pref.email_enabled,
+    )
 
 
 # --- One-click email unsubscribe --------------------------------------------

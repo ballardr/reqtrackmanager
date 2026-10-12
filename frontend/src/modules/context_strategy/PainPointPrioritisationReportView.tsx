@@ -19,7 +19,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { orgScoringApi, projectScoringApi, type ScoringAxis, type ScoringScheme } from "../../api/scoring";
+import { orgScoringApi, projectScoringApi, type ScoringAxis, type ScoringCellRating, type ScoringScheme } from "../../api/scoring";
 import { ReportNothingToReport, ReportSectionTable, ReportSummary } from "../../components/ReportViewer";
 import { ScoringMatrixChart, type ScoringMatrixPoint } from "../../components/ScoringMatrixChart";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
@@ -33,6 +33,11 @@ const REPLACED_SECTIONS = new Set(["ranking", "matrix"]);
 
 function axis(key: string, label: string, levels: ReportLevel[]): ScoringAxis {
   return { key, label, description: null, levels: levels.map((l) => ({ id: l.name, name: l.name, description: null, weight: l.weight })) };
+}
+
+/** The group's explicit cell ratings; the chart's axes use level names as ids. */
+function cellRatings(group: ReportScoredGroup): ScoringCellRating[] {
+  return group.cell_ratings.map((c) => ({ first_level_id: c.severity, second_level_id: c.frequency, band_label: c.band_label }));
 }
 
 /** Plots each fixable, scored item at its worst persona's cell; dot size is its Confidence relative to the group's. */
@@ -57,6 +62,7 @@ function GroupView({ group, showProject }: { group: ReportScoredGroup; showProje
         xAxis={axis("frequency", "Frequency", group.frequency_levels)}
         yAxis={axis("severity", "Severity", group.severity_levels)}
         bands={group.bands}
+        cellRatings={cellRatings(group)}
         points={matrixPoints(group.items)}
         caption={`${group.model_label}: Severity × Frequency, by each Pain Point's worst persona`}
       />

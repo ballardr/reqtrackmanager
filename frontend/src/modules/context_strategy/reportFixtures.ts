@@ -61,6 +61,7 @@ export function prioritisationData(): PainPointPrioritisationData {
         { label: "Low", min_score: 0, tone: "muted" }, { label: "Medium", min_score: 0.2, tone: "info" },
         { label: "High", min_score: 0.4, tone: "warning" }, { label: "Critical", min_score: 0.6, tone: "danger" },
       ],
+      cell_ratings: [],
       items: [
         rankedPainPoint(),
         rankedPainPoint({

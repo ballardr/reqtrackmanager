@@ -7,13 +7,14 @@ import { deleteOrgOnCleanup, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModul
  * `stakeholder-lifecycle.spec.ts`): each test builds a disposable org + admin
  * (+ project) through the API, per this repo's "tests must not depend on shared
  * seeded state" rule, `Date.now()`-suffixes every name, and switches the
- * default-off module on from Org Admin's Modules group. The org admin is the
+ * default-off module (`moduleName`, Stakeholders & Personas unless another module's
+ * spec reuses this helper) on from Org Admin's Modules group. The org admin is the
  * project's `PROJECT_MANAGER`, which composes with the module's project-scoped
  * owner roles, so no extra grant is needed to create, activate and edit.
  */
 export const API_BASE_URL = "http://localhost:8000";
 
-export async function setUpOrg(page: Page, label: string, withChildProject = false) {
+export async function setUpOrg(page: Page, label: string, withChildProject = false, moduleName = "Stakeholders & Personas") {
   const suffix = Date.now();
   const orgName = `E2E ${label} Org ${suffix}`;
   const adminEmail = `e2e-${label.toLowerCase()}-admin-${suffix}@example.com`;
@@ -52,7 +53,7 @@ export async function setUpOrg(page: Page, label: string, withChildProject = fal
   await page.goto("/orgs");
   await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
   await selectOrgAdminGroup(page, "Modules");
-  await setOrgModuleAvailability(page, "Stakeholders & Personas", "default_on");
+  await setOrgModuleAvailability(page, moduleName, "default_on");
 
   return { suffix, org, project, child, adminHeaders };
 }

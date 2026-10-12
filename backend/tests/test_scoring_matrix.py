@@ -31,7 +31,7 @@ from app.modules.registry import (
     build_registry,
     validate_scoring_bands,
 )
-from app.services.scoring import BandValue, band_for, compute_score, sync_scoring_levels
+from app.services.scoring import BandValue, CellRatings, band_for, compute_score, sync_scoring_levels
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 FAKE_MODULE_KEY = "fake_scoring_module"
@@ -154,6 +154,31 @@ def test_compute_score_is_product_normalised_and_banded():
     assert compute_score(model, {"impact": Decimal(4), "likelihood": None}, maxima, bands) is None
     assert compute_score(model, {"impact": Decimal(4)}, maxima, bands) is None
     assert band_for(0.9, []) is None
+
+
+def test_compute_score_cell_rating_overrides_only_its_cell_and_ignores_stale_labels():
+    model = ScoringModelDefinition("ixl", "IxL", ("impact", "likelihood"))
+    bands = [BandValue("Low", 0, "muted"), BandValue("High", 0.5, "danger")]
+    maxima = {"impact": Decimal(4), "likelihood": Decimal(2)}
+    weights = {"impact": Decimal(4), "likelihood": Decimal(1)}  # normalised 0.5 -> thresholds say High
+    top, unlikely = uuid.uuid4(), uuid.uuid4()
+    levels = {"impact": top, "likelihood": unlikely}
+
+    # Non-monotonic on purpose: the 4 x 1 cell is rated Low although its product reaches the High threshold.
+    cells = CellRatings({(top, unlikely): "Low"})
+    assert compute_score(model, weights, maxima, bands, level_ids=levels, cell_ratings=cells).band.label == "Low"
+    # Other cells, a missing level id, and no override at all keep the thresholds.
+    other = {"impact": top, "likelihood": uuid.uuid4()}
+    assert compute_score(model, weights, maxima, bands, level_ids=other, cell_ratings=cells).band.label == "High"
+    assert compute_score(model, weights, maxima, bands, cell_ratings=cells).band.label == "High"
+    assert compute_score(model, weights, maxima, bands, level_ids=levels).band.label == "High"
+    # A label that is no longer in the band set is ignored.
+    stale = CellRatings({(top, unlikely): "Gone"})
+    assert compute_score(model, weights, maxima, bands, level_ids=levels, cell_ratings=stale).band.label == "High"
+    # Only two-axis models take cell ratings.
+    single = ScoringModelDefinition("i", "I", ("impact",))
+    assert compute_score(single, {"impact": Decimal(4)}, maxima, bands, level_ids={"impact": top},
+                         cell_ratings=cells).band.label == "High"
 
 
 # --- Seeding ----------------------------------------------------------------
@@ -352,6 +377,8 @@ def test_member_can_read_but_not_write(client, admin_token, fake_scoring_module)
         ("put", f"{_org_base(org['id'])}/models/ixl/bands", {"bands": None}),
         ("put", f"{_project_base(project['id'])}/default-model", {"model": "i"}),
         ("put", f"{_project_base(project['id'])}/models/ixl/bands", {"bands": None}),
+        ("put", f"{_org_base(org['id'])}/models/ixl/cell-ratings", {"cells": None}),
+        ("put", f"{_project_base(project['id'])}/models/ixl/cell-ratings", {"cells": None}),
     ]:
         resp = getattr(client, method)(url, json=body, headers=auth_headers(member))
         assert resp.status_code == 403, (url, resp.text)
@@ -381,3 +408,119 @@ def test_disabled_module_unknown_scheme_and_cross_org_isolation(client, admin_to
     assert client.get(_project_base(project_a["id"]), headers=auth_headers(token_a)).status_code == 404
     listed = _get(client, f"/api/v1/orgs/{org_a['id']}/scoring-schemes", token_a)
     assert SCHEME not in {s["key"] for s in listed}
+
+
+# --- Per-cell rating overrides (Module 3 Phase 1a) ---------------------------
+
+
+def _cell(first: dict, second: dict, label: str) -> dict:
+    return {"first_level_id": first["id"], "second_level_id": second["id"], "band_label": label}
+
+
+def _cells_of(client, url, token, model="ixl"):
+    m = _model(_get(client, url, token), model)
+    return {(c["first_level_id"], c["second_level_id"]): c["band_label"] for c in m["cell_ratings"]}, m["cell_ratings_source"]
+
+
+def test_cell_ratings_resolve_validate_and_clear(client, admin_token, fake_scoring_module):
+    org, token = create_org_admin_in(client, admin_token, "Scoring Cells Co")
+    parent = create_project(client, token, org["id"], "Parent", can_be_parent=True)
+    child = create_project(client, token, org["id"], "Child", parent_project_id=parent["id"])
+    config = _get(client, _org_base(org["id"]), token)
+    impact, likelihood = _axis(config, "impact")["levels"], _axis(config, "likelihood")["levels"]
+    org_cells = f"{_org_base(org['id'])}/models/ixl/cell-ratings"
+    parent_cells = f"{_project_base(parent['id'])}/models/ixl/cell-ratings"
+    child_cells = f"{_project_base(child['id'])}/models/ixl/cell-ratings"
+    put = lambda url, cells: client.put(url, json={"cells": cells}, headers=auth_headers(token))  # noqa: E731
+
+    assert _cells_of(client, _project_base(child["id"]), token) == ({}, "none")
+
+    # Org set, inherited down the chain. The registry's default bands (Low/High) are valid labels.
+    org_set = [_cell(impact[2], likelihood[0], "Low"), _cell(impact[0], likelihood[1], "High")]
+    resp = put(org_cells, org_set)
+    assert resp.status_code == 200, resp.text
+    expected_org = {(impact[2]["id"], likelihood[0]["id"]): "Low", (impact[0]["id"], likelihood[1]["id"]): "High"}
+    assert _cells_of(client, _project_base(child["id"]), token) == (expected_org, "org")
+
+    # A project set replaces the inherited one wholesale, and its own descendants inherit it.
+    assert put(parent_cells, [_cell(impact[1], likelihood[1], "Low")]).status_code == 200
+    assert _cells_of(client, _project_base(child["id"]), token) == (
+        {(impact[1]["id"], likelihood[1]["id"]): "Low"}, "ancestor")
+    assert _cells_of(client, _project_base(parent["id"]), token)[1] == "project"
+    assert _cells_of(client, _org_base(org["id"]), token) == (expected_org, "org")
+
+    # Rejected: unknown band, a level on the wrong axis (swapped), duplicates, a single-axis model.
+    assert put(child_cells, [_cell(impact[0], likelihood[0], "Nope")]).status_code == 400
+    assert put(child_cells, [_cell(likelihood[0], impact[0], "Low")]).status_code == 400
+    assert put(child_cells, [_cell(impact[0], likelihood[0], "Low")] * 2).status_code == 400
+    assert put(f"{_project_base(child['id'])}/models/i/cell-ratings", [_cell(impact[0], impact[1], "Low")]).status_code == 400
+    assert put(f"{_project_base(child['id'])}/models/nope/cell-ratings", [_cell(impact[0], likelihood[0], "Low")]).status_code == 400
+    assert _cells_of(client, _project_base(child["id"]), token)[1] == "ancestor"
+
+    # Clearing (null or empty) inherits again.
+    assert put(parent_cells, None).status_code == 200
+    assert _cells_of(client, _project_base(child["id"]), token) == (expected_org, "org")
+    assert put(org_cells, []).status_code == 200
+    assert _cells_of(client, _project_base(child["id"]), token) == ({}, "none")
+
+    with SessionLocal() as db:
+        actions = [e.action for e in db.scalars(select(AuditEvent).where(
+            AuditEvent.entity_type == "scoring_cell_rating_set", AuditEvent.organization_id == uuid.UUID(org["id"])
+        ).order_by(AuditEvent.created_at)).all()]
+    assert actions == ["set", "set", "reset", "reset"]
+
+
+def test_cell_ratings_and_bands_stay_consistent(client, admin_token, fake_scoring_module):
+    org, token = create_org_admin_in(client, admin_token, "Scoring Cells Bands Co")
+    project = create_project(client, token, org["id"], "Cells Project")
+    config = _get(client, _org_base(org["id"]), token)
+    impact, likelihood = _axis(config, "impact")["levels"], _axis(config, "likelihood")["levels"]
+    bands_url = f"{_project_base(project['id'])}/models/ixl/bands"
+    cells_url = f"{_project_base(project['id'])}/models/ixl/cell-ratings"
+    own_bands = [{"label": "Fine", "min_score": 0, "tone": "accent"}, {"label": "Awful", "min_score": 0.5, "tone": "danger"}]
+
+    # A cell can only use a label from the scope's *effective* bands.
+    assert client.put(bands_url, json={"bands": own_bands}, headers=auth_headers(token)).status_code == 200
+    assert client.put(cells_url, json={"cells": [_cell(impact[0], likelihood[0], "Low")]},
+                      headers=auth_headers(token)).status_code == 400
+    assert client.put(cells_url, json={"cells": [_cell(impact[0], likelihood[0], "Awful")]},
+                      headers=auth_headers(token)).status_code == 200
+
+    # Bands the scope's own cells still use can't be removed or renamed away...
+    renamed = [{"label": "Fine", "min_score": 0, "tone": "accent"}, {"label": "Bad", "min_score": 0.5, "tone": "danger"}]
+    resp = client.put(bands_url, json={"bands": renamed}, headers=auth_headers(token))
+    assert resp.status_code == 400 and "Awful" in resp.json()["detail"]
+    # ...nor can clearing them (the inherited defaults have no "Awful"), until the cells change.
+    assert client.put(bands_url, json={"bands": None}, headers=auth_headers(token)).status_code == 400
+    assert client.put(cells_url, json={"cells": None}, headers=auth_headers(token)).status_code == 200
+    assert client.put(bands_url, json={"bands": renamed}, headers=auth_headers(token)).status_code == 200
+
+
+def test_deleting_a_level_removes_its_cell_ratings(client, admin_token, fake_scoring_module):
+    org, token = create_org_admin_in(client, admin_token, "Scoring Cells Delete Co")
+    config = _get(client, _org_base(org["id"]), token)
+    impact, likelihood = _axis(config, "impact")["levels"], _axis(config, "likelihood")["levels"]
+    url = f"{_org_base(org['id'])}/models/ixl/cell-ratings"
+    cells = [_cell(impact[0], likelihood[0], "High"), _cell(impact[1], likelihood[0], "Low")]
+    assert client.put(url, json={"cells": cells}, headers=auth_headers(token)).status_code == 200
+    resp = client.delete(f"{_org_base(org['id'])}/levels/{impact[0]['id']}", headers=auth_headers(token))
+    assert resp.status_code == 204, resp.text
+    assert _cells_of(client, _org_base(org["id"]), token) == ({(impact[1]["id"], likelihood[0]["id"]): "Low"}, "org")
+
+
+def test_cell_ratings_are_scoped_to_their_org_and_project_managers(client, admin_token, fake_scoring_module):
+    org_a, token_a = create_org_admin_in(client, admin_token, "Scoring Cells Iso A")
+    org_b, token_b = create_org_admin_in(client, admin_token, "Scoring Cells Iso B")
+    project_a = create_project(client, token_a, org_a["id"], "Iso Project")
+    config_a = _get(client, _org_base(org_a["id"]), token_a)
+    cell = _cell(_axis(config_a, "impact")["levels"][0], _axis(config_a, "likelihood")["levels"][0], "Low")
+    # Another org's levels can't be used, and org B can't write to org A's endpoints.
+    config_b = _get(client, _org_base(org_b["id"]), token_b)
+    foreign = _cell(_axis(config_b, "impact")["levels"][0], _axis(config_b, "likelihood")["levels"][0], "Low")
+    resp = client.put(f"{_org_base(org_a['id'])}/models/ixl/cell-ratings", json={"cells": [foreign]},
+                      headers=auth_headers(token_a))
+    assert resp.status_code == 400
+    assert client.put(f"{_org_base(org_a['id'])}/models/ixl/cell-ratings", json={"cells": [cell]},
+                      headers=auth_headers(token_b)).status_code == 404
+    assert client.put(f"{_project_base(project_a['id'])}/models/ixl/cell-ratings", json={"cells": [cell]},
+                      headers=auth_headers(token_b)).status_code == 403

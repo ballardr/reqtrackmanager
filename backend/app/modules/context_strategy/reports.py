@@ -116,7 +116,7 @@ from app.services.report_framework import (
     build_report_routers,
     normalise_metrics,
 )
-from app.services.scoring import resolve_effective_bands
+from app.services.scoring import resolve_effective_bands, resolve_effective_cell_ratings
 
 STRATEGY_TYPE = "strategy"
 FUTURE_STATE_TYPE = "future_state"
@@ -273,6 +273,16 @@ class BandRef:
 
 
 @dataclass
+class CellRatingRef:
+    """An explicit per-cell rating on the Severity × Frequency matrix, by
+    level name (the report carries names, not ids)."""
+
+    severity: str
+    frequency: str
+    band_label: str
+
+
+@dataclass
 class PersonaScoreRow:
     """One persona's (or the all-personas) score of a Pain Point."""
 
@@ -341,6 +351,23 @@ class ScoredGroup:
     # Taken from the first contributing project; an organisation report over
     # projects that override the bands differently shows that project's.
     bands: list[BandRef] = field(default_factory=list)
+    # Explicit cell ratings (same first-project rule); empty unless the model
+    # is Severity × Frequency and the project has any.
+    cell_ratings: list[CellRatingRef] = field(default_factory=list)
+
+
+def _cell_rating_refs(db: Session, ctx: ScoringContext, project: Project, model) -> list[CellRatingRef]:
+    """The project's effective cell ratings for a Severity × Frequency model,
+    by level name (the matrix the report draws); empty for any other model."""
+    if tuple(model.axis_keys) != ("severity", "frequency"):
+        return []
+    cells, _ = resolve_effective_cell_ratings(db, project.organization_id, ctx.scheme, model.key, project.id)
+    refs = []
+    for cell in cells:
+        sev, freq = ctx.levels_by_id.get(cell.first_level_id), ctx.levels_by_id.get(cell.second_level_id)
+        if sev is not None and freq is not None:
+            refs.append(CellRatingRef(sev.name, freq.name, cell.band_label))
+    return refs
 
 
 def _persona_rows(ctx: ScoringContext, summary: PainPointScoringSummary) -> list[PersonaScoreRow]:
@@ -426,6 +453,7 @@ def _score_pain_points(
                 items=[],
                 bands=[BandRef(b.label, float(b.min_score), b.tone) for b in resolve_effective_bands(
                     db, project.organization_id, ctx.scheme, model.key, project.id)[0]],
+                cell_ratings=_cell_rating_refs(db, ctx, project, model),
             )
         summaries = build_pain_point_scoring(db, ctx, pain_points, model, _rollup(req))
         for pp, summary in zip(pain_points, summaries, strict=True):

@@ -34,9 +34,6 @@ from app.modules.stakeholders.schemas import (
     PersonaCreate,
     PersonaOut,
     PersonaTransitionRequest,
-    PersonaTypeCreate,
-    PersonaTypeOut,
-    PersonaTypeUpdate,
     PersonaUpdate,
     PersonaVersionOut,
 )
@@ -49,6 +46,7 @@ from app.modules.stakeholders.service import (
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.project import MoveDirection
+from app.schemas.type_vocabulary import OrgTypeCreate, OrgTypeOut, OrgTypeUpdate
 from app.services.audit import log_event
 from app.services.ordering import move_ordered
 from app.services.rbac import require_org_subcomponent_enabled
@@ -70,7 +68,7 @@ def _require_manage(db: Session, user: User, organization_id: UUID) -> None:
 # --- Persona type vocabulary -------------------------------------------------
 
 
-@router.get("/persona-types", response_model=list[PersonaTypeOut])
+@router.get("/persona-types", response_model=list[OrgTypeOut])
 def list_persona_types(organization_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
     """Lists the organisation's Persona types, including inactive ones (an
     admin needs to see and re-activate them)."""
@@ -80,9 +78,9 @@ def list_persona_types(organization_id: UUID, current_user: User = Depends(_requ
     ).all()
 
 
-@router.post("/persona-types", response_model=PersonaTypeOut, status_code=status.HTTP_201_CREATED)
+@router.post("/persona-types", response_model=OrgTypeOut, status_code=status.HTTP_201_CREATED)
 def create_persona_type(
-    organization_id: UUID, payload: PersonaTypeCreate,
+    organization_id: UUID, payload: OrgTypeCreate,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     sh.require_persona_type_admin(db, current_user, organization_id=organization_id)
@@ -97,7 +95,7 @@ def create_persona_type(
     return row
 
 
-@router.post("/persona-types/{type_id}/move", response_model=PersonaTypeOut)
+@router.post("/persona-types/{type_id}/move", response_model=OrgTypeOut)
 def move_persona_type(
     organization_id: UUID, type_id: UUID, payload: MoveDirection,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
@@ -114,9 +112,9 @@ def move_persona_type(
     return result
 
 
-@router.patch("/persona-types/{type_id}", response_model=PersonaTypeOut)
+@router.patch("/persona-types/{type_id}", response_model=OrgTypeOut)
 def update_persona_type(
-    organization_id: UUID, type_id: UUID, payload: PersonaTypeUpdate,
+    organization_id: UUID, type_id: UUID, payload: OrgTypeUpdate,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Renames and/or activates/deactivates a type. References are by id, so

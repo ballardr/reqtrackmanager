@@ -284,7 +284,8 @@ export function activityActionLabel(action: string): string {
   return ACTIVITY_ACTION_LABEL[action] ?? action.replace(/_/g, " ");
 }
 export type DigestMode = "instant" | "daily" | "none";
-export type NotificationType =
+/** Notification types core knows by name (their labels live in `strings.notifications.types`). */
+export type CoreNotificationType =
   | "project_joined"
   | "stage_scoping"
   | "stage_review"
@@ -317,6 +318,10 @@ export type NotificationType =
   | "compliance_standard_update_review_needed"
   | "compliance_assignment_created";
 
+/** A core type or a key a module registered (`ModuleDefinition.notification_types`);
+ * the latter is labelled by the backend (`NotificationPreference.label`). */
+export type NotificationType = CoreNotificationType | (string & {});
+
 export interface Notification {
   id: string;
   type: NotificationType;
@@ -331,6 +336,8 @@ export interface Notification {
 
 export interface NotificationPreference {
   type: NotificationType;
+  /** Set for a module-registered type; core types are labelled by the frontend. */
+  label?: string | null;
   ui_enabled: boolean;
   email_enabled: boolean;
 }

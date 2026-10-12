@@ -1651,6 +1651,21 @@ def lock_organization_for_update(db: Session, organization_id: UUID) -> None:
     db.execute(select(Organization.id).where(Organization.id == organization_id).with_for_update())
 
 
+def lock_row_for_update(db: Session, model: type, row_id: UUID) -> None:
+    """Acquires a Postgres row lock on one row of `model` (anything with an `id`
+    primary key) for the rest of the current transaction.
+
+    Used by versioned records (Persona, Stakeholder, Stakeholder Need, Risk) to
+    serialise concurrent edits: each edit closes the current version and inserts
+    the next, so two unserialised edits both read version N and the loser dies on
+    the `(record, version_number)` unique constraint with a 500. Taking this lock
+    on the identity row *before* reading the current version makes the second
+    edit wait, then apply on top of the first. Reads of the version must happen
+    after the lock is taken.
+    """
+    db.execute(select(model.id).where(model.id == row_id).with_for_update())
+
+
 def get_project_users_by_role(db: Session, project_id: UUID, role: ProjectRole) -> set[UUID]:
     """Returns the user ids who effectively hold `role` on `project_id` —
     direct, group, or nested-org-group (`_direct_project_role_holder_ids`),

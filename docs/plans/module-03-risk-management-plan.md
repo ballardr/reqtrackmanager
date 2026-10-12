@@ -9,22 +9,31 @@ model as its Verification link target.
 **Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
 §11 "Module 3 — Risk Management".
 
-**Status:** Proposed. Not started. Overview §46 groups this with Engineering
-Design as "Phase 5" (built together, after Requirements & Libraries).
+**Status:** Phases 0 (2026-10-12, user sign-off), 1a (core per-cell rating
+override, 2026-10-12), 1 (data model, scoring, RBAC, project API, 2026-10-12),
+2 (lifecycle, 2026-10-12), 3 (relationships and treatment assessment,
+2026-10-12), 4 (reviews, change detection, MCP tools, 2026-10-12), 5
+(frontend UI, 2026-10-12), 6 (docs website, 2026-10-12), 7 (reports) and 8
+(bundle export/import), both added 2026-10-12 at the user's request, complete:
+**the plan is closed**. Overview §46 groups this with Engineering Design as "Phase 5" (built
+together, after Requirements & Libraries).
 
 ## Status / Resume Here
 
-0 / 5 phases complete. Phase 0 is next.
+10 / 10 phases complete (all done 2026-10-12). Plan closed.
 
 | # | Phase | Status |
 |---|-------|--------|
-| 0 | Exploratory: scoring-model shape & open questions | [ ] Not started |
-| 1 | Data model: Risk, Risk Type, configurable scoring, module RBAC | [ ] Not started |
-| 2 | Risk lifecycle, treatment, and residual-risk tracking | [ ] Not started |
-| 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [ ] Not started |
-| 4 | Risk reviews + reassessment scheduling | [ ] Not started |
-| 5 | Frontend UI | [ ] Not started |
-| 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping |
+| 0 | Exploratory: scoring-model shape & open questions | [x] Complete (2026-10-12) |
+| 1a | Core scoring: per-cell rating override (added by Phase 0) | [x] Complete (2026-10-12) |
+| 1 | Data model: Risk, Risk Type, scoring registration, module RBAC | [x] Complete (2026-10-12) |
+| 2 | Risk lifecycle, treatment, and residual-risk tracking | [x] Complete (2026-10-12) |
+| 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [x] Complete (2026-10-12) |
+| 4 | Risk reviews + reassessment scheduling | [x] Complete (2026-10-12) |
+| 5 | Frontend UI | [x] Complete (2026-10-12) |
+| 6 | Docs website coverage | [x] Complete (2026-10-12) |
+| 7 | Reports (added after Phase 5 shipped without them) | [x] Complete (2026-10-12) |
+| 8 | Project and organisation bundle export/import (added likewise) | [x] Complete (2026-10-12) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -106,29 +115,202 @@ list, and lifecycle states before Phase 1.
 5. **Comments/attachments/evidence reuse** — same pattern as other modules,
    confirm `ReviewTargetType` extension.
 
+### Phase 0 resolutions (2026-10-12)
+
+```mermaid
+flowchart LR
+    R["Risk<br/>current + RiskVersion history"] -- "inherent and residual" --> SC["Core scoring scheme 'risk'<br/>Likelihood x Consequence x Detectability"]
+    SC --> CO["Per-cell rating override<br/>new core extension, Phase 1a"]
+    R -- "Mitigated by" --> L["ArtefactLink<br/>generic, unchanged"]
+    L --- A["RiskTreatmentAssessment<br/>module-owned: proposed, effective, ineffective"]
+    R --> RV["RiskReview<br/>rating snapshot"]
+```
+
+1. **Scoring: reuse core's scoring-scheme mechanism, plus a new per-cell
+   override.** A `risk` scheme registers three axes, Likelihood, Consequence
+   and Detectability, with two models: Likelihood × Consequence (the
+   default) and Likelihood × Consequence × Detectability (FMEA-style).
+   **Decided by: User** (reuse, 2026-10-04) and **Decided by: User**
+   (build the cell-by-cell override now rather than accept
+   product-of-weights banding, 2026-10-12); the axes, models and default
+   level names are **Decided by: Agent**. The override is core work and is
+   its own **Phase 1a**, because it changes shared tables that Pain Points
+   and Stakeholders also use: a (scheme, model, level-per-axis) →
+   existing-band-label mapping, org default plus project override,
+   all-or-nothing per set, resolved project → nearest ancestor → org like
+   bands. The override names a band rather than inventing a rating, so
+   colours stay in the band set. Limited to two-axis models (the grid
+   editor is two-dimensional); the three-axis model keeps threshold bands.
+   **Decided by: Agent.** Risk-specific tables (`RiskMatrixDefinition`,
+   `RiskRatingBand`) are not built.
+2. **Types: org base list plus project rename, reorder, disable and add**,
+   seeded with §11.3's twelve defaults, the same shape as Pain Point and
+   Stakeholder types. *Nested projects:* no ancestor fallback, because the
+   org list is the base every project already sees (Module 2 Phase 0
+   resolution 3's reasoning). **Decided by: Agent**, recommended in this
+   plan and not objected to.
+3. **"Linked to" vs "effectively treats": a module-owned
+   `RiskTreatmentAssessment` table**, keyed to the Risk's Mitigated-by link
+   (FK to `artefact_links`, cascade on delete): `status`
+   (`proposed` / `effective` / `ineffective` / `needs_reassessment`),
+   `assessed_by`, `assessed_at`, `rationale`. A link with no row is
+   `proposed`. A Risk counts as *treated* only through `effective` rows.
+   Phase 4's change detection sets `needs_reassessment`. `ArtefactLink`
+   itself is unchanged, since a risk-only column there would break the
+   module boundary. **Decided by: User.**
+4. **Lifecycle: branching, with a distinct acceptance approval.**
+   `Identified → Assessed → Treatment Planned → Treatment in Progress →
+   Mitigated → Closed`; `Accepted`, `Transferred`, `Avoided`, `Realised`
+   and `Rejected` are reachable from `Assessed` onward (Rejected from
+   `Identified` too) and lead to `Closed`; a reassessment may move a risk
+   back to an earlier state. Moving to `Accepted` needs a distinct
+   module-registered *risk acceptor* role (accepting residual risk is as
+   consequential as approving a requirement) and uses the generalised
+   `allow_ai_approvals` gate for MCP, as this plan's Phase 4 note already
+   says; `Mitigated` does not. **Decided by: User.** Exact transition
+   table and role names: **Decided by: Agent** in Phase 1/2.
+5. **History: a `RiskVersion` table, plus a snapshot on each review.**
+   Residual likelihood, consequence and rating are flat fields on the
+   current version, as originally proposed. This replaces the
+   audit-log-only history in the original Q4, to match Modules 1 and 2 and
+   the acceptance criterion "risk reviews and history are retained".
+   **Decided by: User.**
+6. **Owner is a user-or-group principal** (the "Users and Groups on
+   Parity" rule). The shared mechanism is
+   [users-and-groups-parity-plan.md](users-and-groups-parity-plan.md)
+   Phase 1, not started. If it has not landed when Phase 1 begins, ship a
+   user-only owner and log the gap in `docs/decisions.md`, to be closed by
+   that plan. **Decided by: Agent** (the rule itself is the user's).
+7. **Verification and Module 0.** `RequirementActionLink` is already folded
+   into `ArtefactLink`, so Verified by / Treated by use Actions through the
+   generic link; nothing is extended here. Any restriction on which
+   artefact types may link as Risk targets is an `ArtefactLink` link-type
+   rule, not Risk code. **Decided by: Agent.**
+8. **Comments, attachments, evidence:** module-local tables
+   (`RiskComment`, `RiskCommentFile`, `RiskFile`), not new
+   `ReviewTargetType` members, per Module 2 Phase 0 resolution 8.
+   **Decided by: Agent.**
+9. **Field set (Phase 1):** identifier, statement, cause, risk event,
+   consequence, type, owner, treatment strategy, acceptance criteria,
+   inherent likelihood/consequence (/detectability) level ids, derived
+   inherent rating, residual equivalents, status, review date, project
+   scope. §11.2's "mitigation actions" are Actions linked through
+   Treated by, not a text field. **Decided by: Agent**; the user signed off
+   the field list by approving this phase's scope.
+10. **Roles:** *Risk Manager* (create, assess, treat, edit, review),
+    *Risk Acceptor* (the acceptance transition), project members propose
+    (create in `Identified`), per §11.7. Keys and names:
+    **Decided by: Agent** in Phase 1.
+
+## Phase 1a — Core scoring: per-cell rating override (added by Phase 0)
+
+**Why:** the core scoring mechanism rates a score by thresholds on the
+normalised product of level weights. Real risk matrices are rarely
+monotonic in that product (a 5 × 1 cell and a 2 × 3 cell often differ), so
+an organisation could not reproduce its own matrix. Without this, Risk would
+either misrate cells or need its own parallel matrix tables, the failure
+Phase 0 Q1 was written to avoid. **Outcome:** any two-axis scoring model can
+set an explicit band for each (level, level) cell; Pain Points and
+Stakeholders gain it for free.
+
+**Scope:** a core table of cell → band-label overrides at org and project
+tier (all-or-nothing per set, project → ancestor → org resolution), service
+functions in `services/scoring.py` (`band_for` consults the override first),
+level-delete handling (cascade the cell's rows), API endpoints, an editable
+grid in `ScoringSchemeEditor`/`ProjectScoringSettings`, and the audit-logged
+writes the existing scoring endpoints use. Update `docs/modules.md` §4d.
+Tests: backend resolution/inheritance/level-delete/authorisation, Playwright
+for the grid editor, Storybook for the grid. Seeds: give the demo risk
+scheme a non-monotonic example.
+
+**As built (2026-10-12):** `scoring_cell_ratings` (migration 0072) keyed by
+the two level ids with real cascading FKs, so deleting a level drops its
+cells and re-weighting keeps them. `PUT .../models/{model}/cell-ratings` at
+org and project, same gating and audit as bands. A cell names an existing
+band label: it must exist in the scope's effective bands when saved, bands a
+scope's own cells still use can't be removed or renamed, and a label that
+later disappears (another scope changed its bands) is ignored at read time.
+`compute_score` takes `level_ids` + `cell_ratings`; a single scored entry
+keeps its cell band, a blend of several (weighted or plain average) is not a
+cell and keeps thresholds, worst case keeps the worst entry's. Pain Points
+and the R1 report (`cell_ratings` per group, by level name) consume it; the
+shared `ScoringCellRatingsEditor` sits inside `ScoringModelBands`, so Pain
+Points and Stakeholders configuration screens get it with no module change.
+Stakeholders' grid colouring does not use bands, so nothing changed there.
+No Risk scheme exists yet to seed, so the demo dataset pins Falcon-3's Pain
+Point Blocker × Rare to High instead; Phase 1 should add a non-monotonic
+example to the Risk scheme's own seed.
+
 ## Phase 1 — Data model: Risk, Risk Type, configurable scoring, module RBAC
 
-**Scope** (fields §11.2, types §11.3, per Phase 0's resolution): risk
-statement, cause, risk event, consequence, category/type (FK to
-configurable type), likelihood, consequence/severity (both FK'd to the
-configured matrix's levels), inherent risk rating (derived), owner,
-treatment strategy, review date, evidence/comments (reused pattern),
-revision/history (audit-log based, per the other modules' Q4-equivalent
-resolution). Plus the `RiskMatrixDefinition`/`RiskRatingBand` config tables
-from Phase 0 Q1.
+**Scope** (fields §11.2, types §11.3, per Phase 0's resolutions): the `Risk`/
+`RiskVersion` tables, the two-tier Risk type vocabulary, the `risk` scoring
+scheme registration, the module RBAC, and the project-scoped API (CRUD,
+versions, archive, comments, evidence files) plus the org-scoped type API.
+Lifecycle transitions, relationships, reviews, MCP tools and the UI are
+Phases 2 to 5.
 
 **Why:** §11.1 — without a first-class Risk artefact, "a risk should not be
 reduced to a free-text field on a requirement" is exactly the failure mode
-this closes: today, nothing in this codebase represents risk as a queryable
-entity at all (confirmed — no `Risk`-shaped model exists), so any
-requirement rationale mentioning risk is unstructured prose with no
-ownership, no rating, no review schedule.
+this closes: nothing in this codebase represented risk as a queryable entity,
+so any requirement rationale mentioning risk was unstructured prose with no
+ownership, no rating, no review schedule. **Outcome:** a project can record,
+version, type, own and rate risks, with the rating following whatever matrix
+the organisation or project has configured.
 
-**Roles:** Risk Manager/Owner (Manage), project members (Propose), no
-distinct Approve role explicitly named in §11.7 beyond ownership — confirm
-whether risk *acceptance* (moving to `Mitigated/Accepted`) needs a distinct
-Approve-level role in Phase 0, since accepting residual risk is arguably as
-consequential as approving a requirement.
+```mermaid
+flowchart LR
+    R["Risk<br/>RSK-nnn identity"] --> V["RiskVersion<br/>content, status, 6 level ids"]
+    V -- "level ids" --> S["Core scoring 'risk' scheme<br/>org levels, bands, cell ratings"]
+    V --> RT["rate_version()<br/>derived on read"]
+    S --> RT
+    V -- "project_type_id" --> PT["ProjectRiskType<br/>passthrough or local"]
+    PT --> OT["RiskTypeDefinition<br/>org list"]
+    R --> C["RiskComment / RiskFile<br/>evidence"]
+```
+
+**As built (2026-10-12):**
+
+- **Module** `risk_management` (`backend/app/modules/risk_management/`),
+  artefact type and sub-component `risk`, codes `RSK-001`. Migration `0073`
+  creates seven tables and backfills the twelve default types for existing
+  organisations; `on_org_created` seeds new ones.
+- **Fields.** Title (added: a statement is too long for a list or link),
+  statement, cause, risk event, consequence (text), optional type, treatment
+  strategy (`mitigate`/`transfer`/`avoid`/`accept`), acceptance criteria,
+  inherent and residual Likelihood/Consequence/Detectability level ids,
+  status, owner, review date. The two ratings are never stored.
+- **Scoring.** Scheme `risk`: five-level Likelihood, Consequence and
+  Detectability (higher Detectability weight = harder to detect, FMEA style),
+  models `lxc` (default) and `lxcxd`. Default bands put products 1-4 Low, 5-9
+  Medium, 10-16 High and 20+ Critical on the 5x5 grid. A model that needs an
+  axis a risk has no level for leaves that rating `null`. Level deletion uses
+  the `count_level_usage`/`reassign_level_usage` hooks on current versions.
+- **RBAC.** Any project member proposes (creates in `Identified`);
+  `risk_manager` (project, FGAC `(risk, manage)`) edits, archives, attaches
+  evidence and manages the project's types; `risk_type_admin` (org) manages the
+  org types and the scheme's levels, bands and cell ratings. Comments are open
+  to any member (author-only edit). Status is not editable through `PUT`.
+- **API.** `/api/v1/projects/{id}/modules/risk_management/`: `risks` (CRUD,
+  `versions`, `archive`/`unarchive`, `comments`, `files`) and `risk-types`;
+  `/api/v1/orgs/{id}/modules/risk_management/risk-types`.
+- **Shared code moved to core** so no module imports another's package:
+  `services/type_vocabulary.py`, `services/module_attachments.py`,
+  `schemas/type_vocabulary.py`; Stakeholders were moved onto them.
+- **Deliberately not yet registered:** the `risk_acceptor` role (Phase 2, where
+  it first gates something), artefact summary provider and link-type seeds
+  (Phase 3, when a risk becomes linkable), frontend manifest and routes
+  (Phase 5; `frontend/src/modules/risk_management/module.ts` registers only the
+  artefact path, status labels and inactive statuses, and Phase 5's detail page
+  must serve that path), MCP tools (Phase 4), bundle export/import (matching
+  Decisions and Context & Strategy; also the scoring levels a risk references
+  are not part of org export; **reports and bundle hooks were added later as
+  Phases 7 and 8**). `seed_e2e_dataset.py` gains risks with the
+  Phase 5 specs that read them; the demo seed already has four Falcon-3 risks,
+  one rating from a pinned non-monotonic cell (Rare × Catastrophic = High).
+- **Owner is user-only** (Phase 0 resolution 6): the shared principal mechanism
+  has not landed. The gap is logged in `docs/decisions.md` and is closed by
+  [users-and-groups-parity-plan.md](users-and-groups-parity-plan.md).
 
 ## Phase 2 — Risk lifecycle, treatment, and residual-risk tracking
 
@@ -144,6 +326,55 @@ mitigate [risks]... a first-class risk allows the project to determine
 whether mitigation is complete, whether residual risk is acceptable."
 Without an explicit lifecycle, "is this risk actually closed out" has no
 authoritative answer.
+
+**As built (2026-10-12):**
+
+```mermaid
+stateDiagram-v2
+    [*] --> Identified
+    Identified --> Assessed: inherent rating
+    Identified --> Rejected
+    Assessed --> TreatmentPlanned: owner + strategy
+    TreatmentPlanned --> TreatmentInProgress
+    TreatmentInProgress --> Mitigated: residual rating
+    Assessed --> Accepted: acceptor, residual + criteria
+    Assessed --> Transferred
+    Assessed --> Avoided
+    Assessed --> Realised
+    Assessed --> Rejected
+    Mitigated --> Closed
+    Accepted --> Closed
+    Transferred --> Closed
+    Avoided --> Closed
+    Realised --> Closed
+    Rejected --> Closed
+    Closed --> Assessed: reopen
+```
+
+The diagram shows the forward and reopen moves; the outcomes are also reachable
+from Treatment Planned and Treatment in Progress, a Mitigated, Accepted or
+Transferred risk can still become Realised, and a reassessment moves a risk back
+to any earlier working state (`service.RISK_ALLOWED_TRANSITIONS` is the source of
+truth).
+
+- **API.** `POST .../risks/{id}/transition` `{status, comment}`; `RiskOut` gains
+  `allowed_next_statuses`. 409 for an illegal move, an unmet guard or an archived
+  risk. Each move is a new `RiskVersion` and a `status_changed` audit event.
+- **Guards (on the target state).** Assessed: inherent rating. Treatment
+  Planned: owner and treatment strategy. Mitigated: residual rating. Accepted:
+  residual rating and acceptance criteria.
+- **Acceptance.** New project role `risk_acceptor` (FGAC `(risk,
+  approve_baseline)`); `risk_manager` makes every other move and cannot accept.
+  Through MCP, accepting also needs the org+project `allow_ai_approvals` gate
+  (applied in the endpoint, so Phase 4 only has to declare the tool).
+- **Accepted lock.** `PUT` cannot change levels, acceptance criteria or strategy
+  of an Accepted risk (409); move it back to Assessed first.
+- **Residual-risk tracking** is the existing residual levels plus the Mitigated
+  and Accepted guards; residual is never auto-recalculated. **Phase 3 must add**
+  the "mitigated needs an *effective* treatment" guard once treatment assessments
+  exist, and offer residual-vs-inherent reporting if wanted.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 2".
 
 ## Phase 3 — Risk-to-engineering relationships (mitigation vs. mere linkage)
 
@@ -165,6 +396,49 @@ is what makes a risk register more than a list; it's what lets a later
 Reporting query answer "which risks have no effective mitigation yet"
 (one of overview §47.9's named AI-assisted-analysis candidates, and — even
 without AI — a plain query any Risk Manager needs routinely).
+
+**As built (2026-10-12):**
+
+```mermaid
+flowchart LR
+    REQ["Requirement / Design"] -- "Mitigates (core default)" --> R["Risk"]
+    R -- "Treated by (seeded)" --> ACT["Action"]
+    R -- "Verified by (core)" --> ACT
+    R -- "Impacts (seeded)" --> REQ
+    DEC["Decision"] -- "Addresses (merged seed)" --> R
+    R -- "Related to (core)" --> CMP["Compliance requirement"]
+    REQ -. "treatment link" .-> TA["RiskTreatmentAssessment<br/>proposed / effective /<br/>ineffective / needs_reassessment"]
+    ACT -. "treatment link" .-> TA
+    TA --> G["Mitigated guard +<br/>is_effectively_treated"]
+```
+
+- **No Risk-specific link endpoints.** Relationships are made, listed and removed
+  through the generic artefact link system; the module adds link-type seeds, a
+  `risk` summary provider (so a risk is shown and followed from any link and
+  appears in the finder, with status and type browse levels), and the verdict.
+- **Names differ from this section's wording** (Decided by: Agent): `Mitigated by`
+  is the reverse phrase of the core `Mitigates`, and `Affects` is `Impacts`
+  (`Is impacted by`), to avoid duplicate or mirror-image phrases next to existing
+  link types. `Verified by` and `Related to` (Compliance) are core defaults.
+  Design and System Element are named in `Impacts`' targets for Module 6.
+- **Treatment links** are `Mitigates` (risk is the target) and `Treated by` (risk
+  is the source); only they carry a verdict. `RiskTreatmentAssessment`
+  (`link_id` unique, cascading FK to `artefact_links`; migration `0074`) holds
+  `status`, `assessed_by/at` and `rationale`. A link with no row is `proposed`.
+- **API** (`/api/v1/projects/{id}/modules/risk_management/`): `GET
+  risks/{id}/treatments` (links with far end and verdict; unseen far ends are only
+  counted) and `PUT risks/{id}/treatments/{link_id}` (the risk's owner or a Risk
+  Manager; `effective`/`ineffective` need a rationale). `RiskOut` gains
+  `effective_treatment_count` and `is_effectively_treated`, and `GET risks` takes
+  `effectively_treated` for "which risks have no effective mitigation yet".
+- **`Mitigated` guard** now needs at least one effective treatment (deferred from
+  Phase 2). Phase 4's change detection sets `needs_reassessment`, which already
+  fails the guard.
+- **Decision to Risk:** a seed merging into Decision Management's `Addresses`;
+  migration `0074` widens existing organisations' restricted `Addresses` to accept
+  `risk`.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 3". Demo seed gains treatment links with one effective verdict.
 
 ## Phase 4 — Risk reviews + reassessment scheduling
 
@@ -233,6 +507,51 @@ judgment call at plan-time (**Decided by: Agent**) about *which* option
 (a)/(b) to pick; the underlying instruction to move this plan off
 read-only-only is **Decided by: User** (2026-09-22).
 
+**As built (2026-10-12):**
+
+```mermaid
+flowchart LR
+    RQ["Requirement edited / archived<br/>(core)"] --> HK["notify_artefact_changed"]
+    HK --> RH["Risk on_artefact_changed"]
+    RH --> TA["effective verdict -><br/>needs_reassessment + reason"]
+    RH --> N["notification to owner"]
+    SW["Daily sweep 03:00"] --> N
+    OWN["Owner or Risk Manager"] --> RV["POST reviews<br/>RiskReview + rating snapshot"]
+    RV --> RD["review_date moves<br/>(new RiskVersion)"]
+    TA -. "blocks 'confirmed'" .-> RV
+```
+
+- **Reviews.** `RiskReview` (migration `0075`, immutable): outcome `confirmed` or
+  `reassessed`, required notes, risk status, inherent/residual rating label and
+  score and effective-treatment count at the time, the `review_date` answered and
+  the `next_review_date` set. `POST/GET .../risks/{id}/reviews`, `GET
+  .../reviews/{review_id}`; the owner or a Risk Manager may record one. The next
+  date is required (nullable) and must be in the future; archived and closed risks
+  are not reviewed; `confirmed` is refused while any verdict `needs_reassessment`.
+  `RiskOut.is_review_overdue` and `GET risks?review_overdue=`.
+- **Notifications.** New generic core extension points: `ModuleDefinition.
+  notification_types` (core's closed `NotificationType` enum is untouched; the
+  columns became plain strings validated against core plus registered types) and
+  `on_artefact_changed` (`services/artefact_changes.py`). The module registers
+  `risk_review_due`, `risk_review_overdue`, `risk_treatment_needs_reassessment`, a
+  daily `scheduled_jobs` sweep (once per `review_date`, owner else Risk
+  Managers/project managers), and the change hook, which moves `effective` verdicts
+  resting on a changed requirement (content edit or archive) to `needs_reassessment`
+  with a reason, audit-logs it and notifies once. **Only requirements raise the
+  hook today**; Designs (Module 6) and Actions do not, so a change to a *Treated by*
+  action does not flag its verdict.
+- **MCP.** Nine read tools and six write tools (`create_risk`, `update_risk`,
+  `transition_risk`, `assess_risk_treatment`, `record_risk_review`,
+  `add_risk_comment`), `mcp_guidance.md`, the generated `module-tools.md`, and a
+  read-only `GET .../scoring-scheme` so an agent can find level ids. Acceptance
+  through `transition_risk` keeps the Risk Acceptor role and AI-approval gate.
+- **Phase 5 must:** deep-link a `risk` notification (`entity_type` `"risk"`) to the
+  detail page, surface `reassessment_reason` and `needs_reassessment_count`, show the
+  review history and a record-review form, and use `is_review_overdue` for the
+  register's overdue filter.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 4".
+
 ## Phase 5 — Frontend UI
 
 List/detail/create UI for Risks (with the configured matrix rendered as an
@@ -241,6 +560,27 @@ most of its communicative value), risk register view, review-due
 notifications surfaced consistently with existing notification patterns.
 Playwright e2e + Storybook coverage per standing requirements; enum/status
 values through label maps.
+
+**As built (2026-10-12):**
+
+```mermaid
+flowchart LR
+    NAV["Nav: Risks<br/>(backend frontend_manifest)"] --> REG["Register<br/>table + filters"]
+    NAV --> MX["Matrix tab<br/>ScoringMatrixChart"]
+    MX -- "cell click" --> REG
+    REG --> DET["Detail page"]
+    DET --> TR["Treatments<br/>proposed / effective"]
+    DET --> RV["Reviews + record review"]
+    DET --> LP["Links panel (generic)"]
+    NT["Notification<br/>entity_type risk"] -- "getNotificationLink" --> DET
+```
+
+- **Module** `frontend/src/modules/risk_management/`: `ProjectRisksPage`, `RiskDetailPage`, `RiskFormModal`, `RiskLifecycleControls`, `RiskTreatmentsPanel`, `RiskReviewsPanel`, `RiskMatrix`, `RiskRatingBadge`, org/project `RiskTypesPanel`s, `api.ts`, `useRiskScheme`, `riskFields`, and `module.ts` (routes, admin sections for types and scoring). The nav entry comes from the backend `frontend_manifest` (icon `shield-alert`).
+- **Matrix** is core's shared chart on the scheme's two-axis model, so it follows the organisation's bands and pinned cells; a cell click narrows the register.
+- **Core touches (all generic):** `RecordDetailParts`/`RecordDiscussion` moved from Stakeholders to `components/`; `getNotificationLink` resolves a notification's `entity_type` through any module's `artefactPaths` (used by the bell and the notifications page); one new nav icon.
+- **Phase 4's "Phase 5 must" list:** notification deep link, `reassessment_reason` and `needs_reassessment_count` (treatments panel), review history and record-review dialog, `is_review_overdue` filter and badge: all done.
+- **Not built:** an org-wide risk dashboard and a project-overview tile (not in the plan). Docs website is Phase 6.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk Management Phase 5".
 
 ## Phase 6 — Docs website coverage
 
@@ -276,8 +616,8 @@ under-scope or miss amid everything else Phase 5 ships.
 - A new docs-site page or section (matching whatever grouping the site
   already uses for other project-scoped modules, e.g. Compliance and
   Decision Management) covering: what a Risk record is and when to use one;
-  the configurable scoring model (Phase 0 Q1's `RiskMatrixDefinition`/
-  `RiskRatingBand` shape) with a worked example matrix rendered as a
+  the configurable scoring model (the registered `risk` scheme and its
+  per-cell overrides, Phase 0 resolution 1) with a worked example matrix rendered as a
   Mermaid diagram or table; the risk lifecycle as a validated Mermaid state
   diagram, including its branching terminal outcomes (`Mitigated/Accepted`,
   `Transferred`, `Avoided`, `Realised`, `Rejected`, per §11.4); the
@@ -305,10 +645,89 @@ under-scope or miss amid everything else Phase 5 ships.
   list view, a Risk detail page showing its scoring matrix and lifecycle
   state, and the review/reassessment scheduling UI.
 
-**Status:** not started — depends on Phase 5 (frontend) actually shipping;
-there is no real user-facing workflow to document accurately before then,
-the same reasoning Decision Management's own Phase 6 and Compliance's
-docs-site page both used. Not a blocker for any other phase.
+**As built (2026-10-12):** a nested *Risk Management module* category under
+Modules (`docs/website/docs/modules/risk-management-module/`): Overview,
+Data model and lifecycle, Scoring, Treatment and relationships, Reviews and
+notifications, MCP integration and Known limitations, with Mermaid diagrams
+(lifecycle, verdict flow, change detection) and six screenshots (register,
+matrix, detail, treatments and reviews, record-review dialog, organisation
+Risk Scoring). Module lists (Modules overview, Roadmap, glossary, MCP overview
+and Agent skill) and the Requirements management page now mention Risk
+Management.
+
+- Capturing against the real app exposed two things, both fixed here: the demo
+  seed's Risk block had never run end to end (it linked through the `Mitigates`
+  type Falcon-3 hides, and attached an action to an approved requirement), and
+  version change notes showed raw enum values ("treatment_planned").
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 6".
+
+## Phase 7 — Reports
+
+Added 2026-10-12 at the user's explicit request (**Decided by: User**) after
+Phase 5 shipped without reports; the report set and rules below are **Decided
+by: Agent**, modelled on Decision Management's reports.
+
+**Why:** the register and matrix answer "what is this Risk" but not "what is our
+exposure, what has nothing proven against it, and which reviews slipped", the
+questions a Risk Manager is actually asked, and §11.6's reassessment promise is
+not checkable without them. **Outcome:** four project-level reports on the shared
+report framework, so they appear in the Reports page, export to PDF, Word and
+CSV, and are MCP tools with no UI or MCP code of their own.
+
+```mermaid
+flowchart LR
+    RK["reports.py<br/>4 collectors"] --> FW["Core report framework"]
+    FW --> UI["Reports page picker<br/>PDF / Word / CSV"]
+    FW --> MCP["get_*_report MCP tools"]
+    RK -. "per-project RatingContext" .-> SC["Scoring: bands + cell ratings"]
+    RK -. "verdicts" .-> TA["RiskTreatmentAssessment"]
+```
+
+- **RK1 Risk register**, **RK2 Risk exposure** (inherent against residual, the
+  highest remaining Risks, Risks with no rating), **RK3 Treatment coverage**
+  (no effective treatment, verdicts to reassess, links by verdict), **RK4 Review
+  schedule** (overdue, due soon, assessed with no review date, last reviewed).
+- **Project-level only.** The module's only org role (Risk Type Admin) administers
+  vocabulary, not risks, so it is not a sound gate for an aggregate across
+  projects; *Include child projects* covers a hierarchy.
+- **Each project is rated by its own matrix**, so a child with its own bands or
+  pinned cells is never rated by its parent's. Labels, not scores, are shown.
+- **Scope rules** stated on each report: Exposure counts Identified to Transferred
+  (history and left-the-picture states excluded); Coverage covers the states where
+  a treatment is expected (Accepted and Transferred are deliberate non-treatment);
+  Schedule treats a missing review date on an assessed Risk as a gap.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 7".
+
+## Phase 8 — Project and organisation bundle export/import
+
+Added 2026-10-12 at the user's explicit request (**Decided by: User**); the
+carried set and matching rules are **Decided by: Agent**. Phase 1 had left the
+hooks out "matching Decisions and Context & Strategy"; Stakeholders & Personas
+already use them, so the omission left Risks lost on a backup or migration.
+
+```mermaid
+flowchart LR
+    X["export.py hooks"] --> B[("Bundle: types, Risks, reviews,<br/>evidence, requirement links + verdicts")]
+    B --> I["Import: match by name or code"]
+    I -- "no match" --> W["Left unset + warning, never guessed"]
+```
+
+- **Carried:** org Risk types; per project, its type rows and each Risk's current
+  content, status, owner, review date, **original code** (the sequence counter is
+  advanced past the highest), evidence, the full review history with its rating
+  snapshots, archived state, and links to same-project Requirements with their
+  verdicts (including *needs reassessment* and its reason).
+- **Not carried:** version history and comments (a Risk arrives at version 1);
+  scoring configuration; links to Actions, Decisions, other Risks or other
+  projects (those records are not in the bundle).
+- **Matching:** type by name, scoring level by axis and name, requirement by code,
+  link type by name. An unmatched reference is left unset or skipped *with a
+  warning*, so an imported Risk reads "Not rated" rather than being silently
+  re-rated.
+- Decisions, challenge raised and verification: `docs/decisions.md`, "Risk
+  Management Phase 8".
 
 ## Acceptance criteria (from overview §48, Risk Management subset)
 

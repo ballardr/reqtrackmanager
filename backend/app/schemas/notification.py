@@ -7,14 +7,12 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.notification import NotificationType
-
 
 class NotificationOut(BaseModel):
     model_config = {"from_attributes": True}
 
     id: UUID
-    type: NotificationType
+    type: str
     title: str
     body: str
     project_id: UUID | None
@@ -25,7 +23,11 @@ class NotificationOut(BaseModel):
 
 
 class NotificationPreferenceOut(BaseModel):
-    type: NotificationType
+    """Effective delivery preference for one notification type. `label` is set
+    for a module-declared type (core types are labelled by the frontend)."""
+
+    type: str
+    label: str | None = None
     ui_enabled: bool
     email_enabled: bool
 

@@ -1288,6 +1288,17 @@ def set_project_scoring_default_model(headers: dict, project_id: str, scheme: st
     return r.json()
 
 
+def set_project_scoring_cell_ratings(headers: dict, project_id: str, scheme: str, model: str, cells: list[dict]) -> dict:
+    """Overrides a project's per-cell ratings for a two-axis model (generic
+    scoring-matrix core, Module 3 Phase 1a)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/scoring-schemes/{scheme}/models/{model}/cell-ratings", json={"cells": cells},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # --- Context & Strategy module helpers, Phase 4 (docs/plans/module-01-
 # context-and-strategy-plan.md Phase 4 — Guiding Principles) -----------------
 
@@ -1590,6 +1601,48 @@ def add_stakeholder_relationship(
     )
     r.raise_for_status()
     return r.json()
+
+
+def list_effective_risk_types(headers: dict, project_id: str) -> dict[str, dict]:
+    """Returns a project's effective Risk types, keyed by name (Module 3 Phase 1)."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/modules/risk_management/risk-types", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {t["name"]: t for t in r.json()}
+
+
+def get_risk_levels(headers: dict, project_id: str) -> dict[str, dict[str, str]]:
+    """Returns the `risk` scoring scheme's level ids as axis key -> level name -> id."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/scoring-schemes/risk", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
+
+
+def create_risk(
+    headers: dict, project_id: str, levels: dict[str, dict[str, str]], *, inherent: tuple[str, str] | None = None,
+    residual: tuple[str, str] | None = None, **fields,
+) -> dict:
+    """Creates a project Risk (it starts Identified). `inherent`/`residual` are `(likelihood, consequence)` level names
+    from the `risk` scoring scheme, turned into the matching level ids."""
+    for prefix, chosen in (("inherent", inherent), ("residual", residual)):
+        if chosen is not None:
+            fields[f"{prefix}_likelihood_level_id"] = levels["likelihood"][chosen[0]]
+            fields[f"{prefix}_consequence_level_id"] = levels["consequence"][chosen[1]]
+    r = httpx.post(f"{BASE}/projects/{project_id}/modules/risk_management/risks", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str) -> dict:
+    """Moves a Risk through the given lifecycle statuses in order (Module 3 Phase 2) and returns the last response."""
+    out: dict = {}
+    for status in statuses:
+        r = httpx.post(
+            f"{BASE}/projects/{project_id}/modules/risk_management/risks/{risk_id}/transition",
+            json={"status": status}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+        out = r.json()
+    return out
 
 
 def main() -> None:
@@ -2503,7 +2556,8 @@ def main() -> None:
     )
 
     print("Seeding a project-level link type on Falcon-3 (Phase 5c): \"Is verified by\" (a requirement is verified by"
-          " another), inherited by the Avionics sub-project, and Falcon-3 hides the organisation's \"Mitigates\"...")
+          " another), inherited by the Avionics sub-project, and Falcon-3 hides the organisation's"
+          " \"Equivalent to\" (not \"Mitigates\": Risk treatment links need it)...")
     verified_by = create_project_link_type(
         h_pm, drone["id"], forward_name="Is verified by", reverse_name="Verifies", flow="forward_is_downstream",
     )
@@ -2511,7 +2565,7 @@ def main() -> None:
         h_pm, drone["id"], "requirement", gps_req["id"], link_type_id=verified_by["id"],
         other_type="requirement", other_id=flight_time_req["id"],
     )
-    set_link_type_visibility(h_pm, drone["id"], chain_link_types["Mitigates"]["id"], True)
+    set_link_type_visibility(h_pm, drone["id"], chain_link_types["Equivalent to"]["id"], True)
 
     print("Seeding Pain Point scoring config (Module 1 Phase 10) — org keeps the seeded Severity/Frequency/"
           "Confidence levels and module-default model; Falcon-3 overrides its default model to S×F...")
@@ -2639,6 +2693,12 @@ def main() -> None:
           " personas of different weights (one persona left unscored), an all-personas Blocker, an intentional"
           " limitation, and an unscored Pain Point...")
     pp_levels = get_pain_point_levels(h_pm, drone["id"])
+    print("  Falcon-3 pins the Severity × Frequency cell Blocker × Rare to High (its score alone would only earn"
+          " Medium): a blocker is never a minor problem, however rare (Module 3 Phase 1a cell ratings)...")
+    set_project_scoring_cell_ratings(h_pm, drone["id"], "pain_point", "sxf", [{
+        "first_level_id": pp_levels["severity"]["Blocker"], "second_level_id": pp_levels["frequency"]["Rare"],
+        "band_label": "High",
+    }])
     set_pain_point_scores(h_pm, drone["id"], pp_accepted["id"], [
         score_entry(pp_levels, persona_inspector["id"], severity="Major", frequency="Frequent", confidence="High"),
         score_entry(pp_levels, drone_operator_persona["id"], severity="Moderate", frequency="Constant", confidence="Medium"),
@@ -2752,6 +2812,106 @@ def main() -> None:
     ):
         add_stakeholder_relationship(h_pm, drone["id"], holder_kind, holder_id, kind, target_type, target_id)
 
+    print("Seeding Risk Management (Module 3 Phase 1) — enabling the module, then a small Falcon-3 risk register."
+          " Falcon-3 pins the Likelihood x Consequence cell Rare x Catastrophic to High (its score alone would only earn"
+          " Medium): a catastrophe is never a minor risk, however unlikely...")
+    enable_module(h_pm, org["id"], "risk_management")
+    risk_types = list_effective_risk_types(h_pm, drone["id"])
+    risk_levels = get_risk_levels(h_pm, drone["id"])
+    set_project_scoring_cell_ratings(h_pm, drone["id"], "risk", "lxc", [{
+        "first_level_id": risk_levels["likelihood"]["Rare"], "second_level_id": risk_levels["consequence"]["Catastrophic"],
+        "band_label": "High",
+    }])
+    risk_single_controller = create_risk(
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Safety"]["id"], owner_id=demo_admin["user_id"],
+        title="Flight controller fails in flight",
+        statement="If the flight controller fails during a flight over people, the drone falls uncontrolled.",
+        cause="Single flight controller board with no in-flight redundancy.", risk_event="Loss of flight control.",
+        consequence="Injury to bystanders and loss of the airframe.", treatment_strategy="mitigate",
+        acceptance_criteria="Dual-redundant architecture certified; no single fault leads to loss of control.",
+        inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
+    )
+    risk_modem = create_risk(
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner_id=demo_admin["user_id"],
+        title="Cellular modem supplier misses delivery",
+        statement="If the single-sourced modem arrives late, integration testing slips and the certification date is at risk.",
+        risk_event="Late delivery of the telemetry modem.", consequence="Integration slips by several weeks.",
+        treatment_strategy="mitigate", inherent=("Likely", "Moderate"), residual=("Possible", "Minor"),
+    )
+    risk_regulator = create_risk(
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Compliance"]["id"], owner_id=demo_admin["user_id"],
+        title="Regulator withdraws BVLOS approval",
+        statement="If the regulator withdraws beyond-visual-line-of-sight approval, populated-corridor contracts cannot be flown.",
+        consequence="The core commercial route is lost.", inherent=("Rare", "Catastrophic"), residual=("Rare", "Catastrophic"),
+        treatment_strategy="accept", acceptance_criteria="Approval conditions are tracked quarterly; contracts allow a re-route.",
+    )
+    # Spread the register across the lifecycle: one in treatment, one assessed, one formally accepted (the project
+    # manager satisfies the Risk Acceptor role), and the unscored one left Identified.
+    transition_risk(h_pm, drone["id"], risk_single_controller["id"], "assessed", "treatment_planned", "treatment_in_progress")
+    transition_risk(h_pm, drone["id"], risk_modem["id"], "assessed")
+    transition_risk(h_pm, drone["id"], risk_regulator["id"], "assessed", "accepted")
+    risk_unscored = create_risk(
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Performance"]["id"], title="Gimbal vibration degrades imagery",
+        statement="Rotor vibration may blur inspection imagery at the gimbal's maximum zoom.",
+    )
+    # Phase 3: treatment links and their verdicts. A link alone only "proposes" a treatment; the project manager
+    # (a Risk Manager) attests the pre-flight diagnostics are effective, leaves the return-to-home link proposed, and
+    # the modem risk is treated by a dual-sourcing action that is linked but not yet assessed.
+    risk_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
+    risk_url = f"{BASE}/projects/{drone['id']}/modules/risk_management/risks"
+    effective_link = create_artefact_link(
+        h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Mitigates"]["id"],
+        other_type="requirement", other_id=preflight_req["id"], direction="incoming",
+    )
+    httpx.put(
+        f"{risk_url}/{risk_single_controller['id']}/treatments/{effective_link['id']}",
+        json={"status": "effective", "rationale": "Diagnostics detect a degraded controller on the ground, before launch."},
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
+    create_artefact_link(
+        h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Mitigates"]["id"],
+        other_type="requirement", other_id=return_to_home_req["id"], direction="incoming",
+    )
+    modem_action_types = httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()
+    # A standalone action: every Falcon-3 requirement is approved by now, so none accepts a direct attachment.
+    modem_action_response = httpx.post(
+        f"{BASE}/projects/{drone['id']}/actions",
+        json={
+            "title": "Qualify a second cellular modem supplier",
+            "description": "Dual-source the telemetry modem so one late delivery cannot stall integration.",
+            "action_type_id": modem_action_types[0]["id"],
+        },
+        headers=h_pm, timeout=30,
+    )
+    modem_action_response.raise_for_status()
+    modem_action = modem_action_response.json()
+    create_artefact_link(
+        h_pm, drone["id"], "risk", risk_modem["id"], link_type_id=risk_link_types["Treated by"]["id"],
+        other_type="requirement_action", other_id=modem_action["id"],
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Impacts"]["id"],
+        other_type="requirement", other_id=flight_log_req["id"],
+    )
+    # Phase 4: the single-controller risk has been reviewed (its next review is a month out); the modem risk's
+    # scheduled review date has passed, so it shows as overdue and the review-due sweep has something to notify about.
+    httpx.post(
+        f"{risk_url}/{risk_single_controller['id']}/reviews",
+        json={
+            "outcome": "confirmed", "notes": "Diagnostics still cover the failure mode; the residual rating stands.",
+            "next_review_date": (date.today() + timedelta(days=30)).isoformat(),
+        },
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
+    httpx.put(
+        f"{risk_url}/{risk_modem['id']}", json={"review_date": (date.today() - timedelta(days=5)).isoformat()},
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
+    print(f"  Risks: {risk_single_controller['unique_code']} {risk_single_controller['title']!r}"
+          f" (inherent {risk_single_controller['inherent_rating']['label']}, residual {risk_single_controller['residual_rating']['label']}),"
+          f" {risk_regulator['unique_code']} {risk_regulator['title']!r} (inherent {risk_regulator['inherent_rating']['label']}"
+          f" from its pinned cell), plus {risk_unscored['unique_code']} captured with no assessment yet and a modem supply-chain risk")
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -2798,6 +2958,9 @@ def main() -> None:
           " plus 2 organisation Stakeholders (Pat Okafor, Regulator — High influence/Medium interest, quarterly, represents"
           " Compliance Auditor; and Lee Harbour, hidden from Falcon-3 to show per-project visibility) and 1 Falcon-3"
           " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot)")
+    print("  Risk Management (enabled org-wide): 4 Risks on Falcon-3 (RSK-001 flight controller failure — High inherent,"
+          " Medium residual; a supply-chain risk; the regulator risk, whose Rare x Catastrophic cell is pinned to High; and one"
+          " Identified risk with no assessment), with the Likelihood x Consequence matrix and 12 default Risk types")
 
 
 if __name__ == "__main__":

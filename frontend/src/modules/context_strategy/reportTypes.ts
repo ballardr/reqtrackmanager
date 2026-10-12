@@ -68,6 +68,8 @@ export interface ReportScoredGroup {
   severity_levels: ReportLevel[];
   frequency_levels: ReportLevel[];
   bands: { label: string; min_score: number; tone: BadgeTone }[];
+  /** Explicit Severity × Frequency cell ratings, by level name (empty unless set). */
+  cell_ratings: { severity: string; frequency: string; band_label: string }[];
   items: ReportRankedPainPoint[];
 }
 

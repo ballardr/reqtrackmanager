@@ -351,6 +351,9 @@ class ModuleDefinition:
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
+    notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
+    on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None  # react to another module's artefact changing (§4h)
+    scheduled_jobs: tuple[ModuleScheduledJob, ...] = ()  # daily sweeps core's scheduler runs for you
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     mcp_guidance: str = ""  # agent usage guidance, required when mcp_tools is non-empty
@@ -795,7 +798,7 @@ knows these fields exist.
 
 ### 4d. Scoring schemes: configurable scoring matrices (Module 1 Phase 10)
 
-A module that scores something (Pain Points and Stakeholders today; Risk, Module 3, next)
+A module that scores something (Pain Points, Stakeholders and Risks today)
 registers a `ScoringSchemeDefinition` on `ModuleDefinition.scoring_schemes`
 instead of building its own matrix tables. Core owns storage, resolution,
 maths, API and UI; the module only declares keys and defaults.
@@ -807,6 +810,7 @@ flowchart LR
     SVC --> T1[("scoring_levels<br/>org only")]
     SVC --> T2[("scoring_model_defaults<br/>org + project")]
     SVC --> T3[("scoring_bands<br/>org + project")]
+    SVC --> T4[("scoring_cell_ratings<br/>org + project, two-axis models")]
     SVC --> API["/orgs/{id}/scoring-schemes/{key}<br/>/projects/{id}/scoring-schemes/{key}"]
     API --> UI["ScoringSchemeEditor · ProjectScoringSettings<br/>embedded in the module's admin sections"]
 ```
@@ -821,6 +825,20 @@ flowchart LR
   (score ÷ maximum), so they survive re-weighting.
 - **Default model and bands** resolve project → nearest ancestor → org →
   module default (the nested-projects fallback rule). No rows = inherit.
+- **Cell ratings (Module 3 Phase 1a).** Thresholds on a product can't
+  reproduce a non-monotonic matrix (a 5 × 1 cell rated differently from its
+  score), so a **two-axis** model may also carry explicit
+  `(first-axis level, second-axis level) → band label` rows
+  (`scoring_cell_ratings`, `PUT .../models/{model}/cell-ratings`, same
+  org/project endpoints and gating as bands). The label must exist in the
+  scope's effective bands (bands a scope's own cells still use can't be
+  removed or renamed); a set is all-or-nothing and resolves project →
+  ancestor → org with no system default; a deleted level takes its cells
+  with it. In `services.scoring.compute_score`, pass `level_ids` and
+  `cell_ratings` (from `resolve_effective_cell_ratings`/`to_cell_ratings`) and
+  a pinned cell wins over the thresholds for that cell only. A *blend* of
+  several cells (an average across personas, say) is not a cell, so it keeps
+  the threshold bands; a single scored entry keeps its cell band.
 - **Gating:** reads need org membership (org endpoints) or project
   view-or-manage (project endpoints); org writes need org admin or the
   scheme's `admin_role_key` module role; project writes need
@@ -833,12 +851,52 @@ flowchart LR
   `influence_level_id`/`interest_level_id`, the hooks count and move only
   *current* versions, and a historic version's reference is cleared by the
   foreign key's `ON DELETE SET NULL` instead of rewriting history.
+  Risk Management (Module 3) follows the same pattern with six level columns (inherent and residual
+  Likelihood, Consequence and Detectability) and derives each risk's rating at read time
+  (`modules/risk_management/ratings.py`), so nothing about a rating is stored.
 - **UI:** embed `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
   (project) in your own `orgAdminSections`/`projectAdminSections`, passing
   your scheme key. `ScoringLevelPicker`, `ScoringModelSwitcher` and
-  `ScoringMatrixChart` are the shared scoring/viewing components.
+  `ScoringMatrixChart` are the shared scoring/viewing components;
+  `ScoringCellRatingsEditor` (inside `ScoringModelBands`) edits cell ratings.
 
 ---
+
+### 4h. Notification types and change hooks (Module 3 Phase 4)
+
+Two generic extension points let a module send its own notifications and react
+to changes elsewhere, without editing a core file.
+
+```mermaid
+flowchart LR
+    ED["Edit or archive a requirement<br/>(core service)"] --> N["notify_artefact_changed"]
+    N -- "ArtefactChange" --> H["each module's on_artefact_changed"]
+    H --> V["flag dependents<br/>(Risk: verdict -> needs_reassessment)"]
+    H --> NO["notifications.notify(type=module key)"]
+    SJ["scheduled_jobs<br/>(daily sweep)"] --> NO
+    NO --> P["preferences list<br/>core + registered types"]
+```
+
+- **`notification_types`** declares `NotificationTypeDefinition(key, label)`
+  kinds (prefix the key with the module key, e.g. `risk_review_due`).
+  `Notification.type` and `NotificationPreference.type` are plain strings
+  validated against core's `NotificationType` plus every registered module's
+  declarations (`get_all_notification_types`), so a module never adds a member
+  to core's closed enum. `services.notifications.notify` accepts either form and
+  raises `ValueError` for an unregistered key. The preferences API returns
+  `label` for module types; core types are labelled by the frontend string table.
+  To make a notification clickable, send the record's registered artefact type as
+  `entity_type` and its id as `entity_id`: the frontend's `getNotificationLink`
+  opens it through the owning module's `artefactPaths`, with no core change.
+- **`on_artefact_changed`** is called with an `ArtefactChange` (`artefact_type`,
+  `artefact_id`, `project_id`, `kind` of `content_changed` or `archived`,
+  `summary`, `actor_id`) by `services.artefact_changes.notify_artefact_changed`,
+  inside the changing request's transaction (never commit). It is raised today
+  for requirements (a content edit, or archival); any artefact owner can call
+  `notify_artefact_changed` the same way, with no import of the consuming module.
+  A hook that raises is logged and rolled back to a savepoint, so a dependent's
+  bookkeeping can never fail the edit. Risk uses it to detect that the artefact
+  behind an effective treatment verdict changed; it flags, it does not rewrite.
 
 ## 5. Frontend integration: Tier A and Tier B
 
@@ -1006,6 +1064,13 @@ ModuleDefinition(
 - `dedicated_endpoint=True` marks a type with a fixed meaning and its own action
   (supersession flips a status): the generic link endpoints neither offer, create nor
   delete it, and your own action passes `enforce_rules=False` to `create_link`.
+- A seed can extend another module's link type without importing it: seeds
+  sharing a `forward_name` merge, so Risk Management declares `"Addresses"` with
+  `allowed_source_types=("decision",)`, `allowed_target_types=("risk",)` and the
+  type accepts Risk targets as well as Decision Management's Pain Point. Seeds
+  never touch a type an organisation already has, so a module widening an
+  existing restricted type ships a data migration for existing organisations
+  too (Risk Management's `0074`).
 - A module declaring `artefact_types` also needs `artefact_summary_providers`,
   `artefact_type_labels` (§4f) and, on the frontend, `artefactPaths`, so the type can
   be shown and followed from a link; `tests/test_artefact_type_routes.py` and

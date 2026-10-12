@@ -110,7 +110,7 @@ def notify_managers_of_member_change(
             select(Notification)
             .where(
                 Notification.user_id == recipient.id,
-                Notification.type == NotificationType.PROJECT_MEMBERS_CHANGED_BY_ORG,
+                Notification.type == NotificationType.PROJECT_MEMBERS_CHANGED_BY_ORG.value,
                 Notification.project_id == project.id,
                 Notification.entity_type == "user",
                 Notification.entity_id == str(actor.id),

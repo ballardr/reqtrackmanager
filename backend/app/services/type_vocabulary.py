@@ -1,11 +1,11 @@
 """
-Module: modules.stakeholders.type_vocabulary
+Module: services.type_vocabulary
 
-Generic two-tier type vocabulary (Phase 0 resolution 3): an org base list
-plus per-project rename/reorder/disable/add, shared by every typed artefact
-in this module (Persona now; Stakeholder in Phase 1.2) so each is a
-`TypeVocabulary` instance rather than a copy of Context & Strategy's
-Pain-Point-specific functions.
+Generic two-tier type vocabulary: an org base list plus per-project
+rename/reorder/disable/add, shared by every typed module artefact (Persona,
+Stakeholder, Risk) so each is a `TypeVocabulary` instance rather than a copy of
+Context & Strategy's Pain-Point-specific functions. Lives in core so a module
+never imports another module's package.
 
 Design decisions:
 - No ancestor fallback for nested projects: the org list is the base every

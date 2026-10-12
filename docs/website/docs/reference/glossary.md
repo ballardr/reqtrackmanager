@@ -68,7 +68,7 @@ What happens once a requirement reaches Approved or Completed: its edit form dis
 
 #### Module
 
-A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance and Decision Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
+A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
 
 #### Organisation
 
@@ -113,6 +113,10 @@ The introduction, chapters and appendices written for a report type at the templ
 #### Requirement version
 
 One historical or current state of a requirement's content (name, reasoning, description, status, custom field values). Editing a requirement never overwrites a version — it closes the current one and opens a new one. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
+
+#### Risk treatment verdict
+
+A Risk owner's judgement of whether one linked Requirement or Action actually reduces the Risk: Proposed, Effective, Ineffective or Needs reassessment. Only Effective counts. See [Risk Management → Treatment and relationships](../modules/risk-management-module/treatment-and-relationships.md).
 
 #### Task (change request task)
 

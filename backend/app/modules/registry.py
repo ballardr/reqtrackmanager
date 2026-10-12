@@ -1299,6 +1299,49 @@ class LinkTypeSeed:
 
 
 @dataclass(frozen=True)
+class NotificationTypeDefinition:
+    """A notification type a module sends (`ModuleDefinition.notification_types`).
+
+    Core's `NotificationType` enum is closed, so a module declares its own kinds
+    here instead of adding members to it. A kind is stored as a plain string on
+    `Notification`/`NotificationPreference`, validated against the core enum plus
+    every registered module's declarations (`get_all_notification_types`), and
+    shows up in each user's notification preferences under `label`.
+
+    Attributes:
+        key: The stored value, unique across core and all modules. Prefix it with
+            the module key (`"risk_review_due"`) so two modules cannot collide.
+        label: The sentence-case name shown in notification preferences.
+    """
+
+    key: str
+    label: str
+
+
+@dataclass(frozen=True)
+class ArtefactChange:
+    """One change to an artefact, handed to every module's
+    `ModuleDefinition.on_artefact_changed` hook (`services.artefact_changes`).
+
+    Attributes:
+        artefact_type: The changed artefact's registered type (e.g. `"requirement"`).
+        artefact_id: Its id.
+        project_id: The project that owns it.
+        kind: What happened: `"content_changed"` (a new version altered what the
+            artefact says) or `"archived"`.
+        summary: One line for a human, e.g. the artefact's code and what changed.
+        actor_id: Who made the change, or `None` for a system change.
+    """
+
+    artefact_type: str
+    artefact_id: uuid.UUID
+    project_id: uuid.UUID
+    kind: Literal["content_changed", "archived"]
+    summary: str
+    actor_id: uuid.UUID | None
+
+
+@dataclass(frozen=True)
 class RegisteredScoringScheme:
     """A scoring scheme paired with the key of the module that registered
     it — the module key drives enablement gating and `admin_role_key`
@@ -1851,6 +1894,19 @@ class ModuleDefinition:
             Any two artefact types can be linked by default, so a module needs
             seeds only to ship meaningful vocabulary, never to make its types
             linkable. Empty for a module with no vocabulary of its own.
+        notification_types: Notification kinds this module sends, each a
+            `NotificationTypeDefinition`. Lets a module add kinds without editing
+            core's closed `NotificationType` enum; merged by
+            `get_all_notification_types`, which `services.notifications.notify` and
+            the preferences API validate against. Empty for a module that sends none.
+        on_artefact_changed: Optional hook `(db, ArtefactChange) -> None`, called
+            synchronously inside the changing request's transaction (never commit)
+            for every registered module whenever an artefact changes in a way that
+            may invalidate something depending on it (`services.artefact_changes.
+            notify_artefact_changed`). It lets a module react to a change in
+            another module's artefact (e.g. Risk flagging a mitigation for
+            reassessment) with no import of that artefact's module. It must be
+            cheap when the change is irrelevant to it.
         mcp_guidance: Hand-written Markdown telling an AI agent how to use this
             module's MCP tools (typical workflows, lifecycle order, which tools
             are gated, gotchas). Embedded per module in the agent skill's
@@ -1900,6 +1956,8 @@ class ModuleDefinition:
     artefact_type_labels: dict[str, str] = field(default_factory=dict)
     reports: tuple[ReportDefinition, ...] = field(default=())
     link_type_seeds: tuple[LinkTypeSeed, ...] = field(default=())
+    notification_types: tuple[NotificationTypeDefinition, ...] = field(default=())
+    on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -3466,6 +3524,33 @@ def get_artefact_type_label(artefact_type: str) -> str:
         if label is not None:
             return label
     return artefact_type.replace("_", " ").capitalize()
+
+
+def get_all_notification_types() -> dict[str, str | None]:
+    """Every valid notification type key mapped to its registered label.
+
+    Core `NotificationType` values map to `None` (their labels live in the
+    frontend's string table); each module's `notification_types` map to the label
+    it declared. A module key that collides with a core value or an earlier
+    module's is dropped and logged rather than raising, so one module's mistake
+    cannot break notification delivery for everyone.
+
+    Returns:
+        `{type key: label or None}`, core types first.
+    """
+    from app.models.notification import NotificationType
+
+    merged: dict[str, str | None] = {t.value: None for t in NotificationType}
+    for definition in get_module_registry().values():
+        for declared in definition.notification_types:
+            if declared.key in merged:
+                logger.warning(
+                    "Module %r notification type %r collides with an existing type; declaration ignored.",
+                    definition.key, declared.key,
+                )
+                continue
+            merged[declared.key] = declared.label
+    return merged
 
 
 def get_all_link_type_seeds() -> dict[str, LinkTypeSeed]:

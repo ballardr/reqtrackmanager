@@ -1848,6 +1848,11 @@ td:has(> .disclosure-toggle) {
   background: var(--color-text);
   opacity: 0.75;
 }
+.scoring-matrix__select {
+  margin-top: 0.25rem;
+  max-width: 7rem;
+  font-size: 0.75rem;
+}
 .scoring-matrix__cell-btn {
   all: unset;
   display: block;

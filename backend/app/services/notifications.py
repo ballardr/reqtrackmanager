@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.models.notification import DigestMode, Notification, NotificationPreference, NotificationType
 from app.models.project import Project
 from app.models.user import User
+from app.modules.registry import get_all_notification_types
 from app.security import create_email_unsubscribe_token
 from app.services.email import send_email, send_email_async
 from app.services.email_branding import resolve_email_branding
@@ -39,7 +40,26 @@ def _inline_logo(branding) -> dict[str, tuple[bytes, str]] | None:
     return {"brand_logo": (branding.logo_bytes, branding.logo_content_type)}
 
 
-def _get_preference(db: Session, user_id: UUID, notification_type: NotificationType) -> NotificationPreference | None:
+def resolve_notification_type(notification_type: NotificationType | str) -> str:
+    """Normalises a notification type to its stored string and checks it is
+    registered (a core `NotificationType` or a module's declared kind).
+
+    Args:
+        notification_type: A core enum member or a plain key.
+
+    Returns:
+        The key to store.
+
+    Raises:
+        ValueError: If no core type or registered module declares it.
+    """
+    key = notification_type.value if isinstance(notification_type, NotificationType) else notification_type
+    if key not in get_all_notification_types():
+        raise ValueError(f"Unknown notification type {key!r}.")
+    return key
+
+
+def _get_preference(db: Session, user_id: UUID, notification_type: str) -> NotificationPreference | None:
     """Returns a user's stored UI/email preference for one notification
     type, or None if they've never set one (C-N-04)."""
     return db.scalar(
@@ -53,7 +73,7 @@ def notify(
     db: Session,
     user: User,
     *,
-    notification_type: NotificationType,
+    notification_type: NotificationType | str,
     title: str,
     body: str = "",
     project_id: UUID | None = None,
@@ -67,7 +87,8 @@ def notify(
         db: An active database session (the row is added but the caller
             commits, consistent with the rest of the service layer).
         user: The recipient.
-        notification_type: Which event this is (C-N-01).
+        notification_type: Which event this is (C-N-01): a core `NotificationType`
+            or a key a module declared on `ModuleDefinition.notification_types`.
         title: Short notification title, shown in the UI and as the email subject.
         body: Longer description, shown in the UI and email body.
         project_id / entity_type / entity_id: Optional context for deep-linking.
@@ -91,7 +112,11 @@ def notify(
     Returns:
         The created Notification, or None if `actor_id` matched the
         recipient and the notification was suppressed instead.
+
+    Raises:
+        ValueError: If `notification_type` is not registered.
     """
+    notification_type = resolve_notification_type(notification_type)
     if actor_id is not None and actor_id == user.id:
         return None
 

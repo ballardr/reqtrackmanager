@@ -78,12 +78,12 @@ from app.modules.stakeholders.models import (
     StakeholderVersion,
 )
 from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_KEY, STAKEHOLDER_SCORING_SCHEME_KEY
-from app.modules.stakeholders.type_vocabulary import TypeVocabulary
 from app.services.audit import log_event
 from app.services.files import delete_file
 from app.services.link_types import ensure_org_link_type
 from app.services.project_hierarchy import get_ancestor_chain
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
+from app.services.type_vocabulary import TypeVocabulary
 
 STAKEHOLDERS_MODULE_KEY = "stakeholders"
 PERSONA_ARTEFACT_TYPE = "persona"
@@ -381,8 +381,8 @@ def resolve_persona_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUI
     """Resolves a `FileAsset` id to the project of the **project-scoped**
     persona it is attached to (directly or via a comment). Org personas'
     files are org shared resources and never resolved here."""
-    from app.modules.stakeholders._attachments import resolve_file_project_id
     from app.modules.stakeholders._shared import PERSONA_ATTACHMENTS
+    from app.services.module_attachments import resolve_file_project_id
 
     return resolve_file_project_id(db, PERSONA_ATTACHMENTS, Persona, file_id)
 
@@ -905,8 +905,8 @@ def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> Non
 def resolve_stakeholder_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
     """The project owning a file attached to a project-scoped stakeholder (or
     its comment); `None` for an org stakeholder's or an unknown file."""
-    from app.modules.stakeholders._attachments import resolve_file_project_id
     from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_ATTACHMENTS
+    from app.services.module_attachments import resolve_file_project_id
 
     return resolve_file_project_id(db, STAKEHOLDER_ATTACHMENTS, Stakeholder, file_id)
 
@@ -1021,8 +1021,8 @@ def list_project_needs(db: Session, project_id: uuid.UUID, *, include_archived: 
 def resolve_need_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
     """The project owning a file attached to a need (or its comment); `None`
     for an unknown file."""
-    from app.modules.stakeholders._attachments import resolve_file_project_id
     from app.modules.stakeholders._need_shared import NEED_ATTACHMENTS
+    from app.services.module_attachments import resolve_file_project_id
 
     return resolve_file_project_id(db, NEED_ATTACHMENTS, StakeholderNeed, file_id)
 

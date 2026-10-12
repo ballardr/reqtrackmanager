@@ -98,17 +98,17 @@ def test_seed_registry_merges_shared_names_and_flags_supersedes():
     # A core default stays unrestricted and keeps its flow.
     assert seeds["Implements"].allowed_source_types is None
     assert seeds["Implements"].flow.value == "forward_is_upstream"
-    # The Decision seeds of the plan carry their restrictions.
-    assert seeds["Addresses"].allowed_source_types == (DEC,) and seeds["Addresses"].allowed_target_types == (PAIN,)
+    # The Decision seeds of the plan carry their restrictions; Risk Management adds itself as a target.
+    assert seeds["Addresses"].allowed_source_types == (DEC,)
+    assert set(seeds["Addresses"].allowed_target_types) == {PAIN, "risk"}
 
 
 def test_ensure_org_link_type_creates_from_seed_and_never_overwrites_an_edit(world):
     db = SessionLocal()
     try:
         created = ensure_org_link_type(db, uuid.UUID(world.org["id"]), "Addresses")
-        assert (created.reverse_name, created.allowed_source_types, created.allowed_target_types) == (
-            "Is addressed by", [DEC], [PAIN]
-        )
+        assert (created.reverse_name, created.allowed_source_types) == ("Is addressed by", [DEC])
+        assert set(created.allowed_target_types) == {PAIN, "risk"}
         created.reverse_name = "Edited reverse"
         created.allowed_target_types = None
         db.commit()
@@ -130,7 +130,7 @@ def test_org_list_creates_seeds_only_for_enabled_modules(client, admin_token):
 
     both = World(client, admin_token, "Modules Org", decisions=True, context_strategy=True)
     seeded = both.link_types_by_name()
-    assert seeded["Addresses"]["allowed_target_types"] == [PAIN]
+    assert set(seeded["Addresses"]["allowed_target_types"]) == {PAIN, "risk"}
     assert seeded["Supersedes"]["dedicated_endpoint"] is True
     # An admin's edit survives later lists.
     client.patch(

@@ -132,6 +132,51 @@ def test_all_personas_score_and_blocker(client, admin_token):
     assert cleared.json()["scope"] == "none"
 
 
+def test_cell_rating_override_sets_the_band_of_a_single_cell_only(client, admin_token):
+    org, project, token = _setup(client, admin_token, "PP Cell Rating Co")
+    pid = project["id"]
+    levels = _levels(client, token, pid)
+    pp = _pain_point(client, token, pid)
+    entry = _entry(levels, severity="Blocker", frequency="Rare", confidence="High")
+    assert _put(client, token, pid, pp["id"], [entry], model_key="sxf").json()["score"]["band_label"] == "Medium"
+
+    # Pin Blocker x Rare (0.25, "Medium" by threshold) to Critical, as a real matrix might.
+    resp = client.put(
+        f"/api/v1/orgs/{org['id']}/scoring-schemes/pain_point/models/sxf/cell-ratings",
+        json={"cells": [{"first_level_id": levels["severity"]["Blocker"], "second_level_id": levels["frequency"]["Rare"],
+                         "band_label": "Critical"}]},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+    body = _get(client, token, pid, pp["id"], model_key="sxf")
+    assert body["score"]["band_label"] == "Critical" and body["entries"][0]["score"]["band_label"] == "Critical"
+    assert body["score"]["normalised"] == 0.25  # only the band changes, never the score
+    # Another model, and another cell, are untouched.
+    assert _get(client, token, pid, pp["id"], model_key="sxfxc")["score"]["band_label"] != "Critical"
+    _put(client, token, pid, pp["id"], [_entry(levels, severity="Major", frequency="Rare")], model_key="sxf")
+    assert _get(client, token, pid, pp["id"], model_key="sxf")["score"]["band_label"] != "Critical"
+
+
+def test_cell_rating_survives_worst_case_but_not_a_blend(client, admin_token):
+    pid, token, levels, heavy, light, pp = _two_persona_setup(client, admin_token, "PP Cell Rollup Co")
+    org_id = client.get(f"/api/v1/projects/{pid}", headers=auth_headers(token)).json()["organization_id"]
+    _put(client, token, pid, pp["id"], [
+        _entry(levels, heavy, severity="Blocker", frequency="Rare"),  # 5 x 1 = 5 -> 0.25, pinned to Critical below
+        _entry(levels, light, severity="Cosmetic", frequency="Rare"),  # 1 x 1 = 1
+    ], model_key="sxf")
+    client.put(
+        f"/api/v1/orgs/{org_id}/scoring-schemes/pain_point/models/sxf/cell-ratings",
+        json={"cells": [{"first_level_id": levels["severity"]["Blocker"], "second_level_id": levels["frequency"]["Rare"],
+                         "band_label": "Critical"}]},
+        headers=auth_headers(token),
+    )
+    worst = _get(client, token, pid, pp["id"], model_key="sxf", rollup="worst_case")
+    assert worst["score"]["band_label"] == "Critical"
+    # A weighted blend is no single cell, so it keeps the threshold band: (3x5 + 1x1) / 4 = 4 of 20 = 0.2.
+    blend = _get(client, token, pid, pp["id"], model_key="sxf", rollup="weighted_average")
+    assert blend["score"]["normalised"] == 0.2 and blend["score"]["band_label"] != "Critical"
+
+
 def test_cannot_mix_all_personas_with_persona_rows_or_duplicate_a_persona(client, admin_token):
     _, project, token = _setup(client, admin_token, "PP Score Mix Co")
     pid = project["id"]

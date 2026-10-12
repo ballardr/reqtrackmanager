@@ -1,16 +1,17 @@
 /**
- * Module: modules/stakeholders/RecordDetailParts
+ * Module: components/RecordDetailParts
  *
- * Small presentational pieces every record detail page in this module (Persona,
- * Stakeholder) renders the same way: a labelled read-only field, a labelled
- * person picker (an `AssigneePicker`, or a plain name when the record is
- * read-only), and the version-history table. Kept together so the two detail
- * pages differ only in which fields they show, not in how a field looks.
+ * Small presentational pieces the versioned-record detail pages (Stakeholders'
+ * Persona/Stakeholder/Need, Risk Management's Risk) render the same way: a
+ * labelled read-only field, a labelled person picker (an `AssigneePicker`, or
+ * a plain name when the record is read-only), and the version-history table.
+ * Kept together so the pages differ only in which fields they show, not in how
+ * a field looks.
  */
 import type { ReactNode } from "react";
 
-import type { OrgUser } from "../../api/types";
-import { AssigneePicker } from "../../components/AssigneePicker";
+import type { OrgUser } from "../api/types";
+import { AssigneePicker } from "./AssigneePicker";
 
 /** A labelled, multi-line read-only value. */
 export function RecordField({ label, value }: { label: string; value: string }) {

@@ -130,8 +130,8 @@ export function buildScoringScheme(overrides: Partial<ScoringScheme> = {}): Scor
       ] },
     ],
     models: [
-      { key: "sxf", label: "Severity × Frequency", axis_keys: ["severity", "frequency"], bands, bands_source: "system" },
-      { key: "sxfxc", label: "Severity × Frequency × Confidence", axis_keys: ["severity", "frequency", "confidence"], bands, bands_source: "system" },
+      { key: "sxf", label: "Severity × Frequency", axis_keys: ["severity", "frequency"], bands, bands_source: "system", cell_ratings: [], cell_ratings_source: "none" },
+      { key: "sxfxc", label: "Severity × Frequency × Confidence", axis_keys: ["severity", "frequency", "confidence"], bands, bands_source: "system", cell_ratings: [], cell_ratings_source: "none" },
     ],
     system_default_model_key: "sxfxc", default_model_key: "sxfxc", default_model_source: "system",
     ...overrides,

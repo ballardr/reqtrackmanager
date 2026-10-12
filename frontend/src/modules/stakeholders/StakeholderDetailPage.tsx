@@ -39,8 +39,8 @@ import {
   orgPersonaApi, orgStakeholderApi, orgStakeholderTypeApi, projectNeedApi, projectPersonaApi, projectStakeholderApi,
 } from "./api";
 import { HeldNeedsPanel } from "./HeldNeedsPanel";
-import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "./RecordDetailParts";
-import { RecordDiscussion } from "./RecordDiscussion";
+import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";

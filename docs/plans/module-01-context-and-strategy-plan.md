@@ -2981,14 +2981,14 @@ for each decision and who made it.
 - **Scales come from a generic scoring-matrix definition in core.** Risk
   Management (Module 3) reuses it later instead of building its own.
 - **Intentional pain points** (deliberate limitations in a lower product
-  tier that drive upgrades) are flagged and linked to Product Tiers, a new
+  tier that drive upgrades) are flagged and linked to Product Variants, a new
   Module 13.
 
 ```mermaid
 flowchart LR
     M2[Module 2<br/>Personas + weights] --> SC
     SM[Core scoring matrix<br/>levels per axis] --> SC[Per-persona<br/>Pain Point scores]
-    M13[Module 13<br/>Product Tiers] -. intentional .-> PP[Pain Point]
+    M13[Module 13<br/>Product Variants] -. intentional .-> PP[Pain Point]
     PP --> SC
     SC --> R1[R1 Pain Point prioritisation]
     PP --> R9[R9 Upgrade drivers]
@@ -3008,9 +3008,9 @@ flowchart LR
    User**). Per-persona scoring needs real Persona records. Module 2 must
    also add a **persona importance/weight** field for the weighted-average
    roll-up; this is noted in that plan's Phase 0.
-2. **Module 13 (Product Tiers)**, a new module
-   ([module-13-product-tiers-plan.md](module-13-product-tiers-plan.md)).
-   Only the *tier link* on intentional pain points needs it. The
+2. **Module 13 (Product Variants)**, a new module
+   ([module-13-product-variants-plan.md](module-13-product-variants-plan.md)).
+   Only the *variant link* on intentional pain points needs it. The
    `is_intentional` flag ships without it, and the link target stays
    reserved until Module 13 lands, the same way Decision targets were
    handled in Phase 6.
@@ -3105,12 +3105,14 @@ couple reports to log format.
    no persona link **applies to all personas**. **Decided by: User.** The
    "no persona linked" warning stays, so a forgotten link isn't mistaken
    for a deliberately universal problem. **Decided by: Agent.**
-9. **Product tiers:** a separate concept and a new module (Module 13).
-   Products are sold in tiers (e.g. Standard/Pro), and some pain points are
-   intentional upgrade drivers. **Decided by: User.** Name it "tiers", not
-   "versions", because "version" implies a release over time. **Decided
-   by: Agent.**
-10. **Intentional pain points:** an `is_intentional` flag plus a tier link.
+9. **Product variants:** a separate concept and a new module (Module 13).
+   Products are sold in tiers (e.g. Standard/Pro) or built in hardware
+   variants (e.g. Iridium/LTE), and some pain points are intentional
+   upgrade drivers. **Decided by: User.** Originally scoped as "Product
+   Tiers" and generalised to variants on 2026-10-12 (**Decided by:
+   User**); tiers are the ordered case. Not "versions", because "version"
+   implies a release over time. **Decided by: Agent.**
+10. **Intentional pain points:** an `is_intentional` flag plus a variant link.
     They are excluded from R1's fix ranking by default, still scored, and
     reported in R9. **Decided by: User.** Tier is a link, not a scoring
     dimension, to avoid persona × tier scoring explosion. **Decided by:
@@ -3243,7 +3245,7 @@ resolution 10), never by importing Module 2.
   display: rows stay, and reports say so. The UI never crashes on a missing
   target.
 - **`PainPoint.is_intentional`** (bool), plus a reserved
-  `intentional_in → Tier` / `removed_by → Tier` relationship that becomes
+  `intentional_in → Variant` / `removed_by → Variant` relationship that becomes
   populatable when Module 13 lands.
 - **Roll-up service:** weighted average, worst case and plain average,
   with the Blocker badge computed from any persona at the top Severity
@@ -3288,7 +3290,7 @@ component.
 - Retired personas are shown but not counted; unavailable ones (deleted,
   hidden, Module 2 off) are counted unweighted and unlabelled, flagged
   `personas_degraded`. **Decided by: Agent.**
-- The `intentional_in`/`removed_by` Tier relationships stay reserved for
+- The `intentional_in`/`removed_by` Variant relationships stay reserved for
   Module 13. **Decided by: User** (Phase 9 Q9/Q10).
 - Score rows aren't exported in an org bundle because this module has no
   bundle hooks yet. **Decided by: Agent.**
@@ -3448,7 +3450,7 @@ built *from* `services/reports.py`, not alongside it.
 | Module 2 Stakeholders & Personas | Phase 6 reports S1–S5, "follow Module 1 Phase 12's pattern", org variants, sub-component gating | everything in this phase |
 | Module 14 Product Feedback | Phase 6 reports F1–F5 through "Module 1 Phase 13's hook" | the same |
 | Module 7 Traceability | Phase 5 matrices and coverage reporting | `ReportSection` tables and PDF/CSV; matrices may need a richer section kind (open question 2) |
-| Module 13 Product Tiers | R9's tier columns only; no reports of its own | nothing new |
+| Module 13 Product Variants | R9's tier columns only; no reports of its own | nothing new |
 | Module 3 Risk | Reporting is mentioned only as a query need; no report phase yet | the same, when it adds one |
 | Module 10 Reporting & Analysis | Phase 0 note: adopt and extend the Phase 13 hook as its registration API | the registration shape; its engine (templates, provenance) is a different layer, kept out of this phase |
 | Compliance (existing) | own `reports.py` (1,170 lines): ~700 lines of module-specific collectors and row dataclasses, plus its own PDF/CSV code: a second copy of `_safe`, `_p`, `_styled_table` and the A4 document build, default accent only (no org branding, cover or footer). Project and org report routes already merge PDF/CSV behind `?format=` with scoping filters | the shell (item 3b) and the registration/catalogue; see "Compliance review" below |

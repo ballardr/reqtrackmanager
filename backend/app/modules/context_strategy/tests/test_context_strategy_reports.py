@@ -195,6 +195,29 @@ def test_r1_group_data_carries_axis_levels_and_bands_for_the_matrix_view(client,
     assert set(group["bands"][0]) == {"label", "min_score", "tone"}
 
 
+def test_r1_group_data_carries_cell_ratings_by_level_name_for_a_severity_x_frequency_model(client, admin_token):
+    """The on-screen matrix colours cells from these, so the picture matches each item's band."""
+    org, project, token = _setup(client, admin_token, "R1 Cells Co")
+    pid = project["id"]
+    levels = _levels(client, token, pid)
+    _scored_pain_point(client, token, pid, levels, "Major constant", "Major", "Constant", "High")
+    assert _report(client, token, pid, "pain-point-prioritisation", model_key="sxf")["data"]["groups"][0]["cell_ratings"] == []
+
+    resp = client.put(
+        f"/api/v1/orgs/{org['id']}/scoring-schemes/pain_point/models/sxf/cell-ratings",
+        json={"cells": [{"first_level_id": levels["severity"]["Major"], "second_level_id": levels["frequency"]["Constant"],
+                         "band_label": "Critical"}]},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+    data = _report(client, token, pid, "pain-point-prioritisation", model_key="sxf")["data"]["groups"][0]
+    assert data["cell_ratings"] == [{"severity": "Major", "frequency": "Constant", "band_label": "Critical"}]
+    assert data["items"][0]["band"] == "Critical"
+    # Not a Severity x Frequency model: no matrix cells to colour.
+    other = _report(client, token, pid, "pain-point-prioritisation", model_key="sxc")["data"]["groups"][0]
+    assert other["cell_ratings"] == []
+
+
 def test_r1_ranks_and_segregates_blockers_unscored_and_intentional(client, admin_token):
     _, project, token = _setup(client, admin_token, "R1 Rank Co")
     pid = project["id"]

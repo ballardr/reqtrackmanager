@@ -2,7 +2,7 @@
  * Module: components/ProjectScoringSettings
  *
  * Project-level scoring settings for one scheme (generic scoring-matrix
- * core, Module 1 Phase 10): override the default model and rating bands,
+ * core, Module 1 Phase 10): override the default model, rating bands and per-cell ratings,
  * or inherit them (nearest ancestor project → organisation → module
  * default — Phase 9 Q3, Decided by: User). Levels are organisation-wide and
  * shown read-only here. A module embeds this in its own project-admin
@@ -98,6 +98,9 @@ export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: st
           resetLabel={RESET_LABEL}
           onSave={(model, bands) => mutate(() => projectScoringApi.setBands(projectId, schemeKey, model, bands), "Rating bands saved.")}
           onReset={(model) => mutate(() => projectScoringApi.setBands(projectId, schemeKey, model, null), "Rating bands reset.")}
+          isCellsCustom={(m) => m.cell_ratings_source === "project"}
+          onSaveCells={(model, cells) => mutate(() => projectScoringApi.setCellRatings(projectId, schemeKey, model, cells), "Cell ratings saved.")}
+          onResetCells={(model) => mutate(() => projectScoringApi.setCellRatings(projectId, schemeKey, model, null), "Cell ratings reset.")}
         />
       </section>
     </div>

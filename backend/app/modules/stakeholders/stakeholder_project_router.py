@@ -40,10 +40,6 @@ from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, Stake
 from app.modules.stakeholders.models import ProjectStakeholderType, Stakeholder
 from app.modules.stakeholders.schemas import (
     CadenceHintOut,
-    EffectiveTypeOut,
-    ProjectTypeCreate,
-    ProjectTypeOut,
-    ProjectTypeOverrideUpdate,
     RepresentedPersonaOut,
     RepresentsCreate,
     StakeholderCommentCreate,
@@ -75,6 +71,7 @@ from app.modules.stakeholders.service import (
     unarchive_record,
 )
 from app.schemas.file import FileAssetOut
+from app.schemas.type_vocabulary import EffectiveTypeOut, ProjectTypeCreate, ProjectTypeOut, ProjectTypeOverrideUpdate
 from app.services.audit import log_event
 from app.services.rbac import require_project_subcomponent_enabled
 
