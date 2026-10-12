@@ -29,6 +29,7 @@ from app.modules.risk_management.tests._helpers import (
     levels,
     project_base,
     setup,
+    user_ref,
 )
 from app.services.permissions import encode_permission
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project
@@ -68,7 +69,7 @@ def _ready(client, token, org, project, risk, *, owner: str | None = None) -> di
     owner = owner or create_owner(client, token, org)
     resp = client.put(
         _url(project["id"], risk["id"]),
-        json={"owner_id": owner, "treatment_strategy": "mitigate", "acceptance_criteria": "Residual is Low."},
+        json={"owner": user_ref(owner), "treatment_strategy": "mitigate", "acceptance_criteria": "Residual is Low."},
         headers=auth_headers(token),
     )
     assert resp.status_code == 200, resp.text
@@ -223,7 +224,7 @@ def test_treatment_planned_needs_owner_and_strategy(client, admin_token):
     resp = _move(client, token, project["id"], risk["id"], "treatment_planned")
     assert resp.status_code == 409 and "an owner and a treatment strategy" in resp.text
     owner = create_owner(client, token, org)
-    client.put(_url(project["id"], risk["id"]), json={"owner_id": owner}, headers=auth_headers(token))
+    client.put(_url(project["id"], risk["id"]), json={"owner": user_ref(owner)}, headers=auth_headers(token))
     assert "a treatment strategy" in _move(client, token, project["id"], risk["id"], "treatment_planned").text
     client.put(_url(project["id"], risk["id"]), json={"treatment_strategy": "mitigate"}, headers=auth_headers(token))
     assert _move(client, token, project["id"], risk["id"], "treatment_planned").status_code == 200
@@ -233,7 +234,7 @@ def test_mitigated_needs_a_residual_rating(client, admin_token):
     org, project, token = setup(client, admin_token, "Risk Life Guard Mitigated Co")
     risk = _score_and_create(client, token, project)
     owner = create_owner(client, token, org)
-    client.put(_url(project["id"], risk["id"]), json={"owner_id": owner, "treatment_strategy": "mitigate"}, headers=auth_headers(token))
+    client.put(_url(project["id"], risk["id"]), json={"owner": user_ref(owner), "treatment_strategy": "mitigate"}, headers=auth_headers(token))
     _walk(client, token, project["id"], risk["id"], "assessed", "treatment_planned", "treatment_in_progress")
     resp = _move(client, token, project["id"], risk["id"], "mitigated")
     assert resp.status_code == 409 and "residual rating" in resp.text

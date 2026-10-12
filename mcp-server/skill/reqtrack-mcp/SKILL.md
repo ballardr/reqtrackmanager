@@ -64,6 +64,7 @@ An approved (locked) requirement cannot be edited directly; a change request is 
 Write tools exist only when the server runs with `MCP_WRITES_ENABLED`. If they are absent from your tool list, the deployment is read-only: say so rather than suggesting workarounds.
 
 - `create_requirement`: needs `name`, `component_id`, `category_id` (a category nested under that component; find both from an existing requirement via `get_requirement`). Always creates a `draft`.
+- A requirement's `owner` and `reviewer` are principals: `{"type": "user" | "org_group" | "project_group", "id": uuid}`, so a team can be accountable. Reads return the same shape plus the person's or group's `label` (and `member_count` for a group). Take a group's id from the organisation or project groups, never guess it.
 - `update_requirement`: partial update of content. It has no `status` parameter, and refuses locked (approved) requirements; tell the user a change request is needed.
 - `create_artefact_link` / `delete_artefact_link`: link or unlink two records of a project (see "Linking and traceability").
 - Module write tools (for example creating a decision or a compliance evidence record) follow the same rules: the caller's own role applies, and they appear only in write mode.

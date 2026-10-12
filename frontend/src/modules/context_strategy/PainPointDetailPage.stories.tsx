@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
-import type { OrgUser } from "../../api/types";
+import type { OrgGroup, OrgUser, Principal, ProjectGroup } from "../../api/types";
 import { api } from "../../api/client";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildScoringScheme, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
@@ -24,13 +24,22 @@ const ORG_USERS: OrgUser[] = [
   },
 ];
 
+const ORG_GROUPS: OrgGroup[] = [
+  { id: "group-1", name: "Platform Architecture", member_user_ids: ["user-2"], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
+];
+const PROJECT_GROUPS: ProjectGroup[] = [
+  { id: "pgroup-1", name: "Release board", roles: [], member_user_ids: ["user-2"], member_org_group_ids: [], member_source_project_ids: [] },
+];
+const TEAM: Principal = { type: "org_group", id: "group-1", label: "Platform Architecture", member_count: 3, exists: true };
+const SQUAD: Principal = { type: "project_group", id: "pgroup-1", label: "Release board", member_count: 1, exists: true };
+
 function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
   return {
     id: PAIN_POINT_ID, project_id: PROJECT_ID, pain_point_type_id: "type-operator", pain_point_type_name: "Operator",
     creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     title: "Report delays under poor connectivity", description: "Field reports queue for days before reaching HQ.",
     source: "Operator interviews", impact: "Decisions are made on stale data.", evidence: "12 reports last month.",
-    priority: "high", status: "triaged", owner_id: null, date_identified: "2026-01-05", is_intentional: false, is_locked: false,
+    priority: "high", status: "triaged", owner: null, date_identified: "2026-01-05", is_intentional: false, is_locked: false,
     created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
     ...overrides,
   };
@@ -46,6 +55,8 @@ function mockDetailApis(current: PainPoint) {
       const q = new URL(path, "http://localhost").searchParams.get("q")?.toLowerCase() ?? "";
       return { members: ORG_USERS.filter((u) => u.display_name.toLowerCase().includes(q)), external: null };
     }
+    if (path === "/api/v1/orgs/org-1/groups") return ORG_GROUPS;
+    if (path === `/api/v1/projects/${PROJECT_ID}/groups`) return PROJECT_GROUPS;
     if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/pain_point`) return buildScoringScheme();
     if (path.includes(`/pain-points/${PAIN_POINT_ID}/scores`)) return painPointScores();
     if (path.endsWith(`/pain-points/${PAIN_POINT_ID}`)) return current;
@@ -175,17 +186,75 @@ export const OwnerCanBeAssigned: Story = {
   beforeEach: () => {
     mockDetailApis(painPoint());
     spyOn(api, "put").mockImplementation(async (path: string) => {
-      if (path.endsWith(`/pain-points/${PAIN_POINT_ID}`)) return painPoint({ owner_id: "user-2" });
+      if (path.endsWith(`/pain-points/${PAIN_POINT_ID}`)) return painPoint({ owner: { type: "user", id: "user-2", label: "Jamie Lee", member_count: null, exists: true } });
       throw new Error(`Unmocked PUT: ${path}`);
     });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByText("Unassigned"));
-    await userEvent.type(canvas.getByPlaceholderText("Assign to…"), "Jamie");
+    await userEvent.type(canvas.getByLabelText("Pain Point owner"), "Jamie");
     await waitFor(() => canvas.getByText(/Jamie Lee/));
     await userEvent.click(canvas.getByText(/Jamie Lee/));
-    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
+      expect.objectContaining({ owner: { type: "user", id: "user-2" } })
+    ));
+  },
+};
+
+/** A team can own the Pain Point: picking an organisation group sends a typed principal and the badge names the group. */
+export const OwnerCanBeAnOrgGroup: Story = {
+  beforeEach: () => {
+    mockDetailApis(painPoint());
+    spyOn(api, "put").mockResolvedValue(painPoint({ owner: TEAM }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByLabelText("Pain Point owner"));
+    await userEvent.type(canvas.getByLabelText("Pain Point owner"), "platform");
+    await userEvent.click(await canvas.findByText("Platform Architecture"));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
+      expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
+    ));
+    await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
+  },
+};
+
+/** A Pain Point is project-scoped here, so a project group is a valid owner. */
+export const OwnerCanBeAProjectGroup: Story = {
+  beforeEach: () => {
+    mockDetailApis(painPoint());
+    spyOn(api, "put").mockResolvedValue(painPoint({ owner: SQUAD }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByLabelText("Pain Point owner"));
+    await userEvent.type(canvas.getByLabelText("Pain Point owner"), "release");
+    await userEvent.click(await canvas.findByText("Release board"));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
+      expect.objectContaining({ owner: { type: "project_group", id: "pgroup-1" } })
+    ));
+  },
+};
+
+/** A group owner shows its name and kind, and Unassign clears it. */
+export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
+  beforeEach: () => {
+    mockDetailApis(painPoint({ owner: TEAM }));
+    spyOn(api, "put").mockResolvedValue(painPoint());
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
+    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Unassign: Pain Point owner" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
+      expect.objectContaining({ owner: null })
+    ));
   },
 };
 

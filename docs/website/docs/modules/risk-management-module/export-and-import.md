@@ -29,7 +29,7 @@ New Risks created after an import carry on from the highest imported code.
 - **Version history and comments.** A Risk arrives as version 1, attributed to the importer when its author cannot be matched. Reviews are the exception: they are the record of what was assessed and when, so every review, with its rating snapshot, is kept.
 - **Scoring configuration.** Levels, bands and pinned cells are not part of a bundle. Ratings are derived, so they are never exported either.
 - **Links to anything but Requirements in the same project.** Actions, Decisions, other Risks and records in other projects are not in the bundle, so those links are dropped rather than imported half-resolved.
-- **People who don't exist in the target.** An owner or reviewer is matched by email; one that can't be matched is left blank (or becomes the importer).
+- **People who don't exist in the target.** A user owner or reviewer is matched by email, and an owner group by name within the organisation (a project group travels with the project). An owner that can't be matched is left blank with a warning; a reviewer becomes the importer.
 
 ## How matching works
 

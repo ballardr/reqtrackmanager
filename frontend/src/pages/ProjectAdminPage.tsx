@@ -24,6 +24,8 @@ import type {
   ProjectListItem,
   ProjectMemberSource,
   ProjectModuleEnablement,
+  PrincipalRef,
+  PrincipalUsage,
   ProjectModuleSubComponent,
   ProjectReportConfig,
   ProjectRole,
@@ -41,6 +43,7 @@ import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { DefinitionList } from "../components/DefinitionList";
@@ -336,6 +339,7 @@ export function ProjectAdminPage() {
   // id, not a boolean, so at most one group's panel is open at a time.
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+  const [inUseGroup, setInUseGroup] = useState<{ id: string; usage: PrincipalUsage } | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   // Guards the two field groups above against `reload()` — called after
   // every unrelated mutation on this page (adding/deleting a custom
@@ -1342,14 +1346,37 @@ export function ProjectAdminPage() {
     }, { replace: true });
   }, [openGroupParam, setSearchParams]);
 
-  async function deleteGroup(groupId: string) {
+  async function deleteGroup(groupId: string, replacement?: PrincipalRef, clearOptional = false) {
+    const query = new URLSearchParams();
+    if (replacement) {
+      query.set("replacement_type", replacement.type);
+      query.set("replacement_id", replacement.id);
+    }
+    if (clearOptional) query.set("clear_optional", "true");
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
     try {
-      await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}`);
+      await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}${suffix}`);
       setDeletingGroupId(null);
+      setInUseGroup(null);
       if (openGroupId === groupId) setOpenGroupId(null);
       showToast(strings.admin.groupDeleted);
       reload();
     } catch (err) {
+      setDeletingGroupId(null);
+      // From the in-use dialog: let it show the error itself.
+      if (replacement || clearOptional) throw err;
+      // Records still name the group: show what, and offer to hand them over (or clear them).
+      if (err instanceof ApiError && err.status === 409) {
+        try {
+          const usage = await api.get<PrincipalUsage>(`/api/v1/projects/${projectId}/groups/${groupId}/usage`);
+          if (usage.total > 0) {
+            setInUseGroup({ id: groupId, usage });
+            return;
+          }
+        } catch {
+          // Fall through to the plain error toast.
+        }
+      }
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
@@ -2713,6 +2740,20 @@ export function ProjectAdminPage() {
             confirmLabel={strings.admin.deleteGroup}
             onConfirm={() => deleteGroup(deletingGroupId)}
             onCancel={() => setDeletingGroupId(null)}
+          />
+        )}
+        {inUseGroup && project && (
+          <GroupInUseDialog
+            groupName={(memberTableGroups.find((x) => x.id === inUseGroup.id) ?? groups.find((x) => x.id === inUseGroup.id))?.name ?? ""}
+            groupId={inUseGroup.id}
+            usage={inUseGroup.usage}
+            organizationId={project.organization_id}
+            projectId={project.id}
+            orgUsers={orgUsers}
+            kinds={["user", "org_group", "project_group"]}
+            onReplace={(replacement) => deleteGroup(inUseGroup.id, replacement)}
+            onClear={() => deleteGroup(inUseGroup.id, undefined, true)}
+            onClose={() => setInUseGroup(null)}
           />
         )}
       </div>

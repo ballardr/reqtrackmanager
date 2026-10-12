@@ -27,6 +27,7 @@ from app.models.enums import (
     RequirementLevel,
     ReviewTargetType,
 )
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 
 class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
@@ -93,7 +94,7 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
             when `"attachments"` is in `changed_fields`.
         proposed_action_link_id / proposed_action_title / proposed_action_
             description / proposed_action_type_id / proposed_action_
-            assignee_id / proposed_action_due_date: ADD_ACTION-only
+            assignee_type+_id (a principal — `models.principal`) / proposed_action_due_date: ADD_ACTION-only
             (2026-08 UX audit roadmap item 514). Either
             `proposed_action_link_id` (link an existing `RequirementAction`
             to the target requirement) or `proposed_action_title` +
@@ -120,7 +121,11 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     """
 
     __tablename__ = "change_request_versions"
-    __table_args__ = (UniqueConstraint("change_request_id", "version_number"),)
+    __table_args__ = (
+        UniqueConstraint("change_request_id", "version_number"),
+        principal_check_constraint("proposed_action_assignee", nullable=True),
+        principal_check_constraint("proposed_reviewer", nullable=True),
+    )
 
     change_request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("change_requests.id", ondelete="CASCADE")
@@ -155,9 +160,8 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     # requirement is approved.
     proposed_review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     proposed_review_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    proposed_reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
-    )
+    proposed_reviewer_type: Mapped[str | None] = principal_type_column(nullable=True)
+    proposed_reviewer_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     proposed_attachment_file_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
     # ADD_ACTION-only (item 514): either `proposed_action_link_id` (link an
     # existing `RequirementAction`) or `proposed_action_title` +
@@ -173,9 +177,8 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_action_type_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("action_type_definitions.id", ondelete="SET NULL"), nullable=True
     )
-    proposed_action_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
-    )
+    proposed_action_assignee_type: Mapped[str | None] = principal_type_column(nullable=True)
+    proposed_action_assignee_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     proposed_action_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # REMOVE_LINK-only (Platform review 2026-09, Phase 8). References `artefact_links.id` (Module 0, Platform Foundations Phase
     # 1) — originally `requirement_links.id`; repointed by migration 0041
@@ -276,15 +279,22 @@ class ReviewComment(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ChangeRequestTask(UUIDPKMixin, TimestampMixin, Base):
-    """A task assigned during a change request's review (C-R-02, C-R-04)."""
+    """A task assigned during a change request's review (C-R-02, C-R-04).
+
+    The assignee is a principal (`assignee_type` / `assignee_id`, `models.principal`): a user, an
+    organisation group or one of the project's groups. Any one member of an assigned group may mark the
+    task done.
+    """
 
     __tablename__ = "change_request_tasks"
+    __table_args__ = (principal_check_constraint("assignee", nullable=True),)
 
     change_request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("change_requests.id", ondelete="CASCADE")
     )
     description: Mapped[str] = mapped_column(Text)
-    assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    assignee_type: Mapped[str | None] = principal_type_column(nullable=True)
+    assignee_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_done: Mapped[bool] = mapped_column(Boolean, default=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

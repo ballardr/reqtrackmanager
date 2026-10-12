@@ -90,13 +90,15 @@ jobs:
     # can't recur, not just fail faster.
     #
     # The tag's version MUST match frontend/package-lock.json's resolved
-    # `playwright` version exactly (Playwright requires the npm package and
+    # `playwright` version exactly (the e2e-tests job's `docker run` image
+    # below tracks tests/playwright/package-lock.json instead — a separate
+    # lockfile that can legitimately sit on a different release) (Playwright requires the npm package and
     # browser build to be the same release) — bump this tag in the same
     # change as any `playwright` version bump, the same way Node's version is
     # kept in lockstep across ci.yml/Dockerfile/.nvmrc (see CLAUDE.md).
     # Available tags: https://mcr.microsoft.com/en-us/artifact/mar/playwright
     container:
-      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
     # Normal runs finish in ~2 minutes; this is headroom, not an expected
     # ceiling — see backend-tests'/e2e-tests' timeout-minutes comments for
     # why every job/step here now has one.
@@ -111,6 +113,12 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
+
+      # Fails fast, with an actionable message, if this job's Playwright image
+      # tag has drifted from its lockfile — otherwise the browser can't launch
+      # and the run silently executes zero tests. See the script's docstring.
+      - name: Check Playwright image matches lockfile
+        run: python3 "$GITHUB_WORKSPACE/scripts/check-playwright-image-sync.py"
 
       # actions/checkout sets `safe.directory` via a temporarily-overridden
       # HOME (see its own log output), which doesn't persist into this
@@ -152,15 +160,18 @@ jobs:
       # written correctly — and then simply never call process.exit(),
       # hanging indefinitely instead of returning. A bare `npm run` with no
       # timeout would hang this step (and the whole job) forever on a run
-      # that already succeeded. 180s is generous headroom over the ~10s this
-      # suite actually takes; a genuine hang before producing a report still
-      # fails loudly (no vitest-report.xml to check, so the raw exit status
-      # propagates), and a real per-test failure is caught explicitly by
-      # parsing the JUnit output rather than assumed away.
+      # that already succeeded. 600s is headroom over the ~4-5 minutes the
+      # full ~220-story suite takes on a CI runner (the earlier "~10s" figure
+      # was measured while the Playwright/image version drift meant no story
+      # ran at all, and a 180s cap then killed a healthy run mid-suite before
+      # it could write a report); a genuine hang before producing a report
+      # still fails loudly (no vitest-report.xml to check, so the raw exit
+      # status propagates), and a real per-test failure is caught explicitly
+      # by parsing the JUnit output rather than assumed away.
       - name: Run frontend tests with coverage
         run: |
           set +e
-          timeout 180 npm run test-storybook -- --coverage
+          timeout 600 npm run test-storybook -- --coverage
           status=$?
           set -e
           if [ $status -eq 0 ]; then
@@ -175,8 +186,17 @@ jobs:
           import xml.etree.ElementTree as ET
           root = ET.parse("vitest-report.xml").getroot()
           suites = root.findall(".//testsuite") if root.tag == "testsuites" else [root]
+          total = sum(int(s.attrib.get("tests", 0)) for s in suites)
           failures = sum(int(s.attrib.get("failures", 0)) for s in suites)
           errors = sum(int(s.attrib.get("errors", 0)) for s in suites)
+          # An empty report is not a passing one: if the browser can't launch
+          # (e.g. the container image's Playwright release drifting from
+          # package-lock.json's) vitest runs zero tests and writes a valid,
+          # failure-free report — which previously passed this gate and
+          # published a "0 passed" / 0% coverage badge.
+          if total == 0:
+              print("vitest-report.xml contains no tests — the run never executed any story.", file=sys.stderr)
+              sys.exit(1)
           if failures or errors:
               print(f"{failures} failure(s), {errors} error(s) in vitest-report.xml.", file=sys.stderr)
               sys.exit(1)
@@ -446,6 +466,12 @@ jobs:
       checks: write
     steps:
       - uses: actions/checkout@v7
+
+      # Fails fast, with an actionable message, if this job's Playwright image
+      # tag has drifted from its lockfile — otherwise the browser can't launch
+      # and the run silently executes zero tests. See the script's docstring.
+      - name: Check Playwright image matches lockfile
+        run: python3 "$GITHUB_WORKSPACE/scripts/check-playwright-image-sync.py"
 
       - uses: actions/setup-node@v7
         with:
@@ -751,17 +777,25 @@ jobs:
               errors = sum(int(s.attrib.get("errors", 0)) for s in suites)
               return total, total - failures - errors
 
-          def write_badges(prefix: str, label: str, coverage_pct: float | None, counts: tuple[int, int] | None) -> None:
+          def write_badges(
+              coverage_name: str, tests_name: str,
+              coverage_pct: float | None, counts: tuple[int, int] | None,
+          ) -> None:
+              # A run that executed zero tests produced no real signal; keep
+              # the last published badges rather than overwriting them with
+              # "0 passed" / "0.0%".
+              if counts is not None and counts[0] == 0:
+                  return
               if coverage_pct is not None:
-                  Path(f"{prefix}-coverage-badge.json").write_text(json.dumps({
-                      "schemaVersion": 1, "label": f"{label} coverage",
+                  Path(f"{coverage_name}-coverage-badge.json").write_text(json.dumps({
+                      "schemaVersion": 1, "label": f"{coverage_name} coverage",
                       "message": f"{coverage_pct:.1f}%", "color": coverage_color(coverage_pct),
                   }))
               if counts is not None:
                   total, passed = counts
                   all_green = passed == total
-                  Path(f"{prefix}-tests-badge.json").write_text(json.dumps({
-                      "schemaVersion": 1, "label": f"{label} tests",
+                  Path(f"{tests_name}-tests-badge.json").write_text(json.dumps({
+                      "schemaVersion": 1, "label": f"{tests_name} tests",
                       "message": f"{passed} passed" if all_green else f"{passed}/{total} passed",
                       "color": "brightgreen" if all_green else "red",
                   }))
@@ -778,7 +812,7 @@ jobs:
               frontend_coverage = json.loads(Path("frontend-reports/coverage/coverage-summary.json").read_text())["total"]["lines"]["pct"]
           except (FileNotFoundError, KeyError):
               pass
-          write_badges("frontend", "frontend", frontend_coverage, junit_counts("frontend-reports/vitest-report.xml"))
+          write_badges("frontend", "storybook", frontend_coverage, junit_counts("frontend-reports/vitest-report.xml"))
           PY
 
       - name: Push badges
@@ -810,6 +844,8 @@ jobs:
           else
             git checkout -q --orphan badges
           fi
+          # frontend-tests-badge.json was renamed to storybook-tests-badge.json.
+          git rm -q --ignore-unmatch frontend-tests-badge.json
           cp "$workdir"/*-badge.json .
           git add -A
           git commit -q -m "Update CI badges" --allow-empty

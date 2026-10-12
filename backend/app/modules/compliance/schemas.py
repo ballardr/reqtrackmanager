@@ -75,6 +75,12 @@ Design decisions, not left implicit:
   project_compliance`), never `from_attributes` alone, the same reason
   `ProjectComplianceRequirementOut`/`ComplianceEvidenceOut`/
   `ComplianceReviewOut` already are.
+
+`owner` (standard, review) and `assignee` (required-action assessment) are
+principals: a user, an organisation group or, where the record is
+project-scoped, a project group. Requests send a `PrincipalRef` (`{type, id}`;
+null clears an optional one) and responses return a resolved `PrincipalOut`
+(built by `service.standards_to_out` / `assessments_to_out` / `build_review_out`).
 """
 
 from __future__ import annotations
@@ -96,13 +102,14 @@ from app.modules.compliance.enums import (
     ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 # --- Standards ---------------------------------------------------------------
 
 
 class ComplianceStandardCreate(BaseModel):
-    """Payload for creating a `ComplianceStandard` (§2). `owner_id` defaults
-    to the creating user when omitted — §2 lists "Owner" as an attribute
+    """Payload for creating a `ComplianceStandard` (§2). `owner` (a user or an
+    organisation group) defaults to the creating user when omitted — §2 lists "Owner" as an attribute
     without mandating it always differ from the creator.
 
     Also carries the fields for the standard's mandatory first
@@ -119,7 +126,7 @@ class ComplianceStandardCreate(BaseModel):
     name: str
     description: str = ""
     issuing_organisation: str | None = None
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     initial_version_label: str
     initial_version_effective_date: date | None = None
     initial_version_change_note: str = ""
@@ -132,11 +139,11 @@ class ComplianceStandardUpdate(BaseModel):
     name: str
     description: str = ""
     issuing_organisation: str | None = None
-    owner_id: UUID
+    owner: PrincipalRef
 
 
 class ComplianceStandardOut(BaseModel):
-    model_config = {"from_attributes": True}
+    """A standard with its owner resolved (`service.standards_to_out`)."""
 
     id: UUID
     organization_id: UUID
@@ -144,7 +151,7 @@ class ComplianceStandardOut(BaseModel):
     name: str
     description: str
     issuing_organisation: str | None
-    owner_id: UUID
+    owner: PrincipalOut
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -479,18 +486,18 @@ class ComplianceRequiredActionAssessmentUpdate(BaseModel):
     `complete_requirement`/`uncomplete_requirement` shape, not a field
     write here."""
 
-    assignee_id: UUID | None = None
+    assignee: PrincipalRef | None = None
     due_date: date | None = None
     notes: str = ""
 
 
 class ComplianceRequiredActionAssessmentOut(BaseModel):
-    model_config = {"from_attributes": True}
+    """An assessment with its assignee resolved (`service.assessments_to_out`)."""
 
     id: UUID
     project_compliance_requirement_id: UUID
     required_action_id: UUID
-    assignee_id: UUID | None
+    assignee: PrincipalOut | None
     due_date: date | None
     is_completed: bool
     completed_at: datetime | None
@@ -735,7 +742,7 @@ class OutstandingRequiredActionOut(BaseModel):
     required_action_id: UUID
     required_action_name: str
     is_mandatory: bool
-    assignee_id: UUID | None
+    assignee: PrincipalOut | None
     due_date: date | None
     notes: str
 
@@ -753,7 +760,7 @@ class ComplianceReviewCreate(BaseModel):
     frequency_label: str
     recurrence_days: int | None = None
     next_due_date: date
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     notes: str = ""
 
 
@@ -765,7 +772,7 @@ class ComplianceReviewUpdate(BaseModel):
     frequency_label: str
     recurrence_days: int | None = None
     next_due_date: date
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     notes: str = ""
 
 
@@ -812,7 +819,7 @@ class ComplianceReviewOut(BaseModel):
     frequency_label: str
     recurrence_days: int | None
     next_due_date: date
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     status: ComplianceReviewStatus
     schedule_state: Literal["upcoming", "due", "overdue"] | None
     notes: str

@@ -121,12 +121,12 @@ def test_project_persona_crud_and_versions(client, admin_token):
 def test_update_can_clear_nullable_fields(client, admin_token):
     org, project, token = _setup(client, admin_token, "Persona Clear Co")
     user_id = create_org_user(client, token, org["id"], "champ@clear.example.com")
-    created = _create_project_persona(client, token, project["id"], weight=3, champion_id=user_id)
-    assert created["champion_id"] == user_id
+    created = _create_project_persona(client, token, project["id"], weight=3, champion={"type": "user", "id": user_id})
+    assert created["champion"]["id"] == user_id
     url = f"{_project_base(project['id'])}/personas/{created['id']}"
-    resp = client.put(url, json={"weight": None, "champion_id": None}, headers=auth_headers(token))
+    resp = client.put(url, json={"weight": None, "champion": None}, headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
-    assert resp.json()["weight"] is None and resp.json()["champion_id"] is None
+    assert resp.json()["weight"] is None and resp.json()["champion"] is None
 
 
 def test_weight_must_be_positive(client, admin_token):
@@ -141,7 +141,7 @@ def test_owner_and_champion_must_be_org_members(client, admin_token):
     other_org, _ = create_org_admin_in(client, admin_token, "Persona People B Co")
     outsider = create_org_user(client, admin_token, other_org["id"], "outsider@b.example.com")
     resp = client.post(
-        _project_base(project["id"]) + "/personas", json={**_PAYLOAD, "champion_id": outsider}, headers=auth_headers(token),
+        _project_base(project["id"]) + "/personas", json={**_PAYLOAD, "champion": {"type": "user", "id": outsider}}, headers=auth_headers(token),
     )
     assert resp.status_code == 400, resp.text
 

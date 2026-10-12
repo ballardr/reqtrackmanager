@@ -18,12 +18,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.enums import ProjectRole
+from app.models.enums import PrincipalType, ProjectRole
 from app.models.notification import NotificationType
 from app.models.organization import OrgGroup, OrgGroupMember
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, ProjectGroupRole
 from app.models.user import User
 from app.routers.projects.core import _require_user_in_org
+from app.schemas.principal import PrincipalRef, PrincipalUsageOut
 from app.schemas.project import ProjectGroupCreate, ProjectGroupMemberAdd, ProjectGroupOut, ProjectGroupRoleAssign
 from app.services import engagement
 from app.services.audit import log_event
@@ -32,6 +33,7 @@ from app.services.membership_notifications import (
     notify_managers_of_member_change,
 )
 from app.services.notifications import notify
+from app.services.principals import compute_usage, prepare_group_deletion
 from app.services.rbac import (
     _descendant_org_group_ids,
     _direct_project_member_ids_base,
@@ -255,9 +257,28 @@ def revoke_project_group_role(
     db.commit()
 
 
+@router.get("/{project_id}/groups/{group_id}/usage", response_model=PrincipalUsageOut)
+def read_project_group_usage(
+    project_id: UUID, group_id: UUID,
+    project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+):
+    """What still names this project group as an owner/assignee
+    (`services.principals.compute_usage`) — shown by the delete dialog.
+
+    Raises:
+        HTTPException: 404 if the group isn't in this project.
+    """
+    _get_group_in_project(db, project.id, group_id)
+    return compute_usage(db, PrincipalRef(type=PrincipalType.PROJECT_GROUP, id=group_id))
+
+
 @router.delete("/{project_id}/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project_group(
     project_id: UUID, group_id: UUID,
+    replacement_type: PrincipalType | None = Query(None),
+    replacement_id: UUID | None = Query(None),
+    clear_optional: bool = Query(False),
     project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -283,8 +304,21 @@ def delete_project_group(
     membership at once, so a pre-check would have to reproduce "what would
     managers look like without this group" rather than just asking the
     normal live-state question afterward.
+
+    Records that name the group as an owner/assignee (`services.principals`)
+    block the delete (409) unless `replacement_type`/`replacement_id` names a
+    user, org group or project group of this project to take over every one of
+    them, or `clear_optional` empties the optional fields (a mandatory field
+    always needs a replacement).
     """
     group = _get_group_in_project(db, project.id, group_id)
+    if (replacement_type is None) != (replacement_id is None):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "replacement_type and replacement_id go together.")
+    handed_over = prepare_group_deletion(
+        db, PrincipalRef(type=PrincipalType.PROJECT_GROUP, id=group_id), organization_id=project.organization_id,
+        project_id=project.id, actor_id=current_user.id, clear_optional=clear_optional,
+        replacement=PrincipalRef(type=replacement_type, id=replacement_id) if replacement_type else None,
+    )
     bypass = actor_bypasses_project_managers(db, current_user, project)
 
     group_roles = list(db.scalars(select(ProjectGroupRole.role).where(ProjectGroupRole.project_group_id == group_id)).all())
@@ -294,7 +328,9 @@ def delete_project_group(
 
     log_event(
         db, entity_type="project_group", entity_id=group_id, action="deleted", actor_id=current_user.id,
-        project_id=project.id, detail={"name": group.name, "roles": [r.value for r in group_roles]},
+        project_id=project.id,
+        detail={"name": group.name, "roles": [r.value for r in group_roles],
+                "records_reassigned": handed_over.reassigned, "records_cleared": handed_over.cleared},
     )
     db.delete(group)
     db.flush()

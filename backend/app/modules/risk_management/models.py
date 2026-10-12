@@ -52,6 +52,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 from app.modules.risk_management.enums import (
     RiskReviewOutcome,
     RiskStatus,
@@ -170,7 +171,10 @@ class RiskVersion(UUIDPKMixin, Base):
             `count_level_usage` hook (current versions), so only history
             ever loses a reference.
         status: Lifecycle state.
-        owner_id: The user responsible for the risk.
+        owner_type / owner_id: The principal (a user, an organisation group or a project group —
+            `models.principal`) responsible for the risk; both null when unowned. No foreign key;
+            `services.principals.validate_principal` checks it on write and `module.py`'s
+            `principal_references` guard group deletion.
         review_date: When the risk is next due for review.
         change_note: Free-text reason for the change.
         created_by / created_at: Who made this snapshot, and when.
@@ -179,6 +183,7 @@ class RiskVersion(UUIDPKMixin, Base):
     __tablename__ = "risk_versions"
     __table_args__ = (
         UniqueConstraint("risk_id", "version_number"),
+        principal_check_constraint("owner", nullable=True),
         Index("ix_risk_versions_current", "risk_id", unique=False, postgresql_where=sa_text("valid_to IS NULL")),
     )
 
@@ -216,7 +221,8 @@ class RiskVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[RiskStatus] = mapped_column(str_enum(RiskStatus, 30), default=RiskStatus.IDENTIFIED)
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     change_note: Mapped[str] = mapped_column(Text, default="")
 

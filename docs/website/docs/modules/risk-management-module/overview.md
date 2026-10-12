@@ -48,6 +48,15 @@ Any project member can **propose** a Risk: they create it, and it starts as *Ide
 
 Each composes with roles that already carry equivalent authority: a server admin, an org admin, or (for project roles) the project's Project Manager can do what the module role can. A Risk Manager cannot accept a Risk unless they also hold Risk Acceptor (or are a Project Manager or admin). Every other project member can read Risks once the module is enabled, and comment on them.
 
+## Groups as owners
+
+A Risk's **Owner** can be a user, an organisation group or a project group, so a team can stand behind a Risk instead of one nominee who may leave. The register, the Risk page and the version history show the group's name, its kind (Org group or Project group) and how many people it stands for.
+
+- **What the owner can do is unchanged.** The owner, or any member of an owner group, may [assess treatments](./treatment-and-relationships.md) and [record reviews](./reviews-and-notifications.md). A group gives no other right: editing, archiving and moving the Risk along its lifecycle still need the Risk Manager role.
+- **Notifications reach every member.** A review notice or a treatment-needs-reassessment notice goes to each active member of an owner group; a group with nobody to notify falls back to the project's Risk Managers and Project Managers.
+- **Reports print the kind.** The [risk register](./reports.md) shows a group owner as `Name (Org group)`, so a team is never mistaken for a person.
+- **Deleting an owner group** asks the admin to hand its Risks to a user or another group, or to leave them without an owner (the owner is optional; moving a Risk to *Treatment planned* still needs one).
+
 ## In this section
 
 - [Data model and lifecycle](./data-model-and-lifecycle.md) — fields, Risk types, versions, and the status flow with its guards.

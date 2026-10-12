@@ -30,7 +30,7 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 
 Creates a new requirement. Always starts in "draft" status — there is no way to create one pre-approved, and no tool here can approve it afterward either; use the ReqTrackManager UI for that.
 
-Parameters: `project_id` (string), `name*` (string), `component_id*` (string), `category_id*` (string), `reasoning` (string), `clarification` (string), `description` (string), `owner_id` (string), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer_id` (string)
+Parameters: `project_id` (string), `name*` (string), `component_id*` (string), `category_id*` (string), `reasoning` (string), `clarification` (string), `description` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object)
 
 ## `decide_change_request` (approval)
 
@@ -188,4 +188,4 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 
 Edits an unlocked requirement's content in place.
 
-Parameters: `project_id` (string), `requirement_id*` (string), `name` (string), `reasoning` (string), `clarification` (string), `description` (string), `component_id` (string), `category_id` (string), `owner_id` (string), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer_id` (string), `change_note` (string)
+Parameters: `project_id` (string), `requirement_id*` (string), `name` (string), `reasoning` (string), `clarification` (string), `description` (string), `component_id` (string), `category_id` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `change_note` (string)

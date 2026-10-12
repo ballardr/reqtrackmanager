@@ -13,7 +13,7 @@ A standard itself, or a project's assignment to one, can have one or more schedu
 - A **frequency label** (e.g. quarterly, annually) describing the intended cadence.
 - An optional **automatic recurrence** — if set, completing a review automatically schedules the next one.
 - A **next-due date**.
-- An **owner** — who's responsible for actually carrying it out.
+- An **owner** — who's responsible for actually carrying it out: a user, or a group (see [Groups as owners and assignees](./overview.md#groups-as-owners-and-assignees)). A recurring review's next cycle keeps the same owner.
 - Once completed, a retained **outcome**.
 
 Completing a recurring review creates the next cycle as a new row rather than reopening the old one, so review history is never overwritten. For example, a quarterly review of "Customer Security Addendum" completed on the 15th of the month, with its outcome recorded, immediately produces a new row due roughly three months out — the completed review stays exactly as it was recorded, and a later audit can see the full sequence of past outcomes rather than just the most recent one.
@@ -25,8 +25,8 @@ Daily background sweeps notify the relevant Compliance Officers/Managers about t
 | Trigger | Who's notified | Fires when |
 | --- | --- | --- |
 | Evidence approaching or past expiry | Compliance Officers/Managers with access to the project | The evidence's own expiry date enters its "expiring soon" window, or passes |
-| Required action approaching or past its due date | Compliance Officers/Managers with access to the project | The action's due date enters its "approaching" window, or passes |
-| Scheduled review coming due or overdue | The review's owner, plus Compliance Officers/Managers | The review's next-due date enters its "coming due" window, or passes |
+| Required action approaching or past its due date | The action's assignee (every member, when it is a group), or Compliance Officers/Managers when it has none | The action's due date enters its "approaching" window, or passes |
+| Scheduled review coming due or overdue | The review's owner (every member, when it is a group), plus Compliance Officers/Managers | The review's next-due date enters its "coming due" window, or passes |
 | Project's target compliance date approaching or passed | Compliance Officers/Managers with access to the project | The project's own target date (where set) enters its "approaching" window, or passes |
 | A requirement assessed Non-Compliant | Compliance Officers/Managers with access to the project | The compliance status changes to Non-Compliant |
 | An approval request, or an approval invalidated by a material change | The relevant approver, or Compliance Officers/Managers | A requirement is submitted for approval, or a previously Approved/Pending requirement is flagged Requires Re-assessment (see [Approval/sign-off](./assessing-a-project.md#the-five-things-an-assessment-tracks)) |

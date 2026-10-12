@@ -59,7 +59,7 @@ export const EditExisting: Story = {
       is_archived: false, archived_at: null, archived_by: null, name: "Field data is captured once",
       principle_statement: "Every field observation is recorded exactly once, at the point of inspection.",
       rationale: "Re-keying paper forms introduces errors and delay.", priority: "high", status: "draft",
-      owner_id: null, version_number: 1, is_locked: false,
+      owner: null, version_number: 1, is_locked: false,
       created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     } satisfies GuidingPrinciple,
   },

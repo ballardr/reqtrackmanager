@@ -17,9 +17,12 @@
  */
 import { useEffect, useState } from "react";
 
-import type { OrgUser } from "../../api/types";
+import type { OrgUser, PrincipalRef } from "../../api/types";
+import { principalRef, savedPrincipalDisplay } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
+import { PrincipalFormField } from "../../components/PrincipalFormField";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
@@ -29,12 +32,11 @@ import {
   COMPLIANCE_REVIEW_STATUS_LABEL,
   type ComplianceReview,
   type ComplianceReviewOutcome,
-  userDisplayName,
 } from "./types";
 
 export function ReviewsPanel({
-  projectId, projectComplianceId, orgUsers,
-}: { projectId: string; projectComplianceId: string; orgUsers: OrgUser[] }) {
+  projectId, projectComplianceId, organizationId, orgUsers,
+}: { projectId: string; projectComplianceId: string; organizationId: string; orgUsers: OrgUser[] }) {
   const { showToast } = useToast();
   const [reviews, setReviews] = useState<ComplianceReview[] | null>(null);
   const [creating, setCreating] = useState(false);
@@ -84,10 +86,11 @@ export function ReviewsPanel({
                   r.outcome && <span className="text-muted">{COMPLIANCE_REVIEW_OUTCOME_LABEL[r.outcome]}</span>
                 )}
               </div>
-              <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                Owner: {userDisplayName(orgUsers, r.owner_id)}
-                {r.notes && ` — ${r.notes}`}
-              </p>
+              <div className="row" style={{ gap: "0.5rem", alignItems: "center", fontSize: "0.85rem" }}>
+                <span className="text-muted">Owner:</span>
+                <PrincipalBadge principal={r.owner} />
+                {r.notes && <span className="text-muted">— {r.notes}</span>}
+              </div>
             </li>
           ))}
         </ul>
@@ -97,6 +100,8 @@ export function ReviewsPanel({
         <ReviewFormModal
           initial={editing ?? undefined}
           orgUsers={orgUsers}
+          organizationId={organizationId}
+          projectId={projectId}
           onCancel={() => { setCreating(false); setEditing(null); }}
           onSave={async (values) => {
             try {
@@ -158,18 +163,22 @@ export function ReviewsPanel({
 function ReviewFormModal({
   initial,
   orgUsers,
+  organizationId,
+  projectId,
   onCancel,
   onSave,
 }: {
   initial?: ComplianceReview;
   orgUsers: OrgUser[];
+  organizationId: string;
+  projectId: string;
   onCancel: () => void;
-  onSave: (values: { frequency_label: string; recurrence_days: number | null; next_due_date: string; owner_id: string | null; notes: string }) => void;
+  onSave: (values: { frequency_label: string; recurrence_days: number | null; next_due_date: string; owner: PrincipalRef | null; notes: string }) => void;
 }) {
   const [frequencyLabel, setFrequencyLabel] = useState(initial?.frequency_label ?? "");
   const [recurrenceDays, setRecurrenceDays] = useState(initial?.recurrence_days ? String(initial.recurrence_days) : "");
   const [nextDueDate, setNextDueDate] = useState(initial?.next_due_date ?? "");
-  const [ownerId, setOwnerId] = useState(initial?.owner_id ?? "");
+  const [owner, setOwner] = useState<PrincipalRef | null>(principalRef(initial?.owner));
   const [notes, setNotes] = useState(initial?.notes ?? "");
 
   return (
@@ -187,15 +196,10 @@ function ReviewFormModal({
           <span>Recurs every (days, optional)</span>
           <input className="input" type="number" min={1} value={recurrenceDays} onChange={(e) => setRecurrenceDays(e.target.value)} />
         </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Owner</span>
-          <select className="input" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} aria-label="Review owner">
-            <option value="">Unassigned</option>
-            {orgUsers.map((u) => (
-              <option key={u.user_id} value={u.user_id}>{u.display_name}</option>
-            ))}
-          </select>
-        </label>
+        <PrincipalFormField
+          label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
+          value={owner} display={savedPrincipalDisplay(owner, initial?.owner)} onChange={setOwner} ariaLabel="Review owner"
+        />
         <label className="stack" style={{ gap: "0.25rem" }}>
           <span>Notes</span>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -208,7 +212,7 @@ function ReviewFormModal({
             onClick={() =>
               onSave({
                 frequency_label: frequencyLabel, recurrence_days: recurrenceDays ? Number(recurrenceDays) : null,
-                next_due_date: nextDueDate, owner_id: ownerId || null, notes,
+                next_due_date: nextDueDate, owner, notes,
               })
             }
           >

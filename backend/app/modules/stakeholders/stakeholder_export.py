@@ -38,6 +38,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.scoring import ScoringLevel
 from app.models.user import User
+from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, principals_from_bundle, principals_to_bundle
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus, TargetCadence
 from app.modules.stakeholders.models import (
     Persona,
@@ -103,7 +104,7 @@ def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UU
         "type_is_project_local": type_is_local, "status": v.status.value,
         "target_cadence": v.target_cadence.value if v.target_cadence else None,
         "influence_level": _level_name(db, v.influence_level_id), "interest_level": _level_name(db, v.interest_level_id),
-        "owner_email": emails.get(v.owner_id), "user_email": emails.get(v.user_id),
+        **principals_to_bundle(db, v, STAKEHOLDER_PRINCIPAL_FIELDS), "user_email": emails.get(v.user_id),
         "created_by_email": emails.get(stakeholder.creator_id), "is_archived": stakeholder.is_archived,
         "archived_at": _j(stakeholder.archived_at), "created_at": _j(stakeholder.created_at),
         "represents": [
@@ -118,7 +119,7 @@ def _stakeholder_emails(db: Session, stakeholders: list[Stakeholder]) -> dict[UU
     ids: set[UUID | None] = set()
     for s in stakeholders:
         v = get_current_stakeholder_version(db, s.id)
-        ids |= {v.owner_id, v.user_id, s.creator_id}
+        ids |= {v.user_id, s.creator_id}
     return _emails(db, ids)
 
 
@@ -170,7 +171,10 @@ def _create_stakeholder_from_json(
     stakeholder = create_stakeholder(
         db, scope=scope, organization_id=organization_id, project_id=project_id, creator=creator,
         org_type_id=org_type_id, project_type_id=project_type_id,
-        owner_id=users.resolve(data.get("owner_email"), required=False, context=f"{context} owner"),
+        **principals_from_bundle(
+            db, data, STAKEHOLDER_PRINCIPAL_FIELDS, organization_id=organization_id, project_id=project_id,
+            users=users, warnings=warnings, context=context,
+        ),
         user_id=users.resolve(data.get("user_email"), required=False, context=f"{context} user"),
         target_cadence=TargetCadence(data["target_cadence"]) if data.get("target_cadence") else None,
         influence_level_id=influence.id if influence else None, interest_level_id=interest.id if interest else None,

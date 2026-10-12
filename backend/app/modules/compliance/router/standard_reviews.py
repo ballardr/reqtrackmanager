@@ -17,23 +17,21 @@ from app.modules.compliance.enums import ComplianceReviewStatus
 from app.modules.compliance.models import ComplianceReview
 from app.modules.compliance.router._shared import _get_standard_or_404, _require_manage, _require_view
 from app.modules.compliance.schemas import ComplianceReviewCompleteRequest, ComplianceReviewCreate, ComplianceReviewOut, ComplianceReviewUpdate
-from app.modules.compliance.service import build_review_out, complete_review
+from app.modules.compliance.service import build_review_out, complete_review, principal_labels_for
 from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
+from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
-from app.services.rbac import get_effective_org_roles
+from app.services.principals import principal_columns, validate_principal
 
 router = APIRouter(tags=["compliance-org-standard-reviews"])
 
 
-def _require_org_member_or_none(db: Session, organization_id: UUID, user_id: UUID | None) -> None:
-    """400s unless `user_id` is `None` or an effective member of
-    `organization_id` — org-scoped sibling of `project_router.py`'s
-    `_require_project_member_or_none`; see that function's own docstring
-    for why this guards every review `owner_id`."""
-    if user_id is None:
-        return
-    if not get_effective_org_roles(db, user_id, organization_id):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "owner must be a member of this organisation.")
+def _validate_org_principal(db: Session, organization_id: UUID, ref: PrincipalRef | None) -> None:
+    """400s unless `ref` is `None` or a user or group of `organization_id`. A standard-level review is
+    organisation-scoped, so a project group is never valid here (`services.principals.validate_principal`
+    with no project); see `project_router._shared._validate_project_principal` for why this guards every
+    review owner."""
+    validate_principal(db, ref, organization_id=organization_id, field="owner")
 
 
 def _get_standard_review_or_404(db: Session, organization_id: UUID, standard_id: UUID, review_id: UUID) -> ComplianceReview:
@@ -58,10 +56,10 @@ def create_standard_review(
     """Schedules a new review of a compliance standard itself (§17) — e.g.
     "Annual audit of this standard.\""""
     standard = _get_standard_or_404(db, organization_id, standard_id)
-    _require_org_member_or_none(db, organization_id, payload.owner_id)
+    _validate_org_principal(db, organization_id, payload.owner)
     review = ComplianceReview(
         standard_id=standard.id, frequency_label=payload.frequency_label, recurrence_days=payload.recurrence_days,
-        next_due_date=payload.next_due_date, owner_id=payload.owner_id, notes=payload.notes,
+        next_due_date=payload.next_due_date, **principal_columns("owner", payload.owner), notes=payload.notes,
         created_by=current_user.id,
     )
     db.add(review)
@@ -84,7 +82,8 @@ def list_standard_reviews(
     reviews = db.scalars(
         select(ComplianceReview).where(ComplianceReview.standard_id == standard_id).order_by(ComplianceReview.created_at)
     ).all()
-    return [build_review_out(db, review) for review in reviews]
+    labels = principal_labels_for(db, reviews, "owner")
+    return [build_review_out(db, review, labels) for review in reviews]
 
 
 @router.get("/standards/{standard_id}/reviews/{review_id}", response_model=ComplianceReviewOut)
@@ -106,14 +105,15 @@ def update_standard_review(
     review = _get_standard_review_or_404(db, organization_id, standard_id, review_id)
     if review.status != ComplianceReviewStatus.SCHEDULED:
         raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed and cannot be edited.")
-    _require_org_member_or_none(db, organization_id, payload.owner_id)
+    _validate_org_principal(db, organization_id, payload.owner)
     if review.next_due_date != payload.next_due_date:
         review.due_reminder_sent_at = None
         review.overdue_notified_at = None
     review.frequency_label = payload.frequency_label
     review.recurrence_days = payload.recurrence_days
     review.next_due_date = payload.next_due_date
-    review.owner_id = payload.owner_id
+    for column, value in principal_columns("owner", payload.owner).items():
+        setattr(review, column, value)
     review.notes = payload.notes
     log_event(db, entity_type="compliance_review", entity_id=review.id, action="updated",
               actor_id=current_user.id, organization_id=organization_id)

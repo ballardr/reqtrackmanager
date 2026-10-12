@@ -8,7 +8,7 @@
  * `enums.py`/`labels.py`/`schemas.py` by hand; any place that shows an enum
  * value goes through its label map, never the raw string.
  */
-import type { BadgeTone, FileAsset } from "../../api/types";
+import type { BadgeTone, FileAsset, Principal, PrincipalRef } from "../../api/types";
 
 export type RiskStatus =
   | "identified"
@@ -144,7 +144,8 @@ export interface Risk extends RiskLevelIds {
   residual_rating: RiskRating | null;
   status: RiskStatus;
   allowed_next_statuses: RiskStatus[];
-  owner_id: string | null;
+  /** A user, an organisation group or a project group, resolved for display. */
+  owner: Principal | null;
   review_date: string | null;
   version_number: number;
   effective_treatment_count: number;
@@ -164,7 +165,7 @@ export interface RiskFieldValues extends RiskLevelIds {
   risk_type_id: string | null;
   treatment_strategy: TreatmentStrategy | null;
   acceptance_criteria: string;
-  owner_id: string | null;
+  owner: PrincipalRef | null;
   review_date: string | null;
 }
 
@@ -186,7 +187,7 @@ export interface RiskVersion extends RiskLevelIds {
   treatment_strategy: TreatmentStrategy | null;
   acceptance_criteria: string;
   status: RiskStatus;
-  owner_id: string | null;
+  owner: Principal | null;
   review_date: string | null;
   change_note: string;
   created_by: string;

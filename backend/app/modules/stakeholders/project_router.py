@@ -34,6 +34,7 @@ from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import _shared as sh
+from app.modules.stakeholders._principals import PERSONA_PRINCIPAL_FIELDS, versions_out
 from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
 from app.modules.stakeholders.models import Persona, ProjectPersonaType
 from app.modules.stakeholders.schemas import (
@@ -200,7 +201,7 @@ def list_project_personas(
     )
     if not include_org:
         personas = [p for p in personas if p.scope == PersonaScope.PROJECT]
-    return [_out(db, p, project_id) for p in personas]
+    return sh.personas_to_out(db, personas, project_id=project_id)
 
 
 @router.get("/personas/{persona_id}", response_model=PersonaOut)
@@ -227,7 +228,9 @@ def update_project_persona(
 def list_project_persona_versions(
     project_id: UUID, persona_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return _get_visible(db, _project(db, project_id), persona_id).versions
+    return versions_out(
+        db, PersonaVersionOut, _get_visible(db, _project(db, project_id), persona_id).versions, PERSONA_PRINCIPAL_FIELDS,
+    )
 
 
 @router.post("/personas/{persona_id}/archive", response_model=PersonaOut)

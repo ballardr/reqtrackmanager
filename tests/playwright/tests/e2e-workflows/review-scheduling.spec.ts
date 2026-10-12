@@ -40,9 +40,8 @@ test.describe("requirement review scheduling", () => {
 
       await page.getByLabel("Review date").fill("2024-01-01");
       await page.getByLabel("Reminder lead time (days)").fill("7");
-      await page
-        .getByLabel("Assigned reviewer")
-        .selectOption({ label: `${PERSONAS.stakeholderAlpha.name} (${PERSONAS.stakeholderAlpha.email})` });
+      await page.getByRole("combobox", { name: "Assigned reviewer" }).fill(PERSONAS.stakeholderAlpha.name);
+      await page.getByRole("option", { name: new RegExp(PERSONAS.stakeholderAlpha.email) }).click();
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Review date: 2024-01-01")).toBeVisible();
       await expect(page.getByText(`Assigned reviewer: ${PERSONAS.stakeholderAlpha.name}`)).toBeVisible();

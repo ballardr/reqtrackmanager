@@ -4,7 +4,7 @@
  * A single Open Question's full detail (docs/plans/module-01-context-and-
  * strategy-plan.md Phase 7.5) — mirrors `PainPointDetailPage.tsx`'s overall
  * shape (full field display, branching lifecycle actions, attachments,
- * comments, relationships, owner assignment via a dedicated `AssigneePicker`)
+ * comments, relationships, owner assignment via a dedicated `PrincipalPicker`)
  * closely, since both artefacts share the same "project-scoped only,
  * branching lifecycle, no version table" backend shape. Two differences
  * driven directly by Open Question's own backend design:
@@ -49,20 +49,21 @@
  * `FileAttachmentList`'s existing `disabled={openQuestion.is_locked}` wiring
  * is already exactly as open as the backend allows.
  *
- * **Owner assignment via a dedicated `AssigneePicker`, not an
+ * **Owner assignment via a dedicated `RecordPrincipalField`, not an
  * `OpenQuestionFormModal` field** — see `types.ts`'s own docstring on
- * `OpenQuestionFieldValues` for why. This page loads this project's
+ * `OpenQuestionFieldValues` for why. The owner is a user, an organisation
+ * group or a project group. This page loads this project's
  * organisation's user list once and calls `projectOpenQuestionApi.update`
- * directly with the current content fields plus the newly chosen `owner_id`.
+ * directly with the current content fields plus the newly chosen `owner`.
  */
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
-import type { FileAsset, OrgUser, Project } from "../../api/types";
+import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
-import { AssigneePicker } from "../../components/AssigneePicker";
+import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -162,7 +163,7 @@ export function OpenQuestionDetailPage() {
     if (!projectId || !openQuestion) return;
     setFormError(null);
     try {
-      const updated = await projectOpenQuestionApi.update(projectId, openQuestion.id, { ...values, owner_id: openQuestion.owner_id });
+      const updated = await projectOpenQuestionApi.update(projectId, openQuestion.id, { ...values, owner: openQuestion.owner });
       showToast("Open Question updated.");
       setEditing(false);
       setOpenQuestion(updated);
@@ -171,12 +172,12 @@ export function OpenQuestionDetailPage() {
     }
   }
 
-  async function assignOwner(ownerId: string) {
+  async function assignOwner(owner: PrincipalRef | null) {
     if (!projectId || !openQuestion) return;
     try {
       const updated = await projectOpenQuestionApi.update(projectId, openQuestion.id, {
         question: openQuestion.question, context: openQuestion.context, evidence: openQuestion.evidence,
-        priority: openQuestion.priority, due_date: openQuestion.due_date, owner_id: ownerId || null,
+        priority: openQuestion.priority, due_date: openQuestion.due_date, owner,
       });
       showToast("Owner updated.");
       setOpenQuestion(updated);
@@ -222,16 +223,10 @@ export function OpenQuestionDetailPage() {
         {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
         {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
 
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Owner</span>
-          <AssigneePicker
-            orgUsers={orgUsers}
-            organizationId={project?.organization_id}
-            assigneeId={openQuestion.owner_id}
-            onChange={assignOwner}
-            ariaLabel="Open Question owner"
-          />
-        </div>
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
+          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
+        />
 
         <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
           {openQuestion.status === "open" && (

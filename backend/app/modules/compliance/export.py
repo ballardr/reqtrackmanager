@@ -108,6 +108,7 @@ from app.modules.compliance.service import materialize_assessment_rows
 from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -207,7 +208,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     # "single batched lookup, not N+1" convention.
     user_ids: set[UUID] = set()
     for s in standards:
-        user_ids |= {s.owner_id, s.creator_id}
+        user_ids.add(s.creator_id)
         if s.archived_by:
             user_ids.add(s.archived_by)
     requirement_ref_by_id: dict[UUID, str] = {}
@@ -280,7 +281,8 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
             })
         standards_json.append({
             "reference": standard.reference, "name": standard.name, "description": standard.description,
-            "issuing_organisation": standard.issuing_organisation, "_owner": standard.owner_id,
+            "issuing_organisation": standard.issuing_organisation,
+            "owner": principal_to_bundle(db, standard.owner_type, standard.owner_id),
             "_creator": standard.creator_id, "is_archived": standard.is_archived,
             "archived_at": _j(standard.archived_at), "_archived_by": standard.archived_by,
             "versions": versions_json,
@@ -319,7 +321,6 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     # to build the raw structure first and resolve emails via one shared
     # closure at the point of final assembly.
     for standard_json in standards_json:
-        standard_json["owner_email"] = email(standard_json.pop("_owner"))
         standard_json["creator_email"] = email(standard_json.pop("_creator"))
         standard_json["archived_by_email"] = email(standard_json.pop("_archived_by"))
         for version_json in standard_json["versions"]:
@@ -481,7 +482,10 @@ def _import_compliance_standards(
         standard = ComplianceStandard(
             organization_id=org.id, reference=reference, name=s["name"], description=s.get("description", ""),
             issuing_organisation=s.get("issuing_organisation"),
-            owner_id=users.resolve(s.get("owner_email"), required=True, context=f"Compliance standard {reference} owner"),
+            **principal_columns_from_bundle(
+                db, s, "owner", organization_id=org.id, project_id=None, users=users, warnings=warnings,
+                context=f"Compliance standard {reference} owner", required=True,
+            ),
             creator_id=users.resolve(s.get("creator_email"), required=True, context=f"Compliance standard {reference} creator"),
             is_archived=s.get("is_archived", False), archived_at=_dt(s.get("archived_at")),
             archived_by=users.resolve(s.get("archived_by_email"), required=False, context=f"Compliance standard {reference} archiver"),
@@ -691,7 +695,7 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
         tuple[ComplianceStandardVersion, list[ComplianceRequirement], dict[UUID, list[ComplianceRequiredAction]]]
     ] = []
     all_required_actions: list[ComplianceRequiredAction] = []
-    user_ids: set[UUID | None] = {standard.owner_id, standard.creator_id, standard.archived_by}
+    user_ids: set[UUID | None] = {standard.creator_id, standard.archived_by}
 
     for version in standard.versions:
         user_ids |= {version.created_by, version.published_by, version.retired_by}
@@ -829,7 +833,8 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
         "standard": {
             "reference": standard.reference, "name": standard.name, "description": standard.description,
             "issuing_organisation": standard.issuing_organisation,
-            "owner_email": email(standard.owner_id), "creator_email": email(standard.creator_id),
+            "owner": principal_to_bundle(db, standard.owner_type, standard.owner_id),
+            "creator_email": email(standard.creator_id),
             "is_archived": standard.is_archived, "archived_at": _j(standard.archived_at),
             "archived_by_email": email(standard.archived_by),
             "versions": versions_json,
@@ -946,7 +951,10 @@ def import_standard_data(
     standard = ComplianceStandard(
         organization_id=org.id, reference=reference, name=standard_data["name"],
         description=standard_data.get("description", ""), issuing_organisation=standard_data.get("issuing_organisation"),
-        owner_id=users.resolve(standard_data.get("owner_email"), required=True, context=f"Compliance standard {reference} owner"),
+        **principal_columns_from_bundle(
+            db, standard_data, "owner", organization_id=org.id, project_id=None, users=users, warnings=warnings,
+            context=f"Compliance standard {reference} owner", required=True,
+        ),
         creator_id=users.resolve(standard_data.get("creator_email"), required=True, context=f"Compliance standard {reference} creator"),
         is_archived=standard_data.get("is_archived", False), archived_at=_dt(standard_data.get("archived_at")),
         archived_by=users.resolve(standard_data.get("archived_by_email"), required=False, context=f"Compliance standard {reference} archiver"),
@@ -1137,7 +1145,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
                 if action is None:
                     continue
                 actions_json.append({
-                    "required_action_key": _required_action_key(action), "_assignee": assessment.assignee_id,
+                    "required_action_key": _required_action_key(action),
+                    "assignee": principal_to_bundle(db, assessment.assignee_type, assessment.assignee_id),
                     "due_date": _j(assessment.due_date), "is_completed": assessment.is_completed,
                     "completed_at": _j(assessment.completed_at), "_completed_by": assessment.completed_by,
                     "notes": assessment.notes, "evidence_refs": action_evidence_refs_by_assessment_id.get(assessment.id, []),
@@ -1162,7 +1171,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             ]
             reviews_json.append({
                 "frequency_label": review.frequency_label, "recurrence_days": review.recurrence_days,
-                "next_due_date": _j(review.next_due_date), "_owner": review.owner_id, "status": review.status.value,
+                "next_due_date": _j(review.next_due_date),
+                "owner": principal_to_bundle(db, review.owner_type, review.owner_id), "status": review.status.value,
                 "notes": review.notes, "outcome": review.outcome.value if review.outcome else None,
                 "completed_at": _j(review.completed_at), "_completed_by": review.completed_by,
                 "_created_by": review.created_by, "evidence_refs": evidence_refs,
@@ -1222,9 +1232,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         for r in pc["requirements"]:
             user_ids |= {r["_assessed_by"], r["_applicability_set_by"], r["_approval_decided_by"]}
             for a in r["required_actions"]:
-                user_ids |= {a["_assignee"], a["_completed_by"]}
+                user_ids.add(a["_completed_by"])
         for rv in pc["reviews"]:
-            user_ids |= {rv["_owner"], rv["_completed_by"], rv["_created_by"]}
+            user_ids |= {rv["_completed_by"], rv["_created_by"]}
     for e in evidence_json:
         user_ids |= {e["_provided_by"], e["_archived_by"]}
         for r in e["revalidations"]:
@@ -1243,10 +1253,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             r["applicability_set_by_email"] = email(r.pop("_applicability_set_by"))
             r["approval_decided_by_email"] = email(r.pop("_approval_decided_by"))
             for a in r["required_actions"]:
-                a["assignee_email"] = email(a.pop("_assignee"))
                 a["completed_by_email"] = email(a.pop("_completed_by"))
         for rv in pc["reviews"]:
-            rv["owner_email"] = email(rv.pop("_owner"))
             rv["completed_by_email"] = email(rv.pop("_completed_by"))
             rv["created_by_email"] = email(rv.pop("_created_by"))
     for e in evidence_json:
@@ -1536,9 +1544,12 @@ def import_project_data(
                         f"{r_data['requirement_key']!r} was not found — its recorded assessment was skipped."
                     )
                     continue
-                assessment.assignee_id = users.resolve(
-                    a_data.get("assignee_email"), required=False, context=f"Required action {a_data['required_action_key']} assignee"
-                )
+                for column, value in principal_columns_from_bundle(
+                    db, a_data, "assignee", organization_id=project.organization_id, project_id=project.id,
+                    users=users, warnings=warnings, context=f"Required action {a_data['required_action_key']} assignee",
+                    required=False,
+                ).items():
+                    setattr(assessment, column, value)
                 assessment.due_date = _date(a_data.get("due_date"))
                 assessment.is_completed = a_data.get("is_completed", False)
                 assessment.completed_at = _dt(a_data.get("completed_at"))
@@ -1561,7 +1572,10 @@ def import_project_data(
                 project_compliance_id=project_compliance.id, standard_id=None,
                 frequency_label=rv_data.get("frequency_label", ""), recurrence_days=rv_data.get("recurrence_days"),
                 next_due_date=_date(rv_data.get("next_due_date")) or date.today(),
-                owner_id=users.resolve(rv_data.get("owner_email"), required=False, context="Compliance review owner"),
+                **principal_columns_from_bundle(
+                    db, rv_data, "owner", organization_id=project.organization_id, project_id=project.id,
+                    users=users, warnings=warnings, context="Compliance review owner", required=False,
+                ),
                 status=ComplianceReviewStatus(rv_data.get("status", "scheduled")), notes=rv_data.get("notes", ""),
                 outcome=ComplianceReviewOutcome(rv_data["outcome"]) if rv_data.get("outcome") else None,
                 completed_at=_dt(rv_data.get("completed_at")),

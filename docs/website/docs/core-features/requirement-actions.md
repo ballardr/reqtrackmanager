@@ -13,7 +13,9 @@ A requirement action is a required task — a review, a test, or any other proje
 
 ## Creating and linking actions
 
-Go to a project's **Actions** page and click **New action**. Give it a title, pick an **action type** (project-defined, e.g. "Review" or "Test" — configured in **Project Admin → Fields & actions**), and optionally an assignee and due date. Link it to a requirement it helps satisfy from that requirement's Actions section — unlinking removes that association without deleting the action itself, since it may still be linked elsewhere. The action's own page lists its linked requirements in the [Links panel](links-and-traceability.md#the-links-panel), where it can also be linked to other kinds of record.
+Go to a project's **Actions** page and click **New action**. Give it a title, pick an **action type** (project-defined, e.g. "Review" or "Test" — configured in **Project Admin → Fields & actions**), and optionally an assignee (a user, an organisation group or one of the project's groups) and due date. Link it to a requirement it helps satisfy from that requirement's Actions section — unlinking removes that association without deleting the action itself, since it may still be linked elsewhere. The action's own page lists its linked requirements in the [Links panel](links-and-traceability.md#the-links-panel), where it can also be linked to other kinds of record.
+
+The **Actions** list and the action's page show a group assignee with its name, kind and member count. Deleting a group that still has actions assigned asks you to hand them to someone else or leave them unassigned.
 
 ## Outcomes
 

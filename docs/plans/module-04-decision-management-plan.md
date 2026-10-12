@@ -54,7 +54,7 @@ improvised).
 
 ## Status / Resume Here
 
-9 / 11 phases complete. Phase 10 (group owners and decision makers) was added 2026-10-11 and is not started. Phase 7 is blocked on Module 1/Module 6. Phase 8
+10 / 11 phases complete. Phase 10 (group owners and decision makers) shipped 2026-10-12. Phase 7 is blocked on Module 1/Module 6. Phase 8
 unblocked and completed 2026-09-27, once [Fine-Grained Access Control
 (core)](core-fine-grained-access-control-plan.md) reached its own Phase 7
 (that plan's 10/10 completion covers this phase's consumer migration
@@ -73,7 +73,7 @@ directly — see that plan's Phase 7 entry and `docs/decisions.md`'s
 | 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
 | 8 | Per-decision-type approver binding | [x] Complete (2026-09-27) — see note below |
 | 9 | UX/architecture follow-up: template & type placement, nested decision types, detail page | [x] Complete (2026-09-22) — see "Phase 9 notes" below |
-| 10 | Groups as owners and decision makers (users and groups on parity) | [ ] Planned 2026-10-11; waits on the parity plan's Phase 1 |
+| 10 | Groups as owners and decision makers (users and groups on parity) | [x] Complete (2026-10-12) — see the parity plan's Phase 2 note and `docs/decisions.md` |
 
 ## Phase 2 notes (2026-09-21)
 

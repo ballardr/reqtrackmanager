@@ -41,7 +41,7 @@ Twenty-two read tools, always available:
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Plus seven write tools, only when write mode is enabled:
+Plus seven write tools, only when write mode is enabled. A requirement's `owner` and `reviewer` are `{"type": "user" | "org_group" | "project_group", "id": …}` in both directions, so a team can be accountable:
 
 | Tool | Purpose |
 | --- | --- |

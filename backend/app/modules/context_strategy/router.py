@@ -75,6 +75,8 @@ from app.modules.context_strategy._shared import (
     get_guiding_principle_in_scope,
     get_strategy_in_scope,
     guiding_principle_to_out,
+    guiding_principle_versions_out,
+    guiding_principles_to_out,
     require_approve_permission,
     require_future_state_approve_permission,
     require_future_state_manage_role,
@@ -193,6 +195,7 @@ from app.schemas.project import MoveDirection
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.ordering import move_ordered
+from app.services.principals import validate_principal
 from app.services.rbac import require_org_subcomponent_enabled
 from app.services.relationships import get_all_links
 
@@ -1229,16 +1232,17 @@ def create_org_guiding_principle(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    validate_principal(db, payload.owner, organization_id=organization_id, project_id=None, field="owner")
     guiding_principle = create_guiding_principle(
         db, scope=_GP_SCOPE, organization_id=organization_id, project_id=None, creator=current_user,
         name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
-        priority=payload.priority, owner_id=payload.owner_id,
+        priority=payload.priority, owner=payload.owner,
     )
     log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="created",
               actor_id=current_user.id, organization_id=organization_id, detail={"name": payload.name})
     db.commit()
     db.refresh(guiding_principle)
-    return guiding_principle_to_out(guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id))
+    return guiding_principle_to_out(db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id))
 
 
 @router.get("/guiding-principles", response_model=list[GuidingPrincipleOut])
@@ -1252,9 +1256,7 @@ def list_org_guiding_principles(
     if not include_archived:
         query = query.where(GuidingPrinciple.is_archived.is_(False))
     guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
-    return [
-        guiding_principle_to_out(gp, get_current_guiding_principle_version(db, gp.id)) for gp in guiding_principles
-    ]
+    return guiding_principles_to_out(db, guiding_principles)
 
 
 @router.get("/guiding-principles/{guiding_principle_id}", response_model=GuidingPrincipleOut)
@@ -1264,7 +1266,7 @@ def get_org_guiding_principle(
 ):
     guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1284,17 +1286,18 @@ def update_org_guiding_principle(
             status.HTTP_409_CONFLICT,
             "This Guiding Principle is past review; its content can no longer be edited in place.",
         )
+    validate_principal(db, payload.owner, organization_id=organization_id, project_id=None, field="owner")
     apply_guiding_principle_new_version(
         db, guiding_principle, current_version, current_user,
         name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
-        priority=payload.priority, owner_id=payload.owner_id, owner_id_explicitly_set=True,
+        priority=payload.priority, owner=payload.owner, owner_explicitly_set=True,
         change_note=payload.change_note,
     )
     log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="updated",
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1304,7 +1307,7 @@ def list_org_guiding_principle_versions(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
     guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
-    return list(guiding_principle.versions)
+    return guiding_principle_versions_out(db, guiding_principle.versions)
 
 
 @router.post("/guiding-principles/{guiding_principle_id}/archive", response_model=GuidingPrincipleOut)
@@ -1321,7 +1324,7 @@ def archive_org_guiding_principle(
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1339,7 +1342,7 @@ def unarchive_org_guiding_principle(
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1357,7 +1360,7 @@ def propose_org_guiding_principle(
     apply_value_error_as_conflict(propose_guiding_principle, db, guiding_principle, current_version, current_user)
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1385,7 +1388,7 @@ def send_org_guiding_principle_back(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1404,7 +1407,7 @@ def approve_org_guiding_principle(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1423,7 +1426,7 @@ def activate_org_guiding_principle(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1442,7 +1445,7 @@ def supersede_org_guiding_principle(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 
@@ -1461,7 +1464,7 @@ def retire_org_guiding_principle(
     )
     db.commit()
     return guiding_principle_to_out(
-        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+        db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
     )
 
 

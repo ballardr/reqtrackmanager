@@ -38,6 +38,7 @@ const en = {
       requirement_review_due: "{Requirement} review due",
       stage_review_auto_approved: "{Stage} review deadline passed — auto-approved",
       project_members_changed_by_org: "Project members changed by someone who is not a project manager",
+      system_storage_alert: "File storage alert (server admins)",
       compliance_required_action_due_soon: "Compliance required action due soon",
       compliance_required_action_overdue: "Compliance required action overdue",
       compliance_target_date_approaching: "Compliance target date approaching",
@@ -308,7 +309,6 @@ const en = {
     noComponentsOrCategories: "This {project} has no {components} or {categories} yet.",
     configureComponentsFirst: "Add one in {Project} Admin before creating {requirements}.",
     noCategoriesForComponent: "No {categories} under this {component} yet — add one in {Project} Admin.",
-    reviewerNoLongerMember: "no longer a member",
     makeChangeRequest: "Make {changeRequest}",
     changedBy: "Changed by",
     targetVersion: "Target version",
@@ -341,6 +341,17 @@ const en = {
     bulkResultSuccess: (n: number) => `${n} updated`,
     bulkResultPartial: (n: number, failed: number) => `${n} updated, ${failed} failed`,
   },
+  watchers: {
+    title: "Watching groups",
+    explanation: "Everyone in these groups who can view this project is told about new comments.",
+    none: "No group is watching.",
+    add: "Add a group…",
+    added: "Watching group added.",
+    removed: "Watching group removed.",
+    addFailed: "Could not add the group.",
+    removeFailed: "Could not remove the group.",
+    stopWatching: "Stop watching",
+  },
   reviews: {
     projectTitle: "{Requirements} due for review",
     myTitle: "My reviews due",
@@ -350,6 +361,7 @@ const en = {
     unassigned: "Unassigned",
     allComponents: "All {components}",
     allReviewers: "All reviewers",
+    assignedToMe: "Assigned to me or my groups",
   },
   changeRequests: {
     title: "{ChangeRequests}",
@@ -740,6 +752,16 @@ const en = {
     deleteGroupTitle: (name: string) => `Delete "${name}"?`,
     deleteGroupMessage: "This removes the group and every membership under it. Direct roles and other groups' memberships are unaffected. This cannot be undone.",
     groupDeleted: "Group deleted",
+    groupInUseSummary: (name: string, listing: string) => `“${name}” is still named on ${listing}.`,
+    groupInUseMoveHeading: "Hand them to someone else",
+    groupInUseMoveHint: "Everything that names this group moves to the person or group you choose, then the group is deleted.",
+    groupInUseReplacement: "New owner",
+    groupInUseClear: "Clear",
+    groupInUseClearHeading: "Or leave them empty",
+    groupInUseClearButton: "Clear them and delete…",
+    groupInUseClearDescription: "Optional fields that name this group are left empty. Required fields cannot be cleared.",
+    groupInUseClearBlocked: "Some of these fields are required, so a replacement is needed.",
+    groupInUseClearConfirm: (name: string) => `Type the group's name to delete “${name}” and leave the optional fields empty.`,
     // member_source_project_ids groups (Phase 5) — extends the existing
     // `viaProjectMembers` line with a link to the referenced {project}'s
     // own new Members page and a clarifying sentence that this isn't a

@@ -62,7 +62,10 @@ _RISK_FIELDS = [
     _body("residual_likelihood_level_id", "uuid", f"Residual Likelihood. {_LEVELS}"),
     _body("residual_consequence_level_id", "uuid", f"Residual Consequence. {_LEVELS}"),
     _body("residual_detectability_level_id", "uuid", f"Residual Detectability. {_LEVELS}"),
-    _body("owner_id", "uuid", "User who owns the risk; null clears it."),
+    _body(
+        "owner", "object",
+        'Who owns the risk: {"type": "user" | "org_group" | "project_group", "id": uuid}; null clears it.',
+    ),
     _body("review_date", "string", "Date (YYYY-MM-DD) the risk is next due for review; null clears it."),
 ]
 

@@ -128,6 +128,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
+from app.modules.decisions.models import Decision
 from app.modules.decisions.reports import REPORT_DEFINITIONS
 from app.modules.decisions.service import (
     DECISION_APPROVE_PERMISSION,
@@ -144,6 +145,7 @@ from app.modules.registry import (
     ModuleFrontendManifest,
     ModuleRoleDefinition,
     OrgCreationChoiceOption,
+    PrincipalReference,
 )
 from app.services.report_framework import report_mcp_tools
 
@@ -367,6 +369,17 @@ MODULE_DEFINITION = ModuleDefinition(
             # `require_permission` (Phase 4) is a zero-behaviour-change swap for every existing
             # holder of this role.
             permissions=(DECISION_APPROVE_PERMISSION,),
+        ),
+    ),
+    # The owner (mandatory) and decision maker (optional) may be a user or a group, so deleting a
+    # group is blocked or reassigned while a Decision still names it (services.principals).
+    principal_references=(
+        PrincipalReference(
+            model=Decision, field="owner", label="decision owners", audit_entity_type=DECISION_ARTEFACT_TYPE,
+            mandatory=True,
+        ),
+        PrincipalReference(
+            model=Decision, field="decision_maker", label="decision makers", audit_entity_type=DECISION_ARTEFACT_TYPE,
         ),
     ),
     mcp_guidance=_MCP_GUIDANCE,

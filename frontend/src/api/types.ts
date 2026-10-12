@@ -303,6 +303,7 @@ export type CoreNotificationType =
   | "requirement_review_due"
   | "stage_review_auto_approved"
   | "project_members_changed_by_org"
+  | "system_storage_alert"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
   | "compliance_target_date_approaching"
@@ -1316,7 +1317,8 @@ export interface Requirement {
   clarification: string;
   description: string;
   status: RequirementStatus;
-  owner_id: string;
+  /** A user, an organisation group or a project group, resolved for display. */
+  owner: Principal;
   component_id: string;
   category_id: string;
   target_stage_id: string;
@@ -1340,7 +1342,8 @@ export interface Requirement {
   requires_approval: boolean;
   review_date: string | null;
   review_lead_days: number | null;
-  reviewer_id: string | null;
+  /** Accountable for the scheduled review; any one member of a group may record it. */
+  reviewer: Principal | null;
 }
 
 export type RequirementReviewOutcome = "met" | "failed";
@@ -1364,8 +1367,7 @@ export interface RequirementDueForReview {
   unique_code: string;
   name: string;
   review_date: string;
-  reviewer_id: string | null;
-  reviewer_name: string | null;
+  reviewer: Principal | null;
   component_id: string;
   component_name: string;
 }
@@ -1377,7 +1379,7 @@ export interface RequirementVersionEntry {
   clarification: string;
   description: string;
   status: RequirementStatus;
-  owner_id: string;
+  owner: Principal;
   target_stage_id: string;
   level: RequirementLevel;
   change_note: string;
@@ -1430,7 +1432,8 @@ export interface RequirementAction {
   title: string;
   description: string;
   outcome_status: RequirementActionOutcome;
-  assignee_id: string | null;
+  /** A user, an organisation group or a project group, resolved for display. */
+  assignee: Principal | null;
   due_date: string | null;
   completed_at: string | null;
   completed_by: string | null;
@@ -1513,7 +1516,7 @@ export interface ChangeRequest {
   requires_approval: boolean;
   proposed_review_date: string | null;
   proposed_review_lead_days: number | null;
-  proposed_reviewer_id: string | null;
+  proposed_reviewer: Principal | null;
   /** Which fields this MODIFY_REQUIREMENT change request actually proposes
    * to change — empty for NEW_REQUIREMENT change requests, which always
    * propose every field. See `CHANGEABLE_REQUIREMENT_FIELDS` above. */
@@ -1527,7 +1530,7 @@ export interface ChangeRequest {
   proposed_action_title: string | null;
   proposed_action_description: string | null;
   proposed_action_type_id: string | null;
-  proposed_action_assignee_id: string | null;
+  proposed_action_assignee: Principal | null;
   proposed_action_due_date: string | null;
   /** Links this request proposes (new, modify and add-link kinds), created on
    * approval as the approver chooses. Filled on the detail read; the list view
@@ -1574,9 +1577,11 @@ export interface ChangeRequestTask {
   id: string;
   change_request_id: string;
   description: string;
-  assignee_id: string | null;
+  assignee: Principal | null;
   due_date: string | null;
   is_done: boolean;
+  /** Whether the requesting user may mark it done: a project manager, or a member of the assignee. */
+  can_mark_done: boolean;
   completed_at: string | null;
   created_by: string;
   created_at: string;
@@ -2046,4 +2051,61 @@ export interface SystemVersion {
   version: string;
   git_sha: string;
   build_date: string;
+}
+
+// --- Principals (users and groups on parity) ---------------------------------------------------
+// A field that names "who" (an owner, assignee, reviewer) is a user, an organisation group or a
+// project group; see backend `services/principals.py`.
+
+export type PrincipalType = "user" | "org_group" | "project_group";
+
+export const PRINCIPAL_TYPE_LABEL: Record<PrincipalType, string> = {
+  user: "User",
+  org_group: "Org group",
+  project_group: "Project group",
+};
+
+/** What a form sends for a principal field. */
+export interface PrincipalRef {
+  type: PrincipalType;
+  id: string;
+}
+
+/** A principal resolved for display (the server's `PrincipalOut`). */
+export interface Principal extends PrincipalRef {
+  label: string;
+  /** Effective members of a group; null for a user. */
+  member_count: number | null;
+  /** False once a group was deleted but a history row still names it. */
+  exists: boolean;
+}
+
+/** The server's answer to "what still names this group" (`GET .../groups/{id}/usage`). */
+export interface PrincipalUsage {
+  total: number;
+  mandatory_total: number;
+  items: { label: string; count: number; mandatory: boolean }[];
+}
+
+/** A principal as plain text for a dropdown option: a user's name, or a group's name with its kind. */
+export function principalText(principal: Principal): string {
+  return principal.type === "user" ? principal.label : `${principal.label} (${PRINCIPAL_TYPE_LABEL[principal.type]})`;
+}
+
+/** A user as a `PrincipalRef`, or null for an empty id (the shape older user-only fields use). */
+export function userPrincipal(userId: string | null | undefined): PrincipalRef | null {
+  return userId ? { type: "user", id: userId } : null;
+}
+
+/** The `PrincipalRef` of a resolved principal, or null when the field is empty (seeds a form from a record). */
+export function principalRef(principal: Principal | null | undefined): PrincipalRef | null {
+  return principal ? { type: principal.type, id: principal.id } : null;
+}
+
+/**
+ * The record's own resolved view of a picked value while it is still the saved one, so `PrincipalPicker`
+ * shows a group's name and member count without listing it; undefined once the value differs.
+ */
+export function savedPrincipalDisplay(value: PrincipalRef | null, saved: Principal | null | undefined): Principal | undefined {
+  return saved && value && value.type === saved.type && value.id === saved.id ? saved : undefined;
 }

@@ -65,7 +65,7 @@ def test_requirement_activity_entries_always_carry_current_id_and_title(client, 
     put_resp = client.put(
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
-            "name": "Renamed", "component_id": component_id, "category_id": category_id, "owner_id": me["id"],
+            "name": "Renamed", "component_id": component_id, "category_id": category_id, "owner": {"type": "user", "id": me["id"]},
         },
         headers=auth_headers(admin_token),
     )
@@ -146,7 +146,7 @@ def test_project_changes_has_no_duplicate_entries_for_version_bumping_actions(cl
     edit_resp = client.put(
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
-            "name": "Req edited", "component_id": component_id, "category_id": category_id, "owner_id": me["id"],
+            "name": "Req edited", "component_id": component_id, "category_id": category_id, "owner": {"type": "user", "id": me["id"]},
         },
         headers=auth_headers(admin_token),
     )

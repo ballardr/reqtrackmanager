@@ -70,6 +70,11 @@ def levels(client, token, project_id) -> dict[str, dict[str, str]]:
     return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in resp.json()["axes"]}
 
 
+def user_ref(user_id: str) -> dict:
+    """A user as an `owner` principal reference."""
+    return {"type": "user", "id": user_id}
+
+
 PAYLOAD = {
     "title": "Supplier misses delivery",
     "statement": "If the supplier misses the delivery date, integration testing slips.",

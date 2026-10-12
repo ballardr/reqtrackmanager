@@ -56,12 +56,14 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
+    PrincipalReference,
 )
 from app.modules.stakeholders import export as persona_export
 from app.modules.stakeholders import need_export, relationship_export, stakeholder_export
 from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
+from app.modules.stakeholders.models import PersonaVersion, StakeholderNeedVersion, StakeholderVersion
 from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
 from app.modules.stakeholders.service import (
@@ -76,6 +78,36 @@ from app.modules.stakeholders.service import (
 from app.modules.stakeholders.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
 
 _PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}"
+
+
+def _principal_references() -> tuple[PrincipalReference, ...]:
+    """The owner and champion fields, which may name a user or a group (`services.principals`).
+    They live on the version rows, so only the current version of each record is counted or
+    reassigned (`live_filter`); the audit event is about the record (`record_id_field`)."""
+    def current(model):
+        return lambda: model.valid_to.is_(None)
+
+    return (
+        PrincipalReference(
+            model=PersonaVersion, field="owner", label="persona owners", audit_entity_type=PERSONA_ARTEFACT_TYPE,
+            live_filter=current(PersonaVersion), record_id_field="persona_id",
+        ),
+        PrincipalReference(
+            model=PersonaVersion, field="champion", label="persona champions",
+            audit_entity_type=PERSONA_ARTEFACT_TYPE, live_filter=current(PersonaVersion),
+            record_id_field="persona_id",
+        ),
+        PrincipalReference(
+            model=StakeholderVersion, field="owner", label="stakeholder owners",
+            audit_entity_type=STAKEHOLDER_ARTEFACT_TYPE, live_filter=current(StakeholderVersion),
+            record_id_field="stakeholder_id",
+        ),
+        PrincipalReference(
+            model=StakeholderNeedVersion, field="owner", label="stakeholder need owners",
+            audit_entity_type=NEED_ARTEFACT_TYPE, live_filter=current(StakeholderNeedVersion),
+            record_id_field="need_id",
+        ),
+    )
 
 
 def get_router() -> APIRouter | None:
@@ -191,6 +223,14 @@ def _body(name: str, type_: str, description: str, *, required: bool = False) ->
     return {"name": name, "type": type_, "required": required, "in": "body", "description": description}
 
 
+def _principal_description(what: str) -> str:
+    """Tool-parameter text for a principal field: `{"type": "user" | "org_group" | "project_group", "id": uuid}`."""
+    return (
+        f"Who {what}: {{\"type\": \"user\" | \"org_group\" | \"project_group\", \"id\": uuid}}. A project group is only "
+        "valid on a project-scoped record; null clears it."
+    )
+
+
 _PERSONA_FIELD_PARAMS = [
     _body("description", "string", "Free-text summary."),
     _body("persona_type_id", "uuid", "An effective Persona type id (GET .../persona-types)."),
@@ -203,8 +243,8 @@ _PERSONA_FIELD_PARAMS = [
     _body("frequency_of_use", "string", "How often the persona uses the product."),
     _body("constraints", "string", "Constraints the persona operates under."),
     _body("weight", "number", "Importance weight for per-persona scoring (positive); null clears it."),
-    _body("owner_id", "uuid", "User who owns this record."),
-    _body("champion_id", "uuid", "User accountable for keeping this persona accurate."),
+    _body("owner", "object", _principal_description("owns this record")),
+    _body("champion", "object", _principal_description("is accountable for keeping this persona accurate")),
 ]
 
 
@@ -228,7 +268,7 @@ _STAKEHOLDER_FIELD_PARAMS = [
     _body("availability_constraints", "string", "Their limits on engagement."),
     _body("influence_level_id", "uuid", "Influence level id from the `stakeholder` scoring scheme."),
     _body("interest_level_id", "uuid", "Interest level id from the `stakeholder` scoring scheme."),
-    _body("owner_id", "uuid", "User who owns this record."),
+    _body("owner", "object", _principal_description("owns this record")),
     _body("user_id", "uuid", "The platform user this stakeholder is, if any."),
 ]
 
@@ -240,7 +280,7 @@ _NEED_ID_PARAM = {
 _NEED_FIELD_PARAMS = [
     _body("description", "string", "The need in the stakeholder's own words."),
     _body("rationale", "string", "Why it matters, its source or evidence."),
-    _body("owner_id", "uuid", "User who owns this record."),
+    _body("owner", "object", _principal_description("owns this record")),
 ]
 
 
@@ -622,6 +662,7 @@ MODULE_DEFINITION = ModuleDefinition(
             scope="project", permissions=(NEED_MANAGE_PERMISSION,),
         ),
     ),
+    principal_references=_principal_references(),
     mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=_build_mcp_tools(),
 )

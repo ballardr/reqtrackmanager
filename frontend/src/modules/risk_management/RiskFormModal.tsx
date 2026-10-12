@@ -17,7 +17,10 @@
 import { useState } from "react";
 
 import type { ScoringScheme } from "../../api/scoring";
+import type { OrgUser } from "../../api/types";
+import { savedPrincipalDisplay, userPrincipal } from "../../api/types";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { PrincipalFormField } from "../../components/PrincipalFormField";
 import { Modal } from "../../components/Modal";
 import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
 import { blankRiskValues, valuesFromRisk } from "./riskFields";
@@ -37,25 +40,29 @@ const AXES = [
  * @param initial The risk being edited; omit to create.
  * @param scheme The project's effective `risk` scheme (null while loading: the level pickers are omitted).
  * @param riskTypes The enabled project risk types.
- * @param userOptions Org users offered as owner.
- * @param currentUserId Default owner for a new risk.
+ * @param orgUsers Org users offered as owner (groups are listed by the picker itself).
+ * @param organizationId The project's organisation, for user search and organisation groups.
+ * @param projectId The risk's project, for project groups.
+ * @param currentUserId Default owner (a user) for a new risk.
  * @param error A save error to show.
  * @param onSave Called with the form values and the change note (edit mode only).
  */
 export function RiskFormModal({
-  initial, scheme, riskTypes, userOptions, currentUserId, error, onCancel, onSave,
+  initial, scheme, riskTypes, orgUsers, organizationId, projectId, currentUserId, error, onCancel, onSave,
 }: {
   initial?: Risk;
   scheme: ScoringScheme | null;
   riskTypes: { id: string; name: string }[];
-  userOptions: { id: string; display_name: string }[];
+  orgUsers: OrgUser[];
+  organizationId: string;
+  projectId: string;
   currentUserId?: string;
   error?: string | null;
   onCancel: () => void;
   onSave: (values: RiskFieldValues, changeNote: string) => void;
 }) {
   const [values, setValues] = useState<RiskFieldValues>(() =>
-    initial ? valuesFromRisk(initial) : blankRiskValues(currentUserId ?? null));
+    initial ? valuesFromRisk(initial) : blankRiskValues(userPrincipal(currentUserId)));
   const [changeNote, setChangeNote] = useState("");
   const set = <K extends keyof RiskFieldValues>(key: K, value: RiskFieldValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -117,12 +124,17 @@ export function RiskFormModal({
           options={riskTypes.map((t) => ({ value: t.id, label: t.name }))}
           placeholder="No type"
         />
-        <LabeledSelect
+        <PrincipalFormField
           label="Owner"
-          value={values.owner_id ?? ""}
-          onChange={(next) => set("owner_id", next || null)}
-          options={userOptions.map((u) => ({ value: u.id, label: u.display_name }))}
-          placeholder="Unassigned"
+          orgUsers={orgUsers}
+          organizationId={organizationId}
+          projectId={projectId}
+          value={values.owner}
+          display={savedPrincipalDisplay(values.owner, initial?.owner)}
+          onChange={(next) => set("owner", next)}
+          ariaLabel="Owner"
+          placeholder="Search users and groups…"
+          clearLabel="Clear"
         />
         {levelGroup("inherent", "Inherent")}
         {levelGroup("residual", "Residual")}

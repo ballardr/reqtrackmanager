@@ -90,11 +90,12 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     // --- The Persona's page lists the Stakeholder, read-only.
     await page.getByRole("link", { name: personaName }).click();
     await expect(page.getByRole("heading", { name: personaName })).toBeVisible();
-    await expect(page.getByRole("link", { name: stakeholderName })).toBeVisible();
+    // The Stakeholder appears in the Persona's own list and again in the generic Links panel.
+    await expect(page.getByRole("link", { name: stakeholderName }).first()).toBeVisible();
     await expect(page.getByLabel("Persona to represent")).toHaveCount(0);
 
     // --- Remove it again from the Stakeholder's side, behind a tier-1 confirm.
-    await page.getByRole("link", { name: stakeholderName }).click();
+    await page.getByRole("link", { name: stakeholderName }).first().click();
     await page.getByRole("button", { name: `Remove ${personaName}` }).click();
     await page.getByRole("dialog", { name: `Remove ${personaName}?` }).getByRole("button", { name: "Remove" }).click();
     await expect(page.getByText("Link removed.")).toBeVisible();
@@ -122,7 +123,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     // The name and email were prefilled from the account.
     await page.getByRole("button", { name: `Casey Colleague ${suffix}` }).click();
     await expect(page.getByText(email)).toBeVisible();
-    await expect(page.getByText("Platform user")).toBeVisible();
+    await expect(page.getByText("Platform user", { exact: true })).toBeVisible();
 
     // A second attempt for the same user is refused with a visible message.
     await page.getByRole("link", { name: "← Stakeholders" }).click();

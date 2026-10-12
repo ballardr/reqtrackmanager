@@ -59,7 +59,7 @@
  * Phase 12 flagged owner reassignment rather than silently omitting it.
  */
 import { api, ApiError } from "../../api/client";
-import type { Organization } from "../../api/types";
+import type { Organization, PrincipalRef } from "../../api/types";
 import type {
   ComplianceActionType,
   ComplianceAuditEvent,
@@ -171,7 +171,8 @@ export function createStandard(
     name: string;
     description?: string;
     issuing_organisation?: string | null;
-    owner_id?: string | null;
+    /** A user or organisation group; defaults to the caller. */
+    owner?: PrincipalRef | null;
     initial_version_label: string;
     initial_version_effective_date?: string | null;
     initial_version_change_note?: string;
@@ -183,7 +184,7 @@ export function createStandard(
 export function updateStandard(
   orgId: string,
   standardId: string,
-  payload: { name: string; description?: string; issuing_organisation?: string | null; owner_id: string }
+  payload: { name: string; description?: string; issuing_organisation?: string | null; owner: PrincipalRef }
 ): Promise<ComplianceStandard> {
   return api.patch(`${base(orgId)}/standards/${standardId}`, payload);
 }
@@ -796,7 +797,7 @@ export function listRequiredActionAssessments(
 
 export function updateRequiredActionAssessment(
   projectId: string, projectComplianceId: string, pcrId: string, assessmentId: string,
-  payload: { assignee_id?: string | null; due_date?: string | null; notes?: string }
+  payload: { assignee?: PrincipalRef | null; due_date?: string | null; notes?: string }
 ): Promise<ComplianceRequiredActionAssessment> {
   return api.patch(`${assessmentsBase(projectId, projectComplianceId, pcrId)}/${assessmentId}`, payload);
 }
@@ -901,7 +902,7 @@ export function unlinkEvidenceFile(projectId: string, evidenceId: string, fileId
 
 export function createProjectReview(
   projectId: string, projectComplianceId: string,
-  payload: { frequency_label: string; recurrence_days?: number | null; next_due_date: string; owner_id?: string | null; notes?: string }
+  payload: { frequency_label: string; recurrence_days?: number | null; next_due_date: string; owner?: PrincipalRef | null; notes?: string }
 ): Promise<ComplianceReview> {
   return api.post(`${projectBase(projectId)}/project-compliance/${projectComplianceId}/reviews`, payload);
 }
@@ -916,7 +917,7 @@ export function listReviewsDue(projectId: string): Promise<ComplianceReview[]> {
 
 export function updateProjectReview(
   projectId: string, reviewId: string,
-  payload: { frequency_label: string; recurrence_days?: number | null; next_due_date: string; owner_id?: string | null; notes?: string }
+  payload: { frequency_label: string; recurrence_days?: number | null; next_due_date: string; owner?: PrincipalRef | null; notes?: string }
 ): Promise<ComplianceReview> {
   return api.patch(`${projectBase(projectId)}/reviews/${reviewId}`, payload);
 }

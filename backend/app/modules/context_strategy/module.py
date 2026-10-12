@@ -166,6 +166,7 @@ from app.modules.context_strategy._shared import (
 from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSION as _OPEN_QUESTION_RESOLVE_PERMISSION
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
+from app.modules.context_strategy.models import GuidingPrincipleVersion, OpenQuestion, PainPoint
 from app.modules.context_strategy.reports import REPORT_DEFINITIONS
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.context_strategy.service import (
@@ -184,6 +185,7 @@ from app.modules.registry import (
     ModuleNavEntry,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
+    PrincipalReference,
 )
 from app.services.report_framework import report_mcp_tools
 
@@ -203,6 +205,26 @@ def _id_param(artefact_name: str, description: str) -> dict:
 
 def _comment_param(description: str, *, required: bool = False) -> dict:
     return {"name": "comment", "type": "string", "required": required, "in": "body", "description": description}
+
+
+def _principal_references() -> tuple[PrincipalReference, ...]:
+    """The owner fields, which may name a user or a group (`services.principals`). All three are optional.
+    A Guiding Principle's lives on its version rows, so only the current version is counted or reassigned
+    (`live_filter`); the audit event is about the principle (`record_id_field`)."""
+    return (
+        PrincipalReference(
+            model=PainPoint, field="owner", label="pain point owners", audit_entity_type=PAIN_POINT_ARTEFACT_TYPE,
+        ),
+        PrincipalReference(
+            model=GuidingPrincipleVersion, field="owner", label="guiding principle owners",
+            audit_entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE,
+            live_filter=lambda: GuidingPrincipleVersion.valid_to.is_(None), record_id_field="guiding_principle_id",
+        ),
+        PrincipalReference(
+            model=OpenQuestion, field="owner", label="open question owners",
+            audit_entity_type=OPEN_QUESTION_ARTEFACT_TYPE,
+        ),
+    )
 
 
 def get_router() -> APIRouter | None:
@@ -349,16 +371,27 @@ _PAIN_POINT_SCORING_QUERY_PARAMS = [
      "description": "How per-persona scores combine: weighted_average (default), worst_case or average."},
 ]
 
+def _owner_param(what: str) -> dict:
+    """Tool-parameter definition for an owner field: `{"type": "user" | "org_group" | "project_group", "id": uuid}`."""
+    return {
+        "name": "owner", "type": "object", "required": False, "in": "body",
+        "description": (
+            f"Who owns this {what}: {{\"type\": \"user\" | \"project_group\", \"id\": uuid}} (an organisation group "
+            "is also valid: \"org_group\"). Null clears it."
+        ),
+    }
+
+
 _PAIN_POINT_UPDATE_PARAMS = [
     p for p in _PAIN_POINT_CREATE_PARAMS if p["name"] != "date_identified"
-] + [{"name": "owner_id", "type": "uuid", "required": False, "in": "body", "description": "User who owns this Pain Point."}]
+] + [_owner_param("Pain Point")]
 
 _GUIDING_PRINCIPLE_CREATE_UPDATE_PARAMS = [
     {"name": "name", "type": "string", "required": True, "in": "body", "description": "Short display name."},
     {"name": "principle_statement", "type": "string", "required": True, "in": "body", "description": "The principle itself."},
     {"name": "rationale", "type": "string", "required": False, "in": "body", "description": "Why this principle exists."},
     {"name": "priority", "type": "string", "required": False, "in": "body", "description": "One of: low, medium, high."},
-    {"name": "owner_id", "type": "uuid", "required": False, "in": "body", "description": "User who owns this Guiding Principle."},
+    _owner_param("Guiding Principle"),
 ]
 
 _OPEN_QUESTION_CREATE_UPDATE_PARAMS = [
@@ -530,7 +563,7 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             params=[
                 _PROJECT_ID_PARAM, _id_param("open_question", "The Open Question to update."),
                 *_OPEN_QUESTION_CREATE_UPDATE_PARAMS,
-                {"name": "owner_id", "type": "uuid", "required": False, "in": "body", "description": "User who owns this Open Question."},
+                _owner_param("Open Question"),
             ],
         ),
         # --- Writes: relationships and supersessions ------------------------
@@ -1033,6 +1066,7 @@ MODULE_DEFINITION = ModuleDefinition(
             permissions=(_OPEN_QUESTION_RESOLVE_PERMISSION,),
         ),
     ),
+    principal_references=_principal_references(),
     mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=_build_mcp_tools(),
     scoring_schemes=(PAIN_POINT_SCORING_SCHEME,),

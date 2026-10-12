@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user, get_request_channel
-from app.models.enums import ProjectRole, RequirementReviewOutcome, RequirementStatus
+from app.models.enums import PrincipalType, ProjectRole, RequirementReviewOutcome, RequirementStatus
 from app.models.project import Project, ProjectComponent
 from app.models.requirement import Requirement, RequirementReview
 from app.models.user import User
@@ -26,9 +26,10 @@ from app.routers.requirements.core import REQUIRES_APPROVAL_STATUSES, _to_out
 from app.schemas.requirement import RequirementDueForReviewOut, RequirementOut, RequirementReviewCreate, RequirementReviewOut
 from app.services import pubsub
 from app.services.audit import log_event
+from app.services.principals import is_principal_member, principal_ref
 from app.services.rbac import get_effective_project_roles, require_ai_approvals_enabled, require_project_manage, require_project_view
 from app.services.requirements import apply_new_version, get_current_version
-from app.services.reviews import get_due_reviews_for_project
+from app.services.reviews import get_due_reviews_for_project, reviewer_labels
 
 router = APIRouter(tags=["requirements-workflow"])
 
@@ -37,7 +38,9 @@ router = APIRouter(tags=["requirements-workflow"])
 def list_due_reviews(
     project_id: UUID,
     component_id: UUID | None = None,
+    reviewer_type: PrincipalType = PrincipalType.USER,
     reviewer_id: UUID | None = None,
+    reviewer_mine: bool = False,
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ):
@@ -45,21 +48,26 @@ def list_due_reviews(
 
     Registered before `GET /{requirement_id}` so this static path isn't
     swallowed by that dynamic route (same reasoning as `/import` above).
-    Supports an optional filter panel (`component_id`/`reviewer_id`) for
-    projects with enough due reviews that a flat list stops being scannable.
+    Supports an optional filter panel for projects with enough due reviews that a flat
+    list stops being scannable: `component_id`, a specific reviewer (`reviewer_type` +
+    `reviewer_id`: a user, an organisation group or a project group), or `reviewer_mine`
+    (reviews assigned to the caller or to a group they belong to).
     """
     due = get_due_reviews_for_project(db, project_id)
     if component_id is not None:
         due = [(version, req) for version, req in due if req.component_id == component_id]
     if reviewer_id is not None:
-        due = [(version, req) for version, req in due if version.reviewer_id == reviewer_id]
+        due = [
+            (version, req) for version, req in due
+            if version.reviewer_type == reviewer_type.value and version.reviewer_id == reviewer_id
+        ]
+    if reviewer_mine:
+        due = [
+            (version, req) for version, req in due
+            if is_principal_member(db, principal_ref(version.reviewer_type, version.reviewer_id), current_user.id)
+        ]
 
-    reviewer_ids = {version.reviewer_id for version, _ in due if version.reviewer_id is not None}
-    reviewer_names = (
-        dict(db.execute(select(User.id, User.display_name).where(User.id.in_(reviewer_ids))).all())
-        if reviewer_ids
-        else {}
-    )
+    reviewers = reviewer_labels(db, [version for version, _ in due])
     component_ids = {req.component_id for _, req in due}
     component_names = (
         dict(db.execute(select(ProjectComponent.id, ProjectComponent.name).where(ProjectComponent.id.in_(component_ids))).all())
@@ -70,8 +78,8 @@ def list_due_reviews(
     return [
         RequirementDueForReviewOut(
             requirement_id=req.id, project_id=req.project_id, unique_code=req.unique_code,
-            name=version.name, review_date=version.review_date, reviewer_id=version.reviewer_id,
-            reviewer_name=reviewer_names.get(version.reviewer_id) if version.reviewer_id else None,
+            name=version.name, review_date=version.review_date,
+            reviewer=reviewers[(version.reviewer_type, version.reviewer_id)] if version.reviewer_id else None,
             component_id=req.component_id, component_name=component_names.get(req.component_id, ""),
         )
         for version, req in due
@@ -85,8 +93,8 @@ def record_review_outcome(
 ):
     """Records the outcome of a requirement's scheduled review (C-R-07).
 
-    Gate: the requirement's assigned reviewer (C-R-10), or a project manager
-    as a fallback. Doesn't touch `review_date` itself (see
+    Gate: the requirement's assigned reviewer (C-R-10; when that is a group, any one
+    of its members, recorded as `reviewed_by`), or a project manager as a fallback. Doesn't touch `review_date` itself (see
     `services/reviews.py`'s due-list definition) — the requirement drops off
     the due list because a review now exists, not because the date changed.
 
@@ -103,10 +111,13 @@ def record_review_outcome(
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     version = get_current_version(db, requirement.id)
-    is_reviewer = version.reviewer_id == current_user.id
+    is_reviewer = is_principal_member(db, principal_ref(version.reviewer_type, version.reviewer_id), current_user.id)
     is_manager = ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, current_user.id, project_id)
     if not (is_reviewer or is_manager):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the assigned reviewer or a project manager may record this.")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Only the assigned reviewer (or a member of the reviewer group) or a project manager may record this.",
+        )
     if payload.outcome == RequirementReviewOutcome.FAILED and not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required when the outcome is 'failed'.")
 

@@ -8,7 +8,7 @@ A Risk's rating and treatments go stale quietly. This page covers how a Risk is 
 
 ## Scheduling and recording a review
 
-A Risk has a **review date**. When the date comes, the owner (or any Risk Manager) records a **review** from the Risk's page with **Record review**:
+A Risk has a **review date**. When the date comes, the owner (a member of the owner group, if the owner is a group) or any Risk Manager records a **review** from the Risk's page with **Record review**:
 
 | Field | Meaning |
 | --- | --- |
@@ -33,11 +33,11 @@ Rules:
 
 | Notification | Sent when | To |
 | --- | --- | --- |
-| **Review due** | A Risk's review date is within 7 days. | The Risk's owner. |
-| **Review overdue** | The review date has passed. | The Risk's owner. |
-| **Treatment needs reassessment** | A Requirement behind an Effective verdict changed. | The Risk's owner. |
+| **Review due** | A Risk's review date is within 7 days. | The Risk's owner (every member of an owner group). |
+| **Review overdue** | The review date has passed. | The Risk's owner (every member of an owner group). |
+| **Treatment needs reassessment** | A Requirement behind an Effective verdict changed. | The Risk's owner (every member of an owner group). |
 
-If a Risk has no owner, the notification goes to the project's Risk Managers and Project Managers instead, so an unowned Risk still reaches someone accountable. Due and overdue notices come from a sweep that runs daily; each is sent once per review date, so a rescheduled review re-arms itself. Selecting a Risk notification opens the Risk. Delivery follows each person's settings; see [Notifications and email](../../core-features/notifications-and-email.md).
+If a Risk has no owner, or its owner group has no one left to notify, the notification goes to the project's Risk Managers and Project Managers instead, so an unowned Risk still reaches someone accountable. Due and overdue notices come from a sweep that runs daily; each is sent once per review date, so a rescheduled review re-arms itself. Selecting a Risk notification opens the Risk. Delivery follows each person's settings; see [Notifications and email](../../core-features/notifications-and-email.md).
 
 The register flags overdue reviews with an **Overdue** marker and a **Review overdue** filter.
 

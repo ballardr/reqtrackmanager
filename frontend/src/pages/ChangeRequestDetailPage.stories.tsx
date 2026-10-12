@@ -3,7 +3,8 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type {
-  ChangeRequestVoteTally, ProjectRole, ProposedLinkPreview, Requirement, RequirementAction, RequirementLink,
+  ChangeRequestTask, ChangeRequestVoteTally, ProjectRole, ProposedLinkPreview, Requirement, RequirementAction,
+  RequirementLink,
 } from "../api/types";
 import {
   buildActionType,
@@ -38,6 +39,8 @@ function mockChangeRequestDetailApis(
     links?: RequirementLink[];
     // Phase 6b — what approving would merge (the dialog's preview).
     mergePreview?: ProposedLinkPreview;
+    // Review-stage tasks the request already has.
+    tasks?: ChangeRequestTask[];
   } = {}
 ) {
   const cr = buildChangeRequest({ id: CR_ID, project_id: PROJECT_ID, ...crOverrides });
@@ -49,7 +52,8 @@ function mockChangeRequestDetailApis(
     if (path.endsWith("/comments")) return [];
     if (path.endsWith("/stages")) return [];
     if (path.endsWith("/activity")) return [];
-    if (path.endsWith("/tasks")) return [];
+    if (path.endsWith("/tasks")) return extra.tasks ?? [];
+    if (path.endsWith("/groups")) return [] as never;
     if (path.endsWith("/votes")) return emptyTally;
     if (path.endsWith("/link-merge-preview")) return extra.mergePreview ?? { rows: [] };
     if (cr.requirement_id && path.endsWith(`/requirements/${cr.requirement_id}/links`)) return extra.links ?? [];
@@ -412,6 +416,30 @@ export const SubmittedMemberCannotDecideOrVote: Story = {
   },
 };
 
+/** A task assigned to a group shows the group's name and kind, and it is only tickable when the server says the
+ * requesting user may mark it done (a member of the group), not by comparing user ids in the browser. */
+export const GroupAssignedTasksFollowTheServersSaidCanMarkDone: Story = {
+  beforeEach: () => {
+    const group = { type: "org_group" as const, id: "group-1", label: "Review Board", member_count: 4, exists: true };
+    const task = { id: "t1", change_request_id: CR_ID, due_date: null, is_done: false, completed_at: null, created_by: "user-1", created_at: "2026-01-10T09:00:00Z" };
+    mockChangeRequestDetailApis(["stakeholder"], { status: "in_review" }, {
+      tasks: [
+        { ...task, id: "t1", description: "Mine via the group", assignee: group, can_mark_done: true },
+        { ...task, id: "t2", description: "Someone else's", assignee: { ...group, id: "group-2", label: "Other Board" }, can_mark_done: false },
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Mine via the group")).toBeInTheDocument());
+    await expect(canvas.getByText("Review Board")).toBeInTheDocument();
+    await expect(canvas.getAllByText(/Org group/).length).toBeGreaterThan(0);
+    const [mine, others] = canvas.getAllByRole("checkbox");
+    await expect(mine).toBeEnabled();
+    await expect(others).toBeDisabled();
+  },
+};
+
 /** `canManageTasks` includes project_administrator, not just manager. */
 export const ProjectAdministratorCanAddTask: Story = {
   beforeEach: () => {
@@ -422,7 +450,9 @@ export const ProjectAdministratorCanAddTask: Story = {
     await waitFor(() => expect(canvas.getByPlaceholderText("Description")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("Description"), "Confirm rollout with support team");
     await userEvent.click(canvas.getByRole("button", { name: "New task" }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringContaining("/tasks"), { description: "Confirm rollout with support team" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringContaining("/tasks"), {
+      description: "Confirm rollout with support team", assignee: null,
+    }));
   },
 };
 

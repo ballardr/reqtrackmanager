@@ -123,7 +123,7 @@ def test_requirement_update_omitting_target_stage_id_carries_current_value_forwa
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": "Renamed", "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"],
+            "owner": requirement["owner"],
         },
         headers=auth_headers(admin_token),
     )
@@ -191,7 +191,7 @@ def test_modify_change_request_can_clear_reviewer_via_changed_fields_alone(clien
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": requirement["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"], "reviewer_id": admin_id,
+            "owner": requirement["owner"], "reviewer": {"type": "user", "id": admin_id},
         },
         headers=auth_headers(admin_token),
     )
@@ -215,7 +215,7 @@ def test_modify_change_request_can_clear_reviewer_via_changed_fields_alone(clien
     updated = client.get(
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
     ).json()
-    assert updated["reviewer_id"] is None
+    assert updated["reviewer"] is None
 
 
 def test_approval_only_applies_fields_listed_in_changed_fields(client, admin_token, org_id):

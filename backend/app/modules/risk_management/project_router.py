@@ -13,8 +13,8 @@ types. The lifecycle `transition` endpoint needs the Risk Manager role, except a
 move to `ACCEPTED`, which needs the Risk Acceptor role and (via MCP) the
 org+project AI-approval gate. Relationships are made through the generic artefact
 link endpoints; this router lists a risk's treatment links and records the verdict
-on each (`treatment.py`): the risk's owner or a Risk Manager may assess, and likewise
-record a periodic review (`reviews.py`). A risk's files resolve through `service.resolve_risk_file_project_id`.
+on each (`treatment.py`): the risk's owner (a user, or a member of its owner group) or a Risk Manager
+may assess, and likewise record a periodic review (`reviews.py`). A risk's files resolve through `service.resolve_risk_file_project_id`.
 """
 
 from __future__ import annotations
@@ -204,8 +204,10 @@ def list_risks(
     counts = effective_treatment_counts(db, [r.id for r in risks])
     if effectively_treated is not None:
         risks = [r for r in risks if (counts.get(r.id, 0) > 0) == effectively_treated]
+    versions = {r.id: get_current_risk_version(db, r.id) for r in risks}
+    labels = sh.owner_labels(db, list(versions.values()))
     out = [
-        sh.risk_to_out(db, r, get_current_risk_version(db, r.id), ctx, effective_treatments=counts.get(r.id, 0))
+        sh.risk_to_out(db, r, versions[r.id], ctx, effective_treatments=counts.get(r.id, 0), labels=labels)
         for r in risks
     ]
     if review_overdue is not None:
@@ -237,7 +239,7 @@ def update_risk(
 def list_risk_versions(project_id: UUID, risk_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
     """A risk's full version history, oldest first."""
     _project(db, project_id)
-    return _get(db, project_id, risk_id).versions
+    return sh.risk_versions_out(db, _get(db, project_id, risk_id).versions)
 
 
 @router.post("/risks/{risk_id}/transition", response_model=RiskOut)
@@ -331,12 +333,12 @@ def assess_risk_treatment(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Records whether one treatment link effectively reduces the risk. The risk's
-    owner or a Risk Manager may assess. `effective` and `ineffective` need a
+    owner (or a member of its owner group) or a Risk Manager may assess. `effective` and `ineffective` need a
     rationale (409 otherwise); 404 for a link that is not a visible treatment link
     of this risk; 409 on an archived risk."""
     project = _project(db, project_id)
     risk = _get(db, project_id, risk_id)
-    if get_current_risk_version(db, risk.id).owner_id != current_user.id:
+    if not sh.is_risk_owner(db, get_current_risk_version(db, risk.id), current_user.id):
         sh.require_risk_manage(db, current_user, project)
     lock_row_for_update(db, Risk, risk.id)
     db.refresh(risk)
@@ -373,13 +375,13 @@ def create_risk_review(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Records a periodic review and sets the date of the next one. The risk's
-    owner or a Risk Manager may review. A review is immutable; correct a mistake
-    with a newer one. 409 for an archived or closed risk, blank notes, a
+    owner (or a member of its owner group) or a Risk Manager may review. A review is immutable;
+    correct a mistake with a newer one. 409 for an archived or closed risk, blank notes, a
     non-future `next_review_date`, or `confirmed` while a treatment still needs
     reassessment."""
     project = _project(db, project_id)
     risk = _get(db, project_id, risk_id)
-    if get_current_risk_version(db, risk.id).owner_id != current_user.id:
+    if not sh.is_risk_owner(db, get_current_risk_version(db, risk.id), current_user.id):
         sh.require_risk_manage(db, current_user, project)
     lock_row_for_update(db, Risk, risk.id)
     db.refresh(risk)

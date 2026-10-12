@@ -24,8 +24,10 @@ Design decisions:
 - The review sweep notifies once per `review_date` (the date is stored on the
   risk as `review_*_notified_for`), so re-running it is harmless and a
   rescheduled review re-arms itself with no reset step.
-- Recipients: the risk's owner; with no owner, the project's Risk Managers and
-  project managers, so an unowned risk still reaches someone accountable. This
+- Recipients: the risk's owner (every active member of an owner group, via
+  `services.principals.principal_recipients`); with no owner, or a group with no
+  one to notify, the project's Risk Managers and project managers, so an
+  unowned risk still reaches someone accountable. This
   is addressing, not authorisation. The actor is never notified of their own
   edit (`notify`'s `actor_id`). A notification about a change in *another*
   project does not name the changed artefact, because the recipient may not be
@@ -63,6 +65,7 @@ from app.modules.risk_management.service import (
 )
 from app.services import notifications
 from app.services.audit import log_event
+from app.services.principals import principal_recipients, principal_ref
 from app.services.rbac import get_effective_project_managers
 
 logger = logging.getLogger(__name__)
@@ -82,10 +85,12 @@ REVIEW_DUE_WARNING_DAYS = 7
 
 
 def risk_recipients(db: Session, risk: Risk, version: RiskVersion) -> set[uuid.UUID]:
-    """Who should hear about a risk: its owner, else the project's Risk Managers
-    and project managers. Addressing only, not an authorisation check."""
-    if version.owner_id is not None:
-        return {version.owner_id}
+    """Who should hear about a risk: its owner (every member of an owner group), else the
+    project's Risk Managers and project managers, which also covers an owner group with no
+    one left to notify. Addressing only, not an authorisation check."""
+    owners = principal_recipients(db, [principal_ref(version.owner_type, version.owner_id)])
+    if owners:
+        return owners
     managers = set(db.scalars(
         select(UserModuleRole.user_id).where(
             UserModuleRole.module_key == RISK_MODULE_KEY, UserModuleRole.role_key == "risk_manager",

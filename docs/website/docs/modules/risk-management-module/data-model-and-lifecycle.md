@@ -15,7 +15,7 @@ This page covers what a Risk record holds, the Risk types that categorise it, an
 | Statement | The risk in one sentence, usually "If … then …". |
 | Cause, Risk event, Consequence | The three parts of a well-formed risk, kept apart so each can be read and challenged on its own. |
 | Type | An optional category (see below). Optional so a risk can be captured quickly and categorised later. |
-| Owner | The user accountable for the Risk. |
+| Owner | Who is accountable for the Risk: a user, an organisation group or one of the project's groups. See [Groups as owners](./overview.md#groups-as-owners). |
 | Treatment strategy | The intended response: **Mitigate**, **Transfer**, **Avoid** or **Accept**. This is the plan; the status says how far it has got. |
 | Acceptance criteria | What must hold for the remaining risk to be acceptable. Required to accept a Risk. |
 | Inherent and residual levels | The Likelihood, Consequence and (optionally) Detectability levels *before* and *after* treatment. The ratings are derived from these and never typed in; see [Scoring](./scoring.md). |

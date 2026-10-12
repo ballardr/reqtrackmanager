@@ -46,7 +46,7 @@ import type {
   ScimTokenStatus,
   UserAccess,
 } from "../api/types";
-import type { ModuleAvailability } from "../api/types";
+import type { ModuleAvailability, PrincipalRef, PrincipalUsage } from "../api/types";
 import {
   collapseProjectRoles,
   fromModuleAvailability,
@@ -62,6 +62,7 @@ import { AddMembersModal } from "../components/AddMembersModal";
 import { AddToGroupControl } from "../components/AddToGroupControl";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
@@ -254,6 +255,7 @@ export function OrgAdminPage() {
   const [openOrgGroupId, setOpenOrgGroupId] = useState<string | null>(null);
   // Org group pending deletion in its Tier 1 `ConfirmDialog`, or null.
   const [deletingOrgGroupId, setDeletingOrgGroupId] = useState<string | null>(null);
+  const [inUseOrgGroup, setInUseOrgGroup] = useState<{ id: string; usage: PrincipalUsage } | null>(null);
   // Per-group SSO-sync enable/disable toggle (Phase B bug-fix pass) —
   // `undefined` means "not yet touched this session," in which case the
   // checkbox's displayed state derives from `idp_synced_group_name != null`
@@ -1683,15 +1685,37 @@ export function OrgAdminPage() {
   /** Deletes an org group after confirmation, closing its panel. A refusal
    * (a module relies on the group) is shown as an error toast with the
    * server's reason. */
-  async function deleteOrgGroup(groupId: string) {
+  async function deleteOrgGroup(groupId: string, replacement?: PrincipalRef, clearOptional = false) {
+    const query = new URLSearchParams();
+    if (replacement) {
+      query.set("replacement_type", replacement.type);
+      query.set("replacement_id", replacement.id);
+    }
+    if (clearOptional) query.set("clear_optional", "true");
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
     try {
-      await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}`);
+      await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}${suffix}`);
       setDeletingOrgGroupId(null);
+      setInUseOrgGroup(null);
       if (openOrgGroupId === groupId) setOpenOrgGroupId(null);
       showToast(strings.admin.groupDeleted);
       reload();
     } catch (err) {
       setDeletingOrgGroupId(null);
+      // From the in-use dialog: let it show the error itself.
+      if (replacement || clearOptional) throw err;
+      // Records still name the group: show what, and offer to hand them over (or clear them).
+      if (err instanceof ApiError && err.status === 409) {
+        try {
+          const usage = await api.get<PrincipalUsage>(`/api/v1/orgs/${orgId}/groups/${groupId}/usage`);
+          if (usage.total > 0) {
+            setInUseOrgGroup({ id: groupId, usage });
+            return;
+          }
+        } catch {
+          // Fall through to the plain error toast.
+        }
+      }
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
@@ -3145,6 +3169,19 @@ export function OrgAdminPage() {
                 confirmLabel={strings.admin.deleteGroup}
                 onConfirm={() => deleteOrgGroup(deletingOrgGroupId)}
                 onCancel={() => setDeletingOrgGroupId(null)}
+              />
+            )}
+            {inUseOrgGroup && orgId && (
+              <GroupInUseDialog
+                groupName={(groups.find((x) => x.id === inUseOrgGroup.id) ?? allGroups.find((x) => x.id === inUseOrgGroup.id))?.name ?? ""}
+                groupId={inUseOrgGroup.id}
+                usage={inUseOrgGroup.usage}
+                organizationId={orgId}
+                orgUsers={users}
+                kinds={["user", "org_group"]}
+                onReplace={(replacement) => deleteOrgGroup(inUseOrgGroup.id, replacement)}
+                onClear={() => deleteOrgGroup(inUseOrgGroup.id, undefined, true)}
+                onClose={() => setInUseOrgGroup(null)}
               />
             )}
           </div>

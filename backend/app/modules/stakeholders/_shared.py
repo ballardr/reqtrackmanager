@@ -18,6 +18,7 @@ the separate org-scoped `persona_type_admin` role.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -27,6 +28,15 @@ from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.user import User
+from app.modules.stakeholders._principals import (
+    PERSONA_PRINCIPAL_FIELDS,
+    Labels,
+    columns_for_create,
+    expand_sent,
+    principals_of,
+    resolve_labels,
+    validate_principals,
+)
 from app.modules.stakeholders.enums import PersonaScope, PersonaStatus, StakeholderScope
 from app.modules.stakeholders.models import (
     Persona,
@@ -84,7 +94,10 @@ def visibility_fields(
     }
 
 
-def persona_to_out(db: Session, persona: Persona, version: PersonaVersion, *, project_id: uuid.UUID | None = None) -> PersonaOut:
+def persona_to_out(
+    db: Session, persona: Persona, version: PersonaVersion, *, project_id: uuid.UUID | None = None,
+    labels: Labels | None = None,
+) -> PersonaOut:
     """Merges a persona with its current version. When `project_id` is given
     (project router), also resolves `effective_weight` and `weight_override`
     for that project, and an org persona's visibility to it."""
@@ -113,11 +126,24 @@ def persona_to_out(db: Session, persona: Persona, version: PersonaVersion, *, pr
         role_title=version.role_title, goals=version.goals, needs=version.needs, behaviours=version.behaviours,
         context_environment=version.context_environment, skills_proficiency=version.skills_proficiency,
         frequency_of_use=version.frequency_of_use, constraints=version.constraints, weight=version.weight,
-        status=version.status, owner_id=version.owner_id, champion_id=version.champion_id,
+        status=version.status,
+        **principals_of(
+            labels if labels is not None else resolve_labels(db, [version], PERSONA_PRINCIPAL_FIELDS),
+            version, PERSONA_PRINCIPAL_FIELDS,
+        ),
         version_number=version.version_number, effective_weight=effective_weight, weight_override=override,
         weight_source=weight_source, **hidden,
         created_at=persona.created_at, updated_at=persona.updated_at,
     )
+
+
+def personas_to_out(
+    db: Session, personas: Sequence[Persona], *, project_id: uuid.UUID | None = None
+) -> list[PersonaOut]:
+    """`persona_to_out` for many personas, resolving every owner and champion in one batch."""
+    versions = [get_current_persona_version(db, p.id) for p in personas]
+    labels = resolve_labels(db, versions, PERSONA_PRINCIPAL_FIELDS)
+    return [persona_to_out(db, p, v, project_id=project_id, labels=labels) for p, v in zip(personas, versions, strict=True)]
 
 
 def get_persona_in_scope(
@@ -177,15 +203,16 @@ def apply_value_error_as_conflict(fn, *args, **kwargs):
 
 
 def validate_people(db: Session, organization_id: uuid.UUID, *user_ids: uuid.UUID | None) -> None:
-    """Rejects an owner/champion who is not an active member of the
-    organisation, so a persona can't point at a user from another tenant.
+    """Rejects a plain user reference (a stakeholder's `user_id` identity link) who is not an
+    active member of the organisation, so a record can't point at a user from another tenant.
+    Owners and champions are principals and go through `_principals.validate_principals`.
 
     Raises:
         HTTPException: 400 on the first user not in the organisation.
     """
     for user_id in user_ids:
         if user_id is not None and not get_effective_org_roles(db, user_id, organization_id):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Owner/champion must be a member of this organisation.")
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "User must be a member of this organisation.")
 
 
 # --- Comments and files (shared kit, see `services.module_attachments`) ---------------------
@@ -262,14 +289,15 @@ def create_persona_from_payload(
 ) -> PersonaOut:
     """Validates a create payload (type reference, owner/champion tenancy),
     creates the persona, audit-logs, commits and returns the API shape."""
-    validate_people(db, organization_id, payload.owner_id, payload.champion_id)
+    validate_principals(db, organization_id, project_id, owner=payload.owner, champion=payload.champion)
     try:
         org_type_id, project_type_id = resolve_persona_type_refs(
             db, scope, organization_id=organization_id, project_id=project_id, type_id=payload.persona_type_id,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    content = payload.model_dump(exclude={"persona_type_id"})
+    content = payload.model_dump(exclude={"persona_type_id", *PERSONA_PRINCIPAL_FIELDS})
+    content.update(columns_for_create(payload, PERSONA_PRINCIPAL_FIELDS))
     persona = create_persona(
         db, scope=scope, organization_id=organization_id, project_id=project_id, creator=creator,
         org_type_id=org_type_id, project_type_id=project_type_id, **content,
@@ -295,7 +323,11 @@ def update_persona_from_payload(
                        "skills_proficiency", "frequency_of_use", "constraints"):
         if text_field in sent and sent[text_field] is None:
             sent[text_field] = ""
-    validate_people(db, organization_id, sent.get("owner_id"), sent.get("champion_id"))
+    validate_principals(
+        db, organization_id, project_id,
+        **{f: getattr(payload, f) for f in PERSONA_PRINCIPAL_FIELDS if f in sent},
+    )
+    expand_sent(payload, sent, PERSONA_PRINCIPAL_FIELDS)
     if "persona_type_id" in sent:
         try:
             sent["org_type_id"], sent["project_type_id"] = resolve_persona_type_refs(

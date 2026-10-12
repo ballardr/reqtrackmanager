@@ -32,6 +32,7 @@ Rules and gotchas:
 - `compliance_approve_requirement` and `compliance_reject_requirement` are approvals, gated by AI approval (see the main skill). Never call them unless the user asked for that specific requirement. `compliance_submit_requirement_for_approval` only queues a decision and is not gated.
 - Evidence can expire, so check `compliance_list_expiring_evidence` before reporting a project as compliant.
 - Delete tools (`compliance_delete_*`) are destructive: name the item and confirm first. Prefer the `archive_*` tools, which can be undone with `unarchive_*`.
+- A standard `owner`, a review `owner` and a required action `assignee` are `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. A standard and a standard-level review take users and organisation groups only; project reviews and assessments also take that project's groups. `null` clears an optional one; a standard always has an owner.
 - Standard member/group role assignment, bulk import and evidence file upload are not available through MCP.
 
 ### Tool list
@@ -106,13 +107,13 @@ Parameters: `organization_id*` (uuid, in path), `default_standards_manager_group
 
 Creates a new compliance standard, along with its mandatory first (draft) version.
 
-Parameters: `organization_id*` (uuid, in path), `reference*` (string, in body), `name*` (string, in body), `description` (string, in body), `issuing_organisation` (string, in body), `owner_id` (uuid, in body), `initial_version_label*` (string, in body), `initial_version_effective_date` (string, in body), `initial_version_change_note` (string, in body)
+Parameters: `organization_id*` (uuid, in path), `reference*` (string, in body), `name*` (string, in body), `description` (string, in body), `issuing_organisation` (string, in body), `owner` (object, in body), `initial_version_label*` (string, in body), `initial_version_effective_date` (string, in body), `initial_version_change_note` (string, in body)
 
 #### `compliance_update_standard` (write)
 
 Updates a compliance standard's name/description/issuing organisation/owner (its reference is immutable).
 
-Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `issuing_organisation` (string, in body), `owner_id*` (uuid, in body)
+Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `issuing_organisation` (string, in body), `owner*` (object, in body)
 
 #### `compliance_archive_standard` (write)
 
@@ -310,13 +311,13 @@ Parameters: `organization_id*` (uuid, in path), `project_id*` (uuid, in path), `
 
 Schedules a new review of a compliance standard itself (not a specific project's assignment).
 
-Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner_id` (uuid, in body), `notes` (string, in body)
+Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner` (object, in body), `notes` (string, in body)
 
 #### `compliance_update_standard_review` (write)
 
 Updates a scheduled (not yet completed) standard-level review.
 
-Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `review_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner_id` (uuid, in body), `notes` (string, in body)
+Parameters: `organization_id*` (uuid, in path), `standard_id*` (uuid, in path), `review_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner` (object, in body), `notes` (string, in body)
 
 #### `compliance_delete_standard_review` (write)
 
@@ -370,7 +371,7 @@ Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in pa
 
 Updates a required action assessment's assignee/due date/notes (not its completion — use complete/uncomplete).
 
-Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in path), `pcr_id*` (uuid, in path), `assessment_id*` (uuid, in path), `assignee_id` (uuid, in body), `due_date` (string, in body), `notes` (string, in body)
+Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in path), `pcr_id*` (uuid, in path), `assessment_id*` (uuid, in path), `assignee` (object, in body), `due_date` (string, in body), `notes` (string, in body)
 
 #### `compliance_complete_required_action_assessment` (write)
 
@@ -454,13 +455,13 @@ Parameters: `project_id*` (uuid, in path), `evidence_id*` (uuid, in path), `file
 
 Schedules a new review of a project's compliance standard assignment.
 
-Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner_id` (uuid, in body), `notes` (string, in body)
+Parameters: `project_id*` (uuid, in path), `project_compliance_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner` (object, in body), `notes` (string, in body)
 
 #### `compliance_update_project_review` (write)
 
 Updates a scheduled (not yet completed) project-level review.
 
-Parameters: `project_id*` (uuid, in path), `review_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner_id` (uuid, in body), `notes` (string, in body)
+Parameters: `project_id*` (uuid, in path), `review_id*` (uuid, in path), `frequency_label*` (string, in body), `recurrence_days` (integer, in body), `next_due_date*` (string, in body), `owner` (object, in body), `notes` (string, in body)
 
 #### `compliance_delete_project_review` (write)
 
@@ -608,6 +609,7 @@ Write workflow:
 Rules and gotchas:
 - Decisive tools are approvals, gated by AI approval (see the main skill): `approve_strategy`, `approve_future_state`, `activate_guiding_principle`, `retire_guiding_principle`, `resolve_open_question`. Only call them when the user asked for that specific item.
 - Everything here is project-scoped (`project_id`). Organisation-level strategies, future states and principles are not reachable through MCP.
+- `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a pain point, guiding principle or open question; responses return the same shape plus `label`. `null` clears it. On update, send the owner you want to keep, since an omitted owner is cleared.
 - Reports take `include_children` to roll up child projects.
 - Comments and file uploads are not available through MCP.
 
@@ -737,7 +739,7 @@ Parameters: `project_id*` (uuid, in path), `pain_point_type_id*` (uuid, in body)
 
 Updates a Pain Point's content.
 
-Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `pain_point_type_id*` (uuid, in body), `title*` (string, in body), `description` (string, in body), `source` (string, in body), `impact` (string, in body), `evidence` (string, in body), `priority` (string, in body), `is_intentional` (boolean, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `pain_point_type_id*` (uuid, in body), `title*` (string, in body), `description` (string, in body), `source` (string, in body), `impact` (string, in body), `evidence` (string, in body), `priority` (string, in body), `is_intentional` (boolean, in body), `owner` (object, in body)
 
 #### `context_strategy_list_pain_point_scores` (read)
 
@@ -761,13 +763,13 @@ Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `sc
 
 Creates a new Guiding Principle in Draft status.
 
-Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `principle_statement*` (string, in body), `rationale` (string, in body), `priority` (string, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `principle_statement*` (string, in body), `rationale` (string, in body), `priority` (string, in body), `owner` (object, in body)
 
 #### `context_strategy_update_guiding_principle` (write)
 
 Replaces a Guiding Principle's content, creating a new version.
 
-Parameters: `project_id*` (uuid, in path), `guiding_principle_id*` (uuid, in path), `name*` (string, in body), `principle_statement*` (string, in body), `rationale` (string, in body), `priority` (string, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `guiding_principle_id*` (uuid, in path), `name*` (string, in body), `principle_statement*` (string, in body), `rationale` (string, in body), `priority` (string, in body), `owner` (object, in body)
 
 #### `context_strategy_create_open_question` (write)
 
@@ -779,7 +781,7 @@ Parameters: `project_id*` (uuid, in path), `question*` (string, in body), `conte
 
 Updates an Open Question's content.
 
-Parameters: `project_id*` (uuid, in path), `open_question_id*` (uuid, in path), `question*` (string, in body), `context` (string, in body), `evidence` (string, in body), `priority` (string, in body), `due_date` (string, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `open_question_id*` (uuid, in path), `question*` (string, in body), `context` (string, in body), `evidence` (string, in body), `priority` (string, in body), `due_date` (string, in body), `owner` (object, in body)
 
 #### `context_strategy_create_strategy_relationship` (write)
 
@@ -1077,6 +1079,7 @@ Write workflow: `create_*` -> `update_*` -> `activate_*`; `retire_*` ends use. L
 Rules and gotchas:
 - All tools are project-scoped (`project_id`).
 - Shared (organisation) personas and stakeholders can be hidden per project with `set_*_visibility`; `reset_*_visibility` removes the project override. This only changes this project's view, not the shared record. Pass `include_hidden=true` to list hidden ones.
+- `owner` (and a persona's `champion`) is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a record; responses return the same shape plus `label`. A shared (organisation) record cannot name a project group. `null` clears it.
 - A hidden persona is no longer scored or linkable in that project, so check before linking.
 - Retire rather than delete; there are no delete tools.
 - No tool here is an approval, so none is gated by AI approval, but writes still need write mode and the caller's module role.
@@ -1219,13 +1222,13 @@ Parameters: `project_id*` (uuid, in path), `persona_id*` (uuid, in path)
 
 Creates a project-scoped Persona in Draft status.
 
-Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `persona_type_id` (uuid, in body), `role_title` (string, in body), `goals` (string, in body), `needs` (string, in body), `behaviours` (string, in body), `context_environment` (string, in body), `skills_proficiency` (string, in body), `frequency_of_use` (string, in body), `constraints` (string, in body), `weight` (number, in body), `owner_id` (uuid, in body), `champion_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `persona_type_id` (uuid, in body), `role_title` (string, in body), `goals` (string, in body), `needs` (string, in body), `behaviours` (string, in body), `context_environment` (string, in body), `skills_proficiency` (string, in body), `frequency_of_use` (string, in body), `constraints` (string, in body), `weight` (number, in body), `owner` (object, in body), `champion` (object, in body)
 
 #### `stakeholders_update_persona` (write)
 
 Updates a project-scoped Persona; only the fields supplied change.
 
-Parameters: `project_id*` (uuid, in path), `persona_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `persona_type_id` (uuid, in body), `role_title` (string, in body), `goals` (string, in body), `needs` (string, in body), `behaviours` (string, in body), `context_environment` (string, in body), `skills_proficiency` (string, in body), `frequency_of_use` (string, in body), `constraints` (string, in body), `weight` (number, in body), `owner_id` (uuid, in body), `champion_id` (uuid, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `persona_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `persona_type_id` (uuid, in body), `role_title` (string, in body), `goals` (string, in body), `needs` (string, in body), `behaviours` (string, in body), `context_environment` (string, in body), `skills_proficiency` (string, in body), `frequency_of_use` (string, in body), `constraints` (string, in body), `weight` (number, in body), `owner` (object, in body), `champion` (object, in body), `change_note` (string, in body)
 
 #### `stakeholders_activate_persona` (write)
 
@@ -1267,13 +1270,13 @@ Parameters: `project_id*` (uuid, in path), `stakeholder_id*` (uuid, in path)
 
 Creates a project-scoped Stakeholder in Draft status.
 
-Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `stakeholder_type_id` (uuid, in body), `role` (string, in body), `organisation_group` (string, in body), `interests` (string, in body), `responsibilities` (string, in body), `goals_needs` (string, in body), `priorities` (string, in body), `constraints` (string, in body), `workflows_scenarios` (string, in body), `contact_info` (string, in body), `target_cadence` (string, in body), `availability_constraints` (string, in body), `influence_level_id` (uuid, in body), `interest_level_id` (uuid, in body), `owner_id` (uuid, in body), `user_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `stakeholder_type_id` (uuid, in body), `role` (string, in body), `organisation_group` (string, in body), `interests` (string, in body), `responsibilities` (string, in body), `goals_needs` (string, in body), `priorities` (string, in body), `constraints` (string, in body), `workflows_scenarios` (string, in body), `contact_info` (string, in body), `target_cadence` (string, in body), `availability_constraints` (string, in body), `influence_level_id` (uuid, in body), `interest_level_id` (uuid, in body), `owner` (object, in body), `user_id` (uuid, in body)
 
 #### `stakeholders_update_stakeholder` (write)
 
 Updates a project-scoped Stakeholder; only the fields supplied change.
 
-Parameters: `project_id*` (uuid, in path), `stakeholder_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `stakeholder_type_id` (uuid, in body), `role` (string, in body), `organisation_group` (string, in body), `interests` (string, in body), `responsibilities` (string, in body), `goals_needs` (string, in body), `priorities` (string, in body), `constraints` (string, in body), `workflows_scenarios` (string, in body), `contact_info` (string, in body), `target_cadence` (string, in body), `availability_constraints` (string, in body), `influence_level_id` (uuid, in body), `interest_level_id` (uuid, in body), `owner_id` (uuid, in body), `user_id` (uuid, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `stakeholder_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `stakeholder_type_id` (uuid, in body), `role` (string, in body), `organisation_group` (string, in body), `interests` (string, in body), `responsibilities` (string, in body), `goals_needs` (string, in body), `priorities` (string, in body), `constraints` (string, in body), `workflows_scenarios` (string, in body), `contact_info` (string, in body), `target_cadence` (string, in body), `availability_constraints` (string, in body), `influence_level_id` (uuid, in body), `interest_level_id` (uuid, in body), `owner` (object, in body), `user_id` (uuid, in body), `change_note` (string, in body)
 
 #### `stakeholders_activate_stakeholder` (write)
 
@@ -1303,13 +1306,13 @@ Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path)
 
 Creates a Stakeholder Need in Draft status.
 
-Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `rationale` (string, in body), `owner_id` (uuid, in body)
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `rationale` (string, in body), `owner` (object, in body)
 
 #### `stakeholders_update_stakeholder_need` (write)
 
 Updates a Stakeholder Need; only the fields supplied change.
 
-Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `rationale` (string, in body), `owner_id` (uuid, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `rationale` (string, in body), `owner` (object, in body), `change_note` (string, in body)
 
 #### `stakeholders_activate_stakeholder_need` (write)
 
@@ -1348,6 +1351,7 @@ Rules and gotchas:
 - An `accepted` risk's levels, acceptance criteria and strategy cannot be edited; move it back to `assessed` first.
 - A change to a linked requirement moves its `effective` verdict to `needs_reassessment`. Reassess it with `assess_risk_treatment`; do not simply re-mark it effective without checking the change.
 - `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none).
+- A risk's `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. `null` clears it. Members of an owner group may assess treatments and record reviews, as the owner can.
 - There is no delete tool. Do not invent level or type ids; read them.
 
 ### Tool list
@@ -1410,13 +1414,13 @@ Parameters: `project_id*` (uuid, in path)
 
 Proposes a Risk in the Identified status. Any project member may; only the title is required.
 
-Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner_id` (uuid, in body), `review_date` (string, in body)
+Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner` (object, in body), `review_date` (string, in body)
 
 #### `risk_management_update_risk` (write)
 
 Updates a Risk as a new version; only the fields supplied change. Needs the Risk Manager role.
 
-Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `title` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner_id` (uuid, in body), `review_date` (string, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `risk_id*` (uuid, in path), `title` (string, in body), `statement` (string, in body), `cause` (string, in body), `risk_event` (string, in body), `consequence` (string, in body), `risk_type_id` (uuid, in body), `treatment_strategy` (string, in body), `acceptance_criteria` (string, in body), `inherent_likelihood_level_id` (uuid, in body), `inherent_consequence_level_id` (uuid, in body), `inherent_detectability_level_id` (uuid, in body), `residual_likelihood_level_id` (uuid, in body), `residual_consequence_level_id` (uuid, in body), `residual_detectability_level_id` (uuid, in body), `owner` (object, in body), `review_date` (string, in body), `change_note` (string, in body)
 
 #### `risk_management_transition_risk` (write)
 

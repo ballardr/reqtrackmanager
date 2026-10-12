@@ -8,15 +8,18 @@ import type {
   Comment,
   FileAsset,
   OrgUser,
+  PrincipalRef,
   RequirementAction,
   RequirementActionOutcome,
 } from "../api/types";
-import { REQUIREMENT_ACTION_OUTCOME_LABEL } from "../api/types";
+import { principalRef, REQUIREMENT_ACTION_OUTCOME_LABEL, savedPrincipalDisplay } from "../api/types";
 import { ArtefactLinksPanel } from "../components/ArtefactLinksPanel";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DetailLayout } from "../components/DetailLayout";
 import { FileAttachmentList } from "../components/FileAttachmentList";
+import { PrincipalBadge } from "../components/PrincipalBadge";
+import { PrincipalFormField } from "../components/PrincipalFormField";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -39,10 +42,13 @@ export function ActionDetailPage() {
   const [action, setAction] = useState<RequirementAction | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
 
-  const [form, setForm] = useState({ title: "", description: "", actionTypeId: "", assigneeId: "", dueDate: "" });
+  const [form, setForm] = useState<{
+    title: string; description: string; actionTypeId: string; assignee: PrincipalRef | null; dueDate: string;
+  }>({ title: "", description: "", actionTypeId: "", assignee: null, dueDate: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   // Guards `form` against `reload()` — called after every unrelated
@@ -76,7 +82,7 @@ export function ActionDetailPage() {
     if (!formDirtyRef.current) {
       setForm({
         title: a.title, description: a.description, actionTypeId: a.action_type_id,
-        assigneeId: a.assignee_id ?? "", dueDate: a.due_date ?? "",
+        assignee: principalRef(a.assignee), dueDate: a.due_date ?? "",
       });
     }
   }
@@ -91,6 +97,7 @@ export function ActionDetailPage() {
     (async () => {
       try {
         const project = await api.get<{ organization_id: string }>(`/api/v1/projects/${projectId}`);
+        setOrganizationId(project.organization_id);
         setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${project.organization_id}/users`));
       } catch {
         // No org role reachable — the assignee select below simply has
@@ -106,7 +113,7 @@ export function ActionDetailPage() {
         title: form.title,
         description: form.description,
         action_type_id: form.actionTypeId,
-        assignee_id: form.assigneeId || null,
+        assignee: form.assignee,
         due_date: form.dueDate || null,
       });
       formDirtyRef.current = false;
@@ -123,7 +130,7 @@ export function ActionDetailPage() {
         title: form.title,
         description: form.description,
         action_type_id: form.actionTypeId,
-        assignee_id: form.assigneeId || null,
+        assignee: form.assignee,
         due_date: form.dueDate || null,
         outcome_status: outcome,
       });
@@ -273,21 +280,21 @@ export function ActionDetailPage() {
                   ))}
                 </select>
               </label>
-              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-                {strings.actions.assignee}
-                <select
-                  className="input" aria-label={strings.actions.assignee}
-                  value={form.assigneeId} disabled={action.is_archived}
-                  onChange={(e) => updateForm((f) => ({ ...f, assigneeId: e.target.value }))}
-                >
-                  <option value="">{strings.reviews.unassigned}</option>
-                  {orgUsers.map((u) => (
-                    <option key={u.user_id} value={u.user_id}>
-                      {u.display_name} ({u.email})
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div style={{ flex: 1 }}>
+                {action.is_archived ? (
+                  <div className="stack" style={{ gap: "0.25rem" }}>
+                    <span>{strings.actions.assignee}</span>
+                    <PrincipalBadge principal={action.assignee} placeholder={strings.reviews.unassigned} />
+                  </div>
+                ) : (
+                  <PrincipalFormField
+                    label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
+                    value={form.assignee} display={savedPrincipalDisplay(form.assignee, action.assignee)}
+                    onChange={(assignee) => updateForm((f) => ({ ...f, assignee }))}
+                    ariaLabel={strings.actions.assignee} placeholder={strings.reviews.unassigned}
+                  />
+                )}
+              </div>
               <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
                 {strings.actions.dueDate}
                 <input

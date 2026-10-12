@@ -20,6 +20,7 @@ else 404s so another tenant's ids look absent.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -29,11 +30,19 @@ from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.user import User
+from app.modules.stakeholders._principals import (
+    NEED_PRINCIPAL_FIELDS,
+    Labels,
+    columns_for_create,
+    expand_sent,
+    principals_of,
+    resolve_labels,
+    validate_principals,
+)
 from app.modules.stakeholders._shared import (
     apply_value_error_as_conflict,
     get_visible_holder,
     holder_name,
-    validate_people,
 )
 from app.modules.stakeholders.enums import NeedStatus
 from app.modules.stakeholders.models import (
@@ -84,15 +93,27 @@ NEED_ATTACHMENTS = att.AttachmentKit(
 )
 
 
-def need_to_out(need: StakeholderNeed, version: StakeholderNeedVersion) -> NeedOut:
-    """Merges a need with its current version."""
+def need_to_out(
+    db: Session, need: StakeholderNeed, version: StakeholderNeedVersion, *, labels: Labels | None = None
+) -> NeedOut:
+    """Merges a need with its current version (`labels` is a pre-resolved batch for list endpoints)."""
     return NeedOut(
         id=need.id, project_id=need.project_id, creator_id=need.creator_id, is_archived=need.is_archived,
         archived_at=need.archived_at, archived_by=need.archived_by, name=version.name,
         description=version.description, rationale=version.rationale, status=version.status,
-        owner_id=version.owner_id, version_number=version.version_number, created_at=need.created_at,
-        updated_at=need.updated_at,
+        version_number=version.version_number, created_at=need.created_at, updated_at=need.updated_at,
+        **principals_of(
+            labels if labels is not None else resolve_labels(db, [version], NEED_PRINCIPAL_FIELDS),
+            version, NEED_PRINCIPAL_FIELDS,
+        ),
     )
+
+
+def needs_to_out(db: Session, needs: Sequence[StakeholderNeed]) -> list[NeedOut]:
+    """`need_to_out` for many needs, resolving every owner in one batch."""
+    versions = [get_current_need_version(db, n.id) for n in needs]
+    labels = resolve_labels(db, versions, NEED_PRINCIPAL_FIELDS)
+    return [need_to_out(db, n, v, labels=labels) for n, v in zip(needs, versions, strict=True)]
 
 
 def get_need_in_project(db: Session, project_id: uuid.UUID, need_id: uuid.UUID) -> StakeholderNeed:
@@ -128,13 +149,15 @@ def require_need_manage(db: Session, current_user: User, project: Project) -> No
 def create_need_from_payload(db: Session, payload: NeedCreate, creator: User, project: Project) -> NeedOut:
     """Validates a create payload, creates the need, audit-logs, commits and
     returns the API shape."""
-    validate_people(db, project.organization_id, payload.owner_id)
-    need = create_need(db, project_id=project.id, creator=creator, **payload.model_dump())
+    validate_principals(db, project.organization_id, project.id, owner=payload.owner)
+    content = payload.model_dump(exclude=set(NEED_PRINCIPAL_FIELDS))
+    content.update(columns_for_create(payload, NEED_PRINCIPAL_FIELDS))
+    need = create_need(db, project_id=project.id, creator=creator, **content)
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="created", actor_id=creator.id,
               project_id=project.id, detail={"name": payload.name})
     db.commit()
     db.refresh(need)
-    return need_to_out(need, get_current_need_version(db, need.id))
+    return need_to_out(db, need, get_current_need_version(db, need.id))
 
 
 def update_need_from_payload(
@@ -148,14 +171,16 @@ def update_need_from_payload(
     for text_field in _TEXT_FIELDS:
         if text_field in sent and sent[text_field] is None:
             sent[text_field] = ""
-    validate_people(db, project.organization_id, sent.get("owner_id"))
+    if "owner" in sent:
+        validate_principals(db, project.organization_id, project.id, owner=payload.owner)
+    expand_sent(payload, sent, NEED_PRINCIPAL_FIELDS)
     lock_row_for_update(db, StakeholderNeed, need.id)
     current = get_current_need_version(db, need.id)
     apply_need_new_version(db, need, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="updated", actor_id=actor.id,
               project_id=need.project_id)
     db.commit()
-    return need_to_out(need, get_current_need_version(db, need.id))
+    return need_to_out(db, need, get_current_need_version(db, need.id))
 
 
 def transition_need_endpoint(
@@ -166,7 +191,7 @@ def transition_need_endpoint(
     current = get_current_need_version(db, need.id)
     apply_value_error_as_conflict(transition_need, db, need, current, new_status, actor, action=action, comment=comment)
     db.commit()
-    return need_to_out(need, get_current_need_version(db, need.id))
+    return need_to_out(db, need, get_current_need_version(db, need.id))
 
 
 # --- Links -------------------------------------------------------------------

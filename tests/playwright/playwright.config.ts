@@ -63,6 +63,8 @@ const GLOBAL_STATE_SPECS = [
 ];
 
 export default defineConfig({
+  // Fails fast, naming the cause, when the stack's file storage is full or unreachable.
+  globalSetup: "./global-setup.ts",
   testDir: "./tests",
   timeout: 30_000,
   workers: 2,

@@ -248,6 +248,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.compliance.models import ComplianceRequiredActionAssessment, ComplianceReview, ComplianceStandard
 from app.modules.compliance.service import (
     COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
     COMPLIANCE_ACTION_ASSESSMENT_VIEW_PERMISSION,
@@ -272,6 +273,7 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleScheduledJob,
+    PrincipalReference,
 )
 
 if TYPE_CHECKING:
@@ -310,6 +312,35 @@ _ARTEFACT_TYPES = (
     "project_compliance_requirement",
     "compliance_required_action_assessment",
 )
+
+
+# The people fields, which may name a user or a group (`services.principals`): a standard's owner is
+# mandatory (so deleting its group must reassign), a review's owner and an assessment's assignee are
+# optional. A standard-level review and a standard are organisation-scoped (no project group), a
+# project review and an assessment may also name the project's groups.
+_PRINCIPAL_REFERENCES = (
+    PrincipalReference(
+        model=ComplianceStandard, field="owner", label="compliance standard owners",
+        audit_entity_type="compliance_standard", mandatory=True,
+    ),
+    PrincipalReference(
+        model=ComplianceReview, field="owner", label="compliance review owners",
+        audit_entity_type="compliance_review",
+    ),
+    PrincipalReference(
+        model=ComplianceRequiredActionAssessment, field="assignee", label="required action assignees",
+        audit_entity_type="compliance_required_action_assessment",
+    ),
+)
+
+
+def _principal_param(field: str, what: str, *, required: bool = False, org_only: bool = False) -> dict:
+    """Tool-parameter definition for a people field: `{"type": "user" | "org_group" | "project_group", "id": uuid}`."""
+    kinds = '"user" | "org_group"' if org_only else '"user" | "org_group" | "project_group"'
+    return {
+        "name": field, "type": "object", "required": required, "in": "body",
+        "description": f"Who {what}: {{\"type\": {kinds}, \"id\": uuid}}." + ("" if required else " Null clears it."),
+    }
 
 
 def get_router() -> APIRouter | None:
@@ -568,6 +599,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
+    principal_references=_PRINCIPAL_REFERENCES,
     entity_scopes={
         "standard": EntityScopeDefinition(
             resolve_organization_id=_resolve_standard_organization_id,
@@ -907,8 +939,7 @@ MODULE_DEFINITION = ModuleDefinition(
                  "description": "Free-text description."},
                 {"name": "issuing_organisation", "type": "string", "required": False, "in": "body",
                  "description": "The body that issues/owns this standard (e.g. ISO, NIST)."},
-                {"name": "owner_id", "type": "uuid", "required": False, "in": "body",
-                 "description": "User who owns this standard; defaults to the caller."},
+                _principal_param("owner", "owns this standard (defaults to you)", org_only=True),
                 {"name": "initial_version_label", "type": "string", "required": True, "in": "body",
                  "description": "Label for the standard's mandatory first (draft) version."},
                 {"name": "initial_version_effective_date", "type": "string", "required": False, "in": "body",
@@ -930,7 +961,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "description", "type": "string", "required": False, "in": "body", "description": "Free-text description."},
                 {"name": "issuing_organisation", "type": "string", "required": False, "in": "body",
                  "description": "The body that issues/owns this standard."},
-                {"name": "owner_id", "type": "uuid", "required": True, "in": "body", "description": "User who owns this standard."},
+                _principal_param("owner", "owns this standard", required=True, org_only=True),
             ],
         ),
         McpToolDefinition(
@@ -1403,7 +1434,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "recurrence_days", "type": "integer", "required": False, "in": "body",
                  "description": "Days between recurrences, if recurring."},
                 {"name": "next_due_date", "type": "string", "required": True, "in": "body", "description": "ISO date this review is next due."},
-                {"name": "owner_id", "type": "uuid", "required": False, "in": "body", "description": "User who owns this review."},
+                _principal_param("owner", "owns this review", org_only=True),
                 {"name": "notes", "type": "string", "required": False, "in": "body", "description": "Free-text notes."},
             ],
         ),
@@ -1421,7 +1452,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "recurrence_days", "type": "integer", "required": False, "in": "body",
                  "description": "Days between recurrences, if recurring."},
                 {"name": "next_due_date", "type": "string", "required": True, "in": "body", "description": "ISO date this review is next due."},
-                {"name": "owner_id", "type": "uuid", "required": False, "in": "body", "description": "User who owns this review."},
+                _principal_param("owner", "owns this review", org_only=True),
                 {"name": "notes", "type": "string", "required": False, "in": "body", "description": "Free-text notes."},
             ],
         ),
@@ -1582,7 +1613,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "project_compliance_id", "type": "uuid", "required": True, "in": "path", "description": "The standard assignment."},
                 {"name": "pcr_id", "type": "uuid", "required": True, "in": "path", "description": "The project compliance requirement."},
                 {"name": "assessment_id", "type": "uuid", "required": True, "in": "path", "description": "The required action assessment to update."},
-                {"name": "assignee_id", "type": "uuid", "required": False, "in": "body", "description": "User assigned to this required action."},
+                _principal_param("assignee", "is assigned this required action"),
                 {"name": "due_date", "type": "string", "required": False, "in": "body", "description": "ISO due date."},
                 {"name": "notes", "type": "string", "required": False, "in": "body", "description": "Free-text notes."},
             ],
@@ -1776,7 +1807,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "recurrence_days", "type": "integer", "required": False, "in": "body",
                  "description": "Days between recurrences, if recurring."},
                 {"name": "next_due_date", "type": "string", "required": True, "in": "body", "description": "ISO date this review is next due."},
-                {"name": "owner_id", "type": "uuid", "required": False, "in": "body", "description": "User who owns this review."},
+                _principal_param("owner", "owns this review"),
                 {"name": "notes", "type": "string", "required": False, "in": "body", "description": "Free-text notes."},
             ],
         ),
@@ -1793,7 +1824,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "recurrence_days", "type": "integer", "required": False, "in": "body",
                  "description": "Days between recurrences, if recurring."},
                 {"name": "next_due_date", "type": "string", "required": True, "in": "body", "description": "ISO date this review is next due."},
-                {"name": "owner_id", "type": "uuid", "required": False, "in": "body", "description": "User who owns this review."},
+                _principal_param("owner", "owns this review"),
                 {"name": "notes", "type": "string", "required": False, "in": "body", "description": "Free-text notes."},
             ],
         ),

@@ -19,7 +19,7 @@ from app.deps import get_current_user
 from app.models.project import Project, ProjectComponent
 from app.models.user import User
 from app.schemas.requirement import RequirementDueForReviewOut
-from app.services.reviews import get_due_reviews_for_user
+from app.services.reviews import get_due_reviews_for_user, reviewer_labels
 
 router = APIRouter(prefix="/api/v1/me", tags=["me"])
 
@@ -41,6 +41,7 @@ def list_my_due_reviews(
     same contract as `list_requirements`: omitting both returns everything.
     """
     due = get_due_reviews_for_user(db, current_user.id)
+    reviewers = reviewer_labels(db, [version for version, _ in due])
     component_ids = {req.component_id for _, req in due}
     component_names = (
         dict(db.execute(select(ProjectComponent.id, ProjectComponent.name).where(ProjectComponent.id.in_(component_ids))).all())
@@ -57,7 +58,7 @@ def list_my_due_reviews(
         RequirementDueForReviewOut(
             requirement_id=req.id, project_id=req.project_id, project_name=project_names.get(req.project_id),
             unique_code=req.unique_code, name=version.name, review_date=version.review_date,
-            reviewer_id=version.reviewer_id, reviewer_name=current_user.display_name,
+            reviewer=reviewers[(version.reviewer_type, version.reviewer_id)] if version.reviewer_id else None,
             component_id=req.component_id, component_name=component_names.get(req.component_id, ""),
         )
         for version, req in due

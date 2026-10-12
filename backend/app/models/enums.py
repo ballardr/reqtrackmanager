@@ -394,3 +394,18 @@ class ExternalUserPolicy(str, enum.Enum):
     DISABLED = "disabled"
     ORG_DOMAIN_ONLY = "org_domain_only"
     ANYONE = "anyone"
+
+
+class PrincipalType(str, enum.Enum):
+    """What a principal reference (`services.principals`) points at: a login
+    or a group. A closed core set — a module never adds a value; it only
+    declares which of its columns hold a principal
+    (`ModuleDefinition.principal_references`).
+
+    ORG_GROUP is an `OrgGroup`; PROJECT_GROUP is a `ProjectGroup` and is only
+    valid for a record inside that group's own project.
+    """
+
+    USER = "user"
+    ORG_GROUP = "org_group"
+    PROJECT_GROUP = "project_group"

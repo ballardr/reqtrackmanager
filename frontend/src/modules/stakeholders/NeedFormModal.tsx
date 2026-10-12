@@ -5,8 +5,8 @@
  * guide.md principle 3: a full entity create/edit is a `Modal`). Shared by
  * create and edit (distinguished by whether `initial` is passed). A need is
  * always project-scoped, so unlike the Persona/Stakeholder forms there is no
- * scope or type to choose. `owner_id` is assigned from the detail page through
- * `AssigneePicker`; `change_note` only renders when editing. Every field has a
+ * scope or type to choose. `owner` is assigned from the detail page through
+ * `RecordPrincipalField`; `change_note` only renders when editing. Every field has a
  * visible label (principle 13).
  */
 import { useState } from "react";

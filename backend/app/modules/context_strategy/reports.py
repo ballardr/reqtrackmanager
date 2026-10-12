@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import uuid
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
@@ -63,7 +64,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
-from app.modules.context_strategy._shared import MODULE_KEY, _effective_pain_point_type_name
+from app.modules.context_strategy._shared import MODULE_KEY, _effective_pain_point_type_name, owner_labels, owner_of
 from app.modules.context_strategy.enums import (
     FutureStateScope,
     FutureStateStatus,
@@ -107,6 +108,7 @@ from app.modules.context_strategy.pain_point_scores import (
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.registry import ReportDefinition, ReportParamDefinition, get_artefact_summary
 from app.services import relationships
+from app.services.principals import principal_text
 from app.services.report_framework import (
     ReportContext,
     ReportLink,
@@ -188,6 +190,19 @@ def _user_names(db: Session, ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]
     if not wanted:
         return {}
     return {u.id: u.display_name for u in db.scalars(select(User).where(User.id.in_(wanted))).all()}
+
+
+def _owner_text(db: Session, rows: list[Any]) -> Callable[[Any], str | None]:
+    """Resolves the owners of `rows` (anything with `owner_type` / `owner_id`) once; returns a lookup
+    `row -> text or None when unowned` (`services.principals.principal_text`: a group reads
+    `Name (Org group)`, so a group is never mistaken for a person)."""
+    labels = owner_labels(db, rows)
+
+    def text(row: Any) -> str | None:
+        owner = owner_of(labels, row)
+        return None if owner is None else principal_text(owner)
+
+    return text
 
 
 def _outgoing(db: Session, source_type: str, source_ids: list[uuid.UUID], target_type: str) -> dict[uuid.UUID, list[uuid.UUID]]:
@@ -942,11 +957,11 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
         OpenQuestion.project_id.in_([p.id for p in projects]), OpenQuestion.is_archived.is_(False),
         OpenQuestion.status.in_(OPEN_QUESTION_OPEN_STATUSES),
     )).all()) if projects else []
-    owners = _user_names(db, {q.owner_id for q in questions})
+    owners = _owner_text(db, questions)
     items = [
         OpenQuestionRow(
             q.id, q.project_id, names[q.project_id], q.question, q.priority.value, q.status.value,
-            owners.get(q.owner_id) if q.owner_id else None, q.due_date, (req.today - q.created_at.date()).days,
+            owners(q), q.due_date, (req.today - q.created_at.date()).days,
             q.due_date is not None and q.due_date < req.today,
         )
         for q in questions
@@ -1088,7 +1103,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
             decision_ids[link.source_id].add(link.target_id)
         elif link.source_type == DECISION_TYPE and link.target_type == GUIDING_PRINCIPLE_TYPE:
             decision_ids[link.target_id].add(link.source_id)
-    owners = _user_names(db, {versions[p.id].owner_id for p in active})
+    owners = _owner_text(db, [versions[p.id] for p in active])
     items = []
     for p in active:
         v = versions[p.id]
@@ -1099,7 +1114,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
         reqs = sum(1 for r in req_links.get(p.id, []) if r in requirements)
         items.append({
             "id": p.id, "name": v.name, "scope": p.scope.value, "project_name": names.get(p.project_id, "") if p.project_id else "",
-            "priority": v.priority.value, "owner": owners.get(v.owner_id) if v.owner_id else None,
+            "priority": v.priority.value, "owner": owners(v),
             "decisions": decisions, "requirements": reqs, "applied": decisions + reqs > 0,
         })
     items.sort(key=lambda i: (-(i["decisions"] + i["requirements"]), i["name"].lower()))

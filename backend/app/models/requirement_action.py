@@ -37,6 +37,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.enums import RequirementActionOutcome
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 
 class RequirementAction(UUIDPKMixin, TimestampMixin, Base):
@@ -53,9 +54,13 @@ class RequirementAction(UUIDPKMixin, TimestampMixin, Base):
         outcome_status: Lifecycle/outcome state (C-A-06-style soft state,
             not a version history — an action has no versioned content the
             way a requirement does).
-        assignee_id: The user accountable for completing the action
-            (mirrors the accountability pattern already used by requirement
-            reviews, C-R-10).
+        assignee_type / assignee_id: The principal (a user, an organisation
+            group or one of the project's groups — `models.principal`)
+            accountable for completing the action (mirrors the accountability
+            pattern already used by requirement reviews, C-R-10); both null
+            when unassigned. No foreign key;
+            `services.principals.validate_principal` checks it on write and
+            `CORE_PRINCIPAL_REFERENCES` guards group deletion.
         due_date: When the action is due.
         completed_at / completed_by: Stamped when `outcome_status`
             transitions away from PENDING (to COMPLETED or FAILED) — "when
@@ -66,7 +71,7 @@ class RequirementAction(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "requirement_actions"
-    __table_args__ = (UniqueConstraint("project_id", "unique_code"),)
+    __table_args__ = (UniqueConstraint("project_id", "unique_code"), principal_check_constraint("assignee", nullable=True))
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     unique_code: Mapped[str] = mapped_column(String(64), index=True)
@@ -76,7 +81,8 @@ class RequirementAction(UUIDPKMixin, TimestampMixin, Base):
     outcome_status: Mapped[RequirementActionOutcome] = mapped_column(
         str_enum(RequirementActionOutcome, 20), default=RequirementActionOutcome.PENDING
     )
-    assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    assignee_type: Mapped[str | None] = principal_type_column(nullable=True)
+    assignee_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

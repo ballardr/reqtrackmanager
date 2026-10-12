@@ -244,6 +244,7 @@ from app.modules.context_strategy.models import (
     StrategyVersion,
 )
 from app.modules.registry import LinkTypeSeed
+from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.link_types import ensure_org_link_type
 from app.services.relationships import create_link, get_link_between
@@ -1201,6 +1202,11 @@ def create_pain_point(
     return pain_point
 
 
+def _owner_columns(owner: PrincipalRef | None) -> tuple[str | None, uuid.UUID | None]:
+    """An owner principal as its `(owner_type, owner_id)` column values (both None when unowned)."""
+    return (owner.type.value, owner.id) if owner else (None, None)
+
+
 def update_pain_point(
     db: Session,
     pain_point: PainPoint,
@@ -1212,8 +1218,8 @@ def update_pain_point(
     impact: str | None = None,
     evidence: str | None = None,
     priority: PainPointPriority | None = None,
-    owner_id: uuid.UUID | None = None,
-    owner_id_explicitly_set: bool = False,
+    owner: PrincipalRef | None = None,
+    owner_explicitly_set: bool = False,
     date_identified: date | None = None,
     is_intentional: bool | None = None,
 ) -> PainPoint:
@@ -1221,10 +1227,10 @@ def update_pain_point(
     — see module docstring). Any field left `None` (and not explicitly
     flagged otherwise) is left unchanged.
 
-    `owner_id` follows the `target_date_explicitly_set` convention
-    `apply_future_state_new_version` already uses for a nullable field —
-    assigning `NULL` (unassigning an owner) must be distinguishable from
-    "not mentioned in this call."
+    `owner` (a principal — the caller has validated it) follows the
+    `target_date_explicitly_set` convention `apply_future_state_new_version`
+    already uses for a nullable field — assigning `NULL` (unassigning an
+    owner) must be distinguishable from "not mentioned in this call."
     """
     if pain_point_type is not None:
         pain_point.pain_point_type_id = pain_point_type.id
@@ -1240,8 +1246,8 @@ def update_pain_point(
         pain_point.evidence = evidence
     if priority is not None:
         pain_point.priority = priority
-    if owner_id_explicitly_set:
-        pain_point.owner_id = owner_id
+    if owner_explicitly_set:
+        pain_point.owner_type, pain_point.owner_id = _owner_columns(owner)
     if date_identified is not None:
         pain_point.date_identified = date_identified
     if is_intentional is not None:
@@ -1422,7 +1428,7 @@ def create_guiding_principle(
     principle_statement: str,
     rationale: str = "",
     priority: GuidingPrinciplePriority = GuidingPrinciplePriority.MEDIUM,
-    owner_id: uuid.UUID | None = None,
+    owner: PrincipalRef | None = None,
 ) -> GuidingPrinciple:
     """Creates a Guiding Principle and its initial (version 1) content
     snapshot, in `DRAFT` status — exact mirror of `create_strategy`/`create_
@@ -1435,6 +1441,7 @@ def create_guiding_principle(
             `create_strategy` — only used to decide which identity column
             to populate when `scope` is `ORGANIZATION`.
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
+        owner: The principal responsible (the caller has validated it), or None.
     """
     guiding_principle = GuidingPrinciple(
         scope=scope,
@@ -1449,7 +1456,8 @@ def create_guiding_principle(
     version = GuidingPrincipleVersion(
         guiding_principle_id=guiding_principle.id, version_number=1, valid_from=now, valid_to=None,
         name=name, principle_statement=principle_statement, rationale=rationale, priority=priority,
-        status=GuidingPrincipleStatus.DRAFT, owner_id=owner_id, change_note="Initial creation.",
+        status=GuidingPrincipleStatus.DRAFT, owner_type=owner.type.value if owner else None,
+        owner_id=owner.id if owner else None, change_note="Initial creation.",
         created_by=creator.id, created_at=now,
     )
     db.add(version)
@@ -1467,8 +1475,8 @@ def apply_guiding_principle_new_version(
     principle_statement: str | None = None,
     rationale: str | None = None,
     priority: GuidingPrinciplePriority | None = None,
-    owner_id: uuid.UUID | None = None,
-    owner_id_explicitly_set: bool = False,
+    owner: PrincipalRef | None = None,
+    owner_explicitly_set: bool = False,
     status_value: GuidingPrincipleStatus | None = None,
     change_note: str = "",
 ) -> GuidingPrincipleVersion:
@@ -1476,15 +1484,18 @@ def apply_guiding_principle_new_version(
     field left unspecified — exact mirror of `apply_new_version`/`apply_
     future_state_new_version`.
 
-    `owner_id` is nullable (a Guiding Principle may have no assigned owner),
-    so — mirroring `apply_future_state_new_version`'s `target_date`/
-    `target_date_explicitly_set` pair — it gets its own `owner_id_
-    explicitly_set` flag to disambiguate "unassign the owner"
-    (`owner_id=None`, flag `True`) from "leave it unchanged" (flag stays
-    `False`).
+    `owner` (a principal — the caller has validated it) is nullable (a
+    Guiding Principle may have no assigned owner), so — mirroring
+    `apply_future_state_new_version`'s `target_date`/`target_date_explicitly_set`
+    pair — it gets its own `owner_explicitly_set` flag to disambiguate
+    "unassign the owner" (`owner=None`, flag `True`) from "leave it
+    unchanged" (flag stays `False`).
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
+    owner_type, owner_id = (
+        _owner_columns(owner) if owner_explicitly_set else (current_version.owner_type, current_version.owner_id)
+    )
 
     new_version = GuidingPrincipleVersion(
         guiding_principle_id=guiding_principle.id,
@@ -1498,7 +1509,8 @@ def apply_guiding_principle_new_version(
         rationale=rationale if rationale is not None else current_version.rationale,
         priority=priority if priority is not None else current_version.priority,
         status=status_value if status_value is not None else current_version.status,
-        owner_id=owner_id if owner_id_explicitly_set else current_version.owner_id,
+        owner_type=owner_type,
+        owner_id=owner_id,
         change_note=change_note,
         created_by=actor.id,
         created_at=now,
@@ -1722,8 +1734,8 @@ def update_open_question(
     context: str | None = None,
     evidence: str | None = None,
     priority: OpenQuestionPriority | None = None,
-    owner_id: uuid.UUID | None = None,
-    owner_id_explicitly_set: bool = False,
+    owner: PrincipalRef | None = None,
+    owner_explicitly_set: bool = False,
     due_date: date | None = None,
     due_date_explicitly_set: bool = False,
 ) -> OpenQuestion:
@@ -1731,8 +1743,8 @@ def update_open_question(
     snapshot — see module docstring). Any field left `None` (and not
     explicitly flagged otherwise) is left unchanged.
 
-    `owner_id`/`due_date` are both nullable, so — mirroring `update_pain_
-    point`'s `owner_id`/`owner_id_explicitly_set` pair and `apply_future_
+    `owner`/`due_date` are both nullable, so — mirroring `update_pain_
+    point`'s `owner`/`owner_explicitly_set` pair and `apply_future_
     state_new_version`'s `target_date`/`target_date_explicitly_set` pair —
     each gets its own `..._explicitly_set` flag to disambiguate "clear this
     field" from "leave it unchanged."
@@ -1745,8 +1757,8 @@ def update_open_question(
         open_question.evidence = evidence
     if priority is not None:
         open_question.priority = priority
-    if owner_id_explicitly_set:
-        open_question.owner_id = owner_id
+    if owner_explicitly_set:
+        open_question.owner_type, open_question.owner_id = _owner_columns(owner)
     if due_date_explicitly_set:
         open_question.due_date = due_date
     db.flush()

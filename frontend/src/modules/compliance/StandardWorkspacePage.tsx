@@ -62,13 +62,14 @@ import type { OrgGroup, OrgUser } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { MetricTile } from "../../components/MetricTile";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
 import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
 import { StandardApplicabilityPanel } from "./StandardApplicabilityPanel";
-import { StandardFormModal } from "./StandardFormModal";
+import { type EditableStandardFieldValues, StandardFormModal } from "./StandardFormModal";
 import { StandardMembersSection } from "./StandardMembersSection";
 import { StandardProjectsPanel } from "./StandardProjectsPanel";
 import { StandardVersionsSection } from "./StandardVersionsSection";
@@ -251,6 +252,10 @@ export function StandardWorkspacePage() {
           <div className="card stack">
             <p>{standard.description || <span className="text-muted">No description.</span>}</p>
             {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
+            <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+              <span className="text-muted">Owner:</span>
+              <PrincipalBadge principal={standard.owner} />
+            </div>
             <div className="row">
               <button className="btn" onClick={() => setEditing(true)}>Edit</button>
               <button className="btn" onClick={handleExport} disabled={exporting}>
@@ -299,6 +304,7 @@ export function StandardWorkspacePage() {
         <StandardFormModal
           initial={standard}
           orgId={standard.organization_id}
+          orgUsers={orgUsers}
           error={editError}
           onCancel={() => {
             setEditing(false);
@@ -307,10 +313,9 @@ export function StandardWorkspacePage() {
           onSave={async (values) => {
             setEditError(null);
             try {
-              const updated = await complianceApi.updateStandard(standard.organization_id, standard.id, {
-                ...values,
-                owner_id: standard.owner_id,
-              } as { name: string; description: string; issuing_organisation: string | null; owner_id: string });
+              const updated = await complianceApi.updateStandard(
+                standard.organization_id, standard.id, values as EditableStandardFieldValues,
+              );
               showToast("Standard updated.");
               setEditing(false);
               setStandard(updated);

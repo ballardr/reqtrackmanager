@@ -11,16 +11,24 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, exists, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.enums import PrincipalType
 from app.models.notification import NotificationType
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementReview, RequirementVersion
 from app.models.user import User
+from app.schemas.principal import PrincipalOut
 from app.services import notifications
-from app.services.rbac import get_effective_project_managers
+from app.services.principals import (
+    principal_filter_clause,
+    principal_labels,
+    principal_recipients,
+    principal_ref,
+)
+from app.services.rbac import get_effective_project_managers, project_group_ids_for_user
 
 
 def _due_versions_query(project_id: UUID | None = None):
@@ -55,9 +63,17 @@ def get_due_reviews_for_project(db: Session, project_id: UUID) -> list[tuple[Req
     return list(db.execute(_due_versions_query(project_id=project_id)).all())
 
 
+def reviewer_labels(
+    db: Session, versions: list[RequirementVersion]
+) -> dict[tuple[str, UUID], PrincipalOut]:
+    """Display data for the reviewer of every version in `versions`, in one batch."""
+    return principal_labels(db, [principal_ref(v.reviewer_type, v.reviewer_id) for v in versions])
+
+
 def get_due_reviews_for_user(db: Session, user_id: UUID) -> list[tuple[RequirementVersion, Requirement]]:
     """Returns (version, requirement) pairs assigned to `user_id` as reviewer,
-    due/overdue, across every project (C-R-09/C-R-10).
+    due/overdue, across every project (C-R-09/C-R-10). A review assigned to a
+    group the user belongs to counts as theirs: any one member may record it.
 
     Unlike `get_due_reviews_for_project`, this spans every project the
     caller has any role on rather than one specific `project_id`, so its
@@ -72,9 +88,19 @@ def get_due_reviews_for_user(db: Session, user_id: UUID) -> list[tuple[Requireme
     filtering on `is_active` closes that gap directly, since there's no
     dependency factory to lean on.
     """
+    project_group_ids = _project_group_ids_with_due_reviews(db, user_id)
+    mine = principal_filter_clause(db, user_id, RequirementVersion.reviewer_type, RequirementVersion.reviewer_id)
+    if project_group_ids:
+        mine = or_(
+            mine,
+            and_(
+                RequirementVersion.reviewer_type == PrincipalType.PROJECT_GROUP.value,
+                RequirementVersion.reviewer_id.in_(project_group_ids),
+            ),
+        )
     query = (
         _due_versions_query()
-        .where(RequirementVersion.reviewer_id == user_id)
+        .where(mine)
         .join(Project, Project.id == Requirement.project_id)
         .join(Organization, Organization.id == Project.organization_id)
         .where(Organization.is_active.is_(True))
@@ -82,11 +108,32 @@ def get_due_reviews_for_user(db: Session, user_id: UUID) -> list[tuple[Requireme
     return list(db.execute(query).all())
 
 
+def _project_group_ids_with_due_reviews(db: Session, user_id: UUID) -> set[UUID]:
+    """The project groups the user belongs to that are named as reviewer on a due review. Project groups
+    are per project, so membership is resolved only for the projects that have such a review."""
+    project_ids = db.scalars(
+        select(Requirement.project_id)
+        .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
+        .where(
+            RequirementVersion.valid_to.is_(None),
+            RequirementVersion.review_date.is_not(None),
+            RequirementVersion.review_date <= date.today(),
+            RequirementVersion.reviewer_type == PrincipalType.PROJECT_GROUP.value,
+            Requirement.is_archived.is_(False),
+        )
+        .distinct()
+    ).all()
+    found: set[UUID] = set()
+    for project_id in project_ids:
+        found |= project_group_ids_for_user(db, user_id, project_id)
+    return found
+
+
 def send_due_review_reminders(db: Session) -> None:
     """Daily sweep (C-R-08): for every current requirement version whose
     review reminder is due (today >= review_date - lead_days) and hasn't
-    already been sent, notifies the assigned reviewer (or every project
-    manager if none is assigned) and stamps `review_reminder_sent_at`.
+    already been sent, notifies the assigned reviewer (every member of a reviewer
+    group; or every project manager if none can be notified) and stamps `review_reminder_sent_at`.
     """
     today = date.today()
     candidates = db.execute(
@@ -106,7 +153,11 @@ def send_due_review_reminders(db: Session) -> None:
         if today < version.review_date - timedelta(days=lead_days):
             continue
 
-        recipient_ids: set[UUID] = {version.reviewer_id} if version.reviewer_id else get_effective_project_managers(db, project.id)
+        # Every active member of a reviewer group; the project managers when there is no reviewer or the
+        # group has nobody to notify.
+        recipient_ids: set[UUID] = principal_recipients(db, [principal_ref(version.reviewer_type, version.reviewer_id)])
+        if not recipient_ids:
+            recipient_ids = get_effective_project_managers(db, project.id)
         for recipient_id in recipient_ids:
             recipient = db.get(User, recipient_id)
             if recipient is None:

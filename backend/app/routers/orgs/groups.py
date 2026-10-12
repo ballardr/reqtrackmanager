@@ -19,12 +19,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.enums import OrgRole
+from app.models.enums import OrgRole, PrincipalType
 from app.models.organization import OrgGroup, OrgGroupMember
 from app.models.user import User
 from app.modules.registry import run_org_group_deletion_hooks, run_org_group_member_removal_hooks
 from app.schemas.org import OrgGroupCreate, OrgGroupMemberAdd, OrgGroupOut, OrgGroupUpdate
+from app.schemas.principal import PrincipalRef, PrincipalUsageOut
 from app.services.audit import log_event
+from app.services.principals import compute_usage, prepare_group_deletion
 from app.services.rbac import (
     get_effective_org_roles,
     require_org_role,
@@ -216,10 +218,30 @@ def update_org_group(
     )
 
 
+@router.get("/{organization_id}/groups/{group_id}/usage", response_model=PrincipalUsageOut)
+def read_org_group_usage(
+    organization_id: UUID,
+    group_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """What still names this group as an owner/assignee (`services.principals.compute_usage`) — the
+    facts the delete dialog shows before offering a replacement.
+
+    Raises:
+        HTTPException: 404 if the group isn't in this organisation.
+    """
+    _get_org_group_in_org(db, organization_id, group_id)
+    return compute_usage(db, PrincipalRef(type=PrincipalType.ORG_GROUP, id=group_id))
+
+
 @router.delete("/{organization_id}/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_org_group(
     organization_id: UUID,
     group_id: UUID,
+    replacement_type: PrincipalType | None = Query(None),
+    replacement_id: UUID | None = Query(None),
+    clear_optional: bool = Query(False),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
@@ -237,14 +259,26 @@ def delete_org_group(
     `rbac._direct_project_managers` — so deleting an org group can't take
     either below one.
 
+    Records that name the group as an owner/assignee (`services.principals`)
+    block the delete (409) unless `replacement_type`/`replacement_id` names a
+    user or org group to take over every one of them, or `clear_optional`
+    empties the optional fields (a mandatory field always needs a replacement).
+
     Raises:
         HTTPException: 404 if the group isn't in this organisation; 400 if a
-            module blocks it.
+            module blocks it or the replacement is invalid; 409 if records still name it.
     """
     group = _get_org_group_in_org(db, organization_id, group_id)
     block_message = run_org_group_deletion_hooks(db, group_id)
     if block_message is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, block_message)
+    if (replacement_type is None) != (replacement_id is None):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "replacement_type and replacement_id go together.")
+    handed_over = prepare_group_deletion(
+        db, PrincipalRef(type=PrincipalType.ORG_GROUP, id=group_id), organization_id=organization_id,
+        project_id=None, actor_id=current_user.id, clear_optional=clear_optional,
+        replacement=PrincipalRef(type=replacement_type, id=replacement_id) if replacement_type else None,
+    )
 
     member_count = db.scalar(
         select(func.count()).select_from(OrgGroupMember).where(OrgGroupMember.org_group_id == group_id)
@@ -253,6 +287,7 @@ def delete_org_group(
         db, entity_type="org_group", entity_id=group_id, action="deleted", actor_id=current_user.id,
         organization_id=organization_id,
         detail={"name": group.name, "member_count": member_count,
+                "records_reassigned": handed_over.reassigned, "records_cleared": handed_over.cleared,
                 "granted_org_role": group.granted_org_role.value if group.granted_org_role else None},
     )
     db.delete(group)

@@ -8,7 +8,7 @@ import type { ComplianceStandard, StandardImportResult } from "./types";
 function standard(overrides: Partial<ComplianceStandard> = {}): ComplianceStandard {
   return {
     id: "std-2", organization_id: "org-1", reference: "SOC2", name: "SOC 2 Type II",
-    description: "", issuing_organisation: null, owner_id: "user-1", creator_id: "user-1",
+    description: "", issuing_organisation: null, owner: { type: "user", id: "user-1", label: "Demo User", member_count: null, exists: true }, creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, applicability_default: "opt_in",
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
   };

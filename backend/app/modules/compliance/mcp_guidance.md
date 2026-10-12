@@ -15,4 +15,5 @@ Rules and gotchas:
 - `compliance_approve_requirement` and `compliance_reject_requirement` are approvals, gated by AI approval (see the main skill). Never call them unless the user asked for that specific requirement. `compliance_submit_requirement_for_approval` only queues a decision and is not gated.
 - Evidence can expire, so check `compliance_list_expiring_evidence` before reporting a project as compliant.
 - Delete tools (`compliance_delete_*`) are destructive: name the item and confirm first. Prefer the `archive_*` tools, which can be undone with `unarchive_*`.
+- A standard `owner`, a review `owner` and a required action `assignee` are `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. A standard and a standard-level review take users and organisation groups only; project reviews and assessments also take that project's groups. `null` clears an optional one; a standard always has an owner.
 - Standard member/group role assignment, bulk import and evidence file upload are not available through MCP.

@@ -17,6 +17,7 @@ import type {
   RequirementAction,
   RequirementLevel,
   RequirementReviewOutcome,
+  PrincipalRef,
   RequirementVersionEntry,
 } from "../api/types";
 import {
@@ -25,11 +26,15 @@ import {
   REQUIREMENT_ACTION_OUTCOME_TONE,
   REQUIREMENT_LEVEL_LABEL,
   REQUIREMENT_STATUS_LABEL,
+  principalRef,
   REQUIREMENT_STATUS_TONE,
+  savedPrincipalDisplay,
 } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { ArtefactLinksPanel, type LinksChangeRequestMode } from "../components/ArtefactLinksPanel";
-import { AssigneePicker } from "../components/AssigneePicker";
+import { PrincipalBadge } from "../components/PrincipalBadge";
+import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
+import { PrincipalFormField } from "../components/PrincipalFormField";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
@@ -103,7 +108,8 @@ export function RequirementDetailPage() {
     level: "requirement" as RequirementLevel,
     reviewDate: "",
     reviewLeadDays: "",
-    reviewerId: "",
+    owner: null as PrincipalRef | null,
+    reviewer: null as PrincipalRef | null,
   });
   // Guards `form` against `reload()` — called after every unrelated
   // mutation on this page (posting a comment, uploading a file, linking an
@@ -140,7 +146,6 @@ export function RequirementDetailPage() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  const [reviewerPickerUnavailable, setReviewerPickerUnavailable] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   // Organisation id, needed to browse that org's shared resources (style
   // guide "Pattern: resource picker dialog") — set as soon as the project
@@ -202,7 +207,7 @@ export function RequirementDetailPage() {
   const [newActionTitle, setNewActionTitle] = useState("");
   const [newActionDescription, setNewActionDescription] = useState("");
   const [newActionTypeId, setNewActionTypeId] = useState("");
-  const [newActionAssigneeId, setNewActionAssigneeId] = useState("");
+  const [newActionAssignee, setNewActionAssignee] = useState<PrincipalRef | null>(null);
   const [newActionDueDate, setNewActionDueDate] = useState("");
   // Once locked, both flows above route through an ADD_ACTION change
   // request instead of the direct endpoint (item 514) — same "reason for
@@ -259,7 +264,8 @@ export function RequirementDetailPage() {
         level: req.level,
         reviewDate: req.review_date ?? "",
         reviewLeadDays: req.review_lead_days != null ? String(req.review_lead_days) : "",
-        reviewerId: req.reviewer_id ?? "",
+        owner: principalRef(req.owner),
+        reviewer: principalRef(req.reviewer),
       });
     }
   }
@@ -326,7 +332,7 @@ export function RequirementDetailPage() {
         await api.post(`/api/v1/projects/${projectId}/change-requests`, {
           kind: "add_action", requirement_id: requirementId,
           proposed_action_title: newActionTitle, proposed_action_description: newActionDescription,
-          proposed_action_type_id: newActionTypeId, proposed_action_assignee_id: newActionAssigneeId || null,
+          proposed_action_type_id: newActionTypeId, proposed_action_assignee: newActionAssignee,
           proposed_action_due_date: newActionDueDate || null, reason: addActionReason,
         });
         showToast(strings.changeRequests.created);
@@ -335,14 +341,14 @@ export function RequirementDetailPage() {
           title: newActionTitle,
           description: newActionDescription,
           action_type_id: newActionTypeId,
-          assignee_id: newActionAssigneeId || null,
+          assignee: newActionAssignee,
           due_date: newActionDueDate || null,
         });
       }
       setNewActionTitle("");
       setNewActionDescription("");
       setNewActionTypeId("");
-      setNewActionAssigneeId("");
+      setNewActionAssignee(null);
       setNewActionDueDate("");
       setAddActionReason("");
       setShowCreateAction(false);
@@ -396,10 +402,9 @@ export function RequirementDetailPage() {
         setOrgForceLinksLocked(org.force_require_change_request_for_approved_links);
       } catch {
         // Org member directory isn't reachable for this user (e.g. no org
-        // role) — fall back to the plain user-ID input rather than break
-        // the page. `orgForceLinksLocked` stays at its default (false) — see its
-        // own state comment.
-        setReviewerPickerUnavailable(true);
+        // role) — the owner and reviewer pickers search the server instead
+        // and stay usable. `orgForceLinksLocked` stays at its default
+        // (false) — see its own state comment.
       }
     })();
   }, [projectId]);
@@ -448,7 +453,7 @@ export function RequirementDetailPage() {
         description: form.description,
         component_id: requirement.component_id,
         category_id: requirement.category_id,
-        owner_id: requirement.owner_id,
+        owner: form.owner,
         target_stage_id: form.targetStageId,
         level: form.level,
         keywords: requirement.keywords,
@@ -456,7 +461,7 @@ export function RequirementDetailPage() {
         change_note: form.changeNote,
         review_date: form.reviewDate || null,
         review_lead_days: form.reviewLeadDays ? Number(form.reviewLeadDays) : null,
-        reviewer_id: form.reviewerId || null,
+        reviewer: form.reviewer,
       });
       formDirtyRef.current = false;
       reload();
@@ -642,6 +647,13 @@ export function RequirementDetailPage() {
         </div>
       </div>
 
+      {projectId && (
+        <WatchingGroupsPanel
+          recordPath={`/api/v1/projects/${projectId}/requirements/${requirementId}`}
+          organizationId={organizationId ?? undefined} projectId={projectId} canManage={canArchive}
+        />
+      )}
+
       {requirement.is_archived && (
         <div className="badge" style={{ alignSelf: "flex-start" }}>
           {strings.requirements.archivedBadge}
@@ -700,6 +712,9 @@ export function RequirementDetailPage() {
             <span className="badge">Target: {stageName(requirement.target_stage_id)}</span>
             <span className="badge">Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</span>
             {requirement.review_date && <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>}
+            <span className="badge">
+              {strings.requirements.owner}: <PrincipalBadge principal={requirement.owner} />
+            </span>
             {requirement.keywords.map((k) => (
               <span key={k} className="badge">
                 {k}
@@ -784,33 +799,21 @@ export function RequirementDetailPage() {
                 onChange={(e) => updateForm((f) => ({ ...f, reviewLeadDays: e.target.value }))}
               />
             </label>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.reviewer}
-              {reviewerPickerUnavailable ? (
-                <input
-                  className="input" placeholder={strings.admin.userId} value={form.reviewerId}
-                  onChange={(e) => updateForm((f) => ({ ...f, reviewerId: e.target.value }))}
-                />
-              ) : (
-                <select
-                  className="input" value={form.reviewerId}
-                  onChange={(e) => updateForm((f) => ({ ...f, reviewerId: e.target.value }))}
-                >
-                  <option value="">{strings.reviews.unassigned}</option>
-                  {orgUsers.map((u) => (
-                    <option key={u.user_id} value={u.user_id}>
-                      {u.display_name} ({u.email})
-                    </option>
-                  ))}
-                  {form.reviewerId && !orgUsers.some((u) => u.user_id === form.reviewerId) && (
-                    <option value={form.reviewerId}>
-                      {form.reviewerId} ({strings.requirements.reviewerNoLongerMember})
-                    </option>
-                  )}
-                </select>
-              )}
-            </label>
+            <div style={{ flex: 1 }}>
+              <PrincipalFormField
+                label={strings.requirements.reviewer} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
+                projectId={projectId} value={form.reviewer} display={savedPrincipalDisplay(form.reviewer, requirement.reviewer)}
+                onChange={(reviewer) => updateForm((f) => ({ ...f, reviewer }))}
+                ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
+              />
+            </div>
           </div>
+          <PrincipalFormField
+            label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
+            projectId={projectId} value={form.owner} display={savedPrincipalDisplay(form.owner, requirement.owner)}
+            onChange={(owner) => updateForm((f) => ({ ...f, owner }))}
+            ariaLabel={strings.requirements.owner} placeholder={strings.reviews.unassigned} clearLabel="Clear"
+          />
           <CustomFieldsForm
             definitions={customFieldDefs}
             values={customFieldValues}
@@ -826,7 +829,7 @@ export function RequirementDetailPage() {
             onChange={(e) => updateForm((f) => ({ ...f, changeNote: e.target.value }))}
           />
           {saveError && <div style={{ color: "var(--color-danger)" }}>{saveError}</div>}
-          <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
+          <button className="btn btn-primary" onClick={save} disabled={!form.owner} style={{ alignSelf: "flex-start" }}>
             {strings.requirements.save}
           </button>
         </div>
@@ -837,7 +840,9 @@ export function RequirementDetailPage() {
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.reviewSection}</h2>
           <div className="row">
             <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>
-            <span className="badge">{strings.requirements.reviewer}: {userDisplayName(requirement.reviewer_id)}</span>
+            <span className="badge">
+              {strings.requirements.reviewer}: <PrincipalBadge principal={requirement.reviewer} placeholder={strings.reviews.unassigned} />
+            </span>
           </div>
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.requirements.recordReviewOutcome}
@@ -1130,16 +1135,15 @@ export function RequirementDetailPage() {
                 ))}
               </select>
             </label>
-            <div className="stack" style={{ gap: "0.25rem" }}>
-              {strings.actions.assignee}
-              <AssigneePicker
-                orgUsers={orgUsers}
-                organizationId={organizationId ?? undefined}
-                assigneeId={newActionAssigneeId}
-                onChange={setNewActionAssigneeId}
-                ariaLabel={strings.actions.assignee}
-              />
-            </div>
+            <PrincipalFormField
+              label={strings.actions.assignee}
+              orgUsers={orgUsers}
+              organizationId={organizationId ?? undefined}
+              projectId={projectId}
+              value={newActionAssignee}
+              onChange={setNewActionAssignee}
+              ariaLabel={strings.actions.assignee}
+            />
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.dueDate}
               <input

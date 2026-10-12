@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 
 class CommentReaction(UUIDPKMixin, TimestampMixin, Base):
@@ -42,19 +43,32 @@ class CommentReaction(UUIDPKMixin, TimestampMixin, Base):
 
 
 class Subscription(UUIDPKMixin, TimestampMixin, Base):
-    """A user's opt-in to notifications for one specific requirement or
+    """A principal's opt-in to notifications for one specific requirement or
     change request, independent of their broad per-type notification
     preferences (`NotificationPreference`).
 
+    A user subscribes themselves; a group is added as a watcher by a project
+    manager or administrator, and means every member who can still view the
+    project is a subscriber. Group membership is resolved when a notification
+    is sent, so a membership change takes effect immediately and no rows
+    follow it.
+
     Attributes:
-        user_id: The subscribing user.
+        subscriber_type / subscriber_id: The subscribing principal (a user, an
+            organisation group or a project group — `models.principal`). No
+            foreign key; the service validates it on write and deleting a group
+            removes its subscriptions.
         entity_type: `"requirement"` or `"change_request"`.
         entity_id: The id of the requirement/change request row.
     """
 
     __tablename__ = "subscriptions"
-    __table_args__ = (UniqueConstraint("user_id", "entity_type", "entity_id"),)
+    __table_args__ = (
+        UniqueConstraint("subscriber_type", "subscriber_id", "entity_type", "entity_id", name="uq_subscriptions_subscriber_entity"),
+        principal_check_constraint("subscriber"),
+    )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    subscriber_type: Mapped[str] = principal_type_column()
+    subscriber_id: Mapped[uuid.UUID] = principal_id_column()
     entity_type: Mapped[str] = mapped_column(String(20))
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))

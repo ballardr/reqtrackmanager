@@ -9,6 +9,10 @@ cadence hint; Phase 2: Stakeholder Need and its links). Type-vocabulary and file
 `PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the
 request body change, so a nullable field (weight, owner, champion, type,
 cadence, levels) can be cleared by sending an explicit `null`.
+
+`owner` and `champion` are principals: a user, an organisation group or (on a
+project-scoped record) a project group. Requests send a `PrincipalRef`
+(`{type, id}`); responses return a resolved `PrincipalOut` (`_principals.py`).
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from app.modules.stakeholders.enums import (
     TargetCadence,
 )
 from app.schemas.file import FileAssetOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 # A positive, finite importance weight (`inf` would poison a weighted roll-up).
 Weight = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -46,8 +51,8 @@ class PersonaCreate(BaseModel):
     frequency_of_use: str = ""
     constraints: str = ""
     weight: Weight | None = None
-    owner_id: UUID | None = None
-    champion_id: UUID | None = None
+    owner: PrincipalRef | None = None
+    champion: PrincipalRef | None = None
 
 
 class PersonaUpdate(BaseModel):
@@ -66,8 +71,8 @@ class PersonaUpdate(BaseModel):
     frequency_of_use: str | None = None
     constraints: str | None = None
     weight: Weight | None = None
-    owner_id: UUID | None = None
-    champion_id: UUID | None = None
+    owner: PrincipalRef | None = None
+    champion: PrincipalRef | None = None
     change_note: str = ""
 
 
@@ -103,8 +108,8 @@ class PersonaOut(BaseModel):
     constraints: str
     weight: float | None
     status: PersonaStatus
-    owner_id: UUID | None
-    champion_id: UUID | None
+    owner: PrincipalOut | None
+    champion: PrincipalOut | None
     version_number: int
 
     effective_weight: float | None = None
@@ -121,8 +126,6 @@ class PersonaOut(BaseModel):
 
 class PersonaVersionOut(BaseModel):
     """One historical snapshot."""
-
-    model_config = {"from_attributes": True}
 
     id: UUID
     persona_id: UUID
@@ -143,8 +146,8 @@ class PersonaVersionOut(BaseModel):
     constraints: str
     weight: float | None
     status: PersonaStatus
-    owner_id: UUID | None
-    champion_id: UUID | None
+    owner: PrincipalOut | None
+    champion: PrincipalOut | None
     change_note: str
     created_by: UUID
     created_at: datetime
@@ -197,7 +200,7 @@ class StakeholderCreate(BaseModel):
     availability_constraints: str = ""
     influence_level_id: UUID | None = None
     interest_level_id: UUID | None = None
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     user_id: UUID | None = None
 
 
@@ -231,7 +234,7 @@ class StakeholderUpdate(BaseModel):
     availability_constraints: str | None = None
     influence_level_id: UUID | None = None
     interest_level_id: UUID | None = None
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     user_id: UUID | None = None
     change_note: str = ""
 
@@ -270,7 +273,7 @@ class StakeholderOut(BaseModel):
     influence_level_id: UUID | None
     interest_level_id: UUID | None
     status: StakeholderStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     user_id: UUID | None
     version_number: int
 
@@ -292,8 +295,6 @@ class StakeholderVersionOut(BaseModel):
     """One historical snapshot (contact info is deliberately omitted from the
     history listing; it is Confidential and the current value is on the record)."""
 
-    model_config = {"from_attributes": True}
-
     id: UUID
     stakeholder_id: UUID
     version_number: int
@@ -309,7 +310,7 @@ class StakeholderVersionOut(BaseModel):
     influence_level_id: UUID | None
     interest_level_id: UUID | None
     status: StakeholderStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     user_id: UUID | None
     change_note: str
     created_by: UUID
@@ -365,7 +366,7 @@ class NeedCreate(BaseModel):
     name: str = Field(min_length=1, max_length=300)
     description: str = ""
     rationale: str = ""
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
 
 
 class NeedUpdate(BaseModel):
@@ -374,7 +375,7 @@ class NeedUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=300)
     description: str | None = None
     rationale: str | None = None
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     change_note: str = ""
 
 
@@ -392,7 +393,7 @@ class NeedOut(BaseModel):
     description: str
     rationale: str
     status: NeedStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     version_number: int
 
     created_at: datetime
@@ -400,8 +401,6 @@ class NeedOut(BaseModel):
 
 
 class NeedVersionOut(BaseModel):
-    model_config = {"from_attributes": True}
-
     id: UUID
     need_id: UUID
     version_number: int
@@ -411,7 +410,7 @@ class NeedVersionOut(BaseModel):
     description: str
     rationale: str
     status: NeedStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     change_note: str
     created_by: UUID
     created_at: datetime

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import type { Principal } from "../../api/types";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
@@ -13,11 +14,16 @@ const DECISION_TYPES: DecisionTypeDefinition[] = [
   { id: "dt-2", project_id: PROJECT_ID, name: "Strategy", sort_order: 1 },
 ];
 
+const USER_ALEX: Principal = { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true };
+const GROUP_PLATFORM: Principal = {
+  type: "org_group", id: "group-1", label: "Platform Architecture", member_count: 3, exists: true,
+};
+
 function decision(overrides: Partial<Decision> = {}): Decision {
   return {
     id: "decision-1", project_id: PROJECT_ID, unique_code: "DEC-001", title: "Adopt PostgreSQL for the new service",
     decision_statement: "Use PostgreSQL as the backing store.", decision_type_id: "dt-1", status: "approved",
-    decision_date: "2026-02-01", decision_maker_id: "user-1", owner_id: "user-1", context: null,
+    decision_date: "2026-02-01", decision_maker: USER_ALEX, owner: GROUP_PLATFORM, context: null,
     options_considered: null, chosen_option: null, rationale: null, consequences: null, assumptions: null,
     constraints: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     is_locked: true, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
@@ -56,6 +62,8 @@ export const ListsDecisions: Story = {
     await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
     await expect(canvas.getByText("Use Terraform for infra")).toBeInTheDocument();
     await expect(canvas.getByText("DEC-001")).toBeInTheDocument();
+    // The Owner column shows a group owner by name with its kind.
+    await expect(canvas.getAllByText("Platform Architecture")).toHaveLength(2);
   },
 };
 

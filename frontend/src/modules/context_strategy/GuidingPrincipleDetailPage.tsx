@@ -13,22 +13,21 @@
  *    `Send back` (mandatory comment, this module's "reject"-equivalent)
  *    directly, with no intervening `Submit for review` step
  *    `StrategyDetailPage.tsx` needs for its own seven-state lifecycle.
- * 2. **A dedicated `AssigneePicker` for `owner_id`, not a
+ * 2. **A dedicated `RecordPrincipalField` for `owner`, not a
  *    `GuidingPrincipleFormModal` field (Decided by: Agent).** The backend
- *    versions `owner_id` as a plain content field on the same full-replace
+ *    versions `owner` as a plain content field on the same full-replace
  *    `PUT` every other field uses (`schemas.GuidingPrincipleUpdate`,
  *    structurally closer to `FutureStateFieldValues.target_date` than to
  *    Pain Point's genuinely separate "assign owner" surface) — but this
- *    phase's own frontend still reuses `components/AssigneePicker.tsx`
- *    directly, mirroring `PainPointDetailPage.tsx`'s identical choice, for
- *    the same reasons: assigning a person is a distinct, higher-frequency
- *    action with its own search-first UX, better served by a dedicated
- *    control than buried inside a multi-field content-edit modal, and
- *    CLAUDE.md's reuse rule already names `AssigneePicker` as the shared
- *    component for exactly this "who's assigned" shape rather than a
- *    per-page reimplementation. `assignOwner` below calls
+ *    phase's own frontend still reuses `components/RecordDetailParts`'
+ *    `RecordPrincipalField` (a user, an organisation group and, on a project
+ *    principle, a project group), mirroring `PainPointDetailPage.tsx`'s
+ *    identical choice, for the same reasons: assigning a person or team is a
+ *    distinct, higher-frequency action with its own search-first UX, better
+ *    served by a dedicated control than buried inside a multi-field
+ *    content-edit modal. `assignOwner` below calls
  *    `scopedApi.update` with the Guiding Principle's own current content
- *    fields plus the newly chosen `owner_id`, the same full-replace pattern
+ *    fields plus the newly chosen `owner`, the same full-replace pattern
  *    `PainPointDetailPage.tsx`'s own `assignOwner` already establishes —
  *    this exercises the exact "explicit owner-assign-then-clear" behaviour
  *    Phase 4's own backend test suite pins.
@@ -37,7 +36,7 @@
  * whichever of `projectId`/`organizationId` its current route supplies.
  * Unlike `PainPointDetailPage.tsx` (project-scoped only), an org-scoped
  * Guiding Principle has no *project* to fetch for its own organisation id —
- * `organizationId` is used directly for `AssigneePicker`'s org-user list in
+ * `organizationId` is used directly for the owner picker's org-user list in
  * that case, and a project fetch (for its `organization_id`) is only needed
  * in the project-scoped case.
  *
@@ -54,14 +53,15 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
-import type { FileAsset, OrgUser, Project } from "../../api/types";
+import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
-import { AssigneePicker } from "../../components/AssigneePicker";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
+import { RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { Spinner } from "../../components/Spinner";
 import { SupersedeAction } from "../../components/SupersedeAction";
 import { useAuth } from "../../context/AuthContext";
@@ -143,7 +143,7 @@ export function GuidingPrincipleDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeId, guidingPrincipleId]);
 
-  // `AssigneePicker` needs an organisation's own user list — a project-scoped
+  // The owner picker needs an organisation's own user list — a project-scoped
   // Guiding Principle has no `organization_id` route param, so its owning
   // project is fetched once to resolve one (mirrors `PainPointDetailPage.tsx`'s
   // identical lookup); an org-scoped Guiding Principle already has it.
@@ -194,7 +194,7 @@ export function GuidingPrincipleDetailPage() {
     if (!scopeId || !guidingPrinciple) return;
     setFormError(null);
     try {
-      const updated = await scopedApi.update(scopeId, guidingPrinciple.id, { ...values, owner_id: guidingPrinciple.owner_id });
+      const updated = await scopedApi.update(scopeId, guidingPrinciple.id, { ...values, owner: guidingPrinciple.owner });
       showToast("Guiding Principle updated.");
       setEditing(false);
       setGuidingPrinciple(updated);
@@ -203,13 +203,13 @@ export function GuidingPrincipleDetailPage() {
     }
   }
 
-  async function assignOwner(ownerId: string) {
+  async function assignOwner(owner: PrincipalRef | null) {
     if (!scopeId || !guidingPrinciple) return;
     try {
       const updated = await scopedApi.update(scopeId, guidingPrinciple.id, {
         name: guidingPrinciple.name, principle_statement: guidingPrinciple.principle_statement,
         rationale: guidingPrinciple.rationale, priority: guidingPrinciple.priority,
-        change_note: "", owner_id: ownerId || null,
+        change_note: "", owner,
       });
       showToast("Owner updated.");
       setGuidingPrinciple(updated);
@@ -268,16 +268,10 @@ export function GuidingPrincipleDetailPage() {
         <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
         {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
 
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Owner</span>
-          <AssigneePicker
-            orgUsers={orgUsers}
-            organizationId={ownerOrgId}
-            assigneeId={guidingPrinciple.owner_id}
-            onChange={assignOwner}
-            ariaLabel="Guiding Principle owner"
-          />
-        </div>
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
+          organizationId={ownerOrgId} projectId={projectId} readOnly={false} onChange={assignOwner}
+        />
 
         <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
           {guidingPrinciple.status === "draft" && (
@@ -309,26 +303,13 @@ export function GuidingPrincipleDetailPage() {
         </div>
 
 
-        {versions && versions.length > 1 && (
-          <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Version history</h3>
-            <table className="table">
-              <thead>
-                <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>
-              </thead>
-              <tbody>
-                {[...versions].reverse().map((v) => (
-                  <tr key={v.id}>
-                    <td>{v.version_number}</td>
-                    <td>{GUIDING_PRINCIPLE_STATUS_LABEL[v.status]}</td>
-                    <td>{new Date(v.valid_from).toLocaleString()}</td>
-                    <td>{v.change_note || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <VersionHistoryTable
+          versions={versions}
+          columns={[
+            { header: "Status", render: (v) => GUIDING_PRINCIPLE_STATUS_LABEL[v.status] },
+            { header: "Owner", render: (v) => <PrincipalBadge principal={v.owner} placeholder="—" /> },
+          ]}
+        />
 
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>

@@ -209,6 +209,19 @@ def _require_uuid(value: str, field_name: str) -> str:
         raise ValueError(f"{field_name!r} must be a valid UUID, got {value!r}.") from exc
 
 
+def _require_principal(value: dict | None, field_name: str) -> dict | None:
+    """Validates a principal reference (`{"type": "user" | "org_group" | "project_group", "id": uuid}`) before
+    it is forwarded as a request body field, returning the canonical form, or None for no principal.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict) or value.get("type") not in ("user", "org_group", "project_group"):
+        raise ValueError(
+            f"{field_name!r} must be {{\"type\": \"user\" | \"org_group\" | \"project_group\", \"id\": <uuid>}}, got {value!r}."
+        )
+    return {"type": value["type"], "id": _require_uuid(value.get("id"), f"{field_name}.id")}
+
+
 def _require_artefact_type(value: str, field_name: str = "artefact_type") -> str:
     """Validates an artefact type string (lowercase, underscores) before it is put in a URL path."""
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", value):
@@ -915,8 +928,8 @@ async def list_change_request_tasks(project_id: str | None = None, *, change_req
         change_request_id: The change request's UUID (from `list_change_requests`).
 
     Returns:
-        A list of tasks, each including `description`, `assignee_id`,
-        `due_date`, and `is_done`.
+        A list of tasks, each including `description`, `assignee` (a user or a
+        group, with its `type`, `id` and `label`), `due_date`, and `is_done`.
     """
     pid = _require_project_id(project_id)
     cid = _require_uuid(change_request_id, "change_request_id")
@@ -995,7 +1008,8 @@ async def list_project_reviews_due(project_id: str | None = None) -> list[dict]:
 
     Returns:
         A list of requirements due for review, each including `id`,
-        `unique_code`, `name`, `reviewer_id`, and `review_date`.
+        `unique_code`, `name`, `reviewer` (a user or a group, with its `type`,
+        `id` and `label`), and `review_date`.
     """
     pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/reviews/due")
@@ -1029,14 +1043,14 @@ if MCP_WRITES_ENABLED:
         reasoning: str = "",
         clarification: str = "",
         description: str = "",
-        owner_id: str | None = None,
+        owner: dict | None = None,
         target_stage_id: str | None = None,
         level: str = "requirement",
         keywords: list[str] | None = None,
         custom_fields: dict | None = None,
         review_date: str | None = None,
         review_lead_days: int | None = None,
-        reviewer_id: str | None = None,
+        reviewer: dict | None = None,
     ) -> dict:
         """Creates a new requirement. Always starts in "draft" status —
         there is no way to create one pre-approved, and no tool here can
@@ -1054,8 +1068,9 @@ if MCP_WRITES_ENABLED:
             reasoning: Why this requirement exists.
             clarification: Additional clarifying detail.
             description: Free-form long-form description.
-            owner_id: UUID of the user who owns this requirement; defaults
-                to the caller's own account if omitted.
+            owner: Who owns this requirement, as `{"type": "user" | "org_group" |
+                "project_group", "id": uuid}`; defaults to the caller's own
+                account if omitted. A group stands for all its members.
             target_stage_id: UUID of the project stage this requirement
                 targets; defaults to the project's earliest stage if omitted.
             level: "requirement", "recommended", or "optional".
@@ -1066,7 +1081,8 @@ if MCP_WRITES_ENABLED:
             review_date: Optional ISO date (YYYY-MM-DD) this requirement is next due for review.
             review_lead_days: Optional override of how many days before
                 review_date a reminder notification fires.
-            reviewer_id: Optional UUID of the user responsible for that review.
+            reviewer: Optional principal (same shape as `owner`) responsible for that review;
+                any one member of a group may record it.
 
         Returns:
             The newly created requirement's full detail, same shape as `get_requirement`.
@@ -1079,14 +1095,14 @@ if MCP_WRITES_ENABLED:
             "description": description,
             "component_id": _require_uuid(component_id, "component_id"),
             "category_id": _require_uuid(category_id, "category_id"),
-            "owner_id": _require_uuid(owner_id, "owner_id") if owner_id else None,
+            "owner": _require_principal(owner, "owner"),
             "target_stage_id": _require_uuid(target_stage_id, "target_stage_id") if target_stage_id else None,
             "level": level,
             "keywords": keywords or [],
             "custom_fields": custom_fields or {},
             "review_date": review_date,
             "review_lead_days": review_lead_days,
-            "reviewer_id": _require_uuid(reviewer_id, "reviewer_id") if reviewer_id else None,
+            "reviewer": _require_principal(reviewer, "reviewer"),
         }
         response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements", json=body)
         return response.json()
@@ -1102,14 +1118,14 @@ if MCP_WRITES_ENABLED:
         description: str | None = None,
         component_id: str | None = None,
         category_id: str | None = None,
-        owner_id: str | None = None,
+        owner: dict | None = None,
         target_stage_id: str | None = None,
         level: str | None = None,
         keywords: list[str] | None = None,
         custom_fields: dict | None = None,
         review_date: str | None = None,
         review_lead_days: int | None = None,
-        reviewer_id: str | None = None,
+        reviewer: dict | None = None,
         change_note: str = "",
     ) -> dict:
         """Edits an unlocked requirement's content in place.
@@ -1124,7 +1140,7 @@ if MCP_WRITES_ENABLED:
         This tool has no `status` parameter and can never approve, complete,
         or otherwise transition a requirement's workflow state — see this
         module's docstring for why. It also can't distinguish "clear
-        review_date/review_lead_days/reviewer_id entirely" from "I didn't
+        review_date/review_lead_days/reviewer entirely" from "I didn't
         mention it" (both look like a missing argument); use the
         ReqTrackManager UI if you need to genuinely blank one of those out.
 
@@ -1139,12 +1155,14 @@ if MCP_WRITES_ENABLED:
             name / reasoning / clarification / description: Content fields; omit any you're not changing.
             component_id / category_id: Move the requirement to a different
                 component/category; omit to leave it where it is.
-            owner_id: Reassign the requirement's owner; omit to leave unchanged.
+            owner: Reassign the requirement's owner (`{"type": "user" | "org_group" |
+                "project_group", "id": uuid}`); omit to leave unchanged.
             target_stage_id: Retarget which project stage this requirement is for; omit to leave unchanged.
             level: "requirement", "recommended", or "optional"; omit to leave unchanged.
             keywords: Replaces the full keyword set if given; omit to leave the current keywords unchanged.
             custom_fields: Replaces the full custom field value map if given; omit to leave unchanged.
-            review_date / review_lead_days / reviewer_id: Review scheduling fields; omit any you're not changing.
+            review_date / review_lead_days / reviewer: Review scheduling fields (`reviewer` is a
+                principal, same shape as `owner`); omit any you're not changing.
             change_note: Optional note explaining why this edit was made,
                 recorded in the requirement's version history (C-A-09).
 
@@ -1162,7 +1180,7 @@ if MCP_WRITES_ENABLED:
             "description": description if description is not None else current["description"],
             "component_id": _require_uuid(component_id, "component_id") if component_id else current["component_id"],
             "category_id": _require_uuid(category_id, "category_id") if category_id else current["category_id"],
-            "owner_id": _require_uuid(owner_id, "owner_id") if owner_id else current["owner_id"],
+            "owner": _require_principal(owner, "owner") or current["owner"],
             "target_stage_id": (
                 _require_uuid(target_stage_id, "target_stage_id") if target_stage_id else current["target_stage_id"]
             ),
@@ -1172,9 +1190,7 @@ if MCP_WRITES_ENABLED:
             "change_note": change_note,
             "review_date": review_date if review_date is not None else current["review_date"],
             "review_lead_days": review_lead_days if review_lead_days is not None else current["review_lead_days"],
-            "reviewer_id": (
-                _require_uuid(reviewer_id, "reviewer_id") if reviewer_id else current["reviewer_id"]
-            ),
+            "reviewer": _require_principal(reviewer, "reviewer") or current["reviewer"],
             # Deliberately no "status" key — see this tool's own docstring
             # and the module docstring: this server never sends a status
             # transition, by construction, regardless of what the caller's

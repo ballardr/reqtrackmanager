@@ -80,7 +80,7 @@ def test_need_crud_versions_and_clearing_owner(client, admin_token):
     assert [v["version_number"] for v in versions] == [1, 2] and versions[1]["change_note"] == "why"
 
     assert client.put(url, json={"name": None}, headers=auth_headers(token)).status_code == 422
-    assert client.put(url, json={"owner_id": owner_id}, headers=auth_headers(token)).status_code == 400
+    assert client.put(url, json={"owner": {"type": "user", "id": owner_id}}, headers=auth_headers(token)).status_code == 400
     assert [n["id"] for n in client.get(_needs(project["id"]), headers=auth_headers(token)).json()] == [created["id"]]
 
 

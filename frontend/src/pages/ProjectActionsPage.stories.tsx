@@ -16,9 +16,14 @@ const orgUser: OrgUser = {
   user_id: "user-1", email: "alex@example.com", display_name: "Alex Morgan", is_active: true,
   is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [], custom_roles: [],
 };
+const orgGroups = [
+  { id: "group-2", name: "Test Group", member_user_ids: ["user-1"], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
+];
 const actions: RequirementAction[] = [
-  buildRequirementAction({ id: "act1", unique_code: "ACT-001", title: "Review password reset flow", action_type_id: "at1", outcome_status: "pending" }),
-  buildRequirementAction({ id: "act2", unique_code: "ACT-002", title: "Test 2FA enrolment", action_type_id: "at2", outcome_status: "completed", assignee_id: null }),
+  buildRequirementAction({ id: "act1", unique_code: "ACT-001", title: "Review password reset flow", action_type_id: "at1", outcome_status: "pending",
+    assignee: { type: "org_group", id: "group-1", label: "QA Team", member_count: 3, exists: true },
+  }),
+  buildRequirementAction({ id: "act2", unique_code: "ACT-002", title: "Test 2FA enrolment", action_type_id: "at2", outcome_status: "completed", assignee: null }),
 ];
 
 function mockProjectActionsApis() {
@@ -26,6 +31,8 @@ function mockProjectActionsApis() {
     if (path.includes("/action-types")) return actionTypes;
     if (path.includes("/actions")) return actions;
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
+    if (path.endsWith("/orgs/org-1/groups")) return orgGroups as never;
+    if (path.endsWith(`/projects/${PROJECT_ID}/groups`)) return [] as never;
     if (path.includes("/users")) return [orgUser];
     throw new Error(`unmocked path: ${path}`);
   });
@@ -51,6 +58,9 @@ export const ListWithFilters: Story = {
     const table = within(canvas.getByRole("table"));
     await expect(table.getByText("Pending")).toBeInTheDocument();
     await expect(table.getByText("Completed")).toBeInTheDocument();
+    // A group assignee shows its name, kind and member count rather than a person's name.
+    await expect(table.getByText("QA Team")).toBeInTheDocument();
+    await expect(table.getByText("Org group · 3 members")).toBeInTheDocument();
   },
 };
 
@@ -92,6 +102,7 @@ export const StaleResponseIsIgnored: Story = {
         return actions;
       }
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
+      if (path.endsWith("/groups")) return [] as never;
       if (path.includes("/users")) return [orgUser];
       throw new Error(`unmocked path: ${path}`);
     });
@@ -103,6 +114,29 @@ export const StaleResponseIsIgnored: Story = {
     // Give the stale response time to land; the newer result must survive it.
     await new Promise((resolve) => setTimeout(resolve, 200));
     await expect(canvas.getByText("Archived action")).toBeInTheDocument();
+  },
+};
+
+/** A group can be the assignee of a new action; the form sends it as a typed principal. */
+export const CreateAssignedToAGroup: Story = {
+  beforeEach: () => {
+    mockProjectActionsApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New action/ }));
+    await userEvent.type(canvas.getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(canvas.getByRole("combobox", { name: "Assignee" }), "test");
+    await userEvent.click(await canvas.findByText("Test Group"));
+    await userEvent.click(canvas.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/actions`,
+        expect.objectContaining({ title: "Verify audit log retention", assignee: { type: "org_group", id: "group-2" } })
+      )
+    );
   },
 };
 
@@ -154,6 +188,7 @@ export const EmptyState: Story = {
       if (path.includes("/action-types")) return actionTypes;
       if (path.includes("/actions")) return [];
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
+      if (path.endsWith("/groups")) return [] as never;
       if (path.includes("/users")) return [];
       throw new Error(`unmocked path: ${path}`);
     });

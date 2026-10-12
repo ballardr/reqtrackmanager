@@ -76,6 +76,15 @@ Context & Strategy defines sixteen of its own roles, module-contributed rather t
 
 Every role above composes with roles that already carry equivalent authority elsewhere — a server admin, an org admin, or (for a project-scoped role) that project's own Project Manager can do everything the corresponding module role can. Every other project member can read this module's content once it's enabled, and — for Pain Point and Open Question specifically — create a new record without needing any of the roles above.
 
+## Groups as owners
+
+The **Owner** of a Pain Point, a Guiding Principle and an Open Question can be a user, an organisation group or a project group, so a team can stand behind a record instead of one nominee who may leave. The record shows the group's name, its kind (Org group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the roles above still decide who can edit.
+
+- A project group can be named on a Pain Point, an Open Question or a project-level Guiding Principle in that project. An organisation-level Guiding Principle is shared by every project, so it can name users and organisation groups only.
+- A Guiding Principle's version history lists who owned each version. If a group is later deleted, older versions show it as a deleted group.
+- Deleting a group that still owns records asks the admin to hand them to a user or another group, or to leave them without an owner. Every owner here is optional, so leaving them empty is allowed.
+- In the [Open Question register](./report-reference.md) a group owner is printed as `Name (Org group)` and counted as one owner in the By owner table; it is not an Unowned question.
+
 ## Data model at a glance
 
 Full fields and a lifecycle diagram live on each artefact's own page (linked below); this table is a quick cross-artefact comparison of the two things that differ most between them:

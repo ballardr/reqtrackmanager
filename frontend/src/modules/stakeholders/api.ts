@@ -12,7 +12,7 @@
  * `organization_id` to match the scope.
  */
 import { api } from "../../api/client";
-import type { FileAsset } from "../../api/types";
+import type { FileAsset, PrincipalRef } from "../../api/types";
 import type {
   CadenceHint,
   EffectivePersonaType,
@@ -49,26 +49,26 @@ export interface RecordListFilters {
 
 /** Create payload: the editable fields plus the people pickers' values. */
 export type PersonaCreateValues = Omit<PersonaFieldValues, "change_note"> & {
-  owner_id?: string | null;
-  champion_id?: string | null;
+  owner?: PrincipalRef | null;
+  champion?: PrincipalRef | null;
 };
 
 /** Partial update payload — only keys present are changed; `null` clears a nullable field. */
-export type PersonaUpdateValues = Partial<PersonaFieldValues> & { owner_id?: string | null; champion_id?: string | null };
+export type PersonaUpdateValues = Partial<PersonaFieldValues> & { owner?: PrincipalRef | null; champion?: PrincipalRef | null };
 
 export type StakeholderCreateValues = Omit<StakeholderFieldValues, "change_note"> & {
-  owner_id?: string | null;
+  owner?: PrincipalRef | null;
   user_id?: string | null;
 };
 
 export type StakeholderUpdateValues = Partial<StakeholderFieldValues> & {
-  owner_id?: string | null;
+  owner?: PrincipalRef | null;
   user_id?: string | null;
 };
 
-export type NeedCreateValues = Omit<NeedFieldValues, "change_note"> & { owner_id?: string | null };
+export type NeedCreateValues = Omit<NeedFieldValues, "change_note"> & { owner?: PrincipalRef | null };
 
-export type NeedUpdateValues = Partial<NeedFieldValues> & { owner_id?: string | null };
+export type NeedUpdateValues = Partial<NeedFieldValues> & { owner?: PrincipalRef | null };
 
 /** The calls every record kind in this module has; what the shared detail
  * components (`RecordDiscussion`, `RecordLifecycleControls`) are written

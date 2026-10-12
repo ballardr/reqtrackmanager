@@ -15,7 +15,7 @@ A project marked **"Usable as a project template"** (**Project Admin → Project
 
 ## What a template carries over
 
-Creating a new project **from a template** copies its components, categories, custom field definitions, groups and group memberships, and requirements (reset to draft status) into the new project — so a team's established structure doesn't need rebuilding by hand every time a new project starts.
+Creating a new project **from a template** copies its components, categories, custom field definitions, groups and group memberships, and requirements (reset to draft status) into the new project — so a team's established structure doesn't need rebuilding by hand every time a new project starts. A requirement owned by one of the template's project groups is owned by that group's copy in the new project; one owned by a user or an organisation group keeps that owner.
 
 **Module and sub-component settings are not copied from the template.** A new project — blank or from a template — starts with the organisation's current defaults instead; see [Workflows → Organisations and projects → Creating a project](../workflows/organisations-and-projects.md#creating-a-project).
 

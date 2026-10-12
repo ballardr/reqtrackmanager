@@ -29,6 +29,7 @@ Open the project's **Reports** page and choose a report from the **Report** pick
 
 Things worth knowing:
 
+- A group owner or decision maker prints as its name with its kind, for example `Platform Architecture (Org group)`, in the web view, PDF and CSV.
 - **Days waiting** counts from when the Decision entered its current status (Proposed, or Under review), not from when it was last edited.
 - **Overdue** is only a waiting-time threshold, because a Decision has no due date. **No decision maker** lists waiting Decisions whose decision maker is blank.
 - **Decision log** lists decisions that were *made*; a Rejected Decision appears in the register, not the log. Free-text fields are cut to 400 characters; open the Decision for the full text.

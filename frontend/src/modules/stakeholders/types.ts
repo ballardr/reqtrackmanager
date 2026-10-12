@@ -9,11 +9,12 @@
  *
  * Neither artefact has an approval gate, so each lifecycle is the three-state
  * `draft | active | retired`. `PersonaFieldValues`/`StakeholderFieldValues`
- * deliberately exclude the people fields (`owner_id`, `champion_id`,
- * `user_id`): the detail pages assign those through `AssigneePicker`, the
- * same split Guiding Principle makes for its owner.
+ * deliberately exclude the people fields (`owner`, `champion`, `user_id`): the
+ * detail pages assign those through `RecordPrincipalField`, the same split
+ * Guiding Principle makes for its owner. `owner` and `champion` are principals
+ * (a user, an organisation group or a project group), returned resolved.
  */
-import type { BadgeTone } from "../../api/types";
+import type { BadgeTone, Principal } from "../../api/types";
 
 export type PersonaScope = "organization" | "project";
 export type PersonaStatus = "draft" | "active" | "retired";
@@ -75,8 +76,8 @@ export interface Persona {
   constraints: string;
   weight: number | null;
   status: PersonaStatus;
-  owner_id: string | null;
-  champion_id: string | null;
+  owner: Principal | null;
+  champion: Principal | null;
   version_number: number;
   effective_weight: number | null;
   weight_override: number | null;
@@ -97,6 +98,8 @@ export interface PersonaVersion {
   name: string;
   status: PersonaStatus;
   weight: number | null;
+  owner: Principal | null;
+  champion: Principal | null;
   change_note: string;
   created_at: string;
 }
@@ -242,7 +245,7 @@ export interface Stakeholder {
   influence_level_id: string | null;
   interest_level_id: string | null;
   status: StakeholderStatus;
-  owner_id: string | null;
+  owner: Principal | null;
   user_id: string | null;
   version_number: number;
   created_at: string;
@@ -261,6 +264,7 @@ export interface StakeholderVersion {
   name: string;
   status: StakeholderStatus;
   target_cadence: TargetCadence | null;
+  owner: Principal | null;
   change_note: string;
   created_at: string;
 }
@@ -337,7 +341,7 @@ export interface Need {
   description: string;
   rationale: string;
   status: NeedStatus;
-  owner_id: string | null;
+  owner: Principal | null;
   version_number: number;
   created_at: string;
   updated_at: string;
@@ -351,6 +355,7 @@ export interface NeedVersion {
   valid_to: string | null;
   name: string;
   status: NeedStatus;
+  owner: Principal | null;
   change_note: string;
   created_at: string;
 }

@@ -25,8 +25,14 @@ from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.routers.requirements.core import _get_requirement_in_project, _require_edit_role
 from app.schemas.action import RequirementActionCreate, RequirementActionLinkCreate, RequirementActionOut
-from app.services.actions import action_to_out, generate_unique_code, get_requirement_action_in_project
+from app.services.actions import (
+    action_to_out,
+    assignee_labels,
+    generate_unique_code,
+    get_requirement_action_in_project,
+)
 from app.services.audit import log_event
+from app.services.principals import principal_columns, validate_principal
 from app.services.rbac import require_project_view
 from app.services.relationships import create_link as create_artefact_link
 from app.services.relationships import delete_link as delete_artefact_link
@@ -105,9 +111,10 @@ def create_and_link_action(
     action_type = db.get(ActionTypeDefinition, payload.action_type_id)
     if action_type is None or action_type.project_id != project_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "action_type_id must be an action type defined in this project.")
+    validate_principal(db, payload.assignee, organization_id=project.organization_id, project_id=project_id, field="assignee")
     action = RequirementAction(
         project_id=project_id, unique_code=generate_unique_code(project), action_type_id=payload.action_type_id,
-        title=payload.title, description=payload.description, assignee_id=payload.assignee_id,
+        title=payload.title, description=payload.description, **principal_columns("assignee", payload.assignee),
         due_date=payload.due_date, creator_id=current_user.id,
     )
     db.add(action)
@@ -142,7 +149,8 @@ def list_requirement_actions(
     actions = db.scalars(
         select(RequirementAction).where(RequirementAction.id.in_(action_ids)).order_by(RequirementAction.unique_code)
     ).all()
-    return [action_to_out(db, a) for a in actions]
+    labels = assignee_labels(db, actions)
+    return [action_to_out(db, a, labels=labels) for a in actions]
 
 
 @router.delete("/{requirement_id}/actions/{action_id}", status_code=status.HTTP_204_NO_CONTENT)

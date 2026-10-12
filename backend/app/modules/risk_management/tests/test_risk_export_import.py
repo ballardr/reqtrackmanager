@@ -28,6 +28,7 @@ from app.modules.risk_management.tests._helpers import (
     mitigate_with_requirement,
     project_base,
     setup,
+    user_ref,
 )
 from tests.conftest import auth_headers
 
@@ -83,7 +84,7 @@ def _build_rich_project(client, token, org, project) -> dict[str, dict]:
     org_types = {t["name"]: t["id"] for t in client.get(base + "/risk-types", headers=h).json()}
 
     main = create_risk(
-        client, token, project["id"], title="Flight controller fails", risk_type_id=local.json()["id"], owner_id=me,
+        client, token, project["id"], title="Flight controller fails", risk_type_id=local.json()["id"], owner=user_ref(me),
         treatment_strategy="mitigate", acceptance_criteria="Redundant architecture certified.", review_date=_days(40),
         inherent_likelihood_level_id=lv["likelihood"]["Possible"], inherent_consequence_level_id=lv["consequence"]["Catastrophic"],
         residual_likelihood_level_id=lv["likelihood"]["Unlikely"], residual_consequence_level_id=lv["consequence"]["Major"],
@@ -130,7 +131,7 @@ def test_project_export_import_round_trips_risks(client, admin_token):
     assert set(after) == set(before)  # original codes are kept
     old, new = before[built["main"]["unique_code"]], after[built["main"]["unique_code"]]
     for field in ("title", "statement", "cause", "risk_event", "consequence", "acceptance_criteria", "treatment_strategy", "status",
-                  "review_date", "owner_id", "risk_type_name"):
+                  "review_date", "owner", "risk_type_name"):
         assert new[field] == old[field], field
     assert new["status"] == "treatment_in_progress" and new["risk_type_name"] == "Project-only"
     assert new["inherent_rating"]["label"] == old["inherent_rating"]["label"] == "High"

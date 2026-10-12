@@ -3,6 +3,10 @@ Module: schemas.requirement
 
 Request/response models for requirements, their version history, keywords,
 traceability links, and discussion comments (C-G-02, C-G-09, C-M-01, C-R-01).
+
+A requirement's `owner` and `reviewer` are principals (a user, an organisation
+group or one of the project's groups): requests send a `PrincipalRef`
+(`{type, id}`) and responses return a resolved `PrincipalOut`.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from pydantic import BaseModel
 
 from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus
 from app.schemas.file import FileAssetOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 
 class RequirementCreate(BaseModel):
@@ -24,7 +29,7 @@ class RequirementCreate(BaseModel):
     description: str = ""
     component_id: UUID
     category_id: UUID
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     # A requirement must always end up with a real target (it can never be
     # left unset in the data) — but omitting it here isn't an error: the
     # router defaults to the project's earliest stage, the same backfill
@@ -39,7 +44,7 @@ class RequirementCreate(BaseModel):
     creator_id: UUID | None = None  # PM-only override (C-A-11)
     review_date: date | None = None  # C-R-06
     review_lead_days: int | None = None  # C-R-08 per-requirement override
-    reviewer_id: UUID | None = None  # C-R-10
+    reviewer: PrincipalRef | None = None  # C-R-10
 
 
 class RequirementUpdate(BaseModel):
@@ -51,7 +56,7 @@ class RequirementUpdate(BaseModel):
     description: str = ""
     component_id: UUID
     category_id: UUID
-    owner_id: UUID
+    owner: PrincipalRef
     status: RequirementStatus | None = None
     # Omitting this means "not changing it" (carries the current value
     # forward via apply_new_version's own explicitly-set convention) —
@@ -64,7 +69,7 @@ class RequirementUpdate(BaseModel):
     change_note: str = ""
     review_date: date | None = None  # C-R-06 (blocked by is_locked() once approved, same as every other field here)
     review_lead_days: int | None = None
-    reviewer_id: UUID | None = None
+    reviewer: PrincipalRef | None = None
 
 
 class RequirementOut(BaseModel):
@@ -76,7 +81,7 @@ class RequirementOut(BaseModel):
     clarification: str
     description: str = ""
     status: RequirementStatus
-    owner_id: UUID
+    owner: PrincipalOut
     component_id: UUID
     category_id: UUID
     target_stage_id: UUID
@@ -97,7 +102,7 @@ class RequirementOut(BaseModel):
     is_subscribed: bool = False
     review_date: date | None = None
     review_lead_days: int | None = None
-    reviewer_id: UUID | None = None
+    reviewer: PrincipalOut | None = None
     # Derived list-view indicators (mock's card "badges") — not stored data,
     # computed at read time from comments/change-requests/status.
     comment_count: int = 0
@@ -112,7 +117,7 @@ class RequirementVersionOut(BaseModel):
     clarification: str
     description: str = ""
     status: RequirementStatus
-    owner_id: UUID
+    owner: PrincipalOut
     target_stage_id: UUID
     level: RequirementLevel = RequirementLevel.REQUIREMENT
     change_note: str
@@ -206,7 +211,6 @@ class RequirementDueForReviewOut(BaseModel):
     unique_code: str
     name: str
     review_date: date
-    reviewer_id: UUID | None = None
-    reviewer_name: str | None = None
+    reviewer: PrincipalOut | None = None
     component_id: UUID
     component_name: str

@@ -32,6 +32,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailLayout } from "../../components/DetailLayout";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -39,7 +40,7 @@ import {
   orgPersonaApi, orgStakeholderApi, orgStakeholderTypeApi, projectNeedApi, projectPersonaApi, projectStakeholderApi,
 } from "./api";
 import { HeldNeedsPanel } from "./HeldNeedsPanel";
-import { RecordField, RecordFieldGroup, RecordPersonField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
@@ -277,11 +278,12 @@ export function StakeholderDetailPage() {
           )}
         </RecordFieldGroup>
 
-        <RecordPersonField
-          label="Owner" ariaLabel="Stakeholder owner" userId={stakeholder.owner_id} orgUsers={orgUsers}
-          organizationId={ownerOrgId} readOnly={readOnlyInProject}
-          onChange={(ownerId) =>
-            run(() => scopedApi.update(scopeId, stakeholder.id, { owner_id: ownerId || null }), "Owner updated.", "Could not update this Stakeholder's owner.")
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Stakeholder owner" principal={stakeholder.owner} orgUsers={orgUsers}
+          organizationId={ownerOrgId} projectId={stakeholder.scope === "project" ? projectId : undefined}
+          readOnly={readOnlyInProject}
+          onChange={(owner) =>
+            run(() => scopedApi.update(scopeId, stakeholder.id, { owner }), "Owner updated.", "Could not update this Stakeholder's owner.")
           }
         />
         {stakeholder.user_id && (
@@ -340,6 +342,7 @@ export function StakeholderDetailPage() {
           columns={[
             { header: "Status", render: (v) => STAKEHOLDER_STATUS_LABEL[v.status] },
             { header: "Cadence", render: (v) => (v.target_cadence ? TARGET_CADENCE_LABEL[v.target_cadence] : "—") },
+            { header: "Owner", render: (v) => <PrincipalBadge principal={v.owner} placeholder="—" /> },
           ]}
         />
 

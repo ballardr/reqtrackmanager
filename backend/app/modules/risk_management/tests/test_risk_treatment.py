@@ -32,6 +32,7 @@ from app.modules.risk_management.tests._helpers import (
     mitigate_with_requirement,
     project_base,
     setup,
+    user_ref,
 )
 from tests.conftest import auth_headers, create_org_user, create_project
 
@@ -231,7 +232,7 @@ def test_the_owner_and_a_risk_manager_may_assess_but_a_plain_member_may_not(clie
     _, member_token = add_member(client, token, org["id"], project["id"], "member@risk-treat-authz.example.com")
     manager_id, manager_token = add_member(client, token, org["id"], project["id"], "manager@risk-treat-authz.example.com")
     grant_project_role(client, token, project["id"], manager_id, "risk_manager")
-    risk = create_risk(client, token, project["id"], owner_id=owner_id)
+    risk = create_risk(client, token, project["id"], owner=user_ref(owner_id))
     link_id, _ = mitigate_with_requirement(client, token, org, project, risk["id"])
 
     assert assess(client, member_token, project["id"], risk["id"], link_id).status_code == 403
@@ -331,7 +332,7 @@ def _ready_for_mitigated(client, token, project, risk, org) -> None:
         "inherent_consequence_level_id": next(iter(lv["consequence"].values())),
         "residual_likelihood_level_id": next(iter(lv["likelihood"].values())),
         "residual_consequence_level_id": next(iter(lv["consequence"].values())),
-        "owner_id": owner, "treatment_strategy": "mitigate",
+        "owner": user_ref(owner), "treatment_strategy": "mitigate",
     }
     assert client.put(f"{project_base(project['id'])}/risks/{risk['id']}", json=body, headers=auth_headers(token)).status_code == 200
     for status in ("assessed", "treatment_planned", "treatment_in_progress"):

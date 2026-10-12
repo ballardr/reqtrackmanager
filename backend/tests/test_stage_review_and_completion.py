@@ -91,7 +91,7 @@ def test_mark_requirement_completed_requires_approved_status(client, admin_token
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}",
         json={
             "name": req["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": req["owner_id"], "status": "approved",
+            "owner": req["owner"], "status": "approved",
         },
         headers=auth_headers(admin_token),
     )
@@ -203,7 +203,7 @@ def test_completing_stage_with_cascade_completes_approved_requirements_targeting
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}",
         json={
             "name": req["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": req["owner_id"], "status": "approved", "target_stage_id": stage_id,
+            "owner": req["owner"], "status": "approved", "target_stage_id": stage_id,
         },
         headers=auth_headers(admin_token),
     )
@@ -275,7 +275,7 @@ def test_completing_stage_without_cascade_leaves_requirements_uncompleted(client
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}",
         json={
             "name": req["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": req["owner_id"], "status": "approved", "target_stage_id": stage_id,
+            "owner": req["owner"], "status": "approved", "target_stage_id": stage_id,
         },
         headers=auth_headers(admin_token),
     )

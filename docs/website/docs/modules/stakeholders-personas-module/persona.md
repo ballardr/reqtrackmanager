@@ -21,7 +21,7 @@ A Persona is a representative user archetype — a "Field Inspector", a "Complia
 | Goals, needs, behaviours | What they are trying to achieve, what they need, how they work. |
 | Context / environment, skills / proficiency, frequency of use, constraints | The conditions they work under and how skilled and how often they use the product. |
 | Importance weight | A positive number used to weight this Persona when scores are rolled up per Persona; see [Weight](#importance-weight-and-the-project-override). |
-| Owner, champion | The owner maintains the record. The **champion** is the colleague accountable for keeping the Persona accurate — often the person closest to the real users. |
+| Owner, champion | The owner maintains the record; either may be a user or a group (see [Groups as owners](#groups-as-owners)). The **champion** is the colleague accountable for keeping the Persona accurate — often the person closest to the real users. |
 
 ## Scope
 
@@ -54,6 +54,15 @@ Per-Persona scoring of Pain Points is not available yet, so the weight is record
 | --- |
 | An organisation Persona with this project's weight override, and its Pain Point link in the Links panel |
 | ![Detail page for the Field Inspector organisation Persona showing its goals, needs, behaviours, an importance weight of 5 marked Custom with Set override and Use inherited value controls, and a Links panel with an Experiences link to a Pain Point](../../../static/img/screenshots/persona-detail.png) |
+
+## Groups as owners
+
+The **Owner** and **Champion** of a Persona, the **Owner** of a [Stakeholder](./stakeholder.md) and the **Owner** of a [Need](./stakeholder-need.md) can each be a user, an organisation group or a project group, so a team can stand behind a record instead of one nominee who may leave. The record shows the group's name, its kind (Org group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the Owner roles above still decide who can edit.
+
+- A project group can be named only on a record that belongs to that project. An organisation-level Persona or Stakeholder is shared by every project, so it can name users and organisation groups only.
+- The version history lists who owned each version. If a group is later deleted, older versions show it as a deleted group.
+- Deleting a group that still owns records asks the admin to hand them to a user or another group, or to leave them without an owner. Every owner here is optional, so leaving them empty is allowed.
+- Exports record a group by name. On import, a group the target organisation or project lacks is left empty and reported in the import warnings.
 
 ## Lifecycle
 

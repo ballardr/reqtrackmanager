@@ -26,11 +26,12 @@ from app.modules.compliance.models import (
     ProjectCompliance,
     ProjectComplianceRequirement,
 )
-from app.modules.compliance.project_router._shared import _get_pcr_or_404, _require_officer, _require_project_member_or_none, _require_view
+from app.modules.compliance.project_router._shared import _get_pcr_or_404, _require_officer, _require_view, _validate_project_principal
 from app.modules.compliance.schemas import ComplianceEvidenceOut, ComplianceRequiredActionAssessmentOut, ComplianceRequiredActionAssessmentUpdate
-from app.modules.compliance.service import build_evidence_out
+from app.modules.compliance.service import assessment_to_out, assessments_to_out, build_evidence_out
 from app.services import relationships
 from app.services.audit import log_event
+from app.services.principals import principal_columns
 from app.services.rbac import require_ai_approvals_enabled
 
 router = APIRouter(tags=["compliance-project-required-action-assessments"])
@@ -56,11 +57,11 @@ def list_required_action_assessments(
 ):
     """Lists this requirement's required-action assessments (§6/§25)."""
     _project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
-    return db.scalars(
+    return assessments_to_out(db, db.scalars(
         select(ComplianceRequiredActionAssessment).where(
             ComplianceRequiredActionAssessment.project_compliance_requirement_id == pcr.id
         )
-    ).all()
+    ).all())
 
 
 @router.get(
@@ -75,7 +76,7 @@ def get_required_action_assessment(
     _pc, _pcr, assessment = _get_required_action_assessment_or_404(
         db, project_id, project_compliance_id, pcr_id, assessment_id
     )
-    return assessment
+    return assessment_to_out(db, assessment)
 
 
 @router.patch(
@@ -97,19 +98,20 @@ def update_required_action_assessment(
     _pc, _pcr, assessment = _get_required_action_assessment_or_404(
         db, project_id, project_compliance_id, pcr_id, assessment_id
     )
-    _require_project_member_or_none(db, project_id, payload.assignee_id)
+    _validate_project_principal(db, project_id, payload.assignee, "assignee")
     if assessment.due_date != payload.due_date:
         assessment.due_reminder_sent_at = None
         assessment.overdue_notified_at = None
-    assessment.assignee_id = payload.assignee_id
+    for column, value in principal_columns("assignee", payload.assignee).items():
+        setattr(assessment, column, value)
     assessment.due_date = payload.due_date
     assessment.notes = payload.notes
     log_event(db, entity_type="compliance_required_action_assessment", entity_id=assessment.id, action="updated",
               actor_id=current_user.id, project_id=project_id,
-              detail={"assignee_id": str(payload.assignee_id) if payload.assignee_id else None})
+              detail={"assignee": {"type": payload.assignee.type.value, "id": str(payload.assignee.id)} if payload.assignee else None})
     db.commit()
     db.refresh(assessment)
-    return assessment
+    return assessment_to_out(db, assessment)
 
 
 @router.post(
@@ -148,7 +150,7 @@ def complete_required_action_assessment(
               detail={"via": "mcp"} if channel == "mcp" else None)
     db.commit()
     db.refresh(assessment)
-    return assessment
+    return assessment_to_out(db, assessment)
 
 
 @router.post(
@@ -174,7 +176,7 @@ def uncomplete_required_action_assessment(
               actor_id=current_user.id, project_id=project_id)
     db.commit()
     db.refresh(assessment)
-    return assessment
+    return assessment_to_out(db, assessment)
 
 
 @router.get(

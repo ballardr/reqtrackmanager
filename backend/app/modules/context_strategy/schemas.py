@@ -57,6 +57,11 @@ source artefact type (`kind` + `target_id` — `kind` is the corresponding
 possible client input at all), plus `StrategySupersessionCreate`/
 `FutureStateSupersessionCreate`/`GuidingPrincipleSupersessionCreate` (each
 just `{old_<artefact>_id, comment}`, mirroring `DecisionSupersessionCreate`).
+
+`owner` (Pain Point, Guiding Principle, Open Question) is a principal: a user,
+an organisation group or (where the record is project-scoped) a project group.
+Requests send a `PrincipalRef` (`{type, id}`; null clears it) and responses
+return a resolved `PrincipalOut` (`_shared.owner_labels`).
 """
 
 from __future__ import annotations
@@ -89,6 +94,7 @@ from app.modules.context_strategy.service import (
     StrategyLinkKind,
 )
 from app.schemas.file import FileAssetOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 # --- Strategies --------------------------------------------------------------
 
@@ -437,7 +443,7 @@ class PainPointUpdate(BaseModel):
     impact: str = ""
     evidence: str = ""
     priority: PainPointPriority
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     date_identified: date | None = None
     is_intentional: bool | None = None  # None = leave unchanged
 
@@ -459,7 +465,7 @@ class PainPointOut(BaseModel):
     evidence: str
     priority: PainPointPriority
     status: PainPointStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     date_identified: date
     is_intentional: bool
     is_locked: bool
@@ -602,7 +608,7 @@ class GuidingPrincipleCreate(BaseModel):
     principle_statement: str
     rationale: str = ""
     priority: GuidingPrinciplePriority = GuidingPrinciplePriority.MEDIUM
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
 
 
 class GuidingPrincipleUpdate(BaseModel):
@@ -615,7 +621,7 @@ class GuidingPrincipleUpdate(BaseModel):
     principle_statement: str
     rationale: str = ""
     priority: GuidingPrinciplePriority
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     change_note: str = ""
 
 
@@ -637,7 +643,7 @@ class GuidingPrincipleOut(BaseModel):
     rationale: str
     priority: GuidingPrinciplePriority
     status: GuidingPrincipleStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     version_number: int
     is_locked: bool
 
@@ -646,10 +652,9 @@ class GuidingPrincipleOut(BaseModel):
 
 
 class GuidingPrincipleVersionOut(BaseModel):
-    """One historical `GuidingPrincipleVersion` snapshot — exact mirror of
-    `StrategyVersionOut`/`FutureStateVersionOut`."""
-
-    model_config = {"from_attributes": True}
+    """One historical `GuidingPrincipleVersion` snapshot — like
+    `StrategyVersionOut`/`FutureStateVersionOut`, but built by the router
+    (`_shared.guiding_principle_version_out`) so the owner is resolved."""
 
     id: UUID
     guiding_principle_id: UUID
@@ -661,7 +666,7 @@ class GuidingPrincipleVersionOut(BaseModel):
     rationale: str
     priority: GuidingPrinciplePriority
     status: GuidingPrincipleStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     change_note: str
     created_by: UUID
     created_at: datetime
@@ -719,7 +724,7 @@ class OpenQuestionUpdate(BaseModel):
     context: str = ""
     evidence: str = ""
     priority: OpenQuestionPriority
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     due_date: date | None = None
 
 
@@ -736,7 +741,7 @@ class OpenQuestionOut(BaseModel):
     evidence: str
     priority: OpenQuestionPriority
     status: OpenQuestionStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     due_date: date | None
     is_locked: bool
 

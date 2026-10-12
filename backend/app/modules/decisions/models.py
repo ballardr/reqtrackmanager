@@ -47,6 +47,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 from app.modules.decisions.enums import DecisionStatus
 
 
@@ -123,15 +124,20 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
         decision_date: Date the decision was actually made, which may
             precede formal approval (e.g. a decision made in a meeting,
             formally approved days later).
-        decision_maker_id: Nullable FK to `users` — who actually made (or
-            is expected to make) this specific decision. Distinct from the
+        decision_maker_type / decision_maker_id: Optional principal (a user,
+            an organisation group or a project group — `models.principal`) —
+            who actually made (or is expected to make) this specific
+            decision. Distinct from the
             `decision_approver` module role (`module.py`), which controls
             *who may* approve any decision in the project — this column
             records who *did* (or will), the placeholder-role resolution
             from Phase 0 addendum Q2/2a doesn't remove the value of
             recording an actual named decision-maker per Decision.
-        owner_id: FK to `users` — maintains the record; distinct from
-            `decision_maker_id`.
+        owner_type / owner_id: Mandatory principal that maintains the
+            record (a team can own a Decision); distinct from the decision
+            maker. The id has no foreign key (see `models.principal`);
+            `services.principals.validate_principal` checks it on write and
+            `module.py`'s `principal_references` guard group deletion.
         context / options_considered / chosen_option / rationale /
             consequences / assumptions / constraints: Free-text fields
             (source overview §13/10.3; rationale and consequences are
@@ -143,7 +149,11 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "decisions"
-    __table_args__ = (UniqueConstraint("project_id", "unique_code"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code"),
+        principal_check_constraint("owner"),
+        principal_check_constraint("decision_maker", nullable=True),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     unique_code: Mapped[str] = mapped_column(String(64), index=True)
@@ -154,10 +164,10 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
     )
     status: Mapped[DecisionStatus] = mapped_column(str_enum(DecisionStatus, 20), default=DecisionStatus.DRAFT)
     decision_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    decision_maker_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
-    )
-    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    decision_maker_type: Mapped[str | None] = principal_type_column(nullable=True)
+    decision_maker_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+    owner_type: Mapped[str] = principal_type_column()
+    owner_id: Mapped[uuid.UUID] = principal_id_column()
     context: Mapped[str | None] = mapped_column(Text, nullable=True)
     options_considered: Mapped[str | None] = mapped_column(Text, nullable=True)
     chosen_option: Mapped[str | None] = mapped_column(Text, nullable=True)

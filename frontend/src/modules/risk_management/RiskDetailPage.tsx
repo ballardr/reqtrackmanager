@@ -25,6 +25,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailLayout } from "../../components/DetailLayout";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
+import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { RecordField, RecordFieldGroup, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -129,8 +130,7 @@ export function RiskDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (risk === null || project === null) return <Spinner />;
 
-  const userOptions = orgUsers.map((u) => ({ id: u.user_id, display_name: u.display_name }));
-  const userNames = Object.fromEntries(userOptions.map((u) => [u.id, u.display_name]));
+  const userNames = Object.fromEntries(orgUsers.map((u) => [u.user_id, u.display_name]));
 
   return (
     <DetailLayout
@@ -165,7 +165,7 @@ export function RiskDetailPage() {
           )}
         </div>
         <p className="text-muted" style={{ margin: 0 }}>
-          {risk.risk_type_name ?? "No type"} · Owner: {userNames[risk.owner_id ?? ""] ?? "Unassigned"} ·{" "}
+          {risk.risk_type_name ?? "No type"} · Owner: <PrincipalBadge principal={risk.owner} /> ·{" "}
           {risk.treatment_strategy ? `Strategy: ${TREATMENT_STRATEGY_LABEL[risk.treatment_strategy]}` : "No treatment strategy"}
         </p>
         {risk.statement && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{risk.statement}</p>}
@@ -221,6 +221,7 @@ export function RiskDetailPage() {
           versions={versions}
           columns={[
             { header: "Status", render: (v) => RISK_STATUS_LABEL[v.status] },
+            { header: "Owner", render: (v) => <PrincipalBadge principal={v.owner} /> },
             { header: "Inherent", render: (v) => levelSummary(scheme, v.inherent_likelihood_level_id, v.inherent_consequence_level_id, v.inherent_detectability_level_id) },
             { header: "Residual", render: (v) => levelSummary(scheme, v.residual_likelihood_level_id, v.residual_consequence_level_id, v.residual_detectability_level_id) },
           ]}
@@ -242,7 +243,9 @@ export function RiskDetailPage() {
           initial={risk}
           scheme={scheme}
           riskTypes={riskTypes}
-          userOptions={userOptions}
+          orgUsers={orgUsers}
+          organizationId={project.organization_id}
+          projectId={projectId}
           currentUserId={user?.id}
           error={formError}
           onCancel={() => { setEditing(false); setFormError(null); }}

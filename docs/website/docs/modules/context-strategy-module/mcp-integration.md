@@ -20,6 +20,8 @@ All 74 tools are project-scoped — there is no org-scoped equivalent, even for 
 | Reports | 9 | One read-only `get_…_report` tool per [report](./reports.md) (R1–R9), returning the JSON the Reports page shows. Organisation-wide variants aren't exposed. |
 | Approve / decide (gated) | 5 | `approve_strategy`, `approve_future_state`, `activate_guiding_principle`, `retire_guiding_principle`, `resolve_open_question` — see below. |
 
+A Pain Point, Guiding Principle or Open Question `owner` is sent and returned as `{"type": "user" | "org_group" | "project_group", "id": …}` (see [Groups as owners](./overview.md#groups-as-owners)); on an update, an omitted owner is cleared.
+
 File upload and comment endpoints are not exposed through MCP at all — the same posture Decision Management already takes toward its own comment/file endpoints, and (for file upload specifically) the same `multipart/form-data` constraint that mechanism can't express regardless.
 
 ## What you can ask for

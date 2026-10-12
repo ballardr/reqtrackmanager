@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import type { OrgUser } from "../../api/types";
+import type { OrgGroup, OrgUser, Principal, ProjectGroup } from "../../api/types";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildPersona, buildStakeholder, buildStakeholderScheme } from "./fixtures";
@@ -20,6 +20,15 @@ const ORG_USERS: OrgUser[] = [
   },
 ];
 
+
+const ORG_GROUPS: OrgGroup[] = [
+  { id: "group-1", name: "Platform Architecture", member_user_ids: ["user-2"], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
+];
+const PROJECT_GROUPS: ProjectGroup[] = [
+  { id: "pgroup-1", name: "Release board", roles: [], member_user_ids: ["user-2"], member_org_group_ids: [], member_source_project_ids: [] },
+];
+const TEAM: Principal = { type: "org_group", id: "group-1", label: "Platform Architecture", member_count: 3, exists: true };
+
 const HINT: CadenceHint = { quadrant: "manage_closely", suggested_cadence: "monthly" };
 
 interface Mocks {
@@ -33,6 +42,8 @@ const LINKED_PAIN_POINT = buildGraphNode({ type: "pain_point", id: "pp-1", type_
 function mockDetailApis(current: Stakeholder, { versions = [], represents = [], needs = [] }: Mocks = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
+    if (path === "/api/v1/orgs/org-1/groups") return ORG_GROUPS;
+    if (path === `/api/v1/projects/${PROJECT_ID}/groups`) return PROJECT_GROUPS;
     if (path === "/api/v1/orgs/org-1/users") return ORG_USERS;
     if (path.startsWith("/api/v1/orgs/org-1/users/search")) return { members: ORG_USERS, external: null };
     if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/stakeholder`) return buildStakeholderScheme();
@@ -225,7 +236,7 @@ export const RepresentsListsPersonasAndAddsMore: Story = {
 export const OwnerCanBeAssigned: Story = {
   beforeEach: () => {
     mockDetailApis(buildStakeholder());
-    spyOn(api, "put").mockResolvedValue(buildStakeholder({ owner_id: "user-2" }));
+    spyOn(api, "put").mockResolvedValue(buildStakeholder({ owner: { type: "user", id: "user-2", label: "Jamie Lee", member_count: null, exists: true } }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -233,7 +244,32 @@ export const OwnerCanBeAssigned: Story = {
     await userEvent.type(canvas.getByLabelText("Stakeholder owner"), "Jamie");
     await waitFor(() => canvas.getByText(/Jamie Lee/));
     await userEvent.click(canvas.getByText(/Jamie Lee/));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}`, { owner_id: "user-2" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}`, { owner: { type: "user", id: "user-2" } }));
+  },
+};
+
+/** A project group can own a project stakeholder; the picked group goes out as a typed principal. */
+export const OwnerCanBeAProjectGroup: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildStakeholder());
+    spyOn(api, "put").mockResolvedValue(buildStakeholder());
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByLabelText("Stakeholder owner"));
+    await userEvent.type(canvas.getByLabelText("Stakeholder owner"), "release");
+    await userEvent.click(await canvas.findByText("Release board"));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}`, { owner: { type: "project_group", id: "pgroup-1" } }));
+  },
+};
+
+/** A group owner shows its name and kind. */
+export const GroupOwnerIsNamedWithItsKind: Story = {
+  beforeEach: () => mockDetailApis(buildStakeholder({ owner: TEAM })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
+    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
   },
 };
 
@@ -250,8 +286,8 @@ export const VersionHistoryUsesLabels: Story = {
   beforeEach: () =>
     mockDetailApis(buildStakeholder({ version_number: 2 }), {
       versions: [
-        { id: "v1", stakeholder_id: STAKEHOLDER_ID, version_number: 1, valid_from: "2026-01-10T09:00:00Z", valid_to: "2026-01-11T09:00:00Z", name: "Pat Regulator", status: "draft", target_cadence: null, change_note: "Initial creation.", created_at: "2026-01-10T09:00:00Z" },
-        { id: "v2", stakeholder_id: STAKEHOLDER_ID, version_number: 2, valid_from: "2026-01-11T09:00:00Z", valid_to: null, name: "Pat Regulator", status: "active", target_cadence: "quarterly", change_note: "Activated", created_at: "2026-01-11T09:00:00Z" },
+        { id: "v1", stakeholder_id: STAKEHOLDER_ID, version_number: 1, valid_from: "2026-01-10T09:00:00Z", valid_to: "2026-01-11T09:00:00Z", name: "Pat Regulator", status: "draft", target_cadence: null, owner: null, change_note: "Initial creation.", created_at: "2026-01-10T09:00:00Z" },
+        { id: "v2", stakeholder_id: STAKEHOLDER_ID, version_number: 2, valid_from: "2026-01-11T09:00:00Z", valid_to: null, name: "Pat Regulator", status: "active", target_cadence: "quarterly", owner: TEAM, change_note: "Activated", created_at: "2026-01-11T09:00:00Z" },
       ],
     }),
   play: async ({ canvasElement }) => {

@@ -19,6 +19,8 @@
  * (`ActionTypesPanel.tsx` etc.) already follows for its own domain text.
  */
 
+import type { Principal, PrincipalRef } from "../../api/types";
+
 // --- Decision lifecycle ------------------------------------------------------
 
 export type DecisionStatus = "draft" | "proposed" | "under_review" | "approved" | "rejected" | "superseded";
@@ -101,8 +103,10 @@ export interface Decision {
   decision_type_id: string;
   status: DecisionStatus;
   decision_date: string | null;
-  decision_maker_id: string | null;
-  owner_id: string;
+  /** Who made (or will make) the call: a user or a group; null while unassigned. */
+  decision_maker: Principal | null;
+  /** Who maintains the record: a user, an organisation group or a project group. */
+  owner: Principal;
   context: string | null;
   options_considered: string | null;
   chosen_option: string | null;
@@ -120,16 +124,16 @@ export interface Decision {
 }
 
 /** The editable content fields shared by create (`DecisionCreate`) and full
- * replace (`DecisionUpdate`) — `owner_id` is required on update (the
- * backend defaults it to the creator only on create) and `decision_type_id`
- * is a plain id string here (not `UUID`, this being the frontend). */
+ * replace (`DecisionUpdate`) — `owner` is required on update (the backend
+ * defaults it to the creator only on create) and `decision_type_id` is a
+ * plain id string here (not `UUID`, this being the frontend). */
 export interface DecisionFieldValues {
   title: string;
   decision_statement: string;
   decision_type_id: string;
   decision_date: string | null;
-  decision_maker_id: string | null;
-  owner_id: string | null;
+  decision_maker: PrincipalRef | null;
+  owner: PrincipalRef | null;
   context: string | null;
   options_considered: string | null;
   chosen_option: string | null;

@@ -9,16 +9,18 @@
  * an edit that changes nothing writes no version. Also the matrix cell lookup
  * (`cellOf`/`countPlottable`) shared by the grid and the register.
  */
+import type { PrincipalRef } from "../../api/types";
+import { principalRef } from "../../api/types";
 import type { Risk, RiskFieldValues, RiskUpdateValues } from "./types";
 
-/** The form values for a new risk, owned by `ownerId`. */
-export function blankRiskValues(ownerId: string | null): RiskFieldValues {
+/** The form values for a new risk, owned by `owner`. */
+export function blankRiskValues(owner: PrincipalRef | null): RiskFieldValues {
   return {
     title: "", statement: "", cause: "", risk_event: "", consequence: "",
     risk_type_id: null, treatment_strategy: null, acceptance_criteria: "",
     inherent_likelihood_level_id: null, inherent_consequence_level_id: null, inherent_detectability_level_id: null,
     residual_likelihood_level_id: null, residual_consequence_level_id: null, residual_detectability_level_id: null,
-    owner_id: ownerId, review_date: null,
+    owner, review_date: null,
   };
 }
 
@@ -34,8 +36,18 @@ export function valuesFromRisk(risk: Risk): RiskFieldValues {
     residual_likelihood_level_id: risk.residual_likelihood_level_id,
     residual_consequence_level_id: risk.residual_consequence_level_id,
     residual_detectability_level_id: risk.residual_detectability_level_id,
-    owner_id: risk.owner_id, review_date: risk.review_date,
+    owner: principalRef(risk.owner), review_date: risk.review_date,
   };
+}
+
+/** Equality for a form value: scalars by identity, the owner principal by kind and id. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a !== null && b !== null && typeof a === "object" && typeof b === "object") {
+    const x = a as PrincipalRef;
+    const y = b as PrincipalRef;
+    return x.type === y.type && x.id === y.id;
+  }
+  return a === b;
 }
 
 /**
@@ -46,7 +58,7 @@ export function valuesFromRisk(risk: Risk): RiskFieldValues {
 export function diffRiskFields(before: RiskFieldValues, after: RiskFieldValues): RiskUpdateValues {
   const changed: Record<string, unknown> = {};
   for (const key of Object.keys(after) as (keyof RiskFieldValues)[]) {
-    if (before[key] !== after[key]) changed[key] = after[key];
+    if (!sameValue(before[key], after[key])) changed[key] = after[key];
   }
   return changed as RiskUpdateValues;
 }

@@ -22,6 +22,7 @@ organisation.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import date
 
 from fastapi import HTTPException, UploadFile, status
@@ -41,7 +42,14 @@ from app.modules.risk_management.models import (
     RiskVersion,
 )
 from app.modules.risk_management.ratings import RatingContext, RiskRating, load_rating_context, rate_version
-from app.modules.risk_management.schemas import RiskCommentOut, RiskCreate, RiskOut, RiskRatingOut, RiskUpdate
+from app.modules.risk_management.schemas import (
+    RiskCommentOut,
+    RiskCreate,
+    RiskOut,
+    RiskRatingOut,
+    RiskUpdate,
+    RiskVersionOut,
+)
 from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES
 from app.modules.risk_management.service import (
     RISK_ALLOWED_TRANSITIONS,
@@ -57,11 +65,18 @@ from app.modules.risk_management.service import (
     validate_levels,
 )
 from app.modules.risk_management.treatment import effective_treatment_counts
+from app.schemas.principal import PrincipalOut
 from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.permissions import encode_permission
+from app.services.principals import (
+    is_principal_member,
+    principal_columns,
+    principal_labels,
+    principal_ref,
+    validate_principal,
+)
 from app.services.rbac import (
-    get_effective_org_roles,
     get_effective_permissions,
     lock_row_for_update,
     permission_satisfied,
@@ -71,6 +86,9 @@ from app.services.rbac import (
 RISK_MANAGE_PERMISSION = encode_permission(RISK_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
 RISK_ACCEPT_PERMISSION = encode_permission(RISK_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
+# Resolved display data for owners, keyed by `(owner_type, owner_id)` (`services.principals.principal_labels`).
+OwnerLabels = dict[tuple[str, uuid.UUID], PrincipalOut]
+
 _TEXT_FIELDS = ("statement", "cause", "risk_event", "consequence", "acceptance_criteria")
 
 
@@ -79,12 +97,54 @@ def _rating_out(rating: RiskRating | None) -> RiskRatingOut | None:
     return RiskRatingOut(**rating.__dict__) if rating is not None else None
 
 
+def owner_labels(db: Session, versions: Sequence[RiskVersion]) -> OwnerLabels:
+    """Display data for the owner of every version in `versions`, in one batch."""
+    return principal_labels(db, [principal_ref(v.owner_type, v.owner_id) for v in versions])
+
+
+def _owner_of(labels: OwnerLabels, version: RiskVersion) -> PrincipalOut | None:
+    """The resolved owner of `version`, or None when it has no owner."""
+    return None if version.owner_id is None else labels[(version.owner_type, version.owner_id)]
+
+
+def is_risk_owner(db: Session, version: RiskVersion, user_id: uuid.UUID) -> bool:
+    """True when `user_id` is the risk's owner or an effective member of its owner group.
+
+    This only lets an owner act as the owner (assess a treatment, record a review); it adds no
+    other right, and a Risk Manager is checked separately.
+    """
+    return is_principal_member(db, principal_ref(version.owner_type, version.owner_id), user_id)
+
+
+def risk_version_out(version: RiskVersion, labels: OwnerLabels) -> RiskVersionOut:
+    """The API shape of one historical version, with its owner resolved from `labels`."""
+    return RiskVersionOut(
+        id=version.id, risk_id=version.risk_id, version_number=version.version_number, valid_from=version.valid_from,
+        valid_to=version.valid_to, title=version.title, statement=version.statement, cause=version.cause,
+        risk_event=version.risk_event, consequence=version.consequence, project_type_id=version.project_type_id,
+        treatment_strategy=version.treatment_strategy, acceptance_criteria=version.acceptance_criteria,
+        **{column: getattr(version, column) for column in LEVEL_COLUMN_AXES},
+        status=version.status, owner=_owner_of(labels, version), review_date=version.review_date,
+        change_note=version.change_note, created_by=version.created_by, created_at=version.created_at,
+    )
+
+
+def risk_versions_out(db: Session, versions: Sequence[RiskVersion]) -> list[RiskVersionOut]:
+    """The API shape of a risk's version history, resolving every owner in one batch."""
+    labels = owner_labels(db, versions)
+    return [risk_version_out(v, labels) for v in versions]
+
+
 def risk_to_out(
-    db: Session, risk: Risk, version: RiskVersion, ctx: RatingContext, *, effective_treatments: int = 0
+    db: Session, risk: Risk, version: RiskVersion, ctx: RatingContext, *, effective_treatments: int = 0,
+    labels: OwnerLabels | None = None,
 ) -> RiskOut:
     """Merges a risk with its current version and derived ratings. `ctx` is
     loaded once per request (`load_rating_context`); `effective_treatments` is
-    the risk's count from `treatment.effective_treatment_counts`."""
+    the risk's count from `treatment.effective_treatment_counts`; `labels` is
+    pre-resolved owner data (`owner_labels`) when building many, resolved here
+    when omitted."""
+    labels = labels if labels is not None else owner_labels(db, [version])
     inherent, residual = rate_version(ctx, version)
     return RiskOut(
         id=risk.id, project_id=risk.project_id, unique_code=risk.unique_code, creator_id=risk.creator_id,
@@ -96,7 +156,7 @@ def risk_to_out(
         **{column: getattr(version, column) for column in LEVEL_COLUMN_AXES},
         inherent_rating=_rating_out(inherent), residual_rating=_rating_out(residual), status=version.status,
         allowed_next_statuses=sorted(RISK_ALLOWED_TRANSITIONS[version.status], key=list(RiskStatus).index),
-        owner_id=version.owner_id, review_date=version.review_date, version_number=version.version_number,
+        owner=_owner_of(labels, version), review_date=version.review_date, version_number=version.version_number,
         effective_treatment_count=effective_treatments, is_effectively_treated=effective_treatments > 0,
         is_review_overdue=(
             version.review_date is not None and version.review_date < date.today()
@@ -189,25 +249,13 @@ def apply_value_error_as_conflict(fn, *args, **kwargs):
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
-def validate_owner(db: Session, organization_id: uuid.UUID, owner_id: uuid.UUID | None) -> None:
-    """Rejects an owner who is not a member of the organisation, so a risk can't
-    point at a user from another tenant.
-
-    Raises:
-        HTTPException: 400 if `owner_id` is not in the organisation.
-    """
-    if owner_id is not None and not get_effective_org_roles(db, owner_id, organization_id):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Owner must be a member of this organisation.")
-
-
 def _resolve_references(db: Session, project: Project, sent: dict) -> None:
-    """Validates and rewrites the payload's references in place: the owner, the
-    scoring levels, and `risk_type_id` -> `project_type_id`.
+    """Validates and rewrites the payload's references in place: the scoring
+    levels, and `risk_type_id` -> `project_type_id`.
 
     Raises:
-        HTTPException: 400 for an invalid owner, level or type.
+        HTTPException: 400 for an invalid level or type.
     """
-    validate_owner(db, project.organization_id, sent.get("owner_id"))
     try:
         validate_levels(db, project.organization_id, {c: sent[c] for c in LEVEL_COLUMN_AXES if c in sent})
         if "risk_type_id" in sent:
@@ -216,11 +264,26 @@ def _resolve_references(db: Session, project: Project, sent: dict) -> None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
+def _owner_columns(db: Session, project: Project, payload: RiskCreate | RiskUpdate) -> dict:
+    """The `owner_type` / `owner_id` column values for the payload's owner, validated; empty when an
+    update does not mention the owner (so it is carried forward).
+
+    Raises:
+        HTTPException: 400 when the owner is not a member of the organisation, or is a group
+            of another organisation or project.
+    """
+    if "owner" not in payload.model_fields_set:
+        return {}
+    validate_principal(db, payload.owner, organization_id=project.organization_id, project_id=project.id, field="owner")
+    return principal_columns("owner", payload.owner)
+
+
 def create_risk_from_payload(db: Session, payload: RiskCreate, creator: User, project: Project) -> RiskOut:
     """Validates a create payload, creates the risk, audit-logs, commits and
     returns the API shape."""
-    content = payload.model_dump()
+    content = payload.model_dump(exclude={"owner"})
     _resolve_references(db, project, content)
+    content.update(_owner_columns(db, project, payload))
     risk = create_risk(db, project=project, creator=creator, **content)
     log_event(db, entity_type=RISK_ARTEFACT_TYPE, entity_id=risk.id, action="created", actor_id=creator.id,
               project_id=project.id, detail={"title": payload.title, "unique_code": risk.unique_code})
@@ -232,13 +295,14 @@ def create_risk_from_payload(db: Session, payload: RiskCreate, creator: User, pr
 def update_risk_from_payload(db: Session, risk: Risk, payload: RiskUpdate, actor: User, project: Project) -> RiskOut:
     """Applies a partial update as a new version (only fields present in the
     request body change), audit-logs, commits and returns the API shape."""
-    sent = payload.model_dump(exclude_unset=True, exclude={"change_note"})
+    sent = payload.model_dump(exclude_unset=True, exclude={"change_note", "owner"})
     if "title" in sent and sent["title"] is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A Risk title cannot be null.")
     for text_field in _TEXT_FIELDS:
         if text_field in sent and sent[text_field] is None:
             sent[text_field] = ""
     _resolve_references(db, project, sent)
+    sent.update(_owner_columns(db, project, payload))
     lock_row_for_update(db, Risk, risk.id)
     current = get_current_risk_version(db, risk.id)
     apply_value_error_as_conflict(check_accepted_content_unchanged, current, sent)

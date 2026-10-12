@@ -9,6 +9,10 @@ Type-vocabulary schemas are the shared ones in `app.schemas.type_vocabulary`.
 nullable field (type, strategy, any level, owner, review date) can be cleared
 by sending an explicit `null`. `status` is not editable here (the lifecycle
 transition endpoint owns it).
+
+`owner` is a principal: a user, an organisation group or a project group.
+Requests send a `PrincipalRef` (`{type, id}`; null clears it) and responses
+return a resolved `PrincipalOut` (`_shared.owner_labels`).
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from app.modules.risk_management.enums import RiskReviewOutcome, RiskStatus, TreatmentAssessmentStatus, TreatmentStrategy
 from app.schemas.file import FileAssetOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 
 class RiskCreate(BaseModel):
@@ -38,7 +43,7 @@ class RiskCreate(BaseModel):
     residual_likelihood_level_id: UUID | None = None
     residual_consequence_level_id: UUID | None = None
     residual_detectability_level_id: UUID | None = None
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     review_date: date | None = None
 
 
@@ -59,7 +64,7 @@ class RiskUpdate(BaseModel):
     residual_likelihood_level_id: UUID | None = None
     residual_consequence_level_id: UUID | None = None
     residual_detectability_level_id: UUID | None = None
-    owner_id: UUID | None = None
+    owner: PrincipalRef | None = None
     review_date: date | None = None
     change_note: str = ""
 
@@ -113,7 +118,7 @@ class RiskOut(BaseModel):
     residual_rating: RiskRatingOut | None
     status: RiskStatus
     allowed_next_statuses: list[RiskStatus]
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     review_date: date | None
     version_number: int
     effective_treatment_count: int = 0
@@ -125,9 +130,7 @@ class RiskOut(BaseModel):
 
 
 class RiskVersionOut(BaseModel):
-    """One historical snapshot."""
-
-    model_config = {"from_attributes": True}
+    """One historical snapshot, built by `_shared.risk_version_out` so the owner is resolved."""
 
     id: UUID
     risk_id: UUID
@@ -149,7 +152,7 @@ class RiskVersionOut(BaseModel):
     residual_consequence_level_id: UUID | None
     residual_detectability_level_id: UUID | None
     status: RiskStatus
-    owner_id: UUID | None
+    owner: PrincipalOut | None
     review_date: date | None
     change_note: str
     created_by: UUID

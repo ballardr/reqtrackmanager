@@ -146,7 +146,7 @@ def test_link_only_user_can_link_and_unlink_but_not_edit_or_approve(world, clien
     assert client.put(
         f"/api/v1/projects/{project['id']}/requirements/{req[1]}", json={
             "name": "Renamed", "component_id": project["component_id"], "category_id": project["category_id"],
-            "owner_id": str(world.user_id),
+            "owner": {"type": "user", "id": str(world.user_id)},
         },
         headers=auth_headers(token),
     ).status_code == 403

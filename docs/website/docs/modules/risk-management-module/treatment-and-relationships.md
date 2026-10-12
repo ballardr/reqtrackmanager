@@ -8,7 +8,7 @@ A Risk register is only useful if it connects to the work that deals with each R
 
 ## Linking is not treating
 
-Anyone who can edit links can attach a Requirement to a Risk, and an attachment proves nothing about whether the Requirement reduces the Risk. So each *treatment* link carries a **verdict**, recorded by the Risk's owner or a Risk Manager:
+Anyone who can edit links can attach a Requirement to a Risk, and an attachment proves nothing about whether the Requirement reduces the Risk. So each *treatment* link carries a **verdict**, recorded by the Risk's owner (or a member of its owner group) or a Risk Manager:
 
 | Verdict | Meaning |
 | --- | --- |

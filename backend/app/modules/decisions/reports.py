@@ -46,6 +46,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -58,7 +59,6 @@ from app.models.enums import ArtefactType
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
-from app.models.user import User
 from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.labels import DECISION_STATUS_LABEL, decision_status_label
 from app.modules.decisions.models import Decision, DecisionTypeDefinition
@@ -69,6 +69,7 @@ from app.modules.registry import (
     is_module_enabled_for_project,
 )
 from app.services import relationships
+from app.services.principals import principal_labels, principal_text
 from app.services.report_framework import (
     ReportContext,
     ReportMetric,
@@ -106,12 +107,21 @@ def _clip(text: str | None, limit: int = _CLIP) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
 
 
-def _user_names(db: Session, ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]:
-    """Maps user ids to display names (ids that no longer resolve are absent)."""
-    wanted = {i for i in ids if i is not None}
-    if not wanted:
-        return {}
-    return {u.id: u.display_name for u in db.scalars(select(User).where(User.id.in_(wanted))).all()}
+def _people(db: Session, decisions: list[Decision], *, owner: bool = True) -> Callable[[str | None, uuid.UUID | None, str], str]:
+    """Resolves the principals (owner and decision maker) of `decisions` once; returns a lookup
+    `(type, id, empty) -> text` (`services.principals.principal_text`: a group reads
+    `Name (Organisation group)`). `owner=False` skips the owners when only decision makers are printed."""
+    refs = [(d.decision_maker_type, d.decision_maker_id) for d in decisions if d.decision_maker_id]
+    if owner:
+        refs += [(d.owner_type, d.owner_id) for d in decisions]
+    labels = principal_labels(db, refs)
+
+    def text(type_value: str | None, principal_id: uuid.UUID | None, empty: str = "") -> str:
+        if type_value is None or principal_id is None:
+            return empty
+        return principal_text(labels[(type_value, principal_id)], empty=empty)
+
+    return text
 
 
 def _enabled_projects(db: Session, req: ReportContext) -> list[Project]:
@@ -219,7 +229,7 @@ def collect_decision_register(db: Session, req: ReportContext) -> ReportResult:
         and (date_to is None or (d.decision_date is not None and d.decision_date <= date_to))
     ]
     decisions.sort(key=lambda d: (names[d.project_id].lower(), d.unique_code))
-    people = _user_names(db, {d.owner_id for d in decisions} | {d.decision_maker_id for d in decisions})
+    people = _people(db, decisions)
     supersedes, superseded_by, codes = _supersession(db, req, decisions)
 
     def codes_of(ids: list[uuid.UUID]) -> str:
@@ -245,7 +255,7 @@ def collect_decision_register(db: Session, req: ReportContext) -> ReportResult:
         [
             d.unique_code, d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
             decision_status_label(d.status.value), _fmt_date(d.decision_date),
-            people.get(d.decision_maker_id, "") if d.decision_maker_id else "", people.get(d.owner_id, ""),
+            people(d.decision_maker_type, d.decision_maker_id), people(d.owner_type, d.owner_id),
             codes_of(supersedes.get(d.id, [])), codes_of(superseded_by.get(d.id, [])),
         ]
         for d in decisions
@@ -314,7 +324,7 @@ def collect_approval_ageing(db: Session, req: ReportContext) -> ReportResult:
     decisions = _load(db, projects, *AWAITING_STATUSES)
     since = _waiting_since(db, decisions)
     type_names = _type_names(db, decisions)
-    people = _user_names(db, {d.owner_id for d in decisions} | {d.decision_maker_id for d in decisions})
+    people = _people(db, decisions)
     entries = [
         {
             "decision": d, "days": max((req.today - since[d.id].date()).days, 0),
@@ -331,8 +341,8 @@ def collect_approval_ageing(db: Session, req: ReportContext) -> ReportResult:
         return [
             d.unique_code, d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
             decision_status_label(d.status.value), str(e["days"]),
-            "Overdue" if e["overdue"] else "", people.get(d.decision_maker_id, "No decision maker") if d.decision_maker_id else "No decision maker",
-            people.get(d.owner_id, ""),
+            "Overdue" if e["overdue"] else "", people(d.decision_maker_type, d.decision_maker_id, "No decision maker"),
+            people(d.owner_type, d.owner_id),
         ]
 
     columns = ["Code", "Title", "Project", "Type", "Status", "Days waiting", "Overdue", "Decision maker", "Owner"]
@@ -385,7 +395,7 @@ def collect_decision_log(db: Session, req: ReportContext) -> ReportResult:
     ]
     decisions.sort(key=lambda d: (d.decision_date, names[d.project_id].lower(), d.unique_code))
     type_names = _type_names(db, decisions)
-    people = _user_names(db, {d.decision_maker_id for d in decisions})
+    people = _people(db, decisions, owner=False)
     result = _result(req, "d3", "Decision log", eligible=len(projects), notes=[
         f"Approved and Superseded Decisions with a decision date from {date_from.isoformat()} to {date_to.isoformat()}. "
         f"Free-text fields are cut to {_CLIP} characters; open the Decision for the full text.",
@@ -397,7 +407,7 @@ def collect_decision_log(db: Session, req: ReportContext) -> ReportResult:
     result.sections = [ReportSection("log", "Decisions made", columns, [
         [
             _fmt_date(d.decision_date), d.unique_code, d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
-            decision_status_label(d.status.value), people.get(d.decision_maker_id, "") if d.decision_maker_id else "",
+            decision_status_label(d.status.value), people(d.decision_maker_type, d.decision_maker_id),
             _clip(d.context), _clip(d.chosen_option or d.decision_statement), _clip(d.rationale),
         ]
         for d in decisions

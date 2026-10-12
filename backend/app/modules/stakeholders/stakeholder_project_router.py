@@ -35,6 +35,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import _shared as psh
 from app.modules.stakeholders import _stakeholder_shared as sh
+from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, versions_out
 from app.modules.stakeholders._shared import get_visible_persona, get_visible_stakeholder
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus
 from app.modules.stakeholders.models import ProjectStakeholderType, Stakeholder
@@ -246,7 +247,7 @@ def list_project_stakeholders(
     )
     if not include_org:
         stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
-    return [_out(db, s, project_id) for s in stakeholders]
+    return sh.stakeholders_to_out(db, stakeholders, project_id=project_id)
 
 
 @router.get("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)
@@ -317,7 +318,10 @@ def update_project_stakeholder(
 def list_project_stakeholder_versions(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return get_visible_stakeholder(db, _project(db, project_id), stakeholder_id).versions
+    return versions_out(
+        db, StakeholderVersionOut,
+        get_visible_stakeholder(db, _project(db, project_id), stakeholder_id).versions, STAKEHOLDER_PRINCIPAL_FIELDS,
+    )
 
 
 @router.delete("/stakeholders/{stakeholder_id}", status_code=status.HTTP_204_NO_CONTENT)

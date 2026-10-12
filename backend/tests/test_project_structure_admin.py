@@ -145,7 +145,7 @@ def test_delete_stage_reassigns_all_requirement_versions_and_cr_proposals(client
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
         json={
             "name": "Boot even faster", "component_id": component_id, "category_id": category_id,
-            "owner_id": requirement["owner_id"], "target_stage_id": doomed["id"],
+            "owner": requirement["owner"], "target_stage_id": doomed["id"],
         },
         headers=auth_headers(admin_token),
     )

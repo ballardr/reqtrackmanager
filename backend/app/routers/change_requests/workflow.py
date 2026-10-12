@@ -45,6 +45,7 @@ from app.services import notifications, pubsub
 from app.services.actions import generate_unique_code as generate_action_unique_code
 from app.services.audit import log_event
 from app.services.change_request_links import build_preview, decline_all, resolve_links
+from app.services.principals import revalidated_principal, revalidated_principal_columns
 from app.services.rbac import (
     get_effective_project_roles,
     get_project_member_user_ids,
@@ -296,7 +297,11 @@ def decide_change_request(
                 custom_fields=version.custom_fields if "custom_fields" in changed else None,
                 review_date=version.proposed_review_date, review_date_explicitly_set="review_date" in changed,
                 review_lead_days=version.proposed_review_lead_days, review_lead_days_explicitly_set="review_lead_days" in changed,
-                reviewer_id=version.proposed_reviewer_id, reviewer_id_explicitly_set="reviewer_id" in changed,
+                reviewer=revalidated_principal(
+                    db, version.proposed_reviewer_type, version.proposed_reviewer_id,
+                    organization_id=db.get(Project, project_id).organization_id, project_id=project_id, field="reviewer",
+                ),
+                reviewer_explicitly_set="reviewer_id" in changed,
             )
             if "attachments" in changed and version.proposed_attachment_file_ids:
                 project = db.get(Project, project_id)
@@ -387,7 +392,11 @@ def decide_change_request(
                         project_id=project_id, unique_code=generate_action_unique_code(project),
                         action_type_id=version.proposed_action_type_id,
                         title=version.proposed_action_title, description=version.proposed_action_description or "",
-                        assignee_id=version.proposed_action_assignee_id, due_date=version.proposed_action_due_date,
+                        **revalidated_principal_columns(
+                            db, "assignee", version.proposed_action_assignee_type, version.proposed_action_assignee_id,
+                            organization_id=project.organization_id, project_id=project_id,
+                        ),
+                        due_date=version.proposed_action_due_date,
                         creator_id=cr.creator_id,
                     )
                     db.add(action)
@@ -468,11 +477,14 @@ def decide_change_request(
                 db, project, component, category, current_user,
                 name=version.proposed_name, reasoning=version.proposed_reasoning or "",
                 clarification=version.proposed_clarification or "", description=version.proposed_description or "",
-                owner_id=None, keywords=[], sort_order=count,
+                owner=None, keywords=[], sort_order=count,
                 target_stage_id=target_stage_id, level=version.proposed_level or RequirementLevel.REQUIREMENT,
                 custom_fields=version.custom_fields,
                 review_date=version.proposed_review_date, review_lead_days=version.proposed_review_lead_days,
-                reviewer_id=version.proposed_reviewer_id,
+                reviewer=revalidated_principal(
+                    db, version.proposed_reviewer_type, version.proposed_reviewer_id,
+                    organization_id=project.organization_id, project_id=project_id, field="reviewer",
+                ),
             )
             db.flush()
             current_version = get_current_version(db, requirement.id)

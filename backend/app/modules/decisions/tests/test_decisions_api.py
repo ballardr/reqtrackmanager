@@ -134,7 +134,8 @@ def test_create_get_list_update_and_lock_after_approval(client, admin_token):
     assert created["status"] == "draft"
     assert created["unique_code"].startswith("DEC-")
     assert created["is_locked"] is False
-    assert created["owner_id"] == _current_user_id(client, token)
+    assert created["owner"]["id"] == _current_user_id(client, token)
+    assert created["owner"]["type"] == "user"
 
     fetched = client.get(f"{_base(project['id'])}/{created['id']}", headers=auth_headers(token))
     assert fetched.status_code == 200

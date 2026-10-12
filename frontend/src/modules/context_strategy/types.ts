@@ -35,15 +35,17 @@
  * Strategy/Future State's own org-**or**-project scope shape (Phase 0 Q2),
  * but with a genuinely **shorter** lifecycle (`GuidingPrincipleStatus`: six
  * states, no `under_review` — see `GUIDING_PRINCIPLE_STATUS_LABEL`'s own
- * comment) and its own `owner_id` field. The backend versions `owner_id` as
+ * comment) and its own `owner` field. The backend versions `owner` as
  * a plain content field (`schemas.GuidingPrincipleUpdate`'s full-replace
  * payload includes it, closer to `FutureStateFieldValues.target_date`'s
  * shape than to Pain Point's genuinely separate update surface) — but this
- * phase's own frontend still gives it a dedicated `AssigneePicker` on
+ * phase's own frontend still gives it a dedicated `PrincipalPicker` on
  * `GuidingPrincipleDetailPage.tsx` rather than a form field (**Decided by:
  * Agent** — see that page's own docstring for the full reasoning), so
- * `owner_id` is deliberately **excluded** from `GuidingPrincipleFieldValues`
- * the same way `PainPointFieldValues` excludes it.
+ * `owner` is deliberately **excluded** from `GuidingPrincipleFieldValues`
+ * the same way `PainPointFieldValues` excludes it. Pain Point, Guiding
+ * Principle and Open Question owners are principals (a user, an organisation
+ * group or a project group) and come back resolved as a `Principal`.
  *
  * Phase 7.5 (2026-09-29) adds Open Question's own shapes below — the fifth
  * and last artefact type. Structurally closest to Pain Point: **project-
@@ -57,6 +59,7 @@
  * established, rather than Strategy/Future State/Pain Point's
  * added-by-convention `title`.
  */
+import type { Principal } from "../../api/types";
 
 // --- Strategy lifecycle --------------------------------------------------
 
@@ -460,7 +463,7 @@ export interface PainPoint {
   evidence: string;
   priority: PainPointPriority;
   status: PainPointStatus;
-  owner_id: string | null;
+  owner: Principal | null;
   date_identified: string;
   /** A deliberate limitation (e.g. a lower-tier restriction that drives
    * upgrades): scored, but kept out of fix rankings by default. */
@@ -474,10 +477,10 @@ export interface PainPoint {
 /** The editable content fields shared by create (`PainPointCreate`) and full
  * replace (`PainPointUpdate`) — unlike `StrategyFieldValues`, there is no
  * create/edit field-set asymmetry here (no `change_note` — no version
- * table), so both call sites use this same shape. `owner_id` is deliberately
+ * table), so both call sites use this same shape. `owner` is deliberately
  * **not** included — §6.5 places "Assign owner" on the manager tier, not the
  * create/edit content form, and `PainPointDetailPage.tsx`'s own dedicated
- * `AssigneePicker` control assigns it directly (**Decided by: Agent** — see
+ * `PrincipalPicker` control assigns it directly (**Decided by: Agent** — see
  * that page's own docstring). */
 export interface PainPointFieldValues {
   pain_point_type_id: string;
@@ -666,7 +669,7 @@ export interface GuidingPrinciple {
   rationale: string;
   priority: GuidingPrinciplePriority;
   status: GuidingPrincipleStatus;
-  owner_id: string | null;
+  owner: Principal | null;
   version_number: number;
   is_locked: boolean;
 
@@ -676,9 +679,9 @@ export interface GuidingPrinciple {
 
 /** The editable content fields shared by create (`GuidingPrincipleCreate`)
  * and full replace (`GuidingPrincipleUpdate`) — same `change_note`-is-
- * update-only convention as `StrategyFieldValues`. `owner_id` is
+ * update-only convention as `StrategyFieldValues`. `owner` is
  * deliberately **not** included here — see this file's own module docstring
- * above for why `GuidingPrincipleDetailPage.tsx`'s dedicated `AssigneePicker`
+ * above for why `GuidingPrincipleDetailPage.tsx`'s dedicated `PrincipalPicker`
  * assigns it directly instead (**Decided by: Agent**, mirroring
  * `PainPointFieldValues`'s identical exclusion). */
 export interface GuidingPrincipleFieldValues {
@@ -700,7 +703,7 @@ export interface GuidingPrincipleVersion {
   rationale: string;
   priority: GuidingPrinciplePriority;
   status: GuidingPrincipleStatus;
-  owner_id: string | null;
+  owner: Principal | null;
   change_note: string;
   created_by: string;
   created_at: string;
@@ -790,7 +793,7 @@ export interface OpenQuestion {
   evidence: string;
   priority: OpenQuestionPriority;
   status: OpenQuestionStatus;
-  owner_id: string | null;
+  owner: Principal | null;
   due_date: string | null;
   is_locked: boolean;
 
@@ -799,11 +802,11 @@ export interface OpenQuestion {
 }
 
 /** The editable content fields shared by create (`OpenQuestionCreate`) and
- * full replace (`OpenQuestionUpdate`) — `owner_id` is deliberately **not**
+ * full replace (`OpenQuestionUpdate`) — `owner` is deliberately **not**
  * included, the same exclusion `PainPointFieldValues` makes and for the same
  * reason (§9.4 places "Assign" on the manager tier, not the create/edit
  * content form); `OpenQuestionDetailPage.tsx`'s own dedicated
- * `AssigneePicker` assigns it directly instead. */
+ * `PrincipalPicker` assigns it directly instead. */
 export interface OpenQuestionFieldValues {
   question: string;
   context: string;

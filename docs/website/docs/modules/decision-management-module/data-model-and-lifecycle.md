@@ -30,9 +30,13 @@ flowchart TD
 | `decision_type` | Which project Decision Type this belongs to. |
 | `status` | Lifecycle state — see [Overview → The lifecycle](./overview.md#the-lifecycle). |
 | `decision_date` | The date the decision was actually made — which may precede formal approval, e.g. a decision made in a meeting and formally approved days later. |
-| `decision_maker` | Who actually made (or is expected to make) this specific decision — distinct from who may *approve* it (the Decision Approver role) and distinct from who owns the record. |
-| `owner` | Who maintains the record. |
+| `decision_maker` | Who actually made (or is expected to make) this specific decision — a user, an organisation group or a project group, and optional. Distinct from who may *approve* it (the Decision Approver role) and from who owns the record. |
+| `owner` | Who maintains the record — a user, an organisation group or a project group, so a team can own a Decision instead of a nominee. Required; defaults to the person creating it. |
 | `context` / `options_considered` / `chosen_option` / `rationale` / `consequences` / `assumptions` / `constraints` | Free-text fields capturing the reasoning — rationale and consequences are deliberately kept as separate fields rather than folded into one description, so "why we chose it" and "what it costs us" can each be read on their own. |
+
+### Groups as owners
+
+Pick a group in the **Owner** or **Decision maker** field and the Decision shows the group's name, its kind (Org group or Project group) and how many people it stands for. Everyone in the group, including members of groups nested inside it, counts as the owner for the "owner may propose" rule (see [Overview → Roles](./overview.md#roles)); a group never gives anyone an approval or edit right they do not already have. The list has an **Owned by me or my groups** filter. Deleting a group that still owns Decisions is blocked: the admin hands the Decisions to a user or another group first (the owner is required, so it cannot simply be cleared; an unwanted decision maker can).
 
 A Decision can also carry a discussion thread (comments, with their own file attachments) and direct file attachments, both listable independently of the Decision's own content.
 

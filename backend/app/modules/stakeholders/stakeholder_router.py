@@ -30,6 +30,7 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.modules.stakeholders import _shared as psh
 from app.modules.stakeholders import _stakeholder_shared as sh
+from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, versions_out
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus
 from app.modules.stakeholders.models import Stakeholder, StakeholderTypeDefinition
 from app.modules.stakeholders.schemas import (
@@ -240,7 +241,7 @@ def list_org_stakeholders(
     query = select(Stakeholder).where(Stakeholder.organization_id == organization_id, Stakeholder.scope == _SCOPE)
     if not include_archived:
         query = query.where(Stakeholder.is_archived.is_(False))
-    return [_out(db, s) for s in db.scalars(query.order_by(Stakeholder.created_at)).all()]
+    return sh.stakeholders_to_out(db, db.scalars(query.order_by(Stakeholder.created_at)).all())
 
 
 @router.get("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)
@@ -267,7 +268,9 @@ def update_org_stakeholder(
 def list_org_stakeholder_versions(
     organization_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return _get(db, organization_id, stakeholder_id).versions
+    return versions_out(
+        db, StakeholderVersionOut, _get(db, organization_id, stakeholder_id).versions, STAKEHOLDER_PRINCIPAL_FIELDS,
+    )
 
 
 @router.delete("/stakeholders/{stakeholder_id}", status_code=status.HTTP_204_NO_CONTENT)

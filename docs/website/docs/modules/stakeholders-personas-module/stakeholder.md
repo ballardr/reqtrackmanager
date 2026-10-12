@@ -20,7 +20,7 @@ Because a Stakeholder record holds contact details about an identifiable person,
 | Contact / reference information | How to reach them. Visible only to people who can view the module. |
 | Influence, Interest | Ratings on the module's own scoring scheme; see below. |
 | Target cadence, availability | How often you aim to engage them, and their own limits; see below. |
-| Owner, platform user | Who maintains the record, and — optionally — the platform user this Stakeholder is. |
+| Owner, platform user | Who maintains the record (a user or a group, see [Groups as owners](./persona.md#groups-as-owners)), and — optionally — the platform user this Stakeholder is. |
 
 | A Stakeholder opened from a project |
 | --- |

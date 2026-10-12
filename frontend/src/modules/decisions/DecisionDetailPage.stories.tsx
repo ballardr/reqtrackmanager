@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
-import type { OrgUser } from "../../api/types";
+import type { OrgUser, Principal } from "../../api/types";
 import { api } from "../../api/client";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
@@ -22,11 +22,16 @@ const ORG_USERS: OrgUser[] = [
   },
 ];
 
+const USER_ALEX: Principal = { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true };
+const GROUP_PLATFORM: Principal = {
+  type: "org_group", id: "group-1", label: "Platform Architecture", member_count: 3, exists: true,
+};
+
 function decision(overrides: Partial<Decision> = {}): Decision {
   return {
     id: DECISION_ID, project_id: PROJECT_ID, unique_code: "DEC-001", title: "Adopt PostgreSQL for the new service",
     decision_statement: "Use PostgreSQL as the backing store for the billing service.", decision_type_id: "dt-1",
-    status: "under_review", decision_date: "2026-02-01", decision_maker_id: "user-1", owner_id: "user-1",
+    status: "under_review", decision_date: "2026-02-01", decision_maker: USER_ALEX, owner: GROUP_PLATFORM,
     context: "The legacy MySQL cluster is nearing end of life.", options_considered: "PostgreSQL, MySQL 8, CockroachDB.",
     chosen_option: "PostgreSQL", rationale: "Best fit for our existing operational tooling.", consequences: null,
     assumptions: null, constraints: null, creator_id: "user-1", is_archived: false, archived_at: null,
@@ -79,6 +84,10 @@ export const UnderReviewShowsApproveReject: Story = {
     await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    // Owner (a group, with its kind and size) and decision maker (a user) are shown.
+    await expect(canvas.getByText("Platform Architecture")).toBeInTheDocument();
+    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Alex Morgan")).toBeInTheDocument();
   },
 };
 

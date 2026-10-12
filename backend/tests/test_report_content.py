@@ -13,7 +13,7 @@ import uuid
 import zipfile
 import zlib
 from contextlib import contextmanager
-from datetime import date
+from datetime import UTC, date, datetime
 
 from docx import Document
 from sqlalchemy import select, text
@@ -311,11 +311,11 @@ def test_requirements_docx_fills_placeholders_in_resolved_and_ad_hoc_content(cli
     resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "docx"}, headers=auth_headers(admin_token))
     assert resp.status_code == 200, resp.text
     text_out = _docx_text(resp.content)
-    today = date.today().isoformat()
+    today = datetime.now(UTC).date().isoformat()  # the report stamps the UTC date
     assert f"Intro for Placeholder <b>Project</b> ({org_name}) on" in text_out
     assert "{{unknown}}" in text_out
     assert "About Placeholder <b>Project</b>" in text_out and "End of Placeholder <b>Project</b>" in text_out
-    assert today in text_out or date.today().isoformat() in text_out  # date rolls over only at midnight UTC
+    assert today in text_out
 
     # Ad-hoc text sent by the generation page is substituted too, and wins over the stored content.
     adhoc = client.post(

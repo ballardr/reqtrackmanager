@@ -13,7 +13,7 @@ function guidingPrinciple(overrides: Partial<GuidingPrinciple> = {}): GuidingPri
     id: "gp-1", scope: "organization", organization_id: ORG_ID, project_id: null, creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, name: "Operate safely under degraded connectivity",
     principle_statement: "Field operations must degrade gracefully, never silently, when connectivity is lost.",
-    rationale: "", priority: "high", status: "active", owner_id: null, version_number: 3, is_locked: true,
+    rationale: "", priority: "high", status: "active", owner: null, version_number: 3, is_locked: true,
     created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };

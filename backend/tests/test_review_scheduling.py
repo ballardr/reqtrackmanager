@@ -87,7 +87,7 @@ def test_review_assigned_to_a_user_appears_on_their_personal_due_list(client, ad
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     _create_requirement_with_review(
         client, admin_token, project["id"], component_id, category_id,
-        str(date.today() - timedelta(days=1)), reviewer_id=reviewer_id,
+        str(date.today() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
     )
 
     reviewer_token = login(client, "reviewer@example.com", "Password123!")
@@ -112,14 +112,14 @@ def test_due_list_includes_reviewer_and_component_names(client, admin_token, org
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     _create_requirement_with_review(
         client, admin_token, project["id"], component_id, category_id,
-        str(date.today() - timedelta(days=1)), reviewer_id=reviewer_id,
+        str(date.today() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
     )
 
     resp = client.get(f"/api/v1/projects/{project['id']}/requirements/reviews/due", headers=auth_headers(admin_token))
     assert resp.status_code == 200
     row = resp.json()[0]
-    assert row["reviewer_name"] == "named_reviewer"
-    assert row["reviewer_id"] == reviewer_id
+    assert row["reviewer"]["label"] == "named_reviewer"
+    assert row["reviewer"]["type"] == "user" and row["reviewer"]["id"] == reviewer_id
     assert row["component_id"] == component_id
     assert row["component_name"]
 
@@ -152,7 +152,7 @@ def test_due_list_filters_by_component_and_reviewer(client, admin_token, org_id)
 
     req_a = _create_requirement_with_review(
         client, admin_token, project["id"], component_a, category_a_id,
-        str(date.today() - timedelta(days=1)), reviewer_id=reviewer_id,
+        str(date.today() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
     )
     req_b = _create_requirement_with_review(
         client, admin_token, project["id"], component_b, category_b_id, str(date.today() - timedelta(days=1)),
@@ -166,7 +166,7 @@ def test_due_list_filters_by_component_and_reviewer(client, admin_token, org_id)
     assert ids == {req_a["id"]}
 
     resp = client.get(
-        f"/api/v1/projects/{project['id']}/requirements/reviews/due?reviewer_id={reviewer_id}",
+        f"/api/v1/projects/{project['id']}/requirements/reviews/due?reviewer_type=user&reviewer_id={reviewer_id}",
         headers=auth_headers(admin_token),
     )
     ids = {r["requirement_id"] for r in resp.json()}
@@ -191,7 +191,7 @@ def test_review_date_cannot_be_changed_by_direct_edit_once_requirement_approved(
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}",
         json={
             "name": req["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": req["owner_id"], "status": "approved",
+            "owner": req["owner"], "status": "approved",
         },
         headers=auth_headers(admin_token),
     )
@@ -199,7 +199,7 @@ def test_review_date_cannot_be_changed_by_direct_edit_once_requirement_approved(
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}",
         json={
             "name": req["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": req["owner_id"], "review_date": str(date.today() + timedelta(days=5)),
+            "owner": req["owner"], "review_date": str(date.today() + timedelta(days=5)),
         },
         headers=auth_headers(admin_token),
     )

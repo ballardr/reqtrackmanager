@@ -32,9 +32,9 @@ import { FolderOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api } from "../../api/client";
-import type { FileAsset, OrgUser } from "../../api/types";
-import { activityActionLabel } from "../../api/types";
-import { AssigneePicker } from "../../components/AssigneePicker";
+import type { FileAsset, OrgUser, PrincipalRef } from "../../api/types";
+import { activityActionLabel, principalRef } from "../../api/types";
+import { PrincipalPicker } from "../../components/PrincipalPicker";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Modal } from "../../components/Modal";
 import { ResourcePickerModal } from "../../components/ResourcePickerModal";
@@ -224,10 +224,10 @@ export function RequirementAssessmentPanel({
     }
   }
 
-  async function updateActionAssignee(assessment: ComplianceRequiredActionAssessment, assigneeId: string) {
+  async function updateActionAssignee(assessment: ComplianceRequiredActionAssessment, assignee: PrincipalRef | null) {
     try {
       await complianceApi.updateRequiredActionAssessment(projectId, projectComplianceId, pcr.id, assessment.id, {
-        assignee_id: assigneeId || null, due_date: assessment.due_date, notes: assessment.notes,
+        assignee, due_date: assessment.due_date, notes: assessment.notes,
       });
       await reloadRequiredActions();
     } catch (err) {
@@ -238,7 +238,7 @@ export function RequirementAssessmentPanel({
   async function updateActionDueDate(assessment: ComplianceRequiredActionAssessment, dueDate: string) {
     try {
       await complianceApi.updateRequiredActionAssessment(projectId, projectComplianceId, pcr.id, assessment.id, {
-        assignee_id: assessment.assignee_id, due_date: dueDate || null, notes: assessment.notes,
+        assignee: principalRef(assessment.assignee), due_date: dueDate || null, notes: assessment.notes,
       });
       await reloadRequiredActions();
     } catch (err) {
@@ -396,11 +396,13 @@ export function RequirementAssessmentPanel({
                     <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
                       <div className="stack" style={{ gap: "0.2rem" }}>
                         <span className="text-muted" style={{ fontSize: "0.8rem" }}>Assignee</span>
-                        <AssigneePicker
+                        <PrincipalPicker
                           orgUsers={orgUsers}
                           organizationId={orgId}
-                          assigneeId={assessment.assignee_id}
-                          onChange={(userId) => updateActionAssignee(assessment, userId)}
+                          projectId={projectId}
+                          value={principalRef(assessment.assignee)}
+                          display={assessment.assignee}
+                          onChange={(principal) => updateActionAssignee(assessment, principal)}
                           ariaLabel={`Assignee for ${def?.name ?? "required action"}`}
                         />
                       </div>

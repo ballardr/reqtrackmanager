@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.audit import AuditEvent
+from app.models.enums import PrincipalType
 from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
 from app.models.organization import Organization
@@ -45,12 +46,16 @@ from app.modules.compliance.service import (
     build_status_out,
     get_effective_compliance_officers,
     reconcile_standard_applicability,
+    standard_to_out,
+    standards_to_out,
 )
 from app.schemas.audit import AuditEventOut
+from app.schemas.principal import PrincipalRef
 from app.services import notifications
 from app.services.audit import log_event
 from app.services.bundle_common import BundleImportWarnings, UserResolver
 from app.services.downloads import filename_safe
+from app.services.principals import principal_columns, validate_principal
 
 router = APIRouter(tags=["compliance-org-standards"])
 
@@ -62,8 +67,8 @@ def create_standard(
 ):
     """Creates a new organisation-level compliance standard (§2), together
     with its mandatory first version (version 1), in a single transaction —
-    a standard is never left with zero versions. `owner_id` defaults to the
-    creating user when omitted.
+    a standard is never left with zero versions. `owner` (a user or an
+    organisation group) defaults to the creating user when omitted.
 
     The creator is also granted a direct `standards_manager` role on this
     standard (Phase 22) — mirrors `create_project`'s own already-established
@@ -80,13 +85,18 @@ def create_standard(
     )
     if existing is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A standard with this reference already exists.")
+    # A supplied owner must belong to this organisation. The default (the creator) is not checked, as
+    # before: the manage gate admits a server admin or a module-role holder who is not an org member.
+    owner = payload.owner or PrincipalRef(type=PrincipalType.USER, id=current_user.id)
+    if payload.owner is not None:
+        validate_principal(db, owner, organization_id=organization_id, field="owner")
     standard = ComplianceStandard(
         organization_id=organization_id,
         reference=payload.reference,
         name=payload.name,
         description=payload.description,
         issuing_organisation=payload.issuing_organisation,
-        owner_id=payload.owner_id or current_user.id,
+        **principal_columns("owner", owner),
         creator_id=current_user.id,
     )
     db.add(standard)
@@ -123,7 +133,7 @@ def create_standard(
 
     db.commit()
     db.refresh(standard)
-    return standard
+    return standard_to_out(db, standard)
 
 
 @router.get("/standards", response_model=list[ComplianceStandardOut])
@@ -137,7 +147,7 @@ def list_standards(
     query = select(ComplianceStandard).where(ComplianceStandard.organization_id == organization_id)
     if not include_archived:
         query = query.where(ComplianceStandard.is_archived.is_(False))
-    return db.scalars(query.order_by(ComplianceStandard.reference)).all()
+    return standards_to_out(db, db.scalars(query.order_by(ComplianceStandard.reference)).all())
 
 
 @router.get("/standards/{standard_id}", response_model=ComplianceStandardOut)
@@ -146,7 +156,7 @@ def get_standard(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Fetches a single compliance standard."""
-    return _get_standard_or_404(db, organization_id, standard_id)
+    return standard_to_out(db, _get_standard_or_404(db, organization_id, standard_id))
 
 
 @router.get("/standards/{standard_id}/history", response_model=list[AuditEventOut])
@@ -208,19 +218,22 @@ def update_standard(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardUpdate,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
-    """Updates a standard's name/description/issuing_organisation/owner_id.
+    """Updates a standard's name/description/issuing_organisation/owner (a user or an organisation group).
     `reference` is immutable after creation — see `schemas.py`'s module
     docstring for why."""
     standard = _get_standard_or_404(db, organization_id, standard_id)
+    if (payload.owner.type.value, payload.owner.id) != (standard.owner_type, standard.owner_id):
+        validate_principal(db, payload.owner, organization_id=organization_id, field="owner")
     standard.name = payload.name
     standard.description = payload.description
     standard.issuing_organisation = payload.issuing_organisation
-    standard.owner_id = payload.owner_id
+    for column, value in principal_columns("owner", payload.owner).items():
+        setattr(standard, column, value)
     log_event(db, entity_type="compliance_standard", entity_id=standard.id, action="updated",
               actor_id=current_user.id, organization_id=organization_id, detail={"name": standard.name})
     db.commit()
     db.refresh(standard)
-    return standard
+    return standard_to_out(db, standard)
 
 
 @router.post("/standards/{standard_id}/archive", response_model=ComplianceStandardOut)
@@ -239,7 +252,7 @@ def archive_standard(
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
     db.refresh(standard)
-    return standard
+    return standard_to_out(db, standard)
 
 
 @router.post("/standards/{standard_id}/unarchive", response_model=ComplianceStandardOut)
@@ -258,7 +271,7 @@ def unarchive_standard(
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
     db.refresh(standard)
-    return standard
+    return standard_to_out(db, standard)
 
 
 @router.get("/standards/{standard_id}/export")
@@ -321,7 +334,7 @@ async def import_standard(
     )
     db.commit()
     db.refresh(standard)
-    return StandardImportResult(standard=standard, skipped=False, warnings=warnings.messages)
+    return StandardImportResult(standard=standard_to_out(db, standard), skipped=False, warnings=warnings.messages)
 
 
 def _get_exclusion_target_project_or_400(db: Session, organization_id: UUID, project_id: UUID) -> Project:
@@ -400,7 +413,7 @@ def update_standard_applicability_default(
                 )
     db.commit()
     db.refresh(standard)
-    return standard
+    return standard_to_out(db, standard)
 
 
 @router.get("/standards/{standard_id}/exclusions", response_model=list[ComplianceStandardDefaultExclusionOut])

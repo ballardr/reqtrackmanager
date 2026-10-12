@@ -13,7 +13,7 @@ function question(overrides: Partial<OpenQuestion> = {}): OpenQuestion {
   return {
     id: "oq-1", project_id: PROJECT_ID, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     question: "Which regions are in scope?", context: "", evidence: "", priority: "high", status: "open",
-    owner_id: null, due_date: null, is_locked: false, created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
+    owner: null, due_date: null, is_locked: false, created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
     ...overrides,
   };
 }
@@ -28,7 +28,7 @@ function mockPageApis(questions: OpenQuestion[]) {
 
 const QUESTIONS = [
   question({ id: "overdue-unowned", question: "Overdue and unowned", due_date: daysFromNow(-12) }),
-  question({ id: "overdue-owned", question: "Overdue but owned", due_date: daysFromNow(-3), owner_id: "user-2" }),
+  question({ id: "overdue-owned", question: "Overdue but owned", due_date: daysFromNow(-3), owner: { type: "user", id: "user-2", label: "Jamie Lee", member_count: null, exists: true } }),
   question({ id: "future-unowned", question: "Due later, unowned", due_date: daysFromNow(20) }),
   question({ id: "resolved-overdue", question: "Resolved long ago", due_date: daysFromNow(-30), status: "resolved" }),
 ];

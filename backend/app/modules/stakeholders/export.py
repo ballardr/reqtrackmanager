@@ -38,6 +38,7 @@ from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
+from app.modules.stakeholders._principals import PERSONA_PRINCIPAL_FIELDS, principals_from_bundle, principals_to_bundle
 from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
 from app.modules.stakeholders.models import (
     Persona,
@@ -83,19 +84,14 @@ def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, st
         type_is_local = row is not None and row.org_type_id is None
     data.update({
         "type_name": type_name, "type_is_project_local": type_is_local, "status": v.status.value,
-        "owner_email": emails.get(v.owner_id), "champion_email": emails.get(v.champion_id),
-        "created_by_email": emails.get(persona.creator_id), "is_archived": persona.is_archived,
-        "archived_at": _j(persona.archived_at), "created_at": _j(persona.created_at),
+        **principals_to_bundle(db, v, PERSONA_PRINCIPAL_FIELDS), "created_by_email": emails.get(persona.creator_id),
+        "is_archived": persona.is_archived, "archived_at": _j(persona.archived_at), "created_at": _j(persona.created_at),
     })
     return data
 
 
 def _persona_emails(db: Session, personas: list[Persona]) -> dict[UUID, str]:
-    ids: set[UUID | None] = set()
-    for p in personas:
-        v = get_current_persona_version(db, p.id)
-        ids |= {v.owner_id, v.champion_id, p.creator_id}
-    return _emails(db, ids)
+    return _emails(db, {p.creator_id for p in personas})
 
 
 # --- Org level ---------------------------------------------------------------
@@ -121,15 +117,17 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
 
 def _create_persona_from_json(
     db: Session, data: dict[str, Any], *, scope: PersonaScope, organization_id: UUID, project_id: UUID | None,
-    org_type_id: UUID | None, project_type_id: UUID | None, users: UserResolver,
+    org_type_id: UUID | None, project_type_id: UUID | None, users: UserResolver, warnings: BundleImportWarnings,
 ) -> Persona:
     creator_id = users.resolve(data.get("created_by_email"), required=True, context=f"Persona {data['name']!r} creator")
     creator = db.get(User, creator_id)
     persona = create_persona(
         db, scope=scope, organization_id=organization_id, project_id=project_id, creator=creator,
         org_type_id=org_type_id, project_type_id=project_type_id,
-        owner_id=users.resolve(data.get("owner_email"), required=False, context=f"Persona {data['name']!r} owner"),
-        champion_id=users.resolve(data.get("champion_email"), required=False, context=f"Persona {data['name']!r} champion"),
+        **principals_from_bundle(
+            db, data, PERSONA_PRINCIPAL_FIELDS, organization_id=organization_id, project_id=project_id, users=users,
+            warnings=warnings, context=f"Persona {data['name']!r}",
+        ),
         **{f: data.get(f, "" if f != "weight" else None) for f in _TEXT_FIELDS},
     )
     version = get_current_persona_version(db, persona.id)
@@ -172,7 +170,7 @@ def import_org_data(
             warnings.add(f"Persona {p['name']!r}: type {p['type_name']!r} not found — left untyped.")
         _create_persona_from_json(
             db, p, scope=PersonaScope.ORGANIZATION, organization_id=org.id, project_id=None,
-            org_type_id=type_row.id if type_row else None, project_type_id=None, users=users,
+            org_type_id=type_row.id if type_row else None, project_type_id=None, users=users, warnings=warnings,
         )
     db.flush()
 
@@ -279,7 +277,7 @@ def import_project_data(
                 project_type_id = row.id
         persona = _create_persona_from_json(
             db, p, scope=PersonaScope.PROJECT, organization_id=organization_id, project_id=project.id,
-            org_type_id=None, project_type_id=project_type_id, users=users,
+            org_type_id=None, project_type_id=project_type_id, users=users, warnings=warnings,
         )
         persona_id_by_ref[p["ref"]] = persona.id
         for att in p.get("attachments", []):

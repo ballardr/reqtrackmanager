@@ -104,7 +104,7 @@ test.describe("Link editor: the link permission level", () => {
 
     await test.step("the grant confers no right to edit the requirement", async () => {
       const edit = await page.request.put(`${api}/requirements/${requirement.id}`, {
-        headers: linkerHeaders, data: { name: "Renamed", component_id: requirement.component_id, category_id: requirement.category_id, owner_id: requirement.owner_id },
+        headers: linkerHeaders, data: { name: "Renamed", component_id: requirement.component_id, category_id: requirement.category_id, owner: { type: requirement.owner.type, id: requirement.owner.id } },
       });
       expect(edit.status()).toBe(403);
     });

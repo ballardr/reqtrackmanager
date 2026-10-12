@@ -242,15 +242,18 @@ def create_requirement(
 def set_requirement_status(
     headers: dict, project_id: str, requirement: dict, status_value: str,
     *, review_date: str | None = None, reviewer_id: str | None = None,
+    owner: dict | None = None, reviewer: dict | None = None,
 ) -> dict:
     """Direct edit setting `status` (and optionally a review schedule) on a
     still-unlocked requirement — mirrors what a PM moving a requirement
-    through draft -> reviewed -> approved would actually click through."""
+    through draft -> reviewed -> approved would actually click through.
+    `owner` / `reviewer` are `{"type": "user" | "org_group" | "project_group", "id": ...}`; `reviewer_id` is the
+    shorthand for a user reviewer. The owner is carried over from the requirement when omitted."""
     body = {
         "name": requirement["name"], "reasoning": requirement["reasoning"],
         "clarification": requirement.get("clarification", ""),
         "component_id": requirement["component_id"], "category_id": requirement["category_id"],
-        "owner_id": requirement.get("owner_id") or requirement["creator_id"],
+        "owner": owner or requirement.get("owner") or {"type": "user", "id": requirement["creator_id"]},
         "status": status_value, "keywords": requirement.get("keywords", []),
         "custom_fields": requirement.get("custom_fields", {}),
         "change_note": f"Marked {status_value} during scoping.",
@@ -258,7 +261,9 @@ def set_requirement_status(
     if review_date is not None:
         body["review_date"] = review_date
     if reviewer_id is not None:
-        body["reviewer_id"] = reviewer_id
+        body["reviewer"] = {"type": "user", "id": reviewer_id}
+    if reviewer is not None:
+        body["reviewer"] = reviewer
     r = httpx.put(f"{BASE}/projects/{project_id}/requirements/{requirement['id']}", json=body, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
@@ -361,7 +366,7 @@ def create_change_request(
 
 def create_add_action_change_request(
     headers: dict, project_id: str, requirement_id: str, *,
-    action_title: str, action_description: str, action_type_id: str, reason: str, assignee_id: str | None = None,
+    action_title: str, action_description: str, action_type_id: str, reason: str, assignee: dict | None = None,
 ) -> dict:
     """An ADD_ACTION change request (2026-08 UX audit roadmap item 514) —
     only valid once `requirement_id` is already locked (status APPROVED,
@@ -371,7 +376,7 @@ def create_add_action_change_request(
     body = {
         "kind": "add_action", "requirement_id": requirement_id, "reason": reason,
         "proposed_action_title": action_title, "proposed_action_description": action_description,
-        "proposed_action_type_id": action_type_id, "proposed_action_assignee_id": assignee_id,
+        "proposed_action_type_id": action_type_id, "proposed_action_assignee": assignee,
     }
     r = httpx.post(f"{BASE}/projects/{project_id}/change-requests", json=body, headers=headers, timeout=30)
     r.raise_for_status()
@@ -408,10 +413,11 @@ def cast_vote(headers: dict, project_id: str, cr_id: str, vote: str, comment: st
     return r.json()
 
 
-def create_cr_task(headers: dict, project_id: str, cr_id: str, description: str, assignee_id: str | None = None, due_date: str | None = None) -> dict:
+def create_cr_task(headers: dict, project_id: str, cr_id: str, description: str, assignee: dict | None = None, due_date: str | None = None) -> dict:
+    """Adds a task to a change request; `assignee` is `{"type": "user" | "org_group" | "project_group", "id": ...}`."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/change-requests/{cr_id}/tasks",
-        json={"description": description, "assignee_id": assignee_id, "due_date": due_date},
+        json={"description": description, "assignee": assignee, "due_date": due_date},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -503,13 +509,14 @@ def create_requirement_link(headers: dict, project_id: str, requirement_id: str,
 
 def create_and_link_action(
     headers: dict, project_id: str, requirement_id: str, *, title: str, description: str, action_type_id: str,
-    assignee_id: str | None = None, due_date: str | None = None,
+    assignee: dict | None = None, due_date: str | None = None,
 ) -> dict:
+    """Creates an action and links it to a requirement; `assignee` is a principal reference (user or group)."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements/{requirement_id}/actions/create-and-link",
         json={
             "title": title, "description": description, "action_type_id": action_type_id,
-            "assignee_id": assignee_id, "due_date": due_date,
+            "assignee": assignee, "due_date": due_date,
         },
         headers=headers, timeout=30,
     )
@@ -530,7 +537,7 @@ def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_sta
         f"{BASE}/projects/{project_id}/actions/{action['id']}",
         json={
             "title": action["title"], "description": action["description"], "action_type_id": action["action_type_id"],
-            "assignee_id": action.get("assignee_id"), "due_date": action.get("due_date"),
+            "assignee": action.get("assignee"), "due_date": action.get("due_date"),
             "outcome_status": outcome_status,
         },
         headers=headers, timeout=30,
@@ -581,7 +588,7 @@ def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
 
 def create_compliance_standard(
     headers: dict, org_id: str, *, reference: str, name: str, description: str = "",
-    issuing_organisation: str | None = None, owner_id: str | None = None,
+    issuing_organisation: str | None = None, owner: dict | None = None,
     initial_version_label: str = "1.0", initial_version_effective_date: str | None = None,
     initial_version_change_note: str = "",
 ) -> dict:
@@ -591,11 +598,11 @@ def create_compliance_standard(
     combined create-standard-with-first-version frontend flow. Use
     `list_compliance_versions` to fetch that first version's id rather than
     a separate `create_compliance_version` call, which would create a
-    redundant second version."""
+    redundant second version. `owner` is `{"type": "user" | "org_group", "id": ...}` (the creator when omitted)."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/modules/compliance/standards",
         json={"reference": reference, "name": name, "description": description,
-              "issuing_organisation": issuing_organisation, "owner_id": owner_id,
+              "issuing_organisation": issuing_organisation, "owner": owner,
               "initial_version_label": initial_version_label,
               "initial_version_effective_date": initial_version_effective_date,
               "initial_version_change_note": initial_version_change_note},
@@ -818,12 +825,13 @@ def list_required_action_assessments(headers: dict, project_id: str, project_com
 
 def update_required_action_assessment(
     headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, assessment_id: str, *,
-    assignee_id: str | None = None, due_date: str | None = None, notes: str = "",
+    assignee: dict | None = None, due_date: str | None = None, notes: str = "",
 ) -> dict:
+    """Updates a required action's assignee (`{"type": "user" | "org_group" | "project_group", "id": ...}`), due date and notes."""
     r = httpx.patch(
         f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
         f"{pcr_id}/required-action-assessments/{assessment_id}",
-        json={"assignee_id": assignee_id, "due_date": due_date, "notes": notes}, headers=headers, timeout=30,
+        json={"assignee": assignee, "due_date": due_date, "notes": notes}, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -859,12 +867,13 @@ def create_compliance_evidence(
 
 def create_compliance_review(
     headers: dict, project_id: str, project_compliance_id: str, *, frequency_label: str, next_due_date: str,
-    recurrence_days: int | None = None, owner_id: str | None = None, notes: str = "",
+    recurrence_days: int | None = None, owner: dict | None = None, notes: str = "",
 ) -> dict:
+    """Schedules a project review; `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/reviews",
         json={"frequency_label": frequency_label, "next_due_date": next_due_date, "recurrence_days": recurrence_days,
-              "owner_id": owner_id, "notes": notes},
+              "owner": owner, "notes": notes},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -1038,14 +1047,20 @@ def list_decision_types(headers: dict, project_id: str) -> dict[str, dict]:
 
 def create_decision(
     headers: dict, project_id: str, *, title: str, decision_statement: str, decision_type_id: str,
-    owner_id: str, decision_maker_id: str | None = None, context: str = "", options_considered: str = "",
-    chosen_option: str = "", rationale: str = "", consequences: str = "", decision_date: str | None = None,
+    owner_id: str | None = None, decision_maker_id: str | None = None, owner_group_id: str | None = None,
+    context: str = "", options_considered: str = "", chosen_option: str = "", rationale: str = "",
+    consequences: str = "", decision_date: str | None = None,
 ) -> dict:
+    """Creates a Decision. The owner is a user (`owner_id`) or an organisation group (`owner_group_id`);
+    the decision maker is a user."""
+    owner = {"type": "org_group", "id": owner_group_id} if owner_group_id else {"type": "user", "id": owner_id}
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/decisions",
         json={
             "title": title, "decision_statement": decision_statement, "decision_type_id": decision_type_id,
-            "owner_id": owner_id, "decision_maker_id": decision_maker_id, "decision_date": decision_date,
+            "owner": owner,
+            "decision_maker": {"type": "user", "id": decision_maker_id} if decision_maker_id else None,
+            "decision_date": decision_date,
             "context": context,
             "options_considered": options_considered, "chosen_option": chosen_option, "rationale": rationale,
             "consequences": consequences,
@@ -1200,6 +1215,17 @@ def list_effective_pain_point_types(headers: dict, project_id: str) -> dict[str,
 def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points", json=fields, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def assign_owner(headers: dict, project_id: str, path: str, record: dict, fields: tuple[str, ...], owner: dict) -> dict:
+    """Sets the owner of a Pain Point (`pain-points`) or Open Question (`open-questions`): both are full-replace
+    edits, so the record's own `fields` are sent back with the `owner` principal (`{"type", "id"}`)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/{path}/{record['id']}",
+        json={**{f: record[f] for f in fields}, "owner": owner}, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -1622,7 +1648,8 @@ def create_risk(
     residual: tuple[str, str] | None = None, **fields,
 ) -> dict:
     """Creates a project Risk (it starts Identified). `inherent`/`residual` are `(likelihood, consequence)` level names
-    from the `risk` scoring scheme, turned into the matching level ids."""
+    from the `risk` scoring scheme, turned into the matching level ids. `owner` is
+    `{"type": "user" | "org_group" | "project_group", "id": ...}`."""
     for prefix, chosen in (("inherent", inherent), ("residual", residual)):
         if chosen is not None:
             fields[f"{prefix}_likelihood_level_id"] = levels["likelihood"][chosen[0]]
@@ -1787,7 +1814,7 @@ def main() -> None:
         "identification rule, ahead of the compliance deadline.",
         action_type_id=drone_action_types["Review"]["id"],
         reason="Compliance deadline requires a documented review of the broadcast module, not just informal sign-off.",
-        assignee_id=demo_engineer["user_id"],
+        assignee={"type": "user", "id": demo_engineer["user_id"]},
     )
     submit_change_request(h_pm, drone["id"], firmware_review_cr["id"])
     decide_change_request(h_pm, drone["id"], firmware_review_cr["id"], approve=True,
@@ -1830,7 +1857,7 @@ def main() -> None:
         title="Wind tunnel stability test at 45 km/h sustained gust",
         description="Bench validation of airframe stability at the specified sustained gust threshold, "
         "ahead of the Verification & Validation stage.",
-        action_type_id=drone_action_types["Test"]["id"], assignee_id=demo_stakeholder["user_id"],
+        action_type_id=drone_action_types["Test"]["id"], assignee={"type": "user", "id": demo_stakeholder["user_id"]},
         due_date=(date.today() + timedelta(days=3)).isoformat(),
     )
     set_action_outcome(h_pm, drone["id"], wind_test, "failed")
@@ -1842,6 +1869,33 @@ def main() -> None:
     # A single action shared across two requirements (its own project-scoped
     # identity, not owned by either one — see models.requirement_action).
     link_action(h_pm, drone["id"], preflight_req["id"], wind_test["id"])
+
+    # Teams used by the group-parity demos below. Created (and the requirement edit made) before the Scoping
+    # baseline because baselining approves every draft requirement, which locks it against direct edits.
+    # A team can own a Decision (users-and-groups parity): the organisation group owns the OTA Decision further down.
+    architecture_board = httpx.post(
+        f"{BASE}/orgs/{org['id']}/groups", json={"name": "Architecture Board"}, headers=h_pm, timeout=30,
+    )
+    architecture_board.raise_for_status()
+    for member in (demo_admin, demo_engineer):
+        httpx.post(
+            f"{BASE}/orgs/{org['id']}/groups/{architecture_board.json()['id']}/members",
+            json={"user_id": member["user_id"]}, headers=h_pm, timeout=30,
+        ).raise_for_status()
+    verification_squad = httpx.post(f"{BASE}/projects/{drone['id']}/groups", json={"name": "Verification Squad"}, headers=h_pm, timeout=30)
+    verification_squad.raise_for_status()
+    httpx.post(
+        f"{BASE}/projects/{drone['id']}/groups/{verification_squad.json()['id']}/members",
+        json={"user_id": demo_engineer["user_id"]}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    # Core records can name a team too: the Architecture Board owns a draft requirement and the Verification Squad
+    # reviews it (the squad also takes the wind-tunnel test, and the board a change request task, further down).
+    set_requirement_status(
+        h_pm, drone["id"], drone_reqs["Operate in ambient temperatures between -10C and 45C"], "draft",
+        review_date=(date.today() + timedelta(days=21)).isoformat(),
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},
+        reviewer={"type": "project_group", "id": verification_squad.json()["id"]},
+    )
 
     print("Approving the Scoping stage baseline for Falcon-3...")
     scoping_stage = httpx.get(f"{BASE}/projects/{drone['id']}/stages", headers=h_pm, timeout=30).json()[0]
@@ -1895,8 +1949,8 @@ def main() -> None:
                     "38 minutes still clears every current route's return-to-home margin per the Q3 telemetry — no objection from the ops side.")
     cast_vote(h(login("demo.stakeholder@example.com", PASSWORD)), drone["id"], drone_cr["id"], "approve",
               "Confirmed against current route data.")
-    create_cr_task(h_pm, drone["id"], drone_cr["id"], "Update the customer-facing spec sheet once approved.",
-                   assignee_id=demo_engineer["user_id"], due_date=(date.today() + timedelta(days=7)).isoformat())
+    drone_cr_task = create_cr_task(h_pm, drone["id"], drone_cr["id"], "Update the customer-facing spec sheet once approved.",
+                                   assignee={"type": "user", "id": demo_engineer["user_id"]}, due_date=(date.today() + timedelta(days=7)).isoformat())
 
     print("Creating 'Falcon-3 Avionics Subsystem' as a sub-project of Falcon-3 (hierarchical projects)...")
     # Demonstrates both RBAC-cascade directions from the same small fixture
@@ -2010,7 +2064,7 @@ def main() -> None:
         "theoretically achievable, before the next customer review.",
         action_type_id=cloud_action_types["Test"]["id"], reason="Need evidence against the tightened target "
         "before the next customer review, not just the infra team's headroom estimate.",
-        assignee_id=demo_engineer["user_id"],
+        assignee={"type": "user", "id": demo_engineer["user_id"]},
     )
     submit_change_request(h_pm, cloud["id"], latency_action_cr["id"])
     decide_change_request(h_pm, cloud["id"], latency_action_cr["id"], approve=True,
@@ -2045,11 +2099,19 @@ def main() -> None:
     }
     review_action_type = compliance_action_types["Document Review"]
     test_action_type = compliance_action_types["Test"]
+    # A team can own a standard and be assigned its work (users-and-groups parity): an organisation group
+    # owns ASA-1 and its annual review, and a project group takes the logging required action below.
+    compliance_office = httpx.post(f"{BASE}/orgs/{org['id']}/groups", json={"name": "Compliance Office"}, headers=h_pm, timeout=30)
+    compliance_office.raise_for_status()
+    httpx.post(
+        f"{BASE}/orgs/{org['id']}/groups/{compliance_office.json()['id']}/members",
+        json={"user_id": demo_admin["user_id"]}, headers=h_pm, timeout=30,
+    ).raise_for_status()
     airworthiness_standard = create_compliance_standard(
         h_pm, org["id"], reference="ASA-1", name="Aerospace Safety & Airworthiness Standard",
         description="Solstice's internal airworthiness and regulatory-compliance standard for commercial "
         "drone platforms, incorporating FAA Part 107 remote-ID obligations.",
-        issuing_organisation="Solstice Compliance Board", owner_id=demo_admin["user_id"],
+        issuing_organisation="Solstice Compliance Board", owner={"type": "org_group", "id": compliance_office.json()["id"]},
         initial_version_label="1.0", initial_version_change_note="Initial release.",
     )
     airworthiness_version = list_compliance_versions(h_pm, org["id"], airworthiness_standard["id"])[0]
@@ -2141,8 +2203,8 @@ def main() -> None:
     logging_assessment = logging_assessments[0]
     update_required_action_assessment(
         h_pm, drone["id"], drone_compliance["id"], logging_pcr["id"], logging_assessment["id"],
-        assignee_id=demo_engineer["user_id"], due_date=(date.today() + timedelta(days=14)).isoformat(),
-        notes="Blocked on the new logging firmware build.",
+        assignee={"type": "project_group", "id": verification_squad.json()["id"]},
+        due_date=(date.today() + timedelta(days=14)).isoformat(), notes="Blocked on the new logging firmware build.",
     )
 
     print("  Attaching compliance evidence and scheduling the annual review...")
@@ -2155,7 +2217,8 @@ def main() -> None:
     )
     create_compliance_review(
         h_pm, drone["id"], drone_compliance["id"], frequency_label="Annual", recurrence_days=365,
-        next_due_date=(date.today() + timedelta(days=330)).isoformat(), owner_id=demo_admin["user_id"],
+        next_due_date=(date.today() + timedelta(days=330)).isoformat(),
+        owner={"type": "org_group", "id": compliance_office.json()["id"]},
         notes="Annual review of continued Part 107 remote-ID compliance.",
     )
 
@@ -2170,7 +2233,7 @@ def main() -> None:
         h_pm, org["id"], reference="EN 60529", name="EN 60529 — Degrees of Protection Provided by Enclosures (IP Code)",
         description="Solstice's internal reference standard for enclosure ingress-protection ratings on "
         "outdoor-operated hardware, based on the IEC/EN 60529 IP Code structure.",
-        issuing_organisation="International Electrotechnical Commission (IEC)", owner_id=demo_admin["user_id"],
+        issuing_organisation="International Electrotechnical Commission (IEC)", owner={"type": "user", "id": demo_admin["user_id"]},
         initial_version_label="1.0", initial_version_change_note="Initial release.",
     )
     ip_rating_version = list_compliance_versions(h_pm, org["id"], ip_rating_standard["id"])[0]
@@ -2228,7 +2291,7 @@ def main() -> None:
         h_pm, org["id"], reference="ISO/IEC 27001", name="ISO/IEC 27001 — Information Security Management System",
         description="Solstice's internal reference standard for information-security management controls, "
         "based on the ISO/IEC 27001 Annex A control-domain structure.",
-        issuing_organisation="International Organization for Standardization (ISO)", owner_id=demo_admin["user_id"],
+        issuing_organisation="International Organization for Standardization (ISO)", owner={"type": "user", "id": demo_admin["user_id"]},
         initial_version_label="1.0", initial_version_change_note="Initial release.",
     )
     infosec_version = list_compliance_versions(h_pm, org["id"], infosec_standard["id"])[0]
@@ -2296,6 +2359,15 @@ def main() -> None:
     # from Org Admin's Modules tab.
     enable_module(h_pm, org["id"], "decisions")
     drone_decision_types = list_decision_types(h_pm, drone["id"])
+    set_action_outcome(h_pm, drone["id"], {**wind_test, "assignee": {"type": "project_group", "id": verification_squad.json()["id"]}}, "failed")
+    httpx.patch(
+        f"{BASE}/projects/{drone['id']}/change-requests/{drone_cr['id']}/tasks/{drone_cr_task['id']}",
+        json={"assignee": {"type": "org_group", "id": architecture_board.json()["id"]}}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    httpx.post(
+        f"{BASE}/projects/{drone['id']}/requirements/{preflight_req['id']}/watchers",
+        json={"group": {"type": "org_group", "id": architecture_board.json()["id"]}}, headers=h_pm, timeout=30,
+    ).raise_for_status()
     single_fc_decision = create_decision(
         h_pm, drone["id"], title="Use a single flight controller with hot-swap failover",
         decision_statement="Falcon-3 will ship with one primary flight controller board and a cold-spare"
@@ -2343,7 +2415,7 @@ def main() -> None:
         h_pm, drone["id"], title="Migrate firmware OTA update channel to signed images",
         decision_statement="Not yet decided — evaluating whether to require cryptographically signed"
         " firmware images for over-the-air updates before the next fleet-wide rollout.",
-        decision_type_id=drone_decision_types["Engineering"]["id"], owner_id=demo_engineer["user_id"],
+        decision_type_id=drone_decision_types["Engineering"]["id"], owner_group_id=architecture_board.json()["id"],
         context="Current OTA channel accepts unsigned images verified only by a checksum, adequate for an"
         " internal test fleet but not for a customer-operated one.",
     )
@@ -2476,6 +2548,18 @@ def main() -> None:
         evidence="14 SLA-breach support tickets in the last quarter, all citing report delay as root cause.",
         priority="high", date_identified="2026-08-15",
     )
+    # A team can own a Pain Point (users-and-groups parity): a project group, since a Pain Point is project-scoped.
+    field_ops = httpx.post(f"{BASE}/projects/{drone['id']}/groups", json={"name": "Field Operations Squad"}, headers=h_pm, timeout=30)
+    field_ops.raise_for_status()
+    httpx.post(
+        f"{BASE}/projects/{drone['id']}/groups/{field_ops.json()['id']}/members",
+        json={"user_id": demo_engineer["user_id"]}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    assign_owner(
+        h_pm, drone["id"], "pain-points", pp_accepted,
+        ("pain_point_type_id", "title", "description", "source", "impact", "evidence", "priority", "date_identified", "is_intentional"),
+        {"type": "project_group", "id": field_ops.json()["id"]},
+    )
     triage_pain_point(h_pm, drone["id"], pp_accepted["id"])
     accept_pain_point(h_pm, drone["id"], pp_accepted["id"])
     address_pain_point(h_pm, drone["id"], pp_accepted["id"])
@@ -2583,7 +2667,7 @@ def main() -> None:
         rationale="Utility/infrastructure inspection sites the organisation's Strategy above targets frequently"
         " have unreliable or absent network coverage; a platform that fails unsafely offline cannot win"
         " populated-corridor contracts regardless of its certification status.",
-        priority="high",
+        priority="high", owner={"type": "org_group", "id": architecture_board.json()["id"]},
     )
     propose_and_approve_org_guiding_principle(
         h_pm, org["id"], org_guiding_principle["id"],
@@ -2600,7 +2684,7 @@ def main() -> None:
         rationale="Directly addresses the accepted 'field inspectors re-key paper reports' Pain Point above —"
         " re-keying is both an SLA-breach risk and a transcription-error risk in the compliance record, so this"
         " principle exists to stop new features from reintroducing the same failure mode.",
-        priority="high", owner_id=demo_engineer["user_id"],
+        priority="high", owner={"type": "user", "id": demo_engineer["user_id"]},
     )
     propose_and_approve_project_guiding_principle(
         h_pm, drone["id"], drone_guiding_principle["id"],
@@ -2619,6 +2703,11 @@ def main() -> None:
         evidence="Procurement flagged a 6-week lead-time gap for the secondary vendor last quarter; the"
         " primary vendor has never missed a delivery window in 18 months.",
         priority="high", due_date=(date.today() + timedelta(days=21)).isoformat(),
+    )
+    assign_owner(
+        h_pm, drone["id"], "open-questions", oq_battery_vendor,
+        ("question", "context", "evidence", "priority", "due_date"),
+        {"type": "org_group", "id": architecture_board.json()["id"]},
     )
     investigate_open_question(h_pm, drone["id"], oq_battery_vendor["id"])
     mark_open_question_ready_for_decision(h_pm, drone["id"], oq_battery_vendor["id"])
@@ -2674,6 +2763,8 @@ def main() -> None:
         description="Flies Falcon-3 beyond visual line of sight from an operations centre.",
         goals="Keep every flight within the certified envelope.", needs="Unambiguous status for the redundant"
         " flight controllers.", frequency_of_use="Several flights per shift", weight=2.0,
+        # A team can own a Persona (users-and-groups parity): the Architecture Board owns this one.
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},
     )
     activate_project_persona(h_pm, drone["id"], drone_operator_persona["id"])
     set_project_persona_weight_override(h_pm, drone["id"], persona_inspector["id"], 5.0)
@@ -2755,6 +2846,7 @@ def main() -> None:
     levels = get_stakeholder_levels(h_pm, org["id"])
     stakeholder_authority = create_stakeholder(
         h_pm, org_id=org["id"], activate=True, represents=(persona_auditor["id"],), name="Pat Okafor",
+        owner={"type": "user", "id": demo_engineer["user_id"]},
         stakeholder_type_id=get_stakeholder_type_id(h_pm, org_id=org["id"], name="Regulator"),
         role="Certification auditor", organisation_group="Civil Aviation Authority",
         interests="Evidence that the airworthiness case is complete and traceable.",
@@ -2791,6 +2883,7 @@ def main() -> None:
     need_status_display = create_need(
         h_pm, drone["id"], activate=True, holders=(("stakeholder", stakeholder_fleet["id"]), ("persona", drone_operator_persona["id"])),
         requirement_ids=(flight_log_req["id"],), name="Trust the flight status at a glance",
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},
         description="My pilots must be able to tell, in under a second, whether the redundant flight controllers agree.",
         rationale="Two incidents last year where a pilot misread a degraded-channel warning.",
     )
@@ -2823,7 +2916,8 @@ def main() -> None:
         "band_label": "High",
     }])
     risk_single_controller = create_risk(
-        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Safety"]["id"], owner_id=demo_admin["user_id"],
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Safety"]["id"],
+        owner={"type": "org_group", "id": architecture_board.json()["id"]},  # a team owns the safety risk (users-and-groups parity)
         title="Flight controller fails in flight",
         statement="If the flight controller fails during a flight over people, the drone falls uncontrolled.",
         cause="Single flight controller board with no in-flight redundancy.", risk_event="Loss of flight control.",
@@ -2832,14 +2926,14 @@ def main() -> None:
         inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
     )
     risk_modem = create_risk(
-        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner_id=demo_admin["user_id"],
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner={"type": "user", "id": demo_admin["user_id"]},
         title="Cellular modem supplier misses delivery",
         statement="If the single-sourced modem arrives late, integration testing slips and the certification date is at risk.",
         risk_event="Late delivery of the telemetry modem.", consequence="Integration slips by several weeks.",
         treatment_strategy="mitigate", inherent=("Likely", "Moderate"), residual=("Possible", "Minor"),
     )
     risk_regulator = create_risk(
-        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Compliance"]["id"], owner_id=demo_admin["user_id"],
+        h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Compliance"]["id"], owner={"type": "user", "id": demo_admin["user_id"]},
         title="Regulator withdraws BVLOS approval",
         statement="If the regulator withdraws beyond-visual-line-of-sight approval, populated-corridor contracts cannot be flown.",
         consequence="The core commercial route is lost.", inherent=("Rare", "Catastrophic"), residual=("Rare", "Catastrophic"),
