@@ -15,7 +15,7 @@ never a table name, id or SQL text, so cardinality stays at five series and
 nothing Restricted reaches the unauthenticated `/metrics` output.
 """
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 from sqlalchemy import Delete, Insert, Select, Update, event
 from sqlalchemy.engine import Engine
 
@@ -37,6 +37,13 @@ change_requests_approved_total = Counter("change_requests_approved_total", "Chan
 change_requests_rejected_total = Counter("change_requests_rejected_total", "Change requests rejected")
 
 login_attempts_total = Counter("login_attempts_total", "Login attempts", ["result"])
+
+# 1 while the last file-storage write probe succeeded, 0 while it is failing (services/storage_health.py).
+# `livemostrecent` so a multi-worker scrape reports the leader's latest probe, not a stale worker's.
+storage_write_healthy = Gauge(
+    "storage_write_healthy", "1 if the file storage backend accepted a write probe, else 0",
+    multiprocess_mode="livemostrecent",
+)
 
 DB_OPERATIONS = ("select", "insert", "update", "delete", "other")
 db_statements_total = Counter(

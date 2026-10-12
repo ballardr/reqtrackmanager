@@ -1,9 +1,11 @@
 """
 Module: services.disk_monitor
 
-Monitors local file storage disk usage and emails the configured deployment
-notification address when a threshold is exceeded (I-M-11), so operators
-find out before storage actually fills up. Only meaningful for the "local"
+Monitors local file storage disk usage and, when a threshold is exceeded
+(I-M-11), notifies server admins in-app and emails the configured deployment
+notification address, so operators find out before storage actually fills up.
+(`services.storage_health` covers the case this cannot: storage that has
+already stopped accepting writes, on any backend.) Only meaningful for the "local"
 storage backend — an S3-compatible backend's capacity is managed by that
 service, not this process's disk.
 
@@ -21,9 +23,11 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.models.notification import NotificationType
 from app.services.email import send_email_async
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
+from app.services.notifications import notify_server_admins
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -32,8 +36,8 @@ CHECK_INTERVAL_SECONDS = 15 * 60
 
 
 async def check_disk_usage_once(backend, already_warned: bool, db: Session) -> bool:
-    """Runs a single disk-usage check against `backend`, emailing the
-    deployment notification address the first time usage crosses the
+    """Runs a single disk-usage check against `backend`, notifying server
+    admins (and emailing the deployment notification address, if set) the first time usage crosses the
     configured threshold. Returns the updated `already_warned` state so the
     caller can avoid re-sending the warning on every subsequent check while
     usage remains above the threshold.
@@ -53,6 +57,13 @@ async def check_disk_usage_once(backend, already_warned: bool, db: Session) -> b
     usage_percent = backend.disk_usage_percent()
     if usage_percent >= settings.disk_usage_warning_threshold_percent:
         if not already_warned:
+            notify_server_admins(
+                db, notification_type=NotificationType.SYSTEM_STORAGE_ALERT,
+                title="Storage disk usage warning",
+                body=f"File storage disk usage is {usage_percent:.0f}% (threshold {settings.disk_usage_warning_threshold_percent}%).",
+            )
+            if not settings.deployment_notification_email:
+                return True
             branding = resolve_email_branding(db, organization_id=None)
             html_body, text_body = render_email(
                 "disk_alert", branding=branding, usage_percent=usage_percent,
@@ -71,7 +82,7 @@ async def check_disk_usage_once(backend, already_warned: bool, db: Session) -> b
 
 async def run_disk_monitor_loop() -> None:
     """Runs forever, periodically checking local disk usage."""
-    if settings.storage_backend != "local" or not settings.deployment_notification_email:
+    if settings.storage_backend != "local":
         return
 
     from app.database import SessionLocal

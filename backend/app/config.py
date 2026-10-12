@@ -11,6 +11,7 @@ External dependencies: pydantic-settings.
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +51,13 @@ class Settings(BaseSettings):
             connectivity failures (I-M-09).
         disk_usage_warning_threshold_percent: Disk usage monitor threshold
             for the local storage backend (I-M-11).
+        storage_health_check_enabled: Whether the leader periodically writes a
+            tiny probe object to the file storage to detect it refusing writes
+            (`services/storage_health.py`). Disable it to avoid the request
+            charges of an S3-compatible provider; the on-demand
+            `GET /api/v1/system/storage-health` still works.
+        storage_health_check_interval_seconds: Seconds between probes
+            (minimum 60). Raising it is the cheaper alternative to disabling.
         websocket_enabled: Whether the optional live-update WebSocket
             interface (I-A-04) is mounted at all. Deployments that can't or
             don't want persistent socket connections (e.g. behind certain
@@ -222,6 +230,8 @@ class Settings(BaseSettings):
 
     deployment_notification_email: str | None = None
     disk_usage_warning_threshold_percent: int = 90
+    storage_health_check_enabled: bool = True
+    storage_health_check_interval_seconds: int = Field(default=300, ge=60)
 
     websocket_enabled: bool = True
 

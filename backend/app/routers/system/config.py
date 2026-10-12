@@ -14,6 +14,8 @@ package layout.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -32,7 +34,9 @@ from app.services.branding import get_server_settings
 from app.services.email import send_email
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
+from app.services.files import get_storage_backend
 from app.services.rbac import require_server_admin
+from app.services.storage_health import probe_storage
 from app.version import APP_VERSION, BUILD_DATE, GIT_SHA
 
 router = APIRouter(tags=["system-config"])
@@ -58,6 +62,33 @@ def get_version(current_user: User = Depends(get_current_user)) -> VersionOut:
     lives under `/api/v1` rather than being a bare infra probe).
     """
     return VersionOut(version=APP_VERSION, git_sha=GIT_SHA, build_date=BUILD_DATE)
+
+
+class StorageHealthOut(BaseModel):
+    """A live write probe of the file storage backend.
+
+    Attributes:
+        backend: `local` or `s3`.
+        healthy: True when a write, read-back and delete succeeded.
+        error: The failure when not healthy.
+        checked_at: When the probe ran.
+    """
+
+    backend: str
+    healthy: bool
+    error: str | None
+    checked_at: datetime
+
+
+@router.get("/storage-health", response_model=StorageHealthOut)
+def get_storage_health(current_user: User = Depends(require_server_admin)) -> StorageHealthOut:
+    """Probes the file storage backend now (write, read back, delete) and reports the result.
+
+    Server admins only (each call writes a small object). The test suites call it up front to fail
+    fast, with a clear reason, when storage is full instead of failing later in unrelated uploads.
+    """
+    result = probe_storage(get_storage_backend())
+    return StorageHealthOut(backend=result.backend, healthy=result.healthy, error=result.error, checked_at=result.checked_at)
 
 
 @router.post("/test-email", status_code=status.HTTP_204_NO_CONTENT)

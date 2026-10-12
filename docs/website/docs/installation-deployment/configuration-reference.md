@@ -31,6 +31,7 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `docker-compose.yml` | Recommended | Remaining SMTP connection details |
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space |
 | `DISK_USAGE_WARNING_THRESHOLD_PERCENT` | `90` | — | Disk usage monitor threshold for the `local` storage backend |
+| `STORAGE_HEALTH_CHECK_ENABLED` / `STORAGE_HEALTH_CHECK_INTERVAL_SECONDS` | `true` / `300` | — | Periodic write probe of the file storage (alerts server admins when it stops accepting writes). Each probe is one write, read and delete, so set `false` (or raise the interval, minimum 60) to avoid request charges on a metered S3 provider |
 | `WEBSOCKET_ENABLED` | `true` | — | Whether the optional live-update WebSocket interface is mounted at all |
 | `BACKEND_WORKERS` | `4` | — | Backend worker processes per container (CPU cores the API can use). Workers coordinate via PostgreSQL; see the deployment guide's scaling section for connection/memory sizing |
 | `GEOIP_LOOKUP_ENABLED` | `false` | — | Whether login events resolve an approximate location for the client IP via a third-party lookup. Off by default since it's an external network dependency; login is never blocked by it regardless |

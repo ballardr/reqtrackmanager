@@ -56,6 +56,7 @@ from app.services.notifications import run_digest_loop
 from app.services.process_coordination import run_leadership_loop, startup_lock
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.scoring import sync_scoring_levels
+from app.services.storage_health import run_storage_health_loop
 from app.version import APP_VERSION
 
 settings = get_settings()
@@ -98,6 +99,7 @@ async def lifespan(_: FastAPI):
     def start_singletons() -> None:
         singleton_tasks.extend([
             asyncio.create_task(run_disk_monitor_loop()),
+            asyncio.create_task(run_storage_health_loop()),
             asyncio.create_task(run_digest_loop()),
         ])
         start_scheduler()

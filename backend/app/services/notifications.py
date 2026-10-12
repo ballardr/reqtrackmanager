@@ -157,6 +157,31 @@ def notify(
     return notification
 
 
+def notify_server_admins(db: Session, *, notification_type: NotificationType | str, title: str, body: str = "") -> int:
+    """Notifies every active server admin (in-app, and by email per their preferences).
+
+    For deployment-level alerts that belong to no organisation or project (a full storage disk).
+    Commits, so a caller in a background loop needs nothing further.
+
+    Args:
+        db: An active database session.
+        notification_type: Which event this is (a registered type).
+        title / body: The notification text.
+
+    Returns:
+        How many admins were notified.
+    """
+    admins = db.scalars(
+        select(User).where(User.is_server_admin.is_(True), User.is_active.is_(True), User.is_archived.is_(False))
+    ).all()
+    count = 0
+    for admin in admins:
+        if notify(db, admin, notification_type=notification_type, title=title, body=body) is not None:
+            count += 1
+    db.commit()
+    return count
+
+
 async def run_digest_loop() -> None:
     """Runs forever, sending the daily digest batch on a fixed interval.
 
