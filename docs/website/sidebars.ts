@@ -144,6 +144,7 @@ const sidebars: SidebarsConfig = {
             'modules/stakeholders-personas-module/overview',
             'modules/stakeholders-personas-module/persona',
             'modules/stakeholders-personas-module/stakeholder',
+            'modules/stakeholders-personas-module/stakeholder-groups',
             'modules/stakeholders-personas-module/stakeholder-need',
             'modules/stakeholders-personas-module/relationships',
             'modules/stakeholders-personas-module/mcp-integration',

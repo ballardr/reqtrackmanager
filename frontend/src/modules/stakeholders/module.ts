@@ -15,7 +15,9 @@ import { ProjectPersonasPage } from "./ProjectPersonasPage";
 import { ProjectPersonaTypesPanel } from "./ProjectPersonaTypesPanel";
 import { ProjectStakeholdersPage } from "./ProjectStakeholdersPage";
 import { ProjectStakeholderTypesPanel } from "./ProjectStakeholderTypesPanel";
+import { ProjectStakeholderGroupsPage } from "./ProjectStakeholderGroupsPage";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
+import { StakeholderGroupsPanel } from "./StakeholderGroupsPanel";
 import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
 
 /**
@@ -34,8 +36,9 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  *   override stays reachable.
  * - `globalRoutes`: the org-scoped detail pages, for an org record opened from
  *   the org dashboard (no single project's enabled list could gate them).
- * - `orgOverviewSections`: the org Persona and Stakeholder lists (org-level
- *   content).
+ * - `orgOverviewSections`: the org Persona and Stakeholder lists and the
+ *   Stakeholder group manager (org-level content); the project's own group
+ *   manager is the `groups` route.
  * - `orgAdminSections`/`projectAdminSections`: the Persona and Stakeholder
  *   type vocabulary tiers, and Stakeholder scoring configuration (Influence/
  *   Interest levels, default model, rating bands) through core's shared
@@ -48,6 +51,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     persona: (projectId, id) => `/projects/${projectId}/modules/stakeholders/personas/${id}`,
     stakeholder: (projectId, id) => `/projects/${projectId}/modules/stakeholders/stakeholders/${id}`,
     stakeholder_need: (projectId, id) => `/projects/${projectId}/modules/stakeholders/needs/${id}`,
+    stakeholder_group: (projectId, id) => `/projects/${projectId}/modules/stakeholders/groups?group=${id}`,
   },
   artefactStatusLabels: {
     persona: PERSONA_STATUS_LABEL,
@@ -63,6 +67,7 @@ export const moduleDefinition: TierAModuleDefinition = {
       path: "/projects/:projectId/modules/stakeholders/stakeholders/:stakeholderId",
       element: createElement(StakeholderDetailPage),
     },
+    { path: "/projects/:projectId/modules/stakeholders/groups", element: createElement(ProjectStakeholderGroupsPage) },
     { path: "/projects/:projectId/modules/stakeholders/needs", element: createElement(ProjectNeedsPage) },
     { path: "/projects/:projectId/modules/stakeholders/needs/:needId", element: createElement(NeedDetailPage) },
   ],
@@ -83,6 +88,11 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "stakeholders-org-stakeholders",
       label: "Stakeholders",
       render: ({ orgId }) => createElement(OrgStakeholdersPanel, { orgId }),
+    },
+    {
+      key: "stakeholders-org-groups",
+      label: "Stakeholder Groups",
+      render: ({ orgId }) => createElement(StakeholderGroupsPanel, { organizationId: orgId }),
     },
   ],
   orgAdminSections: [

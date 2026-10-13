@@ -4,9 +4,9 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildStakeholder, buildStakeholderScheme } from "./fixtures";
+import { buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { ProjectStakeholdersPage } from "./ProjectStakeholdersPage";
-import type { EffectivePersonaType, Stakeholder } from "./types";
+import type { EffectivePersonaType, Stakeholder, StakeholderGroup } from "./types";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -23,8 +23,9 @@ const ORG_USERS: OrgUser[] = [
   },
 ];
 
-function mockPageApis(stakeholders: Stakeholder[]) {
+function mockPageApis(stakeholders: Stakeholder[], groups: StakeholderGroup[] = []) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === `${BASE}/stakeholder-groups`) return groups;
     if (path.startsWith(`${BASE}/stakeholders`)) return stakeholders;
     if (path === `${BASE}/stakeholder-types`) return TYPES;
     if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/stakeholder`) return buildStakeholderScheme();
@@ -259,3 +260,67 @@ export const LoadErrorShowsMessage: Story = {
 
 export const LightTheme: Story = { ...ListsProjectAndOrgStakeholders };
 export const DarkTheme: Story = { ...ListsProjectAndOrgStakeholders, globals: { theme: "dark" } };
+
+const CLIENT = buildStakeholderGroup({ id: "client", name: "Client", child_count: 2 });
+const ACME = buildStakeholderGroup({ id: "acme", name: "Acme", parent_group_id: "client" });
+const BETA = buildStakeholderGroup({ id: "beta", name: "Beta Ltd", parent_group_id: "client" });
+const ref = (g: StakeholderGroup) => ({ id: g.id, name: g.name, scope: g.scope, parent_group_id: g.parent_group_id });
+
+const GROUPED = [
+  buildStakeholder({ id: "s-acme", name: "Alex Acme", groups: [ref(ACME)] }),
+  buildStakeholder({ id: "s-beta", name: "Bea Beta", groups: [ref(BETA)] }),
+  buildStakeholder({ id: "s-none", name: "Nobody Special", groups: [] }),
+];
+
+export const GroupFilterIncludesDescendantsUnlessDirectOnly: Story = {
+  beforeEach: () => mockPageApis(GROUPED, [CLIENT, ACME, BETA]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Alex Acme")).toBeInTheDocument());
+    await expect(canvas.getByRole("columnheader", { name: "Groups" })).toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Group"), "client");
+    await expect(canvas.getByText("Alex Acme")).toBeInTheDocument();
+    await expect(canvas.getByText("Bea Beta")).toBeInTheDocument();
+    await expect(canvas.queryByText("Nobody Special")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByLabelText("Directly in the group only"));
+    await expect(canvas.queryByText("Alex Acme")).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Group"), "acme");
+    await userEvent.click(canvas.getByLabelText("Directly in the group only"));
+    await expect(canvas.queryByText("Bea Beta")).not.toBeInTheDocument();
+  },
+};
+
+export const ClickingAGroupBadgeFiltersToIt: Story = {
+  beforeEach: () => mockPageApis(GROUPED, [CLIENT, ACME, BETA]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Beta Ltd" }));
+    await expect(canvas.queryByText("Alex Acme")).not.toBeInTheDocument();
+    await expect(canvas.getByText("Bea Beta")).toBeInTheDocument();
+  },
+};
+
+export const GroupByARootAddsABranchColumnAndOrders: Story = {
+  beforeEach: () => mockPageApis(GROUPED, [CLIENT, ACME, BETA]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Alex Acme")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Group by"), "client");
+    await expect(canvas.getByRole("columnheader", { name: "Client" })).toBeInTheDocument();
+    const rows = within(canvas.getByRole("table", { name: "Stakeholders" })).getAllByRole("row").slice(1);
+    await expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("Alex Acme"), expect.stringContaining("Bea Beta"), expect.stringContaining("Nobody Special"),
+    ]);
+    await expect(rows[0]).toHaveTextContent("Acme");
+  },
+};
+
+export const NoGroupsHidesTheGroupControls: Story = {
+  beforeEach: () => mockPageApis(GROUPED, []),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Alex Acme")).toBeInTheDocument());
+    await expect(canvas.queryByRole("columnheader", { name: "Groups" })).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Group by")).not.toBeInTheDocument();
+  },
+};

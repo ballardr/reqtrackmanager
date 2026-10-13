@@ -10,15 +10,15 @@ re-derive it, and does not need Module 1 for that purpose.
 §10 "Module 2 — Stakeholders & Personas".
 
 **Status:** Phases 0, 1.1, 1.2, 2, 3 and 3b complete (all 2026-10-05; Phase 0 had user
-sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) is next, then Phase 4. Phase 1 was split
+sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) complete (2026-10-13); Phase 3d (custom attributes) and Phase 4 are next. Phase 1 was split
 into 1.1 (Persona) and 1.2 (Stakeholder) so Module 1 Phase 11's dependency,
 which needs only Personas, unblocked first. Built ahead of the overview's §46 order because Module 1's
 Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-6 / 10 phases complete (plus the unnumbered Phase 3b, project stakeholder visibility, done, and the unnumbered Phases 3c, Stakeholder Groups, and 3d, custom attributes, not started). **Phases 0–3 and 7a are done, so the module can ship; Phase 3c (Stakeholder Groups, added 2026-10-12) is next, then Phase 4 (Engagements: data
-model, backend, erasure), with 5, 6 and 7b after it.** 3d (generic custom attributes) follows 3c; its org-level definition model needs user sign-off before building. The user asked for the docs phase to be pulled ahead of Phases 4–6
+6 / 10 phases complete (plus the unnumbered Phases 3b, project stakeholder visibility, and 3c, Stakeholder Groups, done, and the unnumbered Phase 3d, custom attributes, not started). **Phases 0–3, 3b, 3c and 7a are done, so the module can ship; Phase 4 (Engagements: data
+model, backend, erasure) is next, with 5, 6 and 7b after it, and 3d (generic custom attributes) whenever its org-level definition model has user sign-off.** Engagements can now target a Stakeholder group (addendum 3, items 29–30). The user asked for the docs phase to be pulled ahead of Phases 4–6
 (**Decided by: User**, 2026-10-05): Phase 7a documents what Phases 0–3 shipped, and Phase 7b extends the
 same section once Phases 4–6 land.
 Phase 1.1 (Persona, 2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder,
@@ -36,8 +36,8 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 2 | Stakeholder Needs (as first-class records) | [x] Complete (2026-10-05) |
 | 3 | Relationships + remaining frontend UI + MCP | [x] Complete (2026-10-05) |
 | 3b | Project visibility of org Stakeholders and Personas (hide per project) | [x] Complete (2026-10-05) |
-| 3c | Stakeholder Groups (many-to-many, nested): sort, filter, group-by | [ ] Not started — do before Phase 4 so Engagements can target groups |
-| 3d | Custom attributes on Stakeholders and Personas (generic custom fields) | [ ] Not started — after 3c; confirm org-level definition model first, see its section |
+| 3c | Stakeholder Groups (many-to-many, nested): sort, filter, group-by | [x] Complete (2026-10-13) |
+| 3d | Custom attributes on Stakeholders and Personas (generic custom fields) | [ ] Not started — confirm org-level definition model first, see its section |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
 | 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
 | 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06 |
@@ -658,6 +658,8 @@ control on the project Stakeholders page; pytest, Playwright, Storybook; demo
 and e2e seeds; docs website + decisions log.
 
 ## Phase 3c — Stakeholder Groups (many-to-many, nested)
+
+**Status: complete (2026-10-13).** Account, deviations and review: [decisions.md](../decisions.md), "Module 2 (Stakeholders & Personas) Phase 3c". Built as specified below, with two additions the review produced: groups honour their own `(stakeholder_group, manage)` grant, and the shared `TreeView` / `TreeSelect` components were extracted (the "shared tree" item).
 
 **Scope** (Phase 0 addendum 3, items 23–32):
 - Models and a migration (take the next free revision number across the core

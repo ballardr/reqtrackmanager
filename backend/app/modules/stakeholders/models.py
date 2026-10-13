@@ -29,8 +29,10 @@ tables):
 - `PersonaComment` / `PersonaCommentFile` / `PersonaFile` — module-local
   comment and attachment tables (resolution 8), since extending the core
   `ReviewTargetType` enum would be a per-module edit to a core file.
-- `StakeholderNeed` and its version/comment/file tables (Phase 2, end of this
-  file) — a project-scoped record of one stakeholder or persona need.
+- `StakeholderNeed` and its version/comment/file tables (Phase 2) — a
+  project-scoped record of one stakeholder or persona need.
+- `StakeholderGroup` / `StakeholderGroupMember` (Phase 3c, end of this file) —
+  a tree of groups classifying stakeholders, with many-to-many membership.
 """
 
 from __future__ import annotations
@@ -694,3 +696,78 @@ class StakeholderNeedFile(UUIDPKMixin, Base):
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# =============================================================================
+# Stakeholder Groups (Phase 3c)
+# =============================================================================
+
+
+class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
+    """A node in a tree of stakeholder groups (Phase 0 addendum 3): a
+    classification such as "Client > Acme", not a principal, so it has no
+    version history or lifecycle. Scoped like `Stakeholder`: exactly one of
+    `organization_id`/`project_id`. A root group is a sort/group-by dimension.
+
+    Attributes:
+        scope: Which of `organization_id`/`project_id` is populated.
+        organization_id / project_id: The owner.
+        parent_group_id: The parent group, or `None` for a root. A project
+            group may sit under an org group; an org group only under an org
+            group (`service.stakeholder_groups` enforces this, plus cycles and depth).
+        name: Display name, unique among its siblings in one scope.
+        description: Free text.
+        exclusive_children: A stakeholder may sit in at most one of this
+            group's direct child branches, so the group behaves like a
+            single-valued column.
+        sort_order: Order among siblings.
+    """
+
+    __tablename__ = "stakeholder_groups"
+    __table_args__ = (
+        CheckConstraint(
+            "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
+            "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
+            name="ck_stakeholder_groups_scope_matches_owner",
+        ),
+        CheckConstraint("parent_group_id IS NULL OR parent_group_id <> id", name="ck_stakeholder_groups_not_own_parent"),
+    )
+
+    scope: Mapped[StakeholderScope] = mapped_column(str_enum(StakeholderScope, 20))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # SET NULL is only a backstop: deleting a group promotes its children to its parent first.
+    parent_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_groups.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    exclusive_children: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class StakeholderGroupMember(UUIDPKMixin, Base):
+    """A stakeholder's direct membership of one group. Transitive membership
+    (being in every ancestor too) is computed, never stored. Both foreign keys
+    cascade, so erasing a stakeholder or deleting a group removes its rows.
+
+    Attributes:
+        group_id: The group.
+        stakeholder_id: The member.
+        created_at: When the membership was added.
+    """
+
+    __tablename__ = "stakeholder_group_members"
+    __table_args__ = (UniqueConstraint("group_id", "stakeholder_id", name="uq_stakeholder_group_members_pair"),)
+
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_groups.id", ondelete="CASCADE"), index=True
+    )
+    stakeholder_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholders.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=sa_text("now()"))

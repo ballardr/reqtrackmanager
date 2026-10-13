@@ -16,6 +16,8 @@ import type { FileAsset, PrincipalRef } from "../../api/types";
 import type {
   CadenceHint,
   EffectivePersonaType,
+  GroupFromTextResult,
+  GroupTextProposal,
   HeldNeed,
   Need,
   NeedComment,
@@ -33,6 +35,10 @@ import type {
   Stakeholder,
   StakeholderComment,
   StakeholderFieldValues,
+  StakeholderGroup,
+  StakeholderGroupFieldValues,
+  StakeholderGroupMember,
+  StakeholderGroupRef,
   StakeholderVersion,
   TargetCadence,
 } from "./types";
@@ -226,6 +232,40 @@ export const projectPersonaApi = {
 
 /** Org-scoped `PersonaTypeDefinition` CRUD — `id` parameters are an `organization_id`. */
 export const orgPersonaTypeApi = buildOrgTypeApi("persona-types");
+
+/** Stakeholder group calls both scopes share (`base(id)` is the org or project module URL). */
+function buildGroupApi(base: (id: string) => string) {
+  const url = (id: string, groupId?: string) => `${base(id)}/stakeholder-groups${groupId ? `/${groupId}` : ""}`;
+  return {
+    /** Every group this scope can see, flat (the project's include the organisation's). */
+    list: (id: string) => api.get<StakeholderGroup[]>(url(id)),
+    create: (id: string, values: StakeholderGroupFieldValues) => api.post<StakeholderGroup>(url(id), values),
+    update: (id: string, groupId: string, values: Partial<StakeholderGroupFieldValues>) =>
+      api.patch<StakeholderGroup>(url(id, groupId), values),
+    move: (id: string, groupId: string, direction: "up" | "down") =>
+      api.post<StakeholderGroup>(`${url(id, groupId)}/move`, { direction }),
+    /** Deletes the group: its memberships go (never the stakeholders) and its children move up. */
+    delete: (id: string, groupId: string) => api.delete<void>(url(id, groupId)),
+    listMembers: (id: string, groupId: string, directOnly = false) =>
+      api.get<StakeholderGroupMember[]>(`${url(id, groupId)}/members${directOnly ? "?direct_only=true" : ""}`),
+    addMember: (id: string, groupId: string, stakeholderId: string) =>
+      api.post<void>(`${url(id, groupId)}/members`, { stakeholder_id: stakeholderId }),
+    removeMember: (id: string, groupId: string, stakeholderId: string) =>
+      api.delete<void>(`${url(id, groupId)}/members/${stakeholderId}`),
+    /** Sets the stakeholder's groups of this scope's tier to exactly `groupIds`. */
+    setStakeholderGroups: (id: string, stakeholderId: string, groupIds: string[]) =>
+      api.put<StakeholderGroupRef[]>(`${base(id)}/stakeholders/${stakeholderId}/groups`, { group_ids: groupIds }),
+    textProposals: (id: string) => api.get<GroupTextProposal[]>(`${url(id)}/text-proposals`),
+    createFromText: (id: string, names: string[]) => api.post<GroupFromTextResult>(`${url(id)}/from-text`, { names }),
+  };
+}
+
+/** Org-scoped Stakeholder group endpoints — `id` is an `organization_id`. */
+export const orgStakeholderGroupApi = buildGroupApi(orgBase);
+
+/** Project-scoped Stakeholder group endpoints (the list includes the organisation's groups, which
+ * are read-only here) — `id` is a `project_id`. */
+export const projectStakeholderGroupApi = buildGroupApi(projectBase);
 
 /** Org-scoped Stakeholder endpoints — `id` is an `organization_id`. */
 export const orgStakeholderApi = buildStakeholderApi(orgBase);

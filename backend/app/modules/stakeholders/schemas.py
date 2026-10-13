@@ -4,7 +4,8 @@ Module: modules.stakeholders.schemas
 Pydantic request/response schemas for the Stakeholders & Personas module's
 org- and project-scoped routers (Phase 1.1: Persona, persona types, weight
 overrides, comments; Phase 1.2: Stakeholder, its representation links and the
-cadence hint; Phase 2: Stakeholder Need and its links). Type-vocabulary and file schemas are shared by both artefacts.
+cadence hint; Phase 2: Stakeholder Need and its links; Phase 3c: Stakeholder
+Groups). Type-vocabulary and file schemas are shared by both artefacts.
 
 `PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the
 request body change, so a nullable field (weight, owner, champion, type,
@@ -239,6 +240,15 @@ class StakeholderUpdate(BaseModel):
     change_note: str = ""
 
 
+class StakeholderGroupRefOut(BaseModel):
+    """A group a stakeholder is directly in, as shown on the stakeholder."""
+
+    id: UUID
+    name: str
+    scope: StakeholderScope
+    parent_group_id: UUID | None
+
+
 class StakeholderOut(BaseModel):
     """A stakeholder merged with its current version. `project_hidden` and
     `hidden_override` are populated only for an org stakeholder returned by the
@@ -283,6 +293,7 @@ class StakeholderOut(BaseModel):
     project_hidden: bool | None = None
     hidden_override: bool | None = None
     hidden_source: str | None = None
+    groups: list[StakeholderGroupRefOut] = Field(default_factory=list)
 
 
 class VisibilitySet(BaseModel):
@@ -522,3 +533,75 @@ class IncomingRelationshipOut(BaseModel):
     holder_id: UUID
     holder_name: str
     scope: str
+
+
+# --- Stakeholder Groups (Phase 3c) --------------------------------------------
+
+
+class StakeholderGroupCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    parent_group_id: UUID | None = None
+    exclusive_children: bool = False
+
+
+class StakeholderGroupUpdate(BaseModel):
+    """Partial: an explicit `parent_group_id: null` moves the group to the top level."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = None
+    parent_group_id: UUID | None = None
+    exclusive_children: bool | None = None
+
+
+class StakeholderGroupOut(BaseModel):
+    """A group with its direct member and child counts (members hidden from the viewing project are not counted)."""
+
+    id: UUID
+    scope: StakeholderScope
+    organization_id: UUID | None
+    project_id: UUID | None
+    parent_group_id: UUID | None
+    name: str
+    description: str
+    exclusive_children: bool
+    sort_order: int
+    member_count: int
+    child_count: int
+
+
+class StakeholderGroupMemberOut(BaseModel):
+    """One stakeholder in a group; `direct` is false when it is only in a descendant."""
+
+    stakeholder_id: UUID
+    name: str
+    scope: StakeholderScope
+    direct: bool
+
+
+class StakeholderGroupMemberCreate(BaseModel):
+    stakeholder_id: UUID
+
+
+class StakeholderGroupIdsSet(BaseModel):
+    """Body of `PUT .../stakeholders/{id}/groups`: the full set of this tier's groups to be in."""
+
+    group_ids: list[UUID]
+
+
+class GroupTextProposalOut(BaseModel):
+    """A distinct "organisation / group" text value that could become a group."""
+
+    name: str
+    stakeholder_count: int
+    existing_group_id: UUID | None
+
+
+class GroupFromTextCreate(BaseModel):
+    names: list[str] = Field(min_length=1)
+
+
+class GroupFromTextOut(BaseModel):
+    root_group_id: UUID
+    group_ids: list[UUID]
+    memberships_added: int

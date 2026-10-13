@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
-import { buildStakeholder, buildStakeholderScheme } from "./fixtures";
+import { buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import type { CadenceHint } from "./types";
 
@@ -118,3 +118,29 @@ export const ShowsError: Story = {
 };
 
 export const DarkTheme: Story = { ...CreateNeedsAName, globals: { theme: "dark" } };
+
+const GROUPS = [
+  buildStakeholderGroup({ id: "client", name: "Client" }),
+  buildStakeholderGroup({ id: "acme", name: "Acme", parent_group_id: "client" }),
+];
+
+export const CreateReturnsTheChosenGroups: Story = {
+  args: { groups: GROUPS, groupTier: "organization" },
+  play: async ({ args }) => {
+    await userEvent.type(dialog().getByLabelText("Stakeholder name"), "Alex Acme");
+    await userEvent.click(dialog().getByRole("button", { name: "Organisation groups" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Acme" }));
+    // The opened tree is itself a dialog, so the Save button is found on the page rather than within "the" dialog.
+    await userEvent.click(within(document.body).getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Alex Acme", group_ids: ["acme"] }));
+  },
+};
+
+export const EditDoesNotOfferOrSendGroups: Story = {
+  args: { initial: buildStakeholder(), groups: GROUPS },
+  play: async ({ args }) => {
+    await expect(dialog().queryByRole("button", { name: "Organisation groups" })).not.toBeInTheDocument();
+    await userEvent.click(dialog().getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.not.objectContaining({ group_ids: expect.anything() }));
+  },
+};

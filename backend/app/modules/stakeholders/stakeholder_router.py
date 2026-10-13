@@ -28,10 +28,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.organization import Organization
 from app.models.user import User
+from app.modules.stakeholders import _group_shared as gsh
 from app.modules.stakeholders import _shared as psh
 from app.modules.stakeholders import _stakeholder_shared as sh
 from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, versions_out
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus
+from app.modules.stakeholders.groups import load_groups
 from app.modules.stakeholders.models import Stakeholder, StakeholderTypeDefinition
 from app.modules.stakeholders.schemas import (
     CadenceHintOut,
@@ -235,13 +237,21 @@ def create_org_stakeholder_from_user(
 
 @router.get("/stakeholders", response_model=list[StakeholderOut])
 def list_org_stakeholders(
-    organization_id: UUID, include_archived: bool = False,
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    organization_id: UUID, include_archived: bool = False, group_id: UUID | None = None, direct_only: bool = False,
+    group_by: UUID | None = None, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
+    """The org's stakeholders. `group_id` keeps a group's members (and its descendants' unless
+    `direct_only`); `group_by` orders them by branch under that top-level group."""
     query = select(Stakeholder).where(Stakeholder.organization_id == organization_id, Stakeholder.scope == _SCOPE)
     if not include_archived:
         query = query.where(Stakeholder.is_archived.is_(False))
-    return sh.stakeholders_to_out(db, db.scalars(query.order_by(Stakeholder.created_at)).all())
+    stakeholders = list(db.scalars(query.order_by(Stakeholder.created_at)).all())
+    if group_id is not None or group_by is not None:
+        stakeholders = gsh.filter_and_sort_stakeholders(
+            db, stakeholders, load_groups(db, organization_id), group_id=group_id, direct_only=direct_only,
+            group_by=group_by,
+        )
+    return sh.stakeholders_to_out(db, stakeholders)
 
 
 @router.get("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)

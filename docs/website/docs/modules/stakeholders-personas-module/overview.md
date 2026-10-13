@@ -64,6 +64,7 @@ Each composes with roles that already carry equivalent authority: a server admin
 
 - [Persona](./persona.md) — fields, importance weight and its per-project override, lifecycle, and types.
 - [Stakeholder](./stakeholder.md) — fields, Influence × Interest rating, engagement cadence, linking to a platform user, and permanent deletion.
+- [Stakeholder groups](./stakeholder-groups.md) — a tree of groups to classify, filter and sort Stakeholders by.
 - [Stakeholder Need](./stakeholder-need.md) — fields, who has a Need, and the Requirements it gave rise to.
 - [Relationships](./relationships.md) — how Stakeholders and Personas relate to Pain Points, Requirements and Decisions.
 - [AI assistant (MCP) integration](./mcp-integration.md) — the tools an AI assistant can call against this module's content.

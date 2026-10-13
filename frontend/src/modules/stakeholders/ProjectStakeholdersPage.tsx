@@ -18,9 +18,10 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { projectStakeholderApi } from "./api";
+import { projectStakeholderApi, projectStakeholderGroupApi } from "./api";
+import { createStakeholderWithGroups } from "./createStakeholder";
 import { StakeholderListView } from "./StakeholderListView";
-import type { EffectivePersonaType, Stakeholder } from "./types";
+import type { EffectivePersonaType, Stakeholder, StakeholderGroup } from "./types";
 import { useStakeholderScheme } from "./useStakeholderScheme";
 import { showRecordInProject } from "./visibility";
 
@@ -30,6 +31,7 @@ export function ProjectStakeholdersPage() {
   const { showToast } = useToast();
   const [stakeholders, setStakeholders] = useState<Stakeholder[] | null>(null);
   const [types, setTypes] = useState<EffectivePersonaType[]>([]);
+  const [groups, setGroups] = useState<StakeholderGroup[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -45,11 +47,13 @@ export function ProjectStakeholdersPage() {
     Promise.all([
       projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden }),
       projectStakeholderApi.listTypes(projectId),
+      projectStakeholderGroupApi.list(projectId).catch(() => [] as StakeholderGroup[]),
     ])
-      .then(([list, typeList]) => {
+      .then(([list, typeList, groupList]) => {
         if (!active) return;
         setStakeholders(list);
         setTypes(typeList);
+        setGroups(groupList);
         setLoadError(null);
       })
       .catch((err) => {
@@ -96,6 +100,8 @@ export function ProjectStakeholdersPage() {
         showScope
         typeOptions={types.filter((t) => t.is_enabled).map((t) => ({ value: t.id, label: t.name }))}
         scheme={scheme}
+        groups={groups}
+        groupTier="project"
         orgUsers={orgUsers}
         loadHint={(influence, interest) => projectStakeholderApi.cadenceHint(projectId, influence, interest)}
         includeArchived={includeArchived}
@@ -104,9 +110,14 @@ export function ProjectStakeholdersPage() {
         onIncludeHiddenChange={setIncludeHidden}
         onShowHidden={showHidden}
         onOpen={(s) => navigate(`/projects/${projectId}/modules/stakeholders/stakeholders/${s.id}`)}
-        onCreate={async (values) => {
-          await projectStakeholderApi.create(projectId, values);
+        onCreate={async (values, groupIds) => {
+          const warning = await createStakeholderWithGroups(
+            (v) => projectStakeholderApi.create(projectId, v),
+            (id, ids) => projectStakeholderGroupApi.setStakeholderGroups(projectId, id, ids),
+            values, groupIds,
+          );
           showToast("Stakeholder created.");
+          if (warning) showToast(warning, "error");
           reload();
         }}
         onCreateFromUser={async (values) => {

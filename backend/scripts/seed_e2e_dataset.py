@@ -464,6 +464,14 @@ PERSONA_HIDDEN_NAME = "E2E Hidden Persona"
 # Stakeholder Needs (Phase 2) — one on the Gamma-3 hierarchy parent, held by the
 # project stakeholder; the need Playwright spec builds its own disposable data.
 NEED_PROJECT_NAME = "E2E Keep the line running"
+# Stakeholder groups (Phase 3c) on Gamma: an org taxonomy (a Client root whose children are mutually exclusive, and a
+# Business group root), the regulator in two groups, and a Gamma-3 project group nested under an org group.
+GROUP_CLIENT_NAME = "E2E Client"
+GROUP_CLIENT_CHILD_NAME = "E2E Northern Utilities"
+GROUP_CLIENT_OTHER_CHILD_NAME = "E2E Coastal Water"
+GROUP_BUSINESS_NAME = "E2E Business group"
+GROUP_BUSINESS_CHILD_NAME = "E2E Operations"
+GROUP_PROJECT_NAME = "E2E Pilot plant"
 
 
 def create_stakeholder(
@@ -486,6 +494,28 @@ def create_stakeholder(
         )
         r.raise_for_status()
     return stakeholder
+
+
+def create_stakeholder_group(
+    headers: dict, *, org_id: str | None = None, project_id: str | None = None, **fields
+) -> dict:
+    """Creates an org- or project-scoped Stakeholder group (exactly one of `org_id`/`project_id`); `fields` are
+    `name`, `parent_group_id`, `exclusive_children`, `description`."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/stakeholder-groups", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def add_stakeholder_to_group(
+    headers: dict, group_id: str, stakeholder_id: str, *, org_id: str | None = None, project_id: str | None = None
+) -> None:
+    """Puts a stakeholder directly into a group of the same tier (`org_id` for an org group, `project_id` for a project one)."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(
+        f"{base}/stakeholder-groups/{group_id}/members", json={"stakeholder_id": stakeholder_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
 
 
 def set_persona_visibility(headers: dict, project_id: str, persona_id: str, hidden: bool) -> dict:
@@ -802,6 +832,24 @@ def main() -> None:
         influence_level_id=levels["influence"]["Medium"], interest_level_id=levels["interest"]["High"],
     )
 
+    print("Seeding Stakeholder groups on Gamma: a Client taxonomy with exclusive children, a Business group, and a"
+          " Gamma-3 project group nested under an org group...")
+    client_root = create_stakeholder_group(h_g, org_id=gamma["id"], name=GROUP_CLIENT_NAME, exclusive_children=True)
+    northern = create_stakeholder_group(
+        h_g, org_id=gamma["id"], name=GROUP_CLIENT_CHILD_NAME, parent_group_id=client_root["id"],
+    )
+    create_stakeholder_group(h_g, org_id=gamma["id"], name=GROUP_CLIENT_OTHER_CHILD_NAME, parent_group_id=client_root["id"])
+    business_root = create_stakeholder_group(h_g, org_id=gamma["id"], name=GROUP_BUSINESS_NAME)
+    operations = create_stakeholder_group(
+        h_g, org_id=gamma["id"], name=GROUP_BUSINESS_CHILD_NAME, parent_group_id=business_root["id"],
+    )
+    add_stakeholder_to_group(h_g, northern["id"], org_regulator["id"], org_id=gamma["id"])
+    add_stakeholder_to_group(h_g, operations["id"], org_regulator["id"], org_id=gamma["id"])
+    pilot_group = create_stakeholder_group(
+        h_g, project_id=gamma3["id"], name=GROUP_PROJECT_NAME, parent_group_id=operations["id"],
+    )
+    add_stakeholder_to_group(h_g, pilot_group["id"], plant_manager["id"], project_id=gamma3["id"])
+
     print("Seeding a Stakeholder Need on Gamma-3, held by the project Stakeholder and the org Field Inspector persona...")
     create_need(
         h_g, gamma3["id"], activate=True, holders=(("stakeholder", plant_manager["id"]), ("persona", field_inspector["id"])),
@@ -993,6 +1041,10 @@ def main() -> None:
     print(f"Stakeholders on Gamma: org {STAKEHOLDER_ORG_NAME!r} (Active, High/Medium, quarterly, represents"
           f" {PERSONA_ORG_WEIGHTED_NAME!r}) and project {STAKEHOLDER_PROJECT_NAME!r} on {GAMMA3_NAME!r} (Active, monthly);"
           f" org {STAKEHOLDER_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")
+    print(f"Stakeholder groups on Gamma: {GROUP_CLIENT_NAME!r} (exclusive children {GROUP_CLIENT_CHILD_NAME!r} and"
+          f" {GROUP_CLIENT_OTHER_CHILD_NAME!r}) and {GROUP_BUSINESS_NAME!r} > {GROUP_BUSINESS_CHILD_NAME!r}; {STAKEHOLDER_ORG_NAME!r}"
+          f" is in {GROUP_CLIENT_CHILD_NAME!r} and {GROUP_BUSINESS_CHILD_NAME!r}; project group {GROUP_PROJECT_NAME!r} on"
+          f" {GAMMA3_NAME!r} holds {STAKEHOLDER_PROJECT_NAME!r}.")
 
 
 if __name__ == "__main__":

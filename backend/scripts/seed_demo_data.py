@@ -1583,6 +1583,28 @@ def set_persona_visibility(headers: dict, project_id: str, persona_id: str, hidd
     return r.json()
 
 
+def create_stakeholder_group(
+    headers: dict, *, org_id: str | None = None, project_id: str | None = None, **fields
+) -> dict:
+    """Creates an org- or project-scoped Stakeholder group (exactly one of `org_id`/`project_id`); `fields` are
+    `name`, `parent_group_id`, `exclusive_children`, `description`."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/stakeholder-groups", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def add_stakeholder_to_group(
+    headers: dict, group_id: str, stakeholder_id: str, *, org_id: str | None = None, project_id: str | None = None
+) -> None:
+    """Puts a stakeholder directly into a group of the same tier (`org_id` for an org group, `project_id` for a project one)."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(
+        f"{base}/stakeholder-groups/{group_id}/members", json={"stakeholder_id": stakeholder_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 def set_stakeholder_visibility(headers: dict, project_id: str, stakeholder_id: str, hidden: bool) -> dict:
     """Hides an org Stakeholder from a project (`hidden=True`), or shows it again where a parent project hides it."""
     r = httpx.put(
@@ -2877,6 +2899,25 @@ def main() -> None:
     print(f"  Stakeholders: {stakeholder_authority['name']!r} (org, Regulator, Active, High/Medium, quarterly),"
           f" {stakeholder_fleet['name']!r} (Falcon-3, Customer, Active, Medium/High, monthly),"
           f" {stakeholder_harbour['name']!r} (org, Regulator, Active) — hidden from Falcon-3, which has no marine dealings")
+
+    print("Seeding Stakeholder groups (Module 2 Phase 3c) — an org Client taxonomy whose children are mutually exclusive,"
+          " a Regulator group, and a Falcon-3 project group nested under an org group...")
+    group_client = create_stakeholder_group(h_pm, org_id=org["id"], name="Client", exclusive_children=True)
+    group_skyline = create_stakeholder_group(
+        h_pm, org_id=org["id"], name="Skyline Logistics", parent_group_id=group_client["id"],
+    )
+    group_regulators = create_stakeholder_group(h_pm, org_id=org["id"], name="Regulators")
+    group_aviation = create_stakeholder_group(
+        h_pm, org_id=org["id"], name="Aviation", parent_group_id=group_regulators["id"],
+    )
+    add_stakeholder_to_group(h_pm, group_aviation["id"], stakeholder_authority["id"], org_id=org["id"])
+    add_stakeholder_to_group(h_pm, group_regulators["id"], stakeholder_harbour["id"], org_id=org["id"])
+    group_pilot_customers = create_stakeholder_group(
+        h_pm, project_id=drone["id"], name="Launch-site customers", parent_group_id=group_skyline["id"],
+    )
+    add_stakeholder_to_group(h_pm, group_pilot_customers["id"], stakeholder_fleet["id"], project_id=drone["id"])
+    print("  Groups: Client > Skyline Logistics > (Falcon-3) Launch-site customers; Regulators > Aviation (Pat Okafor),"
+          " Regulators (Lee Harbour)")
 
     print("Seeding Stakeholder Needs (Module 2 Phase 2) — Falcon-3's fleet manager needs a trustworthy status display,"
           " which gave rise to its first requirement; the BVLOS Remote Pilot persona has the same need...")

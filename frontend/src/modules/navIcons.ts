@@ -28,6 +28,7 @@ import {
   CircleHelp,
   Compass,
   type LucideIcon,
+  Network,
   Puzzle,
   Scale,
   ShieldAlert,
@@ -40,6 +41,7 @@ import {
 
 const ICONS_BY_NAME: Record<string, LucideIcon> = {
   puzzle: Puzzle,
+  network: Network,
   "shield-check": ShieldCheck,
   "shield-alert": ShieldAlert,
   scale: Scale,

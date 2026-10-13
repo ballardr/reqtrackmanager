@@ -19,8 +19,9 @@ Registered contributions:
   scheme's levels and bands).
 - `stakeholder_need_owner` (project; carries the FGAC `(stakeholder_need, manage)`
   atom) for Stakeholder Needs, which are project-scoped only so have no org role.
-- `artefact_types=("persona", "stakeholder", "stakeholder_need")` so all three
-  are valid `ArtefactLink` endpoints and get FGAC atoms.
+- `artefact_types=("persona", "stakeholder", "stakeholder_need", "stakeholder_group")`
+  so all four are valid `ArtefactLink` endpoints and get FGAC atoms. Groups (Phase
+  3c) have no role of their own: they are managed with the Stakeholder gate.
 - `scoring_schemes`: the Influence × Interest `stakeholder` scheme (`scoring.py`).
 - `scoring_target_providers["persona"]`: the generic hook Module 1's
   per-persona Pain Point scoring reads (Phase 0 resolution 10), so Context &
@@ -63,6 +64,7 @@ from app.modules.stakeholders import need_export, relationship_export, stakehold
 from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
+from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE
 from app.modules.stakeholders.models import PersonaVersion, StakeholderNeedVersion, StakeholderVersion
 from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
@@ -113,18 +115,21 @@ def _principal_references() -> tuple[PrincipalReference, ...]:
 def get_router() -> APIRouter | None:
     """The org-scoped router (Persona + Stakeholder routes); imported lazily
     to avoid import cycles with this module's own registration."""
+    from app.modules.stakeholders.group_router import router as group_router
     from app.modules.stakeholders.router import router
     from app.modules.stakeholders.stakeholder_router import router as stakeholder_router
 
     combined = APIRouter()
     combined.include_router(router)
     combined.include_router(stakeholder_router)
+    combined.include_router(group_router)
     return combined
 
 
 def get_project_router() -> APIRouter | None:
     """The project-scoped router (Persona + Stakeholder routes); imported
     lazily like `get_router`."""
+    from app.modules.stakeholders.group_project_router import router as group_router
     from app.modules.stakeholders.need_project_router import router as need_router
     from app.modules.stakeholders.project_router import router
     from app.modules.stakeholders.relationship_project_router import router as relationship_router
@@ -135,6 +140,7 @@ def get_project_router() -> APIRouter | None:
     combined.include_router(stakeholder_router)
     combined.include_router(need_router)
     combined.include_router(relationship_router)
+    combined.include_router(group_router)
     return combined
 
 
@@ -199,7 +205,7 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
     stakeholder and need in the organisation, org-scoped or in one of its
     projects, for org deletion's polymorphic cleanup."""
     from app.models.project import Project
-    from app.modules.stakeholders.models import Persona, Stakeholder, StakeholderNeed
+    from app.modules.stakeholders.models import Persona, Stakeholder, StakeholderGroup, StakeholderNeed
 
     project_ids = select(Project.id).where(Project.organization_id == organization_id)
     ids: set[UUID] = set()
@@ -208,6 +214,9 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
             or_(model.organization_id == organization_id, model.project_id.in_(project_ids))
         )).all())
     ids |= set(db.scalars(select(StakeholderNeed.id).where(StakeholderNeed.project_id.in_(project_ids))).all())
+    ids |= set(db.scalars(select(StakeholderGroup.id).where(
+        or_(StakeholderGroup.organization_id == organization_id, StakeholderGroup.project_id.in_(project_ids))
+    )).all())
     return ids
 
 
@@ -396,6 +405,58 @@ def _build_link_mcp_tools() -> tuple[McpToolDefinition, ...]:
     return tuple(tools)
 
 
+def _build_group_mcp_tools() -> tuple[McpToolDefinition, ...]:
+    """Stakeholder group tools (Phase 3c). Writes act on this project's own groups; the organisation's
+    groups are read-only here (an org admin edits them in the UI). Deleting a group keeps its
+    Stakeholders and moves its child groups up."""
+    base = f"{_PROJECT_ROUTER_PREFIX}/stakeholder-groups"
+    group_param = _path("group_id", "The Stakeholder group.")
+    return (
+        McpToolDefinition(
+            name="list_stakeholder_groups", method="GET", path_template=base,
+            description=(
+                "Lists the Stakeholder groups this project can see (the organisation's and its own), flat, with "
+                "parent_group_id for the tree, exclusive_children and direct member counts."
+            ),
+            params=[_PROJECT_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="create_stakeholder_group", method="POST", path_template=base,
+            description="Creates a project Stakeholder group, optionally under an organisation group or one of this project's.",
+            params=[_PROJECT_ID_PARAM, _body("name", "string", "Group name, unique among its siblings.", required=True),
+                    _body("description", "string", "Free-text description."),
+                    _body("parent_group_id", "uuid", "The parent group; omit for a top-level group."),
+                    _body("exclusive_children", "boolean", "A Stakeholder may sit in at most one direct child branch.")],
+        ),
+        McpToolDefinition(
+            name="update_stakeholder_group", method="PATCH", path_template=f"{base}/{{group_id}}",
+            description="Renames, re-describes, re-flags or moves one of this project's Stakeholder groups; only supplied fields change.",
+            params=[_PROJECT_ID_PARAM, group_param, _body("name", "string", "New name."),
+                    _body("description", "string", "New description."),
+                    _body("parent_group_id", "uuid", "New parent; null moves it to the top level."),
+                    _body("exclusive_children", "boolean", "Whether children are mutually exclusive.")],
+        ),
+        McpToolDefinition(
+            name="delete_stakeholder_group", method="DELETE", path_template=f"{base}/{{group_id}}",
+            description="Deletes one of this project's Stakeholder groups. Memberships go, Stakeholders stay, child groups move up.",
+            params=[_PROJECT_ID_PARAM, group_param],
+        ),
+        McpToolDefinition(
+            name="add_stakeholder_to_group", method="POST", path_template=f"{base}/{{group_id}}/members",
+            description=(
+                "Adds a Stakeholder to one of this project's groups (409 if already in it, or if an exclusive "
+                "parent already holds them in another branch)."
+            ),
+            params=[_PROJECT_ID_PARAM, group_param, _body("stakeholder_id", "uuid", "The Stakeholder.", required=True)],
+        ),
+        McpToolDefinition(
+            name="remove_stakeholder_from_group", method="DELETE", path_template=f"{base}/{{group_id}}/members/{{stakeholder_id}}",
+            description="Removes a Stakeholder from one of this project's groups (the membership only).",
+            params=[_PROJECT_ID_PARAM, group_param, _STAKEHOLDER_ID_PARAM],
+        ),
+    )
+
+
 def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     """Persona, Stakeholder and Stakeholder Need read and write tools (no approval-gated action
     exists, so no `require_ai_approvals_enabled` handling is needed). There is
@@ -404,7 +465,7 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     persona_path = f"{_PROJECT_ROUTER_PREFIX}/personas/{{persona_id}}"
     stakeholder_path = f"{_PROJECT_ROUTER_PREFIX}/stakeholders/{{stakeholder_id}}"
     need_path = f"{_PROJECT_ROUTER_PREFIX}/needs/{{need_id}}"
-    return _build_link_mcp_tools() + (
+    return _build_link_mcp_tools() + _build_group_mcp_tools() + (
         McpToolDefinition(
             name="list_personas",
             description=(
@@ -470,6 +531,12 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             params=[_PROJECT_ID_PARAM, {
                 "name": "include_hidden", "type": "boolean", "required": False, "in": "query",
                 "description": "Also list organisation Stakeholders hidden from this project.",
+            }, {
+                "name": "group_id", "type": "uuid", "required": False, "in": "query",
+                "description": "Only Stakeholders in this Stakeholder group or any group beneath it (see list_stakeholder_groups).",
+            }, {
+                "name": "direct_only", "type": "boolean", "required": False, "in": "query",
+                "description": "With group_id: only Stakeholders directly in that group, not in groups beneath it.",
             }],
         ),
         McpToolDefinition(
@@ -565,7 +632,7 @@ MODULE_DEFINITION = ModuleDefinition(
         "scored against. Stakeholder Needs record what a Stakeholder or Persona needs, separately from the "
         "Requirements it gave rise to."
     ),
-    version="0.3.0",
+    version="0.4.0",
     default_enabled=False,
     implemented=True,
     get_router=get_router,
@@ -590,9 +657,14 @@ MODULE_DEFINITION = ModuleDefinition(
                 nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/needs",
                 nav_icon="target",
             ),
+            ModuleNavEntry(
+                nav_label="Groups",
+                nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/groups",
+                nav_icon="network",
+            ),
         ),
     ),
-    artefact_types=(PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE),
+    artefact_types=(PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE, GROUP_ARTEFACT_TYPE),
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,

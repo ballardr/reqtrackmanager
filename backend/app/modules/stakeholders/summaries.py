@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.summaries
 
-`ArtefactSummaryProvider`s for Personas, Stakeholders and Stakeholder Needs, so
+`ArtefactSummaryProvider`s for Personas, Stakeholders, Stakeholder Needs and Stakeholder Groups, so
 core (the artefact link graph) can label and visibility-check them as link
 targets without importing the models.
 
@@ -42,6 +42,7 @@ from app.modules.stakeholders.models import (
     ProjectPersonaType,
     ProjectStakeholderType,
     Stakeholder,
+    StakeholderGroup,
     StakeholderNeed,
     StakeholderNeedVersion,
     StakeholderTypeDefinition,
@@ -54,6 +55,7 @@ ARTEFACT_TYPE_LABELS: dict[str, str] = {
     "persona": "Persona",
     "stakeholder": "Stakeholder",
     "stakeholder_need": "Stakeholder need",
+    "stakeholder_group": "Stakeholder group",
 }
 
 
@@ -134,6 +136,41 @@ def _provider(
     )
 
 
+def _group_provider() -> ArtefactSummaryProvider:
+    """Provider for Stakeholder Groups: a project sees its organisation's groups and its own (no
+    hiding, no ancestor fallback — addendum 3, item 27); the finder narrows by scope."""
+    scope_labels = {"organization": "Organisation", "project": "Project"}
+
+    def build(rows: Sequence[StakeholderGroup]) -> list[ArtefactSummary]:
+        return [
+            ArtefactSummary(
+                id=g.id, project_id=g.project_id, organization_id=g.organization_id, label=g.name,
+                facets={"scope": (g.scope.value, scope_labels[g.scope.value])},
+            )
+            for g in rows
+        ]
+
+    def get(db: Session, group_id: UUID) -> ArtefactSummary | None:
+        group = db.get(StakeholderGroup, group_id)
+        return None if group is None else build([group])[0]
+
+    def conditions(db: Session, project_id: UUID) -> Any:
+        organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
+        return or_(StakeholderGroup.project_id == project_id, StakeholderGroup.organization_id == organization_id)
+
+    def list_for_project(db: Session, project_id: UUID) -> list[ArtefactSummary]:
+        rows = db.scalars(select(StakeholderGroup).where(conditions(db, project_id))).all()
+        return sorted(build(rows), key=lambda s: s.label.lower())
+
+    def get_many_in_project(db: Session, project_id: UUID, ids: Sequence[UUID]) -> list[ArtefactSummary]:
+        return build(db.scalars(select(StakeholderGroup).where(StakeholderGroup.id.in_(ids), conditions(db, project_id))).all())
+
+    return ArtefactSummaryProvider(
+        get=get, list_for_project=list_for_project, get_many_in_project=get_many_in_project,
+        browse_levels=(BrowseLevel("scope", "Scope"),),
+    )
+
+
 ARTEFACT_SUMMARY_PROVIDERS: dict[str, ArtefactSummaryProvider] = {
     "persona": _provider(
         Persona, PersonaVersion, "persona_id", hidden_persona_ids, (PersonaTypeDefinition, ProjectPersonaType),
@@ -146,4 +183,5 @@ ARTEFACT_SUMMARY_PROVIDERS: dict[str, ArtefactSummaryProvider] = {
     "stakeholder_need": _provider(
         StakeholderNeed, StakeholderNeedVersion, "need_id", None, None, (BrowseLevel("status", "Status"),)
     ),
+    "stakeholder_group": _group_provider(),
 }

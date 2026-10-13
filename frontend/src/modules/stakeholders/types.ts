@@ -253,6 +253,8 @@ export interface Stakeholder {
   project_hidden: boolean | null;
   hidden_override: boolean | null;
   hidden_source: HiddenSource | null;
+  /** The stakeholder's direct groups this view can see. */
+  groups: StakeholderGroupRef[];
 }
 
 export interface StakeholderVersion {
@@ -405,4 +407,54 @@ export interface NeedRequirement {
   id: string;
   unique_code: string;
   title: string;
+}
+
+
+// --- Stakeholder groups (Phase 3c) --------------------------------------------
+
+/** A group a stakeholder is directly in, as listed on the stakeholder. */
+export interface StakeholderGroupRef {
+  id: string;
+  name: string;
+  scope: StakeholderScope;
+  parent_group_id: string | null;
+}
+
+/** A node of the group tree; `member_count` counts direct members only. */
+export interface StakeholderGroup extends StakeholderGroupRef {
+  organization_id: string | null;
+  project_id: string | null;
+  description: string;
+  exclusive_children: boolean;
+  sort_order: number;
+  member_count: number;
+  child_count: number;
+}
+
+export interface StakeholderGroupFieldValues {
+  name: string;
+  description: string;
+  parent_group_id: string | null;
+  exclusive_children: boolean;
+}
+
+/** One stakeholder in a group; `direct` is false when it is only in a descendant. */
+export interface StakeholderGroupMember {
+  stakeholder_id: string;
+  name: string;
+  scope: StakeholderScope;
+  direct: boolean;
+}
+
+/** A distinct free-text "Organisation / group" value that could become a group. */
+export interface GroupTextProposal {
+  name: string;
+  stakeholder_count: number;
+  existing_group_id: string | null;
+}
+
+export interface GroupFromTextResult {
+  root_group_id: string;
+  group_ids: string[];
+  memberships_added: number;
 }

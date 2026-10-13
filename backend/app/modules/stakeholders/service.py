@@ -42,7 +42,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
@@ -72,6 +72,7 @@ from app.modules.stakeholders.models import (
     StakeholderComment,
     StakeholderCommentFile,
     StakeholderFile,
+    StakeholderGroupMember,
     StakeholderNeed,
     StakeholderNeedVersion,
     StakeholderTypeDefinition,
@@ -876,8 +877,8 @@ def delete_represents_link(db: Session, link: Any) -> None:
 def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> None:
     """Hard-deletes a stakeholder and everything that holds data about them
     (Phase 0 resolution 15): version rows (contact info included), comments,
-    every file in storage (direct and comment attachments), and every
-    `ArtefactLink` touching them. Writes one audit event carrying only the id
+    every file in storage (direct and comment attachments), their group
+    memberships and every `ArtefactLink` touching them. Writes one audit event carrying only the id
     and the acting user, never the name or any content. The caller commits.
 
     Audit events logged earlier for this stakeholder never held a name,
@@ -889,6 +890,7 @@ def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> Non
     file_ids |= set(db.scalars(select(StakeholderCommentFile.file_id).where(StakeholderCommentFile.comment_id.in_(comment_ids))))
     for link in get_all_links(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id):
         delete_link(db, link)
+    db.execute(delete(StakeholderGroupMember).where(StakeholderGroupMember.stakeholder_id == stakeholder.id))
     # The attachment rows cascade from the stakeholder; the bytes must be
     # removed explicitly, so delete the assets (their FK cascades the links).
     for asset in db.scalars(select(FileAsset).where(FileAsset.id.in_(file_ids))).all() if file_ids else []:

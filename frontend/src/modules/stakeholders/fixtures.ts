@@ -6,7 +6,7 @@
  * shape, and the `stakeholder` scoring scheme the Stakeholder form reads.
  */
 import type { ScoringScheme } from "../../api/scoring";
-import type { Need, Persona, Stakeholder } from "./types";
+import type { Need, Persona, Stakeholder, StakeholderGroup } from "./types";
 
 /** A complete project-scoped, active `Persona` with `overrides` applied. */
 export function buildPersona(overrides: Partial<Persona> = {}): Persona {
@@ -37,7 +37,16 @@ export function buildStakeholder(overrides: Partial<Stakeholder> = {}): Stakehol
     contact_info: "pat@authority.example.com", target_cadence: "quarterly", availability_constraints: "Prefers email.",
     influence_level_id: "infl-high", interest_level_id: "int-medium", status: "active", owner: null, user_id: null,
     version_number: 1, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
-    project_hidden: null, hidden_override: null, hidden_source: null,
+    project_hidden: null, hidden_override: null, hidden_source: null, groups: [],
+    ...overrides,
+  };
+}
+
+/** A complete org-scoped `StakeholderGroup` with `overrides` applied. */
+export function buildStakeholderGroup(overrides: Partial<StakeholderGroup> = {}): StakeholderGroup {
+  return {
+    id: "group-1", scope: "organization", organization_id: "org-1", project_id: null, parent_group_id: null,
+    name: "Client", description: "", exclusive_children: false, sort_order: 0, member_count: 0, child_count: 0,
     ...overrides,
   };
 }

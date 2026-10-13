@@ -1074,14 +1074,15 @@ Read workflow:
 2. For connections: `stakeholders_list_stakeholder_relationships`, `stakeholders_list_persona_relationships`, `stakeholders_list_incoming_relationships` (what points at a record), `stakeholders_list_stakeholder_personas`, `stakeholders_list_need_holders`, `stakeholders_list_need_requirements`.
 3. Before adding a relationship call `stakeholders_list_relationship_kinds` (valid kinds and targets) and `stakeholders_list_relationship_targets` for the candidate target ids.
 
-Write workflow: `create_*` -> `update_*` -> `activate_*`; `retire_*` ends use. Link with `add_*_relationship`, `add_stakeholder_persona`, `add_need_holder` and `add_need_requirement` (records that a need gave rise to a requirement); each has a matching `remove_*`.
+Write workflow: `create_*` -> `update_*` -> `activate_*`; `retire_*` ends use. Classify stakeholders with **stakeholder groups**: `stakeholders_list_stakeholder_groups` (flat; build the tree from `parent_group_id`), `create_stakeholder_group`, `update_stakeholder_group` (rename, move with `parent_group_id`), `add_stakeholder_to_group` / `remove_stakeholder_from_group`, and the `group_id` filter on `stakeholders_list_stakeholders` (includes groups beneath it unless `direct_only=true`). Link with `add_*_relationship`, `add_stakeholder_persona`, `add_need_holder` and `add_need_requirement` (records that a need gave rise to a requirement); each has a matching `remove_*`.
 
 Rules and gotchas:
 - All tools are project-scoped (`project_id`).
 - Shared (organisation) personas and stakeholders can be hidden per project with `set_*_visibility`; `reset_*_visibility` removes the project override. This only changes this project's view, not the shared record. Pass `include_hidden=true` to list hidden ones.
 - `owner` (and a persona's `champion`) is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can own a record; responses return the same shape plus `label`. A shared (organisation) record cannot name a project group. `null` clears it.
 - A hidden persona is no longer scored or linkable in that project, so check before linking.
-- Retire rather than delete; there are no delete tools.
+- Stakeholder groups are not user or project groups: they only classify stakeholders and grant nothing. These tools edit the project's own groups; the organisation's are read-only here. A group marked `exclusive_children` allows a stakeholder in only one of its child branches (409 otherwise). `delete_stakeholder_group` keeps the stakeholders and moves child groups up.
+- Retire rather than delete stakeholders, personas and needs; there is no tool to delete them.
 - No tool here is an approval, so none is gated by AI approval, but writes still need write mode and the caller's module role.
 
 ### Tool list
@@ -1194,6 +1195,42 @@ Removes a "gives rise to" link (the link only).
 
 Parameters: `project_id*` (uuid, in path), `need_id*` (uuid, in path), `requirement_id*` (uuid, in path)
 
+#### `stakeholders_list_stakeholder_groups` (read)
+
+Lists the Stakeholder groups this project can see (the organisation's and its own), flat, with parent_group_id for the tree, exclusive_children and direct member counts.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `stakeholders_create_stakeholder_group` (write)
+
+Creates a project Stakeholder group, optionally under an organisation group or one of this project's.
+
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `parent_group_id` (uuid, in body), `exclusive_children` (boolean, in body)
+
+#### `stakeholders_update_stakeholder_group` (write)
+
+Renames, re-describes, re-flags or moves one of this project's Stakeholder groups; only supplied fields change.
+
+Parameters: `project_id*` (uuid, in path), `group_id*` (uuid, in path), `name` (string, in body), `description` (string, in body), `parent_group_id` (uuid, in body), `exclusive_children` (boolean, in body)
+
+#### `stakeholders_delete_stakeholder_group` (write)
+
+Deletes one of this project's Stakeholder groups. Memberships go, Stakeholders stay, child groups move up.
+
+Parameters: `project_id*` (uuid, in path), `group_id*` (uuid, in path)
+
+#### `stakeholders_add_stakeholder_to_group` (write)
+
+Adds a Stakeholder to one of this project's groups (409 if already in it, or if an exclusive parent already holds them in another branch).
+
+Parameters: `project_id*` (uuid, in path), `group_id*` (uuid, in path), `stakeholder_id*` (uuid, in body)
+
+#### `stakeholders_remove_stakeholder_from_group` (write)
+
+Removes a Stakeholder from one of this project's groups (the membership only).
+
+Parameters: `project_id*` (uuid, in path), `group_id*` (uuid, in path), `stakeholder_id*` (uuid, in path)
+
 #### `stakeholders_list_personas` (read)
 
 Lists a project's Personas, including its organisation's shared ones except those hidden from the project (pass include_hidden=true to list those too, flagged by project_hidden).
@@ -1246,7 +1283,7 @@ Parameters: `project_id*` (uuid, in path), `persona_id*` (uuid, in path), `comme
 
 Lists a project's Stakeholders, including its organisation's shared ones except those hidden from the project (pass include_hidden=true to list those too, flagged by project_hidden).
 
-Parameters: `project_id*` (uuid, in path), `include_hidden` (boolean, in query)
+Parameters: `project_id*` (uuid, in path), `include_hidden` (boolean, in query), `group_id` (uuid, in query), `direct_only` (boolean, in query)
 
 #### `stakeholders_set_stakeholder_visibility` (write)
 

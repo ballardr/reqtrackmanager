@@ -5,7 +5,7 @@ import { api } from "../../api/client";
 import type { OrgGroup, OrgUser, Principal, ProjectGroup } from "../../api/types";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildPersona, buildStakeholder, buildStakeholderScheme } from "./fixtures";
+import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
 import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder } from "./types";
 
@@ -39,6 +39,11 @@ interface Mocks {
 
 const LINKED_PAIN_POINT = buildGraphNode({ type: "pain_point", id: "pp-1", type_label: "Pain Point", label: "Reports arrive late", status: null });
 
+const DETAIL_GROUPS = [
+  buildStakeholderGroup({ id: "client", name: "Client" }),
+  buildStakeholderGroup({ id: "pilot", scope: "project", organization_id: null, project_id: PROJECT_ID, name: "Pilot users", parent_group_id: "client" }),
+];
+
 function mockDetailApis(current: Stakeholder, { versions = [], represents = [], needs = [] }: Mocks = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
@@ -47,6 +52,7 @@ function mockDetailApis(current: Stakeholder, { versions = [], represents = [], 
     if (path === "/api/v1/orgs/org-1/users") return ORG_USERS;
     if (path.startsWith("/api/v1/orgs/org-1/users/search")) return { members: ORG_USERS, external: null };
     if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/stakeholder`) return buildStakeholderScheme();
+    if (path === `${PROJECT_BASE}/stakeholder-groups`) return DETAIL_GROUPS;
     if (path === `${PROJECT_BASE}/stakeholder-types`) return [{ id: "stype-regulator", name: "Regulator", display_order: 0, is_enabled: true, source: "org" }];
     if (path === `${PROJECT_BASE}/personas`) return [buildPersona(), buildPersona({ id: "persona-3", name: "Control Room Operator" })];
     if (path.startsWith(`${PROJECT_BASE}/stakeholders/cadence-hint`)) return HINT;
@@ -329,5 +335,34 @@ export const LinksPanelShowsLinks: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "Reports arrive late" })).toBeInTheDocument());
+  },
+};
+
+const PILOT_REF = { id: "pilot", name: "Pilot users", scope: "project" as const, parent_group_id: "client" };
+
+export const ShowsTheStakeholdersGroupsWithTheirPath: Story = {
+  beforeEach: () => mockDetailApis(buildStakeholder({ groups: [PILOT_REF] })),
+  play: async ({ canvasElement }) => {
+    const badge = await within(canvasElement).findByText("Pilot users", { selector: ".badge" });
+    await expect(badge).toHaveAttribute("title", "Client › Pilot users");
+  },
+};
+
+export const GroupsAreChangedWithOneSave: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildStakeholder({ groups: [] }));
+    spyOn(api, "put").mockResolvedValue([PILOT_REF]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Project groups" }));
+    // Organisation groups show in the tree but belong to the organisation view.
+    await expect(within(document.body).getByRole("checkbox", { name: "Client" })).toBeDisabled();
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Pilot users" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save groups" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/groups`, { group_ids: ["pilot"] }),
+    );
+    await waitFor(() => expect(canvas.getByText("Pilot users", { selector: ".badge" })).toBeInTheDocument());
   },
 };

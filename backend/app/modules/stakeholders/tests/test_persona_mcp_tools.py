@@ -29,6 +29,9 @@ def test_all_declared_tools_resolve():
         # Phase 3b visibility tools.
         "set_stakeholder_visibility", "reset_stakeholder_visibility", "set_persona_visibility",
         "reset_persona_visibility",
+        # Phase 3c stakeholder group tools.
+        "list_stakeholder_groups", "create_stakeholder_group", "update_stakeholder_group",
+        "delete_stakeholder_group", "add_stakeholder_to_group", "remove_stakeholder_from_group",
     }
 
 
@@ -37,7 +40,8 @@ def test_read_tools_are_non_mutating_and_write_tools_mutate():
     for name in ("list_personas", "get_persona", "list_stakeholders", "get_stakeholder", "list_stakeholder_needs",
                  "get_stakeholder_need", "list_relationship_kinds", "list_relationship_targets",
                  "list_incoming_relationships", "list_stakeholder_relationships", "list_persona_relationships",
-                 "list_stakeholder_personas", "list_need_holders", "list_need_requirements"):
+                 "list_stakeholder_personas", "list_need_holders", "list_need_requirements",
+                 "list_stakeholder_groups"):
         assert tools[name].method == "GET" and tools[name].mutates is False
     for name in (
         "create_persona", "update_persona", "activate_persona", "retire_persona", "create_stakeholder",
@@ -47,6 +51,8 @@ def test_read_tools_are_non_mutating_and_write_tools_mutate():
         "remove_persona_relationship", "add_stakeholder_persona", "remove_stakeholder_persona", "add_need_holder",
         "remove_need_holder", "add_need_requirement", "remove_need_requirement", "set_stakeholder_visibility",
         "reset_stakeholder_visibility", "set_persona_visibility", "reset_persona_visibility",
+        "create_stakeholder_group", "update_stakeholder_group", "delete_stakeholder_group",
+        "add_stakeholder_to_group", "remove_stakeholder_from_group",
     ):
         assert tools[name].mutates is True
 
@@ -58,13 +64,17 @@ def test_create_requires_name():
 
 
 def test_remove_tools_delete_only_a_link():
-    """Every `remove_*` tool is a DELETE of a link path, never of a record."""
+    """Every `remove_*` tool is a DELETE of a link or membership path, never of a record."""
     tools = _tools()
     for name in [n for n in tools if n.startswith("remove_")]:
         assert tools[name].method == "DELETE"
-        assert any(part in tools[name].path_template for part in ("/relationships/", "/personas/", "/holders/", "/requirements/"))
+        assert any(
+            part in tools[name].path_template
+            for part in ("/relationships/", "/personas/", "/holders/", "/requirements/", "/members/")
+        )
 
 
 def test_no_tool_can_erase_a_stakeholder():
-    """Irreversible deletion of personal data stays a human action in the UI."""
-    assert not any("delete" in name or "erase" in name for name in _tools())
+    """Irreversible deletion of personal data stays a human action in the UI. A Stakeholder group
+    holds no personal data and deleting one keeps its members, so it is the one delete tool."""
+    assert not any(("delete" in name and name != "delete_stakeholder_group") or "erase" in name for name in _tools())

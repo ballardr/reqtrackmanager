@@ -29,7 +29,9 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
+from app.models.project import Project
 from app.models.user import User
+from app.modules.stakeholders import groups as grp
 from app.modules.stakeholders._principals import (
     STAKEHOLDER_PRINCIPAL_FIELDS,
     Labels,
@@ -53,6 +55,7 @@ from app.modules.stakeholders.schemas import (
     StakeholderCommentOut,
     StakeholderCreate,
     StakeholderFromUserCreate,
+    StakeholderGroupRefOut,
     StakeholderOut,
     StakeholderUpdate,
 )
@@ -93,14 +96,31 @@ STAKEHOLDER_ATTACHMENTS = att.AttachmentKit(
 )
 
 
+def group_universe(
+    db: Session, stakeholder: Stakeholder, project_id: uuid.UUID | None
+) -> dict[uuid.UUID, grp.StakeholderGroup]:
+    """The groups a viewer of `stakeholder` can see: its organisation's, plus the viewing project's
+    own (`project_id`, defaulting to a project stakeholder's own project)."""
+    project_id = project_id or stakeholder.project_id
+    organization_id = stakeholder.organization_id
+    if organization_id is None:
+        project = db.get(Project, project_id)
+        assert project is not None
+        organization_id = project.organization_id
+    return grp.load_groups(db, organization_id, project_id)
+
+
 def stakeholder_to_out(
     db: Session, stakeholder: Stakeholder, version: StakeholderVersion, *, project_id: uuid.UUID | None = None,
-    labels: Labels | None = None,
+    labels: Labels | None = None, group_refs: list[grp.GroupRef] | None = None,
 ) -> StakeholderOut:
     """Merges a stakeholder with its current version. When `project_id` is given
     (project router) and the stakeholder is an org one, also resolves its
     visibility to that project (`project_hidden`, `hidden_override`,
-    `hidden_source`)."""
+    `hidden_source`). `groups` lists its direct groups the viewer can see
+    (`group_refs` when the caller batched them, else looked up)."""
+    if group_refs is None:
+        group_refs = grp.group_refs(db, [stakeholder.id], group_universe(db, stakeholder, project_id))[stakeholder.id]
     hidden: dict[str, bool | str | None] = {}
     if project_id is not None and stakeholder.scope == StakeholderScope.ORGANIZATION:
         hidden = visibility_fields(resolve_stakeholder_visibility(db, project_id), stakeholder.id)
@@ -124,17 +144,21 @@ def stakeholder_to_out(
         ),
         user_id=version.user_id, version_number=version.version_number, created_at=stakeholder.created_at,
         updated_at=stakeholder.updated_at, **hidden,
+        groups=[StakeholderGroupRefOut(id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id) for r in group_refs],
     )
 
 
 def stakeholders_to_out(
     db: Session, stakeholders: Sequence[Stakeholder], *, project_id: uuid.UUID | None = None
 ) -> list[StakeholderOut]:
-    """`stakeholder_to_out` for many stakeholders, resolving every owner in one batch."""
+    """`stakeholder_to_out` for many stakeholders, resolving every owner and group in one batch."""
     versions = [get_current_stakeholder_version(db, s.id) for s in stakeholders]
     labels = resolve_labels(db, versions, STAKEHOLDER_PRINCIPAL_FIELDS)
+    refs: dict[uuid.UUID, list[grp.GroupRef]] = {}
+    if stakeholders:
+        refs = grp.group_refs(db, [s.id for s in stakeholders], group_universe(db, stakeholders[0], project_id))
     return [
-        stakeholder_to_out(db, s, v, project_id=project_id, labels=labels)
+        stakeholder_to_out(db, s, v, project_id=project_id, labels=labels, group_refs=refs[s.id])
         for s, v in zip(stakeholders, versions, strict=True)
     ]
 

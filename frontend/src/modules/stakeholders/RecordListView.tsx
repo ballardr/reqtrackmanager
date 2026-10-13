@@ -15,6 +15,9 @@
  * Need: pass no `typeName`/`scopeLabels`); `columnsBeforeType` and
  * `columnsAfterScope` slot the kind's own columns around them.
  *
+ * A kind can add its own filters (`extraFilters`) and narrow `records` before
+ * passing them in (Stakeholders do both for groups, Phase 3c).
+ *
  * Per-project visibility (Phase 3b): a page that lets the project hide org
  * records passes `onIncludeHiddenChange` for a "Show hidden" filter and
  * `onShowHidden`, which adds a Visibility column to a hidden row stating who
@@ -57,6 +60,7 @@ export function RecordListView<R extends ListedRecord, V>({
   columnsBeforeType,
   columnsAfterScope,
   toolbar,
+  extraFilters,
   includeArchived,
   onIncludeArchivedChange,
   includeHidden = false,
@@ -87,6 +91,8 @@ export function RecordListView<R extends ListedRecord, V>({
   columnsAfterScope: DirectoryColumn<R>[];
   /** Extra controls beside the New button (e.g. "Add from org user"). */
   toolbar?: ReactNode;
+  /** Extra `FilterField`s a kind adds to the filter panel (e.g. Stakeholders' group filter). */
+  extraFilters?: ReactNode;
   includeArchived: boolean;
   onIncludeArchivedChange: (next: boolean) => void;
   includeHidden?: boolean;
@@ -197,6 +203,7 @@ export function RecordListView<R extends ListedRecord, V>({
               </select>
             </FilterField>
           )}
+          {extraFilters}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
           {onIncludeHiddenChange && (
             <FilterCheckbox label="Show hidden" checked={includeHidden} onChange={onIncludeHiddenChange} />
