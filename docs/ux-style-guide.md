@@ -10,7 +10,7 @@ The audit found the app had quietly grown three different answers to "many setti
 
 ## Principles
 
-Thirteen rules. Each names the pattern and the specific failure in the existing UI it was written against — the failure is the "why," useful for judging edge cases the rule doesn't spell out.
+Fourteen rules. Each names the pattern and the specific failure in the existing UI it was written against — the failure is the "why," useful for judging edge cases the rule doesn't spell out.
 
 1. **One depth model, chosen by scale — not habit.** Resource-menu sub-pages for more than five setting groups opened rarely as a whole; tabs for five or fewer views of the same object, all relevant together; accordions for one optional block inside a single view — never as the whole page. *Why:* Org Admin's 15-way flat accordion and Project Admin's 8-tab bar independently invented two different answers to the same question, and Preferences uses both at once on one page. *(Revised 2026-08-27 — see the "Pattern: settings hierarchy" addendum below.)* Cross-page **consistency** with an already-converted admin-tier sibling is itself a valid reason to choose Resource menu even when a page's own group count sits at or under five — a page that's part of a recognisable set (the app's admin-tier pages: Org Admin, Server Admin, Preferences, Project Admin) shouldn't diverge from its siblings' navigation shape just because its own count happens to clear the threshold the others exceeded.
 2. **Every override says so, out loud.** Any value with a platform default shows its current state — Platform default or Custom — and a one-click way back, every time, not sometimes. *Why:* accent colour has a working revert control; header text reverts only if you know to blank the field; org logo and login background can't be reverted at all, in the UI or the API. *(Extended 2026-10-04 — Module 1 Phase 10: where the fallback is a chain rather than the platform — project → parent project → organisation → module default — the pill names the tier the value actually comes from, e.g. "Inherited from parent project", and the way back reads "Use inherited value". See [Pattern: scoring and inherited settings](#pattern-scoring-and-inherited-settings).)*
@@ -25,6 +25,7 @@ Thirteen rules. Each names the pattern and the specific failure in the existing 
 11. **Grouped secondary actions get one door too, not just creates.** Principle 5 is about "add one" vs. "add many"; the same shape applies to any pair of related, non-primary actions that would otherwise sit on screen together as two permanently-visible, competing buttons — most often a download and its companion (export data / download an import template). Collapse them behind one small `Popover` trigger instead. *Why:* the CSV wizard's "Export CSV" and "Download template" buttons reproduced Principle 5's exact "two blocks competing for the same job" shape, just for downloads instead of creates — the rule as originally written only named creates, so nothing flagged the download pair as the same problem.
 12. **Every enum, status, or role value shown to a user goes through its label map — never the raw backend string.** A dropdown option, a filter `<select>`, a table cell, a badge — all read from the same `*_LABEL` lookup (e.g. `REQUIREMENT_STATUS_LABEL`, `CHANGE_REQUEST_STATUS_LABEL`, `PROJECT_ROLE_LABEL` in `frontend/src/api/types.ts`) that the row/badge rendering for that same value already uses, rather than interpolating the enum's wire value (`in_review`, `project_administrator`) directly into JSX. When a new enum value is added, its label goes into the same map at the same time — not inline in whichever component happens to render it first. *Why:* found four times independently in one pass (`ChangeRequestsPage.tsx`/`RequirementsPage.tsx`'s own filter selects, a requirement's version-history table, an Org Admin role badge) — each one had a working label map sitting right next to the broken code, used correctly by a sibling element on the same page, and missed anyway.
 13. **Every form field gets a visible label, not just placeholder text.** Placeholder text disappears the moment a field has real content — it can't double as the field's name once something's typed into it. *Why:* the new-requirement form's Name/Reasoning/Description fields relied on placeholder-only labelling while every other field on the same form (Component, Category, Target version, Level) correctly used a real `<label>` — once populated, three of seven fields on one form had nothing on screen saying what they were.
+14. **Keep forms and detail pages short: show a value, offer the add.** A field or list that is usually filled in shows its value and a (+) that opens the add control on demand; it does not keep an empty picker open under every list. Short fields share a row, a list longer than ten is capped behind "Show all N", and per-row actions are icons once a row has three. *Why:* the Engagement page stacked nine always-open pickers and "Remove" buttons into a 2,500px column (screenshot, 2026-10-13), most of it empty form chrome; the same page is ~1,450px with the same capability. See [Pattern: compact forms and add-on-demand](#pattern-compact-forms-and-add-on-demand).
 
 ## Pattern: settings hierarchy
 
@@ -707,6 +708,36 @@ A `Modal` whose body is the shared `Tabs` component (Pattern "Tabs," above), use
 *Why every tab panel — built-in or contributed — is conditionally rendered, never "always mounted, hidden via the `hidden` attribute":* a contributed tab reasonably reuses core vocabulary (a "Link type" select, an "Add link" button) verbatim, since it's still creating a link of some kind. An inactive tab left mounted-but-hidden would leave a second element with that same accessible name sitting in the DOM, which `getByLabel`/`getByText`-style queries — unlike `getByRole`, which already excludes `hidden`-attribute elements from Playwright/testing-library's accessibility-tree matching — do not filter out by default, breaking on an ambiguous match the moment a different tab is active. Unmounting the inactive tab removes the whole ambiguity class rather than requiring every future tab author to remember to scope their queries defensively.
 
 **Also introduced alongside this pattern:** `LabeledSelect` (`frontend/src/components/LabeledSelect.tsx`) — the `<label><span>{label}</span><select className="input">…</select></label>` block every cascading picker in the app was hand-rolling separately (`RequirementMappingsModal.tsx`, the old "add compliance link" popover, this modal's own two new tabs). Use it for any future single-value entity picker/filter select rather than writing the markup a fifth time.
+
+## Pattern: compact forms and add-on-demand
+
+*(New 2026-10-13 — Module 2 Phase 5 follow-up, from user review of the Engagement page.)*
+
+Detail pages and forms get long by accumulation: every linkable list gets its own picker and "Add" button, every row its own "Remove" button, every one-line value a full-width row. Most of it is empty chrome most of the time. Choose the shape by what the thing is:
+
+```mermaid
+flowchart TD
+    Q{"What is the control?"}
+    Q -->|"One value: an owner, a facilitator"| A["PrincipalPicker compact:<br/>value + (+) or pencil + x"]
+    Q -->|"A list of linked records"| B["Heading + (+) over<br/>RemovableItemList chips"]
+    Q -->|"Short fields: a date, consent, a status"| C["RecordFieldGrid:<br/>side by side, wraps when narrow"]
+    Q -->|"A list that can grow without bound"| D["CappedList: first 10,<br/>Show all N opens a scrolling Modal"]
+    B --> E{"What does the add form hold?"}
+    E -->|"One or two plain fields"| F["AddPopoverButton (Popover)"]
+    E -->|"Three or more fields, or a control that opens its own popover (TreeSelect)"| G["Icon button opening a Modal"]
+```
+
+- **Show the value, offer the add.** A set field shows its value with a pencil to change it and an "x" to clear it. An empty one shows "Unassigned" and a (+). The always-open search box (`PrincipalPicker` without `compact`) is for create forms, where the field is the point of the screen.
+- **The add control sits on the heading line** (`RecordFieldGroup`'s `action`, or `AddPopoverButton`), so a list costs one line until someone adds to it. Its accessible name says where it adds ("Add to Participants"); the form inside keeps the field's own label.
+- **Removable chips, not rows.** `RemovableItemList` replaces the bulleted list with a text "Remove" per line. The "x" only asks; the caller opens its Tier-1 confirm (Principle 6) and toasts (Principle 7).
+- **Popovers do not nest.** A form whose control opens a popover of its own (`TreeSelect`) goes in a `Modal`. Inside a Modal, close an inner popover through its own trigger: Escape closes the Modal as well.
+- **Cap at ten.** Lists with no natural limit (a report quadrant, a participant list) show the first ten and the rest behind "Show all N", which opens the full list in a scrolling `Modal` (`CappedList`). The same markup renders both copies, so per-item actions work in either. Prefer this over inline pagination for lists read as a whole; a *directory* people search still uses [directories at scale](#pattern-directories-at-scale-search-paginate-dont-render-everything-at-once).
+- **Icons for per-row actions once a row has three** (move up, move down, edit, delete), each with an `aria-label` and a `title` (Principle 8). One or two actions can keep text.
+- **Budget.** A detail page for a typical record should fit about a screen and a half of fields; if it does not, something above applies. Review a new page by screenshotting it with realistic data.
+
+**Built:** `AddPopoverButton`, `CappedList`, `RemovableItemList`, `RecordFieldGrid`, `RecordFieldGroup`'s `action`, `PrincipalPicker`'s `compact` (all in `frontend/src/components/`), first used on the Engagement page, the shared `RepresentationPanel` (so Stakeholder, Persona and Need pages share it) and the S1 power/interest grid.
+
+**Not yet migrated** (do it when the page is next touched, not as a drive-by): owner/assignee fields on the Persona, Stakeholder, Need, Pain Point, Guiding Principle and Open Question detail pages still use the always-open `PrincipalPicker`; other modules' link lists and their per-row "Remove" buttons; and the generic report tables, which render every row (a very long report table is still one long page). The Stakeholders pages' edit forms are modals and already short.
 
 ## Tokens
 

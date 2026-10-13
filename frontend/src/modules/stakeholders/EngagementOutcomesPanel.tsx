@@ -11,13 +11,19 @@
  * removed.
  *
  * Adding picks a kind, a type and a record of that type from the project; a
- * type whose module is off simply offers no records.
+ * type whose module is off simply offers no records. Three fields is a lot for a
+ * page that has several lists, so the form lives in a `Modal` behind a (+) button
+ * and the list is a row of chips.
  */
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { Modal } from "../../components/Modal";
+import { RecordFieldGroup } from "../../components/RecordDetailParts";
+import { RemovableItemList } from "../../components/RemovableItemList";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { getArtefactPath } from "../artefactPaths";
 import type { OutcomeApi } from "./api";
@@ -55,6 +61,7 @@ export function EngagementOutcomesPanel({
   const [targets, setTargets] = useState<OutcomeTarget[]>([]);
   const [picked, setPicked] = useState("");
   const [removing, setRemoving] = useState<EngagementOutcome | null>(null);
+  const [adding, setAdding] = useState(false);
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
@@ -98,43 +105,61 @@ export function EngagementOutcomesPanel({
   if (outcomes === null) return null;
 
   return (
-    <div className="stack" style={{ gap: "0.35rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{heading}</span>
+    <RecordFieldGroup
+      label={heading}
+      gap="0.35rem"
+      action={
+        <button
+          type="button" className="btn btn-icon-compact" aria-label={`Add to ${heading}`} title={`Add to ${heading}`}
+          aria-haspopup="dialog" onClick={() => setAdding(true)}
+        >
+          <Plus size={14} aria-hidden="true" />
+        </button>
+      }
+    >
       {outcomes.length === 0 ? (
         <span className="text-muted">Nothing raised or answered yet.</span>
       ) : (
-        <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-          {outcomes.map((o) => {
+        <RemovableItemList
+          items={outcomes.map((o) => {
             const path = getArtefactPath(o.target_type, projectId, o.target_id);
-            return (
-              <li key={o.link_id}>
-                {OUTCOME_KIND_LABEL[o.kind]} · {targetTypeLabel(o.target_type)}: {path ? <Link to={path}>{o.label}</Link> : o.label}
-                <button className="btn" style={{ marginLeft: "0.5rem" }} aria-label={`Remove ${o.label}`} onClick={() => setRemoving(o)}>
-                  Remove
-                </button>
-              </li>
-            );
+            return {
+              id: o.link_id,
+              content: <span>{OUTCOME_KIND_LABEL[o.kind]} · {targetTypeLabel(o.target_type)}: {path ? <Link to={path}>{o.label}</Link> : o.label}</span>,
+              removeLabel: `Remove ${o.label}`,
+            };
           })}
-        </ul>
-      )}
-      <div className="row" style={{ gap: "0.5rem", alignItems: "flex-end" }}>
-        <LabeledSelect label="Outcome kind" value={kind} placeholder={null} onChange={(v) => changeKind(v as OutcomeKind)} options={KIND_OPTIONS} />
-        <LabeledSelect
-          label="Outcome type" value={targetType} placeholder={null}
-          onChange={(v) => { setTargetType(v as OutcomeTargetType); setPicked(""); }} options={typeOptions}
+          onRemove={(id) => setRemoving(outcomes.find((o) => o.link_id === id) ?? null)}
+          noun="outcomes"
+          modalTitle={heading}
         />
-        <LabeledSelect label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
-        <button
-          className="btn" disabled={!picked}
-          onClick={() => {
-            const id = picked;
-            setPicked("");
-            void mutate(() => api.add(projectId, holderId, kind, targetType, id), "Outcome recorded.", "Could not record the outcome.");
-          }}
-        >
-          Add outcome
-        </button>
-      </div>
+      )}
+      {adding && (
+        <Modal title="Record an outcome" onClose={() => setAdding(false)}>
+          <div className="stack">
+            <LabeledSelect label="Outcome kind" value={kind} placeholder={null} onChange={(v) => changeKind(v as OutcomeKind)} options={KIND_OPTIONS} />
+            <LabeledSelect
+              label="Outcome type" value={targetType} placeholder={null}
+              onChange={(v) => { setTargetType(v as OutcomeTargetType); setPicked(""); }} options={typeOptions}
+            />
+            <LabeledSelect label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setAdding(false)}>Cancel</button>
+              <button
+                className="btn btn-primary" disabled={!picked}
+                onClick={() => {
+                  const id = picked;
+                  setPicked("");
+                  setAdding(false);
+                  void mutate(() => api.add(projectId, holderId, kind, targetType, id), "Outcome recorded.", "Could not record the outcome.");
+                }}
+              >
+                Add outcome
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {removing && (
         <ConfirmDialog
           title={`Remove ${removing.label}?`}
@@ -148,6 +173,6 @@ export function EngagementOutcomesPanel({
           onCancel={() => setRemoving(null)}
         />
       )}
-    </div>
+    </RecordFieldGroup>
   );
 }

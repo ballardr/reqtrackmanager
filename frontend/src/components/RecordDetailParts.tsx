@@ -3,7 +3,7 @@
  *
  * Small presentational pieces the versioned-record detail pages (Stakeholders'
  * Persona/Stakeholder/Need, Risk Management's Risk) render the same way: a
- * labelled read-only field, a labelled "who" picker (a `PrincipalPicker`, or
+ * labelled read-only field, a responsive grid for short fields, a labelled "who" picker (a `PrincipalPicker`, or
  * a `PrincipalBadge` when the record is read-only), and the version-history table.
  * Kept together so the pages differ only in which fields they show, not in how
  * a field looks.
@@ -24,11 +24,34 @@ export function RecordField({ label, value }: { label: string; value: string }) 
   );
 }
 
-/** A labelled bold caption over arbitrary content (the same label style as `RecordField`). */
-export function RecordFieldGroup({ label, children, gap = "0.25rem" }: { label: string; children: ReactNode; gap?: string }) {
+/**
+ * A labelled bold caption over arbitrary content (the same label style as `RecordField`).
+ *
+ * @param action A control on the caption's own line, e.g. an `AddPopoverButton`, so adding to a
+ *   list costs no extra row.
+ */
+export function RecordFieldGroup({
+  label, children, gap = "0.25rem", action,
+}: { label: string; children: ReactNode; gap?: string; action?: ReactNode }) {
   return (
     <div className="stack" style={{ gap }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
+      <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+        <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
+        {action}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Lays short fields and short lists side by side, wrapping to one column when the space is
+ * narrow, so a detail page does not spend a full-width row on a one-line value (docs/ux-style-guide.md,
+ * "Pattern: compact forms and add-on-demand").
+ */
+export function RecordFieldGrid({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 15rem), 1fr))", gap: "0.75rem 1.5rem", alignItems: "start" }}>
       {children}
     </div>
   );
@@ -42,9 +65,10 @@ export function RecordFieldGroup({ label, children, gap = "0.25rem" }: { label: 
  * @param principal The field's resolved current value (the record's own `PrincipalOut`).
  * @param projectId The record's project, enabling project-group choices; omit for an organisation-level record.
  * @param onChange Called with the picked principal, or null when unassigned.
+ * @param compact Use the compact picker (a (+)/pencil button instead of an always-open search box).
  */
 export function RecordPrincipalField({
-  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange,
+  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange, compact,
 }: {
   label: string;
   ariaLabel: string;
@@ -54,6 +78,7 @@ export function RecordPrincipalField({
   projectId?: string;
   readOnly: boolean;
   onChange: (principal: PrincipalRef | null) => void;
+  compact?: boolean;
 }) {
   return (
     <RecordFieldGroup label={label}>
@@ -63,7 +88,7 @@ export function RecordPrincipalField({
         <PrincipalPicker
           orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
           kinds={projectId ? undefined : ["user", "org_group"]}
-          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel}
+          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel} compact={compact}
         />
       )}
     </RecordFieldGroup>

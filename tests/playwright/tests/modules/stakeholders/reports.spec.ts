@@ -145,4 +145,19 @@ test.describe("Stakeholders & Personas: Reports", () => {
       });
     }
   });
+  test("S1 caps a crowded quadrant at ten and shows the rest in a scrolling modal", async ({ page }) => {
+    const { suffix, org, project, adminHeaders } = await setUpOrg(page, "RepCap");
+    for (let i = 1; i <= 12; i++) {
+      await stakeholder(page, adminHeaders, org.id, project.id, `Crowd ${String(i).padStart(2, "0")} ${suffix}`, "High", "High");
+    }
+    await page.goto(`/projects/${project.id}/reports?report=power-interest-grid`);
+    const manage = page.getByRole("region", { name: "Manage closely", exact: true });
+    await expect(manage.getByRole("listitem")).toHaveCount(10);
+    await manage.getByRole("button", { name: "Show all 12 Stakeholders" }).click();
+    const dialog = page.getByRole("dialog", { name: "Manage closely" });
+    await expect(dialog.getByRole("listitem")).toHaveCount(12);
+    await expect(dialog.getByRole("link", { name: `Crowd 12 ${suffix}` })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
 });

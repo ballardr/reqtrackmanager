@@ -5,7 +5,7 @@ import { withRouter } from "../../testing/storybook-helpers";
 import { projectStakeholderGroupApi } from "./api";
 import { buildStakeholderGroup } from "./fixtures";
 import { PowerInterestGridReportView } from "./PowerInterestGridReportView";
-import { gridData, gridEntry, gridResult } from "./reportFixtures";
+import { gridData, gridEntry, gridItem, gridResult } from "./reportFixtures";
 
 const meta: Meta<typeof PowerInterestGridReportView> = {
   title: "Modules/Stakeholders/Reports/PowerInterestGridReportView",
@@ -38,6 +38,28 @@ export const PlacesStakeholdersInQuadrants: Story = {
     await expect(within(canvas.getByRole("region", { name: "Monitor" })).getByText("Nobody here.")).toBeInTheDocument();
     await expect(canvas.getByText("Higher influence")).toBeInTheDocument();
     await expect(canvas.getByText("Higher interest")).toBeInTheDocument();
+  },
+};
+
+/** A crowded quadrant shows ten, with the full list in a scrolling modal behind "Show all N". */
+export const CrowdedQuadrantIsCapped: Story = {
+  args: {
+    result: gridResult({
+      data: gridData({
+        quadrants: {
+          manage_closely: Array.from({ length: 14 }, (_, i) => gridItem({ id: `sh-${i}`, name: `Stakeholder ${i + 1}` })),
+          keep_satisfied: [], keep_informed: [], monitor: [],
+        },
+      }),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const manage = within(within(canvasElement).getByRole("region", { name: "Manage closely" }));
+    await expect(manage.getAllByRole("listitem")).toHaveLength(10);
+    await expect(manage.queryByText("Stakeholder 11")).not.toBeInTheDocument();
+    await userEvent.click(manage.getByRole("button", { name: "Show all 14 Stakeholders" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Manage closely" }));
+    await expect(dialog.getByRole("link", { name: "Stakeholder 14" })).toBeInTheDocument();
   },
 };
 

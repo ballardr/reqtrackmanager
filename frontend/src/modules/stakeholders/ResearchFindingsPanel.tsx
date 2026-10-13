@@ -8,7 +8,7 @@
  * tier-1 confirm; it has no comments or files of its own and is deleted with its
  * engagement, because it can quote participants.
  */
-import { Pencil } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -91,10 +91,12 @@ export function ResearchFindingsPanel({ projectId, engagementId }: { projectId: 
 
   return (
     <div className="stack" style={{ gap: "0.5rem" }}>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+      <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
         <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Findings</span>
-        <button className="btn" onClick={() => setCreating(true)}>Add finding</button>
-      </div>
+        <button type="button" className="btn btn-icon-compact" aria-label="Add finding" title="Add finding" aria-haspopup="dialog" onClick={() => setCreating(true)}>
+          <Plus size={14} aria-hidden="true" />
+        </button>
+      </span>
       {findings.length === 0 && <span className="text-muted">No findings recorded for this engagement.</span>}
       {findings.map((f) => (
         <div key={f.id} className="card stack" style={{ gap: "0.35rem" }} aria-label={`Finding ${f.title}`}>
@@ -102,7 +104,7 @@ export function ResearchFindingsPanel({ projectId, engagementId }: { projectId: 
             <strong>{f.title}</strong>
             <span className="row" style={{ gap: "0.35rem" }}>
               <button className="btn" aria-label={`Edit ${f.title}`} onClick={() => { setFormError(null); setEditing(f); }}><Pencil size={14} /></button>
-              <button className="btn" aria-label={`Delete ${f.title}`} onClick={() => setDeleting(f)}>Delete</button>
+              <button className="btn" aria-label={`Delete ${f.title}`} title={`Delete ${f.title}`} onClick={() => setDeleting(f)}><Trash2 size={14} /></button>
             </span>
           </div>
           {f.description && <div style={{ whiteSpace: "pre-wrap" }}>{f.description}</div>}

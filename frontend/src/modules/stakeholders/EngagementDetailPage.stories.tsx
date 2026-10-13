@@ -164,11 +164,13 @@ export const AddsAParticipantFromTheUnlinkedCandidates: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("combobox", { name: "Stakeholder to add" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Participants" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Participants" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Add to Participants" }));
     // Pat already takes part, so is not offered again.
-    await expect(canvas.queryByRole("option", { name: "Pat Regulator" })).not.toBeInTheDocument();
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Stakeholder to add" }), "stakeholder-2");
-    await userEvent.click(canvas.getAllByRole("button", { name: "Add" })[0]);
+    await expect(popover.queryByRole("option", { name: "Pat Regulator" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(popover.getByRole("combobox", { name: "Stakeholder to add" }), "stakeholder-2");
+    await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${EBASE}/participants`, { stakeholder_id: "stakeholder-2" }));
   },
 };
@@ -180,9 +182,11 @@ export const FacilitatorCanBeAnOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Engagement facilitator"));
-    await userEvent.type(canvas.getByLabelText("Engagement facilitator"), "platform");
-    await userEvent.click(await canvas.findByText("Platform Architecture"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Engagement facilitator" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Engagement facilitator" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Assign: Engagement facilitator" }));
+    await userEvent.type(popover.getByLabelText("Engagement facilitator"), "platform");
+    await userEvent.click(await popover.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(EBASE, { facilitator: { type: "org_group", id: "group-1" } }));
     await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
   },

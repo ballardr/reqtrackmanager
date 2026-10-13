@@ -14,7 +14,9 @@ installCleanupHook();
  * aim it at a Stakeholder group (a snapshot of members); log a contact from a
  * Stakeholder's page and see the timeline and "Last engaged"; record what an
  * engagement raised; and the research extras (prompts, anonymous participants,
- * findings) appearing only once the sub-component is on.
+ * findings) appearing only once the sub-component is on; and the compact
+ * page layout: every "add" is a (+) button opening its form on demand, and the
+ * facilitator is assigned from a popover rather than an always-open search box.
  *
  * Each test builds its own disposable org (see `./helpers.ts`), so none depends
  * on seeded state or on another test having run.
@@ -103,14 +105,20 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
     await expect(page.getByText("No Stakeholders are recorded as taking part.")).toBeVisible();
 
-    await page.getByLabel("Stakeholder to add").selectOption({ label: patName });
-    await page.getByRole("button", { name: "Add", exact: true }).nth(0).click();
+    await page.getByRole("button", { name: "Add to Participants" }).click();
+    const addParticipant = page.getByRole("dialog", { name: "Add to Participants" });
+    await addParticipant.getByLabel("Stakeholder to add").selectOption({ label: patName });
+    await addParticipant.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByRole("link", { name: patName })).toBeVisible();
     // Pat takes part, so is no longer offered.
-    await expect(page.getByLabel("Stakeholder to add").locator("option", { hasText: patName })).toHaveCount(0);
+    await page.getByRole("button", { name: "Add to Participants" }).click();
+    await expect(page.getByRole("dialog", { name: "Add to Participants" }).getByLabel("Stakeholder to add").locator("option", { hasText: patName })).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
-    await page.getByLabel("Persona covered").selectOption({ label: personaName });
-    await page.getByRole("button", { name: "Add", exact: true }).nth(1).click();
+    await page.getByRole("button", { name: "Add to Personas covered" }).click();
+    const addPersona = page.getByRole("dialog", { name: "Add to Personas covered" });
+    await addPersona.getByLabel("Persona covered").selectOption({ label: personaName });
+    await addPersona.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByRole("link", { name: personaName })).toBeVisible();
 
     // --- The list filters by participant (applied by the API).
@@ -145,10 +153,13 @@ test.describe("Stakeholders & Personas: Engagements", () => {
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
     await expect(page.getByText("Not aimed at a group.")).toBeVisible();
-    await page.getByRole("button", { name: "Groups to add" }).click();
+    await page.getByRole("button", { name: "Add to Audience groups" }).click();
+    const addAudience = page.getByRole("dialog", { name: "Add everyone in a group" });
+    await addAudience.getByRole("button", { name: "Groups to add" }).click();
     await page.getByRole("group", { name: "Groups to add" }).getByRole("checkbox", { name: groupName }).check();
-    await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Add everyone in group" }).click();
+    // Close the tree through its own trigger (Escape would close the modal as well).
+    await addAudience.getByRole("button", { name: "Groups to add" }).click();
+    await addAudience.getByRole("button", { name: "Add everyone in group" }).click();
     await expect(page.getByText("Added 2 people as participants.")).toBeVisible();
     await expect(page.getByRole("link", { name: patName })).toBeVisible();
     await expect(page.getByRole("link", { name: samName })).toBeVisible();
@@ -211,9 +222,11 @@ test.describe("Stakeholders & Personas: Engagements", () => {
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
     await expect(page.getByText("Nothing raised or answered yet.")).toBeVisible();
-    await page.getByLabel("Outcome type").selectOption({ label: "Stakeholder Need" });
-    await page.getByLabel("Outcome record").selectOption({ label: needName });
-    await page.getByRole("button", { name: "Add outcome" }).click();
+    await page.getByRole("button", { name: "Add to Raised and answered" }).click();
+    const addOutcome = page.getByRole("dialog", { name: "Record an outcome" });
+    await addOutcome.getByLabel("Outcome type").selectOption({ label: "Stakeholder Need" });
+    await addOutcome.getByLabel("Outcome record").selectOption({ label: needName });
+    await addOutcome.getByRole("button", { name: "Add outcome" }).click();
     await expect(page.getByText("Outcome recorded.")).toBeVisible();
     await expect(page.getByText("Raised · Stakeholder Need:")).toBeVisible();
 
@@ -247,8 +260,10 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByText("Session prompts", { exact: true })).toBeVisible();
 
     // --- A session prompt with notes.
-    await page.getByLabel("New session prompt").fill("Walk me through an inspection");
-    await page.getByRole("button", { name: "Add prompt" }).click();
+    await page.getByRole("button", { name: "Add to Session prompts" }).click();
+    const addPrompt = page.getByRole("dialog", { name: "Add to Session prompts" });
+    await addPrompt.getByLabel("New session prompt").fill("Walk me through an inspection");
+    await addPrompt.getByRole("button", { name: "Add prompt" }).click();
     await expect(page.getByText("Prompt added.")).toBeVisible();
     await page.getByRole("button", { name: "Edit Walk me through an inspection" }).click();
     const promptDialog = page.getByRole("dialog", { name: "Edit session prompt" });
@@ -257,9 +272,11 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByText("Starts with the checklist.")).toBeVisible();
 
     // --- An anonymous participant with a Persona, labelled rather than named.
-    await page.getByLabel("Participant label").fill("Participant 1");
-    await page.getByLabel("Persona represented").selectOption({ label: personaName });
-    await page.getByRole("button", { name: "Add participant" }).click();
+    await page.getByRole("button", { name: "Add to Anonymous participants" }).click();
+    const addAnonymous = page.getByRole("dialog", { name: "Add to Anonymous participants" });
+    await addAnonymous.getByLabel("Participant label").fill("Participant 1");
+    await addAnonymous.getByLabel("Persona represented").selectOption({ label: personaName });
+    await addAnonymous.getByRole("button", { name: "Add participant" }).click();
     await expect(page.getByText(`Participant 1 · ${personaName}`)).toBeVisible();
 
     // --- A finding.
@@ -277,5 +294,27 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements?finding=${findings[0].id}`);
     await expect(page).toHaveURL(new RegExp(`/engagements/${engagement.id}$`));
     await expect(page.getByRole("heading", { name: `Focus group ${suffix}` })).toBeVisible();
+  });
+  test("the page stays compact: adds open on demand and the facilitator is assigned from a (+)", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "EngCompact");
+    const engagement = await post<{ id: string }>(page, `${projectBase(project.id)}/engagements`, adminHeaders, {
+      title: `Compact ${suffix}`, channel: "call", engagement_date: today(),
+    });
+
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
+    // No add form is open on the page: no pickers, only (+) buttons.
+    await expect(page.getByLabel("Stakeholder to add")).toHaveCount(0);
+    await expect(page.getByLabel("Engagement facilitator")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add to Participants" })).toBeVisible();
+
+    // The facilitator is assigned from a popover, then can be cleared with its "x".
+    await page.getByRole("button", { name: "Assign: Engagement facilitator" }).click();
+    const popover = page.getByRole("dialog", { name: "Assign: Engagement facilitator" });
+    await popover.getByLabel("Engagement facilitator").fill("Admin");
+    await popover.getByRole("option").first().click();
+    await expect(page.getByText("Facilitator updated.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Change: Engagement facilitator" })).toBeVisible();
+    await page.getByRole("button", { name: "Unassign: Engagement facilitator" }).click();
+    await expect(page.getByRole("button", { name: "Assign: Engagement facilitator" })).toBeVisible();
   });
 });

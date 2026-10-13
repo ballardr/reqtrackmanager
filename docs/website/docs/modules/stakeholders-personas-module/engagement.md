@@ -31,7 +31,7 @@ An Engagement belongs to **one project**. There is no organisation-wide Engageme
 | Purpose, summary, notes | Why it happened, a line or two on the outcome, and the detailed notes. |
 | Consent recorded | Tick once participants have agreed to being recorded here. |
 | Retain until | A date after which the record should be reviewed for disposal; see [Retention and deletion](#retention-and-deletion). |
-| Facilitator | Who ran or logged it: a user, an organisation group or a project group. |
+| Facilitator | Who ran or logged it: a user, an organisation group or a project group. Set from the Engagement's page. |
 | Participants, Personas covered, outcomes | Set from the detail page; see below. |
 
 Comments and file attachments (for example an exported email) sit on the Engagement as they do on other records. An Engagement has no version history and no approval step. It is edited in place and every change is audit-logged.
@@ -53,11 +53,11 @@ A Stakeholder's or Persona's own page (opened from a project) has an **Engagemen
 
 ## Who took part
 
-On the Engagement's page:
+On the Engagement's page, each list has a **(+)** beside its heading that opens the picker, and an **x** on each item removes it (after a confirmation). The facilitator works the same way: a pencil changes them and an x clears them.
 
 - **Participants.** Add any Stakeholder visible to the project. A Stakeholder [hidden from the project](./stakeholder.md#hiding-an-organisation-stakeholder-from-a-project) cannot be added.
 - **Personas covered.** The Personas the session was about, even when no one represents them in person.
-- **Aimed at these Stakeholder groups.** Choose one or more [Stakeholder groups](./stakeholder-groups.md) from the tree. Everyone in the group, and in the groups beneath it, who is not archived or hidden is added as a participant.
+- **Audience groups.** Choose one or more [Stakeholder groups](./stakeholder-groups.md) from the tree. Everyone in the group, and in the groups beneath it, who is not archived or hidden is added as a participant.
 
 :::note
 A group's members are **copied at the moment you add it**. The group is recorded as the audience, but people who join the group later are not added, and **removing the audience keeps the participants** it brought in. Anyone already taking part is not added twice, and the confirmation tells you how many were added and how many were already there.

@@ -26,7 +26,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
-import { RecordField, RecordFieldGroup, RecordPrincipalField } from "../../components/RecordDetailParts";
+import { RecordField, RecordFieldGrid, RecordFieldGroup, RecordPrincipalField } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -151,72 +151,75 @@ export function EngagementDetailPage() {
         {engagement.summary && <RecordField label="Summary" value={engagement.summary} />}
         {engagement.notes && <RecordField label="Notes" value={engagement.notes} />}
 
-        <RecordFieldGroup label="Consent and retention">
-          <span data-testid="consent">Consent recorded: {engagement.consent_recorded ? "Yes" : "No"}</span>
-          <span data-testid="retention">
-            {engagement.retain_until ? `Retain until ${engagement.retain_until}` : "No retain-until date"}
-            {engagement.retention_due && " · the date has been reached: review and delete if no longer needed"}
-          </span>
-        </RecordFieldGroup>
+        <RecordFieldGrid>
+          <RecordPrincipalField
+            label="Facilitator" ariaLabel="Engagement facilitator" principal={engagement.facilitator} orgUsers={orgUsers}
+            organizationId={organizationId} projectId={projectId} readOnly={false} compact
+            onChange={(facilitator) => save({ facilitator }, "Facilitator updated.", "Could not update this Engagement's facilitator.")}
+          />
 
-        <RecordPrincipalField
-          label="Facilitator" ariaLabel="Engagement facilitator" principal={engagement.facilitator} orgUsers={orgUsers}
-          organizationId={organizationId} projectId={projectId} readOnly={false}
-          onChange={(facilitator) => save({ facilitator }, "Facilitator updated.", "Could not update this Engagement's facilitator.")}
-        />
+          <RecordFieldGroup label="Consent and retention">
+            <span data-testid="consent">Consent recorded: {engagement.consent_recorded ? "Yes" : "No"}</span>
+            <span data-testid="retention">
+              {engagement.retain_until ? `Retain until ${engagement.retain_until}` : "No retain-until date"}
+              {engagement.retention_due && " · the date has been reached: review and delete if no longer needed"}
+            </span>
+          </RecordFieldGroup>
 
-        <RepresentationPanel
-          heading="Participants"
-          emptyText="No Stakeholders are recorded as taking part."
-          reloadKey={participantsKey}
-          load={async () =>
-            (await projectEngagementApi.listParticipants(projectId, engagement.id)).map((p) => ({
-              link_id: p.link_id, id: p.stakeholder_id, name: p.name, scope: p.scope,
-            }))
-          }
-          linkFor={(participant) => stakeholderPath(participant.id)}
-          edit={{
-            options: stakeholderOptions,
-            pickerLabel: "Stakeholder to add",
-            onAdd: async (stakeholderId) => {
-              await projectEngagementApi.addParticipant(projectId, engagement.id, stakeholderId);
-            },
-            onRemove: (participant) => projectEngagementApi.removeParticipant(projectId, engagement.id, participant.id),
-          }}
-        />
+        </RecordFieldGrid>
 
-        <EngagementAudiencePanel
-          projectId={projectId}
-          engagementId={engagement.id}
-          groups={groups}
-          onParticipantsChanged={() => setParticipantsKey((k) => k + 1)}
-        />
+        <RecordFieldGrid>
+          <RepresentationPanel
+            heading="Participants"
+            emptyText="No Stakeholders are recorded as taking part."
+            reloadKey={participantsKey}
+            load={async () =>
+              (await projectEngagementApi.listParticipants(projectId, engagement.id)).map((p) => ({
+                link_id: p.link_id, id: p.stakeholder_id, name: p.name, scope: p.scope,
+              }))
+            }
+            linkFor={(participant) => stakeholderPath(participant.id)}
+            edit={{
+              options: stakeholderOptions,
+              pickerLabel: "Stakeholder to add",
+              onAdd: async (stakeholderId) => {
+                await projectEngagementApi.addParticipant(projectId, engagement.id, stakeholderId);
+              },
+              onRemove: (participant) => projectEngagementApi.removeParticipant(projectId, engagement.id, participant.id),
+            }}
+          />
 
-        <RepresentationPanel
-          heading="Personas covered"
-          emptyText="No Persona is recorded as covered."
-          load={async () =>
-            (await projectEngagementApi.listPersonas(projectId, engagement.id)).map((p) => ({
-              link_id: p.link_id, id: p.persona_id, name: p.name, scope: p.scope,
-            }))
-          }
-          linkFor={(persona) => personaPath(persona.id)}
-          edit={{
-            options: personaOptions,
-            pickerLabel: "Persona covered",
-            onAdd: async (personaId) => {
-              await projectEngagementApi.addPersona(projectId, engagement.id, personaId);
-            },
-            onRemove: (persona) => projectEngagementApi.removePersona(projectId, engagement.id, persona.id),
-          }}
-        />
+          <RepresentationPanel
+            heading="Personas covered"
+            emptyText="No Persona is recorded as covered."
+            load={async () =>
+              (await projectEngagementApi.listPersonas(projectId, engagement.id)).map((p) => ({
+                link_id: p.link_id, id: p.persona_id, name: p.name, scope: p.scope,
+              }))
+            }
+            linkFor={(persona) => personaPath(persona.id)}
+            edit={{
+              options: personaOptions,
+              pickerLabel: "Persona covered",
+              onAdd: async (personaId) => {
+                await projectEngagementApi.addPersona(projectId, engagement.id, personaId);
+              },
+              onRemove: (persona) => projectEngagementApi.removePersona(projectId, engagement.id, persona.id),
+            }}
+          />
 
-        {researchExtras && (
-          <>
-            <AnonymousParticipantsPanel projectId={projectId} engagementId={engagement.id} personaOptions={personaOptions} />
-            <ResearchPromptsPanel projectId={projectId} engagementId={engagement.id} />
-          </>
-        )}
+          <EngagementAudiencePanel
+            projectId={projectId}
+            engagementId={engagement.id}
+            groups={groups}
+            onParticipantsChanged={() => setParticipantsKey((k) => k + 1)}
+          />
+
+        </RecordFieldGrid>
+
+        {researchExtras && <AnonymousParticipantsPanel projectId={projectId} engagementId={engagement.id} personaOptions={personaOptions} />}
+
+        {researchExtras && <ResearchPromptsPanel projectId={projectId} engagementId={engagement.id} />}
 
         <EngagementOutcomesPanel
           projectId={projectId}

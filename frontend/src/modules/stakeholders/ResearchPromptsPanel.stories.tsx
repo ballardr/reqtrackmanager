@@ -56,10 +56,12 @@ export const AddsAPrompt: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("New session prompt"));
-    await expect(canvas.getByRole("button", { name: "Add prompt" })).toBeDisabled();
-    await userEvent.type(canvas.getByLabelText("New session prompt"), "What slows you down?");
-    await userEvent.click(canvas.getByRole("button", { name: "Add prompt" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Session prompts" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Session prompts" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Add to Session prompts" }));
+    await expect(popover.getByRole("button", { name: "Add prompt" })).toBeDisabled();
+    await userEvent.type(popover.getByLabelText("New session prompt"), "What slows you down?");
+    await userEvent.click(popover.getByRole("button", { name: "Add prompt" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(BASE, { prompt: "What slows you down?" }));
     await waitFor(() => expect(within(document.body).getByText("Prompt added.")).toBeInTheDocument());
   },

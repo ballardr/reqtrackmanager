@@ -10,12 +10,16 @@
  * audience removes the link only; the participants it added stay (the confirm
  * says so). The toast reports how many people were added and how many were
  * already taking part. Any group of the organisation or the project can be
- * chosen, so no node is disabled.
+ * chosen, so no node is disabled. The tree picker opens its own popover, and popovers do not nest,
+ * so the (+) button opens a small `Modal` rather than a `Popover`.
  */
+import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { Modal } from "../../components/Modal";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
+import { RemovableItemList } from "../../components/RemovableItemList";
 import { TreeSelect } from "../../components/TreeSelect";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi } from "./api";
@@ -40,6 +44,7 @@ export function EngagementAudiencePanel({
   const [selected, setSelected] = useState<string[]>([]);
   const [removing, setRemoving] = useState<EngagementAudience | null>(null);
   const [adding, setAdding] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const mounted = useRef(true);
 
@@ -63,6 +68,7 @@ export function EngagementAudiencePanel({
 
   async function addEveryone() {
     setAdding(true);
+    setPicking(false);
     const wanted = selected;
     setSelected([]);
     let added = 0;
@@ -98,30 +104,48 @@ export function EngagementAudiencePanel({
   if (audiences === null) return null;
 
   return (
-    <RecordFieldGroup label="Aimed at these Stakeholder groups">
+    <RecordFieldGroup
+      label="Audience groups"
+      gap="0.35rem"
+      action={
+        <button
+          type="button" className="btn btn-icon-compact" aria-label="Add to Audience groups"
+          title="Add to Audience groups" aria-haspopup="dialog" disabled={nodes.length === 0} onClick={() => setPicking(true)}
+        >
+          <Plus size={14} aria-hidden="true" />
+        </button>
+      }
+    >
       {audiences.length === 0 ? (
         <span className="text-muted">Not aimed at a group.</span>
       ) : (
-        <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-          {audiences.map((a) => (
-            <li key={a.link_id}>
-              <span title={groupPath(groups, a.group_id)}>{a.name}</span>
-              <button className="btn" style={{ marginLeft: "0.5rem" }} aria-label={`Remove audience ${a.name}`} onClick={() => setRemoving(a)}>
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
+        <RemovableItemList
+          items={audiences.map((a) => ({
+            id: a.link_id,
+            content: <span title={groupPath(groups, a.group_id)}>{a.name}</span>,
+            removeLabel: `Remove audience ${a.name}`,
+          }))}
+          onRemove={(id) => setRemoving(audiences.find((a) => a.link_id === id) ?? null)}
+          noun="groups"
+          modalTitle="Audience groups"
+        />
       )}
-      <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-        <TreeSelect triggerLabel="Groups to add" nodes={nodes} selectedIds={selected} onChange={setSelected} emptyLabel="Choose groups…" />
-        <button className="btn" disabled={selected.length === 0 || adding} onClick={addEveryone}>
-          Add everyone in group
-        </button>
-      </div>
-      <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-        Copies the group's current members in as participants. Later changes to the group don't change who took part.
-      </span>
+      {picking && (
+        <Modal title="Add everyone in a group" onClose={() => { setPicking(false); setSelected([]); }}>
+          <div className="stack">
+            <TreeSelect triggerLabel="Groups to add" nodes={nodes} selectedIds={selected} onChange={setSelected} emptyLabel="Choose groups…" />
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+              Copies the group's current members in as participants. Later changes to the group don't change who took part.
+            </span>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => { setPicking(false); setSelected([]); }}>Cancel</button>
+              <button className="btn btn-primary" disabled={selected.length === 0 || adding} onClick={addEveryone}>
+                Add everyone in group
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {removing && (
         <ConfirmDialog
           title={`Remove audience ${removing.name}?`}

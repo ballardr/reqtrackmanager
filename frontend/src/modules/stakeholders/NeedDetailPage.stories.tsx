@@ -143,9 +143,11 @@ export const AddsAHolderFromTheUnlinkedCandidates: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("combobox", { name: "Stakeholder with this need" }));
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Stakeholder with this need" }), "stakeholder-1");
-    await userEvent.click(canvas.getAllByRole("button", { name: "Add" })[0]);
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Stakeholders with this need" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Stakeholders with this need" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Add to Stakeholders with this need" }));
+    await userEvent.selectOptions(popover.getByRole("combobox", { name: "Stakeholder with this need" }), "stakeholder-1");
+    await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}/holders`, { kind: "stakeholder", id: "stakeholder-1" }),
     );
@@ -173,11 +175,13 @@ export const LinksARequirement: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("combobox", { name: "Requirement it gave rise to" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Requirements it gave rise to" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Requirements it gave rise to" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Add to Requirements it gave rise to" }));
     // The already-linked requirement is not offered again.
-    await expect(canvas.queryByRole("option", { name: "SW-PERF-001 Remote diagnostics in 30 seconds" })).not.toBeInTheDocument();
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Requirement it gave rise to" }), "req-2");
-    await userEvent.click(canvas.getAllByRole("button", { name: "Add" })[2]);
+    await expect(popover.queryByRole("option", { name: "SW-PERF-001 Remote diagnostics in 30 seconds" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(popover.getByRole("combobox", { name: "Requirement it gave rise to" }), "req-2");
+    await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}/requirements`, { requirement_id: "req-2" }));
   },
 };

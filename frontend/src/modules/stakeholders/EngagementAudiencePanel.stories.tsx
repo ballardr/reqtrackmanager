@@ -65,14 +65,17 @@ export const AddsEveryoneInTheChosenGroups: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Groups to add" }));
-    await expect(canvas.getByRole("button", { name: "Add everyone in group" })).toBeDisabled();
-    await userEvent.click(canvas.getByRole("button", { name: "Groups to add" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Audience groups" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Audience groups" }));
+    const modal = within(within(document.body).getByRole("dialog", { name: "Add everyone in a group" }));
+    await expect(modal.getByRole("button", { name: "Add everyone in group" })).toBeDisabled();
+    await userEvent.click(modal.getByRole("button", { name: "Groups to add" }));
     const tree = within(within(document.body).getByRole("group", { name: "Groups to add" }));
     await expect(tree.queryByRole("checkbox", { name: "Operations" })).not.toBeInTheDocument();
     await userEvent.click(tree.getByRole("checkbox", { name: "Acme" }));
-    await userEvent.keyboard("{Escape}");
-    await userEvent.click(canvas.getByRole("button", { name: "Add everyone in group" }));
+    // Close the tree through its own trigger (Escape would close the modal as well).
+    await userEvent.click(modal.getByRole("button", { name: "Groups to add" }));
+    await userEvent.click(modal.getByRole("button", { name: "Add everyone in group" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(BASE, { group_id: "g-acme" }));
     await waitFor(() => expect(within(document.body).getByText("Added 2 people as participants (1 already taking part).")).toBeInTheDocument());
     await waitFor(() => expect(args.onParticipantsChanged).toHaveBeenCalled());

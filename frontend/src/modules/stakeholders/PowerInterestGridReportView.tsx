@@ -8,10 +8,13 @@
  * linking to its page in the quadrant it falls in, then the Stakeholders with no
  * position as the generic gap table. Quadrant names go through
  * `GRID_QUADRANT_LABEL`. The view owns `group_id` and `group_by`, which narrow
- * the run and add a Branch column to the generic tables.
+ * the run and add a Branch column to the generic tables. A quadrant can hold any number of
+ * Stakeholders, so each shows the first ten and puts the rest behind "Show all N", a scrolling
+ * modal (`CappedList`), keeping the grid one screen tall.
  */
 import { Link } from "react-router-dom";
 
+import { CappedList } from "../../components/CappedList";
 import { ReportNothingToReport, ReportSectionTable, ReportSummary } from "../../components/ReportViewer";
 import type { ReportViewProps } from "../types";
 import { StakeholderReportGroupControls } from "./StakeholderReportGroupControls";
@@ -42,16 +45,23 @@ function Quadrant({ quadrant, items }: { quadrant: GridQuadrant; items: GridItem
           Nobody here.
         </p>
       ) : (
-        <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-          {items.map((item) => (
-            <li key={`${item.project_id}-${item.id}`}>
-              <Link to={`/projects/${item.project_id}/modules/stakeholders/stakeholders/${item.id}`}>{item.name}</Link>{" "}
-              <span className="text-muted" style={{ fontSize: "0.85rem" }}>
-                {item.influence} influence, {item.interest} interest
-              </span>
-            </li>
-          ))}
-        </ul>
+        <CappedList
+          items={items}
+          noun="Stakeholders"
+          modalTitle={GRID_QUADRANT_LABEL[quadrant]}
+          renderList={(shown) => (
+            <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+              {shown.map((item) => (
+                <li key={`${item.project_id}-${item.id}`}>
+                  <Link to={`/projects/${item.project_id}/modules/stakeholders/stakeholders/${item.id}`}>{item.name}</Link>{" "}
+                  <span className="text-muted" style={{ fontSize: "0.85rem" }}>
+                    {item.influence} influence, {item.interest} interest
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        />
       )}
     </section>
   );

@@ -69,14 +69,17 @@ export const AddOffersOnlyUnlinkedCandidates: Story = {
   args: { edit: editable() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("combobox", { name: "Persona to represent" }));
-    await expect(canvas.getByRole("button", { name: "Add" })).toBeDisabled();
+    await waitFor(() => canvas.getByRole("button", { name: /^Add to / }));
+    await userEvent.click(canvas.getByRole("button", { name: /^Add to / }));
+    const popover = within(within(document.body).getByRole("dialog", { name: /^Add to / }));
+    await expect(popover.getByRole("button", { name: "Add" })).toBeDisabled();
     // Already-linked Field Technician is not offered again.
-    await expect(canvas.queryByRole("option", { name: "Field Technician" })).not.toBeInTheDocument();
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Persona to represent" }), "persona-3");
-    await userEvent.click(canvas.getByRole("button", { name: "Add" }));
+    await expect(popover.queryByRole("option", { name: "Field Technician" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(popover.getByRole("combobox", { name: "Persona to represent" }), "persona-3");
+    await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(args.edit?.onAdd).toHaveBeenCalledWith("persona-3"));
-    await waitFor(() => expect(canvas.getByRole("combobox", { name: "Persona to represent" })).toHaveValue(""));
+    // The popover closes once the link is added.
+    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: /^Add to / })).not.toBeInTheDocument());
   },
 };
 

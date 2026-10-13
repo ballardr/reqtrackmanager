@@ -47,7 +47,9 @@ export const EmptyState: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("No anonymous participants.")).toBeInTheDocument());
-    await expect(canvas.getByText(/not a name/)).toBeInTheDocument();
+    // The "use a label, not a name" guidance is in the add form.
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Anonymous participants" }));
+    await expect(within(document.body).getByText(/not a name/)).toBeInTheDocument();
   },
 };
 
@@ -58,11 +60,13 @@ export const AddsAParticipantWithAPersona: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Participant label"));
-    await expect(canvas.getByRole("button", { name: "Add participant" })).toBeDisabled();
-    await userEvent.type(canvas.getByLabelText("Participant label"), "Participant 1");
-    await userEvent.selectOptions(canvas.getByLabelText("Persona represented"), "persona-1");
-    await userEvent.click(canvas.getByRole("button", { name: "Add participant" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Anonymous participants" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Anonymous participants" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Add to Anonymous participants" }));
+    await expect(popover.getByRole("button", { name: "Add participant" })).toBeDisabled();
+    await userEvent.type(popover.getByLabelText("Participant label"), "Participant 1");
+    await userEvent.selectOptions(popover.getByLabelText("Persona represented"), "persona-1");
+    await userEvent.click(popover.getByRole("button", { name: "Add participant" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(BASE, { label: "Participant 1", persona_id: "persona-1" }));
   },
 };

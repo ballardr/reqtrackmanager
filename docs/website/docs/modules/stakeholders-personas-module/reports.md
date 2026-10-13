@@ -38,6 +38,8 @@ The four standard positions from [Influence × Interest](./stakeholder.md#influe
 - **Group** limits the report to a [Stakeholder group](./stakeholder-groups.md) and its sub-groups.
 - **Group by** names a top-level group and adds a **Branch** column, ordering Stakeholders by the branch they belong to under it, so "Acme's people, by division" is one report.
 
+Each quadrant lists its first ten Stakeholders; **Show all N** opens the full list in a scrolling window.
+
 A group the project cannot see (another project's, or another organisation's) is refused rather than ignored.
 
 | Power/interest grid |

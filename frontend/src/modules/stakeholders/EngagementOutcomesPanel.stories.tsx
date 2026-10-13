@@ -67,12 +67,14 @@ export const AddsARaisedPainPoint: Story = {
   args: { api: build() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("combobox", { name: "Outcome record" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Raised and answered" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Raised and answered" }));
+    const modal = within(within(document.body).getByRole("dialog", { name: "Record an outcome" }));
     // The already-raised Pain Point is not offered again.
-    await waitFor(() => expect(canvas.getByRole("option", { name: "Manual re-keying" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("option", { name: "Reports arrive late" })).not.toBeInTheDocument();
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Outcome record" }), "pp-2");
-    await userEvent.click(canvas.getByRole("button", { name: "Add outcome" }));
+    await waitFor(() => expect(modal.getByRole("option", { name: "Manual re-keying" })).toBeInTheDocument());
+    await expect(modal.queryByRole("option", { name: "Reports arrive late" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(modal.getByRole("combobox", { name: "Outcome record" }), "pp-2");
+    await userEvent.click(modal.getByRole("button", { name: "Add outcome" }));
     await waitFor(() => expect(args.api.add).toHaveBeenCalledWith("project-1", "engagement-1", "raised", "pain_point", "pp-2"));
     await waitFor(() => expect(within(document.body).getByText("Outcome recorded.")).toBeInTheDocument());
   },
@@ -82,12 +84,14 @@ export const AddsARaisedPainPoint: Story = {
 export const AnsweredOffersOnlyOpenQuestions: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("combobox", { name: "Outcome kind" }));
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Outcome kind" }), "answered");
-    const type = canvas.getByRole("combobox", { name: "Outcome type" });
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Raised and answered" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Raised and answered" }));
+    const modal = within(within(document.body).getByRole("dialog", { name: "Record an outcome" }));
+    await userEvent.selectOptions(modal.getByRole("combobox", { name: "Outcome kind" }), "answered");
+    const type = modal.getByRole("combobox", { name: "Outcome type" });
     await expect(type).toHaveValue("open_question");
     await expect(within(type).queryByRole("option", { name: "Pain Point" })).not.toBeInTheDocument();
-    await waitFor(() => expect(canvas.getByRole("option", { name: "Who signs off?" })).toBeInTheDocument());
+    await waitFor(() => expect(modal.getByRole("option", { name: "Who signs off?" })).toBeInTheDocument());
   },
 };
 

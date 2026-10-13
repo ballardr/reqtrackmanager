@@ -29,9 +29,9 @@ An organisation admin switches **Research extras** on or off from the organisati
 
 With the extras on, three more blocks appear on an [Engagement](./engagement.md):
 
-- **Anonymous participants.** Enter a label and, optionally, the **Persona represented**. They count towards the participant total and towards the Persona's evidence in [Persona validation](./reports.md#persona-validation-s2). Use a label, not a name: the record is anonymous only if you keep it so.
-- **Session prompts.** Add a prompt, then edit it to record **response notes**. Use the arrows to reorder.
-- **Findings.** Add a finding with a title and description, then link what it **raised** or **answered** exactly as for an Engagement. A finding can quote participants.
+- **Anonymous participants.** Press **(+)** and enter a label and, optionally, the **Persona represented**. They count towards the participant total and towards the Persona's evidence in [Persona validation](./reports.md#persona-validation-s2). Use a label, not a name: the record is anonymous only if you keep it so.
+- **Session prompts.** Press **(+)** to add a prompt, then edit it to record **response notes**. Use the arrows to reorder.
+- **Findings.** Press **(+)** to add a finding with a title and description, then link what it **raised** or **answered** exactly as for an Engagement. A finding can quote participants.
 
 ## Findings are deleted with their Engagement
 

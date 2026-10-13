@@ -97,5 +97,33 @@ export const AssignedGroupShowsKindAndMembers: Story = {
   },
 };
 
+/** Compact: no open search box; a (+) opens it in a popover, and picking someone assigns and closes it. */
+export const CompactAssignsFromAPopover: Story = {
+  args: { compact: true },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Unassigned")).toBeInTheDocument();
+    await expect(canvas.queryByRole("combobox")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Owner" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Assign: Owner" }));
+    await userEvent.type(popover.getByRole("combobox", { name: "Owner" }), "jamie");
+    await userEvent.click(popover.getByText("Jamie Lee"));
+    await expect(args.onChange).toHaveBeenCalledWith({ type: "user", id: "u2" });
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+  },
+};
+
+/** Compact with a value: a "Change" pencil and an "x" that unassigns. */
+export const CompactAssignedChangesOrClears: Story = {
+  args: { compact: true, value: { type: "user", id: "u1" } },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Alex Morgan (alex.morgan@example.com)")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Change: Owner" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Unassign: Owner" }));
+    await expect(args.onChange).toHaveBeenCalledWith(null);
+  },
+};
+
 export const LightTheme: Story = { ...AssignedGroupShowsKindAndMembers, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...AssignedGroupShowsKindAndMembers, globals: { theme: "dark" } };

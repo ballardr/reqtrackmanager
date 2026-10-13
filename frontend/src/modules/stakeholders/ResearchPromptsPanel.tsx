@@ -3,17 +3,19 @@
  *
  * Research extras: an engagement's ordered session prompts (the questions
  * planned for an interview or focus group) with the response notes taken against
- * each. Add a prompt inline, edit its text and notes in a `Modal` (principle 3),
+ * each. Add a prompt from a (+) popover, edit its text and notes in a `Modal` (principle 3),
  * reorder with up/down, and delete behind a tier-1 confirm. "Session prompts" is
  * the name used throughout so they are not confused with Open Questions.
  * Response notes can quote participants, so they are removed with the
  * engagement. Every change toasts; the list reloads from the server's order.
  */
-import { ArrowDown, ArrowUp, Pencil } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { AddPopoverButton } from "../../components/AddPopoverButton";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
+import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
 import { TextAreaField } from "./RecordFormFields";
@@ -72,9 +74,31 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
 
   if (prompts === null) return null;
 
+  const addForm = (close: () => void) => (
+    <div className="stack">
+      <label className="stack" style={{ gap: "0.25rem" }}>
+        <span>New session prompt</span>
+        <input className="input" value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="New session prompt" autoFocus />
+      </label>
+      <div className="row" style={{ justifyContent: "flex-end" }}>
+        <button className="btn" onClick={close}>Cancel</button>
+        <button
+          className="btn btn-primary" disabled={draft.trim() === ""}
+          onClick={() => {
+            const text = draft.trim();
+            setDraft("");
+            close();
+            void mutate(() => projectResearchApi.addPrompt(projectId, engagementId, { prompt: text }), "Prompt added.", "Could not add the prompt.");
+          }}
+        >
+          Add prompt
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="stack" style={{ gap: "0.35rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Session prompts</span>
+    <RecordFieldGroup label="Session prompts" gap="0.35rem" action={<AddPopoverButton label="Add to Session prompts">{addForm}</AddPopoverButton>}>
       {prompts.length === 0 ? (
         <span className="text-muted">No session prompts yet.</span>
       ) : (
@@ -90,29 +114,13 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
                   <ArrowDown size={14} />
                 </button>
                 <button className="btn" aria-label={`Edit ${p.prompt}`} onClick={() => setEditing(p)}><Pencil size={14} /></button>
-                <button className="btn" aria-label={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}>Delete</button>
+                <button className="btn" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 size={14} /></button>
               </div>
               {p.response_notes && <div className="text-muted" style={{ whiteSpace: "pre-wrap" }}>{p.response_notes}</div>}
             </li>
           ))}
         </ol>
       )}
-      <div className="row" style={{ gap: "0.5rem", alignItems: "flex-end" }}>
-        <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-          <span>New session prompt</span>
-          <input className="input" value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="New session prompt" />
-        </label>
-        <button
-          className="btn" disabled={draft.trim() === ""}
-          onClick={() => {
-            const text = draft.trim();
-            setDraft("");
-            void mutate(() => projectResearchApi.addPrompt(projectId, engagementId, { prompt: text }), "Prompt added.", "Could not add the prompt.");
-          }}
-        >
-          Add prompt
-        </button>
-      </div>
       {editing && (
         <PromptEditModal
           prompt={editing}
@@ -137,6 +145,6 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
           onCancel={() => setDeleting(null)}
         />
       )}
-    </div>
+    </RecordFieldGroup>
   );
 }

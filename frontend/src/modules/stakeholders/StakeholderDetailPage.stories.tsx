@@ -234,8 +234,10 @@ export const RepresentsListsPersonasAndAddsMore: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "Field Technician" })).toBeInTheDocument());
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Persona to represent" }), "persona-3");
-    await userEvent.click(canvas.getByRole("button", { name: "Add" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Represents these Personas" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Add to Represents these Personas" }));
+    await userEvent.selectOptions(popover.getByRole("combobox", { name: "Persona to represent" }), "persona-3");
+    await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/personas`, { persona_id: "persona-3" }),
     );
