@@ -51,6 +51,9 @@ async function setUpRecords(page: import("@playwright/test").Page) {
   const persona = await post("/modules/stakeholders/personas", { name: `Field Technician ${suffix}` });
   const stakeholder = await post("/modules/stakeholders/stakeholders", { name: `Pat Regulator ${suffix}` });
   const need = await post("/modules/stakeholders/needs", { name: `Offline access ${suffix}` });
+  const engagement = await post("/modules/stakeholders/engagements", {
+    title: `Site visit ${suffix}`, channel: "meeting", engagement_date: new Date().toISOString().slice(0, 10),
+  });
 
   const base = `/projects/${project.id}`;
   return {
@@ -67,6 +70,7 @@ async function setUpRecords(page: import("@playwright/test").Page) {
       Persona: `${base}/modules/stakeholders/personas/${persona.id}`,
       Stakeholder: `${base}/modules/stakeholders/stakeholders/${stakeholder.id}`,
       "Stakeholder need": `${base}/modules/stakeholders/needs/${need.id}`,
+      Engagement: `${base}/modules/stakeholders/engagements/${engagement.id}`,
     } as Record<string, string>,
   };
 }

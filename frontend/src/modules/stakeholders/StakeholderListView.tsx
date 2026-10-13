@@ -17,6 +17,10 @@
  * `groups` each stakeholder already carries; the API offers the same via
  * `group_id` / `group_by`.
  *
+ * `showLastEngaged` (project page only: an organisation list has no single
+ * project's engagements) adds a "Last engaged" column from the date the API
+ * derives from this project's engagements; "Never" when there is none.
+ *
  * The project page's "Show hidden" filter and Visibility column are
  * `RecordListView`'s; the `includeHidden`/`onIncludeHiddenChange`/`onShowHidden`
  * props pass straight through.
@@ -49,6 +53,7 @@ export function StakeholderListView({
   loadHint,
   groups = [],
   groupTier = "organization",
+  showLastEngaged = false,
   includeArchived,
   onIncludeArchivedChange,
   includeHidden = false,
@@ -73,6 +78,8 @@ export function StakeholderListView({
   groups?: StakeholderGroup[];
   /** Which tier of `groups` a new stakeholder can be put into from here. */
   groupTier?: "organization" | "project";
+  /** Adds the "Last engaged" column (project page only). */
+  showLastEngaged?: boolean;
   includeArchived: boolean;
   onIncludeArchivedChange: (next: boolean) => void;
   includeHidden?: boolean;
@@ -127,6 +134,9 @@ export function StakeholderListView({
         columnsBeforeType={[{ key: "role", label: "Role", render: (s) => s.role || "—" }]}
         columnsAfterScope={[
           { key: "cadence", label: "Cadence", render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },
+          ...(showLastEngaged
+            ? [{ key: "last-engaged", label: "Last engaged", render: (s: Stakeholder) => s.last_engaged ?? "Never" }]
+            : []),
           { key: "influence", label: "Influence", render: (s) => levelName(scheme, "influence", s.influence_level_id) },
           { key: "interest", label: "Interest", render: (s) => levelName(scheme, "interest", s.interest_level_id) },
           ...(groups.length > 0

@@ -3,7 +3,8 @@
  *
  * A single Stakeholder's detail: fields, lifecycle, owner, Influence/Interest
  * position and engagement cadence, the Personas they represent, their needs, version
- * history, attachments, comments, and permanent deletion. One scope-aware
+ * history, their engagement timeline with a "Log contact" quick add (project
+ * route only), attachments, comments, and permanent deletion. One scope-aware
  * component serving three routes (`module.ts`): a project stakeholder and an
  * org stakeholder opened *from a project* (both `/projects/:projectId/...`),
  * and an org stakeholder opened from the org dashboard (`/orgs/:organizationId/
@@ -37,9 +38,10 @@ import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import {
-  orgPersonaApi, orgStakeholderApi, orgStakeholderGroupApi, orgStakeholderTypeApi, projectNeedApi, projectPersonaApi,
-  projectStakeholderApi, projectStakeholderGroupApi,
+  orgPersonaApi, orgStakeholderApi, orgStakeholderGroupApi, orgStakeholderTypeApi, projectEngagementApi, projectNeedApi,
+  projectPersonaApi, projectStakeholderApi, projectStakeholderGroupApi,
 } from "./api";
+import { EngagementTimelinePanel } from "./EngagementTimelinePanel";
 import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
@@ -281,6 +283,7 @@ export function StakeholderDetailPage() {
           {stakeholder.availability_constraints && (
             <span className="text-muted">Their availability: {stakeholder.availability_constraints}</span>
           )}
+          {projectId && <span data-testid="last-engaged">Last engaged: {stakeholder.last_engaged ?? "Never"}</span>}
         </RecordFieldGroup>
 
         <RecordPrincipalField
@@ -331,6 +334,12 @@ export function StakeholderDetailPage() {
         />
 
         <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
+
+        <EngagementTimelinePanel
+          projectId={projectId}
+          subject={{ kind: "stakeholder", id: stakeholder.id, name: stakeholder.name }}
+          load={() => projectEngagementApi.listForStakeholder(projectId ?? "", stakeholder.id)}
+        />
 
         {!readOnlyInProject && (
           <RecordLifecycleControls

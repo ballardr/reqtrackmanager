@@ -482,3 +482,149 @@ export interface GroupFromTextResult {
   group_ids: string[];
   memberships_added: number;
 }
+
+// --- Engagements (Phase 4 backend, Phase 5 UI) --------------------------------
+
+/** An Engagement as the project API returns it. `retention_due` is true once `retain_until` has been reached. */
+export interface Engagement {
+  id: string;
+  project_id: string;
+  creator_id: string;
+  title: string;
+  channel: EngagementChannel;
+  /** YYYY-MM-DD. */
+  engagement_date: string;
+  facilitator: Principal | null;
+  purpose: string;
+  summary: string;
+  notes: string;
+  consent_recorded: boolean;
+  /** YYYY-MM-DD, or null when no disposal date is set. */
+  retain_until: string | null;
+  retention_due: boolean;
+  participant_count: number;
+  anonymous_participant_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The content fields the create/edit form edits (the facilitator is set from the detail page). */
+export interface EngagementFieldValues {
+  title: string;
+  channel: EngagementChannel;
+  engagement_date: string;
+  purpose: string;
+  summary: string;
+  notes: string;
+  consent_recorded: boolean;
+  retain_until: string | null;
+}
+
+/** One row of a Stakeholder's engagement timeline (no notes: open the engagement for those). */
+export interface StakeholderEngagement {
+  id: string;
+  title: string;
+  channel: EngagementChannel;
+  engagement_date: string;
+}
+
+export interface EngagementParticipant {
+  link_id: string;
+  stakeholder_id: string;
+  name: string;
+  scope: "organization" | "project";
+}
+
+export interface EngagementPersona {
+  link_id: string;
+  persona_id: string;
+  name: string;
+  scope: "organization" | "project";
+}
+
+export interface EngagementAudience {
+  link_id: string;
+  group_id: string;
+  name: string;
+  scope: "organization" | "project";
+}
+
+/** The result of aiming an engagement at a group: the audience link and the members it copied in. */
+export interface EngagementAudienceAdded {
+  audience: EngagementAudience;
+  participants_added: EngagementParticipant[];
+  already_participating: number;
+}
+
+/** A record an Engagement or finding raised or answered. */
+export type OutcomeKind = "raised" | "answered";
+
+export const OUTCOME_KIND_LABEL: Record<OutcomeKind, string> = {
+  raised: "Raised",
+  answered: "Answered",
+};
+
+/** The artefact types an outcome can point at (`engagements.OUTCOME_KINDS` on the backend). */
+export type OutcomeTargetType = "pain_point" | "stakeholder_need" | "open_question";
+
+export const OUTCOME_TARGET_TYPE_LABEL: Record<OutcomeTargetType, string> = {
+  pain_point: "Pain Point",
+  stakeholder_need: "Stakeholder Need",
+  open_question: "Open Question",
+};
+
+export interface EngagementOutcome {
+  link_id: string;
+  kind: OutcomeKind;
+  target_type: string;
+  target_id: string;
+  label: string;
+}
+
+/** One record the outcome picker can offer. */
+export interface OutcomeTarget {
+  id: string;
+  label: string;
+  status: string | null;
+}
+
+export interface EngagementComment {
+  id: string;
+  engagement_id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: import("../../api/types").FileAsset[];
+}
+
+/** Research extras: one ordered session prompt with the notes taken against it. */
+export interface EngagementPrompt {
+  id: string;
+  engagement_id: string;
+  sort_order: number;
+  prompt: string;
+  response_notes: string;
+}
+
+/** Research extras: a participant who is a label (and optionally a Persona) rather than a Stakeholder record. */
+export interface AnonymousParticipant {
+  id: string;
+  engagement_id: string;
+  label: string;
+  persona_id: string | null;
+  persona_name: string | null;
+}
+
+/** Research extras: something learned in an engagement. */
+export interface ResearchFinding {
+  id: string;
+  project_id: string;
+  engagement_id: string;
+  creator_id: string;
+  title: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}

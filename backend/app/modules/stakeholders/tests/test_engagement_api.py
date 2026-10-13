@@ -429,6 +429,29 @@ def test_stakeholder_timeline(client, admin_token):
 # --- Raised / answered --------------------------------------------------------
 
 
+def test_outcome_targets_list_the_projects_records_by_type(client, admin_token):
+    """The outcome picker offers the project's own Pain Points, Needs and Open Questions, and nothing else."""
+    org, project, token = _setup(client, admin_token, "Engagement Target Co")
+    sibling = create_project(client, token, org["id"], "Engagement Target Sibling")
+    h = auth_headers(token)
+    pid = project["id"]
+    pain = _create_pain_point(client, token, org["id"], pid)
+    _create_pain_point(client, token, org["id"], sibling["id"], title="Elsewhere")
+    question = _create_open_question(client, token, org["id"], pid)
+    need = _create_need(client, token, pid)
+    url = _project_base(pid) + "/engagement-outcome-targets"
+
+    for target_type, record in (("pain_point", pain), ("stakeholder_need", need), ("open_question", question)):
+        resp = client.get(f"{url}?target_type={target_type}", headers=h)
+        assert resp.status_code == 200, resp.text
+        assert [t["id"] for t in resp.json()] == [record["id"]]  # not the sibling project's Pain Point
+    # A type no outcome kind targets is absent, as is an unknown one.
+    for bad in ("requirement", "stakeholder", "nonsense"):
+        assert client.get(f"{url}?target_type={bad}", headers=h).status_code == 404
+
+
+
+
 def test_outcomes_raised_and_answered(client, admin_token):
     org, project, token = _setup(client, admin_token, "Engagement Outcome Co")
     sibling = create_project(client, token, org["id"], "Engagement Outcome Sibling")

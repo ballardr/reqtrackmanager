@@ -102,6 +102,7 @@ export function ProjectStakeholdersPage() {
         scheme={scheme}
         groups={groups}
         groupTier="project"
+        showLastEngaged
         orgUsers={orgUsers}
         loadHint={(influence, interest) => projectStakeholderApi.cadenceHint(projectId, influence, interest)}
         includeArchived={includeArchived}

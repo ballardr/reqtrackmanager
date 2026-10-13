@@ -44,7 +44,8 @@ import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { orgPersonaApi, orgPersonaTypeApi, projectNeedApi, projectPersonaApi } from "./api";
+import { orgPersonaApi, orgPersonaTypeApi, projectEngagementApi, projectNeedApi, projectPersonaApi } from "./api";
+import { EngagementTimelinePanel } from "./EngagementTimelinePanel";
 import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { PersonaFormModal } from "./PersonaFormModal";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
@@ -305,6 +306,12 @@ export function PersonaDetailPage() {
         />
 
         <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listPersonaNeeds(projectId ?? "", persona.id)} />
+
+        <EngagementTimelinePanel
+          projectId={projectId}
+          subject={{ kind: "persona", id: persona.id, name: persona.name }}
+          load={() => projectEngagementApi.list(projectId ?? "", { persona_id: persona.id })}
+        />
 
         {!readOnlyInProject && (
           <RecordLifecycleControls

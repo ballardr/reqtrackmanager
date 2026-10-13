@@ -7,7 +7,7 @@ import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures"
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
-import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder } from "./types";
+import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder, StakeholderEngagement } from "./types";
 
 const PROJECT_ID = "project-1";
 const STAKEHOLDER_ID = "stakeholder-1";
@@ -35,6 +35,8 @@ interface Mocks {
   versions?: unknown[];
   represents?: RepresentedLink[];
   needs?: HeldNeed[];
+  /** The stakeholder's engagement timeline. */
+  engagements?: StakeholderEngagement[];
 }
 
 const LINKED_PAIN_POINT = buildGraphNode({ type: "pain_point", id: "pp-1", type_label: "Pain Point", label: "Reports arrive late", status: null });
@@ -44,7 +46,7 @@ const DETAIL_GROUPS = [
   buildStakeholderGroup({ id: "pilot", scope: "project", organization_id: null, project_id: PROJECT_ID, name: "Pilot users", parent_group_id: "client" }),
 ];
 
-function mockDetailApis(current: Stakeholder, { versions = [], represents = [], needs = [] }: Mocks = {}) {
+function mockDetailApis(current: Stakeholder, { versions = [], represents = [], needs = [], engagements = [] }: Mocks = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === "/api/v1/orgs/org-1/groups") return ORG_GROUPS;
@@ -59,6 +61,7 @@ function mockDetailApis(current: Stakeholder, { versions = [], represents = [], 
     if (path.includes(`/artefacts/stakeholder/${STAKEHOLDER_ID}/link-graph`)) return buildGraph([[LINKED_PAIN_POINT]]);
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/personas`)) return represents;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/needs`)) return needs;
+    if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/engagements`)) return engagements;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}`)) return current;
     if (path.endsWith("/versions")) return versions;
     if (path.endsWith("/comments")) return [];
@@ -323,6 +326,33 @@ export const ListsTheNeedsTheStakeholderHas: Story = {
     const canvas = within(canvasElement);
     const link = await canvas.findByRole("link", { name: "Diagnose faults quickly (Active)" });
     await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/needs/need-1`);
+  },
+};
+
+/** The engagement timeline lists the stakeholder's contacts newest first, and "Last engaged" reads the derived date. */
+export const ShowsTheEngagementTimelineAndLastEngaged: Story = {
+  beforeEach: () =>
+    mockDetailApis(buildStakeholder({ last_engaged: "2026-04-02" }), {
+      engagements: [
+        { id: "e2", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02" },
+        { id: "e1", title: "Quarterly review", channel: "meeting", engagement_date: "2026-03-12" },
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "2026-04-02 · Email · Evidence follow-up" });
+    await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/engagements/e2`);
+    await expect(canvas.getByTestId("last-engaged")).toHaveTextContent("Last engaged: 2026-04-02");
+  },
+};
+
+/** A stakeholder who has never been engaged says so. */
+export const NeverEngagedSaysSo: Story = {
+  beforeEach: () => mockDetailApis(buildStakeholder({ last_engaged: null })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByTestId("last-engaged")).toHaveTextContent("Last engaged: Never"));
+    await waitFor(() => expect(canvas.getByText("No engagements logged yet.")).toBeInTheDocument());
   },
 };
 

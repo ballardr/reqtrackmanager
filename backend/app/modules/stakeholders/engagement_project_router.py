@@ -46,6 +46,7 @@ from app.modules.stakeholders.schemas import (
     EngagementUpdate,
     OutcomeCreate,
     OutcomeOut,
+    RelationshipTargetOut,
     StakeholderEngagementOut,
 )
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
@@ -251,6 +252,15 @@ def remove_audience(
 
 
 # --- Raised / answered --------------------------------------------------------
+
+
+@router.get("/engagement-outcome-targets", response_model=list[RelationshipTargetOut])
+def list_outcome_targets(
+    project_id: UUID, target_type: str, current_user: User = Depends(_require_view), db: Session = Depends(get_db)
+):
+    """The project's Pain Points, Needs or Open Questions (`target_type`) an engagement or finding can raise or
+    answer, for the outcome picker. 404 for another type, or one the caller may not view."""
+    return es.list_outcome_targets(db, current_user, _project(db, project_id), target_type)
 
 
 @router.get("/engagements/{engagement_id}/outcomes", response_model=list[OutcomeOut])

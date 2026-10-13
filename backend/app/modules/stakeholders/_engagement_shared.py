@@ -72,6 +72,7 @@ from app.modules.stakeholders.schemas import (
     EngagementUpdate,
     OutcomeCreate,
     OutcomeOut,
+    RelationshipTargetOut,
     StakeholderEngagementOut,
 )
 from app.modules.stakeholders.service import (
@@ -481,6 +482,22 @@ def list_outcomes(
                 link_id=link.id, kind=kind.key, target_type=link.target_type, target_id=summary.id, label=summary.label,
             ))
     return sorted(out, key=lambda o: (o.kind, o.label.lower()))
+
+
+def list_outcome_targets(db: Session, user: User, project: Project, target_type: str) -> list[RelationshipTargetOut]:
+    """The project's records of `target_type` an engagement or finding can raise or answer: the picker's choices.
+
+    Raises:
+        HTTPException: 404 for a type no outcome kind targets, one whose module is not installed, or one the
+            caller may not view (the `(type, view)` FGAC atom), so a title is never shown that the owning
+            module's own screens would hide.
+    """
+    allowed = {t for kind in eng.OUTCOME_KINDS for t in kind.target_types}
+    held = get_effective_permissions(db, user.id, organization_id=project.organization_id, project_id=project.id)
+    viewable = permission_satisfied(held, encode_permission(target_type, PermissionLevel.VIEW.value))
+    if target_type not in allowed or not rel.target_type_available(target_type) or not viewable:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such outcome target type.")
+    return [RelationshipTargetOut(id=s.id, label=s.label, status=s.status) for s in rel.list_targets(db, project, target_type)]
 
 
 def add_outcome(

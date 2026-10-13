@@ -1,12 +1,15 @@
 /**
  * Module: modules/stakeholders/RecordListView
  *
- * The list shared by every record kind in this module (Persona, Stakeholder, Need),
+ * The list shared by every record kind in this module (Persona, Stakeholder, Need, Engagement),
  * on both the project page and the organisation panel: the `DirectoryTable` +
  * `FilterPanel` + "New …" `Modal` shape every module artefact list uses, with
  * status and type filters and the standard archived toggle. What differs per
  * kind is passed in — the noun, the kind-specific columns, the create form —
- * rather than copied into a second list.
+ * rather than copied into a second list. A kind with no lifecycle (an
+ * Engagement) passes no `statusLabel`/`statusTone` and no archived toggle, and
+ * a kind whose "type" has another name (an Engagement's channel) passes
+ * `typeLabel`.
  *
  * Status, type and scope render through their label maps; status and type
  * badges are `FilterBadge`s because the same page filters on both (style
@@ -37,7 +40,8 @@ import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
 export interface ListedRecord {
   id: string;
   name: string;
-  status: string;
+  /** Omit for a kind with no lifecycle. */
+  status?: string;
   scope?: string;
   /** Set only by project endpoints, for an org record: whether the project hides it. */
   project_hidden?: boolean | null;
@@ -49,6 +53,7 @@ export function RecordListView<R extends ListedRecord, V>({
   ariaLabel,
   sectionKey,
   noun,
+  newLabel,
   scopeLabel,
   emptyText,
   showScope,
@@ -56,12 +61,13 @@ export function RecordListView<R extends ListedRecord, V>({
   statusTone,
   scopeLabels,
   typeName,
+  typeLabel = "Type",
   searchText,
   columnsBeforeType,
   columnsAfterScope,
   toolbar,
   extraFilters,
-  includeArchived,
+  includeArchived = false,
   onIncludeArchivedChange,
   includeHidden = false,
   onIncludeHiddenChange,
@@ -75,16 +81,21 @@ export function RecordListView<R extends ListedRecord, V>({
   sectionKey: string;
   /** Singular noun for the New button and search placeholder, e.g. "Persona". */
   noun: string;
+  /** The create button's text; defaults to "New {noun}". */
+  newLabel?: string;
   /** "project" / "organisation", passed to the create modal. */
   scopeLabel: string;
   emptyText: string;
   showScope: boolean;
-  statusLabel: Record<string, string>;
-  statusTone: Record<string, BadgeTone>;
+  /** Omit (with `statusTone`) for a kind with no status: the Status column and filter are left out. */
+  statusLabel?: Record<string, string>;
+  statusTone?: Record<string, BadgeTone>;
   /** Omit for a kind that has no scope. */
   scopeLabels?: Record<string, string>;
   /** Omit for a kind that has no type: the Type column and filter are left out. */
   typeName?: (record: R) => string | null;
+  /** Heading and filter label of the type column; defaults to "Type". */
+  typeLabel?: string;
   /** The text the search box matches against. */
   searchText: (record: R) => string;
   columnsBeforeType: DirectoryColumn<R>[];
@@ -93,8 +104,9 @@ export function RecordListView<R extends ListedRecord, V>({
   toolbar?: ReactNode;
   /** Extra `FilterField`s a kind adds to the filter panel (e.g. Stakeholders' group filter). */
   extraFilters?: ReactNode;
-  includeArchived: boolean;
-  onIncludeArchivedChange: (next: boolean) => void;
+  includeArchived?: boolean;
+  /** Offered when passed; omit for a kind that cannot be archived. */
+  onIncludeArchivedChange?: (next: boolean) => void;
   includeHidden?: boolean;
   /** Offered on the project page only; omit where there is nothing to hide. */
   onIncludeHiddenChange?: (next: boolean) => void;
@@ -125,7 +137,7 @@ export function RecordListView<R extends ListedRecord, V>({
     ...columnsBeforeType,
     ...(typeName
       ? [{
-          key: "type", label: "Type",
+          key: "type", label: typeLabel,
           render: (r: R) => {
             const name = typeName(r);
             return name ? (
@@ -154,21 +166,24 @@ export function RecordListView<R extends ListedRecord, V>({
             ) : "—",
         } as DirectoryColumn<R>]
       : []),
-    {
-      key: "status", label: "Status",
-      render: (r) => (
-        <FilterBadge tone={statusTone[r.status]} active={statusFilter === r.status} onClick={() => setStatusFilter(statusFilter === r.status ? "" : r.status)}>
-          {statusLabel[r.status]}
-        </FilterBadge>
-      ),
-    },
+    ...(statusLabel && statusTone
+      ? [{
+          key: "status", label: "Status",
+          render: (r: R) =>
+            r.status ? (
+              <FilterBadge tone={statusTone[r.status]} active={statusFilter === r.status} onClick={() => setStatusFilter(statusFilter === r.status ? "" : (r.status ?? ""))}>
+                {statusLabel[r.status]}
+              </FilterBadge>
+            ) : "—",
+        } as DirectoryColumn<R>]
+      : []),
   ];
 
   return (
     <div className="stack">
       <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
         <button className="btn btn-primary" onClick={() => setCreating(true)}>
-          New {noun}
+          {newLabel ?? `New ${noun}`}
         </button>
         {toolbar}
       </div>
@@ -185,18 +200,20 @@ export function RecordListView<R extends ListedRecord, V>({
           sectionKey={sectionKey} total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder={`Search ${noun}s…`} searchAriaLabel={`Search ${ariaLabel}`}
         >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All statuses</option>
-              {Object.entries(statusLabel).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
+          {statusLabel && (
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">All statuses</option>
+                {Object.entries(statusLabel).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+          )}
           {typeName && (
-            <FilterField label="Type">
+            <FilterField label={typeLabel}>
               <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                <option value="">All types</option>
+                <option value="">{typeLabel === "Type" ? "All types" : `All ${typeLabel.toLowerCase()}s`}</option>
                 {typeNames.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
@@ -204,7 +221,9 @@ export function RecordListView<R extends ListedRecord, V>({
             </FilterField>
           )}
           {extraFilters}
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
+          {onIncludeArchivedChange && (
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
+          )}
           {onIncludeHiddenChange && (
             <FilterCheckbox label="Show hidden" checked={includeHidden} onChange={onIncludeHiddenChange} />
           )}

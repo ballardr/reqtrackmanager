@@ -2,19 +2,37 @@
  * Module: modules/stakeholders/api
  *
  * Thin wrappers over `api` (frontend/src/api/client.ts) for every endpoint
- * `backend/app/modules/stakeholders/` exposes, for the three artefacts (Persona,
- * Stakeholder, Need). They share a shape — CRUD, versions, archive, lifecycle,
+ * `backend/app/modules/stakeholders/` exposes. The three lifecycle artefacts (Persona,
+ * Stakeholder, Need) share a shape — CRUD, versions, archive, lifecycle,
  * comments, files — so `buildRecordApi` builds it once from a base URL and a
  * path segment; `buildTypeApi`/`buildProjectTypeCalls` do the same for the
  * two-tier type vocabulary. Each artefact then adds only what is its own
  * (Persona's weight override; Stakeholder's cadence hint, create-from-user,
- * erasure and "represents" links). `id` parameters are a `project_id` or
+ * erasure and "represents" links). Engagements are a different shape (no
+ * lifecycle or versions; hard delete) and, with their research extras, have
+ * their own `projectEngagementApi` / `projectResearchApi`. `id` parameters are a `project_id` or
  * `organization_id` to match the scope.
  */
 import { api } from "../../api/client";
 import type { FileAsset, PrincipalRef } from "../../api/types";
 import type {
+  AnonymousParticipant,
   CadenceHint,
+  Engagement,
+  EngagementAudience,
+  EngagementAudienceAdded,
+  EngagementChannel,
+  EngagementComment,
+  EngagementFieldValues,
+  EngagementOutcome,
+  EngagementParticipant,
+  EngagementPersona,
+  EngagementPrompt,
+  OutcomeKind,
+  OutcomeTarget,
+  OutcomeTargetType,
+  ResearchFinding,
+  StakeholderEngagement,
   EffectivePersonaType,
   GroupFromTextResult,
   GroupTextProposal,
@@ -313,3 +331,141 @@ export const projectNeedApi = {
 
 /** The shape the artefacts' APIs share, for components written against any. */
 export type { NeedApi, PersonaApi, StakeholderApi };
+
+/** Create payload: the content plus the optional shortcuts that add people in the same request. */
+export type EngagementCreateValues = EngagementFieldValues & {
+  facilitator?: PrincipalRef | null;
+  stakeholder_ids?: string[];
+  persona_ids?: string[];
+  group_ids?: string[];
+};
+
+/** Partial update payload — only keys present are changed; `null` clears `facilitator` / `retain_until`. */
+export type EngagementUpdateValues = Partial<EngagementFieldValues> & { facilitator?: PrincipalRef | null };
+
+/** The list endpoint's optional filters; they combine. */
+export interface EngagementListFilters {
+  channel?: EngagementChannel;
+  stakeholder_id?: string;
+  persona_id?: string;
+  date_from?: string;
+  date_to?: string;
+  retention_due?: boolean;
+}
+
+/** Outcome calls an engagement and a research finding share (`segment` is "engagements" or "findings"). */
+function buildOutcomeCalls(segment: "engagements" | "findings") {
+  const url = (projectId: string, holderId: string) => `${projectBase(projectId)}/${segment}/${holderId}/outcomes`;
+  return {
+    list: (projectId: string, holderId: string) => api.get<EngagementOutcome[]>(url(projectId, holderId)),
+    add: (projectId: string, holderId: string, kind: OutcomeKind, targetType: OutcomeTargetType, targetId: string) =>
+      api.post<EngagementOutcome>(url(projectId, holderId), { kind, target_type: targetType, target_id: targetId }),
+    remove: (projectId: string, holderId: string, linkId: string) => api.delete<void>(`${url(projectId, holderId)}/${linkId}`),
+  };
+}
+
+/** The outcome calls of an engagement or a finding. */
+export type OutcomeApi = ReturnType<typeof buildOutcomeCalls>;
+
+/** Project-scoped Engagement endpoints (`id` is a `project_id`). An Engagement has no lifecycle, versions
+ * or archive: it is edited in place and permanently deleted (`erase`). */
+export const projectEngagementApi = {
+  list: (projectId: string, filters: EngagementListFilters = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    const query = params.toString();
+    return api.get<Engagement[]>(`${projectBase(projectId)}/engagements${query ? `?${query}` : ""}`);
+  },
+  create: (projectId: string, values: EngagementCreateValues) => api.post<Engagement>(`${projectBase(projectId)}/engagements`, values),
+  get: (projectId: string, engagementId: string) => api.get<Engagement>(`${projectBase(projectId)}/engagements/${engagementId}`),
+  update: (projectId: string, engagementId: string, values: EngagementUpdateValues) =>
+    api.put<Engagement>(`${projectBase(projectId)}/engagements/${engagementId}`, values),
+  /** Permanently deletes the engagement, its notes, participant data, findings, comments and files. */
+  erase: (projectId: string, engagementId: string) => api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}`),
+  /** A Stakeholder's engagement timeline, most recent first. */
+  listForStakeholder: (projectId: string, stakeholderId: string) =>
+    api.get<StakeholderEngagement[]>(`${projectBase(projectId)}/stakeholders/${stakeholderId}/engagements`),
+
+  listParticipants: (projectId: string, engagementId: string) =>
+    api.get<EngagementParticipant[]>(`${projectBase(projectId)}/engagements/${engagementId}/participants`),
+  addParticipant: (projectId: string, engagementId: string, stakeholderId: string) =>
+    api.post<EngagementParticipant>(`${projectBase(projectId)}/engagements/${engagementId}/participants`, { stakeholder_id: stakeholderId }),
+  removeParticipant: (projectId: string, engagementId: string, stakeholderId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/participants/${stakeholderId}`),
+
+  listPersonas: (projectId: string, engagementId: string) =>
+    api.get<EngagementPersona[]>(`${projectBase(projectId)}/engagements/${engagementId}/personas`),
+  addPersona: (projectId: string, engagementId: string, personaId: string) =>
+    api.post<EngagementPersona>(`${projectBase(projectId)}/engagements/${engagementId}/personas`, { persona_id: personaId }),
+  removePersona: (projectId: string, engagementId: string, personaId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/personas/${personaId}`),
+
+  listAudiences: (projectId: string, engagementId: string) =>
+    api.get<EngagementAudience[]>(`${projectBase(projectId)}/engagements/${engagementId}/audiences`),
+  /** Aims the engagement at a group and copies its current members in as participants (a snapshot). */
+  addAudience: (projectId: string, engagementId: string, groupId: string) =>
+    api.post<EngagementAudienceAdded>(`${projectBase(projectId)}/engagements/${engagementId}/audiences`, { group_id: groupId }),
+  /** Removes the audience link only; the participants it added stay. */
+  removeAudience: (projectId: string, engagementId: string, groupId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/audiences/${groupId}`),
+
+  outcomes: buildOutcomeCalls("engagements"),
+  /** The project's Pain Points / Needs / Open Questions an outcome can point at. */
+  listOutcomeTargets: (projectId: string, targetType: OutcomeTargetType) =>
+    api.get<OutcomeTarget[]>(`${projectBase(projectId)}/engagement-outcome-targets?target_type=${targetType}`),
+
+  // The calls `RecordDiscussion` makes (comments and direct attachments).
+  listComments: (projectId: string, engagementId: string) =>
+    api.get<EngagementComment[]>(`${projectBase(projectId)}/engagements/${engagementId}/comments`),
+  addComment: (projectId: string, engagementId: string, body: string) =>
+    api.post<EngagementComment>(`${projectBase(projectId)}/engagements/${engagementId}/comments`, { body }),
+  editComment: (projectId: string, engagementId: string, commentId: string, body: string) =>
+    api.patch<EngagementComment>(`${projectBase(projectId)}/engagements/${engagementId}/comments/${commentId}`, { body }),
+  uploadCommentAttachment: (projectId: string, engagementId: string, commentId: string, file: File) =>
+    api.postFile<FileAsset>(`${projectBase(projectId)}/engagements/${engagementId}/comments/${commentId}/files`, file),
+  removeCommentAttachment: (projectId: string, engagementId: string, commentId: string, fileId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/comments/${commentId}/files/${fileId}`),
+  listFiles: (projectId: string, engagementId: string) =>
+    api.get<FileAsset[]>(`${projectBase(projectId)}/engagements/${engagementId}/files`),
+  uploadFile: (projectId: string, engagementId: string, file: File) =>
+    api.postFile<FileAsset>(`${projectBase(projectId)}/engagements/${engagementId}/files`, file),
+  unlinkFile: (projectId: string, engagementId: string, fileId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/files/${fileId}`),
+};
+
+/** Research-extras endpoints (the `research_extras` sub-component): session prompts, anonymous participants
+ * and findings of an engagement. They 404 while the sub-component is off. `id` is a `project_id`. */
+export const projectResearchApi = {
+  listPrompts: (projectId: string, engagementId: string) =>
+    api.get<EngagementPrompt[]>(`${projectBase(projectId)}/engagements/${engagementId}/prompts`),
+  addPrompt: (projectId: string, engagementId: string, values: { prompt: string; response_notes?: string }) =>
+    api.post<EngagementPrompt>(`${projectBase(projectId)}/engagements/${engagementId}/prompts`, values),
+  updatePrompt: (projectId: string, engagementId: string, promptId: string, values: { prompt?: string; response_notes?: string }) =>
+    api.patch<EngagementPrompt>(`${projectBase(projectId)}/engagements/${engagementId}/prompts/${promptId}`, values),
+  /** Moves a prompt one place; resolves to the reordered list. */
+  movePrompt: (projectId: string, engagementId: string, promptId: string, direction: "up" | "down") =>
+    api.post<EngagementPrompt[]>(`${projectBase(projectId)}/engagements/${engagementId}/prompts/${promptId}/move`, { direction }),
+  deletePrompt: (projectId: string, engagementId: string, promptId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/prompts/${promptId}`),
+
+  listAnonymousParticipants: (projectId: string, engagementId: string) =>
+    api.get<AnonymousParticipant[]>(`${projectBase(projectId)}/engagements/${engagementId}/anonymous-participants`),
+  addAnonymousParticipant: (projectId: string, engagementId: string, values: { label: string; persona_id?: string | null }) =>
+    api.post<AnonymousParticipant>(`${projectBase(projectId)}/engagements/${engagementId}/anonymous-participants`, values),
+  deleteAnonymousParticipant: (projectId: string, engagementId: string, participantId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/anonymous-participants/${participantId}`),
+
+  /** Every finding of the project, across engagements. */
+  listProjectFindings: (projectId: string) => api.get<ResearchFinding[]>(`${projectBase(projectId)}/findings`),
+  listFindings: (projectId: string, engagementId: string) =>
+    api.get<ResearchFinding[]>(`${projectBase(projectId)}/engagements/${engagementId}/findings`),
+  getFinding: (projectId: string, findingId: string) => api.get<ResearchFinding>(`${projectBase(projectId)}/findings/${findingId}`),
+  addFinding: (projectId: string, engagementId: string, values: { title: string; description?: string }) =>
+    api.post<ResearchFinding>(`${projectBase(projectId)}/engagements/${engagementId}/findings`, values),
+  updateFinding: (projectId: string, findingId: string, values: { title?: string; description?: string }) =>
+    api.put<ResearchFinding>(`${projectBase(projectId)}/findings/${findingId}`, values),
+  deleteFinding: (projectId: string, findingId: string) => api.delete<void>(`${projectBase(projectId)}/findings/${findingId}`),
+  findingOutcomes: buildOutcomeCalls("findings"),
+};

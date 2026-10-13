@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { CheckboxField, DateField, TextAreaField, TextField } from "./RecordFormFields";
 
 const meta: Meta = { title: "Modules/Stakeholders/RecordFormFields" };
 export default meta;
@@ -28,6 +28,28 @@ export const TextAreaShowsItsHint: Story = {
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByLabelText("Contact")).toHaveAttribute("rows", "3");
     await expect(within(canvasElement).getByText("Confidential.")).toBeInTheDocument();
+  },
+};
+
+export const DateFieldIsLabelledAndReportsChanges: Story = {
+  render: () => <DateField label="Retain until" value="" onChange={fn()} hint="Optional." />,
+  play: async ({ canvasElement }) => {
+    const input = within(canvasElement).getByLabelText("Retain until");
+    await expect(input).toHaveAttribute("type", "date");
+    await expect(within(canvasElement).getByText("Optional.")).toBeInTheDocument();
+  },
+};
+
+export const CheckboxFieldReportsToggles: Story = {
+  render: () => {
+    const onChange = fn();
+    return <CheckboxField label="Consent recorded" checked={false} onChange={onChange} hint="Tick once agreed." />;
+  },
+  play: async ({ canvasElement }) => {
+    const box = within(canvasElement).getByLabelText("Consent recorded");
+    await expect(box).not.toBeChecked();
+    await userEvent.click(box);
+    await expect(within(canvasElement).getByText("Tick once agreed.")).toBeInTheDocument();
   },
 };
 

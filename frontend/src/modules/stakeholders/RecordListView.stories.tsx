@@ -50,6 +50,24 @@ export const RendersFixedAndKindColumnsThroughLabelMaps: Story = {
   },
 };
 
+/** A kind with no lifecycle (an Engagement) leaves out the Status and archived controls, and can rename the type column. */
+export const NoStatusNoArchiveAndACustomTypeLabel: Story = {
+  args: {
+    statusLabel: undefined, statusTone: undefined, onIncludeArchivedChange: undefined, typeLabel: "Channel", newLabel: "Log widget",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = within(canvas.getByRole("table", { name: "Widgets" }));
+    await expect(table.getByRole("columnheader", { name: "Channel" })).toBeInTheDocument();
+    await expect(table.queryByRole("columnheader", { name: "Type" })).not.toBeInTheDocument();
+    await expect(table.queryByRole("columnheader", { name: "Status" })).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Show archived")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("All statuses")).not.toBeInTheDocument();
+    await expect(canvas.getByText("All channels")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Log widget" })).toBeInTheDocument();
+  },
+};
+
 export const ScopeColumnCanBeHidden: Story = {
   args: { showScope: false },
   play: async ({ canvasElement }) => {

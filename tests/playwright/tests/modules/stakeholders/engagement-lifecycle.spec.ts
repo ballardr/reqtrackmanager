@@ -1,0 +1,281 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { API_BASE_URL, setUpOrg } from "./helpers";
+
+// Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
+installCleanupHook();
+
+/**
+ * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
+ * Phase 5's exit criteria — Playwright e2e coverage for the Engagement UI
+ * (`frontend/src/modules/stakeholders/`) against a real backend: log, edit and
+ * permanently delete an engagement; add participants and covered Personas;
+ * aim it at a Stakeholder group (a snapshot of members); log a contact from a
+ * Stakeholder's page and see the timeline and "Last engaged"; record what an
+ * engagement raised; and the research extras (prompts, anonymous participants,
+ * findings) appearing only once the sub-component is on.
+ *
+ * Each test builds its own disposable org (see `./helpers.ts`), so none depends
+ * on seeded state or on another test having run.
+ */
+
+type Headers = Record<string, string>;
+
+async function post<T>(page: Page, url: string, headers: Headers, data: object): Promise<T> {
+  const resp = await page.request.post(url, { headers, data });
+  expect(resp.ok(), await resp.text()).toBeTruthy();
+  return (await resp.json().catch(() => ({}))) as T;
+}
+
+const projectBase = (projectId: string) => `${API_BASE_URL}/api/v1/projects/${projectId}/modules/stakeholders`;
+const today = () => new Date().toISOString().slice(0, 10);
+
+test.describe("Stakeholders & Personas: Engagements", () => {
+  test("logs, edits and permanently deletes an engagement", async ({ page }) => {
+    const { suffix, project } = await setUpOrg(page, "EngLife");
+    const title = `Quarterly review ${suffix}`;
+
+    await page.goto(`/projects/${project.id}`);
+    await page.getByRole("link", { name: "Engagements", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/engagements$`));
+    await expect(page.getByText("No engagements logged for this project yet.")).toBeVisible();
+
+    // --- Log (a Modal layer); the channel renders through its label map.
+    await page.getByRole("button", { name: "Log engagement" }).click();
+    const dialog = page.getByRole("dialog", { name: "Log engagement" });
+    await dialog.getByLabel("Engagement title").fill(title);
+    await dialog.getByLabel("Channel").selectOption("workshop");
+    await dialog.getByLabel("Summary").fill("Agreed the evidence list.");
+    await dialog.getByLabel("Notes").fill("Pat asked for the traceability export.");
+    await dialog.getByLabel("Consent recorded").check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    const row = page.locator("tr", { hasText: title });
+    await expect(row.getByText("Workshop", { exact: true })).toBeVisible();
+    await expect(row.getByText(today())).toBeVisible();
+
+    await page.getByRole("button", { name: title }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/engagements/[^/]+$`));
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await expect(page.getByText("Pat asked for the traceability export.")).toBeVisible();
+    await expect(page.getByTestId("consent")).toHaveText("Consent recorded: Yes");
+    // The research extras are off by default: their blocks are not offered.
+    await expect(page.getByText("Session prompts", { exact: true })).toHaveCount(0);
+
+    // --- Edit as a layer.
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    const edit = page.getByRole("dialog", { name: `Edit ${title}` });
+    await edit.getByLabel("Summary").fill("Evidence list agreed and dated.");
+    await edit.getByLabel("Retain until").fill("2020-01-01");
+    await edit.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Engagement updated.")).toBeVisible();
+    await expect(page.getByText("Evidence list agreed and dated.")).toBeVisible();
+    // A retain-until date in the past flags the engagement for review; nothing is deleted.
+    await expect(page.getByText("Retention review due")).toBeVisible();
+
+    // --- Permanent delete is a tier-2 confirm needing the exact title.
+    await page.getByRole("button", { name: "Delete permanently" }).click();
+    const confirm = page.getByRole("dialog", { name: `Permanently delete ${title}?` });
+    const confirmButton = confirm.getByRole("button", { name: "Delete permanently" });
+    await expect(confirmButton).toBeDisabled();
+    await confirm.getByRole("textbox").fill(title);
+    await confirmButton.click();
+    await expect(page.getByText("Engagement permanently deleted.")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/engagements$`));
+    await expect(page.getByText("No engagements logged for this project yet.")).toBeVisible();
+  });
+
+  test("adds and removes participants and covered Personas, and the list filters by participant", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "EngPeople");
+    const base = projectBase(project.id);
+    const patName = `Pat Regulator ${suffix}`;
+    const samName = `Sam Client ${suffix}`;
+    const personaName = `Field Technician ${suffix}`;
+    await post(page, `${base}/stakeholders`, adminHeaders, { name: patName });
+    await post(page, `${base}/stakeholders`, adminHeaders, { name: samName });
+    await post(page, `${base}/personas`, adminHeaders, { name: personaName });
+    const title = `Kick-off ${suffix}`;
+    const other = `Unrelated call ${suffix}`;
+    const engagement = await post<{ id: string }>(page, `${base}/engagements`, adminHeaders, { title, channel: "meeting", engagement_date: today() });
+    await post(page, `${base}/engagements`, adminHeaders, { title: other, channel: "call", engagement_date: today() });
+
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
+    await expect(page.getByText("No Stakeholders are recorded as taking part.")).toBeVisible();
+
+    await page.getByLabel("Stakeholder to add").selectOption({ label: patName });
+    await page.getByRole("button", { name: "Add", exact: true }).nth(0).click();
+    await expect(page.getByRole("link", { name: patName })).toBeVisible();
+    // Pat takes part, so is no longer offered.
+    await expect(page.getByLabel("Stakeholder to add").locator("option", { hasText: patName })).toHaveCount(0);
+
+    await page.getByLabel("Persona covered").selectOption({ label: personaName });
+    await page.getByRole("button", { name: "Add", exact: true }).nth(1).click();
+    await expect(page.getByRole("link", { name: personaName })).toBeVisible();
+
+    // --- The list filters by participant (applied by the API).
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
+    await expect(page.getByRole("button", { name: other })).toBeVisible();
+    await page.getByLabel("Participant").selectOption({ label: patName });
+    await expect(page.getByRole("button", { name: other })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: title })).toBeVisible();
+
+    // --- Remove the participant behind a tier-1 confirm.
+    await page.getByRole("button", { name: title }).click();
+    await page.getByRole("button", { name: `Remove ${patName}` }).click();
+    await page.getByRole("dialog", { name: `Remove ${patName}?` }).getByRole("button", { name: "Remove" }).click();
+    await expect(page.getByText("Link removed.")).toBeVisible();
+    await expect(page.getByText("No Stakeholders are recorded as taking part.")).toBeVisible();
+  });
+
+  test("aiming at a Stakeholder group copies its members in as a snapshot", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "EngAudience");
+    const base = projectBase(project.id);
+    const patName = `Pat ${suffix}`;
+    const samName = `Sam ${suffix}`;
+    const groupName = `Acme ${suffix}`;
+    const pat = await post<{ id: string }>(page, `${base}/stakeholders`, adminHeaders, { name: patName });
+    const sam = await post<{ id: string }>(page, `${base}/stakeholders`, adminHeaders, { name: samName });
+    const group = await post<{ id: string }>(page, `${base}/stakeholder-groups`, adminHeaders, { name: groupName });
+    await post(page, `${base}/stakeholder-groups/${group.id}/members`, adminHeaders, { stakeholder_id: pat.id });
+    await post(page, `${base}/stakeholder-groups/${group.id}/members`, adminHeaders, { stakeholder_id: sam.id });
+    const engagement = await post<{ id: string }>(page, `${base}/engagements`, adminHeaders, {
+      title: `Acme workshop ${suffix}`, channel: "workshop", engagement_date: today(),
+    });
+
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
+    await expect(page.getByText("Not aimed at a group.")).toBeVisible();
+    await page.getByRole("button", { name: "Groups to add" }).click();
+    await page.getByRole("group", { name: "Groups to add" }).getByRole("checkbox", { name: groupName }).check();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Add everyone in group" }).click();
+    await expect(page.getByText("Added 2 people as participants.")).toBeVisible();
+    await expect(page.getByRole("link", { name: patName })).toBeVisible();
+    await expect(page.getByRole("link", { name: samName })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Remove audience ${groupName}` })).toBeVisible();
+
+    // --- A no-show is removed individually; removing the audience keeps everyone else.
+    await page.getByRole("button", { name: `Remove ${samName}` }).click();
+    await page.getByRole("dialog", { name: `Remove ${samName}?` }).getByRole("button", { name: "Remove" }).click();
+    await expect(page.getByRole("link", { name: samName })).toHaveCount(0);
+    await page.getByRole("button", { name: `Remove audience ${groupName}` }).click();
+    const dialog = page.getByRole("dialog", { name: `Remove audience ${groupName}?` });
+    await expect(dialog.getByText(/The people it added stay as participants/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Remove" }).click();
+    await expect(page.getByText("Audience removed.")).toBeVisible();
+    await expect(page.getByRole("link", { name: patName })).toBeVisible();
+  });
+
+  test("logs a contact from a Stakeholder's page and shows the timeline and last engaged", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "EngContact");
+    const base = projectBase(project.id);
+    const patName = `Pat Regulator ${suffix}`;
+    const stakeholder = await post<{ id: string }>(page, `${base}/stakeholders`, adminHeaders, { name: patName });
+
+    await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${stakeholder.id}`);
+    await expect(page.getByTestId("last-engaged")).toHaveText("Last engaged: Never");
+    await expect(page.getByText("No engagements logged yet.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Log contact" }).click();
+    const dialog = page.getByRole("dialog", { name: `Log contact with ${patName}` });
+    // The quick add keeps only the fields a one-line contact needs.
+    await expect(dialog.getByLabel("Notes")).toHaveCount(0);
+    await dialog.getByLabel("Engagement title").fill(`Evidence email ${suffix}`);
+    await expect(dialog.getByLabel("Channel")).toHaveValue("email");
+    await dialog.getByLabel("Summary").fill("Sent the export.");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Contact logged.")).toBeVisible();
+    await expect(page.getByRole("link", { name: `${today()} · Email · Evidence email ${suffix}` })).toBeVisible();
+
+    // --- Last engaged reads the derived date, here and in the list column.
+    await page.reload();
+    await expect(page.getByTestId("last-engaged")).toHaveText(`Last engaged: ${today()}`);
+    await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders`);
+    await expect(page.locator("tr", { hasText: patName }).getByText(today())).toBeVisible();
+
+    // --- The link opens the engagement, which lists Pat as a participant.
+    await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${stakeholder.id}`);
+    await page.getByRole("link", { name: `${today()} · Email · Evidence email ${suffix}` }).click();
+    await expect(page.getByRole("heading", { name: `Evidence email ${suffix}` })).toBeVisible();
+    await expect(page.getByRole("link", { name: patName })).toBeVisible();
+  });
+
+  test("records what an engagement raised and links it to the Need", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "EngOutcome");
+    const base = projectBase(project.id);
+    const needName = `Work offline ${suffix}`;
+    const need = await post<{ id: string }>(page, `${base}/needs`, adminHeaders, { name: needName });
+    const engagement = await post<{ id: string }>(page, `${base}/engagements`, adminHeaders, {
+      title: `Site visit ${suffix}`, channel: "meeting", engagement_date: today(),
+    });
+
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
+    await expect(page.getByText("Nothing raised or answered yet.")).toBeVisible();
+    await page.getByLabel("Outcome type").selectOption({ label: "Stakeholder Need" });
+    await page.getByLabel("Outcome record").selectOption({ label: needName });
+    await page.getByRole("button", { name: "Add outcome" }).click();
+    await expect(page.getByText("Outcome recorded.")).toBeVisible();
+    await expect(page.getByText("Raised · Stakeholder Need:")).toBeVisible();
+
+    // --- The Need is reachable from the outcome, and the engagement from the Need's Links panel.
+    await page.getByRole("link", { name: needName }).first().click();
+    await expect(page).toHaveURL(new RegExp(`/modules/stakeholders/needs/${need.id}$`));
+    await expect(page.getByRole("link", { name: `Site visit ${suffix}` })).toBeVisible();
+  });
+
+  test("shows the research extras only when the sub-component is on, and a finding link opens its engagement", async ({ page }) => {
+    const { suffix, org, project, adminHeaders } = await setUpOrg(page, "EngResearch");
+    const base = projectBase(project.id);
+    const personaName = `Field Technician ${suffix}`;
+    await post(page, `${base}/personas`, adminHeaders, { name: personaName });
+    const engagement = await post<{ id: string }>(page, `${base}/engagements`, adminHeaders, {
+      title: `Focus group ${suffix}`, channel: "focus_group", engagement_date: today(),
+    });
+    const url = `/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`;
+
+    await page.goto(url);
+    await expect(page.getByRole("heading", { name: `Focus group ${suffix}` })).toBeVisible();
+    await expect(page.getByText("Session prompts", { exact: true })).toHaveCount(0);
+
+    // --- Switch the research extras on (the organisation's default, which the project inherits).
+    const resp = await page.request.put(
+      `${API_BASE_URL}/api/v1/orgs/${org.id}/modules/stakeholders/subcomponents/research_extras`,
+      { headers: adminHeaders, data: { enabled: true } },
+    );
+    expect(resp.ok(), await resp.text()).toBeTruthy();
+    await page.reload();
+    await expect(page.getByText("Session prompts", { exact: true })).toBeVisible();
+
+    // --- A session prompt with notes.
+    await page.getByLabel("New session prompt").fill("Walk me through an inspection");
+    await page.getByRole("button", { name: "Add prompt" }).click();
+    await expect(page.getByText("Prompt added.")).toBeVisible();
+    await page.getByRole("button", { name: "Edit Walk me through an inspection" }).click();
+    const promptDialog = page.getByRole("dialog", { name: "Edit session prompt" });
+    await promptDialog.getByLabel("Response notes").fill("Starts with the checklist.");
+    await promptDialog.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Starts with the checklist.")).toBeVisible();
+
+    // --- An anonymous participant with a Persona, labelled rather than named.
+    await page.getByLabel("Participant label").fill("Participant 1");
+    await page.getByLabel("Persona represented").selectOption({ label: personaName });
+    await page.getByRole("button", { name: "Add participant" }).click();
+    await expect(page.getByText(`Participant 1 · ${personaName}`)).toBeVisible();
+
+    // --- A finding.
+    await page.getByRole("button", { name: "Add finding" }).click();
+    const findingDialog = page.getByRole("dialog", { name: "New finding" });
+    await findingDialog.getByLabel("Finding title").fill("Technicians skip the checklist offline");
+    await findingDialog.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Finding added.")).toBeVisible();
+    await expect(page.getByText("Technicians skip the checklist offline")).toBeVisible();
+
+    // --- The list counts the anonymous participant, and a finding link redirects to its engagement.
+    const findings = await (await page.request.get(`${base}/findings`, { headers: adminHeaders })).json();
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
+    await expect(page.locator("tr", { hasText: `Focus group ${suffix}` }).getByText("Focus group", { exact: true })).toBeVisible();
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements?finding=${findings[0].id}`);
+    await expect(page).toHaveURL(new RegExp(`/engagements/${engagement.id}$`));
+    await expect(page.getByRole("heading", { name: `Focus group ${suffix}` })).toBeVisible();
+  });
+});

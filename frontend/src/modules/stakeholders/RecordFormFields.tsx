@@ -1,10 +1,11 @@
 /**
  * Module: modules/stakeholders/RecordFormFields
  *
- * The labelled text controls the Persona and Stakeholder create/edit modals
- * both build their forms from: a single-line input and a multi-line textarea,
- * each with a visible label that is also the accessible name (style guide
- * principle 13) and an optional hint underneath.
+ * The labelled controls the Persona, Stakeholder, Need and Engagement
+ * create/edit modals build their forms from: a single-line input, a multi-line
+ * textarea, a date input and a checkbox, each with a visible label that is
+ * also the accessible name (style guide principle 13) and an optional hint
+ * underneath.
  */
 import type { ReactNode } from "react";
 
@@ -43,5 +44,43 @@ export function TextAreaField({
       <textarea className="input" rows={rows} value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} />
       {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
     </label>
+  );
+}
+
+/** A labelled date input (`value` is YYYY-MM-DD, or "" for none). */
+export function DateField({
+  label, value, onChange, hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hint?: ReactNode;
+}) {
+  return (
+    <label className="stack" style={{ gap: "0.25rem" }}>
+      <span>{label}</span>
+      <input className="input" type="date" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} />
+      {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
+    </label>
+  );
+}
+
+/** A labelled checkbox with an optional hint underneath. */
+export function CheckboxField({
+  label, checked, onChange, hint,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  hint?: ReactNode;
+}) {
+  return (
+    <div className="stack" style={{ gap: "0.25rem" }}>
+      <label className="row" style={{ gap: "0.4rem" }}>
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        {label}
+      </label>
+      {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
+    </div>
   );
 }

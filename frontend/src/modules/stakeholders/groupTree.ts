@@ -97,3 +97,8 @@ export function groupSelectNodes(nodes: GroupNode[], tier: "organization" | "pro
     children: groupSelectNodes(n.children, tier, otherTierHint),
   }));
 }
+
+/** `TreeSelect` nodes for every group, none disabled: where either tier's groups may be chosen (an engagement's audience). */
+export function allGroupSelectNodes(nodes: GroupNode[]): TreeSelectNode[] {
+  return nodes.map((n) => ({ id: n.id, label: n.name, children: allGroupSelectNodes(n.children) }));
+}

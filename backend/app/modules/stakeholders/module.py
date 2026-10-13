@@ -876,6 +876,11 @@ MODULE_DEFINITION = ModuleDefinition(
                 nav_icon="target",
             ),
             ModuleNavEntry(
+                nav_label="Engagements",
+                nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/engagements",
+                nav_icon="messages-square",
+            ),
+            ModuleNavEntry(
                 nav_label="Groups",
                 nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/groups",
                 nav_icon="network",

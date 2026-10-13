@@ -98,6 +98,23 @@ function mockListWithHidden() {
   });
 }
 
+/** The project list shows when each stakeholder was last engaged, "Never" when there is no engagement. */
+export const ShowsLastEngagedColumn: Story = {
+  beforeEach: () =>
+    mockPageApis([
+      buildStakeholder({ last_engaged: "2026-04-02" }),
+      buildStakeholder({ id: "stakeholder-2", name: "Sam Client", last_engaged: null }),
+    ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Pat Regulator")).toBeInTheDocument());
+    const table = within(canvas.getByRole("table", { name: "Stakeholders" }));
+    await expect(table.getByRole("columnheader", { name: "Last engaged" })).toBeInTheDocument();
+    await expect(table.getByText("2026-04-02")).toBeInTheDocument();
+    await expect(table.getByText("Never")).toBeInTheDocument();
+  },
+};
+
 export const HiddenStakeholdersAreOnlyListedOnRequest: Story = {
   beforeEach: () => mockListWithHidden(),
   play: async ({ canvasElement }) => {
