@@ -40,6 +40,7 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `FRONTEND_BASE_URL` | `http://localhost:3000` | Recommended if SSO is used | The frontend's base URL, used to redirect back to the UI once an OIDC login completes |
 | `OIDC_INTERNAL_BASE_URL_OVERRIDE` | unset | — | Dev/test-only escape hatch for a containerized identity provider whose public URL isn't reachable from inside the backend's own container. Leave unset in production. |
 | `OIDC_ALLOW_PRIVATE_NETWORK_TARGETS` | `false` | — | Set `true` only if every organisation on this deployment runs its own trusted, internally-hosted identity provider with no public IP. Disables the SSRF guard that otherwise rejects an org's `oidc_issuer_url` resolving to a private/internal address. Leave `false` on any deployment serving mutually-untrusted organisations. |
+| `HELP_ENABLED` / `HELP_URL` | `true` / the public docs site | — | The header Help link opens `HELP_URL` in a new tab; `HELP_ENABLED=false` removes the link (and `/help` shows "Help is not configured"). Point `HELP_URL` at an internally hosted copy for air-gapped installs — see [Hosting the documentation internally](./production-deployment.md#hosting-the-documentation-internally) |
 | `IMAGE_TAG` / `GHCR_IMAGE_PREFIX` | `latest` / `ghcr.io/ballardr/reqtrackmanager` | — | Which published container image tag `docker-compose.yml` pulls (a SemVer, a commit SHA, or `latest`) and from where — see [Obtaining container images](./production-deployment.md#obtaining-container-images) |
 
 ## Frontend configuration

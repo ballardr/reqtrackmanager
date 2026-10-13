@@ -139,6 +139,11 @@ class Settings(BaseSettings):
             server admin already has direct database access regardless;
             deployments that want the stricter, count-only view for this
             specific screen can set this to `false`.
+        help_enabled: Whether the app header shows a Help link at all. Turn it
+            off for an air-gapped deployment with no internal docs mirror.
+        help_url: Where the header Help link opens (a new tab). Defaults to
+            the public documentation site; point it at an internally hosted
+            copy (the `docs` image) so help matches the deployed version.
         allow_external_modules: Deployment-level opt-in for the modular
             feature system's third-party discovery sources
             (`app.modules.registry`'s Python entry-point scan and
@@ -247,6 +252,8 @@ class Settings(BaseSettings):
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
     access_review_show_org_names: bool = True
+    help_enabled: bool = True
+    help_url: str = "https://ballardr.github.io/reqtrackmanager/"
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""

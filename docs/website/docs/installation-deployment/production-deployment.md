@@ -57,7 +57,7 @@ flowchart TD
 
 ## Obtaining container images
 
-CI builds the production `backend`, `frontend`, and `mcp-server` images on every change and, once tests pass on a push to `main`, pushes all three to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server}`. Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+CI builds the production `backend`, `frontend`, `mcp-server`, and `docs` images on every change and, once tests pass on a push to `main`, pushes all four to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server,docs}`. Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
 Each image is tagged three ways:
 
@@ -73,6 +73,25 @@ Each image is tagged three ways:
 If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `docker-compose.yml`.
 
 **Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is baked into it at build time, so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's and the backend's version, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no build args (the default for both paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
+
+## Hosting the documentation internally
+
+The header **Help** link opens the public documentation site by default. That shows the latest docs, not the version you run, and does not work without internet access. To host the docs yourself, run the `docs` image and point `HELP_URL` at it:
+
+```mermaid
+flowchart LR
+    CI["CI build"] -->|"pushes"| IMG["…-docs image"]
+    IMG -->|"docker compose --profile docs up -d"| DOCS["docs service :8200"]
+    ENV["HELP_URL=http://docs.example:8200/"] --> BE["backend"]
+    BE -->|"client-config"| UI["Help link in the app header"]
+    UI -->|"opens"| DOCS
+```
+
+Read left to right: CI publishes a docs image tagged with the same version as the app, you run it, and the backend tells the UI where it is.
+
+- The image is the same static site as the public one, served by unprivileged nginx on port 8080 (`docker-compose.yml` publishes it on 8200 under the `docs` profile). It is built for the root of its own host; to serve it under a sub-path such as `/docs/` behind your reverse proxy, build it with `docker build -f docs/website/Dockerfile.prod --build-arg DOCS_BASE_URL=/docs/ docs/website`.
+- `HELP_URL` must be reachable from users' browsers, not just from the backend.
+- No internal mirror and no wish for an external link? Set `HELP_ENABLED=false` to remove the Help link.
 
 ## Storage credential scope (known gap)
 

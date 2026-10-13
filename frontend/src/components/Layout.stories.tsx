@@ -3,10 +3,12 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { page } from "vitest/browser";
 
 import { api } from "../api/client";
-import type { Organization, Project, ProjectListItem, ServerSettings, SystemVersion } from "../api/types";
+import type { ClientConfig, Organization, Project, ProjectListItem, ServerSettings, SystemVersion } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
 import { buildProject, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { Layout } from "./Layout";
+
+const DEFAULT_CLIENT_CONFIG: ClientConfig = { help_enabled: true, help_url: "https://docs.example.com/" };
 
 const BACKEND_VERSION: SystemVersion = { version: "1.4.0", git_sha: "abc1234", build_date: "2026-08-15T09:00:00Z" };
 
@@ -38,7 +40,7 @@ const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1
  * prefix — Layout composes several providers each with their own fetch, so
  * a single path-matching mock is far more maintainable than one spy per
  * story. */
-function mockLayoutApis() {
+function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG) {
   spyOn(api, "get").mockImplementation(async (path: string): Promise<unknown> => {
     if (path === "/api/v1/system/branding") return SERVER_SETTINGS;
     if (path === "/api/v1/orgs") return [ORG];
@@ -47,6 +49,7 @@ function mockLayoutApis() {
     if (path.startsWith("/api/v1/projects?")) return [] as ProjectListItem[];
     if (path === "/api/v1/notifications") return [];
     if (path === "/api/v1/system/version") return BACKEND_VERSION;
+    if (path === "/api/v1/system/client-config") return clientConfig;
     // `useProjectEnabledModules` (module system Phase 3) — Layout's nav
     // rail calls this whenever a project route is active, independently of
     // whether any module is actually registered; found as a real,
@@ -149,6 +152,34 @@ export const ShowsVersionFooter: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("App vdev")).toBeInTheDocument();
     await expect(canvas.getByText("API v1.4.0")).toBeInTheDocument();
+  },
+};
+
+/** The header Help icon is an external link to the operator-configured URL
+ * (`HELP_URL`), opening in a new tab. */
+export const HelpLinkOpensConfiguredUrl: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const link = await within(canvasElement).findByRole("link", { name: "Help (opens in a new tab)" });
+    await expect(link).toHaveAttribute("href", "https://docs.example.com/");
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  },
+};
+
+/** `HELP_ENABLED=false` removes the Help icon entirely. */
+export const HelpLinkHiddenWhenDisabled: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis({ help_enabled: false, help_url: "https://docs.example.com/" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText("API v1.4.0");
+    await expect(canvas.queryByRole("link", { name: /^Help/ })).not.toBeInTheDocument();
   },
 };
 

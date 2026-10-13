@@ -11,7 +11,6 @@ import { ActionDetailPage } from "./pages/ActionDetailPage";
 import { ChangeRequestDetailPage } from "./pages/ChangeRequestDetailPage";
 import { ChangeRequestsPage } from "./pages/ChangeRequestsPage";
 import { FavouritesPage } from "./pages/FavouritesPage";
-import { HelpPage } from "./pages/HelpPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MyReviewsDuePage } from "./pages/MyReviewsDuePage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -21,6 +20,7 @@ import { OrgListPage } from "./pages/OrgListPage";
 import { OrgLoginPage } from "./pages/OrgLoginPage";
 import { OrgOverviewPage } from "./pages/OrgOverviewPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
+import { HelpRedirectPage } from "./pages/HelpRedirectPage";
 import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
 import { ProjectFilesPage } from "./pages/ProjectFilesPage";
@@ -119,7 +119,7 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/reports" element={<ReportsPage />} />
         <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />
         <Route path="/preferences/:group?" element={<PreferencesPage />} />
-        <Route path="/help" element={<HelpPage />} />
+        <Route path="/help" element={<HelpRedirectPage />} />
         {/* Falls through here for any path that matches none of the routes
             above, including every route `buildModuleRoutes` above would
             contribute once loaded. While a project-scoped path's own

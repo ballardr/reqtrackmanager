@@ -128,8 +128,8 @@ export const PdfDownloadSendsValuesAndTemplate: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await waitFor(() => expect(canvas.getByLabelText("Branding template (PDF and Word)")).toBeInTheDocument());
-    await userEvent.selectOptions(canvas.getByLabelText("Branding template (PDF and Word)"), "tpl-1");
+    await waitFor(() => expect(canvas.getByLabelText("Branding template")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Branding template"), "tpl-1");
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
     await waitFor(() =>
@@ -145,7 +145,7 @@ export const DocxDownloadSendsValuesAndTemplate: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.selectOptions(await canvas.findByLabelText("Branding template (PDF and Word)"), "tpl-1");
+    await userEvent.selectOptions(await canvas.findByLabelText("Branding template"), "tpl-1");
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     await userEvent.click(within(document.body).getByRole("button", { name: "Download Word report" }));
     await waitFor(() =>

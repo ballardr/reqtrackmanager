@@ -2053,6 +2053,12 @@ export interface SystemVersion {
   build_date: string;
 }
 
+/** Deployment settings for the app shell — `GET /api/v1/system/client-config`. */
+export interface ClientConfig {
+  help_enabled: boolean;
+  help_url: string;
+}
+
 // --- Principals (users and groups on parity) ---------------------------------------------------
 // A field that names "who" (an owner, assignee, reviewer) is a user, an organisation group or a
 // project group; see backend `services/principals.py`.

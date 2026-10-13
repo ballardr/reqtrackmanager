@@ -291,7 +291,7 @@ test.describe("Context & Strategy: Reports UI", () => {
 
     await test.step("the chosen branding template is sent with the PDF download", async () => {
       await picker(page).selectOption("pain-point-prioritisation");
-      await page.getByRole("combobox", { name: "Branding template (PDF and Word)" }).selectOption({ label: template.name });
+      await page.getByRole("combobox", { name: "Branding template" }).selectOption({ label: template.name });
       await page.getByRole("button", { name: "Export" }).click();
       const pdf = page.waitForResponse((r) => r.url().includes("format=pdf") && r.url().includes(`report_template_id=${template.id}`));
       await page.getByRole("button", { name: "Download PDF report" }).click();

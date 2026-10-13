@@ -6,8 +6,8 @@ import { api } from "../api/client";
 import type { FileAsset } from "../api/types";
 import { RichTextEditor } from "./RichTextEditor";
 
-function Interactive({ organizationId }: { organizationId?: string }) {
-  const [value, setValue] = useState("Some **existing** body text.");
+function Interactive({ organizationId, initialValue = "Some **existing** body text." }: { organizationId?: string; initialValue?: string }) {
+  const [value, setValue] = useState(initialValue);
   return <RichTextEditor value={value} onChange={setValue} organizationId={organizationId} />;
 }
 
@@ -36,6 +36,20 @@ export const SwitchToRichText: Story = {
     await expect(canvas.getByLabelText("Bullet list")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Markdown" }));
     await expect(canvas.queryByLabelText("Bold")).not.toBeInTheDocument();
+  },
+};
+
+/** A ```mermaid fence is user-authored report content like any other, so it renders as escaped
+ * code, never as raw HTML. */
+export const MermaidFenceRendersAsEscapedCode: Story = {
+  args: { initialValue: "```mermaid\n<img src=x alt=injected>\n```" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Rich text" }));
+    await waitFor(() => expect(canvasElement.querySelector("pre code")).not.toBeNull());
+    await expect(canvasElement.querySelector("img[alt=injected]")).toBeNull();
+    await expect(canvasElement.querySelector(".mermaid")).toBeNull();
+    await expect(canvasElement.querySelector("pre code")?.textContent).toBe("<img src=x alt=injected>");
   },
 };
 

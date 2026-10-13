@@ -25,9 +25,9 @@ The landing-page preference only takes effect at the moment you next log in, not
 
 From **Preferences → Notification preferences**, choose per-notification-type whether you want it in-app, by email, or both, and whether email notifications are sent instantly or batched into a daily digest. See [Notifications](./notifications.md) for what each type covers.
 
-## Getting help in-app
+## Getting help
 
-The **?** icon in the top bar opens the **Help** page: a quick reference covering how the app is organised, roles, the requirement and change-request lifecycles (with diagrams), and components/categories — without leaving the app.
+The **?** icon in the top bar opens this documentation site in a new tab. Your administrator may point it at a copy hosted inside your organisation, or remove the icon if no documentation is available (see [Hosting the documentation internally](../installation-deployment/production-deployment.md#hosting-the-documentation-internally)).
 
 ## Where this fits
 

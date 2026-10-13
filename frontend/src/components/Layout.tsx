@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
+import { useClientConfig } from "../hooks/useClientConfig";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
@@ -94,6 +95,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // arrival at /projects or /favourites — see `FavouritesContext`.
   const { hasFavourites } = useFavourites();
   const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
+  const clientConfig = useClientConfig(!!user);
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
@@ -186,11 +188,19 @@ function LayoutShell({ children }: { children: ReactNode }) {
         {user && (
           <div className="row">
             <NotificationBell />
-            <Tooltip label={strings.nav.help}>
-              <Link to="/help" className="btn" aria-label={strings.nav.help}>
-                <HelpCircle size={16} />
-              </Link>
-            </Tooltip>
+            {clientConfig?.help_enabled && (
+              <Tooltip label={strings.nav.help}>
+                <a
+                  href={clientConfig.help_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn"
+                  aria-label={strings.nav.helpNewTab}
+                >
+                  <HelpCircle size={16} />
+                </a>
+              </Tooltip>
+            )}
             <Tooltip label={strings.nav.preferences}>
               <Link
                 to="/preferences"

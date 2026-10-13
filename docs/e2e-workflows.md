@@ -171,10 +171,10 @@ Uploads a CSV with non-canonical headers, maps each column manually (no auto-mat
 
 Search narrows by name substring, by unique ID, and shows an empty state for no match; status and category filters narrow the list; has-comments/only-watched checkboxes toggle without erroring; switching to list view persists across a reload (synced server-side). `badge-filters.spec.ts` already covers the status-badge click-to-filter interaction specifically.
 
-### 22. Preferences: theme, pronouns, landing page mode; help page
+### 22. Preferences: theme, pronouns, landing page mode; help link
 **Persona:** Org Admin AlphaBeta. **Spec:** `preferences-and-theme.spec.ts` (U-U-01, C-U-18, U-U-03).
 
-Theme persists across a reload; pronouns save and persist; all three landing-page-after-login modes (a specific project, the project list, automatic) are proven by actually logging out and back in for each — the preference is only resolved at the moment of login, not applied to ordinary in-app navigation like the brand logo (see gap below). The Help page is checked here as a light page visit rather than earning its own spec file.
+Theme persists across a reload; pronouns save and persist; all three landing-page-after-login modes (a specific project, the project list, automatic) are proven by actually logging out and back in for each — the preference is only resolved at the moment of login, not applied to ordinary in-app navigation like the brand logo (see gap below). The header Help link is checked here (href and new-tab target, not followed) rather than earning its own spec file.
 
 ### 23. Terminology overrides reach their own surfaces
 **Persona:** Org Admin AlphaBeta. **Spec:** `terminology-coverage.spec.ts` (C-C-03).

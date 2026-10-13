@@ -16,8 +16,11 @@ const config: Config = {
   },
 
   // GitHub Pages project-site hosting: https://ballardr.github.io/reqtrackmanager/
-  url: 'https://ballardr.github.io',
-  baseUrl: '/reqtrackmanager/',
+  // The defaults are the public site. The internal-hosting image
+  // (`Dockerfile.prod`) overrides both via DOCS_URL / DOCS_BASE_URL at build
+  // time (baseUrl must start and end with `/`).
+  url: process.env.DOCS_URL ?? 'https://ballardr.github.io',
+  baseUrl: process.env.DOCS_BASE_URL ?? '/reqtrackmanager/',
 
   // GitHub pages deployment config.
   organizationName: 'ballardr',

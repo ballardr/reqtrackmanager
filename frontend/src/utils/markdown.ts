@@ -6,9 +6,8 @@ import { fileUrl } from "../api/client";
  * bold/italic/code/links/images. Mirrors the same subset
  * `backend/app/services/reports.py`'s Markdown-to-flowable renderer
  * supports (plus fenced code blocks, which that renderer doesn't need),
- * and exists for the same reason: enough fidelity for hand-written
- * content (the help page, `frontend/src/help/*.md`) and report content
- * (project/org intros, chapters, appendices, report templates) without
+ * and exists for the same reason: enough fidelity for report
+ * content (project/org intros, chapters, appendices, report templates) without
  * pulling in a full Markdown/HTML-sanitiser dependency this otherwise
  * dependency-light frontend doesn't have.
  *
@@ -26,20 +25,9 @@ import { fileUrl } from "../api/client";
  * instead, matching that same "resolve from known-safe references only"
  * posture on the frontend.
  *
- * A ```mermaid fenced block renders as `<div class="mermaid">` (raw,
- * unescaped diagram source) — the exact convention `mermaid.run()` scans
- * the page for, so the caller just needs to call that once after this
- * function's output is in the DOM (see `pages/HelpPage.tsx`). Any other
- * language tag renders as an ordinary escaped `<pre><code>` block.
- *
- * Input is always developer-authored static content checked into the
- * repo, never user input — but raw HTML in a non-mermaid code block, and
- * in every other kind of line, is still escaped first, so this never
- * becomes an HTML-injection foothold if that ever changes. Mermaid source
- * is deliberately the one exception (mermaid's own parser needs the raw
- * text, not HTML-escaped entities) — still safe, since it's the same
- * developer-authored-only content, rendered by mermaid's own sandboxed
- * SVG generation rather than injected as arbitrary HTML.
+ * Fenced code blocks render as an escaped `<pre><code>` block whatever the
+ * language tag. All input is HTML-escaped before it reaches the DOM: this
+ * renders user-authored report content, so nothing may pass through raw.
  */
 
 function escapeHtml(text: string): string {
@@ -104,11 +92,7 @@ export function renderMarkdown(source: string): string {
     if (codeLang !== null) {
       if (fenceMatch) {
         // Closing fence.
-        html.push(
-          codeLang === "mermaid"
-            ? `<div class="mermaid">${codeLines.join("\n")}</div>`
-            : `<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`
-        );
+        html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
         codeLang = null;
         codeLines = [];
       } else {
@@ -145,11 +129,7 @@ export function renderMarkdown(source: string): string {
   // An unterminated fence (a stray trailing ``` never closed) — render
   // whatever was captured rather than silently dropping it.
   if (codeLang !== null && codeLines.length > 0) {
-    html.push(
-      codeLang === "mermaid"
-        ? `<div class="mermaid">${codeLines.join("\n")}</div>`
-        : `<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`
-    );
+    html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
   }
 
   return html.join("\n");

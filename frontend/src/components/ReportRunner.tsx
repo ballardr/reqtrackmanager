@@ -16,7 +16,7 @@
  * - For an organisation-wide report, offer a "Project" picker (`project_id`)
  *   listing the catalogue entry's `projects`: exactly the ones the report
  *   accepts for this caller, so the picker never offers one that would fail.
- * - Offer an optional branding template for downloads (PDF and Word; it never
+ * - Offer an optional branding template for downloads (it never
  *   changes the on-screen result) and download through the shared
  *   `ReportExportButton`, with a toast on success or failure. Downloads send
  *   the same values as the screen so a file never silently widens the view
@@ -172,7 +172,7 @@ export function ReportRunner({
         <div className="row" style={{ alignItems: "flex-end", gap: "0.75rem" }}>
           {templates.length > 0 && (
             <LabeledSelect
-              label="Branding template (PDF and Word)"
+              label="Branding template"
               value={templateId}
               onChange={setTemplateId}
               options={templates.map((t) => ({ value: t.id, label: t.name }))}

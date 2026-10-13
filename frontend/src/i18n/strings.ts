@@ -115,6 +115,7 @@ const en = {
     favourites: "Favourites",
     serverManagement: "Server management",
     help: "Help",
+    helpNewTab: "Help (opens in a new tab)",
     collapseNav: "Collapse navigation",
     expandNav: "Expand navigation",
     frontendVersion: (version: string) => `App v${version}`,
