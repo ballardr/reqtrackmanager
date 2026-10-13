@@ -354,7 +354,7 @@ def engagement_ids_linked_to(
         select(ArtefactLink.source_id).join(Engagement, Engagement.id == ArtefactLink.source_id).where(
             ArtefactLink.source_type == ENGAGEMENT_ARTEFACT_TYPE, ArtefactLink.target_type == target_type,
             ArtefactLink.target_id == target_id, ArtefactLink.link_type_id == type_id,
-            Engagement.project_id == project.id,
+            ArtefactLink.source_project_id.is_(None), Engagement.project_id == project.id,
         )
     ))
 
