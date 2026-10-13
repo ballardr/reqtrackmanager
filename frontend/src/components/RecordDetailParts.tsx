@@ -24,11 +24,21 @@ export function RecordField({ label, value }: { label: string; value: string }) 
   );
 }
 
-/** A labelled bold caption over arbitrary content (the same label style as `RecordField`). */
-export function RecordFieldGroup({ label, children, gap = "0.25rem" }: { label: string; children: ReactNode; gap?: string }) {
+/**
+ * A labelled bold caption over arbitrary content (the same label style as `RecordField`).
+ *
+ * @param action A control on the caption's own line, e.g. an `AddPopoverButton`, so adding to a
+ *   list costs no extra row.
+ */
+export function RecordFieldGroup({
+  label, children, gap = "0.25rem", action,
+}: { label: string; children: ReactNode; gap?: string; action?: ReactNode }) {
   return (
     <div className="stack" style={{ gap }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
+      <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+        <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
+        {action}
+      </span>
       {children}
     </div>
   );
@@ -42,9 +52,10 @@ export function RecordFieldGroup({ label, children, gap = "0.25rem" }: { label: 
  * @param principal The field's resolved current value (the record's own `PrincipalOut`).
  * @param projectId The record's project, enabling project-group choices; omit for an organisation-level record.
  * @param onChange Called with the picked principal, or null when unassigned.
+ * @param compact Use the compact picker (a (+)/pencil button instead of an always-open search box).
  */
 export function RecordPrincipalField({
-  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange,
+  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange, compact,
 }: {
   label: string;
   ariaLabel: string;
@@ -54,6 +65,7 @@ export function RecordPrincipalField({
   projectId?: string;
   readOnly: boolean;
   onChange: (principal: PrincipalRef | null) => void;
+  compact?: boolean;
 }) {
   return (
     <RecordFieldGroup label={label}>
@@ -63,7 +75,7 @@ export function RecordPrincipalField({
         <PrincipalPicker
           orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
           kinds={projectId ? undefined : ["user", "org_group"]}
-          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel}
+          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel} compact={compact}
         />
       )}
     </RecordFieldGroup>

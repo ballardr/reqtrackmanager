@@ -27,7 +27,8 @@ const meta: Meta<typeof ArtefactLinksPanel> = {
   title: "Components/ArtefactLinksPanel",
   component: ArtefactLinksPanel,
   decorators: [withToast(), withRouter("/"), withStatefulAuth(buildUser())],
-  args: { projectId: LINKS_PROJECT_ID, artefactType: "requirement", artefactId: LINKS_ARTEFACT_ID },
+  // The labels are hidden by default in the product; most stories read them, so they start shown.
+  args: { projectId: LINKS_PROJECT_ID, artefactType: "requirement", artefactId: LINKS_ARTEFACT_ID, showRelationships: true },
 };
 export default meta;
 
@@ -60,6 +61,130 @@ export const GroupsLinksByRecordType: Story = {
     await expect(canvas.getByRole("link", { name: "In Software module" })).toHaveAttribute("href", "/projects/project-child");
     await expect(canvas.getByText(/2 linked records are not shown/)).toBeInTheDocument();
     await expect(canvas.getByText(/1 linked record cannot be displayed/)).toBeInTheDocument();
+  },
+};
+
+/** Each type group collapses to its heading and count; a page can start chosen types collapsed, and the viewer's toggle wins. */
+export const GroupsCollapseAndAPageCanStartSomeCollapsed: Story = {
+  args: {
+    collapsedTypes: ["pain_point"],
+    api: buildLinksApi({
+      graph: fn(async () => buildGraph([[DECISION], [PAIN, { phrase: "Is motivated by" }]])),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
+    const pain = canvas.getByRole("button", { name: "Pain Point" });
+    await expect(pain).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.queryByRole("link", { name: "Reports arrive late" })).not.toBeInTheDocument();
+    // A collapsed group still says how many links it holds; an open group with one link needs no count.
+    await expect(canvas.getAllByLabelText("1 link")).toHaveLength(1);
+    await userEvent.click(pain);
+    await expect(pain).toHaveAttribute("aria-expanded", "true");
+    await expect(canvas.getByRole("link", { name: "Reports arrive late" })).toBeInTheDocument();
+    const decision = canvas.getByRole("button", { name: "Decision" });
+    await userEvent.click(decision);
+    await expect(canvas.queryByRole("link", { name: "DEC-001 Use Postgres" })).not.toBeInTheDocument();
+  },
+};
+
+/** The header's buttons keep one order in both layouts: Add, Trace, then View options at the end. */
+export const HeaderButtonsKeepOneOrderInBothLayouts: Story = {
+  args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION]])) }) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
+    const order = () =>
+      [...canvasElement.querySelectorAll(".artefact-links__buttons > button")].map((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").trim());
+    await expect(order()).toEqual(["Add link", "Trace", "View options"]);
+    await userEvent.click(canvas.getByRole("button", { name: "View options" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "View options" })).getByRole("checkbox", { name: "Compact view" }));
+    await expect(order()).toEqual(["Add link", "Trace", "View options"]);
+  },
+};
+
+/** Relationship labels are off by default (each row's hover text names it); "View options" turns them and the compact layout on or off. */
+export const ViewOptionsToggleRelationshipsAndCompact: Story = {
+  args: {
+    showRelationships: false,
+    api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION], [PAIN, { phrase: "Is motivated by" }]])) }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
+    // No relationship text; it is on the row's hover text instead.
+    await expect(canvas.queryByText("Is implemented by")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" }).closest("li")).toHaveAttribute("title", "Is implemented by");
+    await expect(canvasElement.querySelector(".card")).not.toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "View options" }));
+    const options = within(within(document.body).getByRole("dialog", { name: "View options" }));
+    await userEvent.click(options.getByRole("checkbox", { name: /Show relationships/ }));
+    await expect(canvas.getByText("Is implemented by")).toBeInTheDocument();
+    await userEvent.click(options.getByRole("checkbox", { name: "Compact view" }));
+    await expect(canvasElement.querySelector(".card")).toBeNull();
+    // The popover stays open while the layout flips, so it can be used again straight away.
+    await expect(options.getByRole("checkbox", { name: "Compact view" })).toBeChecked();
+    await userEvent.click(options.getByRole("checkbox", { name: /Show relationships/ }));
+    await expect(canvas.queryByText("Is implemented by")).not.toBeInTheDocument();
+  },
+};
+
+const PEOPLE = ["Dana Whitfield", "Pat Okafor", "Lee Harbour"].map((name, i) =>
+  buildGraphNode({ type: "stakeholder", id: `st-${i}`, type_label: "Stakeholder", label: name, status: i === 0 ? "active" : null }),
+);
+
+/** Several links of one kind read as one relationship label with a count over a list of rows; no pill is repeated on each row. */
+export const SeveralLinksOfOneKindShareOneLabelWithACount: Story = {
+  args: {
+    api: buildLinksApi({
+      graph: fn(async () => buildGraph([
+        ...PEOPLE.map((p): [typeof p, { phrase: string }] => [p, { phrase: "Has participant" }]),
+        [buildGraphNode({ type: "research_finding", id: "f-1", type_label: "Research finding", label: "FND-003 Skips the checklist", status: null }), { phrase: "Has finding" }],
+      ])),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Dana Whitfield" })).toBeInTheDocument());
+    // The group and the relationship both say how many.
+    await expect(canvas.getAllByLabelText("3 links")).toHaveLength(2);
+    await expect(canvas.getAllByText("Has participant")).toHaveLength(1);
+    await expect(canvasElement.querySelectorAll(".badge")).toHaveLength(0);
+    // A code is a small suffix after the title; the link keeps the full name for assistive technology.
+    const finding = canvas.getByRole("link", { name: "FND-003 Skips the checklist" });
+    await expect(finding).toHaveTextContent("Skips the checklist");
+    await expect(canvas.getByText("FND-003")).toHaveClass("artefact-links__code");
+    // A group or relationship with a single link shows no count at all.
+    await expect(canvas.queryByLabelText("1 link")).not.toBeInTheDocument();
+  },
+};
+
+const ENGAGEMENT = buildGraphNode({
+  type: "engagement", id: "eng-1", type_label: "Engagement", label: "Launch-site focus group", status: null,
+});
+
+/** Compact (inside another record's card): no card chrome, icon buttons beside a small title, and the engagement hidden from the list. */
+export const CompactSitsInsideACardWithIconButtonsAndHidesTypes: Story = {
+  args: {
+    compact: true,
+    hideLinkedTypes: ["engagement"],
+    api: buildLinksApi({
+      graph: fn(async () => buildGraph([[ENGAGEMENT, { phrase: "Is a finding of" }], [PAIN, { phrase: "Raised" }]])),
+    }),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reports arrive late" })).toBeInTheDocument());
+    // The engagement is hidden from the list; it is still in the graph the trace walks.
+    await expect(canvas.queryByRole("link", { name: "Launch-site focus group" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("heading", { name: "Engagement" })).not.toBeInTheDocument();
+    // No card, no text buttons: the title has a (+) and a trace icon next to it, both named.
+    await expect(canvasElement.querySelector(".card")).toBeNull();
+    await expect(canvas.getByRole("button", { name: "Trace" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
+    await waitFor(() => expect(within(document.body).getByRole("dialog", { name: "Add a link" })).toBeInTheDocument());
+    await expect(args.api!.options).toHaveBeenCalled();
   },
 };
 

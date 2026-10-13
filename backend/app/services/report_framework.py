@@ -1002,6 +1002,18 @@ def _entry(
     )
 
 
+def _mounted_path(router: APIRouter, route_name: str, fallback: str) -> str:
+    """The full path the report route is served at, read from the router's own routes.
+
+    A module whose router is a composite of several prefixed routers has no single `router.prefix`, so the
+    prefix-based `fallback` would be wrong for it; the route itself always knows where it was mounted.
+    """
+    for route in router.routes:
+        if getattr(route, "name", None) == route_name:
+            return route.path
+    return fallback
+
+
 def project_catalogue(db: Session, project: Project) -> list[ReportCatalogueEntryOut]:
     """Every report runnable on `project`: the module is enabled for it and the
     declared sub-component (if any) is enabled. The caller's project access
@@ -1022,7 +1034,9 @@ def project_catalogue(db: Session, project: Project) -> list[ReportCatalogueEntr
             continue
         if definition.subcomponent and not is_module_subcomponent_enabled(db, project.id, module_key, definition.subcomponent):
             continue
-        path = f"{router.prefix}/reports/{definition.slug}".replace("{project_id}", str(project.id))
+        path = _mounted_path(
+            router, f"project_report_{definition.key}", f"{router.prefix}/reports/{definition.slug}",
+        ).replace("{project_id}", str(project.id))
         entries.append(_entry(module_key, definition, scope="project", path=path))
     return entries
 
@@ -1058,7 +1072,9 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
         router = module.get_router()
         if router is None:
             continue
-        path = f"{router.prefix}/reports/{definition.slug}".replace("{organization_id}", str(organization_id))
+        path = _mounted_path(
+            router, f"org_report_{definition.key}", f"{router.prefix}/reports/{definition.slug}",
+        ).replace("{organization_id}", str(organization_id))
         if definition.org_scope not in scoped:
             scoped[definition.org_scope] = scope_projects(
                 db, user, definition=definition, organization=organization, root_project=None, include_children=False,

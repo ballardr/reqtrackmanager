@@ -28,6 +28,8 @@ import {
   CircleHelp,
   Compass,
   type LucideIcon,
+  MessagesSquare,
+  Network,
   Puzzle,
   Scale,
   ShieldAlert,
@@ -40,6 +42,7 @@ import {
 
 const ICONS_BY_NAME: Record<string, LucideIcon> = {
   puzzle: Puzzle,
+  network: Network,
   "shield-check": ShieldCheck,
   "shield-alert": ShieldAlert,
   scale: Scale,
@@ -51,6 +54,7 @@ const ICONS_BY_NAME: Record<string, LucideIcon> = {
   users: Users,
   "user-round": UserRound,
   target: Target,
+  "messages-square": MessagesSquare,
 };
 
 /** The same generic fallback `nav_icon`'s own backend default resolves to

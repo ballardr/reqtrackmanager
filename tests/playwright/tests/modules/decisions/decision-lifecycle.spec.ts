@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability, showLinkRelationships } from "../../e2e-workflows/helpers";
 import { selectLabeledOption } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -44,6 +44,7 @@ const API_BASE_URL = "http://localhost:8000";
  */
 test.describe("Decision Management: create -> propose -> approve -> supersede", () => {
   test("moves a Decision through its lifecycle and supersedes it with a second, approved Decision", async ({ page }) => {
+    await showLinkRelationships(page);
     const suffix = Date.now();
     const orgName = `E2E Decisions Org ${suffix}`;
     const adminEmail = `e2e-decisions-admin-${suffix}@example.com`;
@@ -173,7 +174,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await supersedeDialog.getByRole("button", { name: "Supersede", exact: true }).click();
     // Scoped to the Links panel's own row — the supersession is a dedicated link,
     // so it is listed with its phrase but offers no remove control.
-    const supersessionRow = page.locator(".artefact-links__row", { hasText: "Supersedes" });
+    const supersessionRow = page.locator(".artefact-links__phrase", { hasText: "Supersedes" });
     await expect(supersessionRow).toBeVisible();
     await expect(supersessionRow).toContainText("DEC-001");
     await expect(supersessionRow.getByRole("button")).toHaveCount(0);

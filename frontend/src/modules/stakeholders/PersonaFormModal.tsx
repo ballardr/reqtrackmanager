@@ -13,6 +13,7 @@
  */
 import { useState } from "react";
 
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { TextAreaField, TextField } from "./RecordFormFields";
@@ -78,32 +79,36 @@ export function PersonaFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.name}` : `New Persona (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
-        <TextField label="Name" ariaLabel="Persona name" value={name} onChange={setName} />
-        <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
-        <TextField label="Role / job title" ariaLabel="Role or job title" value={roleTitle} onChange={setRoleTitle} />
-        {TEXT_FIELDS.map((f) => (
-          <TextAreaField
-            key={f.key} label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
-            onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
-          />
-        ))}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Importance weight (optional)</span>
-          <input
-            className="input"
-            type="number"
-            min="0"
-            step="any"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            aria-label="Importance weight"
-            aria-invalid={!weightValid}
-          />
-          <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-            Used when scoring against personas. Leave blank to weight every persona equally; must be greater than zero.
-          </span>
-        </label>
-        {initial && <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />}
+        <FormGrid minColumn="18rem">
+          <TextField label="Name" ariaLabel="Persona name" value={name} onChange={setName} />
+          <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
+          <TextField label="Role / job title" ariaLabel="Role or job title" value={roleTitle} onChange={setRoleTitle} />
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            <span>Importance weight (optional)</span>
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="any"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              aria-label="Importance weight"
+              aria-invalid={!weightValid}
+            />
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+              Used when scoring against personas. Leave blank to weight every persona equally; must be greater than zero.
+            </span>
+          </label>
+          {TEXT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField
+                label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+        </FormGrid>
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel}>Cancel</button>

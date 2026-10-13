@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders._principals
 
-The owner / champion fields of Personas, Stakeholders and Needs are principals
+The owner / champion fields of Personas, Stakeholders and Needs (and an Engagement's facilitator) are principals
 (a user, an organisation group or a project group — `services.principals`).
 This module is the one place the stakeholders code turns between the three
 shapes of such a field, so no router or exporter repeats it:

@@ -8,6 +8,11 @@ the two into the single `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`).
 - Org level: the Stakeholder type vocabulary and org-scoped stakeholders.
 - Project level: project-scoped stakeholders (with direct file attachments)
   and the project's Stakeholder type overrides/local types.
+- Stakeholder groups (Phase 3c), at both levels: each group is keyed by its
+  name path from the root (every element carries its scope, since a project
+  group may sit under an org group), with its members by stakeholder name and
+  scope. Importing merges into an existing group of the same path and warns
+  and skips a group or member it cannot place.
 
 Design decisions:
 - Same carry-over rules as the Persona bundle: current content and status
@@ -38,6 +43,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.scoring import ScoringLevel
 from app.models.user import User
+from app.modules.stakeholders import groups as grp
 from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, principals_from_bundle, principals_to_bundle
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus, TargetCadence
 from app.modules.stakeholders.models import (
@@ -46,6 +52,7 @@ from app.modules.stakeholders.models import (
     ProjectStakeholderVisibility,
     Stakeholder,
     StakeholderFile,
+    StakeholderGroup,
     StakeholderTypeDefinition,
 )
 from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_KEY, STAKEHOLDER_SCORING_SCHEME_KEY
@@ -123,6 +130,95 @@ def _stakeholder_emails(db: Session, stakeholders: list[Stakeholder]) -> dict[UU
     return _emails(db, ids)
 
 
+# --- Groups --------------------------------------------------------------------
+
+
+def _export_groups(
+    db: Session, organization_id: UUID, project_id: UUID | None, scope: StakeholderScope
+) -> list[dict[str, Any]]:
+    """The groups of `scope` (org groups, or `project_id`'s own), parents before children."""
+    universe = grp.load_groups(db, organization_id, project_id)
+    entries = []
+    for g in universe.values():
+        if g.scope != scope:
+            continue
+        chain = [g, *grp.ancestor_chain(universe, g.id)][::-1]
+        names = {}
+        for sid in grp.member_ids(db, {g.id}):
+            member = db.get(Stakeholder, sid)
+            if member is not None:
+                names[(get_current_stakeholder_version(db, sid).name, member.scope.value)] = None
+        entries.append({
+            "path": [{"name": n.name, "scope": n.scope.value} for n in chain],
+            "description": g.description, "exclusive_children": g.exclusive_children, "sort_order": g.sort_order,
+            "members": [{"name": n, "scope": sc} for n, sc in sorted(names)],
+        })
+    return sorted(entries, key=lambda e: (len(e["path"]), [p["name"].lower() for p in e["path"]]))
+
+
+def _import_groups(
+    db: Session, entries: list[dict[str, Any]], organization_id: UUID, project_id: UUID | None,
+    stakeholders: dict[tuple[str, str], Stakeholder], warnings: BundleImportWarnings,
+) -> None:
+    """Recreates exported groups (parents first) and their memberships, merging into a group that
+    already exists at the same path."""
+    own_scope = StakeholderScope.PROJECT if project_id else StakeholderScope.ORGANIZATION
+    universe = grp.load_groups(db, organization_id, project_id)
+
+    def path_of(g: StakeholderGroup) -> tuple:
+        return tuple((n.scope.value, n.name.lower()) for n in [*grp.ancestor_chain(universe, g.id)][::-1] + [g])
+
+    by_path = {path_of(g): g for g in universe.values()}
+    for entry in entries:
+        key = tuple((p["scope"], p["name"].lower()) for p in entry["path"])
+        context = f"Stakeholder group {' / '.join(p['name'] for p in entry['path'])!r}"
+        group = by_path.get(key)
+        if group is None:
+            parent = by_path.get(key[:-1]) if len(key) > 1 else None
+            if len(key) > 1 and parent is None:
+                warnings.add(f"{context}: parent group not found — skipped.")
+                continue
+            if entry["path"][-1]["scope"] != own_scope.value:
+                warnings.add(f"{context}: group not found in this organisation — skipped.")
+                continue
+            try:
+                group = grp.create_group(
+                    db, scope=own_scope, organization_id=organization_id, project_id=project_id,
+                    name=entry["path"][-1]["name"], description=entry.get("description", ""),
+                    parent_group_id=parent.id if parent else None, exclusive_children=False,
+                )
+            except grp.GroupRuleError as exc:
+                warnings.add(f"{context}: {exc} — skipped.")
+                continue
+            group.sort_order = entry.get("sort_order", group.sort_order)
+            universe[group.id] = group
+            by_path[key] = group
+        if group.scope != own_scope:
+            continue  # an existing group of the other tier is only a parent here, never edited
+        for m in entry.get("members", []):
+            stakeholder = stakeholders.get((m["name"], m["scope"]))
+            if stakeholder is None:
+                warnings.add(f"{context}: member {m['name']!r} not found — skipped.")
+                continue
+            try:
+                grp.add_member(db, group, stakeholder, universe, organization_id, project_id)
+            except grp.GroupRuleError as exc:
+                if "already in the group" not in str(exc):
+                    warnings.add(f"{context}: member {m['name']!r}: {exc}")
+    # Applied last so a bundle that holds a stakeholder in several branches can still restore it.
+    for entry in entries:
+        key = tuple((p["scope"], p["name"].lower()) for p in entry["path"])
+        group = by_path.get(key)
+        if group is not None and group.scope == own_scope and entry.get("exclusive_children") and not group.exclusive_children:
+            group.exclusive_children = True
+            try:
+                grp.assert_exclusive_integrity(db, group)
+            except grp.GroupRuleError as exc:
+                group.exclusive_children = False
+                warnings.add(f"Stakeholder group {entry['path'][-1]['name']!r}: not marked exclusive — {exc}")
+    db.flush()
+
+
 # --- Org level ---------------------------------------------------------------
 
 
@@ -141,6 +237,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     return {
         "stakeholder_types": [{"name": t.name, "sort_order": t.sort_order, "is_active": t.is_active} for t in types],
         "stakeholders": [_stakeholder_json(db, s, org.id, emails) for s in stakeholders],
+        "stakeholder_groups": _export_groups(db, org.id, None, StakeholderScope.ORGANIZATION),
     }
 
 
@@ -238,6 +335,12 @@ def import_org_data(
             personas=personas, current_user=None,
         )
     db.flush()
+    org_stakeholders = {
+        (get_current_stakeholder_version(db, s.id).name, "organization"): s
+        for s in db.scalars(select(Stakeholder).where(
+            Stakeholder.organization_id == org.id, Stakeholder.scope == StakeholderScope.ORGANIZATION))
+    }
+    _import_groups(db, data.get("stakeholder_groups", []), org.id, None, org_stakeholders, warnings)
 
 
 # --- Project level -----------------------------------------------------------
@@ -285,6 +388,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     return {
         "project_stakeholder_types": types_json, "project_stakeholders": stakeholders_json,
         "project_stakeholder_visibility": visibility_json,
+        "project_stakeholder_groups": _export_groups(db, project.organization_id, project.id, StakeholderScope.PROJECT),
     }, assets
 
 
@@ -366,3 +470,12 @@ def import_project_data(
             continue
         db.add(ProjectStakeholderVisibility(project_id=project.id, stakeholder_id=stakeholder_id, hidden=v["hidden"]))
     db.flush()
+
+    visible = {
+        (get_current_stakeholder_version(db, st.id).name, st.scope.value): st
+        for st in db.scalars(select(Stakeholder).where(
+            ((Stakeholder.project_id == project.id) & (Stakeholder.scope == StakeholderScope.PROJECT))
+            | ((Stakeholder.organization_id == organization_id) & (Stakeholder.scope == StakeholderScope.ORGANIZATION))
+        ))
+    }
+    _import_groups(db, data.get("project_stakeholder_groups", []), organization_id, project.id, visible, warnings)

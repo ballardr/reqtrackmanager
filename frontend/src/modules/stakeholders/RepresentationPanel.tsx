@@ -12,13 +12,19 @@
  * links ride on the *other* artefact's sub-component, so an org that switched
  * Stakeholders (or Personas) off simply doesn't see the panel rather than an
  * error. Adding and removing each give a toast; removal sits behind a tier-1
- * `ConfirmDialog` (docs/ux-style-guide.md "confirmation, in two tiers").
+ * `ConfirmDialog` (docs/ux-style-guide.md "confirmation, in two tiers"). To keep a page of
+ * several such lists short, each is a heading with a (+) button that opens the picker in a
+ * `Popover`, over a row of removable chips (docs/ux-style-guide.md, "Pattern: compact forms and
+ * add-on-demand").
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { AddPopoverButton } from "../../components/AddPopoverButton";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { RecordFieldGroup } from "../../components/RecordDetailParts";
+import { RemovableItemList } from "../../components/RemovableItemList";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import type { RepresentedLink } from "./types";
 
@@ -39,6 +45,7 @@ export function RepresentationPanel({
   linkFor,
   edit,
   reloadKey,
+  onChanged,
 }: {
   heading: string;
   emptyText: string;
@@ -48,6 +55,8 @@ export function RepresentationPanel({
   edit?: RepresentationEdit;
   /** Change to force a reload from outside. */
   reloadKey?: number;
+  /** Called after a link is added or removed, so a page's Links panel can refresh. */
+  onChanged?: () => void;
 }) {
   const { showToast } = useToast();
   const [links, setLinks] = useState<RepresentedLink[] | null>(null);
@@ -83,45 +92,52 @@ export function RepresentationPanel({
       await action();
       showToast(success);
       setRefresh((n) => n + 1);
+      onChanged?.();
     } catch (err) {
       showToast(toErrorMessage(err, failure), "error");
     }
   }
 
+  const addForm = (close: () => void) => (
+    <div className="stack">
+      <LabeledSelect label={edit!.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+      <div className="row" style={{ justifyContent: "flex-end" }}>
+        <button className="btn" onClick={close}>Cancel</button>
+        <button
+          className="btn btn-primary"
+          disabled={!picked}
+          onClick={async () => {
+            const id = picked;
+            setPicked("");
+            close();
+            await mutate(() => edit!.onAdd(id), "Link added.", "Could not add the link.");
+          }}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="stack" style={{ gap: "0.35rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{heading}</span>
+    <RecordFieldGroup
+      label={heading}
+      gap="0.35rem"
+      action={edit && <AddPopoverButton label={`Add to ${heading}`} disabled={candidates.length === 0}>{addForm}</AddPopoverButton>}
+    >
       {links.length === 0 ? (
         <span className="text-muted">{emptyText}</span>
       ) : (
-        <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-          {links.map((l) => (
-            <li key={l.link_id}>
-              <Link to={linkFor(l)}>{l.name}</Link>
-              {edit && (
-                <button className="btn" style={{ marginLeft: "0.5rem" }} aria-label={`Remove ${l.name}`} onClick={() => setRemoving(l)}>
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {edit && (
-        <div className="row" style={{ gap: "0.5rem", alignItems: "flex-end" }}>
-          <LabeledSelect label={edit.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
-          <button
-            className="btn"
-            disabled={!picked}
-            onClick={async () => {
-              const id = picked;
-              setPicked("");
-              await mutate(() => edit.onAdd(id), "Link added.", "Could not add the link.");
-            }}
-          >
-            Add
-          </button>
-        </div>
+        <RemovableItemList
+          items={links.map((l) => ({
+            id: l.link_id,
+            content: <Link to={linkFor(l)}>{l.name}</Link>,
+            removeLabel: `Remove ${l.name}`,
+          }))}
+          onRemove={edit ? (id) => setRemoving(links.find((l) => l.link_id === id) ?? null) : undefined}
+          noun={heading.toLowerCase()}
+          modalTitle={heading}
+        />
       )}
       {edit && removing && (
         <ConfirmDialog
@@ -136,6 +152,6 @@ export function RepresentationPanel({
           onCancel={() => setRemoving(null)}
         />
       )}
-    </div>
+    </RecordFieldGroup>
   );
 }

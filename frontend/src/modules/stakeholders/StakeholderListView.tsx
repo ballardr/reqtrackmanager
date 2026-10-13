@@ -8,19 +8,36 @@
  * Interest show the org's level *names* (`scheme`); they are plain labels, the
  * grid position itself is only computed server-side.
  *
+ * Groups (Phase 3c): `groups` adds a Groups column, a group filter (a group's
+ * members include those in its descendants unless "Directly in the group only" is
+ * ticked) and a "Group by" control. Grouping by a top-level group adds a column
+ * named for it that shows each stakeholder's branch(es) under it and orders the
+ * list by branch — the answer to a "custom column" for categorical data such as
+ * Client. Filtering and ordering happen here, client-side, over the
+ * `groups` each stakeholder already carries; the API offers the same via
+ * `group_id` / `group_by`.
+ *
+ * `showLastEngaged` (project page only: an organisation list has no single
+ * project's engagements) adds a "Last engaged" column from the date the API
+ * derives from this project's engagements; "Never" when there is none.
+ *
  * The project page's "Show hidden" filter and Visibility column are
  * `RecordListView`'s; the `includeHidden`/`onIncludeHiddenChange`/`onShowHidden`
  * props pass straight through.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { ScoringScheme } from "../../api/scoring";
 import type { OrgUser } from "../../api/types";
 import { toErrorMessage } from "../../context/ToastContext";
+import { FilterBadge } from "../../components/FilterBadge";
+import { FilterCheckbox } from "../../components/FilterPanel";
+import { branchNames, descendantIds, groupPath } from "./groupTree";
 import { RecordListView } from "./RecordListView";
 import { StakeholderFormModal } from "./StakeholderFormModal";
+import { StakeholderGroupFilterFields } from "./StakeholderGroupFilterFields";
 import { StakeholderFromUserModal } from "./StakeholderFromUserModal";
-import type { CadenceHint, Stakeholder, StakeholderFieldValues } from "./types";
+import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup } from "./types";
 import { STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL } from "./types";
 import { levelName } from "./useStakeholderScheme";
 
@@ -35,6 +52,9 @@ export function StakeholderListView({
   scheme,
   orgUsers,
   loadHint,
+  groups = [],
+  groupTier = "organization",
+  showLastEngaged = false,
   includeArchived,
   onIncludeArchivedChange,
   includeHidden = false,
@@ -55,6 +75,12 @@ export function StakeholderListView({
   scheme: ScoringScheme | null;
   orgUsers: OrgUser[];
   loadHint: (influenceLevelId: string, interestLevelId: string) => Promise<CadenceHint>;
+  /** Every Stakeholder group this view can see, flat; omit to leave the group controls out. */
+  groups?: StakeholderGroup[];
+  /** Which tier of `groups` a new stakeholder can be put into from here. */
+  groupTier?: "organization" | "project";
+  /** Adds the "Last engaged" column (project page only). */
+  showLastEngaged?: boolean;
   includeArchived: boolean;
   onIncludeArchivedChange: (next: boolean) => void;
   includeHidden?: boolean;
@@ -63,18 +89,36 @@ export function StakeholderListView({
   /** Re-shows a hidden stakeholder in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (stakeholder: Stakeholder) => void;
   onOpen: (stakeholder: Stakeholder) => void;
-  /** Resolves on success; a rejection keeps the modal open and shows its message. */
-  onCreate: (values: StakeholderFieldValues) => Promise<void>;
+  /** Resolves on success; a rejection keeps the modal open and shows its message. `groupIds` are the groups chosen on the form. */
+  onCreate: (values: StakeholderFieldValues, groupIds: string[]) => Promise<void>;
   /** Same contract, for the "Add from org user" modal. */
   onCreateFromUser: (values: { user_id: string; stakeholder_type_id: string | null; role: string }) => Promise<void>;
 }) {
   const [fromUserOpen, setFromUserOpen] = useState(false);
   const [fromUserError, setFromUserError] = useState<string | null>(null);
+  const [groupFilter, setGroupFilter] = useState("");
+  const [directOnly, setDirectOnly] = useState(false);
+  const [groupBy, setGroupBy] = useState("");
+
+  const groupByRoot = groups.find((g) => g.id === groupBy);
+
+  const visible = useMemo(() => {
+    let rows = stakeholders;
+    if (groupFilter) {
+      const wanted = new Set([groupFilter, ...(directOnly ? [] : descendantIds(groups, groupFilter))]);
+      rows = rows.filter((s) => s.groups.some((g) => wanted.has(g.id)));
+    }
+    if (groupBy) {
+      const key = (s: Stakeholder) => branchNames(groups, s.groups, groupBy)[0] ?? "\uffff";
+      rows = [...rows].sort((a, b) => key(a).localeCompare(key(b)));
+    }
+    return rows;
+  }, [stakeholders, groups, groupFilter, directOnly, groupBy]);
 
   return (
     <>
-      <RecordListView<Stakeholder, StakeholderFieldValues>
-        records={stakeholders}
+      <RecordListView<Stakeholder, StakeholderFieldValues & { group_ids?: string[] }>
+        records={visible}
         ariaLabel={ariaLabel}
         sectionKey={sectionKey}
         noun="Stakeholder"
@@ -89,9 +133,43 @@ export function StakeholderListView({
         columnsBeforeType={[{ key: "role", label: "Role", render: (s) => s.role || "—" }]}
         columnsAfterScope={[
           { key: "cadence", label: "Cadence", render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },
+          ...(showLastEngaged
+            ? [{ key: "last-engaged", label: "Last engaged", render: (s: Stakeholder) => s.last_engaged ?? "Never" }]
+            : []),
           { key: "influence", label: "Influence", render: (s) => levelName(scheme, "influence", s.influence_level_id) },
           { key: "interest", label: "Interest", render: (s) => levelName(scheme, "interest", s.interest_level_id) },
+          ...(groups.length > 0
+            ? [{
+                key: "groups", label: "Groups",
+                render: (s: Stakeholder) =>
+                  s.groups.length === 0 ? "—" : (
+                    <span className="row" style={{ gap: "0.25rem" }}>
+                      {s.groups.map((g) => (
+                        <FilterBadge key={g.id} active={groupFilter === g.id} onClick={() => setGroupFilter(groupFilter === g.id ? "" : g.id)}>
+                          <span title={groupPath(groups, g.id)}>{g.name}</span>
+                        </FilterBadge>
+                      ))}
+                    </span>
+                  ),
+              }]
+            : []),
+          ...(groupByRoot
+            ? [{
+                key: "group-by", label: groupByRoot.name,
+                render: (s: Stakeholder) => branchNames(groups, s.groups, groupByRoot.id).join(", ") || "—",
+              }]
+            : []),
         ]}
+        extraFilters={
+          <StakeholderGroupFilterFields
+            groups={groups}
+            groupId={groupFilter}
+            onGroupIdChange={setGroupFilter}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
+            afterGroup={groupFilter && <FilterCheckbox label="Directly in the group only" checked={directOnly} onChange={setDirectOnly} />}
+          />
+        }
         toolbar={
           <button className="btn" onClick={() => setFromUserOpen(true)}>
             Add from org user
@@ -103,9 +181,12 @@ export function StakeholderListView({
         onIncludeHiddenChange={onIncludeHiddenChange}
         onShowHidden={onShowHidden}
         onOpen={onOpen}
-        onCreate={onCreate}
+        onCreate={({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds)}
         renderCreateModal={(props) => (
-          <StakeholderFormModal {...props} typeOptions={typeOptions} scheme={scheme} loadHint={loadHint} />
+          <StakeholderFormModal
+            {...props} typeOptions={typeOptions} scheme={scheme} loadHint={loadHint}
+            groups={groups} groupTier={groupTier}
+          />
         )}
       />
       {fromUserOpen && (

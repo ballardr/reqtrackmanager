@@ -51,6 +51,20 @@ from app.modules.registry import (
     has_artefact_summary_provider,
     list_artefact_summaries,
 )
+from app.modules.stakeholders.engagements import (
+    AUDIENCE_FORWARD,
+    AUDIENCE_REVERSE,
+    COVERS_FORWARD,
+    COVERS_REVERSE,
+    ENGAGEMENT_ARTEFACT_TYPE,
+    FINDING_ARTEFACT_TYPE,
+    FINDING_FORWARD,
+    FINDING_REVERSE,
+    OUTCOME_HOLDER_TYPES,
+    OUTCOME_KINDS,
+    PARTICIPANT_FORWARD,
+    PARTICIPANT_REVERSE,
+)
 from app.modules.stakeholders.models import Persona, Stakeholder
 from app.modules.stakeholders.service import (
     GIVES_RISE_TO_FORWARD,
@@ -277,7 +291,35 @@ LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
         GIVES_RISE_TO_FORWARD, GIVES_RISE_TO_REVERSE,
         allowed_source_types=(NEED_ARTEFACT_TYPE,), allowed_target_types=(REQUIREMENT_TARGET,),
     ),
+    # Engagements (Phase 4): who took part, which personas were covered, which group it was aimed at, and what
+    # an engagement or finding raised or answered.
+    LinkTypeSeed(
+        PARTICIPANT_FORWARD, PARTICIPANT_REVERSE,
+        allowed_source_types=(ENGAGEMENT_ARTEFACT_TYPE,), allowed_target_types=(STAKEHOLDER_ARTEFACT_TYPE,),
+    ),
+    LinkTypeSeed(
+        COVERS_FORWARD, COVERS_REVERSE,
+        allowed_source_types=(ENGAGEMENT_ARTEFACT_TYPE,), allowed_target_types=(PERSONA_ARTEFACT_TYPE,),
+    ),
+    LinkTypeSeed(
+        AUDIENCE_FORWARD, AUDIENCE_REVERSE,
+        allowed_source_types=(ENGAGEMENT_ARTEFACT_TYPE,), allowed_target_types=("stakeholder_group",),
+    ),
+    *(
+        LinkTypeSeed(
+            kind.forward, kind.reverse,
+            allowed_source_types=OUTCOME_HOLDER_TYPES, allowed_target_types=kind.target_types,
+        )
+        for kind in OUTCOME_KINDS
+    ),
+    # A finding's place under its engagement, made when the finding is. Dedicated: the generic link
+    # endpoints neither offer nor delete it, so a finding cannot be detached from its engagement.
+    LinkTypeSeed(
+        FINDING_FORWARD, FINDING_REVERSE,
+        allowed_source_types=(ENGAGEMENT_ARTEFACT_TYPE,), allowed_target_types=(FINDING_ARTEFACT_TYPE,),
+        dedicated_endpoint=True,
+    ),
 )
 """Link types the Stakeholders module ships (`ModuleDefinition.link_type_seeds`),
-derived from the relationship-kind table plus the three bespoke ones, so the
+derived from the relationship-kind table plus the bespoke ones, so the
 vocabulary has one definition."""

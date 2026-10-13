@@ -76,3 +76,17 @@ class NeedStatus(str, enum.Enum):
     DRAFT = "draft"
     ACTIVE = "active"
     RETIRED = "retired"
+
+
+class EngagementChannel(str, enum.Enum):
+    """How an Engagement took place (Phase 0 addendum 2, resolution 20). The
+    values are the label keys of `types.ts`'s `ENGAGEMENT_CHANNEL_LABEL`."""
+
+    EMAIL = "email"
+    CALL = "call"
+    MEETING = "meeting"
+    WORKSHOP = "workshop"
+    INTERVIEW = "interview"
+    FOCUS_GROUP = "focus_group"
+    USABILITY_TEST = "usability_test"
+    SURVEY = "survey"

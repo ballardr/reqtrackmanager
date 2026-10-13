@@ -86,14 +86,17 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     await expect(page.getByText("No Stakeholder has this need yet.")).toBeVisible();
 
     // --- Link a Stakeholder, a Persona and a Requirement from the need's page.
-    await page.getByLabel("Stakeholder with this need").selectOption({ label: stakeholderName });
-    await page.getByRole("button", { name: "Add", exact: true }).nth(0).click();
+    await page.getByRole("button", { name: "Add to Stakeholders with this need" }).click();
+    await page.getByRole("dialog", { name: "Add to Stakeholders with this need" }).getByLabel("Stakeholder with this need").selectOption({ label: stakeholderName });
+    await page.getByRole("dialog", { name: "Add to Stakeholders with this need" }).getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByRole("link", { name: stakeholderName })).toBeVisible();
-    await page.getByLabel("Persona with this need").selectOption({ label: personaName });
-    await page.getByRole("button", { name: "Add", exact: true }).nth(1).click();
+    await page.getByRole("button", { name: "Add to Personas with this need" }).click();
+    await page.getByRole("dialog", { name: "Add to Personas with this need" }).getByLabel("Persona with this need").selectOption({ label: personaName });
+    await page.getByRole("dialog", { name: "Add to Personas with this need" }).getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByRole("link", { name: personaName })).toBeVisible();
-    await page.getByLabel("Requirement it gave rise to").selectOption({ label: `${requirement.unique_code} ${requirementName}` });
-    await page.getByRole("button", { name: "Add", exact: true }).nth(2).click();
+    await page.getByRole("button", { name: "Add to Requirements it gave rise to" }).click();
+    await page.getByRole("dialog", { name: "Add to Requirements it gave rise to" }).getByLabel("Requirement it gave rise to").selectOption({ label: `${requirement.unique_code} ${requirementName}` });
+    await page.getByRole("dialog", { name: "Add to Requirements it gave rise to" }).getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByRole("link", { name: `${requirement.unique_code} ${requirementName}` })).toBeVisible();
 
     // --- The Stakeholder's and the Persona's pages list the need, read-only, with its status label.

@@ -23,6 +23,10 @@ const config: Config = {
   organizationName: 'ballardr',
   projectName: 'reqtrackmanager',
 
+  // No trailing slash on URLs - matches the app's own routing (Layout.tsx's
+  // `basename="/reqtrackmanager"` and `useLocation().pathname` checks).
+  trailingSlash: false,
+
   // Fail the build (and therefore CI) on any dangling internal link/anchor -
   // this is the mechanism that makes "every page exists and is linked"
   // actually enforced rather than aspirational (docs/plans/docs-website-plan.md).

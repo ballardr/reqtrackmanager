@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES, showLinkRelationships } from "./helpers";
 
 /**
  * Job to be done: two requirements can be linked with a typed, bidirectional
@@ -24,7 +24,7 @@ import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } 
  * rows (their badge, or the real `<a>`) rather than a bare `getByText`.
  */
 function linkBadge(page: import("@playwright/test").Page, text: string) {
-  return page.locator("span.badge", { hasText: text });
+  return page.locator(".artefact-links__phrase-label", { hasText: text });
 }
 
 const linksPanel = (page: import("@playwright/test").Page) => page.getByRole("region", { name: "Links", exact: true });
@@ -81,6 +81,7 @@ async function removeLeftoverLinks(page: import("@playwright/test").Page) {
 
 test.describe("requirement traceability links", () => {
   test("the seeded custom link type reads correctly from both ends; a new link can be added and removed", async ({ page }) => {
+    await showLinkRelationships(page);
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();

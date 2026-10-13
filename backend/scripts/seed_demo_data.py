@@ -1583,6 +1583,28 @@ def set_persona_visibility(headers: dict, project_id: str, persona_id: str, hidd
     return r.json()
 
 
+def create_stakeholder_group(
+    headers: dict, *, org_id: str | None = None, project_id: str | None = None, **fields
+) -> dict:
+    """Creates an org- or project-scoped Stakeholder group (exactly one of `org_id`/`project_id`); `fields` are
+    `name`, `parent_group_id`, `exclusive_children`, `description`."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/stakeholder-groups", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def add_stakeholder_to_group(
+    headers: dict, group_id: str, stakeholder_id: str, *, org_id: str | None = None, project_id: str | None = None
+) -> None:
+    """Puts a stakeholder directly into a group of the same tier (`org_id` for an org group, `project_id` for a project one)."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(
+        f"{base}/stakeholder-groups/{group_id}/members", json={"stakeholder_id": stakeholder_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 def set_stakeholder_visibility(headers: dict, project_id: str, stakeholder_id: str, hidden: bool) -> dict:
     """Hides an org Stakeholder from a project (`hidden=True`), or shows it again where a parent project hides it."""
     r = httpx.put(
@@ -1614,6 +1636,46 @@ def create_need(
         r = httpx.post(f"{base}/{need['id']}/requirements", json={"requirement_id": requirement_id}, headers=headers, timeout=30)
         r.raise_for_status()
     return need
+
+
+def enable_research_extras(headers: dict, org_id: str) -> None:
+    """Turns the Stakeholders module's `research_extras` sub-component (session prompts, anonymous participants,
+    findings; off by default) on for an organisation."""
+    r = httpx.put(
+        f"{BASE}/orgs/{org_id}/modules/stakeholders/subcomponents/research_extras", json={"enabled": True},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def create_engagement(
+    headers: dict, project_id: str, *, outcomes: tuple[tuple[str, str, str], ...] = (), prompts: tuple[tuple[str, str], ...] = (),
+    anonymous: tuple[tuple[str, str | None], ...] = (), findings: tuple[dict, ...] = (), **fields,
+) -> dict:
+    """Logs a project Engagement (Module 2 Phase 4). `fields` are the create payload (title, channel, engagement_date,
+    stakeholder_ids, persona_ids, group_ids, ...). `outcomes` are `(kind, target_type, target_id)` raised/answered links,
+    `prompts` `(prompt, response_notes)`, `anonymous` `(label, persona_id)` and `findings` `{title, description,
+    outcomes}` dicts; the last three need the `research_extras` sub-component."""
+    base = f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/engagements", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    engagement = r.json()
+    url = f"{base}/engagements/{engagement['id']}"
+    for kind, target_type, target_id in outcomes:
+        body = {"kind": kind, "target_type": target_type, "target_id": target_id}
+        httpx.post(f"{url}/outcomes", json=body, headers=headers, timeout=30).raise_for_status()
+    for prompt, response_notes in prompts:
+        httpx.post(f"{url}/prompts", json={"prompt": prompt, "response_notes": response_notes}, headers=headers, timeout=30).raise_for_status()
+    for label, persona_id in anonymous:
+        httpx.post(f"{url}/anonymous-participants", json={"label": label, "persona_id": persona_id}, headers=headers, timeout=30).raise_for_status()
+    for finding in findings:
+        body = {"title": finding["title"], "description": finding.get("description", "")}
+        r = httpx.post(f"{url}/findings", json=body, headers=headers, timeout=30)
+        r.raise_for_status()
+        for kind, target_type, target_id in finding.get("outcomes", ()):
+            body = {"kind": kind, "target_type": target_type, "target_id": target_id}
+            httpx.post(f"{base}/findings/{r.json()['id']}/outcomes", json=body, headers=headers, timeout=30).raise_for_status()
+    return engagement
 
 
 def add_stakeholder_relationship(
@@ -2878,6 +2940,25 @@ def main() -> None:
           f" {stakeholder_fleet['name']!r} (Falcon-3, Customer, Active, Medium/High, monthly),"
           f" {stakeholder_harbour['name']!r} (org, Regulator, Active) — hidden from Falcon-3, which has no marine dealings")
 
+    print("Seeding Stakeholder groups (Module 2 Phase 3c) — an org Client taxonomy whose children are mutually exclusive,"
+          " a Regulator group, and a Falcon-3 project group nested under an org group...")
+    group_client = create_stakeholder_group(h_pm, org_id=org["id"], name="Client", exclusive_children=True)
+    group_skyline = create_stakeholder_group(
+        h_pm, org_id=org["id"], name="Skyline Logistics", parent_group_id=group_client["id"],
+    )
+    group_regulators = create_stakeholder_group(h_pm, org_id=org["id"], name="Regulators")
+    group_aviation = create_stakeholder_group(
+        h_pm, org_id=org["id"], name="Aviation", parent_group_id=group_regulators["id"],
+    )
+    add_stakeholder_to_group(h_pm, group_aviation["id"], stakeholder_authority["id"], org_id=org["id"])
+    add_stakeholder_to_group(h_pm, group_regulators["id"], stakeholder_harbour["id"], org_id=org["id"])
+    group_pilot_customers = create_stakeholder_group(
+        h_pm, project_id=drone["id"], name="Launch-site customers", parent_group_id=group_skyline["id"],
+    )
+    add_stakeholder_to_group(h_pm, group_pilot_customers["id"], stakeholder_fleet["id"], project_id=drone["id"])
+    print("  Groups: Client > Skyline Logistics > (Falcon-3) Launch-site customers; Regulators > Aviation (Pat Okafor),"
+          " Regulators (Lee Harbour)")
+
     print("Seeding Stakeholder Needs (Module 2 Phase 2) — Falcon-3's fleet manager needs a trustworthy status display,"
           " which gave rise to its first requirement; the BVLOS Remote Pilot persona has the same need...")
     need_status_display = create_need(
@@ -2893,6 +2974,36 @@ def main() -> None:
     )
     print(f"  Needs: {need_status_display['name']!r} (Active, held by Dana Whitfield and the BVLOS Remote Pilot persona,"
           f" gave rise to {flight_log_req['name']!r}), plus a Draft need held by Pat Okafor")
+
+    print("Seeding Engagements (Module 2 Phase 4) — a quick email log, a focus group with anonymous participants and"
+          " findings, and an old briefing that leaves the quarterly regulator overdue...")
+    enable_research_extras(h_pm, org["id"])
+    engagement_email = create_engagement(
+        h_pm, drone["id"], title="Status display feedback", channel="email", engagement_date="2026-10-02",
+        summary="Dana wants the degraded-channel warning to be unmissable.", notes="Replied to her 1 Oct email.",
+        stakeholder_ids=[stakeholder_fleet["id"]], outcomes=(("raised", "stakeholder_need", need_status_display["id"]),),
+    )
+    engagement_focus = create_engagement(
+        h_pm, drone["id"], title="Launch-site pilot focus group", channel="focus_group", engagement_date="2026-09-18",
+        facilitators=[{"type": "user", "id": demo_engineer["user_id"]}, {"type": "org_group", "id": architecture_board.json()["id"]}],
+        purpose="How pilots read the status display.",
+        summary="Pilots missed the degraded-channel warning in glare.", consent_recorded=True, retain_until="2027-09-18",
+        persona_ids=[drone_operator_persona["id"]], group_ids=[group_pilot_customers["id"]],
+        outcomes=(("raised", "pain_point", pp_scored["id"]),),
+        prompts=(("Talk us through a pre-flight check.", "Three said they skip the checklist app."),
+                 ("What would make the warning unmissable?", "Sound, and a full-width banner.")),
+        anonymous=(("Participant 1", drone_operator_persona["id"]), ("Participant 2", drone_operator_persona["id"]),
+                   ("Participant 3", None)),
+        findings=({"title": "The warning is invisible in glare", "description": "Four of five pilots missed it outdoors.",
+                   "outcomes": (("raised", "pain_point", pp_scored["id"]),)},),
+    )
+    engagement_old = create_engagement(
+        h_pm, drone["id"], title="Audit window briefing", channel="meeting", engagement_date="2026-03-04",
+        summary="Walked Pat through the evidence index.", stakeholder_ids=[stakeholder_authority["id"]],
+    )
+    print(f"  Engagements: {engagement_email['title']!r} (email, Dana), {engagement_focus['title']!r} (focus group, group"
+          f" audience, 3 anonymous participants, 2 prompts, 1 finding), {engagement_old['title']!r} (March: Pat Okafor, whose"
+          " quarterly cadence is now overdue)")
 
     print("Seeding Stakeholder/Persona relationships (Module 2 Phase 3) — the Field Inspector persona experiences the"
           " re-keying Pain Point, the fleet manager provides the status-display requirement and was consulted on the"
@@ -3051,7 +3162,9 @@ def main() -> None:
           " Pilot — Active, weight 2), with a Falcon-3 weight override of 5 on Field Inspector that the Avionics sub-project inherits;"
           " plus 2 organisation Stakeholders (Pat Okafor, Regulator — High influence/Medium interest, quarterly, represents"
           " Compliance Auditor; and Lee Harbour, hidden from Falcon-3 to show per-project visibility) and 1 Falcon-3"
-          " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot)")
+          " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot); plus 3 Falcon-3 Engagements (a"
+          " quick email log; a focus group aimed at a Stakeholder group, with anonymous participants, prompts and a finding;"
+          " and a March briefing that leaves Pat Okafor overdue on a quarterly cadence)")
     print("  Risk Management (enabled org-wide): 4 Risks on Falcon-3 (RSK-001 flight controller failure — High inherent,"
           " Medium residual; a supply-chain risk; the regulator risk, whose Rare x Catastrophic cell is pinned to High; and one"
           " Identified risk with no assessment), with the Likelihood x Consequence matrix and 12 default Risk types")

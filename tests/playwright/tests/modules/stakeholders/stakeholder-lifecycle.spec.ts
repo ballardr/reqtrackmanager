@@ -82,8 +82,10 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     // --- Add the link from the Stakeholder's page.
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${stakeholder.id}`);
     await expect(page.getByText("This Stakeholder doesn't represent any Persona yet.")).toBeVisible();
-    await page.getByLabel("Persona to represent").selectOption({ label: personaName });
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByRole("button", { name: "Add to Represents these Personas" }).click();
+    const addDialog = page.getByRole("dialog", { name: "Add to Represents these Personas" });
+    await addDialog.getByLabel("Persona to represent").selectOption({ label: personaName });
+    await addDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Link added.")).toBeVisible();
     await expect(page.getByRole("link", { name: personaName })).toBeVisible();
 
@@ -92,7 +94,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     await expect(page.getByRole("heading", { name: personaName })).toBeVisible();
     // The Stakeholder appears in the Persona's own list and again in the generic Links panel.
     await expect(page.getByRole("link", { name: stakeholderName }).first()).toBeVisible();
-    await expect(page.getByLabel("Persona to represent")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add to Represents these Personas" })).toHaveCount(0);
 
     // --- Remove it again from the Stakeholder's side, behind a tier-1 confirm.
     await page.getByRole("link", { name: stakeholderName }).first().click();

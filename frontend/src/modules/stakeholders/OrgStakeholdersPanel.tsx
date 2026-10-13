@@ -18,9 +18,10 @@ import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { orgStakeholderApi, orgStakeholderTypeApi } from "./api";
+import { orgStakeholderApi, orgStakeholderGroupApi, orgStakeholderTypeApi } from "./api";
+import { createStakeholderWithGroups } from "./createStakeholder";
 import { StakeholderListView } from "./StakeholderListView";
-import type { PersonaTypeDefinition, Stakeholder } from "./types";
+import type { PersonaTypeDefinition, Stakeholder, StakeholderGroup } from "./types";
 import { useStakeholderScheme } from "./useStakeholderScheme";
 
 export function OrgStakeholdersPanel({ orgId }: { orgId: string }) {
@@ -28,6 +29,7 @@ export function OrgStakeholdersPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
   const [stakeholders, setStakeholders] = useState<Stakeholder[] | null>(null);
   const [types, setTypes] = useState<PersonaTypeDefinition[]>([]);
+  const [groups, setGroups] = useState<StakeholderGroup[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -38,11 +40,16 @@ export function OrgStakeholdersPanel({ orgId }: { orgId: string }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([orgStakeholderApi.list(orgId, { include_archived: includeArchived }), orgStakeholderTypeApi.list(orgId)])
-      .then(([list, typeList]) => {
+    Promise.all([
+      orgStakeholderApi.list(orgId, { include_archived: includeArchived }),
+      orgStakeholderTypeApi.list(orgId),
+      orgStakeholderGroupApi.list(orgId).catch(() => [] as StakeholderGroup[]),
+    ])
+      .then(([list, typeList, groupList]) => {
         if (!active) return;
         setStakeholders(list);
         setTypes(typeList);
+        setGroups(groupList);
         setLoadError(null);
       })
       .catch((err) => {
@@ -70,14 +77,21 @@ export function OrgStakeholdersPanel({ orgId }: { orgId: string }) {
       showScope={false}
       typeOptions={types.filter((t) => t.is_active).map((t) => ({ value: t.id, label: t.name }))}
       scheme={scheme}
+      groups={groups}
+      groupTier="organization"
       orgUsers={orgUsers}
       loadHint={(influence, interest) => orgStakeholderApi.cadenceHint(orgId, influence, interest)}
       includeArchived={includeArchived}
       onIncludeArchivedChange={setIncludeArchived}
       onOpen={(s) => navigate(`/orgs/${orgId}/modules/stakeholders/stakeholders/${s.id}`)}
-      onCreate={async (values) => {
-        await orgStakeholderApi.create(orgId, values);
+      onCreate={async (values, groupIds) => {
+        const warning = await createStakeholderWithGroups(
+          (v) => orgStakeholderApi.create(orgId, v),
+          (id, ids) => orgStakeholderGroupApi.setStakeholderGroups(orgId, id, ids),
+          values, groupIds,
+        );
         showToast("Stakeholder created.");
+        if (warning) showToast(warning, "error");
         reload();
       }}
       onCreateFromUser={async (values) => {

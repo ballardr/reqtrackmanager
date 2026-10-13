@@ -372,20 +372,28 @@ export const LinksPanelPopulated: Story = {
     mockRequirementDetailApis(["stakeholder"], {}, {
       linkGraph: buildGraph([[OTHER_REQUIREMENT, { id: "link1", phrase: "Depends on", flow: "upstream", outgoing: true }]]),
     });
+    return showRelationshipLabels();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: /AUTH-LOG-002/ })).toBeInTheDocument());
-    await expect(canvas.getByText("Depends on", { selector: "span.badge" })).toBeInTheDocument();
+    await expect(canvas.getByText("Depends on", { selector: ".artefact-links__phrase-label" })).toBeInTheDocument();
     await expect(canvas.getByText("Approved")).toBeInTheDocument();
   },
 };
+
+/** The Links panel hides relationship labels by default; these stories read them, so turn them on (and back off after). */
+function showRelationshipLabels(): () => void {
+  localStorage.setItem("reqtrack.links.showRelationships", "1");
+  return () => localStorage.removeItem("reqtrack.links.showRelationships");
+}
 
 /** A requirement's link to a Compliance standard's clause is an ordinary link: the shared panel lists it
  * under the clause's type, labelled with the standard, version and clause, and this page needs no
  * Compliance-specific section. */
 export const LinksPanelShowsAComplianceClauseLink: Story = {
   beforeEach: () => {
+    const restore = showRelationshipLabels();
     mockRequirementDetailApis(["stakeholder"], {}, {
       linkGraph: buildGraph([[
         buildGraphNode({
@@ -395,12 +403,13 @@ export const LinksPanelShowsAComplianceClauseLink: Story = {
         { id: "clause-link", phrase: "Derives from", flow: "upstream", outgoing: true },
       ]]),
     });
+    return restore;
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Compliance standard clause" })).toBeInTheDocument());
     await expect(canvas.getByText("ISO-27001 v2.0 · A.5.15 Logical access control")).toBeInTheDocument();
-    await expect(canvas.getByText("Derives from", { selector: "span.badge" })).toBeInTheDocument();
+    await expect(canvas.getByText("Derives from", { selector: ".artefact-links__phrase-label" })).toBeInTheDocument();
     await expect(canvas.getByText("Published")).toBeInTheDocument();
   },
 };

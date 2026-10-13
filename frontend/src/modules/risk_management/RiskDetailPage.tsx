@@ -159,7 +159,7 @@ export function RiskDetailPage() {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>{risk.title}</h2>
           {!risk.is_archived && (
-            <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}

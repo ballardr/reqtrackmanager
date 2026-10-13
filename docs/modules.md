@@ -1146,6 +1146,10 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   projects the caller holds a role on; `include_children` adds readable
   descendants). A role whose purpose is cross-project oversight may declare
   `org_scope="all_org_projects"` explicitly, as Compliance's manager view would.
+- **Mounting.** Include `REPORT_ROUTERS.project` (and `.org`) in the module's project (and
+  org) router. The catalogue reads each report's real mounted path from the route, so a module
+  whose router is a composite of several prefixed routers (Stakeholders & Personas) works as
+  well as one with a single prefix: include it with `prefix=<the module's project prefix>`.
 - **Parameters** are declared, not hand-written: core validates types and bounds
   (422), checks `choices` (400), applies defaults, and derives the OpenAPI and
   MCP parameters from the same declaration. `format`, `include_children`

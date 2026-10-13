@@ -5,9 +5,9 @@ import { api } from "../../api/client";
 import type { OrgGroup, OrgUser, Principal, ProjectGroup } from "../../api/types";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildPersona, buildStakeholder, buildStakeholderScheme } from "./fixtures";
+import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
-import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder } from "./types";
+import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder, StakeholderEngagement } from "./types";
 
 const PROJECT_ID = "project-1";
 const STAKEHOLDER_ID = "stakeholder-1";
@@ -35,11 +35,18 @@ interface Mocks {
   versions?: unknown[];
   represents?: RepresentedLink[];
   needs?: HeldNeed[];
+  /** The stakeholder's engagement timeline. */
+  engagements?: StakeholderEngagement[];
 }
 
 const LINKED_PAIN_POINT = buildGraphNode({ type: "pain_point", id: "pp-1", type_label: "Pain Point", label: "Reports arrive late", status: null });
 
-function mockDetailApis(current: Stakeholder, { versions = [], represents = [], needs = [] }: Mocks = {}) {
+const DETAIL_GROUPS = [
+  buildStakeholderGroup({ id: "client", name: "Client" }),
+  buildStakeholderGroup({ id: "pilot", scope: "project", organization_id: null, project_id: PROJECT_ID, name: "Pilot users", parent_group_id: "client" }),
+];
+
+function mockDetailApis(current: Stakeholder, { versions = [], represents = [], needs = [], engagements = [] }: Mocks = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === "/api/v1/orgs/org-1/groups") return ORG_GROUPS;
@@ -47,12 +54,14 @@ function mockDetailApis(current: Stakeholder, { versions = [], represents = [], 
     if (path === "/api/v1/orgs/org-1/users") return ORG_USERS;
     if (path.startsWith("/api/v1/orgs/org-1/users/search")) return { members: ORG_USERS, external: null };
     if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/stakeholder`) return buildStakeholderScheme();
+    if (path === `${PROJECT_BASE}/stakeholder-groups`) return DETAIL_GROUPS;
     if (path === `${PROJECT_BASE}/stakeholder-types`) return [{ id: "stype-regulator", name: "Regulator", display_order: 0, is_enabled: true, source: "org" }];
     if (path === `${PROJECT_BASE}/personas`) return [buildPersona(), buildPersona({ id: "persona-3", name: "Control Room Operator" })];
     if (path.startsWith(`${PROJECT_BASE}/stakeholders/cadence-hint`)) return HINT;
     if (path.includes(`/artefacts/stakeholder/${STAKEHOLDER_ID}/link-graph`)) return buildGraph([[LINKED_PAIN_POINT]]);
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/personas`)) return represents;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/needs`)) return needs;
+    if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}/engagements`)) return engagements;
     if (path.endsWith(`/stakeholders/${STAKEHOLDER_ID}`)) return current;
     if (path.endsWith("/versions")) return versions;
     if (path.endsWith("/comments")) return [];
@@ -225,8 +234,10 @@ export const RepresentsListsPersonasAndAddsMore: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "Field Technician" })).toBeInTheDocument());
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Persona to represent" }), "persona-3");
-    await userEvent.click(canvas.getByRole("button", { name: "Add" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Represents these Personas" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Add to Represents these Personas" }));
+    await userEvent.selectOptions(popover.getByRole("combobox", { name: "Persona to represent" }), "persona-3");
+    await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/personas`, { persona_id: "persona-3" }),
     );
@@ -320,6 +331,33 @@ export const ListsTheNeedsTheStakeholderHas: Story = {
   },
 };
 
+/** The engagement timeline lists the stakeholder's contacts newest first, and "Last engaged" reads the derived date. */
+export const ShowsTheEngagementTimelineAndLastEngaged: Story = {
+  beforeEach: () =>
+    mockDetailApis(buildStakeholder({ last_engaged: "2026-04-02" }), {
+      engagements: [
+        { id: "e2", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02" },
+        { id: "e1", title: "Quarterly review", channel: "meeting", engagement_date: "2026-03-12" },
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "2026-04-02 · Email · Evidence follow-up" });
+    await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/engagements/e2`);
+    await expect(canvas.getByTestId("last-engaged")).toHaveTextContent("Last engaged: 2026-04-02");
+  },
+};
+
+/** A stakeholder who has never been engaged says so. */
+export const NeverEngagedSaysSo: Story = {
+  beforeEach: () => mockDetailApis(buildStakeholder({ last_engaged: null })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByTestId("last-engaged")).toHaveTextContent("Last engaged: Never"));
+    await waitFor(() => expect(canvas.getByText("No engagements logged yet.")).toBeInTheDocument());
+  },
+};
+
 export const LightTheme: Story = { ...ActiveShowsFieldsPositionAndCadence };
 export const DarkTheme: Story = { ...ActiveShowsFieldsPositionAndCadence, globals: { theme: "dark" } };
 
@@ -329,5 +367,34 @@ export const LinksPanelShowsLinks: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "Reports arrive late" })).toBeInTheDocument());
+  },
+};
+
+const PILOT_REF = { id: "pilot", name: "Pilot users", scope: "project" as const, parent_group_id: "client" };
+
+export const ShowsTheStakeholdersGroupsWithTheirPath: Story = {
+  beforeEach: () => mockDetailApis(buildStakeholder({ groups: [PILOT_REF] })),
+  play: async ({ canvasElement }) => {
+    const badge = await within(canvasElement).findByText("Pilot users", { selector: ".badge" });
+    await expect(badge).toHaveAttribute("title", "Client › Pilot users");
+  },
+};
+
+export const GroupsAreChangedWithOneSave: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildStakeholder({ groups: [] }));
+    spyOn(api, "put").mockResolvedValue([PILOT_REF]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Project groups" }));
+    // Organisation groups show in the tree but belong to the organisation view.
+    await expect(within(document.body).getByRole("checkbox", { name: "Client" })).toBeDisabled();
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Pilot users" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save groups" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/groups`, { group_ids: ["pilot"] }),
+    );
+    await waitFor(() => expect(canvas.getByText("Pilot users", { selector: ".badge" })).toBeInTheDocument());
   },
 };

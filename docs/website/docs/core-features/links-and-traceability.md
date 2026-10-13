@@ -97,7 +97,9 @@ flowchart TD
 
 ## The Links panel
 
-Every record's page shows a **Links** panel beside its content: requirements, actions, pain points, strategies, future states, guiding principles, open questions, decisions, personas, stakeholders and stakeholder needs, and the compliance records inside the Compliance workspace. It lists the record's links grouped by the kind of record at the other end, each read with the wording that fits this end ("Is implemented by" on the requirement, "Implements" on the decision), with the linked record's status and, for a record in another project, the project's name.
+Every record's page shows a **Links** panel beside its content: requirements, actions, pain points, strategies, future states, guiding principles, open questions, decisions, personas, stakeholders and stakeholder needs, and the compliance records inside the Compliance workspace. It lists the record's links grouped by the kind of record at the other end, with the linked record's status and, for a record in another project, the project's name. A record's code (such as DEC-001) is a small suffix after its title. Each kind of record is a heading with a count when it has several links, and can be collapsed; pages that expect a long group of little interest, such as an engagement's findings, start it collapsed.
+
+How each record is linked ("Is implemented by" on the requirement, "Implements" on the decision) is not repeated on every row, since the trace shows it, and hovering a row names it. The **View options** button beside the title turns **Show relationships** on, which lists each relationship once above its records (with a count when it has several, such as "Has participant · 3"), and switches **Compact view** on or off. The relationship choice is remembered for you.
 
 ```mermaid
 flowchart LR

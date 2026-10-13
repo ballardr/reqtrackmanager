@@ -29,18 +29,27 @@ tables):
 - `PersonaComment` / `PersonaCommentFile` / `PersonaFile` — module-local
   comment and attachment tables (resolution 8), since extending the core
   `ReviewTargetType` enum would be a per-module edit to a core file.
-- `StakeholderNeed` and its version/comment/file tables (Phase 2, end of this
-  file) — a project-scoped record of one stakeholder or persona need.
+- `StakeholderNeed` and its version/comment/file tables (Phase 2) — a
+  project-scoped record of one stakeholder or persona need.
+- `StakeholderGroup` / `StakeholderGroupMember` (Phase 3c) —
+  a tree of groups classifying stakeholders, with many-to-many membership.
+- `Engagement` and its comment/file tables, `EngagementPrompt`,
+  `EngagementAnonymousParticipant` and `ResearchFinding` (Phase 4, end of this
+  file) — the contact log and the research extras. An Engagement is a single
+  row (no version table): it is a dated record of something that happened, and a
+  second copy of its notes in a history table would only widen what hard
+  deletion has to reach.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -58,6 +67,7 @@ from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 from app.modules.stakeholders.enums import (
+    EngagementChannel,
     NeedStatus,
     PersonaScope,
     PersonaStatus,
@@ -694,3 +704,269 @@ class StakeholderNeedFile(UUIDPKMixin, Base):
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# =============================================================================
+# Stakeholder Groups (Phase 3c)
+# =============================================================================
+
+
+class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
+    """A node in a tree of stakeholder groups (Phase 0 addendum 3): a
+    classification such as "Client > Acme", not a principal, so it has no
+    version history or lifecycle. Scoped like `Stakeholder`: exactly one of
+    `organization_id`/`project_id`. A root group is a sort/group-by dimension.
+
+    Attributes:
+        scope: Which of `organization_id`/`project_id` is populated.
+        organization_id / project_id: The owner.
+        parent_group_id: The parent group, or `None` for a root. A project
+            group may sit under an org group; an org group only under an org
+            group (`service.stakeholder_groups` enforces this, plus cycles and depth).
+        name: Display name, unique among its siblings in one scope.
+        description: Free text.
+        exclusive_children: A stakeholder may sit in at most one of this
+            group's direct child branches, so the group behaves like a
+            single-valued column.
+        sort_order: Order among siblings.
+    """
+
+    __tablename__ = "stakeholder_groups"
+    __table_args__ = (
+        CheckConstraint(
+            "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
+            "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
+            name="ck_stakeholder_groups_scope_matches_owner",
+        ),
+        CheckConstraint("parent_group_id IS NULL OR parent_group_id <> id", name="ck_stakeholder_groups_not_own_parent"),
+    )
+
+    scope: Mapped[StakeholderScope] = mapped_column(str_enum(StakeholderScope, 20))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # SET NULL is only a backstop: deleting a group promotes its children to its parent first.
+    parent_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_groups.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    exclusive_children: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class StakeholderGroupMember(UUIDPKMixin, Base):
+    """A stakeholder's direct membership of one group. Transitive membership
+    (being in every ancestor too) is computed, never stored. Both foreign keys
+    cascade, so erasing a stakeholder or deleting a group removes its rows.
+
+    Attributes:
+        group_id: The group.
+        stakeholder_id: The member.
+        created_at: When the membership was added.
+    """
+
+    __tablename__ = "stakeholder_group_members"
+    __table_args__ = (UniqueConstraint("group_id", "stakeholder_id", name="uq_stakeholder_group_members_pair"),)
+
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholder_groups.id", ondelete="CASCADE"), index=True
+    )
+    stakeholder_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stakeholders.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=sa_text("now()"))
+
+
+# =============================================================================
+# Engagements (Phase 4)
+# =============================================================================
+
+
+class Engagement(UUIDPKMixin, TimestampMixin, Base):
+    """One contact with stakeholders or personas: an email, a call, a workshop, a
+    focus group. Always project-scoped (Phase 4, Decided by: Agent): a contact is
+    something a project did, and scoping it keeps one project's contact history
+    off a stakeholder shared with other projects. Participants, personas covered,
+    the audience group and the Pain Points / Needs / Open Questions it raised or
+    answered are `ArtefactLink`s; anonymous participants, session prompts and
+    findings are the research extras' own tables.
+
+    Attributes:
+        project_id: The owning project.
+        creator_id: Who logged it.
+        unique_code: Project-scoped identifier (e.g. `"ENG-003"`), from `services.sequences.generate_unique_code`;
+            never reused.
+        title: Short title.
+        channel: How it took place.
+        engagement_date: When it took place (not when it was logged). Who ran it is a list of
+            `EngagementFacilitator` rows.
+        purpose: What it was for / the topics in scope.
+        summary: A short outcome.
+        notes: Free-text notes; may quote participants, so Confidential.
+        consent_recorded: Whether participants consented to the record being kept.
+        retain_until: Date after which the record is due for disposal, if any.
+    """
+
+    __tablename__ = "engagements"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_engagements_project_unique_code"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    unique_code: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(300))
+    channel: Mapped[EngagementChannel] = mapped_column(str_enum(EngagementChannel, 30))
+    engagement_date: Mapped[date] = mapped_column(Date, index=True)
+    purpose: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    consent_recorded: Mapped[bool] = mapped_column(Boolean, default=False)
+    retain_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class EngagementFacilitator(UUIDPKMixin, TimestampMixin, Base):
+    """One person or group who ran an `Engagement` (an engagement can have several).
+
+    The principal is a user, an organisation group or a project group (`facilitator_type` /
+    `facilitator_id`, `models.principal`); the same principal is listed at most once per engagement.
+    Declared as a multi-valued `PrincipalReference` so deleting a group that facilitates an engagement
+    reassigns or removes its entry. Deleted with the engagement.
+
+    Attributes:
+        engagement_id: The engagement.
+        sort_order: Position in the list (the order they were given).
+        facilitator_type / facilitator_id: The principal.
+    """
+
+    __tablename__ = "engagement_facilitators"
+    __table_args__ = (
+        principal_check_constraint("facilitator"),
+        UniqueConstraint("engagement_id", "facilitator_type", "facilitator_id", name="uq_engagement_facilitators_principal"),
+    )
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    facilitator_type: Mapped[str] = principal_type_column()
+    facilitator_id: Mapped[uuid.UUID] = principal_id_column()
+
+
+class EngagementComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion-thread comment on an `Engagement`."""
+
+    __tablename__ = "engagement_comments"
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EngagementCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to an `EngagementComment`."""
+
+    __tablename__ = "engagement_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagement_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class EngagementFile(UUIDPKMixin, Base):
+    """Links a directly uploaded file (e.g. an email export) to an `Engagement` (see `PersonaFile`)."""
+
+    __tablename__ = "engagement_files"
+    __table_args__ = (UniqueConstraint("engagement_id", "file_id"),)
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE")
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EngagementPrompt(UUIDPKMixin, TimestampMixin, Base):
+    """A session prompt of an Engagement (research extras): a question or topic
+    asked, with the notes taken on the response. Named "session prompt" so it
+    does not collide with Module 1's Open Questions.
+
+    Attributes:
+        engagement_id: The engagement.
+        sort_order: Position in the session.
+        prompt: The question or topic.
+        response_notes: What was said in response.
+    """
+
+    __tablename__ = "engagement_prompts"
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    prompt: Mapped[str] = mapped_column(Text)
+    response_notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class EngagementAnonymousParticipant(UUIDPKMixin, TimestampMixin, Base):
+    """A participant who has no Stakeholder record (research extras): a label
+    plus the persona they were drawn from (Phase 0 addendum 2, resolution 19).
+    Kept to a label by design, for data minimisation.
+
+    Attributes:
+        engagement_id: The engagement.
+        label: e.g. "Participant 3".
+        persona_id: The persona they represent, if any.
+    """
+
+    __tablename__ = "engagement_anonymous_participants"
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
+    )
+    label: Mapped[str] = mapped_column(String(200))
+    persona_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("personas.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class ResearchFinding(UUIDPKMixin, TimestampMixin, Base):
+    """What an Engagement taught us (research extras). A registered artefact so
+    it can link to the Pain Points, Needs and Open Questions it raised or
+    answered. It belongs to its engagement and is deleted with it (Decided by:
+    Agent): a finding can quote participants, so erasing the engagement must not
+    leave the quotes behind.
+
+    Attributes:
+        project_id: The owning project (same as the engagement's).
+        engagement_id: The engagement it came from.
+        creator_id: Who recorded it.
+        unique_code: Project-scoped identifier (e.g. `"FND-003"`), from `services.sequences.generate_unique_code`;
+            never reused, so a link or a conversation can name the finding.
+        title: Short statement of the finding.
+        description: Evidence and detail.
+    """
+
+    __tablename__ = "research_findings"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_research_findings_project_unique_code"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    unique_code: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")

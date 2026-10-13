@@ -743,6 +743,14 @@ _REVIEWED_LINK_READERS = {
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
     "modules/compliance/export.py": "same-project requirement -> clause links only (source_project_id is null)",
+    "modules/stakeholders/engagements.py": (
+        "same-project participant/covers/outcome links only (source_project_id is null); erasure deliberately removes "
+        "every link, cross-level included"
+    ),
+    "modules/stakeholders/groups.py": "deleting a group removes every link, cross-level included",
+    "modules/stakeholders/reports.py": "same-project links only (source_project_id is null)",
+    "modules/stakeholders/service.py": "erasing a stakeholder removes every link, cross-level included",
+    "modules/stakeholders/_research_shared.py": "deleting a finding removes every link, cross-level included",
     "modules/risk_management/treatment.py": (
         "deliberately includes cross-level treatment links; dormant ones are skipped (is_link_live) and the far end "
         "is shown only if ArtefactResolver says the caller can see it, else counted as hidden"

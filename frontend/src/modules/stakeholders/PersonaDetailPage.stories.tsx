@@ -31,7 +31,7 @@ const TEAM: Principal = { type: "org_group", id: "group-1", label: "Platform Arc
 
 const LINKED_PAIN_POINT = buildGraphNode({ type: "pain_point", id: "pp-1", type_label: "Pain Point", label: "Reports arrive late", status: null });
 
-function mockDetailApis(current: Persona, versions: unknown[] = [], represented: unknown[] = []) {
+function mockDetailApis(current: Persona, versions: unknown[] = [], represented: unknown[] = [], engagements: unknown[] = []) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === "/api/v1/orgs/org-1/groups") return ORG_GROUPS;
@@ -45,6 +45,7 @@ function mockDetailApis(current: Persona, versions: unknown[] = [], represented:
     if (path.includes(`/artefacts/persona/${PERSONA_ID}/link-graph`)) return buildGraph([[LINKED_PAIN_POINT]]);
     if (path.endsWith(`/personas/${PERSONA_ID}/stakeholders`)) return represented;
     if (path.endsWith(`/personas/${PERSONA_ID}/needs`)) return [];
+    if (path === `${PROJECT_BASE}/engagements?persona_id=${PERSONA_ID}`) return engagements;
     if (path.endsWith(`/personas/${PERSONA_ID}`)) return current;
     if (path.endsWith("/versions")) return versions;
     if (path.endsWith("/comments")) return [];
@@ -336,6 +337,20 @@ export const RepresentedByShowsAnEmptyState: Story = {
   beforeEach: () => mockDetailApis(buildPersona()),
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(within(canvasElement).getByText("No Stakeholder represents this Persona yet.")).toBeInTheDocument());
+  },
+};
+
+/** The persona's engagement history is the engagements that covered it, with a "Log contact" quick add. */
+export const ShowsEngagementsThatCoveredThePersona: Story = {
+  beforeEach: () =>
+    mockDetailApis(buildPersona(), [], [], [
+      { id: "e1", title: "Technician focus group", channel: "focus_group", engagement_date: "2026-02-20" },
+    ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "2026-02-20 · Focus group · Technician focus group" });
+    await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/engagements/e1`);
+    await expect(canvas.getByRole("button", { name: "Log contact" })).toBeInTheDocument();
   },
 };
 

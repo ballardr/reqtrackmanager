@@ -3,7 +3,8 @@
  *
  * A single Stakeholder's detail: fields, lifecycle, owner, Influence/Interest
  * position and engagement cadence, the Personas they represent, their needs, version
- * history, attachments, comments, and permanent deletion. One scope-aware
+ * history, their engagement timeline with a "Log contact" quick add (project
+ * route only), attachments, comments, and permanent deletion. One scope-aware
  * component serving three routes (`module.ts`): a project stakeholder and an
  * org stakeholder opened *from a project* (both `/projects/:projectId/...`),
  * and an org stakeholder opened from the org dashboard (`/orgs/:organizationId/
@@ -37,8 +38,10 @@ import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import {
-  orgPersonaApi, orgStakeholderApi, orgStakeholderTypeApi, projectNeedApi, projectPersonaApi, projectStakeholderApi,
+  orgPersonaApi, orgStakeholderApi, orgStakeholderGroupApi, orgStakeholderTypeApi, projectEngagementApi, projectNeedApi,
+  projectPersonaApi, projectStakeholderApi, projectStakeholderGroupApi,
 } from "./api";
+import { EngagementTimelinePanel } from "./EngagementTimelinePanel";
 import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
@@ -46,7 +49,8 @@ import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycle
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
 import { StakeholderFormModal } from "./StakeholderFormModal";
-import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderVersion } from "./types";
+import { StakeholderGroupsField } from "./StakeholderGroupsField";
+import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup, StakeholderVersion } from "./types";
 import {
   GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
 } from "./types";
@@ -67,6 +71,7 @@ export function StakeholderDetailPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const scopedApi = projectId ? projectStakeholderApi : orgStakeholderApi;
+  const groupApi = projectId ? projectStakeholderGroupApi : orgStakeholderGroupApi;
   const scopeId = projectId ?? organizationId;
   const listPath = projectId ? `/projects/${projectId}/modules/stakeholders/stakeholders` : "/org-overview";
   const backLabel = projectId ? "← Stakeholders" : "← Organisation overview";
@@ -78,6 +83,7 @@ export function StakeholderDetailPage() {
   const [projectOrgId, setProjectOrgId] = useState<string | undefined>(undefined);
   const [typeOptions, setTypeOptions] = useState<{ value: string; label: string }[]>([]);
   const [personaOptions, setPersonaOptions] = useState<{ value: string; label: string }[]>([]);
+  const [groups, setGroups] = useState<StakeholderGroup[]>([]);
   const [fetchedHint, setFetchedHint] = useState<{ key: string; hint: CadenceHint } | null>(null);
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -118,7 +124,8 @@ export function StakeholderDetailPage() {
     // The Personas this stakeholder could represent: the project's own and org's, or the org's alone.
     const personas = projectId ? projectPersonaApi.list(scopeId) : orgPersonaApi.list(scopeId);
     personas.then((list) => setPersonaOptions(list.map((p) => ({ value: p.id, label: p.name })))).catch(() => setPersonaOptions([]));
-  }, [scopeId, projectId]);
+    groupApi.list(scopeId).then(setGroups).catch(() => setGroups([]));
+  }, [scopeId, projectId, groupApi]);
 
   // The grid position and suggested cadence for the saved levels.
   // The hint only applies to the exact pair of levels it was fetched for, so a stale one never shows.
@@ -231,7 +238,7 @@ export function StakeholderDetailPage() {
             {stakeholder.is_archived && " · Archived"}
           </p>
           {!readOnlyInProject && (
-            <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}
@@ -276,6 +283,7 @@ export function StakeholderDetailPage() {
           {stakeholder.availability_constraints && (
             <span className="text-muted">Their availability: {stakeholder.availability_constraints}</span>
           )}
+          {projectId && <span data-testid="last-engaged">Last engaged: {stakeholder.last_engaged ?? "Never"}</span>}
         </RecordFieldGroup>
 
         <RecordPrincipalField
@@ -285,6 +293,16 @@ export function StakeholderDetailPage() {
           onChange={(owner) =>
             run(() => scopedApi.update(scopeId, stakeholder.id, { owner }), "Owner updated.", "Could not update this Stakeholder's owner.")
           }
+        />
+        <StakeholderGroupsField
+          current={stakeholder.groups}
+          groups={groups}
+          tier={projectId ? "project" : "organization"}
+          onSave={async (groupIds) => {
+            const refs = await groupApi.setStakeholderGroups(scopeId, stakeholder.id, groupIds);
+            setStakeholder({ ...stakeholder, groups: refs });
+            return refs;
+          }}
         />
         {stakeholder.user_id && (
           <RecordFieldGroup label="Platform user">
@@ -316,6 +334,12 @@ export function StakeholderDetailPage() {
         />
 
         <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
+
+        <EngagementTimelinePanel
+          projectId={projectId}
+          subject={{ kind: "stakeholder", id: stakeholder.id, name: stakeholder.name }}
+          load={() => projectEngagementApi.listForStakeholder(projectId ?? "", stakeholder.id)}
+        />
 
         {!readOnlyInProject && (
           <RecordLifecycleControls

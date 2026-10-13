@@ -165,7 +165,7 @@ export function DecisionDetailPage() {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>{decision.title}</h2>
           {!decision.is_locked && (
-            <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}

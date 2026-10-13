@@ -464,6 +464,17 @@ PERSONA_HIDDEN_NAME = "E2E Hidden Persona"
 # Stakeholder Needs (Phase 2) — one on the Gamma-3 hierarchy parent, held by the
 # project stakeholder; the need Playwright spec builds its own disposable data.
 NEED_PROJECT_NAME = "E2E Keep the line running"
+# Engagements (Phase 4) on Gamma-3: a quick email log, and a focus group with anonymous participants and a finding.
+ENGAGEMENT_EMAIL_NAME = "E2E Email follow-up"
+ENGAGEMENT_FOCUS_GROUP_NAME = "E2E Focus group"
+# Stakeholder groups (Phase 3c) on Gamma: an org taxonomy (a Client root whose children are mutually exclusive, and a
+# Business group root), the regulator in two groups, and a Gamma-3 project group nested under an org group.
+GROUP_CLIENT_NAME = "E2E Client"
+GROUP_CLIENT_CHILD_NAME = "E2E Northern Utilities"
+GROUP_CLIENT_OTHER_CHILD_NAME = "E2E Coastal Water"
+GROUP_BUSINESS_NAME = "E2E Business group"
+GROUP_BUSINESS_CHILD_NAME = "E2E Operations"
+GROUP_PROJECT_NAME = "E2E Pilot plant"
 
 
 def create_stakeholder(
@@ -486,6 +497,28 @@ def create_stakeholder(
         )
         r.raise_for_status()
     return stakeholder
+
+
+def create_stakeholder_group(
+    headers: dict, *, org_id: str | None = None, project_id: str | None = None, **fields
+) -> dict:
+    """Creates an org- or project-scoped Stakeholder group (exactly one of `org_id`/`project_id`); `fields` are
+    `name`, `parent_group_id`, `exclusive_children`, `description`."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/stakeholder-groups", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def add_stakeholder_to_group(
+    headers: dict, group_id: str, stakeholder_id: str, *, org_id: str | None = None, project_id: str | None = None
+) -> None:
+    """Puts a stakeholder directly into a group of the same tier (`org_id` for an org group, `project_id` for a project one)."""
+    base = f"{BASE}/orgs/{org_id}/modules/stakeholders" if org_id else f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(
+        f"{base}/stakeholder-groups/{group_id}/members", json={"stakeholder_id": stakeholder_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
 
 
 def set_persona_visibility(headers: dict, project_id: str, persona_id: str, hidden: bool) -> dict:
@@ -529,6 +562,46 @@ def create_need(
         r = httpx.post(f"{base}/{need['id']}/requirements", json={"requirement_id": requirement_id}, headers=headers, timeout=30)
         r.raise_for_status()
     return need
+
+
+def enable_research_extras(headers: dict, org_id: str) -> None:
+    """Turns the Stakeholders module's `research_extras` sub-component (session prompts, anonymous participants,
+    findings; off by default) on for an organisation."""
+    r = httpx.put(
+        f"{BASE}/orgs/{org_id}/modules/stakeholders/subcomponents/research_extras", json={"enabled": True},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def create_engagement(
+    headers: dict, project_id: str, *, outcomes: tuple[tuple[str, str, str], ...] = (), prompts: tuple[tuple[str, str], ...] = (),
+    anonymous: tuple[tuple[str, str | None], ...] = (), findings: tuple[dict, ...] = (), **fields,
+) -> dict:
+    """Logs a project Engagement (Module 2 Phase 4). `fields` are the create payload (title, channel, engagement_date,
+    stakeholder_ids, persona_ids, group_ids, ...). `outcomes` are `(kind, target_type, target_id)` raised/answered links,
+    `prompts` `(prompt, response_notes)`, `anonymous` `(label, persona_id)` and `findings` `{title, description,
+    outcomes}` dicts; the last three need the `research_extras` sub-component."""
+    base = f"{BASE}/projects/{project_id}/modules/stakeholders"
+    r = httpx.post(f"{base}/engagements", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    engagement = r.json()
+    url = f"{base}/engagements/{engagement['id']}"
+    for kind, target_type, target_id in outcomes:
+        body = {"kind": kind, "target_type": target_type, "target_id": target_id}
+        httpx.post(f"{url}/outcomes", json=body, headers=headers, timeout=30).raise_for_status()
+    for prompt, response_notes in prompts:
+        httpx.post(f"{url}/prompts", json={"prompt": prompt, "response_notes": response_notes}, headers=headers, timeout=30).raise_for_status()
+    for label, persona_id in anonymous:
+        httpx.post(f"{url}/anonymous-participants", json={"label": label, "persona_id": persona_id}, headers=headers, timeout=30).raise_for_status()
+    for finding in findings:
+        body = {"title": finding["title"], "description": finding.get("description", "")}
+        r = httpx.post(f"{url}/findings", json=body, headers=headers, timeout=30)
+        r.raise_for_status()
+        for kind, target_type, target_id in finding.get("outcomes", ()):
+            body = {"kind": kind, "target_type": target_type, "target_id": target_id}
+            httpx.post(f"{base}/findings/{r.json()['id']}/outcomes", json=body, headers=headers, timeout=30).raise_for_status()
+    return engagement
 
 
 def add_stakeholder_relationship(
@@ -802,11 +875,46 @@ def main() -> None:
         influence_level_id=levels["influence"]["Medium"], interest_level_id=levels["interest"]["High"],
     )
 
+    print("Seeding Stakeholder groups on Gamma: a Client taxonomy with exclusive children, a Business group, and a"
+          " Gamma-3 project group nested under an org group...")
+    client_root = create_stakeholder_group(h_g, org_id=gamma["id"], name=GROUP_CLIENT_NAME, exclusive_children=True)
+    northern = create_stakeholder_group(
+        h_g, org_id=gamma["id"], name=GROUP_CLIENT_CHILD_NAME, parent_group_id=client_root["id"],
+    )
+    create_stakeholder_group(h_g, org_id=gamma["id"], name=GROUP_CLIENT_OTHER_CHILD_NAME, parent_group_id=client_root["id"])
+    business_root = create_stakeholder_group(h_g, org_id=gamma["id"], name=GROUP_BUSINESS_NAME)
+    operations = create_stakeholder_group(
+        h_g, org_id=gamma["id"], name=GROUP_BUSINESS_CHILD_NAME, parent_group_id=business_root["id"],
+    )
+    add_stakeholder_to_group(h_g, northern["id"], org_regulator["id"], org_id=gamma["id"])
+    add_stakeholder_to_group(h_g, operations["id"], org_regulator["id"], org_id=gamma["id"])
+    pilot_group = create_stakeholder_group(
+        h_g, project_id=gamma3["id"], name=GROUP_PROJECT_NAME, parent_group_id=operations["id"],
+    )
+    add_stakeholder_to_group(h_g, pilot_group["id"], plant_manager["id"], project_id=gamma3["id"])
+
     print("Seeding a Stakeholder Need on Gamma-3, held by the project Stakeholder and the org Field Inspector persona...")
-    create_need(
+    project_need = create_need(
         h_g, gamma3["id"], activate=True, holders=(("stakeholder", plant_manager["id"]), ("persona", field_inspector["id"])),
         name=NEED_PROJECT_NAME, description="Unplanned stoppages must be diagnosed within minutes.",
         rationale="Each stoppage costs an hour of line output.",
+    )
+
+    print("Seeding Engagements on Gamma-3: a quick email log with the project Stakeholder, and a focus group aimed at the"
+          " pilot-plant group with anonymous participants, a prompt and a finding...")
+    enable_research_extras(h_g, gamma["id"])
+    create_engagement(
+        h_g, gamma3["id"], title=ENGAGEMENT_EMAIL_NAME, channel="email", engagement_date="2026-08-14",
+        summary="Confirmed the shutdown window.", stakeholder_ids=[plant_manager["id"]],
+        outcomes=(("raised", "stakeholder_need", project_need["id"]),),
+    )
+    create_engagement(
+        h_g, gamma3["id"], title=ENGAGEMENT_FOCUS_GROUP_NAME, channel="focus_group", engagement_date="2026-09-09",
+        consent_recorded=True, retain_until="2027-09-09", persona_ids=[field_inspector["id"]], group_ids=[pilot_group["id"]],
+        prompts=(("What stops the line most often?", "Sensor faults, mostly."),),
+        anonymous=(("Participant 1", field_inspector["id"]), ("Participant 2", None)),
+        findings=({"title": "Sensor faults dominate", "description": "Mentioned by every participant.",
+                   "outcomes": (("raised", "stakeholder_need", project_need["id"]),)},),
     )
 
     print("Assigning project-scoped roles...")
@@ -993,6 +1101,13 @@ def main() -> None:
     print(f"Stakeholders on Gamma: org {STAKEHOLDER_ORG_NAME!r} (Active, High/Medium, quarterly, represents"
           f" {PERSONA_ORG_WEIGHTED_NAME!r}) and project {STAKEHOLDER_PROJECT_NAME!r} on {GAMMA3_NAME!r} (Active, monthly);"
           f" org {STAKEHOLDER_HIDDEN_NAME!r} is hidden from {GAMMA3_NAME!r} (and so {GAMMA4_NAME!r}).")
+    print(f"Stakeholder groups on Gamma: {GROUP_CLIENT_NAME!r} (exclusive children {GROUP_CLIENT_CHILD_NAME!r} and"
+          f" {GROUP_CLIENT_OTHER_CHILD_NAME!r}) and {GROUP_BUSINESS_NAME!r} > {GROUP_BUSINESS_CHILD_NAME!r}; {STAKEHOLDER_ORG_NAME!r}"
+          f" is in {GROUP_CLIENT_CHILD_NAME!r} and {GROUP_BUSINESS_CHILD_NAME!r}; project group {GROUP_PROJECT_NAME!r} on"
+          f" {GAMMA3_NAME!r} holds {STAKEHOLDER_PROJECT_NAME!r}.")
+    print(f"Engagements on {GAMMA3_NAME!r}: {ENGAGEMENT_EMAIL_NAME!r} (email, {STAKEHOLDER_PROJECT_NAME!r}) and"
+          f" {ENGAGEMENT_FOCUS_GROUP_NAME!r} (focus group aimed at {GROUP_PROJECT_NAME!r}, with anonymous participants, a prompt and a"
+          " finding); the research extras are on for Gamma.")
 
 
 if __name__ == "__main__":

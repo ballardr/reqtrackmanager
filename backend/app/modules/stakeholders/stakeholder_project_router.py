@@ -33,11 +33,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
+from app.modules.stakeholders import _group_shared as gsh
 from app.modules.stakeholders import _shared as psh
 from app.modules.stakeholders import _stakeholder_shared as sh
 from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, versions_out
 from app.modules.stakeholders._shared import get_visible_persona, get_visible_stakeholder
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus
+from app.modules.stakeholders.groups import load_groups
 from app.modules.stakeholders.models import ProjectStakeholderType, Stakeholder
 from app.modules.stakeholders.schemas import (
     CadenceHintOut,
@@ -236,17 +238,25 @@ def create_project_stakeholder_from_user(
 @router.get("/stakeholders", response_model=list[StakeholderOut])
 def list_project_stakeholders(
     project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
+    group_id: UUID | None = None, direct_only: bool = False, group_by: UUID | None = None,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """The project's stakeholders, plus the organisation's unless
     `include_org=false`. Org stakeholders hidden from the project are left out
-    unless `include_hidden=true` (the manage UI), where they carry `project_hidden`."""
+    unless `include_hidden=true` (the manage UI), where they carry `project_hidden`.
+    `group_id` keeps a group's members (and its descendants' unless `direct_only`); `group_by`
+    orders them by branch under that top-level group."""
     project = _project(db, project_id)
     stakeholders = list_project_visible_stakeholders(
         db, project, include_archived=include_archived, include_hidden=include_hidden
     )
     if not include_org:
         stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
+    if group_id is not None or group_by is not None:
+        stakeholders = gsh.filter_and_sort_stakeholders(
+            db, stakeholders, load_groups(db, project.organization_id, project_id), group_id=group_id,
+            direct_only=direct_only, group_by=group_by,
+        )
     return sh.stakeholders_to_out(db, stakeholders, project_id=project_id)
 
 
