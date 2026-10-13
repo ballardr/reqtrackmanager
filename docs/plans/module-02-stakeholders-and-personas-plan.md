@@ -10,14 +10,14 @@ re-derive it, and does not need Module 1 for that purpose.
 §10 "Module 2 — Stakeholders & Personas".
 
 **Status:** Phases 0, 1.1, 1.2, 2, 3 and 3b complete (all 2026-10-05; Phase 0 had user
-sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) complete (2026-10-13); Phase 4 (Engagements backend) and Phase 5 (Engagements UI) complete (2026-10-13); Phase 6 (reports) is next, and Phase 3d (custom attributes) waits for user sign-off. Phase 1 was split
+sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) complete (2026-10-13); Phase 4 (Engagements backend), Phase 5 (Engagements UI) and Phase 6 (reports S1–S5) complete (2026-10-13); Phase 7b (docs website extension) is next, and Phase 3d (custom attributes) waits for user sign-off. Phase 1 was split
 into 1.1 (Persona) and 1.2 (Stakeholder) so Module 1 Phase 11's dependency,
 which needs only Personas, unblocked first. Built ahead of the overview's §46 order because Module 1's
 Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-8 / 10 phases complete (plus the unnumbered Phases 3b, project stakeholder visibility, and 3c, Stakeholder Groups, done, and the unnumbered Phase 3d, custom attributes, not started). **Phases 0–5, 3b, 3c and 7a are done, so the module can ship; Phase 6 (reports) is next, with 7b after it, and 3d (generic custom attributes) whenever its org-level definition model has user sign-off.** Engagements can target a Stakeholder group (addendum 3, items 29–30) through the API, MCP and the Engagement detail page's group picker. The user asked for the docs phase to be pulled ahead of Phases 4–6
+9 / 10 phases complete (plus the unnumbered Phases 3b, project stakeholder visibility, and 3c, Stakeholder Groups, done, and the unnumbered Phase 3d, custom attributes, not started). **Phases 0–6, 3b, 3c and 7a are done, so the module can ship; Phase 7b (docs website extension for Engagements and the reports) is next, and 3d (generic custom attributes) whenever its org-level definition model has user sign-off.** Engagements can target a Stakeholder group (addendum 3, items 29–30) through the API, MCP and the Engagement detail page's group picker. The user asked for the docs phase to be pulled ahead of Phases 4–6
 (**Decided by: User**, 2026-10-05): Phase 7a documents what Phases 0–3 shipped, and Phase 7b extends the
 same section once Phases 4–6 land.
 Phase 1.1 (Persona, 2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder,
@@ -39,9 +39,9 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 3d | Custom attributes on Stakeholders and Personas (generic custom fields) | [ ] Not started — confirm org-level definition model first, see its section |
 | 4 | Engagements (+ research extras): data model, backend, erasure | [x] Complete (2026-10-13) |
 | 5 | Engagements (+ research extras): frontend UI | [x] Complete (2026-10-13) |
-| 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06 |
+| 6 | Reports (S1–S5) | [x] Complete (2026-10-13) — see "Phase 6 notes" |
 | 7a | Docs website coverage — shipped scope (Personas, Stakeholders, Needs, relationships, MCP) | [x] Complete (2026-10-05) |
-| 7b | Docs website coverage — extension for Engagements, research extras, cadence workflow and reports S1–S5 | [ ] Not started — depends on Phase 6 (Phases 4 and 5 are done) |
+| 7b | Docs website coverage — extension for Engagements, research extras, cadence workflow and reports S1–S5 | [ ] Not started — unblocked (Phases 4, 5 and 6 are done) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -889,6 +889,45 @@ when the research extras are off.
 permission, cross-org isolation, sub-component gating), Playwright for
 downloads and the S1 grid, and Storybook.
 
+### Phase 6 notes (2026-10-13)
+
+**Shipped.** `backend/app/modules/stakeholders/reports.py` (five `collect_*` functions and
+`REPORT_DEFINITIONS`), `labels.py` (backend label maps), wired in `module.py` (project router,
+`reports=`, the generated `get_<slug>_report` MCP tools; module version 0.6.0). Frontend: custom
+views for S1 (`PowerInterestGridReportView`, a 2×2 grid with each Stakeholder linking to its
+page) and S4 (`EngagementStalenessReportView`), registered through `reportViews` with
+`ownedParams: ["group_id", "group_by"]`; the shared `StakeholderGroupFilterFields` (extracted
+from `StakeholderListView`, which now uses it) draws the group controls in both. S2, S3 and S5
+use the generic viewer. Tests: `test_stakeholder_reports.py` (18), Storybook for every new
+component, Playwright `reports.spec.ts` (picker, S1 grid, group controls, PDF/CSV for all five).
+
+**Decisions (all Decided by: Agent).**
+- **Project-level only, no organisation variants.** The plan text allowed org variants "gated by
+  the org-reports permission", but none of this module's organisation roles (Persona/Stakeholder
+  owner, type admin) is a sound gate for an aggregate across projects, and Engagements are
+  project-scoped. Risk Management and Decision Management made the same call. "Include child
+  projects" covers a hierarchy. An org variant would need its own org role; add it if wanted.
+- **S1.** Retired, archived and project-hidden Stakeholders are left out. Quadrants use the
+  existing `grid_quadrant`. `group_id` includes descendant groups; `group_by` adds a Branch column
+  and orders by it. Both reject a group the project cannot see (404 / 400).
+- **S2.** A Persona's engagements are those that cover it by link plus those with an anonymous
+  participant tagged with it, dated today or earlier. "Assumption" means no linked Stakeholder and
+  no engagement. The weight shown is the project's effective weight (with where an override came from).
+- **S3.** A Requirement is traced by a Need that gave rise to it, or a Stakeholder or Persona that
+  provides it or is affected by it. Approves/reviews do not count. A Stakeholder hidden from the
+  project does not trace; an archived or Retired one still does, since it did originate it.
+- **S4.** Cadence intervals are 7, 30, 91 and 365 days. One-off and Ad hoc are excluded. A
+  Stakeholder with no cadence is listed on its own with the grid's suggested cadence, instead of
+  being skipped. Personas "not engaged in N months" uses 30-day months (`persona_months`, default 6).
+- **S5.** Engagements dated today or earlier (and on or after `since`). "No outcome" means nothing
+  raised or answered, by the engagement or its findings, and no finding. Findings and anonymous
+  participants are counted only in projects with `research_extras` on.
+- **Core change: the report catalogue reads a report's mounted path from its route** instead of
+  `router.prefix`, so a module whose router is a composite of several prefixed routers can
+  declare reports (`services/report_framework._mounted_path`; noted in `docs/modules.md` §4g).
+
+**Not done.** Reports S1–S5 on the docs website are Phase 7b. No seed changes: no schema changed.
+
 ## Phase 7 — Docs website coverage (7a now, 7b after Phases 4–6)
 
 Added 2026-09-21 at the user's explicit instruction, applied across every
@@ -956,8 +995,8 @@ persona walk-through with engagement history, target cadence, the cadence
 hint and staleness, the power/interest grid, reports S1–S5 and their MCP
 tools, with screenshots of each new screen.
 
-**Status:** 7a complete (2026-10-05): `docs/website/docs/modules/stakeholders-personas-module/` (overview, Persona, Stakeholder, Stakeholder Need, Relationships, MCP, known limitations), five screenshots, sidebar, Modules overview/roadmap and Requirements-management cross-links; `npm run build` clean and the Mermaid diagrams render. 7b not started — depends on Phases
-4, 5 and 6 shipping. Neither blocks any other phase.
+**Status:** 7a complete (2026-10-05): `docs/website/docs/modules/stakeholders-personas-module/` (overview, Persona, Stakeholder, Stakeholder Need, Relationships, MCP, known limitations), five screenshots, sidebar, Modules overview/roadmap and Requirements-management cross-links; `npm run build` clean and the Mermaid diagrams render. 7b not started — unblocked now that
+Phases 4, 5 and 6 have shipped. Neither blocks any other phase.
 
 ## Acceptance criteria (from overview §48, Stakeholders & Personas subset)
 

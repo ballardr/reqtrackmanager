@@ -31,10 +31,11 @@ import type { ScoringScheme } from "../../api/scoring";
 import type { OrgUser } from "../../api/types";
 import { toErrorMessage } from "../../context/ToastContext";
 import { FilterBadge } from "../../components/FilterBadge";
-import { FilterCheckbox, FilterField } from "../../components/FilterPanel";
-import { branchNames, buildGroupTree, descendantIds, flattenGroupTree, groupPath } from "./groupTree";
+import { FilterCheckbox } from "../../components/FilterPanel";
+import { branchNames, descendantIds, groupPath } from "./groupTree";
 import { RecordListView } from "./RecordListView";
 import { StakeholderFormModal } from "./StakeholderFormModal";
+import { StakeholderGroupFilterFields } from "./StakeholderGroupFilterFields";
 import { StakeholderFromUserModal } from "./StakeholderFromUserModal";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup } from "./types";
 import { STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL } from "./types";
@@ -99,8 +100,6 @@ export function StakeholderListView({
   const [directOnly, setDirectOnly] = useState(false);
   const [groupBy, setGroupBy] = useState("");
 
-  const groupOptions = useMemo(() => flattenGroupTree(buildGroupTree(groups)), [groups]);
-  const rootOptions = groupOptions.filter(({ depth }) => depth === 0);
   const groupByRoot = groups.find((g) => g.id === groupBy);
 
   const visible = useMemo(() => {
@@ -162,27 +161,14 @@ export function StakeholderListView({
             : []),
         ]}
         extraFilters={
-          groups.length > 0 && (
-            <>
-              <FilterField label="Group">
-                <select className="input" aria-label="Group" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}>
-                  <option value="">All groups</option>
-                  {groupOptions.map(({ group, depth }) => (
-                    <option key={group.id} value={group.id}>{`${"\u00A0\u00A0".repeat(depth)}${group.name}`}</option>
-                  ))}
-                </select>
-              </FilterField>
-              {groupFilter && <FilterCheckbox label="Directly in the group only" checked={directOnly} onChange={setDirectOnly} />}
-              <FilterField label="Group by">
-                <select className="input" aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
-                  <option value="">No grouping</option>
-                  {rootOptions.map(({ group }) => (
-                    <option key={group.id} value={group.id}>{group.name}</option>
-                  ))}
-                </select>
-              </FilterField>
-            </>
-          )
+          <StakeholderGroupFilterFields
+            groups={groups}
+            groupId={groupFilter}
+            onGroupIdChange={setGroupFilter}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
+            afterGroup={groupFilter && <FilterCheckbox label="Directly in the group only" checked={directOnly} onChange={setDirectOnly} />}
+          />
         }
         toolbar={
           <button className="btn" onClick={() => setFromUserOpen(true)}>

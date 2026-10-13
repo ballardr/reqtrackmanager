@@ -1080,6 +1080,8 @@ Write workflow: `create_*` -> `update_*` -> `activate_*`; `retire_*` ends use. C
 
 Engagement workflow: `create_engagement` (a quick log needs only title, channel, date and `stakeholder_ids`; pass `group_ids` to aim it at a stakeholder group and add that group's current members), then `add_engagement_participant` / `add_engagement_persona` / `add_engagement_audience` as needed, and `add_engagement_outcome` with `kind` `raised` (pain point, need or open question) or `answered` (open question); find candidate ids with `stakeholders_list_relationship_targets`. `stakeholders_list_stakeholder_engagements` is a stakeholder's timeline, and `stakeholders_list_engagements` filters by channel, stakeholder, persona, date range or `retention_due`. Research extras: `add_engagement_prompt` / `update_engagement_prompt`, `add_anonymous_participant`, `create_research_finding` / `update_research_finding` and `add_finding_outcome`.
 
+Reports (`stakeholders_get_*_report`, project-level, read-only) answer cross-cutting questions in one call: the power/interest grid (stakeholders by Manage closely, Keep satisfied, Keep informed, Monitor, plus unscored; filter with `group_id`, arrange with `group_by`), persona validation (the evidence behind each persona; those with none are assumptions), need coverage (needs no requirement came from, requirements tracing to no need, stakeholder or persona), engagement staleness (stakeholders overdue against their own target cadence, those with no cadence, personas not engaged lately) and engagement and research yield (by channel and persona, and what engagements raised). Prefer a report over listing and fetching every record.
+
 Rules and gotchas:
 - All tools are project-scoped (`project_id`).
 - Shared (organisation) personas and stakeholders can be hidden per project with `set_*_visibility`; `reset_*_visibility` removes the project override. This only changes this project's view, not the shared record. Pass `include_hidden=true` to list hidden ones.
@@ -1410,6 +1412,36 @@ Parameters: `project_id*` (uuid, in path), `finding_id*` (uuid, in path), `kind*
 Removes a finding's raised/answered link (the link only).
 
 Parameters: `project_id*` (uuid, in path), `finding_id*` (uuid, in path), `link_id*` (uuid, in path)
+
+#### `stakeholders_get_power_interest_grid_report` (read)
+
+Power/interest grid: Stakeholders on Influence × Interest, grouped into Manage closely, Keep satisfied, Keep informed and Monitor, with unscored Stakeholders listed apart.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `group_id` (uuid, in query), `group_by` (uuid, in query)
+
+#### `stakeholders_get_persona_validation_report` (read)
+
+Persona validation: The evidence behind each Persona (linked Stakeholders, engagements, anonymous participants, findings), flagging Personas that are assumptions together with their weight.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)
+
+#### `stakeholders_get_need_coverage_report` (read)
+
+Need coverage: Needs no Requirement came from, and Requirements that trace to no Need, Stakeholder or Persona.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)
+
+#### `stakeholders_get_engagement_staleness_report` (read)
+
+Engagement staleness: Stakeholders overdue for engagement against their own target cadence (or never engaged), sorted by Influence, Stakeholders with no cadence, and Personas not engaged lately.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `group_id` (uuid, in query), `group_by` (uuid, in query), `persona_months` (integer, in query)
+
+#### `stakeholders_get_engagement_yield_report` (read)
+
+Engagement & research yield: Engagements by channel and Persona, and what they produced: findings, Pain Points, Needs and Open Questions raised, against engagements that produced nothing.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `since` (string, in query)
 
 #### `stakeholders_list_personas` (read)
 

@@ -40,6 +40,10 @@ Registered contributions:
   `research_extras` (session prompts, anonymous participants and findings; off by
   default), so a project can switch any off without disabling the whole module. The
   Engagement log itself is always on with the module.
+- `reports` (Phase 6): five project-level reports (`reports.py`: S1 power/interest grid,
+  S2 Persona validation, S3 Need coverage, S4 Engagement staleness, S5 Engagement &
+  research yield); the framework generates their routes, catalogue entries and
+  `get_<slug>_report` MCP tools.
 
 `default_enabled=False`: an organisation opts in explicitly, matching the
 other new modules.
@@ -75,6 +79,7 @@ from app.modules.stakeholders.engagements import ENGAGEMENT_ARTEFACT_TYPE, FINDI
 from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE
 from app.modules.stakeholders.models import Engagement, PersonaVersion, StakeholderNeedVersion, StakeholderVersion
 from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
+from app.modules.stakeholders.reports import REPORT_DEFINITIONS, REPORT_ROUTERS
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
 from app.modules.stakeholders.service import (
     NEED_ARTEFACT_TYPE,
@@ -86,6 +91,7 @@ from app.modules.stakeholders.service import (
     persona_scoring_targets,
 )
 from app.modules.stakeholders.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
+from app.services.report_framework import report_mcp_tools
 
 _PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}"
 
@@ -157,6 +163,7 @@ def get_project_router() -> APIRouter | None:
     combined.include_router(group_router)
     combined.include_router(engagement_router)
     combined.include_router(research_router)
+    combined.include_router(REPORT_ROUTERS.project, prefix=_PROJECT_ROUTER_PREFIX)
     return combined
 
 
@@ -682,7 +689,9 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     persona_path = f"{_PROJECT_ROUTER_PREFIX}/personas/{{persona_id}}"
     stakeholder_path = f"{_PROJECT_ROUTER_PREFIX}/stakeholders/{{stakeholder_id}}"
     need_path = f"{_PROJECT_ROUTER_PREFIX}/needs/{{need_id}}"
-    return _build_link_mcp_tools() + _build_group_mcp_tools() + _build_engagement_mcp_tools() + (
+    return _build_link_mcp_tools() + _build_group_mcp_tools() + _build_engagement_mcp_tools() + report_mcp_tools(
+        REPORT_DEFINITIONS, project_router_prefix=_PROJECT_ROUTER_PREFIX,
+    ) + (
         McpToolDefinition(
             name="list_personas",
             description=(
@@ -850,7 +859,7 @@ MODULE_DEFINITION = ModuleDefinition(
         "Requirements it gave rise to. Engagements log each contact with them, with who took part and what it "
         "raised, and optional research extras add session prompts, anonymous participants and findings."
     ),
-    version="0.5.0",
+    version="0.6.0",
     default_enabled=False,
     implemented=True,
     get_router=get_router,
@@ -973,6 +982,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
     ),
     principal_references=_principal_references(),
+    reports=REPORT_DEFINITIONS,
     mcp_guidance=_MCP_GUIDANCE,
     mcp_tools=_build_mcp_tools(),
 )

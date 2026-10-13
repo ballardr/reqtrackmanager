@@ -5,12 +5,14 @@ import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
 import { NEED_STATUS_LABEL, PERSONA_STATUS_LABEL, STAKEHOLDER_STATUS_LABEL } from "./types";
 import { EngagementDetailPage } from "./EngagementDetailPage";
+import { EngagementStalenessReportView } from "./EngagementStalenessReportView";
 import { NeedDetailPage } from "./NeedDetailPage";
 import { OrgPersonasPanel } from "./OrgPersonasPanel";
 import { OrgPersonaTypesPanel } from "./OrgPersonaTypesPanel";
 import { OrgStakeholdersPanel } from "./OrgStakeholdersPanel";
 import { OrgStakeholderTypesPanel } from "./OrgStakeholderTypesPanel";
 import { PersonaDetailPage } from "./PersonaDetailPage";
+import { PowerInterestGridReportView } from "./PowerInterestGridReportView";
 import { ProjectEngagementsPage } from "./ProjectEngagementsPage";
 import { ProjectNeedsPage } from "./ProjectNeedsPage";
 import { ProjectPersonasPage } from "./ProjectPersonasPage";
@@ -41,6 +43,9 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  * - `orgOverviewSections`: the org Persona and Stakeholder lists and the
  *   Stakeholder group manager (org-level content); the project's own group
  *   manager is the `groups` route.
+ * - `reportViews` (Phase 6): the custom on-screen views of reports S1 (the power/interest grid)
+ *   and S4 (engagement staleness); each owns the `group_id`/`group_by` parameters so the
+ *   generic form does not show a raw id box. S2, S3 and S5 use the generic viewer.
  * - `orgAdminSections`/`projectAdminSections`: the Persona and Stakeholder
  *   type vocabulary tiers, and Stakeholder scoring configuration (Influence/
  *   Interest levels, default model, rating bands) through core's shared
@@ -88,6 +93,10 @@ export const moduleDefinition: TierAModuleDefinition = {
       element: createElement(StakeholderDetailPage),
     },
   ],
+  reportViews: {
+    s1: { component: PowerInterestGridReportView, ownedParams: ["group_id", "group_by"] },
+    s4: { component: EngagementStalenessReportView, ownedParams: ["group_id", "group_by"] },
+  },
   orgOverviewSections: [
     {
       key: "stakeholders-org-personas",

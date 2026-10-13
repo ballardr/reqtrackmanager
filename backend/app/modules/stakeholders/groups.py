@@ -513,13 +513,20 @@ def branch_sort_key(
 ) -> tuple[int, str]:
     """Sort key for a stakeholder by its branch under the root group `root_id`: the alphabetically
     first branch name (a stakeholder in several branches sorts by that one); unassigned sort last."""
-    names = []
+    names = [name.lower() for name in branch_names(refs, universe, root_id)]
+    return (0, min(names)) if names else (1, "")
+
+
+def branch_names(refs: list[GroupRef], universe: dict[uuid.UUID, StakeholderGroup], root_id: uuid.UUID) -> list[str]:
+    """The names of the branches under the root group `root_id` that a stakeholder's groups sit in
+    (one per branch, alphabetical; empty when none of their groups is under the root)."""
+    names: set[str] = set()
     for ref in refs:
         chain = [universe[ref.id], *ancestor_chain(universe, ref.id)]
         branch = _branch_under(chain, root_id)
         if branch is not None:
-            names.append(universe[branch].name.lower())
-    return (0, min(names)) if names else (1, "")
+            names.add(universe[branch].name)
+    return sorted(names, key=str.lower)
 
 
 # --- From free text --------------------------------------------------------------------------

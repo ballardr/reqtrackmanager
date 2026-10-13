@@ -435,8 +435,8 @@ CADENCE_HINT_BY_QUADRANT: dict[GridQuadrant, TargetCadence] = {
     "monitor": TargetCadence.AD_HOC,
 }
 
-_REPRESENTS_FORWARD = "Represents"
-_REPRESENTS_REVERSE = "Is represented by"
+REPRESENTS_FORWARD = "Represents"
+REPRESENTS_REVERSE = "Is represented by"
 
 
 def get_current_stakeholder_version(db: Session, stakeholder_id: uuid.UUID) -> StakeholderVersion:
@@ -796,11 +796,11 @@ def link_type_id_if_exists(db: Session, organization_id: uuid.UUID, forward_name
 
 def _get_or_create_represents_link_type(db: Session, organization_id: uuid.UUID) -> RequirementLinkTypeDefinition:
     """The org's "Represents"/"Is represented by" link type."""
-    return get_or_create_link_type(db, organization_id, _REPRESENTS_FORWARD, _REPRESENTS_REVERSE)
+    return get_or_create_link_type(db, organization_id, REPRESENTS_FORWARD, REPRESENTS_REVERSE)
 
 
 def _represents_type_id(db: Session, organization_id: uuid.UUID) -> uuid.UUID | None:
-    return link_type_id_if_exists(db, organization_id, _REPRESENTS_FORWARD)
+    return link_type_id_if_exists(db, organization_id, REPRESENTS_FORWARD)
 
 
 def persona_visible_to_stakeholder(stakeholder: Stakeholder, persona: Persona, organization_id: uuid.UUID) -> bool:
