@@ -1,7 +1,8 @@
 """
 Module: modules.stakeholders.summaries
 
-`ArtefactSummaryProvider`s for Personas, Stakeholders, Stakeholder Needs and Stakeholder Groups, so
+`ArtefactSummaryProvider`s for Personas, Stakeholders, Stakeholder Needs, Stakeholder Groups,
+Engagements and Research Findings, so
 core (the artefact link graph) can label and visibility-check them as link
 targets without importing the models.
 
@@ -13,6 +14,7 @@ Responsibilities:
   (`get_many_in_project`) that applies this module's visibility rules.
 
 Design decisions:
+- An Engagement and a Finding are project-only and never archived, so a project sees exactly its own.
 - A Persona or Stakeholder is visible to a project when the project owns it,
   or its organisation owns it and the project has not hidden it
   (`service.hidden_persona_ids` / `hidden_stakeholder_ids`, which already walk
@@ -36,11 +38,13 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.modules.registry import ArtefactSummary, ArtefactSummaryProvider, BrowseLevel
 from app.modules.stakeholders.models import (
+    Engagement,
     Persona,
     PersonaTypeDefinition,
     PersonaVersion,
     ProjectPersonaType,
     ProjectStakeholderType,
+    ResearchFinding,
     Stakeholder,
     StakeholderGroup,
     StakeholderNeed,
@@ -56,6 +60,13 @@ ARTEFACT_TYPE_LABELS: dict[str, str] = {
     "stakeholder": "Stakeholder",
     "stakeholder_need": "Stakeholder need",
     "stakeholder_group": "Stakeholder group",
+    "engagement": "Engagement",
+    "research_finding": "Research finding",
+}
+
+ENGAGEMENT_CHANNEL_LABELS: dict[str, str] = {
+    "email": "Email", "call": "Call", "meeting": "Meeting", "workshop": "Workshop", "interview": "Interview",
+    "focus_group": "Focus group", "usability_test": "Usability test", "survey": "Survey",
 }
 
 
@@ -171,6 +182,49 @@ def _group_provider() -> ArtefactSummaryProvider:
     )
 
 
+def _project_record_provider(
+    model: Any, label_of: Callable[[Any], str], facets_of: Callable[[Session, Sequence[Any]], list[dict[str, tuple[str, str]]]],
+    levels: tuple[BrowseLevel, ...], order_by: Any,
+) -> ArtefactSummaryProvider:
+    """Provider for a project-only record without versions or lifecycle (Engagement, Research Finding).
+
+    `facets_of(db, rows)` returns one facet mapping per row, so a facet that needs another table
+    (a finding's engagement) is loaded in one query for the batch."""
+
+    def build(db: Session, rows: Sequence[Any]) -> list[ArtefactSummary]:
+        facets = facets_of(db, rows)
+        return [
+            ArtefactSummary(id=r.id, project_id=r.project_id, label=label_of(r), facets=f)
+            for r, f in zip(rows, facets, strict=True)
+        ]
+
+    def get(db: Session, record_id: UUID) -> ArtefactSummary | None:
+        row = db.get(model, record_id)
+        return None if row is None else build(db, [row])[0]
+
+    def list_for_project(db: Session, project_id: UUID) -> list[ArtefactSummary]:
+        return build(db, db.scalars(select(model).where(model.project_id == project_id).order_by(order_by)).all())
+
+    def get_many_in_project(db: Session, project_id: UUID, ids: Sequence[UUID]) -> list[ArtefactSummary]:
+        return build(db, db.scalars(select(model).where(model.id.in_(ids), model.project_id == project_id)).all())
+
+    return ArtefactSummaryProvider(
+        get=get, list_for_project=list_for_project, get_many_in_project=get_many_in_project, browse_levels=levels,
+    )
+
+
+def _engagement_facets(db: Session, rows: Sequence[Engagement]) -> list[dict[str, tuple[str, str]]]:
+    return [{"channel": (e.channel.value, ENGAGEMENT_CHANNEL_LABELS[e.channel.value])} for e in rows]
+
+
+def _finding_facets(db: Session, rows: Sequence[ResearchFinding]) -> list[dict[str, tuple[str, str]]]:
+    """A finding's facet is the engagement it came from."""
+    titles = {
+        e.id: e.title for e in db.scalars(select(Engagement).where(Engagement.id.in_({f.engagement_id for f in rows})))
+    } if rows else {}
+    return [{"engagement": (str(f.engagement_id), titles.get(f.engagement_id, ""))} for f in rows]
+
+
 ARTEFACT_SUMMARY_PROVIDERS: dict[str, ArtefactSummaryProvider] = {
     "persona": _provider(
         Persona, PersonaVersion, "persona_id", hidden_persona_ids, (PersonaTypeDefinition, ProjectPersonaType),
@@ -184,4 +238,12 @@ ARTEFACT_SUMMARY_PROVIDERS: dict[str, ArtefactSummaryProvider] = {
         StakeholderNeed, StakeholderNeedVersion, "need_id", None, None, (BrowseLevel("status", "Status"),)
     ),
     "stakeholder_group": _group_provider(),
+    "engagement": _project_record_provider(
+        Engagement, lambda e: e.title, _engagement_facets, (BrowseLevel("channel", "Channel"),),
+        Engagement.engagement_date.desc(),
+    ),
+    "research_finding": _project_record_provider(
+        ResearchFinding, lambda f: f.title, _finding_facets, (BrowseLevel("engagement", "Engagement"),),
+        ResearchFinding.created_at.desc(),
+    ),
 }

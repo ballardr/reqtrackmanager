@@ -5,7 +5,7 @@ Pydantic request/response schemas for the Stakeholders & Personas module's
 org- and project-scoped routers (Phase 1.1: Persona, persona types, weight
 overrides, comments; Phase 1.2: Stakeholder, its representation links and the
 cadence hint; Phase 2: Stakeholder Need and its links; Phase 3c: Stakeholder
-Groups). Type-vocabulary and file schemas are shared by both artefacts.
+Groups; Phase 4: Engagements and the research extras). Type-vocabulary and file schemas are shared by both artefacts.
 
 `PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the
 request body change, so a nullable field (weight, owner, champion, type,
@@ -18,13 +18,14 @@ project-scoped record) a project group. Requests send a `PrincipalRef`
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from app.modules.stakeholders.enums import (
+    EngagementChannel,
     NeedStatus,
     PersonaScope,
     PersonaStatus,
@@ -294,6 +295,8 @@ class StakeholderOut(BaseModel):
     hidden_override: bool | None = None
     hidden_source: str | None = None
     groups: list[StakeholderGroupRefOut] = Field(default_factory=list)
+    # Project router only: the date of the project's latest engagement the stakeholder took part in (Phase 4).
+    last_engaged: date | None = None
 
 
 class VisibilitySet(BaseModel):
@@ -605,3 +608,213 @@ class GroupFromTextOut(BaseModel):
     root_group_id: UUID
     group_ids: list[UUID]
     memberships_added: int
+
+
+# --- Engagements (Phase 4) ------------------------------------------------------
+
+
+class EngagementCreate(BaseModel):
+    """Logs an engagement. `stakeholder_ids`, `persona_ids` and `group_ids` are optional shortcuts that
+    add participants, covered personas and audience groups (each group expanded to its current
+    members) in the same request, e.g. the "Log contact" quick-add."""
+
+    title: str = Field(min_length=1, max_length=300)
+    channel: EngagementChannel
+    engagement_date: date
+    facilitator: PrincipalRef | None = None
+    purpose: str = ""
+    summary: str = ""
+    notes: str = ""
+    consent_recorded: bool = False
+    retain_until: date | None = None
+    stakeholder_ids: list[UUID] = Field(default_factory=list)
+    persona_ids: list[UUID] = Field(default_factory=list)
+    group_ids: list[UUID] = Field(default_factory=list)
+
+
+class EngagementUpdate(BaseModel):
+    """Partial update: only fields present in the request body change, so `facilitator` and
+    `retain_until` can be cleared with an explicit `null`."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    channel: EngagementChannel | None = None
+    engagement_date: date | None = None
+    facilitator: PrincipalRef | None = None
+    purpose: str | None = None
+    summary: str | None = None
+    notes: str | None = None
+    consent_recorded: bool | None = None
+    retain_until: date | None = None
+
+
+class EngagementOut(BaseModel):
+    """An engagement. `retention_due` is true once `retain_until` has been reached; the counts are of
+    Stakeholder participants and (research extras) anonymous participants."""
+
+    id: UUID
+    project_id: UUID
+    creator_id: UUID
+    title: str
+    channel: EngagementChannel
+    engagement_date: date
+    facilitator: PrincipalOut | None
+    purpose: str
+    summary: str
+    notes: str
+    consent_recorded: bool
+    retain_until: date | None
+    retention_due: bool
+    participant_count: int
+    anonymous_participant_count: int
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class StakeholderEngagementOut(BaseModel):
+    """One row of a Stakeholder's engagement timeline (no notes: open the engagement for those)."""
+
+    id: UUID
+    title: str
+    channel: EngagementChannel
+    engagement_date: date
+
+
+class EngagementParticipantOut(BaseModel):
+    """One Stakeholder participant: the link's own id, and the Stakeholder."""
+
+    link_id: UUID
+    stakeholder_id: UUID
+    name: str
+    scope: Literal["organization", "project"]
+
+
+class EngagementParticipantCreate(BaseModel):
+    stakeholder_id: UUID
+
+
+class EngagementPersonaOut(BaseModel):
+    """One Persona the engagement covered."""
+
+    link_id: UUID
+    persona_id: UUID
+    name: str
+    scope: Literal["organization", "project"]
+
+
+class EngagementPersonaCreate(BaseModel):
+    persona_id: UUID
+
+
+class EngagementAudienceOut(BaseModel):
+    """One Stakeholder group the engagement was aimed at."""
+
+    link_id: UUID
+    group_id: UUID
+    name: str
+    scope: Literal["organization", "project"]
+
+
+class EngagementAudienceCreate(BaseModel):
+    group_id: UUID
+
+
+class EngagementAudienceAdded(BaseModel):
+    """Result of adding an audience group: the audience link and the members it added as participants
+    (a snapshot; `already_participating` members were left as they were)."""
+
+    audience: EngagementAudienceOut
+    participants_added: list[EngagementParticipantOut]
+    already_participating: int
+
+
+class OutcomeOut(BaseModel):
+    """One "raised"/"answered" link from an engagement or finding to a Pain Point, Need or Open Question."""
+
+    link_id: UUID
+    kind: Literal["raised", "answered"]
+    target_type: str
+    target_id: UUID
+    label: str
+
+
+class OutcomeCreate(BaseModel):
+    kind: Literal["raised", "answered"]
+    target_type: str
+    target_id: UUID
+
+
+class EngagementCommentOut(BaseModel):
+    id: UUID
+    engagement_id: UUID
+    author_id: UUID
+    author_display_name: str
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+    attachments: list[FileAssetOut] = []
+
+
+EngagementCommentCreate = PersonaCommentCreate
+EngagementCommentUpdate = PersonaCommentUpdate
+
+
+class PromptCreate(BaseModel):
+    prompt: str = Field(min_length=1)
+    response_notes: str = ""
+
+
+class PromptUpdate(BaseModel):
+    prompt: str | None = Field(default=None, min_length=1)
+    response_notes: str | None = None
+
+
+class PromptMove(BaseModel):
+    direction: Literal["up", "down"]
+
+
+class PromptOut(BaseModel):
+    id: UUID
+    engagement_id: UUID
+    sort_order: int
+    prompt: str
+    response_notes: str
+
+
+class AnonymousParticipantCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=200)
+    persona_id: UUID | None = None
+
+
+class AnonymousParticipantUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=200)
+    persona_id: UUID | None = None
+
+
+class AnonymousParticipantOut(BaseModel):
+    id: UUID
+    engagement_id: UUID
+    label: str
+    persona_id: UUID | None
+    persona_name: str | None
+
+
+class FindingCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str = ""
+
+
+class FindingUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = None
+
+
+class FindingOut(BaseModel):
+    id: UUID
+    project_id: UUID
+    engagement_id: UUID
+    creator_id: UUID
+    title: str
+    description: str
+    created_at: datetime
+    updated_at: datetime

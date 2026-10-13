@@ -888,7 +888,7 @@ def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> Non
     file_ids = set(db.scalars(select(StakeholderFile.file_id).where(StakeholderFile.stakeholder_id == stakeholder.id)))
     comment_ids = select(StakeholderComment.id).where(StakeholderComment.stakeholder_id == stakeholder.id)
     file_ids |= set(db.scalars(select(StakeholderCommentFile.file_id).where(StakeholderCommentFile.comment_id.in_(comment_ids))))
-    for link in get_all_links(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id):
+    for link in get_all_links(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id, include_cross_project=True):
         delete_link(db, link)
     db.execute(delete(StakeholderGroupMember).where(StakeholderGroupMember.stakeholder_id == stakeholder.id))
     # The attachment rows cascade from the stakeholder; the bytes must be

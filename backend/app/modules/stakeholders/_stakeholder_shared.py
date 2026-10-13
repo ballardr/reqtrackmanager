@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from datetime import date
 
 from fastapi import HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -41,6 +42,7 @@ from app.modules.stakeholders._principals import (
     validate_principals,
 )
 from app.modules.stakeholders._shared import apply_value_error_as_conflict, validate_people, visibility_fields
+from app.modules.stakeholders.engagements import last_engaged_by_stakeholder
 from app.modules.stakeholders.enums import StakeholderScope, StakeholderStatus
 from app.modules.stakeholders.models import (
     Persona,
@@ -110,15 +112,25 @@ def group_universe(
     return grp.load_groups(db, organization_id, project_id)
 
 
+_UNRESOLVED: date = date.min  # sentinel: `last_engaged` not supplied by the caller
+
+
 def stakeholder_to_out(
     db: Session, stakeholder: Stakeholder, version: StakeholderVersion, *, project_id: uuid.UUID | None = None,
     labels: Labels | None = None, group_refs: list[grp.GroupRef] | None = None,
+    last_engaged: date | None = _UNRESOLVED,
 ) -> StakeholderOut:
     """Merges a stakeholder with its current version. When `project_id` is given
     (project router) and the stakeholder is an org one, also resolves its
     visibility to that project (`project_hidden`, `hidden_override`,
-    `hidden_source`). `groups` lists its direct groups the viewer can see
+    `hidden_source`); `last_engaged` is then the project's latest engagement the
+    stakeholder took part in (the caller's batch result, else looked up).
+    `groups` lists its direct groups the viewer can see
     (`group_refs` when the caller batched them, else looked up)."""
+    if project_id is not None and last_engaged is _UNRESOLVED:
+        last_engaged = last_engaged_by_stakeholder(db, db.get(Project, project_id), [stakeholder.id]).get(stakeholder.id)
+    elif project_id is None:
+        last_engaged = None
     if group_refs is None:
         group_refs = grp.group_refs(db, [stakeholder.id], group_universe(db, stakeholder, project_id))[stakeholder.id]
     hidden: dict[str, bool | str | None] = {}
@@ -143,7 +155,7 @@ def stakeholder_to_out(
             version, STAKEHOLDER_PRINCIPAL_FIELDS,
         ),
         user_id=version.user_id, version_number=version.version_number, created_at=stakeholder.created_at,
-        updated_at=stakeholder.updated_at, **hidden,
+        updated_at=stakeholder.updated_at, **hidden, last_engaged=last_engaged,
         groups=[StakeholderGroupRefOut(id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id) for r in group_refs],
     )
 
@@ -157,8 +169,13 @@ def stakeholders_to_out(
     refs: dict[uuid.UUID, list[grp.GroupRef]] = {}
     if stakeholders:
         refs = grp.group_refs(db, [s.id for s in stakeholders], group_universe(db, stakeholders[0], project_id))
+    last: dict[uuid.UUID, date] = {}
+    if project_id is not None and stakeholders:
+        last = last_engaged_by_stakeholder(db, db.get(Project, project_id), [s.id for s in stakeholders])
     return [
-        stakeholder_to_out(db, s, v, project_id=project_id, labels=labels, group_refs=refs[s.id])
+        stakeholder_to_out(
+            db, s, v, project_id=project_id, labels=labels, group_refs=refs[s.id], last_engaged=last.get(s.id)
+        )
         for s, v in zip(stakeholders, versions, strict=True)
     ]
 

@@ -4,7 +4,8 @@ Module: modules.stakeholders.module
 Registers the Stakeholders & Personas module into the modular feature
 system's registry via `MODULE_DEFINITION` (docs/plans/module-02-stakeholders-
 and-personas-plan.md). Phase 1.1 delivers the Persona artefact, Phase 1.2 the
-Stakeholder artefact, Phase 2 the Stakeholder Need artefact.
+Stakeholder artefact, Phase 2 the Stakeholder Need artefact, Phase 4 the
+Engagement contact log and the research extras.
 
 Registered contributions:
 - Roles (not additions to core enums): `persona_owner` (project) and
@@ -19,9 +20,12 @@ Registered contributions:
   scheme's levels and bands).
 - `stakeholder_need_owner` (project; carries the FGAC `(stakeholder_need, manage)`
   atom) for Stakeholder Needs, which are project-scoped only so have no org role.
-- `artefact_types=("persona", "stakeholder", "stakeholder_need", "stakeholder_group")`
-  so all four are valid `ArtefactLink` endpoints and get FGAC atoms. Groups (Phase
-  3c) have no role of their own: they are managed with the Stakeholder gate.
+- `engagement_owner` (project; carries the FGAC `(engagement, manage)` atom) for
+  Engagements, which are project-scoped only so have no org role.
+- `artefact_types=("persona", "stakeholder", "stakeholder_need", "stakeholder_group",
+  "engagement", "research_finding")` so all six are valid `ArtefactLink` endpoints and
+  get FGAC atoms. Groups (Phase 3c) have no role of their own: they are managed with
+  the Stakeholder gate.
 - `scoring_schemes`: the Influence × Interest `stakeholder` scheme (`scoring.py`).
 - `scoring_target_providers["persona"]`: the generic hook Module 1's
   per-persona Pain Point scoring reads (Phase 0 resolution 10), so Context &
@@ -32,8 +36,10 @@ Registered contributions:
   `stakeholder_export.py` for Stakeholders, composed here — Personas first,
   since Stakeholders link to them) so both travel with an organisation/project
   export.
-- Three sub-components, `persona`, `stakeholder` and `stakeholder_need`, so a
-  project can switch any off without disabling the whole module.
+- Four sub-components, `persona`, `stakeholder`, `stakeholder_need` and
+  `research_extras` (session prompts, anonymous participants and findings; off by
+  default), so a project can switch any off without disabling the whole module. The
+  Engagement log itself is always on with the module.
 
 `default_enabled=False`: an organisation opts in explicitly, matching the
 other new modules.
@@ -59,13 +65,15 @@ from app.modules.registry import (
     ModuleSubComponentDefinition,
     PrincipalReference,
 )
+from app.modules.stakeholders import engagement_export, need_export, relationship_export, stakeholder_export
 from app.modules.stakeholders import export as persona_export
-from app.modules.stakeholders import need_export, relationship_export, stakeholder_export
+from app.modules.stakeholders._engagement_shared import ENGAGEMENT_MANAGE_PERMISSION
 from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
+from app.modules.stakeholders.engagements import ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE, RESEARCH_SUBCOMPONENT
 from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE
-from app.modules.stakeholders.models import PersonaVersion, StakeholderNeedVersion, StakeholderVersion
+from app.modules.stakeholders.models import Engagement, PersonaVersion, StakeholderNeedVersion, StakeholderVersion
 from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
 from app.modules.stakeholders.service import (
@@ -83,7 +91,7 @@ _PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS
 
 
 def _principal_references() -> tuple[PrincipalReference, ...]:
-    """The owner and champion fields, which may name a user or a group (`services.principals`).
+    """The owner, champion and facilitator fields, which may name a user or a group (`services.principals`).
     They live on the version rows, so only the current version of each record is counted or
     reassigned (`live_filter`); the audit event is about the record (`record_id_field`)."""
     def current(model):
@@ -109,6 +117,10 @@ def _principal_references() -> tuple[PrincipalReference, ...]:
             audit_entity_type=NEED_ARTEFACT_TYPE, live_filter=current(StakeholderNeedVersion),
             record_id_field="need_id",
         ),
+        PrincipalReference(
+            model=Engagement, field="facilitator", label="engagement facilitators",
+            audit_entity_type=ENGAGEMENT_ARTEFACT_TYPE,
+        ),
     )
 
 
@@ -129,10 +141,12 @@ def get_router() -> APIRouter | None:
 def get_project_router() -> APIRouter | None:
     """The project-scoped router (Persona + Stakeholder routes); imported
     lazily like `get_router`."""
+    from app.modules.stakeholders.engagement_project_router import router as engagement_router
     from app.modules.stakeholders.group_project_router import router as group_router
     from app.modules.stakeholders.need_project_router import router as need_router
     from app.modules.stakeholders.project_router import router
     from app.modules.stakeholders.relationship_project_router import router as relationship_router
+    from app.modules.stakeholders.research_project_router import router as research_router
     from app.modules.stakeholders.stakeholder_project_router import router as stakeholder_router
 
     combined = APIRouter()
@@ -141,13 +155,16 @@ def get_project_router() -> APIRouter | None:
     combined.include_router(need_router)
     combined.include_router(relationship_router)
     combined.include_router(group_router)
+    combined.include_router(engagement_router)
+    combined.include_router(research_router)
     return combined
 
 
 def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     """`ModuleDefinition.resolve_file_owner_project_id`: the project owning a
-    file attached to a project-scoped persona, stakeholder or need (or its
+    file attached to a project-scoped persona, stakeholder, need or engagement (or its
     comment), else `None`."""
+    from app.modules.stakeholders.engagements import resolve_engagement_file_project_id
     from app.modules.stakeholders.service import (
         resolve_need_file_project_id,
         resolve_persona_file_project_id,
@@ -156,7 +173,7 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
 
     return (
         resolve_persona_file_project_id(db, file_id) or resolve_stakeholder_file_project_id(db, file_id)
-        or resolve_need_file_project_id(db, file_id)
+        or resolve_need_file_project_id(db, file_id) or resolve_engagement_file_project_id(db, file_id)
     )
 
 
@@ -184,28 +201,37 @@ def _export_project(db: Session, project):
     stakeholder_data, stakeholder_assets = stakeholder_export.export_project_data(db, project)
     need_data, need_assets = need_export.export_project_data(db, project)
     relationship_data = relationship_export.export_project_data(db, project)
+    engagement_data, engagement_assets = engagement_export.export_project_data(db, project)
     return (
-        {**persona_data, **stakeholder_data, **need_data, **relationship_data},
-        {**persona_assets, **stakeholder_assets, **need_assets},
+        {**persona_data, **stakeholder_data, **need_data, **relationship_data, **engagement_data},
+        {**persona_assets, **stakeholder_assets, **need_assets, **engagement_assets},
     )
 
 
 def _import_project(db, project, data, file_bytes_by_ref, current_user, users, warnings) -> None:
     """Project bundle import: Personas, then Stakeholders (which link to them),
     then Needs (which link to both), then the §10.5 relationships (which need
-    all of those plus other modules' Pain Points and Decisions)."""
+    all of those plus other modules' Pain Points and Decisions), then Engagements
+    (which link to Stakeholders, Personas, groups, Needs and other modules' Pain Points)."""
     persona_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     stakeholder_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     need_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     relationship_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+    engagement_export.import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
 
 
 def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUID]:
     """`ModuleDefinition.artefact_ids_in_organization`: every persona,
-    stakeholder and need in the organisation, org-scoped or in one of its
+    stakeholder, need, group, engagement and finding in the organisation, org-scoped or in one of its
     projects, for org deletion's polymorphic cleanup."""
     from app.models.project import Project
-    from app.modules.stakeholders.models import Persona, Stakeholder, StakeholderGroup, StakeholderNeed
+    from app.modules.stakeholders.models import (
+        Persona,
+        ResearchFinding,
+        Stakeholder,
+        StakeholderGroup,
+        StakeholderNeed,
+    )
 
     project_ids = select(Project.id).where(Project.organization_id == organization_id)
     ids: set[UUID] = set()
@@ -214,6 +240,8 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
             or_(model.organization_id == organization_id, model.project_id.in_(project_ids))
         )).all())
     ids |= set(db.scalars(select(StakeholderNeed.id).where(StakeholderNeed.project_id.in_(project_ids))).all())
+    ids |= set(db.scalars(select(Engagement.id).where(Engagement.project_id.in_(project_ids))).all())
+    ids |= set(db.scalars(select(ResearchFinding.id).where(ResearchFinding.project_id.in_(project_ids))).all())
     ids |= set(db.scalars(select(StakeholderGroup.id).where(
         or_(StakeholderGroup.organization_id == organization_id, StakeholderGroup.project_id.in_(project_ids))
     )).all())
@@ -457,6 +485,195 @@ def _build_group_mcp_tools() -> tuple[McpToolDefinition, ...]:
     )
 
 
+def _build_engagement_mcp_tools() -> tuple[McpToolDefinition, ...]:
+    """Engagement log and research-extras tools (Phase 4). Writes need the same Engagement Owner role as the REST
+    endpoints. There is deliberately no tool to delete an engagement, finding, prompt or anonymous participant:
+    irreversible deletion of possible personal data stays a human action in the UI. Removing a link removes only
+    the link."""
+    prefix = _PROJECT_ROUTER_PREFIX
+    base = f"{prefix}/engagements"
+    one = f"{base}/{{engagement_id}}"
+    engagement = _path("engagement_id", "The Engagement.")
+    finding = _path("finding_id", "The research finding.")
+    optional_query = lambda name, type_, description: {  # noqa: E731
+        "name": name, "type": type_, "required": False, "in": "query", "description": description,
+    }
+    fields = [
+        _body("channel", "string", "email, call, meeting, workshop, interview, focus_group, usability_test or survey."),
+        _body("engagement_date", "string", "When it took place, ISO date (YYYY-MM-DD)."),
+        _body("facilitator", "object", _principal_description("ran it")),
+        _body("purpose", "string", "What it was for / the topics in scope."),
+        _body("summary", "string", "A short outcome."),
+        _body("notes", "string", "Notes. May quote participants: Confidential personal data."),
+        _body("consent_recorded", "boolean", "Whether participants consented to the record being kept."),
+        _body("retain_until", "string", "ISO date after which the record is due for disposal; null clears it."),
+    ]
+    create_fields = [
+        _body("title", "string", "Short title.", required=True),
+        {**fields[0], "required": True}, {**fields[1], "required": True}, *fields[2:],
+        _body("stakeholder_ids", "array", "Stakeholder ids to add as participants."),
+        _body("persona_ids", "array", "Persona ids the engagement covered."),
+        _body("group_ids", "array", "Stakeholder group ids it was aimed at; each is expanded to its current members."),
+    ]
+    outcome_body = [
+        _body("kind", "string", "raised (Pain Point, Need or Open Question) or answered (Open Question).", required=True),
+        _body("target_type", "string", "pain_point, stakeholder_need or open_question.", required=True),
+        _body("target_id", "uuid", "The record's id (it must belong to this project).", required=True),
+    ]
+    tools: list[McpToolDefinition] = [
+        McpToolDefinition(
+            name="list_engagements", method="GET", path_template=base,
+            description="Lists a project's Engagements (the contact log), most recent first, with the filters given.",
+            params=[
+                _PROJECT_ID_PARAM, optional_query("channel", "string", "Only this channel."),
+                optional_query("stakeholder_id", "uuid", "Only engagements this Stakeholder took part in."),
+                optional_query("persona_id", "uuid", "Only engagements that covered this Persona."),
+                optional_query("date_from", "string", "Only on or after this ISO date."),
+                optional_query("date_to", "string", "Only on or before this ISO date."),
+                optional_query("retention_due", "boolean", "true: only those whose retain-until date has been reached."),
+            ],
+        ),
+        McpToolDefinition(
+            name="get_engagement", method="GET", path_template=one, description="Fetches a single Engagement.",
+            params=[_PROJECT_ID_PARAM, engagement],
+        ),
+        McpToolDefinition(
+            name="create_engagement", method="POST", path_template=base,
+            description=(
+                "Logs an Engagement (a contact with stakeholders or personas), optionally with its participants, "
+                "covered personas and audience groups in one call."
+            ),
+            params=[_PROJECT_ID_PARAM, *create_fields],
+        ),
+        McpToolDefinition(
+            name="update_engagement", method="PUT", path_template=one,
+            description="Updates an Engagement; only the fields supplied change.",
+            params=[_PROJECT_ID_PARAM, engagement, _body("title", "string", "Short title."), *fields],
+        ),
+        McpToolDefinition(
+            name="list_stakeholder_engagements", method="GET",
+            path_template=f"{prefix}/stakeholders/{{stakeholder_id}}/engagements",
+            description="Lists this project's Engagements a Stakeholder took part in, most recent first (their timeline).",
+            params=[_PROJECT_ID_PARAM, _STAKEHOLDER_ID_PARAM],
+        ),
+    ]
+    for noun, plural, label in (
+        ("participant", "participants", "Stakeholders who took part"),
+        ("persona", "personas", "Personas the engagement covered"),
+        ("audience", "audiences", "Stakeholder groups the engagement was aimed at"),
+    ):
+        key, key_label = {
+            "participant": ("stakeholder_id", "The Stakeholder."), "persona": ("persona_id", "The Persona."),
+            "audience": ("group_id", "The Stakeholder group."),
+        }[noun]
+        extra = (
+            " Adding a group also adds its current members as participants (a snapshot)." if noun == "audience" else ""
+        )
+        tools += [
+            McpToolDefinition(
+                name=f"list_engagement_{plural}", method="GET", path_template=f"{one}/{plural}",
+                description=f"Lists the {label}.", params=[_PROJECT_ID_PARAM, engagement],
+            ),
+            McpToolDefinition(
+                name=f"add_engagement_{noun}", method="POST", path_template=f"{one}/{plural}",
+                description=f"Adds one of the {label}.{extra}",
+                params=[_PROJECT_ID_PARAM, engagement, _body(key, "uuid", key_label, required=True)],
+            ),
+            McpToolDefinition(
+                name=f"remove_engagement_{noun}", method="DELETE", path_template=f"{one}/{plural}/{{{key}}}",
+                description=f"Removes one of the {label} (the link only{'; participants it added stay' if noun == 'audience' else ''}).",
+                params=[_PROJECT_ID_PARAM, engagement, _path(key, key_label)],
+            ),
+        ]
+    tools += [
+        McpToolDefinition(
+            name="list_engagement_outcomes", method="GET", path_template=f"{one}/outcomes",
+            description="Lists the Pain Points, Needs and Open Questions an Engagement raised or answered.",
+            params=[_PROJECT_ID_PARAM, engagement],
+        ),
+        McpToolDefinition(
+            name="add_engagement_outcome", method="POST", path_template=f"{one}/outcomes",
+            description="Records that an Engagement raised or answered a record of this project.",
+            params=[_PROJECT_ID_PARAM, engagement, *outcome_body],
+        ),
+        McpToolDefinition(
+            name="remove_engagement_outcome", method="DELETE", path_template=f"{one}/outcomes/{{link_id}}",
+            description="Removes a raised/answered link (the link only).",
+            params=[_PROJECT_ID_PARAM, engagement, _path("link_id", "The outcome's link id (from the list tool).")],
+        ),
+        # Research extras (the `research_extras` sub-component).
+        McpToolDefinition(
+            name="list_engagement_prompts", method="GET", path_template=f"{one}/prompts",
+            description="Lists an Engagement's session prompts in order (research extras).",
+            params=[_PROJECT_ID_PARAM, engagement],
+        ),
+        McpToolDefinition(
+            name="add_engagement_prompt", method="POST", path_template=f"{one}/prompts",
+            description="Appends a session prompt with optional response notes (research extras).",
+            params=[_PROJECT_ID_PARAM, engagement, _body("prompt", "string", "The question or topic.", required=True),
+                    _body("response_notes", "string", "What was said in response.")],
+        ),
+        McpToolDefinition(
+            name="update_engagement_prompt", method="PATCH", path_template=f"{one}/prompts/{{prompt_id}}",
+            description="Edits a session prompt or its response notes; only fields supplied change (research extras).",
+            params=[_PROJECT_ID_PARAM, engagement, _path("prompt_id", "The prompt."),
+                    _body("prompt", "string", "The question or topic."), _body("response_notes", "string", "Response notes.")],
+        ),
+        McpToolDefinition(
+            name="list_anonymous_participants", method="GET", path_template=f"{one}/anonymous-participants",
+            description="Lists an Engagement's anonymous participants (research extras).",
+            params=[_PROJECT_ID_PARAM, engagement],
+        ),
+        McpToolDefinition(
+            name="add_anonymous_participant", method="POST", path_template=f"{one}/anonymous-participants",
+            description=(
+                "Adds a participant who has no Stakeholder record: a label (e.g. 'Participant 3') and, optionally, "
+                "the Persona they represent (research extras). Do not put names or contact details in the label."
+            ),
+            params=[_PROJECT_ID_PARAM, engagement, _body("label", "string", "Anonymous label.", required=True),
+                    _body("persona_id", "uuid", "The Persona they represent.")],
+        ),
+        McpToolDefinition(
+            name="list_research_findings", method="GET", path_template=f"{prefix}/findings",
+            description="Lists every research finding in a project, newest first (research extras).",
+            params=[_PROJECT_ID_PARAM],
+        ),
+        McpToolDefinition(
+            name="list_engagement_findings", method="GET", path_template=f"{one}/findings",
+            description="Lists the findings of one Engagement (research extras).", params=[_PROJECT_ID_PARAM, engagement],
+        ),
+        McpToolDefinition(
+            name="create_research_finding", method="POST", path_template=f"{one}/findings",
+            description="Records a finding from an Engagement (research extras).",
+            params=[_PROJECT_ID_PARAM, engagement, _body("title", "string", "Short statement of the finding.", required=True),
+                    _body("description", "string", "Evidence and detail.")],
+        ),
+        McpToolDefinition(
+            name="update_research_finding", method="PUT", path_template=f"{prefix}/findings/{{finding_id}}",
+            description="Updates a research finding; only the fields supplied change.",
+            params=[_PROJECT_ID_PARAM, finding, _body("title", "string", "Short statement of the finding."),
+                    _body("description", "string", "Evidence and detail.")],
+        ),
+        McpToolDefinition(
+            name="list_finding_outcomes", method="GET", path_template=f"{prefix}/findings/{{finding_id}}/outcomes",
+            description="Lists the Pain Points, Needs and Open Questions a finding raised or answered.",
+            params=[_PROJECT_ID_PARAM, finding],
+        ),
+        McpToolDefinition(
+            name="add_finding_outcome", method="POST", path_template=f"{prefix}/findings/{{finding_id}}/outcomes",
+            description="Records that a finding raised or answered a record of this project.",
+            params=[_PROJECT_ID_PARAM, finding, *outcome_body],
+        ),
+        McpToolDefinition(
+            name="remove_finding_outcome", method="DELETE",
+            path_template=f"{prefix}/findings/{{finding_id}}/outcomes/{{link_id}}",
+            description="Removes a finding's raised/answered link (the link only).",
+            params=[_PROJECT_ID_PARAM, finding, _path("link_id", "The outcome's link id (from the list tool).")],
+        ),
+    ]
+    return tuple(tools)
+
+
 def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     """Persona, Stakeholder and Stakeholder Need read and write tools (no approval-gated action
     exists, so no `require_ai_approvals_enabled` handling is needed). There is
@@ -465,7 +682,7 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     persona_path = f"{_PROJECT_ROUTER_PREFIX}/personas/{{persona_id}}"
     stakeholder_path = f"{_PROJECT_ROUTER_PREFIX}/stakeholders/{{stakeholder_id}}"
     need_path = f"{_PROJECT_ROUTER_PREFIX}/needs/{{need_id}}"
-    return _build_link_mcp_tools() + _build_group_mcp_tools() + (
+    return _build_link_mcp_tools() + _build_group_mcp_tools() + _build_engagement_mcp_tools() + (
         McpToolDefinition(
             name="list_personas",
             description=(
@@ -630,9 +847,10 @@ MODULE_DEFINITION = ModuleDefinition(
         "Interest — at organisation or project level, with configurable types, a Draft/Active/Retired lifecycle "
         "and full version history. A Stakeholder can represent Personas; Personas are the targets Pain Points are "
         "scored against. Stakeholder Needs record what a Stakeholder or Persona needs, separately from the "
-        "Requirements it gave rise to."
+        "Requirements it gave rise to. Engagements log each contact with them, with who took part and what it "
+        "raised, and optional research extras add session prompts, anonymous participants and findings."
     ),
-    version="0.4.0",
+    version="0.5.0",
     default_enabled=False,
     implemented=True,
     get_router=get_router,
@@ -664,7 +882,10 @@ MODULE_DEFINITION = ModuleDefinition(
             ),
         ),
     ),
-    artefact_types=(PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE, GROUP_ARTEFACT_TYPE),
+    artefact_types=(
+        PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE, GROUP_ARTEFACT_TYPE,
+        ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE,
+    ),
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,
@@ -673,6 +894,9 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleSubComponentDefinition(key="persona", name="Personas", default_enabled=True),
         ModuleSubComponentDefinition(key="stakeholder", name="Stakeholders", default_enabled=True),
         ModuleSubComponentDefinition(key="stakeholder_need", name="Stakeholder Needs", default_enabled=True),
+        # Off by default: the engagement log is enough for most projects, and the extras (session prompts,
+        # anonymous participants, findings) are for projects that run research sessions.
+        ModuleSubComponentDefinition(key=RESEARCH_SUBCOMPONENT, name="Research extras", default_enabled=False),
     ),
     scoring_schemes=(STAKEHOLDER_SCORING_SCHEME,),
     scoring_target_providers={PERSONA_ARTEFACT_TYPE: persona_scoring_targets},
@@ -732,6 +956,15 @@ MODULE_DEFINITION = ModuleDefinition(
                 "Personas that have them and the Requirements they gave rise to."
             ),
             scope="project", permissions=(NEED_MANAGE_PERMISSION,),
+        ),
+        ModuleRoleDefinition(
+            role_key="engagement_owner", name="Engagement Owner",
+            description=(
+                "Logs, edits and permanently deletes the project's Engagements, manages their participants, "
+                "covered Personas, audience groups and attachments, and (with the research extras on) their "
+                "session prompts, anonymous participants and findings."
+            ),
+            scope="project", permissions=(ENGAGEMENT_MANAGE_PERMISSION,),
         ),
     ),
     principal_references=_principal_references(),

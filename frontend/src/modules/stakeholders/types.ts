@@ -186,6 +186,28 @@ export const TARGET_CADENCE_LABEL: Record<TargetCadence, string> = {
   yearly: "Yearly",
 };
 
+/** How an Engagement took place (`EngagementChannel` on the backend). */
+export type EngagementChannel =
+  | "email"
+  | "call"
+  | "meeting"
+  | "workshop"
+  | "interview"
+  | "focus_group"
+  | "usability_test"
+  | "survey";
+
+export const ENGAGEMENT_CHANNEL_LABEL: Record<EngagementChannel, string> = {
+  email: "Email",
+  call: "Call",
+  meeting: "Meeting",
+  workshop: "Workshop",
+  interview: "Interview",
+  focus_group: "Focus group",
+  usability_test: "Usability test",
+  survey: "Survey",
+};
+
 /** The power/interest grid quadrant a pair of Influence/Interest levels falls in. */
 export type GridQuadrant = "manage_closely" | "keep_satisfied" | "keep_informed" | "monitor";
 
@@ -255,6 +277,8 @@ export interface Stakeholder {
   hidden_source: HiddenSource | null;
   /** The stakeholder's direct groups this view can see. */
   groups: StakeholderGroupRef[];
+  /** Project view only: the date (YYYY-MM-DD) of the project's latest engagement they took part in. */
+  last_engaged?: string | null;
 }
 
 export interface StakeholderVersion {

@@ -32,6 +32,16 @@ def test_all_declared_tools_resolve():
         # Phase 3c stakeholder group tools.
         "list_stakeholder_groups", "create_stakeholder_group", "update_stakeholder_group",
         "delete_stakeholder_group", "add_stakeholder_to_group", "remove_stakeholder_from_group",
+        # Phase 4 engagement log and research extras.
+        "list_engagements", "get_engagement", "create_engagement", "update_engagement",
+        "list_stakeholder_engagements", "list_engagement_participants", "add_engagement_participant",
+        "remove_engagement_participant", "list_engagement_personas", "add_engagement_persona",
+        "remove_engagement_persona", "list_engagement_audiences", "add_engagement_audience",
+        "remove_engagement_audience", "list_engagement_outcomes", "add_engagement_outcome",
+        "remove_engagement_outcome", "list_engagement_prompts", "add_engagement_prompt", "update_engagement_prompt",
+        "list_anonymous_participants", "add_anonymous_participant", "list_research_findings",
+        "list_engagement_findings", "create_research_finding", "update_research_finding", "list_finding_outcomes",
+        "add_finding_outcome", "remove_finding_outcome",
     }
 
 
@@ -41,7 +51,9 @@ def test_read_tools_are_non_mutating_and_write_tools_mutate():
                  "get_stakeholder_need", "list_relationship_kinds", "list_relationship_targets",
                  "list_incoming_relationships", "list_stakeholder_relationships", "list_persona_relationships",
                  "list_stakeholder_personas", "list_need_holders", "list_need_requirements",
-                 "list_stakeholder_groups"):
+                 "list_stakeholder_groups", "list_engagements", "get_engagement", "list_stakeholder_engagements",
+                 "list_engagement_participants", "list_engagement_outcomes", "list_engagement_prompts",
+                 "list_anonymous_participants", "list_research_findings", "list_finding_outcomes"):
         assert tools[name].method == "GET" and tools[name].mutates is False
     for name in (
         "create_persona", "update_persona", "activate_persona", "retire_persona", "create_stakeholder",
@@ -52,7 +64,9 @@ def test_read_tools_are_non_mutating_and_write_tools_mutate():
         "remove_need_holder", "add_need_requirement", "remove_need_requirement", "set_stakeholder_visibility",
         "reset_stakeholder_visibility", "set_persona_visibility", "reset_persona_visibility",
         "create_stakeholder_group", "update_stakeholder_group", "delete_stakeholder_group",
-        "add_stakeholder_to_group", "remove_stakeholder_from_group",
+        "add_stakeholder_to_group", "remove_stakeholder_from_group", "create_engagement", "update_engagement",
+        "add_engagement_participant", "remove_engagement_audience", "add_engagement_outcome",
+        "add_anonymous_participant", "create_research_finding", "remove_finding_outcome",
     ):
         assert tools[name].mutates is True
 
@@ -70,11 +84,15 @@ def test_remove_tools_delete_only_a_link():
         assert tools[name].method == "DELETE"
         assert any(
             part in tools[name].path_template
-            for part in ("/relationships/", "/personas/", "/holders/", "/requirements/", "/members/")
+            for part in (
+                "/relationships/", "/personas/", "/holders/", "/requirements/", "/members/", "/participants/",
+                "/audiences/", "/outcomes/",
+            )
         )
 
 
 def test_no_tool_can_erase_a_stakeholder():
     """Irreversible deletion of personal data stays a human action in the UI. A Stakeholder group
-    holds no personal data and deleting one keeps its members, so it is the one delete tool."""
+    holds no personal data and deleting one keeps its members, so it is the one delete tool. Nor can any tool
+    delete an Engagement, prompt, anonymous participant or finding."""
     assert not any(("delete" in name and name != "delete_stakeholder_group") or "erase" in name for name in _tools())

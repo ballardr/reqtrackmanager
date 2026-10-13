@@ -10,15 +10,14 @@ re-derive it, and does not need Module 1 for that purpose.
 §10 "Module 2 — Stakeholders & Personas".
 
 **Status:** Phases 0, 1.1, 1.2, 2, 3 and 3b complete (all 2026-10-05; Phase 0 had user
-sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) complete (2026-10-13); Phase 3d (custom attributes) and Phase 4 are next. Phase 1 was split
+sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) complete (2026-10-13); Phase 4 (Engagements backend) complete (2026-10-13); Phase 5 (Engagements UI) is next, and Phase 3d (custom attributes) waits for user sign-off. Phase 1 was split
 into 1.1 (Persona) and 1.2 (Stakeholder) so Module 1 Phase 11's dependency,
 which needs only Personas, unblocked first. Built ahead of the overview's §46 order because Module 1's
 Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-6 / 10 phases complete (plus the unnumbered Phases 3b, project stakeholder visibility, and 3c, Stakeholder Groups, done, and the unnumbered Phase 3d, custom attributes, not started). **Phases 0–3, 3b, 3c and 7a are done, so the module can ship; Phase 4 (Engagements: data
-model, backend, erasure) is next, with 5, 6 and 7b after it, and 3d (generic custom attributes) whenever its org-level definition model has user sign-off.** Engagements can now target a Stakeholder group (addendum 3, items 29–30). The user asked for the docs phase to be pulled ahead of Phases 4–6
+7 / 10 phases complete (plus the unnumbered Phases 3b, project stakeholder visibility, and 3c, Stakeholder Groups, done, and the unnumbered Phase 3d, custom attributes, not started). **Phases 0–4, 3b, 3c and 7a are done, so the module can ship; Phase 5 (Engagements frontend) is next, with 6 and 7b after it, and 3d (generic custom attributes) whenever its org-level definition model has user sign-off.** Engagements can target a Stakeholder group (addendum 3, items 29–30) through the API and MCP; the picker arrives with Phase 5. The user asked for the docs phase to be pulled ahead of Phases 4–6
 (**Decided by: User**, 2026-10-05): Phase 7a documents what Phases 0–3 shipped, and Phase 7b extends the
 same section once Phases 4–6 land.
 Phase 1.1 (Persona, 2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder,
@@ -38,7 +37,7 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 3b | Project visibility of org Stakeholders and Personas (hide per project) | [x] Complete (2026-10-05) |
 | 3c | Stakeholder Groups (many-to-many, nested): sort, filter, group-by | [x] Complete (2026-10-13) |
 | 3d | Custom attributes on Stakeholders and Personas (generic custom fields) | [ ] Not started — confirm org-level definition model first, see its section |
-| 4 | Engagements (+ research extras): data model, backend, erasure | [ ] Not started |
+| 4 | Engagements (+ research extras): data model, backend, erasure | [x] Complete (2026-10-13) |
 | 5 | Engagements (+ research extras): frontend UI | [ ] Not started |
 | 6 | Reports (S1–S5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06 |
 | 7a | Docs website coverage — shipped scope (Personas, Stakeholders, Needs, relationships, MCP) | [x] Complete (2026-10-05) |
@@ -793,6 +792,31 @@ and the date of last contact drives staleness. *Risk addressed:* contact
 history kept in email inboxes; Pain Points and personas built on
 assumption; personal data with no disposal path. *Outcome:* one traceable
 log from contact to Pain Points and Needs.
+
+**Status: complete (2026-10-13).** Same module (`stakeholders`), new sub-component
+`research_extras` (off by default), project role `engagement_owner`, migration `0087`.
+Backend only; the screens are Phase 5. Account, deviations and review:
+`docs/decisions.md`'s "Module 2 Phase 4" entry. Deviations from the scope above, all
+**Decided by: Agent**: an Engagement is one row with no version table; the plan's "scope"
+field is `purpose`; an Engagement is project-scoped only (no org router); a finding is
+deleted with its engagement and has no comments or files; "last engaged" counts only this
+project's engagements dated today or earlier. Left for later phases:
+
+- **Phase 5** builds on `engagement_project_router.py` / `research_project_router.py`
+  (REST shapes in `schemas.py`), reuses `GET .../relationship-targets` for the
+  raised/answered picker and `POST .../audiences` for "add everyone in group"
+  (it returns the members added), and must add the routes `module.ts`'s `artefactPaths`
+  already point at (`.../engagements/:id`, `.../engagements?finding=:id`), so links to an
+  engagement do not dead-end. `ENGAGEMENT_CHANNEL_LABEL` and `Stakeholder.last_engaged`
+  exist in `types.ts`; `retention_due` and its list filter are ready for a UI flag.
+- **Phase 6** reads `engagements.last_engaged_by_stakeholder` (hide-aware callers use
+  `service.list_project_visible_stakeholders`), `engagements.OUTCOME_KINDS` /
+  `list_outcome_links` and `anonymous_participant_counts`; S5's findings part sets
+  `ReportDefinition.subcomponent="research_extras"`.
+- **Phase 7b** documents Engagements, the extras, the audience snapshot and erasure; the
+  MCP and known-limitations pages already reflect the new tools and the missing screens.
+- Pain Point / Open Question links in a project bundle are skipped with a warning on
+  import until Context & Strategy's records travel in the bundle (same as Phase 3).
 
 ## Phase 5 — Engagements (+ research extras): frontend UI
 

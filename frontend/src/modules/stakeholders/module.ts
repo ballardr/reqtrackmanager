@@ -52,6 +52,9 @@ export const moduleDefinition: TierAModuleDefinition = {
     stakeholder: (projectId, id) => `/projects/${projectId}/modules/stakeholders/stakeholders/${id}`,
     stakeholder_need: (projectId, id) => `/projects/${projectId}/modules/stakeholders/needs/${id}`,
     stakeholder_group: (projectId, id) => `/projects/${projectId}/modules/stakeholders/groups?group=${id}`,
+    // Engagement pages ship in Phase 5; these are the routes it will register.
+    engagement: (projectId, id) => `/projects/${projectId}/modules/stakeholders/engagements/${id}`,
+    research_finding: (projectId, id) => `/projects/${projectId}/modules/stakeholders/engagements?finding=${id}`,
   },
   artefactStatusLabels: {
     persona: PERSONA_STATUS_LABEL,

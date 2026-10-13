@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.stakeholders.enums import StakeholderScope
 from app.modules.stakeholders.models import Stakeholder, StakeholderGroup, StakeholderGroupMember, StakeholderVersion
+from app.services.relationships import delete_link, get_all_links
 
 GROUP_ARTEFACT_TYPE = "stakeholder_group"
 MAX_GROUP_DEPTH = 10
@@ -299,7 +300,8 @@ def update_group(
 
 
 def delete_group(db: Session, group: StakeholderGroup) -> tuple[int, int]:
-    """Deletes a group: its memberships go (never the stakeholders) and its children are promoted
+    """Deletes a group: its memberships and every `ArtefactLink` touching it (an Engagement's audience
+    link, a Requirement's "affects") go (never the stakeholders) and its children are promoted
     to its parent (item 32). Returns `(members removed, children promoted)`.
 
     Raises:
@@ -324,6 +326,8 @@ def delete_group(db: Session, group: StakeholderGroup) -> tuple[int, int]:
     for child in children:
         child.parent_group_id = parent_id
     db.execute(delete(StakeholderGroupMember).where(StakeholderGroupMember.group_id == group.id))
+    for link in get_all_links(db, GROUP_ARTEFACT_TYPE, group.id, include_cross_project=True):
+        delete_link(db, link)
     db.flush()
     db.delete(group)
     db.flush()

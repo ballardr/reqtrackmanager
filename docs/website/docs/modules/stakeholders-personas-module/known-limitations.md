@@ -6,8 +6,8 @@ sidebar_position: 29
 
 ## Not built yet
 
-- **Engagements can't target a group yet.** Picking everyone in a Stakeholder group as participants arrives with Engagements.
-- **No record of contacts or research.** Engagements — emails, calls, meetings, workshops, interviews, focus groups, usability tests and surveys, with participants, notes and attachments — are planned but not built. So there is no "last contact" date for a Stakeholder yet, and a Stakeholder's target cadence and availability are recorded without anything comparing them to actual contact.
+- **Engagements have no screens yet.** Engagements — emails, calls, meetings, workshops, interviews, focus groups, usability tests and surveys, with participants, covered Personas, an audience group, notes, attachments and the Pain Points, Needs and Open Questions they raised or answered — can be logged and read through the API and AI assistants ([MCP](./mcp-integration.md)), but the web screens, the "Log contact" shortcut and the timeline on a Stakeholder's page are planned, not built. The **Research extras** (session prompts, anonymous participants, findings) are off by default and have no screens either.
+- **Nothing compares contact to cadence yet.** A Stakeholder's "last engaged" date is derived from Engagements, but no report or screen flags a Stakeholder who is overdue against their target cadence.
 - **No module reports.** The power/interest grid report, Persona validation, Need coverage and engagement staleness reports are planned but not built. A Stakeholder's grid position is shown on its own page only.
 - **Persona weights aren't used for scoring yet.** The importance weight and its per-project override are stored and resolved, but scoring Pain Points per Persona is not available yet.
 - **No Design or System Element relationships.** See [Relationships → Reserved](./relationships.md#reserved-design-and-system-element).

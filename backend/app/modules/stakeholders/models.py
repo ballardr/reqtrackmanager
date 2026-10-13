@@ -31,18 +31,25 @@ tables):
   `ReviewTargetType` enum would be a per-module edit to a core file.
 - `StakeholderNeed` and its version/comment/file tables (Phase 2) — a
   project-scoped record of one stakeholder or persona need.
-- `StakeholderGroup` / `StakeholderGroupMember` (Phase 3c, end of this file) —
+- `StakeholderGroup` / `StakeholderGroupMember` (Phase 3c) —
   a tree of groups classifying stakeholders, with many-to-many membership.
+- `Engagement` and its comment/file tables, `EngagementPrompt`,
+  `EngagementAnonymousParticipant` and `ResearchFinding` (Phase 4, end of this
+  file) — the contact log and the research extras. An Engagement is a single
+  row (no version table): it is a dated record of something that happened, and a
+  second copy of its notes in a history table would only widen what hard
+  deletion has to reach.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -60,6 +67,7 @@ from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 from app.modules.stakeholders.enums import (
+    EngagementChannel,
     NeedStatus,
     PersonaScope,
     PersonaStatus,
@@ -771,3 +779,161 @@ class StakeholderGroupMember(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("stakeholders.id", ondelete="CASCADE"), index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=sa_text("now()"))
+
+
+# =============================================================================
+# Engagements (Phase 4)
+# =============================================================================
+
+
+class Engagement(UUIDPKMixin, TimestampMixin, Base):
+    """One contact with stakeholders or personas: an email, a call, a workshop, a
+    focus group. Always project-scoped (Phase 4, Decided by: Agent): a contact is
+    something a project did, and scoping it keeps one project's contact history
+    off a stakeholder shared with other projects. Participants, personas covered,
+    the audience group and the Pain Points / Needs / Open Questions it raised or
+    answered are `ArtefactLink`s; anonymous participants, session prompts and
+    findings are the research extras' own tables.
+
+    Attributes:
+        project_id: The owning project.
+        creator_id: Who logged it.
+        title: Short title.
+        channel: How it took place.
+        engagement_date: When it took place (not when it was logged).
+        facilitator_type / facilitator_id: The principal (a user or a group) who ran it.
+        purpose: What it was for / the topics in scope.
+        summary: A short outcome.
+        notes: Free-text notes; may quote participants, so Confidential.
+        consent_recorded: Whether participants consented to the record being kept.
+        retain_until: Date after which the record is due for disposal, if any.
+    """
+
+    __tablename__ = "engagements"
+    __table_args__ = (principal_check_constraint("facilitator", nullable=True),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(300))
+    channel: Mapped[EngagementChannel] = mapped_column(str_enum(EngagementChannel, 30))
+    engagement_date: Mapped[date] = mapped_column(Date, index=True)
+    facilitator_type: Mapped[str | None] = principal_type_column(nullable=True)
+    facilitator_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+    purpose: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    consent_recorded: Mapped[bool] = mapped_column(Boolean, default=False)
+    retain_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class EngagementComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion-thread comment on an `Engagement`."""
+
+    __tablename__ = "engagement_comments"
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EngagementCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to an `EngagementComment`."""
+
+    __tablename__ = "engagement_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagement_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class EngagementFile(UUIDPKMixin, Base):
+    """Links a directly uploaded file (e.g. an email export) to an `Engagement` (see `PersonaFile`)."""
+
+    __tablename__ = "engagement_files"
+    __table_args__ = (UniqueConstraint("engagement_id", "file_id"),)
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE")
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EngagementPrompt(UUIDPKMixin, TimestampMixin, Base):
+    """A session prompt of an Engagement (research extras): a question or topic
+    asked, with the notes taken on the response. Named "session prompt" so it
+    does not collide with Module 1's Open Questions.
+
+    Attributes:
+        engagement_id: The engagement.
+        sort_order: Position in the session.
+        prompt: The question or topic.
+        response_notes: What was said in response.
+    """
+
+    __tablename__ = "engagement_prompts"
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    prompt: Mapped[str] = mapped_column(Text)
+    response_notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class EngagementAnonymousParticipant(UUIDPKMixin, TimestampMixin, Base):
+    """A participant who has no Stakeholder record (research extras): a label
+    plus the persona they were drawn from (Phase 0 addendum 2, resolution 19).
+    Kept to a label by design, for data minimisation.
+
+    Attributes:
+        engagement_id: The engagement.
+        label: e.g. "Participant 3".
+        persona_id: The persona they represent, if any.
+    """
+
+    __tablename__ = "engagement_anonymous_participants"
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
+    )
+    label: Mapped[str] = mapped_column(String(200))
+    persona_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("personas.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class ResearchFinding(UUIDPKMixin, TimestampMixin, Base):
+    """What an Engagement taught us (research extras). A registered artefact so
+    it can link to the Pain Points, Needs and Open Questions it raised or
+    answered. It belongs to its engagement and is deleted with it (Decided by:
+    Agent): a finding can quote participants, so erasing the engagement must not
+    leave the quotes behind.
+
+    Attributes:
+        project_id: The owning project (same as the engagement's).
+        engagement_id: The engagement it came from.
+        creator_id: Who recorded it.
+        title: Short statement of the finding.
+        description: Evidence and detail.
+    """
+
+    __tablename__ = "research_findings"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
