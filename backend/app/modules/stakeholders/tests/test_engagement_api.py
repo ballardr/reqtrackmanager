@@ -16,9 +16,10 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
-from app.database import SessionLocal
+from alembic import command
+from app.database import SessionLocal, engine
 from app.models.audit import AuditEvent
 from app.models.custom_role import CustomRoleDefinition, CustomRolePermission, UserCustomRoleGrant
 from app.models.file import FileAsset
@@ -29,6 +30,7 @@ from app.modules.stakeholders.models import (
     EngagementAnonymousParticipant,
     EngagementComment,
     EngagementCommentFile,
+    EngagementFacilitator,
     EngagementFile,
     EngagementPrompt,
     ResearchFinding,
@@ -48,6 +50,7 @@ from app.services.files import get_storage_backend
 from app.services.permissions import encode_permission
 from tests.conftest import (
     auth_headers,
+    build_alembic_config,
     create_org_admin_in,
     create_org_group,
     create_org_user,
@@ -151,7 +154,7 @@ def test_engagement_crud_partial_update_and_clearing(client, admin_token):
     assert client.put(url, json={"channel": None}, headers=h).status_code == 422
     assert client.put(url, json={"engagement_date": None}, headers=h).status_code == 422
     assert client.put(url, json={"channel": "carrier_pigeon"}, headers=h).status_code == 422
-    assert client.put(url, json={"facilitator": {"type": "user", "id": outsider}}, headers=h).status_code == 400
+    assert client.put(url, json={"facilitators": [{"type": "user", "id": outsider}]}, headers=h).status_code == 400
     assert client.post(_engagements(project["id"]), json=_payload(title=""), headers=h).status_code == 422
     assert client.post(_engagements(project["id"]), json={"title": "x"}, headers=h).status_code == 422
 
@@ -159,26 +162,100 @@ def test_engagement_crud_partial_update_and_clearing(client, admin_token):
     assert [e["id"] for e in client.get(_engagements(project["id"]), headers=h).json()] == [created["id"]]
 
 
-def test_facilitator_may_be_a_user_or_a_group_and_guards_group_deletion(client, admin_token):
+def test_facilitators_may_be_several_users_and_groups_and_are_replaced_as_a_list(client, admin_token):
     org, project, token = _setup(client, admin_token, "Engagement Facilitator Co")
     h = auth_headers(token)
     user_id, _member = _add_member(client, token, org["id"], project["id"], "facilitator@engagement.example.com")
     squad = create_project_group(client, token, project["id"], "Research squad")
-    successor = create_org_group(client, token, org["id"], "Research guild")
-    engagement = _create(client, token, project["id"], facilitator={"type": "user", "id": user_id})
-    assert engagement["facilitator"]["type"] == "user" and engagement["facilitator"]["id"] == user_id
+    guild = create_org_group(client, token, org["id"], "Research guild")
+    user = {"type": "user", "id": user_id}
+    engagement = _create(client, token, project["id"], facilitators=[user, {"type": "user", "id": user_id}])
+    assert [f["id"] for f in engagement["facilitators"]] == [user_id]  # a repeat collapses
+    ordered = _create(client, token, project["id"], title="Ordered", facilitators=[{"type": "org_group", "id": guild}, user])
+    assert [f["id"] for f in ordered["facilitators"]] == [guild, user_id]  # the order given is kept
     url = f"{_engagements(project['id'])}/{engagement['id']}"
-    switched = client.put(url, json={"facilitator": {"type": "project_group", "id": squad}}, headers=h)
-    assert switched.status_code == 200, switched.text
-    assert switched.json()["facilitator"]["label"] == "Research squad"
+    assert _create(client, token, project["id"], title="Nobody ran it")["facilitators"] == []
 
+    both = client.put(url, json={"facilitators": [user, {"type": "project_group", "id": squad}]}, headers=h)
+    assert both.status_code == 200, both.text
+    assert [(f["type"], f["label"]) for f in both.json()["facilitators"]][1] == ("project_group", "Research squad")
+    assert len(both.json()["facilitators"]) == 2
+
+    # An update that does not mention facilitators leaves them alone; a list replaces them.
+    assert len(client.put(url, json={"summary": "x"}, headers=h).json()["facilitators"]) == 2
+    swapped = client.put(url, json={"facilitators": [{"type": "org_group", "id": guild}]}, headers=h).json()
+    assert [f["id"] for f in swapped["facilitators"]] == [guild]
+    assert client.get(url, headers=h).json()["facilitators"][0]["label"] == "Research guild"
+    assert [f["id"] for f in client.get(_engagements(project["id"]), headers=h).json() if f["id"] == engagement["id"]]
+    assert client.put(url, json={"facilitators": []}, headers=h).json()["facilitators"] == []
+    assert client.put(url, json={"facilitators": [user]}, headers=h).json()["facilitators"][0]["id"] == user_id
+    assert client.put(url, json={"facilitators": None}, headers=h).json()["facilitators"] == []
+
+    other_org, other_token = create_org_admin_in(client, admin_token, "Engagement Facilitator Other Co")
+    foreign_group = create_org_group(client, other_token, other_org["id"], "Foreign guild")
+    assert client.put(url, json={"facilitators": [{"type": "org_group", "id": foreign_group}]}, headers=h).status_code == 400
+    assert client.put(url, json={"facilitators": [user, {"type": "org_group", "id": foreign_group}]}, headers=h).status_code == 400
+    assert client.get(url, headers=h).json()["facilitators"] == []  # nothing was half-applied
+
+
+def test_a_facilitating_group_guards_its_deletion_and_is_reassigned_or_dropped_without_duplicates(client, admin_token):
+    org, project, token = _setup(client, admin_token, "Engagement Facilitator Group Co")
+    h = auth_headers(token)
+    user_id, _member = _add_member(client, token, org["id"], project["id"], "lead@engagement-group.example.com")
+    squad = create_project_group(client, token, project["id"], "Research squad")
+    guild = create_org_group(client, token, org["id"], "Research guild")
+    user = {"type": "user", "id": user_id}
+    squad_ref, guild_ref = {"type": "project_group", "id": squad}, {"type": "org_group", "id": guild}
+    alone = _create(client, token, project["id"], title="Squad only", facilitators=[squad_ref])
+    both = _create(client, token, project["id"], title="Squad and guild", facilitators=[squad_ref, guild_ref, user])
     group_url = f"/api/v1/projects/{project['id']}/groups/{squad}"
     assert client.delete(group_url, headers=h).status_code == 409  # a facilitator is in use
-    done = client.delete(group_url, params={"replacement_type": "org_group", "replacement_id": successor}, headers=h)
+
+    done = client.delete(group_url, params={"replacement_type": "org_group", "replacement_id": guild}, headers=h)
     assert done.status_code == 204, done.text
-    moved = client.get(url, headers=h).json()["facilitator"]
-    assert moved["type"] == "org_group" and moved["id"] == successor
-    assert client.put(url, json={"facilitator": None}, headers=h).json()["facilitator"] is None
+    moved = client.get(f"{_engagements(project['id'])}/{alone['id']}", headers=h).json()["facilitators"]
+    assert [(f["type"], f["id"]) for f in moved] == [("org_group", guild)]
+    # The guild already facilitated the second engagement: its squad entry goes, rather than listing the guild twice.
+    kept = client.get(f"{_engagements(project['id'])}/{both['id']}", headers=h).json()["facilitators"]
+    assert sorted(f["id"] for f in kept) == sorted([guild, user_id])
+
+    # With no replacement, an optional list entry is simply dropped.
+    squad_two = create_project_group(client, token, project["id"], "Second squad")
+    only = _create(client, token, project["id"], title="Second squad only", facilitators=[{"type": "project_group", "id": squad_two}, user])
+    cleared = client.delete(
+        f"/api/v1/projects/{project['id']}/groups/{squad_two}", params={"clear_optional": "true"}, headers=h
+    )
+    assert cleared.status_code == 204, cleared.text
+    left = client.get(f"{_engagements(project['id'])}/{only['id']}", headers=h).json()["facilitators"]
+    assert [f["id"] for f in left] == [user_id]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(EngagementFacilitator).where(
+            EngagementFacilitator.facilitator_id.in_([uuid.UUID(squad), uuid.UUID(squad_two)])
+        )) == 0
+
+
+def test_migration_0088_moves_the_single_facilitator_into_the_list_and_back(client, admin_token):
+    """Runs the real 0088 migration both ways: the first-listed facilitator survives a downgrade (the old single
+    columns), and an engagement written in that shape comes back with it as a one-entry list."""
+    org, project, token = _setup(client, admin_token, "Engagement Migration Co")
+    user_id, _member = _add_member(client, token, org["id"], project["id"], "mig@engagement.example.com")
+    guild = create_org_group(client, token, org["id"], "Migrating guild")
+    two = _create(client, token, project["id"], title="Two", facilitators=[{"type": "user", "id": user_id}, {"type": "org_group", "id": guild}])
+    none = _create(client, token, project["id"], title="None")
+    command.downgrade(build_alembic_config(), "0087")
+    try:
+        with engine.begin() as conn:
+            row = conn.execute(text("SELECT facilitator_type, facilitator_id FROM engagements WHERE id = :i"), {"i": two["id"]}).one()
+            assert (row[0], str(row[1])) == ("user", user_id)
+            blank = conn.execute(text("SELECT facilitator_id FROM engagements WHERE id = :i"), {"i": none["id"]}).scalar()
+            assert blank is None
+            assert conn.execute(text("SELECT to_regclass('engagement_facilitators')")).scalar() is None
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    with SessionLocal() as db:
+        rows = db.scalars(select(EngagementFacilitator).where(EngagementFacilitator.engagement_id == uuid.UUID(two["id"]))).all()
+        assert [(r.facilitator_type, str(r.facilitator_id)) for r in rows] == [("user", user_id)]
+        assert _count(db, EngagementFacilitator, engagement_id=uuid.UUID(none["id"])) == 0
 
 
 def test_retention_due_flag_and_filter(client, admin_token):
@@ -614,6 +691,7 @@ def test_erase_leaves_no_rows_files_links_or_personal_data(client, admin_token):
     person = _stakeholder(client, token, pid, "Participant Who Must Stay")
     persona = _create_project_persona(client, token, pid)
     group = _group(client, token, pid, "Audience Group")
+    group_ref = create_project_group(client, token, pid, "Facilitating Group")
     pain = _create_pain_point(client, token, org["id"], pid)
     victim = _create(client, token, pid, title="Secret Interview With Jane Doe", notes="Jane said something private",
                      stakeholder_ids=[person["id"]], persona_ids=[persona["id"]], group_ids=[group["id"]])
@@ -628,6 +706,7 @@ def test_erase_leaves_no_rows_files_links_or_personal_data(client, admin_token):
         f"{_project_base(pid)}/findings/{finding['id']}/outcomes",
         json={"kind": "raised", "target_type": "pain_point", "target_id": pain["id"]}, headers=h,
     )
+    assert client.put(url, json={"facilitators": [{"type": "project_group", "id": group_ref}]}, headers=h).status_code == 200
     comment = client.post(url + "/comments", json={"body": "private note"}, headers=h).json()
     comment_file = client.post(
         f"{url}/comments/{comment['id']}/files", files={"file": ("jane-letter.txt", b"c", "text/plain")}, headers=h
@@ -647,7 +726,10 @@ def test_erase_leaves_no_rows_files_links_or_personal_data(client, admin_token):
     with SessionLocal() as db:
         e = uuid.UUID(eid)
         assert _count(db, Engagement, id=e) == 0
-        for model in (EngagementComment, EngagementFile, EngagementPrompt, EngagementAnonymousParticipant, ResearchFinding):
+        for model in (
+            EngagementComment, EngagementFile, EngagementPrompt, EngagementAnonymousParticipant, ResearchFinding,
+            EngagementFacilitator,
+        ):
             assert _count(db, model, engagement_id=e) == 0, model.__name__
         assert _count(db, EngagementCommentFile, comment_id=uuid.UUID(comment["id"])) == 0
         for f in (comment_file, direct_file):
@@ -729,7 +811,8 @@ def test_registration():
             "stakeholders_add_anonymous_participant", "stakeholders_create_research_finding"} <= tools
     assert not {t for t in tools if "delete" in t and ("engagement" in t or "finding" in t)}  # erasure stays human
     reference = next(r for r in definition.principal_references if r.field == "facilitator")
-    assert reference.audit_entity_type == "engagement"
+    assert reference.audit_entity_type == "engagement" and reference.multi_valued is True
+    assert reference.model is EngagementFacilitator and reference.record_id_field == "engagement_id"
 
 
 def test_summary_providers_label_and_scope_engagements_and_findings(client, admin_token):

@@ -34,11 +34,6 @@ from app.models.user import User
 from app.modules.stakeholders import engagements as eng
 from app.modules.stakeholders import groups as grp
 from app.modules.stakeholders import relationships as rel
-from app.modules.stakeholders._principals import (
-    ENGAGEMENT_PRINCIPAL_FIELDS,
-    principals_from_bundle,
-    principals_to_bundle,
-)
 from app.modules.stakeholders.engagements import (
     ENGAGEMENT_ARTEFACT_TYPE,
     FINDING_ARTEFACT_TYPE,
@@ -59,6 +54,7 @@ from app.modules.stakeholders.service import (
     get_current_stakeholder_version,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.principals import principal_from_bundle, principal_to_bundle
 
 _KEY = "project_engagements"
 _TEXT_FIELDS = ("title", "purpose", "summary", "notes")
@@ -123,7 +119,10 @@ def _engagement_json(
         **{f: getattr(engagement, f) for f in _TEXT_FIELDS}, "channel": engagement.channel.value,
         "engagement_date": _j(engagement.engagement_date), "retain_until": _j(engagement.retain_until),
         "consent_recorded": engagement.consent_recorded,
-        **principals_to_bundle(db, engagement, ENGAGEMENT_PRINCIPAL_FIELDS),
+        "facilitators": [
+            entry for ref in eng.list_facilitators(db, [engagement.id]).get(engagement.id, [])
+            if (entry := principal_to_bundle(db, ref.type.value, ref.id)) is not None
+        ],
         "created_by_email": emails.get(engagement.creator_id), "created_at": _j(engagement.created_at),
         "participants": participants, "personas": personas, "audiences": audiences,
         "outcomes": _outcomes_json(db, project, ENGAGEMENT_ARTEFACT_TYPE, engagement.id),
@@ -228,12 +227,21 @@ def import_project_data(
             db, project_id=project.id, creator=db.get(User, creator_id),
             channel=EngagementChannel(e["channel"]), engagement_date=_d(e["engagement_date"]),
             consent_recorded=bool(e.get("consent_recorded")), retain_until=_d(e.get("retain_until")),
-            **principals_from_bundle(
-                db, e, ENGAGEMENT_PRINCIPAL_FIELDS, organization_id=organization_id, project_id=project.id,
-                users=users, warnings=warnings, context=context,
-            ),
             **{f: e.get(f, "") for f in _TEXT_FIELDS},
         )
+        # A bundle written before an engagement could have several facilitators carries one `facilitator`.
+        entries = e.get("facilitators") if "facilitators" in e else ([e["facilitator"]] if e.get("facilitator") else [])
+        facilitators = []
+        for entry in entries:
+            ref, warning = principal_from_bundle(
+                db, entry, organization_id=organization_id, project_id=project.id,
+                fallback_user_id=users.importing_user_id, required=False,
+            )
+            if warning:
+                warnings.add(f"{context} facilitator: {warning}")
+            if ref is not None:
+                facilitators.append(ref)
+        eng.set_facilitators(db, engagement, facilitators)
         for participant in e.get("participants", []):
             stakeholder_id = stakeholders.get((participant["name"], participant["scope"]))
             if stakeholder_id is None:

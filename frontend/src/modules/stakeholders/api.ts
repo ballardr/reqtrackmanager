@@ -334,14 +334,15 @@ export type { NeedApi, PersonaApi, StakeholderApi };
 
 /** Create payload: the content plus the optional shortcuts that add people in the same request. */
 export type EngagementCreateValues = EngagementFieldValues & {
-  facilitator?: PrincipalRef | null;
+  facilitators?: PrincipalRef[];
   stakeholder_ids?: string[];
   persona_ids?: string[];
   group_ids?: string[];
 };
 
-/** Partial update payload — only keys present are changed; `null` clears `facilitator` / `retain_until`. */
-export type EngagementUpdateValues = Partial<EngagementFieldValues> & { facilitator?: PrincipalRef | null };
+/** Partial update payload — only keys present are changed; `null` clears `retain_until`, and a `facilitators`
+ * list replaces everyone who ran it. */
+export type EngagementUpdateValues = Partial<EngagementFieldValues> & { facilitators?: PrincipalRef[] };
 
 /** The list endpoint's optional filters; they combine. */
 export interface EngagementListFilters {

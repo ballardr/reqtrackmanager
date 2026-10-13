@@ -1255,13 +1255,13 @@ Parameters: `project_id*` (uuid, in path), `engagement_id*` (uuid, in path)
 
 Logs an Engagement (a contact with stakeholders or personas), optionally with its participants, covered personas and audience groups in one call.
 
-Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `channel*` (string, in body), `engagement_date*` (string, in body), `facilitator` (object, in body), `purpose` (string, in body), `summary` (string, in body), `notes` (string, in body), `consent_recorded` (boolean, in body), `retain_until` (string, in body), `stakeholder_ids` (array, in body), `persona_ids` (array, in body), `group_ids` (array, in body)
+Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `channel*` (string, in body), `engagement_date*` (string, in body), `facilitators` (array, in body), `purpose` (string, in body), `summary` (string, in body), `notes` (string, in body), `consent_recorded` (boolean, in body), `retain_until` (string, in body), `stakeholder_ids` (array, in body), `persona_ids` (array, in body), `group_ids` (array, in body)
 
 #### `stakeholders_update_engagement` (write)
 
 Updates an Engagement; only the fields supplied change.
 
-Parameters: `project_id*` (uuid, in path), `engagement_id*` (uuid, in path), `title` (string, in body), `channel` (string, in body), `engagement_date` (string, in body), `facilitator` (object, in body), `purpose` (string, in body), `summary` (string, in body), `notes` (string, in body), `consent_recorded` (boolean, in body), `retain_until` (string, in body)
+Parameters: `project_id*` (uuid, in path), `engagement_id*` (uuid, in path), `title` (string, in body), `channel` (string, in body), `engagement_date` (string, in body), `facilitators` (array, in body), `purpose` (string, in body), `summary` (string, in body), `notes` (string, in body), `consent_recorded` (boolean, in body), `retain_until` (string, in body)
 
 #### `stakeholders_list_stakeholder_engagements` (read)
 

@@ -1745,6 +1745,47 @@ td:has(> .disclosure-toggle) {
   line-height: 1;
 }
 
+/* Form and detail fields laid out in a grid (`FormGrid`): as many equal columns as fit at the
+   minimum width, one on a narrow screen; `.form-grid__full` spans the whole row. */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--form-grid-min, 15rem)), 1fr));
+  gap: 0.75rem 1.5rem;
+  align-items: start;
+}
+
+.form-grid > .form-grid__full {
+  grid-column: 1 / -1;
+}
+
+/* Repeating rows whose trailing actions must line up: one grid for every row, so the action column is
+   as wide as the widest row and each action sits in the same place (`AlignedRows`). */
+.aligned-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 0.75rem;
+  row-gap: 0.5rem;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.aligned-rows > li {
+  display: contents;
+}
+
+.aligned-rows__actions {
+  display: inline-flex;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.aligned-rows__detail {
+  grid-column: 2 / -1;
+  margin-top: -0.25rem;
+}
+
 /* A wrapped row of removable chips (`RemovableItemList`). */
 .removable-list {
   list-style: none;

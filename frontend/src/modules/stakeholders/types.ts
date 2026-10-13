@@ -494,7 +494,8 @@ export interface Engagement {
   channel: EngagementChannel;
   /** YYYY-MM-DD. */
   engagement_date: string;
-  facilitator: Principal | null;
+  /** Everyone who ran it, in the order given. */
+  facilitators: Principal[];
   purpose: string;
   summary: string;
   notes: string;
@@ -508,7 +509,7 @@ export interface Engagement {
   updated_at: string;
 }
 
-/** The content fields the create/edit form edits (the facilitator is set from the detail page). */
+/** The content fields the create/edit form edits (the facilitators are set from the detail page). */
 export interface EngagementFieldValues {
   title: string;
   channel: EngagementChannel;

@@ -69,6 +69,7 @@ from app.modules.stakeholders.engagements import (
     RESEARCH_SUBCOMPONENT,
     anonymous_participant_counts,
     last_engaged_by_stakeholder,
+    list_facilitators,
     participant_counts,
 )
 from app.modules.stakeholders.enums import NeedStatus, PersonaStatus, StakeholderStatus, TargetCadence
@@ -865,7 +866,8 @@ def collect_engagement_yield(db: Session, req: ReportContext) -> ReportResult:
         if not raised.get(e.id) and e.id not in answering and findings_per_engagement[e.id] == 0
     ]
     by_channel: Counter[str] = Counter(e.channel.value for e, _ in engagements)
-    facilitators = principal_labels(db, [principal_ref(e.facilitator_type, e.facilitator_id) for e, _ in no_outcome])
+    facilitator_refs = list_facilitators(db, [e.id for e, _ in no_outcome])
+    facilitators = principal_labels(db, [ref for refs in facilitator_refs.values() for ref in refs])
     persona_rows = [
         r for r in _load_persona_rows(db, req, req.eligible(db, PERSONA_SUBCOMPONENT), since=since)
         if r.engagement_ids
@@ -911,11 +913,11 @@ def collect_engagement_yield(db: Session, req: ReportContext) -> ReportResult:
             note="Engagements that cover the Persona or have an anonymous participant tagged with it.",
         ),
         ReportSection(
-            "no_outcome", "Engagements with no outcome", ["Date", "Engagement", "Project", "Channel", "Facilitator"],
+            "no_outcome", "Engagements with no outcome", ["Date", "Engagement", "Project", "Channel", "Facilitators"],
             [
                 [
                     _fmt_date(e.engagement_date), e.title, p.name, label(ENGAGEMENT_CHANNEL_LABEL, e.channel.value),
-                    principal_text(facilitators.get((e.facilitator_type, e.facilitator_id))) if e.facilitator_id else "",
+                    ", ".join(principal_text(facilitators[(ref.type.value, ref.id)]) for ref in facilitator_refs.get(e.id, [])),
                 ]
                 for e, p in no_outcome
             ], gap=True,

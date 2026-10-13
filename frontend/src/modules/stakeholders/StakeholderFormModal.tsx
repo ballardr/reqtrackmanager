@@ -24,6 +24,7 @@
 import { useEffect, useState } from "react";
 
 import type { ScoringScheme } from "../../api/scoring";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
@@ -133,53 +134,61 @@ export function StakeholderFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.name}` : `New Stakeholder (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
-        <TextField label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
-        <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
-        <TextField label="Role" value={role} onChange={setRole} />
-        <TextField label="Organisation / group" value={group} onChange={setGroup} />
-        {!initial && groups && groups.length > 0 && (
-          <div className="stack" style={{ gap: "0.25rem" }}>
-            <span>Groups</span>
-            <TreeSelect
-              triggerLabel={groupTier === "project" ? "Project groups" : "Organisation groups"}
-              nodes={groupSelectNodes(buildGroupTree(groups), groupTier, "Organisation groups are changed from the organisation view.")}
-              selectedIds={groupIds} onChange={setGroupIds} emptyLabel="No groups"
-            />
-          </div>
-        )}
-        {TEXT_FIELDS.map((f) => (
-          <TextAreaField
-            key={f.key} label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
-            onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
-          />
-        ))}
-        <TextAreaField
-          label="Contact / reference information" value={contact} onChange={setContact}
-          hint="Confidential personal data. Everyone who can see this stakeholder can read it."
-        />
-        {influenceAxis && interestAxis && (
-          <div className="row" style={{ gap: "1rem", alignItems: "flex-start" }}>
-            <ScoringLevelPicker axis={influenceAxis} value={influence} onChange={setInfluence} />
-            <ScoringLevelPicker axis={interestAxis} value={interest} onChange={setInterest} />
-          </div>
-        )}
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <LabeledSelect
-            label="Target engagement cadence" value={cadence} onChange={setCadence} options={CADENCE_OPTIONS}
-            placeholder="Not set"
-          />
-          {hint?.suggested_cadence && hint.quadrant && (
-            <span className="text-muted" style={{ fontSize: "0.8rem" }} data-testid="cadence-hint">
-              Suggested: {TARGET_CADENCE_LABEL[hint.suggested_cadence]} ({GRID_QUADRANT_LABEL[hint.quadrant]}). A suggestion
-              only — your choice above is what's saved.
-            </span>
+        <FormGrid minColumn="18rem">
+          <TextField label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
+          <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
+          <TextField label="Role" value={role} onChange={setRole} />
+          <TextField label="Organisation / group" value={group} onChange={setGroup} />
+          {influenceAxis && interestAxis && (
+            <>
+              <ScoringLevelPicker axis={influenceAxis} value={influence} onChange={setInfluence} />
+              <ScoringLevelPicker axis={interestAxis} value={interest} onChange={setInterest} />
+            </>
           )}
-        </div>
-        <TextAreaField
-          label="Availability constraints" value={availability} onChange={setAvailability}
-          hint="What limits how often they will engage (their side, not ours)."
-        />
-        {initial && <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />}
+          <div className="stack" style={{ gap: "0.25rem" }}>
+            <LabeledSelect
+              label="Target engagement cadence" value={cadence} onChange={setCadence} options={CADENCE_OPTIONS}
+              placeholder="Not set"
+            />
+            {hint?.suggested_cadence && hint.quadrant && (
+              <span className="text-muted" style={{ fontSize: "0.8rem" }} data-testid="cadence-hint">
+                Suggested: {TARGET_CADENCE_LABEL[hint.suggested_cadence]} ({GRID_QUADRANT_LABEL[hint.quadrant]}). A suggestion
+                only — your choice above is what's saved.
+              </span>
+            )}
+          </div>
+          {!initial && groups && groups.length > 0 && (
+            <div className="stack" style={{ gap: "0.25rem" }}>
+              <span>Groups</span>
+              <TreeSelect
+                triggerLabel={groupTier === "project" ? "Project groups" : "Organisation groups"}
+                nodes={groupSelectNodes(buildGroupTree(groups), groupTier, "Organisation groups are changed from the organisation view.")}
+                selectedIds={groupIds} onChange={setGroupIds} emptyLabel="No groups"
+              />
+            </div>
+          )}
+          {TEXT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField
+                label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          <FormGridFull>
+            <TextAreaField
+              label="Contact / reference information" value={contact} onChange={setContact}
+              hint="Confidential personal data. Everyone who can see this stakeholder can read it."
+            />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField
+              label="Availability constraints" value={availability} onChange={setAvailability}
+              hint="What limits how often they will engage (their side, not ours)."
+            />
+          </FormGridFull>
+          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+        </FormGrid>
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel}>Cancel</button>

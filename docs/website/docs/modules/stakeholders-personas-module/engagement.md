@@ -31,7 +31,7 @@ An Engagement belongs to **one project**. There is no organisation-wide Engageme
 | Purpose, summary, notes | Why it happened, a line or two on the outcome, and the detailed notes. |
 | Consent recorded | Tick once participants have agreed to being recorded here. |
 | Retain until | A date after which the record should be reviewed for disposal; see [Retention and deletion](#retention-and-deletion). |
-| Facilitator | Who ran or logged it: a user, an organisation group or a project group. Set from the Engagement's page. |
+| Facilitators | Who ran or logged it: any number of users, organisation groups or project groups. Set from the Engagement's page. |
 | Participants, Personas covered, outcomes | Set from the detail page; see below. |
 
 Comments and file attachments (for example an exported email) sit on the Engagement as they do on other records. An Engagement has no version history and no approval step. It is edited in place and every change is audit-logged.
@@ -53,7 +53,7 @@ A Stakeholder's or Persona's own page (opened from a project) has an **Engagemen
 
 ## Who took part
 
-On the Engagement's page, each list has a **(+)** beside its heading that opens the picker, and an **x** on each item removes it (after a confirmation). The facilitator works the same way: a pencil changes them and an x clears them.
+On the Engagement's page, each list has a **(+)** beside its heading that opens the picker, and an **x** on each item removes it (after a confirmation for linked records). **Facilitators** work the same way: add as many people or groups as ran it, and remove one with its x (no confirmation, since it only changes the list).
 
 - **Participants.** Add any Stakeholder visible to the project. A Stakeholder [hidden from the project](./stakeholder.md#hiding-an-organisation-stakeholder-from-a-project) cannot be added.
 - **Personas covered.** The Personas the session was about, even when no one represents them in person.

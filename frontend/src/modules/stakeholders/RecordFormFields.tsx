@@ -65,19 +65,26 @@ export function DateField({
   );
 }
 
-/** A labelled checkbox with an optional hint underneath. */
+/**
+ * A labelled checkbox with an optional hint underneath. With `heading` it is laid out like the other
+ * fields (a heading line, then the control), so it lines up with an input beside it in a `FormGrid`;
+ * `label` is then the checkbox's own text and `ariaLabel` its accessible name.
+ */
 export function CheckboxField({
-  label, checked, onChange, hint,
+  label, checked, onChange, hint, heading, ariaLabel,
 }: {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   hint?: ReactNode;
+  heading?: string;
+  ariaLabel?: string;
 }) {
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
-      <label className="row" style={{ gap: "0.4rem" }}>
-        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {heading && <span>{heading}</span>}
+      <label className="row" style={{ gap: "0.4rem", minHeight: heading ? "2.25rem" : undefined }}>
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} />
         {label}
       </label>
       {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}

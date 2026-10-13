@@ -6,12 +6,13 @@
  * (distinguished by whether `initial` is passed) and the "Log contact" quick
  * add. `compact` keeps only title, channel, date and summary for the quick add;
  * the rest (purpose, notes, consent, retain-until) is filled in from the detail
- * page. The facilitator and the people involved are assigned from the detail
- * page, so the form never needs a picker. Channel renders through its label
+ * page. The facilitators and the people involved are assigned from the detail
+ * page, so the form never needs a picker. Fields sit in a `FormGrid`: short ones in pairs, long ones full width. Channel renders through its label
  * map and every control has a visible label (principle 13).
  */
 import { useState } from "react";
 
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { CheckboxField, DateField, TextAreaField, TextField } from "./RecordFormFields";
@@ -61,27 +62,42 @@ export function EngagementFormModal({
   return (
     <Modal title={heading ?? (initial ? `Edit ${initial.title}` : "Log engagement")} onClose={onCancel} size="lg">
       <div className="stack">
-        <TextField label="Title" ariaLabel="Engagement title" value={title} onChange={setTitle} hint="What happened, e.g. “Quarterly review with the regulator”." />
-        <LabeledSelect
-          label="Channel" value={channel} placeholder={null}
-          onChange={(value) => setChannel(value as EngagementChannel)} options={CHANNEL_OPTIONS}
-        />
-        <DateField label="Date" value={date} onChange={setDate} />
-        {!compact && <TextAreaField label="Purpose" rows={2} value={purpose} onChange={setPurpose} hint="Why the engagement took place." />}
-        <TextAreaField label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} hint="A line or two on the outcome." />
-        {!compact && (
-          <>
-            <TextAreaField
-              label="Notes" rows={5} value={notes} onChange={setNotes}
-              hint="Notes can name people and are personal data: they are deleted with the engagement."
-            />
-            <CheckboxField label="Consent recorded" checked={consent} onChange={setConsent} hint="Tick once the participants have agreed to being recorded here." />
-            <DateField
-              label="Retain until" value={retainUntil} onChange={setRetainUntil}
-              hint="Optional. Nothing is deleted automatically; the engagement is flagged when this date is reached."
-            />
-          </>
-        )}
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField label="Title" ariaLabel="Engagement title" value={title} onChange={setTitle} hint="What happened, e.g. “Quarterly review with the regulator”." />
+          </FormGridFull>
+          <LabeledSelect
+            label="Channel" value={channel} placeholder={null}
+            onChange={(value) => setChannel(value as EngagementChannel)} options={CHANNEL_OPTIONS}
+          />
+          <DateField label="Date" value={date} onChange={setDate} />
+          {!compact && (
+            <FormGridFull>
+              <TextAreaField label="Purpose" rows={2} value={purpose} onChange={setPurpose} hint="Why the engagement took place." />
+            </FormGridFull>
+          )}
+          <FormGridFull>
+            <TextAreaField label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} hint="A line or two on the outcome." />
+          </FormGridFull>
+          {!compact && (
+            <>
+              <FormGridFull>
+                <TextAreaField
+                  label="Notes" rows={5} value={notes} onChange={setNotes}
+                  hint="Notes can name people and are personal data: they are deleted with the engagement."
+                />
+              </FormGridFull>
+              <CheckboxField
+                heading="Consent" label="Recorded" ariaLabel="Consent recorded" checked={consent} onChange={setConsent}
+                hint="Tick once the participants have agreed to being recorded here."
+              />
+              <DateField
+                label="Retain until" value={retainUntil} onChange={setRetainUntil}
+                hint="Optional. Nothing is deleted automatically; the engagement is flagged when this date is reached."
+              />
+            </>
+          )}
+        </FormGrid>
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel}>Cancel</button>

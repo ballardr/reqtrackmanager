@@ -621,7 +621,7 @@ class EngagementCreate(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     channel: EngagementChannel
     engagement_date: date
-    facilitator: PrincipalRef | None = None
+    facilitators: list[PrincipalRef] = Field(default_factory=list)
     purpose: str = ""
     summary: str = ""
     notes: str = ""
@@ -633,13 +633,13 @@ class EngagementCreate(BaseModel):
 
 
 class EngagementUpdate(BaseModel):
-    """Partial update: only fields present in the request body change, so `facilitator` and
-    `retain_until` can be cleared with an explicit `null`."""
+    """Partial update: only fields present in the request body change, so `retain_until` can be cleared with an
+    explicit `null`. `facilitators`, when sent, replaces the whole list (`[]` or `null` removes everyone)."""
 
     title: str | None = Field(default=None, min_length=1, max_length=300)
     channel: EngagementChannel | None = None
     engagement_date: date | None = None
-    facilitator: PrincipalRef | None = None
+    facilitators: list[PrincipalRef] | None = None
     purpose: str | None = None
     summary: str | None = None
     notes: str | None = None
@@ -657,7 +657,7 @@ class EngagementOut(BaseModel):
     title: str
     channel: EngagementChannel
     engagement_date: date
-    facilitator: PrincipalOut | None
+    facilitators: list[PrincipalOut]
     purpose: str
     summary: str
     notes: str

@@ -38,6 +38,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.enums import PrincipalType
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
@@ -48,6 +49,7 @@ from app.modules.stakeholders.models import (
     EngagementAnonymousParticipant,
     EngagementComment,
     EngagementCommentFile,
+    EngagementFacilitator,
     EngagementFile,
     EngagementPrompt,
     ResearchFinding,
@@ -60,6 +62,7 @@ from app.modules.stakeholders.service import (
     hidden_stakeholder_ids,
     link_type_id_if_exists,
 )
+from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.files import delete_file
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
@@ -76,8 +79,7 @@ COVERS_FORWARD, COVERS_REVERSE = "Covers persona", "Is covered in"
 AUDIENCE_FORWARD, AUDIENCE_REVERSE = "Is aimed at", "Is the audience of"
 
 ENGAGEMENT_CONTENT_FIELDS: tuple[str, ...] = (
-    "title", "channel", "engagement_date", "facilitator_type", "facilitator_id", "purpose", "summary", "notes",
-    "consent_recorded", "retain_until",
+    "title", "channel", "engagement_date", "purpose", "summary", "notes", "consent_recorded", "retain_until",
 )
 
 
@@ -130,13 +132,48 @@ def create_engagement(db: Session, *, project_id: uuid.UUID, creator: User, **co
 
 
 def update_engagement(db: Session, engagement: Engagement, changes: dict[str, Any]) -> Engagement:
-    """Applies `changes` in place. A key present is applied even when `None`, so the facilitator and
-    retain-until date can be cleared; absent keys are untouched."""
+    """Applies `changes` in place. A key present is applied even when `None`, so the retain-until date can be
+    cleared; absent keys are untouched. Facilitators are set with `set_facilitators`."""
     for key, value in changes.items():
         if key in ENGAGEMENT_CONTENT_FIELDS:
             setattr(engagement, key, value)
     db.flush()
     return engagement
+
+
+def list_facilitators(db: Session, engagement_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[PrincipalRef]]:
+    """Each engagement's facilitators in the order they were added (an engagement with none is absent)."""
+    result: dict[uuid.UUID, list[PrincipalRef]] = {}
+    if not engagement_ids:
+        return result
+    rows = db.scalars(
+        select(EngagementFacilitator).where(EngagementFacilitator.engagement_id.in_(list(engagement_ids)))
+        .order_by(EngagementFacilitator.sort_order, EngagementFacilitator.created_at, EngagementFacilitator.id)
+    ).all()
+    for row in rows:
+        result.setdefault(row.engagement_id, []).append(PrincipalRef(type=PrincipalType(row.facilitator_type), id=row.facilitator_id))
+    return result
+
+
+def set_facilitators(db: Session, engagement: Engagement, facilitators: Sequence[PrincipalRef]) -> None:
+    """Replaces the engagement's facilitators with `facilitators`, in that order (duplicates collapse).
+    The caller has validated every principal."""
+    wanted = list(dict.fromkeys((f.type.value, f.id) for f in facilitators))
+    existing = {
+        (row.facilitator_type, row.facilitator_id): row
+        for row in db.scalars(select(EngagementFacilitator).where(EngagementFacilitator.engagement_id == engagement.id))
+    }
+    for key, row in existing.items():
+        if key not in wanted:
+            db.delete(row)
+    for position, (kind, principal_id) in enumerate(wanted):
+        if (kind, principal_id) in existing:
+            existing[(kind, principal_id)].sort_order = position
+        else:
+            db.add(EngagementFacilitator(
+                engagement_id=engagement.id, sort_order=position, facilitator_type=kind, facilitator_id=principal_id,
+            ))
+    db.flush()
 
 
 def retention_due(engagement: Engagement, today: date | None = None) -> bool:

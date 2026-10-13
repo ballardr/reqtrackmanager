@@ -175,20 +175,43 @@ export const AddsAParticipantFromTheUnlinkedCandidates: Story = {
   },
 };
 
-export const FacilitatorCanBeAnOrgGroup: Story = {
+const PERSON: Principal = { type: "user", id: "user-2", label: "Jamie Lee (jamie@example.com)", member_count: null, exists: true };
+
+/** An engagement can have several facilitators: adding one sends the whole new list, group or user alike. */
+export const FacilitatorsCanBeAddedAsUsersOrGroups: Story = {
   beforeEach: () => {
-    mockDetailApis(buildEngagement());
-    spyOn(api, "put").mockResolvedValue(buildEngagement({ facilitator: TEAM }));
+    mockDetailApis(buildEngagement({ facilitators: [PERSON] }));
+    spyOn(api, "put").mockResolvedValue(buildEngagement({ facilitators: [PERSON, TEAM] }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Assign: Engagement facilitator" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Assign: Engagement facilitator" }));
-    const popover = within(within(document.body).getByRole("dialog", { name: "Assign: Engagement facilitator" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Facilitators" }));
+    await expect(canvas.getByText("Jamie Lee (jamie@example.com)")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Facilitators" }));
+    const popover = within(within(document.body).getByRole("dialog", { name: "Add to Facilitators" }));
     await userEvent.type(popover.getByLabelText("Engagement facilitator"), "platform");
     await userEvent.click(await popover.findByText("Platform Architecture"));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(EBASE, { facilitator: { type: "org_group", id: "group-1" } }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(EBASE, {
+        facilitators: [{ type: "user", id: "user-2" }, { type: "org_group", id: "group-1" }],
+      }),
+    );
     await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
+  },
+};
+
+/** Removing a facilitator sends the list without them; removing the last sends an empty list. */
+export const FacilitatorCanBeRemoved: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildEngagement({ facilitators: [PERSON] }));
+    spyOn(api, "put").mockResolvedValue(buildEngagement({ facilitators: [] }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Remove Jamie Lee (jamie@example.com)" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Remove Jamie Lee (jamie@example.com)" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(EBASE, { facilitators: [] }));
+    await waitFor(() => expect(canvas.getByText("Nobody is recorded as running it.")).toBeInTheDocument());
   },
 };
 

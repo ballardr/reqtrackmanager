@@ -3,7 +3,7 @@
  *
  * Small presentational pieces the versioned-record detail pages (Stakeholders'
  * Persona/Stakeholder/Need, Risk Management's Risk) render the same way: a
- * labelled read-only field, a responsive grid for short fields, a labelled "who" picker (a `PrincipalPicker`, or
+ * labelled read-only field, a labelled "who" picker (a `PrincipalPicker`, or
  * a `PrincipalBadge` when the record is read-only), and the version-history table.
  * Kept together so the pages differ only in which fields they show, not in how
  * a field looks.
@@ -39,19 +39,6 @@ export function RecordFieldGroup({
         <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
         {action}
       </span>
-      {children}
-    </div>
-  );
-}
-
-/**
- * Lays short fields and short lists side by side, wrapping to one column when the space is
- * narrow, so a detail page does not spend a full-width row on a one-line value (docs/ux-style-guide.md,
- * "Pattern: compact forms and add-on-demand").
- */
-export function RecordFieldGrid({ children }: { children: ReactNode }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 15rem), 1fr))", gap: "0.75rem 1.5rem", alignItems: "start" }}>
       {children}
     </div>
   );

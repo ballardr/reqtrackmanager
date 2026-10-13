@@ -13,6 +13,7 @@ import { ArrowDown, ArrowUp, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AddPopoverButton } from "../../components/AddPopoverButton";
+import { AlignedRows } from "../../components/AlignedRows";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
@@ -102,24 +103,28 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
       {prompts.length === 0 ? (
         <span className="text-muted">No session prompts yet.</span>
       ) : (
-        <ol style={{ margin: 0, paddingLeft: "1.25rem" }}>
-          {prompts.map((p, index) => (
-            <li key={p.id} style={{ marginBottom: "0.35rem" }}>
-              <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                <span>{p.prompt}</span>
-                <button className="btn" aria-label={`Move ${p.prompt} up`} disabled={index === 0} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "up"), "Prompt moved.", "Could not move the prompt.")}>
+        <AlignedRows
+          ordered
+          ariaLabel="Session prompts"
+          rows={prompts.map((p, index) => ({
+            id: p.id,
+            lead: <span className="text-muted">{index + 1}.</span>,
+            main: p.prompt,
+            actions: (
+              <>
+                <button className="btn btn-icon-compact" aria-label={`Move ${p.prompt} up`} title={`Move ${p.prompt} up`} disabled={index === 0} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "up"), "Prompt moved.", "Could not move the prompt.")}>
                   <ArrowUp size={14} />
                 </button>
-                <button className="btn" aria-label={`Move ${p.prompt} down`} disabled={index === prompts.length - 1} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "down"), "Prompt moved.", "Could not move the prompt.")}>
+                <button className="btn btn-icon-compact" aria-label={`Move ${p.prompt} down`} title={`Move ${p.prompt} down`} disabled={index === prompts.length - 1} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "down"), "Prompt moved.", "Could not move the prompt.")}>
                   <ArrowDown size={14} />
                 </button>
-                <button className="btn" aria-label={`Edit ${p.prompt}`} onClick={() => setEditing(p)}><Pencil size={14} /></button>
-                <button className="btn" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 size={14} /></button>
-              </div>
-              {p.response_notes && <div className="text-muted" style={{ whiteSpace: "pre-wrap" }}>{p.response_notes}</div>}
-            </li>
-          ))}
-        </ol>
+                <button className="btn btn-icon-compact" aria-label={`Edit ${p.prompt}`} title={`Edit ${p.prompt}`} onClick={() => setEditing(p)}><Pencil size={14} /></button>
+                <button className="btn btn-icon-compact" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 size={14} /></button>
+              </>
+            ),
+            detail: p.response_notes ? <span style={{ whiteSpace: "pre-wrap" }}>{p.response_notes}</span> : undefined,
+          }))}
+        />
       )}
       {editing && (
         <PromptEditModal

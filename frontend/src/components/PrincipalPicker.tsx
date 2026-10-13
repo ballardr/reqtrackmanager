@@ -20,7 +20,7 @@
  */
 import { Pencil, X } from "lucide-react";
 
-import type { OrgUser, Principal, PrincipalRef, PrincipalType } from "../api/types";
+import type { OrgGroup, OrgUser, Principal, PrincipalRef, PrincipalType, ProjectGroup } from "../api/types";
 import { usePrincipalDirectory } from "../hooks/usePrincipalDirectory";
 import { AddPopoverButton } from "./AddPopoverButton";
 import { PrincipalBadge } from "./PrincipalBadge";
@@ -64,17 +64,10 @@ export function PrincipalPicker({
   const { orgGroups, projectGroups } = usePrincipalDirectory(organizationId, projectId, kinds);
   const shown = value ? (display ?? resolve(value, orgUsers, orgGroups, projectGroups)) : null;
   const search = (afterSelect: () => void) => (
-    <UserAutocomplete
-      users={kinds.includes("user") ? orgUsers : []}
-      organizationId={kinds.includes("user") ? organizationId : undefined}
-      projectId={projectId}
-      placeholder={placeholder}
-      ariaLabel={ariaLabel}
-      onSelect={(id) => { onChange({ type: "user", id }); afterSelect(); }}
-      groups={kinds.includes("org_group") ? orgGroups : undefined}
-      onSelectGroup={(id) => { onChange({ type: "org_group", id }); afterSelect(); }}
-      projectGroups={kinds.includes("project_group") ? projectGroups : undefined}
-      onSelectProjectGroup={(id) => { onChange({ type: "project_group", id }); afterSelect(); }}
+    <PrincipalSearch
+      orgUsers={orgUsers} organizationId={organizationId} projectId={projectId} kinds={kinds}
+      orgGroups={orgGroups} projectGroups={projectGroups} placeholder={placeholder} ariaLabel={ariaLabel}
+      onPick={(ref) => { onChange(ref); afterSelect(); }}
     />
   );
   if (compact) {
@@ -104,6 +97,44 @@ export function PrincipalPicker({
       </div>
       {search(() => {})}
     </div>
+  );
+}
+
+/**
+ * The search box on its own: one input that finds a user, an organisation group or a project group
+ * (whichever `kinds` allow) and reports the pick. `PrincipalPicker` wraps it with the current value;
+ * `PrincipalListField` uses it to add to a list. The caller loads the group lists
+ * (`usePrincipalDirectory`).
+ *
+ * @param orgGroups / projectGroups The groups to offer (empty for a kind the field does not allow).
+ * @param onPick Called with the chosen principal.
+ */
+export function PrincipalSearch({
+  orgUsers, organizationId, projectId, kinds = ALL_KINDS, orgGroups, projectGroups, placeholder = "Assign to…", ariaLabel, onPick,
+}: {
+  orgUsers: OrgUser[];
+  organizationId?: string;
+  projectId?: string;
+  kinds?: readonly PrincipalType[];
+  orgGroups: OrgGroup[];
+  projectGroups: ProjectGroup[];
+  placeholder?: string;
+  ariaLabel: string;
+  onPick: (principal: PrincipalRef) => void;
+}) {
+  return (
+    <UserAutocomplete
+      users={kinds.includes("user") ? orgUsers : []}
+      organizationId={kinds.includes("user") ? organizationId : undefined}
+      projectId={projectId}
+      placeholder={placeholder}
+      ariaLabel={ariaLabel}
+      onSelect={(id) => onPick({ type: "user", id })}
+      groups={kinds.includes("org_group") ? orgGroups : undefined}
+      onSelectGroup={(id) => onPick({ type: "org_group", id })}
+      projectGroups={kinds.includes("project_group") ? projectGroups : undefined}
+      onSelectProjectGroup={(id) => onPick({ type: "project_group", id })}
+    />
   );
 }
 

@@ -270,6 +270,14 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await promptDialog.getByLabel("Response notes").fill("Starts with the checklist.");
     await promptDialog.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Starts with the checklist.")).toBeVisible();
+    // Rows of different length keep their action buttons in one column.
+    await page.getByRole("button", { name: "Add to Session prompts" }).click();
+    const secondPrompt = page.getByRole("dialog", { name: "Add to Session prompts" });
+    await secondPrompt.getByLabel("New session prompt").fill("What would make the checklist worth opening, if anything at all?");
+    await secondPrompt.getByRole("button", { name: "Add prompt" }).click();
+    const edges = async (name: string) => (await page.getByRole("button", { name }).boundingBox())!.x;
+    expect(await edges("Delete Walk me through an inspection"))
+      .toBe(await edges("Delete What would make the checklist worth opening, if anything at all?"));
 
     // --- An anonymous participant with a Persona, labelled rather than named.
     await page.getByRole("button", { name: "Add to Anonymous participants" }).click();
@@ -305,16 +313,26 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     // No add form is open on the page: no pickers, only (+) buttons.
     await expect(page.getByLabel("Stakeholder to add")).toHaveCount(0);
     await expect(page.getByLabel("Engagement facilitator")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add to Facilitators" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Add to Participants" })).toBeVisible();
 
-    // The facilitator is assigned from a popover, then can be cleared with its "x".
-    await page.getByRole("button", { name: "Assign: Engagement facilitator" }).click();
-    const popover = page.getByRole("dialog", { name: "Assign: Engagement facilitator" });
+    // Facilitators are a list: add a user and a group from the (+), then remove one with its "x".
+    await post(page, `${API_BASE_URL}/api/v1/projects/${project.id}/groups`, adminHeaders, { name: `Squad ${suffix}` });
+    await page.reload();
+    await page.getByRole("button", { name: "Add to Facilitators" }).click();
+    let popover = page.getByRole("dialog", { name: "Add to Facilitators" });
     await popover.getByLabel("Engagement facilitator").fill("Admin");
     await popover.getByRole("option").first().click();
-    await expect(page.getByText("Facilitator updated.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Change: Engagement facilitator" })).toBeVisible();
-    await page.getByRole("button", { name: "Unassign: Engagement facilitator" }).click();
-    await expect(page.getByRole("button", { name: "Assign: Engagement facilitator" })).toBeVisible();
+    await expect(page.getByText("Facilitators updated.")).toBeVisible();
+    await page.getByRole("button", { name: "Add to Facilitators" }).click();
+    popover = page.getByRole("dialog", { name: "Add to Facilitators" });
+    await popover.getByLabel("Engagement facilitator").fill(`Squad ${suffix}`);
+    await popover.getByRole("option").first().click();
+    await expect(page.getByRole("button", { name: /^Remove E2E EngCompact Admin/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Remove Squad ${suffix}` })).toBeVisible();
+    await page.getByRole("button", { name: `Remove Squad ${suffix}` }).click();
+    await expect(page.getByRole("button", { name: `Remove Squad ${suffix}` })).toHaveCount(0);
+    await page.getByRole("button", { name: /^Remove E2E EngCompact Admin/ }).click();
+    await expect(page.getByText("Nobody is recorded as running it.")).toBeVisible();
   });
 });

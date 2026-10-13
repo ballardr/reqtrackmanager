@@ -2985,7 +2985,8 @@ def main() -> None:
     )
     engagement_focus = create_engagement(
         h_pm, drone["id"], title="Launch-site pilot focus group", channel="focus_group", engagement_date="2026-09-18",
-        facilitator={"type": "user", "id": demo_engineer["user_id"]}, purpose="How pilots read the status display.",
+        facilitators=[{"type": "user", "id": demo_engineer["user_id"]}, {"type": "org_group", "id": architecture_board.json()["id"]}],
+        purpose="How pilots read the status display.",
         summary="Pilots missed the degraded-channel warning in glare.", consent_recorded=True, retain_until="2027-09-18",
         persona_ids=[drone_operator_persona["id"]], group_ids=[group_pilot_customers["id"]],
         outcomes=(("raised", "pain_point", pp_scored["id"]),),

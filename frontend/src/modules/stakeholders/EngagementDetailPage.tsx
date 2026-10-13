@@ -3,7 +3,7 @@
  *
  * A single Engagement (`/projects/:projectId/modules/stakeholders/engagements/
  * :engagementId`): what happened (channel, date, purpose, summary, notes), who
- * was involved (facilitator, Stakeholder participants, groups it was aimed at,
+ * was involved (facilitators, Stakeholder participants, groups it was aimed at,
  * Personas covered), what it produced (Pain Points, Needs and Open Questions it
  * raised or answered) and, when the project has the research extras on, its
  * session prompts, anonymous participants and findings. Attachments and comments
@@ -26,7 +26,9 @@ import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
-import { RecordField, RecordFieldGrid, RecordFieldGroup, RecordPrincipalField } from "../../components/RecordDetailParts";
+import { FormGrid } from "../../components/FormGrid";
+import { PrincipalListField } from "../../components/PrincipalListField";
+import { RecordField, RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -151,11 +153,11 @@ export function EngagementDetailPage() {
         {engagement.summary && <RecordField label="Summary" value={engagement.summary} />}
         {engagement.notes && <RecordField label="Notes" value={engagement.notes} />}
 
-        <RecordFieldGrid>
-          <RecordPrincipalField
-            label="Facilitator" ariaLabel="Engagement facilitator" principal={engagement.facilitator} orgUsers={orgUsers}
-            organizationId={organizationId} projectId={projectId} readOnly={false} compact
-            onChange={(facilitator) => save({ facilitator }, "Facilitator updated.", "Could not update this Engagement's facilitator.")}
+        <FormGrid>
+          <PrincipalListField
+            label="Facilitators" ariaLabel="Engagement facilitator" values={engagement.facilitators} orgUsers={orgUsers}
+            organizationId={organizationId} projectId={projectId} emptyText="Nobody is recorded as running it."
+            onChange={(facilitators) => save({ facilitators }, "Facilitators updated.", "Could not update this Engagement's facilitators.")}
           />
 
           <RecordFieldGroup label="Consent and retention">
@@ -166,9 +168,9 @@ export function EngagementDetailPage() {
             </span>
           </RecordFieldGroup>
 
-        </RecordFieldGrid>
+        </FormGrid>
 
-        <RecordFieldGrid>
+        <FormGrid>
           <RepresentationPanel
             heading="Participants"
             emptyText="No Stakeholders are recorded as taking part."
@@ -215,7 +217,7 @@ export function EngagementDetailPage() {
             onParticipantsChanged={() => setParticipantsKey((k) => k + 1)}
           />
 
-        </RecordFieldGrid>
+        </FormGrid>
 
         {researchExtras && <AnonymousParticipantsPanel projectId={projectId} engagementId={engagement.id} personaOptions={personaOptions} />}
 

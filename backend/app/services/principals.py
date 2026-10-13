@@ -525,11 +525,26 @@ def prepare_group_deletion(
         ids = [row_id for row_id, _ in rows]
         if not ids:
             continue
-        values = (
-            {type_column.key: replacement.type.value, id_column.key: replacement.id}
-            if replacement is not None else {type_column.key: None, id_column.key: None}
-        )
-        db.execute(update(reference.model).where(reference.model.id.in_(ids)).values(**values))
+        if reference.multi_valued:
+            # One row per list entry: a cleared entry goes, and so does one whose replacement is already listed.
+            already = (
+                set(db.scalars(select(record_column).where(type_column == replacement.type.value, id_column == replacement.id)))
+                if replacement is not None else set()
+            )
+            drop = [row_id for row_id, record_id in rows if replacement is None or record_id in already]
+            keep = [row_id for row_id in ids if row_id not in drop]
+            if drop:
+                db.execute(delete(reference.model).where(reference.model.id.in_(drop)))
+            if keep:
+                db.execute(update(reference.model).where(reference.model.id.in_(keep)).values(
+                    **{type_column.key: replacement.type.value, id_column.key: replacement.id}
+                ))
+        else:
+            values = (
+                {type_column.key: replacement.type.value, id_column.key: replacement.id}
+                if replacement is not None else {type_column.key: None, id_column.key: None}
+            )
+            db.execute(update(reference.model).where(reference.model.id.in_(ids)).values(**values))
         for _, record_id in rows:
             log_event(
                 db, entity_type=reference.audit_entity_type, entity_id=record_id,

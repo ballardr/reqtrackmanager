@@ -11,6 +11,7 @@
  */
 import { useState } from "react";
 
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
 import { TextAreaField, TextField } from "./RecordFormFields";
 import type { Need, NeedFieldValues } from "./types";
@@ -34,13 +35,21 @@ export function NeedFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.name}` : "New Stakeholder Need"} onClose={onCancel} size="lg">
       <div className="stack">
-        <TextField label="Name" ariaLabel="Need name" value={name} onChange={setName} hint="A short title, e.g. “Diagnose faults quickly”." />
-        <TextAreaField
-          label="Need" rows={3} value={description} onChange={setDescription}
-          hint="The need in the stakeholder's own words, before it becomes a requirement."
-        />
-        <TextAreaField label="Rationale" rows={3} value={rationale} onChange={setRationale} hint="Why it matters, and where it came from." />
-        {initial && <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />}
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField label="Name" ariaLabel="Need name" value={name} onChange={setName} hint="A short title, e.g. “Diagnose faults quickly”." />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField
+              label="Need" rows={3} value={description} onChange={setDescription}
+              hint="The need in the stakeholder's own words, before it becomes a requirement."
+            />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField label="Rationale" rows={3} value={rationale} onChange={setRationale} hint="Why it matters, and where it came from." />
+          </FormGridFull>
+          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+        </FormGrid>
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel}>Cancel</button>

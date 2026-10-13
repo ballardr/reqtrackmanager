@@ -90,7 +90,7 @@ export function buildNeed(overrides: Partial<Need> = {}): Need {
 export function buildEngagement(overrides: Partial<Engagement> = {}): Engagement {
   return {
     id: "engagement-1", project_id: "project-1", creator_id: "user-1", title: "Quarterly review with the regulator",
-    channel: "meeting", engagement_date: "2026-03-12", facilitator: null,
+    channel: "meeting", engagement_date: "2026-03-12", facilitators: [],
     purpose: "Walk through the audit findings.", summary: "Agreed to share evidence by the end of April.",
     notes: "Pat asked for the traceability export.", consent_recorded: true, retain_until: null, retention_due: false,
     participant_count: 1, anonymous_participant_count: 0,

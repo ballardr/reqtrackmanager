@@ -45,7 +45,6 @@ OutT = TypeVar("OutT", bound=BaseModel)
 PERSONA_PRINCIPAL_FIELDS = ("owner", "champion")
 STAKEHOLDER_PRINCIPAL_FIELDS = ("owner",)
 NEED_PRINCIPAL_FIELDS = ("owner",)
-ENGAGEMENT_PRINCIPAL_FIELDS = ("facilitator",)
 
 
 def validate_principals(

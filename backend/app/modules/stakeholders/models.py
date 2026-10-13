@@ -800,8 +800,8 @@ class Engagement(UUIDPKMixin, TimestampMixin, Base):
         creator_id: Who logged it.
         title: Short title.
         channel: How it took place.
-        engagement_date: When it took place (not when it was logged).
-        facilitator_type / facilitator_id: The principal (a user or a group) who ran it.
+        engagement_date: When it took place (not when it was logged). Who ran it is a list of
+            `EngagementFacilitator` rows.
         purpose: What it was for / the topics in scope.
         summary: A short outcome.
         notes: Free-text notes; may quote participants, so Confidential.
@@ -810,7 +810,6 @@ class Engagement(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "engagements"
-    __table_args__ = (principal_check_constraint("facilitator", nullable=True),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
@@ -819,13 +818,39 @@ class Engagement(UUIDPKMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(300))
     channel: Mapped[EngagementChannel] = mapped_column(str_enum(EngagementChannel, 30))
     engagement_date: Mapped[date] = mapped_column(Date, index=True)
-    facilitator_type: Mapped[str | None] = principal_type_column(nullable=True)
-    facilitator_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     purpose: Mapped[str] = mapped_column(Text, default="")
     summary: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     consent_recorded: Mapped[bool] = mapped_column(Boolean, default=False)
     retain_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class EngagementFacilitator(UUIDPKMixin, TimestampMixin, Base):
+    """One person or group who ran an `Engagement` (an engagement can have several).
+
+    The principal is a user, an organisation group or a project group (`facilitator_type` /
+    `facilitator_id`, `models.principal`); the same principal is listed at most once per engagement.
+    Declared as a multi-valued `PrincipalReference` so deleting a group that facilitates an engagement
+    reassigns or removes its entry. Deleted with the engagement.
+
+    Attributes:
+        engagement_id: The engagement.
+        sort_order: Position in the list (the order they were given).
+        facilitator_type / facilitator_id: The principal.
+    """
+
+    __tablename__ = "engagement_facilitators"
+    __table_args__ = (
+        principal_check_constraint("facilitator"),
+        UniqueConstraint("engagement_id", "facilitator_type", "facilitator_id", name="uq_engagement_facilitators_principal"),
+    )
+
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    facilitator_type: Mapped[str] = principal_type_column()
+    facilitator_id: Mapped[uuid.UUID] = principal_id_column()
 
 
 class EngagementComment(UUIDPKMixin, TimestampMixin, Base):

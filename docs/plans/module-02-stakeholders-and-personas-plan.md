@@ -765,7 +765,7 @@ model above because it matches how types already work.
 
 **Scope** (addendum 14, 15 and addendum 2, item 20; plus addendum 3, item 29):
 - `Engagement` registered artefact type (`engagement`), always on:
-  - fields: title, channel, date, facilitator/logged by, scope, summary,
+  - fields: title, channel, date, facilitators (any number; migration 0088), scope, summary,
     notes, consent recorded, retain-until;
   - participants: Stakeholders, via `ArtefactLink`, or a Stakeholder Group
     expanded to its current members at log time with an "audience" link

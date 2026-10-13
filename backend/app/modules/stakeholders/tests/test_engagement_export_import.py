@@ -18,10 +18,10 @@ from app.modules.stakeholders.tests.test_engagement_api import (
     _group,
     _participants,
 )
-from app.modules.stakeholders.tests.test_persona_api import MODULE_KEY, _create_org_persona, _setup
+from app.modules.stakeholders.tests.test_persona_api import MODULE_KEY, _add_member, _create_org_persona, _setup
 from app.modules.stakeholders.tests.test_relationship_api import _create_pain_point
 from app.modules.stakeholders.tests.test_stakeholder_api import _create_project_stakeholder
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, create_org_group
 
 
 def test_project_export_import_round_trips_engagements(client, admin_token):
@@ -35,10 +35,13 @@ def test_project_export_import_round_trips_engagements(client, admin_token):
     pain = _create_pain_point(client, token, org["id"], pid, title="Round trip pain")
     question = _create_open_question(client, token, org["id"], pid, question="Round trip question?")
     need = _create_need(client, token, pid, name="Round trip need")
+    lead_id, _member = _add_member(client, token, org["id"], pid, "lead@engagement-bundle.example.com")
+    guild = create_org_group(client, token, org["id"], "Research guild")
     engagement = _create(
         client, token, pid, title="Round trip interview", channel="interview", engagement_date="2026-03-02",
         purpose="Learn", summary="Learned", notes="Notes here", consent_recorded=True, retain_until="2027-03-02",
         stakeholder_ids=[person["id"]], persona_ids=[persona["id"]], group_ids=[group["id"]],
+        facilitators=[{"type": "user", "id": lead_id}, {"type": "org_group", "id": guild}],
     )
     url = f"{_engagements(pid)}/{engagement['id']}"
     for kind, target_type, target in (
@@ -82,6 +85,7 @@ def test_project_export_import_round_trips_engagements(client, admin_token):
     )
     assert copy["consent_recorded"] is True and copy["notes"] == "Notes here" and copy["purpose"] == "Learn"
     assert copy["anonymous_participant_count"] == 1
+    assert sorted((f["type"], f["id"]) for f in copy["facilitators"]) == sorted([("user", lead_id), ("org_group", guild)])
     new_url = f"{_engagements(new_id)}/{copy['id']}"
     # The new project has its own copy of the project-scoped stakeholder, group and records.
     assert _participants(client, token, new_id, copy["id"]) == ["Interviewed Person"]

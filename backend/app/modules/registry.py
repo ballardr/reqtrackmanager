@@ -1471,6 +1471,10 @@ class PrincipalReference:
             keep the group's id and display as a deleted group. Omit when every row is current.
         record_id_field: Column holding the id of the record the audit event is about, for a
             versioned record whose rows are versions (`"persona_id"`). Defaults to the row's own `id`.
+        multi_valued: True when each row is one *entry* of a list field (a record's facilitators:
+            one row per person, with `record_id_field` naming the record), not a slot on the record.
+            Clearing then deletes the row, and a reassignment whose replacement is already on the same
+            record deletes the row instead of creating a duplicate.
     """
 
     model: type
@@ -1480,6 +1484,7 @@ class PrincipalReference:
     mandatory: bool = False
     live_filter: Callable[[], Any] | None = None
     record_id_field: str = "id"
+    multi_valued: bool = False
 
 
 @dataclass(frozen=True)

@@ -36,15 +36,6 @@ from app.modules.stakeholders import engagements as eng
 from app.modules.stakeholders import groups as grp
 from app.modules.stakeholders import relationships as rel
 from app.modules.stakeholders._group_shared import GroupContext, list_members
-from app.modules.stakeholders._principals import (
-    ENGAGEMENT_PRINCIPAL_FIELDS,
-    Labels,
-    columns_for_create,
-    expand_sent,
-    principals_of,
-    resolve_labels,
-    validate_principals,
-)
 from app.modules.stakeholders._shared import (
     apply_value_error_as_conflict,
     get_visible_persona,
@@ -81,9 +72,11 @@ from app.modules.stakeholders.service import (
     STAKEHOLDERS_MODULE_KEY,
     hidden_stakeholder_ids,
 )
+from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.permissions import encode_permission
+from app.services.principals import principal_labels, validate_principal
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
 from app.services.relationships import delete_link
 
@@ -159,11 +152,20 @@ def log(db: Session, engagement_id: uuid.UUID, actor: User, project_id: uuid.UUI
 # --- API shapes ---------------------------------------------------------------
 
 
+def _facilitators_out(db: Session, engagement_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[PrincipalOut]]:
+    """Each engagement's facilitators with display data, resolved in one batch."""
+    refs = eng.list_facilitators(db, engagement_ids)
+    labels = principal_labels(db, [ref for entries in refs.values() for ref in entries])
+    return {eid: [labels[(ref.type.value, ref.id)] for ref in entries] for eid, entries in refs.items()}
+
+
 def engagement_to_out(
-    db: Session, engagement: Engagement, project: Project, *, labels: Labels | None = None,
+    db: Session, engagement: Engagement, project: Project, *, facilitators: dict[uuid.UUID, list[PrincipalOut]] | None = None,
     participants: int | None = None, anonymous: int | None = None,
 ) -> EngagementOut:
-    """The API shape (`labels`, `participants` and `anonymous` are batch results for list endpoints)."""
+    """The API shape (`facilitators`, `participants` and `anonymous` are batch results for list endpoints)."""
+    if facilitators is None:
+        facilitators = _facilitators_out(db, [engagement.id])
     if participants is None:
         participants = eng.participant_counts(db, project, [engagement.id]).get(engagement.id, 0)
     if anonymous is None:
@@ -176,21 +178,20 @@ def engagement_to_out(
         participant_count=participants,
         anonymous_participant_count=anonymous,
         created_at=engagement.created_at, updated_at=engagement.updated_at,
-        **principals_of(
-            labels if labels is not None else resolve_labels(db, [engagement], ENGAGEMENT_PRINCIPAL_FIELDS),
-            engagement, ENGAGEMENT_PRINCIPAL_FIELDS,
-        ),
+        facilitators=facilitators.get(engagement.id, []),
     )
 
 
 def engagements_to_out(db: Session, engagements: Sequence[Engagement], project: Project) -> list[EngagementOut]:
     """`engagement_to_out` for many engagements, resolving facilitators and participant counts in batches."""
-    labels = resolve_labels(db, engagements, ENGAGEMENT_PRINCIPAL_FIELDS)
     ids = [e.id for e in engagements]
+    facilitators = _facilitators_out(db, ids)
     counts = eng.participant_counts(db, project, ids)
     anonymous = eng.anonymous_participant_counts(db, ids)
     return [
-        engagement_to_out(db, e, project, labels=labels, participants=counts.get(e.id, 0), anonymous=anonymous.get(e.id, 0))
+        engagement_to_out(
+            db, e, project, facilitators=facilitators, participants=counts.get(e.id, 0), anonymous=anonymous.get(e.id, 0)
+        )
         for e in engagements
     ]
 
@@ -234,21 +235,28 @@ def list_engagements(
 # --- Create / update / erase --------------------------------------------------
 
 
+def _validate_facilitators(db: Session, project: Project, facilitators: Sequence[PrincipalRef]) -> None:
+    """Rejects (400) a facilitator who may not be named on the project's engagements: a user outside the
+    organisation, or a group of another organisation or project."""
+    for ref in facilitators:
+        validate_principal(db, ref, organization_id=project.organization_id, project_id=project.id, field="facilitators")
+
+
 def create_engagement_from_payload(
     db: Session, payload: EngagementCreate, creator: User, project: Project
 ) -> EngagementOut:
     """Validates every reference in a create payload (404 before anything is written), creates the engagement
     with its participants, covered personas and audience groups (groups expanded to their members), audit-logs,
     commits and returns the API shape."""
-    validate_principals(db, project.organization_id, project.id, facilitator=payload.facilitator)
+    _validate_facilitators(db, project, payload.facilitators)
     stakeholders = [get_visible_stakeholder(db, project, sid) for sid in dict.fromkeys(payload.stakeholder_ids)]
     personas = [get_visible_persona(db, project, pid) for pid in dict.fromkeys(payload.persona_ids)]
     universe = grp.load_groups(db, project.organization_id, project.id)
     if any(gid not in universe for gid in payload.group_ids):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder group not found.")
-    content = payload.model_dump(exclude={"facilitator", "stakeholder_ids", "persona_ids", "group_ids"})
-    content.update(columns_for_create(payload, ENGAGEMENT_PRINCIPAL_FIELDS))
+    content = payload.model_dump(exclude={"facilitators", "stakeholder_ids", "persona_ids", "group_ids"})
     engagement = eng.create_engagement(db, project_id=project.id, creator=creator, **content)
+    eng.set_facilitators(db, engagement, payload.facilitators)
     for stakeholder in stakeholders:
         apply_value_error_as_conflict(
             eng.add_participant, db, engagement, stakeholder.id, creator, organization_id=project.organization_id
@@ -279,10 +287,11 @@ def update_engagement_from_payload(
             sent[text_field] = ""
     if "consent_recorded" in sent and sent["consent_recorded"] is None:
         sent["consent_recorded"] = False
-    if "facilitator" in sent:
-        validate_principals(db, project.organization_id, project.id, facilitator=payload.facilitator)
-    expand_sent(payload, sent, ENGAGEMENT_PRINCIPAL_FIELDS)
-    eng.update_engagement(db, engagement, sent)
+    if "facilitators" in sent:
+        facilitators = payload.facilitators or []
+        _validate_facilitators(db, project, facilitators)
+        eng.set_facilitators(db, engagement, facilitators)
+    eng.update_engagement(db, engagement, sent)  # ignores keys that are not engagement columns, like `facilitators`
     log(db, engagement.id, actor, project.id, "updated", fields=",".join(sorted(sent)))
     db.commit()
     db.refresh(engagement)

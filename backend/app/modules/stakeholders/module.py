@@ -77,7 +77,13 @@ from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
 from app.modules.stakeholders.engagements import ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE, RESEARCH_SUBCOMPONENT
 from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE
-from app.modules.stakeholders.models import Engagement, PersonaVersion, StakeholderNeedVersion, StakeholderVersion
+from app.modules.stakeholders.models import (
+    Engagement,
+    EngagementFacilitator,
+    PersonaVersion,
+    StakeholderNeedVersion,
+    StakeholderVersion,
+)
 from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
 from app.modules.stakeholders.reports import REPORT_DEFINITIONS, REPORT_ROUTERS
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
@@ -124,8 +130,8 @@ def _principal_references() -> tuple[PrincipalReference, ...]:
             record_id_field="need_id",
         ),
         PrincipalReference(
-            model=Engagement, field="facilitator", label="engagement facilitators",
-            audit_entity_type=ENGAGEMENT_ARTEFACT_TYPE,
+            model=EngagementFacilitator, field="facilitator", label="engagement facilitators",
+            audit_entity_type=ENGAGEMENT_ARTEFACT_TYPE, record_id_field="engagement_id", multi_valued=True,
         ),
     )
 
@@ -508,7 +514,11 @@ def _build_engagement_mcp_tools() -> tuple[McpToolDefinition, ...]:
     fields = [
         _body("channel", "string", "email, call, meeting, workshop, interview, focus_group, usability_test or survey."),
         _body("engagement_date", "string", "When it took place, ISO date (YYYY-MM-DD)."),
-        _body("facilitator", "object", _principal_description("ran it")),
+        _body(
+            "facilitators", "array",
+            "Everyone who ran it: a list of {\"type\": \"user\" | \"org_group\" | \"project_group\", \"id\": uuid}. "
+            "On update the list replaces the current one ([] or null removes everyone), so send everyone who should remain.",
+        ),
         _body("purpose", "string", "What it was for / the topics in scope."),
         _body("summary", "string", "A short outcome."),
         _body("notes", "string", "Notes. May quote participants: Confidential personal data."),
