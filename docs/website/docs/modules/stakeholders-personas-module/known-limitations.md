@@ -6,14 +6,15 @@ sidebar_position: 29
 
 ## Not built yet
 
-- **Engagements aren't documented here yet.** The **Engagements** screens exist (the project's Engagements page, a "Log contact" shortcut and an engagement timeline on Stakeholder and Persona pages, and, when the off-by-default **Research extras** are on, session prompts, anonymous participants and findings), and Engagements can also be logged through AI assistants ([MCP](./mcp-integration.md)). A page walking through them is still to come.
-- **Nothing compares contact to cadence yet.** A Stakeholder's "last engaged" date is derived from Engagements, but no report or screen flags a Stakeholder who is overdue against their target cadence.
-- **No module reports.** The power/interest grid report, Persona validation, Need coverage and engagement staleness reports are planned but not built. A Stakeholder's grid position is shown on its own page only.
-- **Persona weights aren't used for scoring yet.** The importance weight and its per-project override are stored and resolved, but scoring Pain Points per Persona is not available yet.
+- **No organisation-wide reports.** The five [reports](./reports.md) cover one project, or a project and its sub-projects with **Include child projects**. An organisation-wide version would need its own organisation role.
+- **Group filtering is on S1 and S4 only.** The Persona validation, Need coverage and Engagement & research yield reports have no Stakeholder group filter.
+- **No automatic disposal.** An Engagement's **Retain until** date only flags it as review due. Someone must delete it.
 - **No Design or System Element relationships.** See [Relationships → Reserved](./relationships.md#reserved-design-and-system-element).
 
 ## By design
 
+- **An Engagement is project-only.** There is no organisation-level Engagement, so a shared organisation Stakeholder's "last engaged" date and the staleness report are judged per project, and a child project does not see its parent's contact history.
+- **No MCP tool deletes personal data.** An AI assistant can log and link Engagements but cannot permanently delete a Stakeholder, an Engagement or anything attached to one.
 - **A Need is project-only.** There is no organisation-level Need, and no organisation Stakeholder or Persona can hold a Need that spans projects.
 - **Hiding is per project, never org-wide.** A project hides an organisation Persona or Stakeholder from itself; there is no way to hide a record from every project short of archiving or retiring it.
 - **Groups classify, they don't grant.** A [Stakeholder group](./stakeholder-groups.md) holds no permissions and is not a user or project group. A project's own groups are visible to that project only, not to its child projects; organisation groups reach every project.

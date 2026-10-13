@@ -10,14 +10,14 @@ re-derive it, and does not need Module 1 for that purpose.
 §10 "Module 2 — Stakeholders & Personas".
 
 **Status:** Phases 0, 1.1, 1.2, 2, 3 and 3b complete (all 2026-10-05; Phase 0 had user
-sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) complete (2026-10-13); Phase 4 (Engagements backend), Phase 5 (Engagements UI) and Phase 6 (reports S1–S5) complete (2026-10-13); Phase 7b (docs website extension) is next, and Phase 3d (custom attributes) waits for user sign-off. Phase 1 was split
+sign-off, see "Phase 0 resolutions" below); Phase 7a (docs) complete (2026-10-05); Phase 3c (Stakeholder Groups, added 2026-10-12) complete (2026-10-13); Phase 4 (Engagements backend), Phase 5 (Engagements UI) and Phase 6 (reports S1–S5) complete (2026-10-13); Phase 7b (docs website extension) complete (2026-10-13), and Phase 3d (custom attributes) waits for user sign-off. Phase 1 was split
 into 1.1 (Persona) and 1.2 (Stakeholder) so Module 1 Phase 11's dependency,
 which needs only Personas, unblocked first. Built ahead of the overview's §46 order because Module 1's
 Reporting extension needs it (**Decided by: User**, 2026-10-04).
 
 ## Status / Resume Here
 
-9 / 10 phases complete (plus the unnumbered Phases 3b, project stakeholder visibility, and 3c, Stakeholder Groups, done, and the unnumbered Phase 3d, custom attributes, not started). **Phases 0–6, 3b, 3c and 7a are done, so the module can ship; Phase 7b (docs website extension for Engagements and the reports) is next, and 3d (generic custom attributes) whenever its org-level definition model has user sign-off.** Engagements can target a Stakeholder group (addendum 3, items 29–30) through the API, MCP and the Engagement detail page's group picker. The user asked for the docs phase to be pulled ahead of Phases 4–6
+10 / 10 numbered phases complete (plus the unnumbered Phases 3b, project stakeholder visibility, and 3c, Stakeholder Groups, done, and the unnumbered Phase 3d, custom attributes, not started). **Phases 0–7, 3b and 3c are done; only 3d (generic custom attributes) remains, whenever its org-level definition model has user sign-off.** Engagements can target a Stakeholder group (addendum 3, items 29–30) through the API, MCP and the Engagement detail page's group picker. The user asked for the docs phase to be pulled ahead of Phases 4–6
 (**Decided by: User**, 2026-10-05): Phase 7a documents what Phases 0–3 shipped, and Phase 7b extends the
 same section once Phases 4–6 land.
 Phase 1.1 (Persona, 2026-10-05) unblocks Module 1 Phase 11; Phase 1.2 (Stakeholder,
@@ -41,7 +41,7 @@ were added by the 2026-10-05 Phase 0 addendum; the docs phase moved from 4 to 7.
 | 5 | Engagements (+ research extras): frontend UI | [x] Complete (2026-10-13) |
 | 6 | Reports (S1–S5) | [x] Complete (2026-10-13) — see "Phase 6 notes" |
 | 7a | Docs website coverage — shipped scope (Personas, Stakeholders, Needs, relationships, MCP) | [x] Complete (2026-10-05) |
-| 7b | Docs website coverage — extension for Engagements, research extras, cadence workflow and reports S1–S5 | [ ] Not started — unblocked (Phases 4, 5 and 6 are done) |
+| 7b | Docs website coverage — extension for Engagements, research extras, cadence workflow and reports S1–S5 | [x] Complete (2026-10-13) — see "Phase 7b notes" |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -995,8 +995,13 @@ persona walk-through with engagement history, target cadence, the cadence
 hint and staleness, the power/interest grid, reports S1–S5 and their MCP
 tools, with screenshots of each new screen.
 
-**Status:** 7a complete (2026-10-05): `docs/website/docs/modules/stakeholders-personas-module/` (overview, Persona, Stakeholder, Stakeholder Need, Relationships, MCP, known limitations), five screenshots, sidebar, Modules overview/roadmap and Requirements-management cross-links; `npm run build` clean and the Mermaid diagrams render. 7b not started — unblocked now that
-Phases 4, 5 and 6 have shipped. Neither blocks any other phase.
+**Status:** 7a complete (2026-10-05): `docs/website/docs/modules/stakeholders-personas-module/` (overview, Persona, Stakeholder, Stakeholder Need, Relationships, MCP, known limitations), five screenshots, sidebar, Modules overview/roadmap and Requirements-management cross-links; `npm run build` clean and the Mermaid diagrams render. 7b complete 2026-10-13 (see below). Neither blocks any other phase.
+
+### Phase 7b notes (2026-10-13)
+
+**Shipped.** `engagement.md`, `research-extras.md` and `reports.md` under `docs/website/docs/modules/stakeholders-personas-module/`; overview, Stakeholder, Persona (stale "scoring not available" note replaced), MCP (80 tools), known limitations, roadmap and sidebar updated. `npm run build` clean; Mermaid diagrams render. Account: `docs/decisions.md`'s "Module 2 Phase 7b" entry.
+
+**Screenshots.** Four, captured at 1440×900 against the reseeded demo dataset: the Engagements list, an Engagement's page (with the research blocks), the S1 grid and the S4 report. The demo database predated Phase 4, so it was reset and both seed scripts replayed in full (**Decided by: User**, 2026-10-13); they ran clean.
 
 ## Acceptance criteria (from overview §48, Stakeholders & Personas subset)
 

@@ -1736,6 +1736,53 @@ td:has(> .disclosure-toggle) {
   max-width: calc(100vw - 1rem);
 }
 
+/* Compact icon-only button next to a heading or value (`AddPopoverButton`). */
+.btn-icon-compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.4rem;
+  line-height: 1;
+}
+
+/* A wrapped row of removable chips (`RemovableItemList`). */
+.removable-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.removable-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-alt);
+  padding: 0.1rem 0.25rem 0.1rem 0.65rem;
+  font-size: 0.9rem;
+}
+
+.removable-item__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 0.2rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.removable-item__remove:hover,
+.removable-item__remove:focus-visible {
+  color: var(--color-danger);
+}
+
 /* Clamp text to two lines (e.g. `ModuleSettingsList`'s descriptions). */
 .line-clamp-2 {
   display: -webkit-box;

@@ -46,9 +46,7 @@ flowchart LR
 
 A child project with no override of its own therefore inherits its parent project's. The Persona page shows the weight in use, whether it is the project's own ("Custom") or inherited, and offers **Set override** and **Use inherited value**.
 
-:::note
-Per-Persona scoring of Pain Points is not available yet, so the weight is recorded and resolved but nothing consumes it today. See [Known limitations](./known-limitations.md).
-:::
+[Pain Point scoring](../context-strategy-module/pain-point-scoring.md#how-personas-combine) uses the weight in use when it combines per-Persona scores, and [Persona validation](./reports.md#persona-validation-s2) shows it beside each Persona's evidence.
 
 | A Persona opened from a project |
 | --- |

@@ -46,6 +46,8 @@ Two separate fields, because they answer different questions. **Target cadence**
 
 When both ratings are set, the form shows a **suggested cadence** next to the field: Manage closely suggests Monthly, Keep satisfied and Keep informed suggest Quarterly, and Monitor suggests Ad hoc. It is only a suggestion and never fills the field itself.
 
+A Stakeholder's **Last engaged** date comes from the [Engagements](./engagement.md#last-engaged) that name them as a participant, and is shown on the list and on their page. The [Engagement staleness](./reports.md#engagement-staleness-s4) report compares it with the target cadence and lists whoever is overdue, sorted by Influence, with their availability constraints beside it.
+
 A party consulted once — a regulator, an auditor — is still a Stakeholder, with cadence One-off, so it can be linked to Requirements and Needs.
 
 ## Linking to a platform user

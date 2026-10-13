@@ -4,7 +4,7 @@ sidebar_position: 28
 
 # AI assistant (MCP) integration
 
-Stakeholders & Personas contributes 75 tools to ReqTrackManager's [MCP server](../../api-integrations/ai-assistants-mcp/overview.md) — the same mechanism an AI assistant like Claude Code uses to read and update Requirements and the other modules' content. They register automatically when the module is enabled for an organisation. All are project-scoped.
+Stakeholders & Personas contributes 80 tools to ReqTrackManager's [MCP server](../../api-integrations/ai-assistants-mcp/overview.md) — the same mechanism an AI assistant like Claude Code uses to read and update Requirements and the other modules' content. They register automatically when the module is enabled for an organisation. All are project-scoped.
 
 Writes follow the usual MCP write mode: the server must have writes enabled, and the signed-in account's own role decides what it may change. There is no approval step in this module, so no tool needs the AI-approval opt-in that Decision Management's and Context & Strategy's approve tools need.
 
@@ -20,6 +20,7 @@ Writes follow the usual MCP write mode: the server must have writes enabled, and
 | Visibility | 4 | Hiding an organisation Stakeholder or Persona from the project (or showing it again) and reverting to the inherited setting. |
 | Engagements | 17 | Logging and listing Engagements (the contact log), a Stakeholder's engagement timeline, adding and removing participants, covered Personas and audience groups (adding a group also adds its current members as participants), and recording what an Engagement raised or answered. |
 | Research extras | 12 | Session prompts, anonymous participants, findings and their raised or answered links. These answer "not found" unless the project has the **Research extras** sub-component turned on. |
+| Reports | 5 | The five [reports](./reports.md), read-only. |
 | Stakeholder groups | 6 | Listing the groups the project can see, creating, renaming, moving or deleting the project's own, and adding a Stakeholder to or removing one from a group. |
 
 Every `remove_*` tool deletes only the link or membership, never either record. Group tools edit the project's own groups; the organisation's are read-only here. There is deliberately **no tool to permanently delete a Stakeholder, an Engagement or anything attached to one** (prompts, anonymous participants, findings): irreversible deletion of personal data stays a human action in the app. File and comment endpoints are not exposed.
@@ -36,6 +37,8 @@ Every `remove_*` tool deletes only the link or membership, never either record. 
 | "Which Stakeholders are in the Acme group?" / "Put Dana in the launch-site customers group." | `list_stakeholders` (with `group_id`) / `add_stakeholder_to_group` |
 | "Record that this Stakeholder was consulted on that Decision." | `add_stakeholder_relationship` (kind `consulted_on_decision`) |
 | "Say this Need gave rise to that Requirement." | `add_need_requirement` |
+| "Log today's call with Dana." / "What did the pilot focus group raise?" | `create_engagement` / `list_engagements` |
+| "Who are we overdue to speak to?" | `stakeholders_get_engagement_staleness_report` |
 
 ## Where this fits
 
