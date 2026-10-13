@@ -236,6 +236,10 @@ services:
       dockerfile: Dockerfile.prod
       args:
         DOCS_URL: ${DOCS_URL:-http://localhost:8200}
+        # Baked into the site's asset URLs at build time (must start and end with `/`), so
+        # changing it needs `docker compose --profile docs build docs`; a pulled image keeps
+        # the `/` it was published with.
+        DOCS_BASE_URL: ${DOCS_BASE_URL:-/}
     ports:
       - "8200:8080"
     healthcheck:
