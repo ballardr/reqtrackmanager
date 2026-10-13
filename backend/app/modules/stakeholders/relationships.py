@@ -57,6 +57,9 @@ from app.modules.stakeholders.engagements import (
     COVERS_FORWARD,
     COVERS_REVERSE,
     ENGAGEMENT_ARTEFACT_TYPE,
+    FINDING_ARTEFACT_TYPE,
+    FINDING_FORWARD,
+    FINDING_REVERSE,
     OUTCOME_HOLDER_TYPES,
     OUTCOME_KINDS,
     PARTICIPANT_FORWARD,
@@ -308,6 +311,13 @@ LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
             allowed_source_types=OUTCOME_HOLDER_TYPES, allowed_target_types=kind.target_types,
         )
         for kind in OUTCOME_KINDS
+    ),
+    # A finding's place under its engagement, made when the finding is. Dedicated: the generic link
+    # endpoints neither offer nor delete it, so a finding cannot be detached from its engagement.
+    LinkTypeSeed(
+        FINDING_FORWARD, FINDING_REVERSE,
+        allowed_source_types=(ENGAGEMENT_ARTEFACT_TYPE,), allowed_target_types=(FINDING_ARTEFACT_TYPE,),
+        dedicated_endpoint=True,
     ),
 )
 """Link types the Stakeholders module ships (`ModuleDefinition.link_type_seeds`),

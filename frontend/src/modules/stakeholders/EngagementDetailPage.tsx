@@ -47,6 +47,9 @@ import { useResearchExtras } from "./useResearchExtras";
 
 type Option = { value: string; label: string };
 
+/** The findings are listed in full below, so the Links panel starts with that group collapsed. */
+const COLLAPSED_LINK_TYPES = ["research_finding"] as const;
+
 export function EngagementDetailPage() {
   const { projectId, engagementId } = useParams<{ projectId: string; engagementId: string }>();
   const { user } = useAuth();
@@ -60,6 +63,9 @@ export function EngagementDetailPage() {
   const [personaOptions, setPersonaOptions] = useState<Option[]>([]);
   const [groups, setGroups] = useState<StakeholderGroup[]>([]);
   const [participantsKey, setParticipantsKey] = useState(0);
+  // Bumped when a list on the page changes a link, so the Links panel beside it reloads.
+  const [linksKey, setLinksKey] = useState(0);
+  const linksChanged = () => setLinksKey((k) => k + 1);
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [erasing, setErasing] = useState(false);
@@ -131,10 +137,13 @@ export function EngagementDetailPage() {
   const personaPath = (id: string) => `/projects/${projectId}/modules/stakeholders/personas/${id}`;
 
   return (
-    <DetailLayout aside={<ArtefactLinksPanel projectId={projectId} artefactType="engagement" artefactId={engagement.id} />}>
+    <DetailLayout aside={<ArtefactLinksPanel projectId={projectId} artefactType="engagement" artefactId={engagement.id} collapsedTypes={COLLAPSED_LINK_TYPES} refreshToken={linksKey} />}>
       <Link to={`/projects/${projectId}/modules/stakeholders/engagements`}>← Engagements</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{engagement.title}</h1>
+        <span className="row" style={{ alignItems: "baseline", gap: "0.6rem" }}>
+          <h1 style={{ margin: 0 }}>{engagement.title}</h1>
+          <span className="text-muted" style={{ fontSize: "0.9rem" }}>{engagement.unique_code}</span>
+        </span>
         <span className="row" style={{ gap: "0.5rem" }}>
           <span className="badge">{ENGAGEMENT_CHANNEL_LABEL[engagement.channel]}</span>
           {engagement.retention_due && <span className="badge badge--warning">Retention review due</span>}
@@ -144,7 +153,7 @@ export function EngagementDetailPage() {
       <div className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <p className="text-muted" style={{ margin: 0 }}>{engagement.engagement_date}</p>
-          <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+          <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
             <Pencil size={14} />
           </button>
         </div>
@@ -175,6 +184,7 @@ export function EngagementDetailPage() {
             heading="Participants"
             emptyText="No Stakeholders are recorded as taking part."
             reloadKey={participantsKey}
+            onChanged={linksChanged}
             load={async () =>
               (await projectEngagementApi.listParticipants(projectId, engagement.id)).map((p) => ({
                 link_id: p.link_id, id: p.stakeholder_id, name: p.name, scope: p.scope,
@@ -193,6 +203,7 @@ export function EngagementDetailPage() {
 
           <RepresentationPanel
             heading="Personas covered"
+            onChanged={linksChanged}
             emptyText="No Persona is recorded as covered."
             load={async () =>
               (await projectEngagementApi.listPersonas(projectId, engagement.id)).map((p) => ({
@@ -215,6 +226,7 @@ export function EngagementDetailPage() {
             engagementId={engagement.id}
             groups={groups}
             onParticipantsChanged={() => setParticipantsKey((k) => k + 1)}
+            onChanged={linksChanged}
           />
 
         </FormGrid>
@@ -228,9 +240,10 @@ export function EngagementDetailPage() {
           holderId={engagement.id}
           api={projectEngagementApi.outcomes}
           loadTargets={(targetType: OutcomeTargetType) => projectEngagementApi.listOutcomeTargets(projectId, targetType)}
+          onChanged={linksChanged}
         />
 
-        {researchExtras && <ResearchFindingsPanel projectId={projectId} engagementId={engagement.id} />}
+        {researchExtras && <ResearchFindingsPanel projectId={projectId} engagementId={engagement.id} onChanged={linksChanged} />}
 
         <div className="row" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <button className="btn btn-danger" onClick={() => setErasing(true)}>Delete permanently</button>

@@ -167,6 +167,30 @@ textarea {
   cursor: not-allowed;
 }
 
+/* Button sizes (docs/ux-style-guide.md, "Pattern: button sizes"). Two sizes: the default `.btn`
+   (medium, 36px tall) and `.btn-sm` (28px). `.btn-icon` makes an icon-only button square at its
+   size, so an icon button and a text button of the same size are the same height. Buttons that sit
+   next to each other share a size. */
+.btn-sm {
+  height: 1.75rem;
+  padding: 0 0.6rem;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.btn-icon {
+  justify-content: center;
+  padding: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.btn-icon.btn-sm {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
 /* `SplitButtonTrigger` (style guide "Pattern: split-button trigger"): two
    adjacent `.btn`s read as one joined control — the primary action on the
    left, a narrow chevron affordance revealing alternatives on the right,
@@ -891,6 +915,65 @@ a.figure-projects-link:hover {
   color: var(--color-text-muted);
 }
 
+.artefact-links__group-row {
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* A group heading that collapses its list: a button that reads as the heading it sits in. */
+.artefact-links__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.artefact-links__toggle:hover,
+.artefact-links__toggle:focus-visible {
+  color: var(--color-text);
+}
+
+.artefact-links__phrases[hidden] {
+  display: none;
+}
+
+/* The relationship, once, above its rows; the count shows when there are several. */
+.artefact-links__phrase {
+  gap: 0.2rem;
+}
+
+.artefact-links__phrase-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.artefact-links__count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.artefact-links__code {
+  margin-left: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.artefact-links__meta {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
 .artefact-links__list {
   list-style: none;
   margin: 0;
@@ -915,12 +998,43 @@ a.figure-projects-link:hover {
 
 .artefact-links__remove {
   margin-left: auto;
-  padding: 0.2rem 0.4rem;
 }
 
 .artefact-links__note {
   margin: 0;
   font-size: 0.8rem;
+}
+
+/* Compact variant (`ArtefactLinksPanel` with `compact`): inside another record's card, so no card
+   chrome, a caption-sized title with the icon buttons beside it, and tighter spacing. */
+.artefact-links--compact {
+  gap: 0.35rem;
+}
+
+.artefact-links--compact .artefact-links__header {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.artefact-links--compact .artefact-links__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.artefact-links--compact .artefact-links__buttons {
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+
+.artefact-links--compact .artefact-links__group {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.artefact-links--compact .artefact-links__list {
+  gap: 0.2rem;
 }
 
 /* Trace tree and map (components/LinkTraceTree.tsx, LinkTraceMap.tsx). */
@@ -1734,15 +1848,6 @@ td:has(> .disclosure-toggle) {
    it can't get pushed past the screen edge on a phone. */
 .popover-bubble {
   max-width: calc(100vw - 1rem);
-}
-
-/* Compact icon-only button next to a heading or value (`AddPopoverButton`). */
-.btn-icon-compact {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.15rem 0.4rem;
-  line-height: 1;
 }
 
 /* Form and detail fields laid out in a grid (`FormGrid`): as many equal columns as fit at the

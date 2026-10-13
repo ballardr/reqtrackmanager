@@ -112,14 +112,14 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
             main: p.prompt,
             actions: (
               <>
-                <button className="btn btn-icon-compact" aria-label={`Move ${p.prompt} up`} title={`Move ${p.prompt} up`} disabled={index === 0} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "up"), "Prompt moved.", "Could not move the prompt.")}>
+                <button className="btn btn-sm btn-icon" aria-label={`Move ${p.prompt} up`} title={`Move ${p.prompt} up`} disabled={index === 0} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "up"), "Prompt moved.", "Could not move the prompt.")}>
                   <ArrowUp size={14} />
                 </button>
-                <button className="btn btn-icon-compact" aria-label={`Move ${p.prompt} down`} title={`Move ${p.prompt} down`} disabled={index === prompts.length - 1} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "down"), "Prompt moved.", "Could not move the prompt.")}>
+                <button className="btn btn-sm btn-icon" aria-label={`Move ${p.prompt} down`} title={`Move ${p.prompt} down`} disabled={index === prompts.length - 1} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "down"), "Prompt moved.", "Could not move the prompt.")}>
                   <ArrowDown size={14} />
                 </button>
-                <button className="btn btn-icon-compact" aria-label={`Edit ${p.prompt}`} title={`Edit ${p.prompt}`} onClick={() => setEditing(p)}><Pencil size={14} /></button>
-                <button className="btn btn-icon-compact" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 size={14} /></button>
+                <button className="btn btn-sm btn-icon" aria-label={`Edit ${p.prompt}`} title={`Edit ${p.prompt}`} onClick={() => setEditing(p)}><Pencil size={14} /></button>
+                <button className="btn btn-sm btn-icon" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 size={14} /></button>
               </>
             ),
             detail: p.response_notes ? <span style={{ whiteSpace: "pre-wrap" }}>{p.response_notes}</span> : undefined,

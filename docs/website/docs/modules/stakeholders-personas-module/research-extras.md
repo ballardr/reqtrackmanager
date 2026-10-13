@@ -31,7 +31,18 @@ With the extras on, three more blocks appear on an [Engagement](./engagement.md)
 
 - **Anonymous participants.** Press **(+)** and enter a label and, optionally, the **Persona represented**. They count towards the participant total and towards the Persona's evidence in [Persona validation](./reports.md#persona-validation-s2). Use a label, not a name: the record is anonymous only if you keep it so.
 - **Session prompts.** Press **(+)** to add a prompt, then edit it to record **response notes**. Use the arrows to reorder.
-- **Findings.** Press **(+)** to add a finding with a title and description, then link what it **raised** or **answered** exactly as for an Engagement. A finding can quote participants.
+- **Findings.** Press **(+)** to add a finding with a title and description. Each gets a project-scoped code (**FND-001**, never reused, even after a delete). A finding has its own **Links** panel with the same **Add link** dialog as every other record: link what it **raised** or **answered**, or anything else the project allows. A finding can quote participants.
+
+## Finding a finding
+
+A finding is named by its code and title ("FND-003 Technicians skip the checklist offline"), so it can be found from the other side: the **Add link** dialog on a Pain Point, Need, Open Question or any other record offers findings by title, with the Engagement they came from. A finding is always linked to its Engagement ("Is a finding of"), made when the finding is, and it cannot be removed; so a [trace](../../core-features/links-and-traceability.md) that reaches a finding continues to its Engagement. Opening a finding from a link or trace takes you to its card on the Engagement's page. On the Engagement's own Links panel the **Research finding** group starts collapsed (every group has a toggle), since the findings are listed in full on the page.
+
+```mermaid
+flowchart LR
+    PP["Pain Point"] -->|"Was raised by"| F["FND-003<br/>finding"]
+    F -->|"Is a finding of"| E["Engagement"]
+    E -->|"Has participant"| S["Stakeholder"]
+```
 
 ## Findings are deleted with their Engagement
 

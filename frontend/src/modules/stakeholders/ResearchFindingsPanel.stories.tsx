@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { MemoryRouter } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
 import { withToast } from "../../testing/storybook-helpers";
 import { buildFinding } from "./fixtures";
 import { ResearchFindingsPanel } from "./ResearchFindingsPanel";
@@ -13,10 +14,9 @@ const BASE = "/api/v1/projects/project-1/modules/stakeholders";
 function mockFindings(rows: ResearchFinding[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `${BASE}/engagements/engagement-1/findings`) return rows;
-    if (path === `${BASE}/findings/finding-1/outcomes`) {
-      return [{ link_id: "o1", kind: "raised", target_type: "pain_point", target_id: "pp-1", label: "Reports arrive late" }];
+    if (path.includes("/artefacts/research_finding/finding-1/link-graph")) {
+      return buildGraph([[buildGraphNode({ type: "pain_point", id: "pp-1", type_label: "Pain Point", label: "Reports arrive late", status: null })]]);
     }
-    if (path.startsWith(`${BASE}/engagement-outcome-targets`)) return [];
     throw new Error(`Unmocked GET: ${path}`);
   });
 }
@@ -38,13 +38,16 @@ export default meta;
 
 type Story = StoryObj<typeof ResearchFindingsPanel>;
 
-export const ListsFindingsWithTheirOutcomes: Story = {
+/** A finding shows its FND code and its links through the shared Links panel (the same "Add link" dialog as every record). */
+export const ListsFindingsWithTheirCodeAndLinks: Story = {
   beforeEach: () => mockFindings([buildFinding()]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Technicians skip the checklist when offline")).toBeInTheDocument());
     await expect(canvas.getByText("Four of five said they note it down later.")).toBeInTheDocument();
-    await waitFor(() => expect(canvas.getByText(/Raised · Pain Point:/)).toBeInTheDocument());
+    await expect(canvas.getByText("FND-001")).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByText("Reports arrive late")).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: /Add link/ })).toBeInTheDocument();
   },
 };
 
@@ -106,4 +109,4 @@ export const DeletesBehindAConfirm: Story = {
   },
 };
 
-export const DarkTheme: Story = { ...ListsFindingsWithTheirOutcomes, globals: { theme: "dark" } };
+export const DarkTheme: Story = { ...ListsFindingsWithTheirCodeAndLinks, globals: { theme: "dark" } };

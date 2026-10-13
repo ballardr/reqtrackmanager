@@ -52,7 +52,7 @@ export function ProjectEngagementsPage() {
     if (!projectId || !findingId) return;
     projectResearchApi
       .getFinding(projectId, findingId)
-      .then((finding) => navigate(`/projects/${projectId}/modules/stakeholders/engagements/${finding.engagement_id}`, { replace: true }))
+      .then((finding) => navigate(`/projects/${projectId}/modules/stakeholders/engagements/${finding.engagement_id}#finding-${finding.id}`, { replace: true }))
       .catch((err) => setLoadError(toErrorMessage(err, "This finding could not be found, or research extras are not enabled for this project.")));
   }, [projectId, findingId, navigate]);
 
@@ -109,8 +109,11 @@ export function ProjectEngagementsPage() {
         showScope={false}
         typeName={(e) => ENGAGEMENT_CHANNEL_LABEL[e.channel]}
         typeLabel="Channel"
-        searchText={(e) => `${e.title} ${e.summary}`}
-        columnsBeforeType={[{ key: "date", label: "Date", render: (e) => e.engagement_date }]}
+        searchText={(e) => `${e.unique_code} ${e.title} ${e.summary}`}
+        columnsBeforeType={[
+          { key: "code", label: "Code", render: (e) => <span className="text-muted">{e.unique_code}</span> },
+          { key: "date", label: "Date", render: (e) => e.engagement_date },
+        ]}
         columnsAfterScope={[
           { key: "participants", label: "Participants", render: (e) => e.participant_count + e.anonymous_participant_count },
           {

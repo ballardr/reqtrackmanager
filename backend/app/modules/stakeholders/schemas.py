@@ -654,6 +654,7 @@ class EngagementOut(BaseModel):
     id: UUID
     project_id: UUID
     creator_id: UUID
+    unique_code: str
     title: str
     channel: EngagementChannel
     engagement_date: date
@@ -814,6 +815,7 @@ class FindingOut(BaseModel):
     project_id: UUID
     engagement_id: UUID
     creator_id: UUID
+    unique_code: str
     title: str
     description: str
     created_at: datetime

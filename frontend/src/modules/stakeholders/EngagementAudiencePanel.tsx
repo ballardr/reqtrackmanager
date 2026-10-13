@@ -31,6 +31,7 @@ export function EngagementAudiencePanel({
   engagementId,
   groups,
   onParticipantsChanged,
+  onChanged,
 }: {
   projectId: string;
   engagementId: string;
@@ -38,6 +39,8 @@ export function EngagementAudiencePanel({
   groups: StakeholderGroup[];
   /** Called after members are copied in, so the participant list reloads. */
   onParticipantsChanged: () => void;
+  /** Called after an audience is added or removed, so a page's Links panel can refresh. */
+  onChanged?: () => void;
 }) {
   const { showToast } = useToast();
   const [audiences, setAudiences] = useState<EngagementAudience[] | null>(null);
@@ -88,6 +91,7 @@ export function EngagementAudiencePanel({
         setRefresh((n) => n + 1);
       }
       onParticipantsChanged();
+      onChanged?.();
     }
   }
 
@@ -96,6 +100,7 @@ export function EngagementAudiencePanel({
       await projectEngagementApi.removeAudience(projectId, engagementId, audience.group_id);
       showToast("Audience removed.");
       setRefresh((n) => n + 1);
+      onChanged?.();
     } catch (err) {
       showToast(toErrorMessage(err, "Could not remove the audience."), "error");
     }
@@ -109,7 +114,7 @@ export function EngagementAudiencePanel({
       gap="0.35rem"
       action={
         <button
-          type="button" className="btn btn-icon-compact" aria-label="Add to Audience groups"
+          type="button" className="btn btn-sm btn-icon" aria-label="Add to Audience groups"
           title="Add to Audience groups" aria-haspopup="dialog" disabled={nodes.length === 0} onClick={() => setPicking(true)}
         >
           <Plus size={14} aria-hidden="true" />

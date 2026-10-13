@@ -45,6 +45,7 @@ export function RepresentationPanel({
   linkFor,
   edit,
   reloadKey,
+  onChanged,
 }: {
   heading: string;
   emptyText: string;
@@ -54,6 +55,8 @@ export function RepresentationPanel({
   edit?: RepresentationEdit;
   /** Change to force a reload from outside. */
   reloadKey?: number;
+  /** Called after a link is added or removed, so a page's Links panel can refresh. */
+  onChanged?: () => void;
 }) {
   const { showToast } = useToast();
   const [links, setLinks] = useState<RepresentedLink[] | null>(null);
@@ -89,6 +92,7 @@ export function RepresentationPanel({
       await action();
       showToast(success);
       setRefresh((n) => n + 1);
+      onChanged?.();
     } catch (err) {
       showToast(toErrorMessage(err, failure), "error");
     }

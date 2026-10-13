@@ -259,7 +259,7 @@ export function GuidingPrincipleDetailPage() {
             {GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority · v{guidingPrinciple.version_number}
           </p>
           {!guidingPrinciple.is_locked && (
-            <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}

@@ -109,7 +109,8 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     const addParticipant = page.getByRole("dialog", { name: "Add to Participants" });
     await addParticipant.getByLabel("Stakeholder to add").selectOption({ label: patName });
     await addParticipant.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByRole("link", { name: patName })).toBeVisible();
+    // The participants list and the Links panel both name Pat, so take the first.
+    await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
     // Pat takes part, so is no longer offered.
     await page.getByRole("button", { name: "Add to Participants" }).click();
     await expect(page.getByRole("dialog", { name: "Add to Participants" }).getByLabel("Stakeholder to add").locator("option", { hasText: patName })).toHaveCount(0);
@@ -119,7 +120,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     const addPersona = page.getByRole("dialog", { name: "Add to Personas covered" });
     await addPersona.getByLabel("Persona covered").selectOption({ label: personaName });
     await addPersona.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByRole("link", { name: personaName })).toBeVisible();
+    await expect(page.getByRole("link", { name: personaName }).first()).toBeVisible();
 
     // --- The list filters by participant (applied by the API).
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
@@ -161,8 +162,8 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await addAudience.getByRole("button", { name: "Groups to add" }).click();
     await addAudience.getByRole("button", { name: "Add everyone in group" }).click();
     await expect(page.getByText("Added 2 people as participants.")).toBeVisible();
-    await expect(page.getByRole("link", { name: patName })).toBeVisible();
-    await expect(page.getByRole("link", { name: samName })).toBeVisible();
+    await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: samName }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: `Remove audience ${groupName}` })).toBeVisible();
 
     // --- A no-show is removed individually; removing the audience keeps everyone else.
@@ -174,7 +175,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(dialog.getByText(/The people it added stay as participants/)).toBeVisible();
     await dialog.getByRole("button", { name: "Remove" }).click();
     await expect(page.getByText("Audience removed.")).toBeVisible();
-    await expect(page.getByRole("link", { name: patName })).toBeVisible();
+    await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
   });
 
   test("logs a contact from a Stakeholder's page and shows the timeline and last engaged", async ({ page }) => {
@@ -208,7 +209,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${stakeholder.id}`);
     await page.getByRole("link", { name: `${today()} · Email · Evidence email ${suffix}` }).click();
     await expect(page.getByRole("heading", { name: `Evidence email ${suffix}` })).toBeVisible();
-    await expect(page.getByRole("link", { name: patName })).toBeVisible();
+    await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
   });
 
   test("records what an engagement raised and links it to the Need", async ({ page }) => {
@@ -293,15 +294,36 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await findingDialog.getByLabel("Finding title").fill("Technicians skip the checklist offline");
     await findingDialog.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Finding added.")).toBeVisible();
-    await expect(page.getByText("Technicians skip the checklist offline")).toBeVisible();
+    // (The title also appears, hidden, in the collapsed Links panel group, so name the card's own heading.)
+    await expect(page.locator("strong", { hasText: "Technicians skip the checklist offline" })).toBeVisible();
+    // It gets a project-scoped code, and links through the shared "Add a link" dialog like any other record.
+    const card = page.getByLabel("Finding Technicians skip the checklist offline");
+    await expect(card.getByText("FND-001")).toBeVisible();
+    const needName = `Work offline ${suffix}`;
+    await post(page, `${base}/needs`, adminHeaders, { name: needName });
+    await card.getByRole("button", { name: "Add link" }).click();
+    const linkDialog = page.getByRole("dialog", { name: "Add a link" });
+    await linkDialog.getByLabel("Link to").selectOption({ label: "Stakeholder need" });
+    await linkDialog.getByLabel("Record").selectOption({ label: needName });
+    await linkDialog.getByLabel("Relationship").selectOption({ label: "Raised" });
+    await linkDialog.getByRole("button", { name: "Add link" }).click();
+    await expect(page.getByText("Link added.").last()).toBeVisible();
+    await expect(card.getByRole("link", { name: needName })).toBeVisible();
+    // The engagement's own Links panel lists its findings, but starts with that group collapsed.
+    const findingsGroup = page.getByRole("button", { name: "Research finding", exact: true });
+    await expect(findingsGroup).toHaveAttribute("aria-expanded", "false");
+    await findingsGroup.click();
+    await expect(findingsGroup).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("link", { name: /FND-001 Technicians skip the checklist offline/ }).first()).toBeVisible();
 
     // --- The list counts the anonymous participant, and a finding link redirects to its engagement.
     const findings = await (await page.request.get(`${base}/findings`, { headers: adminHeaders })).json();
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
     await expect(page.locator("tr", { hasText: `Focus group ${suffix}` }).getByText("Focus group", { exact: true })).toBeVisible();
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements?finding=${findings[0].id}`);
-    await expect(page).toHaveURL(new RegExp(`/engagements/${engagement.id}$`));
+    await expect(page).toHaveURL(new RegExp(`/engagements/${engagement.id}#finding-${findings[0].id}$`));
     await expect(page.getByRole("heading", { name: `Focus group ${suffix}` })).toBeVisible();
+    await expect(page.getByLabel("Finding Technicians skip the checklist offline")).toBeInViewport();
   });
   test("the page stays compact: adds open on demand and the facilitator is assigned from a (+)", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "EngCompact");

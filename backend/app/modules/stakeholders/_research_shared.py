@@ -201,7 +201,7 @@ def delete_anonymous(
 def finding_to_out(finding: ResearchFinding) -> FindingOut:
     return FindingOut(
         id=finding.id, project_id=finding.project_id, engagement_id=finding.engagement_id,
-        creator_id=finding.creator_id, title=finding.title, description=finding.description,
+        creator_id=finding.creator_id, unique_code=finding.unique_code, title=finding.title, description=finding.description,
         created_at=finding.created_at, updated_at=finding.updated_at,
     )
 
@@ -231,12 +231,9 @@ def add_finding(
     db: Session, engagement: Engagement, payload: FindingCreate, actor: User, project: Project
 ) -> FindingOut:
     """Records a finding on the engagement, audit-logs and commits."""
-    finding = ResearchFinding(
-        project_id=project.id, engagement_id=engagement.id, creator_id=actor.id, title=payload.title,
-        description=payload.description,
+    finding = eng.create_finding(
+        db, project, engagement, creator_id=actor.id, actor=actor, title=payload.title, description=payload.description
     )
-    db.add(finding)
-    db.flush()
     log_event(
         db, entity_type=FINDING_ARTEFACT_TYPE, entity_id=finding.id, action="created", actor_id=actor.id,
         project_id=project.id, detail={"engagement_id": str(engagement.id)},

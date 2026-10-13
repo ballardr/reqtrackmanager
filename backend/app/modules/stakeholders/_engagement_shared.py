@@ -171,7 +171,8 @@ def engagement_to_out(
     if anonymous is None:
         anonymous = eng.anonymous_participant_counts(db, [engagement.id]).get(engagement.id, 0)
     return EngagementOut(
-        id=engagement.id, project_id=engagement.project_id, creator_id=engagement.creator_id, title=engagement.title,
+        id=engagement.id, project_id=engagement.project_id, creator_id=engagement.creator_id,
+        unique_code=engagement.unique_code, title=engagement.title,
         channel=engagement.channel, engagement_date=engagement.engagement_date, purpose=engagement.purpose,
         summary=engagement.summary, notes=engagement.notes, consent_recorded=engagement.consent_recorded,
         retain_until=engagement.retain_until, retention_due=eng.retention_due(engagement),
@@ -255,7 +256,7 @@ def create_engagement_from_payload(
     if any(gid not in universe for gid in payload.group_ids):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder group not found.")
     content = payload.model_dump(exclude={"facilitators", "stakeholder_ids", "persona_ids", "group_ids"})
-    engagement = eng.create_engagement(db, project_id=project.id, creator=creator, **content)
+    engagement = eng.create_engagement(db, project=project, creator=creator, **content)
     eng.set_facilitators(db, engagement, payload.facilitators)
     for stakeholder in stakeholders:
         apply_value_error_as_conflict(

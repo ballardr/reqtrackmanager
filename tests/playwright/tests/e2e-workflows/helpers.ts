@@ -74,6 +74,21 @@ export const TERMINOLOGY_OVERRIDE = { stage: "Phase", requirement: "Spec", chang
  * it a 45s allowance), so under load it could outlast the 5s assertion and
  * read as a missing button. A rejected login (e.g. another spec deactivated
  * a shared persona) now fails naming the account and status instead. */
+/**
+ * Makes every Links panel in this page's session show the relationship labels ("Has participant",
+ * "Supersedes"), which are off by default (the viewer's remembered "Show relationships" choice).
+ * Call before navigating; for a spec that asserts how a link is phrased.
+ */
+export async function showLinkRelationships(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("reqtrack.links.showRelationships", "1");
+    } catch {
+      // Storage unavailable: the labels stay hidden and the spec will say so.
+    }
+  });
+}
+
 export async function loginAs(page: Page, email: string, password: string = PASSWORD): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);

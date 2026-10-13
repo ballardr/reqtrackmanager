@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { loginAs, openProject, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, showLinkRelationships } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
@@ -18,6 +18,7 @@ import { createStandardWithVersion } from "./helpers";
  */
 test.describe("Compliance: core requirement <-> standard clause links through the Links panel", () => {
   test("find a clause by searching and by narrowing, link it, see it persist and remove it", async ({ page }) => {
+    await showLinkRelationships(page);
     const suffix = Date.now();
     const reference = `E2E-TRACE-${suffix}`;
     const standardName = `E2E Traceability Standard ${suffix}`;
@@ -85,7 +86,7 @@ test.describe("Compliance: core requirement <-> standard clause links through th
       await expect(panel.getByText(clauseLabel)).toBeVisible();
       await page.reload();
       await expect(panel.getByText(clauseLabel)).toBeVisible();
-      await expect(panel.locator("span.badge", { hasText: "Derives from" })).toBeVisible();
+      await expect(panel.locator(".artefact-links__phrase-label", { hasText: "Derives from" })).toBeVisible();
     });
 
     await test.step("removing the link goes through the usual confirmation", async () => {

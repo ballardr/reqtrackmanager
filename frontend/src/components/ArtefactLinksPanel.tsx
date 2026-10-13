@@ -27,19 +27,55 @@
  * - Other modules' statuses are shown through their registered label maps
  *   (`getArtefactStatusLabel`); a status with no label shows no badge, never the raw value.
  * - API calls are injectable (`api`) so stories and tests need no network.
+ * - `compact` is the variant for a panel that sits inside another record's card (a finding in its
+ *   engagement): no card chrome, a caption-sized "Links" title with icon buttons (+ to add, a branch
+ *   icon to trace) beside it, and tighter spacing. `hideLinkedTypes` leaves out links to records of
+ *   those artefact types where the page already shows them (the engagement a finding sits in); the
+ *   trace and the records themselves are unchanged.
+ * - Rows carry no pills. A group is a record type (a chevron toggle and a plain count), and inside it
+ *   the relationship is a small label above its rows ("Has participant · 3"), so several links of one
+ *   kind read as a list under one label rather than a repeated pill. A count shows only when it
+ *   says something: more than one link, or a collapsed group. A record's code is a small muted
+ *   suffix after its title (`LinkedRecordSummary`'s `list` layout).
+ * - The relationship labels are off by default (the trace shows them, and each row's hover text
+ *   names its relationship), and a "View options" popover turns them, and the compact layout, on or
+ *   off for this panel. The relationship choice is remembered per viewer (local storage, optional).
+ * - Each record-type group can be collapsed to its heading and count (a chevron toggle). A page
+ *   that expects a long group of little interest passes `collapsedTypes` to start those groups
+ *   collapsed (an engagement starts with its findings collapsed); the viewer's own toggling then wins.
  */
-import { GitBranch, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, GitBranch, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { artefactLinksApi, type ArtefactLinksApi, type LinkGraph, type LinkGraphEdge, type LinkGraphNode } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { AddPopoverButton } from "./AddPopoverButton";
 import { AddArtefactLinkModal, type LinksChangeRequestMode } from "./AddArtefactLinkModal";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { LinkedRecordSummary } from "./LinkedRecordSummary";
 import { LinkTraceModal } from "./LinkTraceModal";
 
 export type { LinksChangeRequestMode } from "./AddArtefactLinkModal";
+
+const RELATIONSHIPS_KEY = "reqtrack.links.showRelationships";
+
+/** The viewer's remembered "show relationships" choice; absent or unreadable storage means hidden. */
+function readStoredRelationships(): boolean {
+  try {
+    return localStorage.getItem(RELATIONSHIPS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function storeRelationships(show: boolean): void {
+  try {
+    localStorage.setItem(RELATIONSHIPS_KEY, show ? "1" : "0");
+  } catch {
+    // Storage can be blocked; the choice then lasts for this panel only.
+  }
+}
 
 interface LinkRow {
   edge: LinkGraphEdge;
@@ -55,6 +91,10 @@ export function ArtefactLinksPanel({
   actions,
   changeRequest,
   hideStructuralLinks = false,
+  compact = false,
+  hideLinkedTypes,
+  collapsedTypes,
+  showRelationships: showRelationshipsDefault,
   api = artefactLinksApi,
 }: {
   /** The project the page is in; `undefined` for an organisation-owned record. */
@@ -74,6 +114,14 @@ export function ArtefactLinksPanel({
   /** Leave out untyped structural links (an action's membership of a requirement) for a page that
    * already lists them in a section of its own, so the same record is not shown twice. */
   hideStructuralLinks?: boolean;
+  /** Render without card chrome, with a caption-sized title and icon buttons, for a panel inside another card. */
+  compact?: boolean;
+  /** Artefact types whose links are left out of the list (still part of the trace). */
+  hideLinkedTypes?: readonly string[];
+  /** Artefact types whose group starts collapsed; opening or closing a group is the viewer's choice from then on. */
+  collapsedTypes?: readonly string[];
+  /** Start with the relationship labels shown (default: the viewer's remembered choice, else hidden). */
+  showRelationships?: boolean;
   api?: ArtefactLinksApi;
 }) {
   const strings = useStrings();
@@ -85,6 +133,15 @@ export function ArtefactLinksPanel({
   const [tracing, setTracing] = useState(false);
   const [removing, setRemoving] = useState<LinkRow | null>(null);
   const [removeReason, setRemoveReason] = useState("");
+  // The viewer's explicit open/close per record type; a type not in here follows `collapsedTypes`.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // View options. `compact` is a per-panel default the viewer can flip; the relationship choice is remembered.
+  const [compactView, setCompactView] = useState(compact);
+  const [showRelationships, setShowRelationships] = useState(showRelationshipsDefault ?? readStoredRelationships());
+  function chooseRelationships(next: boolean) {
+    setShowRelationships(next);
+    storeRelationships(next);
+  }
 
   useEffect(() => {
     if (!projectId) return;
@@ -107,21 +164,30 @@ export function ArtefactLinksPanel({
     if (!graph) return [];
     const nodes = new Map(graph.nodes.map((n) => [`${n.type}:${n.id}`, n]));
     const byLabel = new Map<string, LinkRow[]>();
+    const typeOf = new Map<string, string>();
     for (const edge of graph.edges) {
       if (hideStructuralLinks && edge.link_type_id === null) continue;
       const node = nodes.get(`${edge.to_type}:${edge.to_id}`);
-      if (!node) continue;
+      if (!node || hideLinkedTypes?.includes(node.type)) continue;
       byLabel.set(node.type_label, [...(byLabel.get(node.type_label) ?? []), { edge, node }]);
+      typeOf.set(node.type_label, node.type);
     }
     return [...byLabel]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([label, rows]) => ({
-        label,
-        rows: rows.sort(
+      .map(([label, rows]) => {
+        const sorted = rows.sort(
           (a, b) => (a.edge.phrase ?? "").localeCompare(b.edge.phrase ?? "") || a.node.label.localeCompare(b.node.label),
-        ),
-      }));
-  }, [graph, hideStructuralLinks]);
+        );
+        // The rows of one relationship, in order, under one label.
+        const phrases: { phrase: string | null; rows: LinkRow[] }[] = [];
+        for (const row of sorted) {
+          const last = phrases[phrases.length - 1];
+          if (last && last.phrase === row.edge.phrase) last.rows.push(row);
+          else phrases.push({ phrase: row.edge.phrase, rows: [row] });
+        }
+        return { label, type: typeOf.get(label) ?? label, rows: sorted, phrases };
+      });
+  }, [graph, hideStructuralLinks, hideLinkedTypes]);
 
   function changed() {
     setReload((n) => n + 1);
@@ -147,7 +213,7 @@ export function ArtefactLinksPanel({
 
   if (!projectId) {
     return (
-      <section className="card stack" aria-label={strings.artefactLinks.title}>
+      <section className={compactView ? "stack artefact-links--compact" : "card stack"} aria-label={strings.artefactLinks.title}>
         <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.orgScopedNote}</p>
         {actions && <div className="row">{typeof actions === "function" ? actions({ reload: changed }) : actions}</div>}
@@ -157,21 +223,61 @@ export function ArtefactLinksPanel({
 
   // Changing links on a locked record goes through a change request, which anyone allowed to link it at all may propose.
   const canLink = (changeRequest ? graph?.can_propose : graph?.can_link) ?? false;
+  const viewOptions = (
+    <AddPopoverButton label={strings.artefactLinks.viewOptions} icon={SlidersHorizontal} size={compactView ? "sm" : "md"}>
+      {() => (
+        <div className="stack" style={{ gap: "0.5rem" }}>
+          <label className="row" style={{ gap: "0.4rem", alignItems: "flex-start" }}>
+            <input type="checkbox" aria-label={strings.artefactLinks.viewCompact} checked={compactView} onChange={(e) => setCompactView(e.target.checked)} />
+            <span>{strings.artefactLinks.viewCompact}</span>
+          </label>
+          <label className="row" style={{ gap: "0.4rem", alignItems: "flex-start" }}>
+            <input type="checkbox" aria-label={strings.artefactLinks.viewRelationships} checked={showRelationships} onChange={(e) => chooseRelationships(e.target.checked)} />
+            <span className="stack" style={{ gap: "0.15rem" }}>
+              <span>{strings.artefactLinks.viewRelationships}</span>
+              <span className="text-muted" style={{ fontSize: "0.78rem" }}>{strings.artefactLinks.viewRelationshipsHint}</span>
+            </span>
+          </label>
+        </div>
+      )}
+    </AddPopoverButton>
+  );
   return (
-    <section className="card stack" aria-label={strings.artefactLinks.title}>
+    <section className={compactView ? "stack artefact-links--compact" : "card stack"} aria-label={strings.artefactLinks.title}>
       <div className="row artefact-links__header">
         <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>
+        {/* One structure and one order for both layouts (Add, Trace, then View options at the end), so the
+            buttons do not move when the layout flips and the View options popover stays open. */}
         <div className="row artefact-links__buttons">
-          {groups.length > 0 && (
-            <button className="btn" onClick={() => setTracing(true)}>
-              <GitBranch size={14} /> {strings.artefactLinks.traceButton}
-            </button>
-          )}
           {canLink && (
-            <button className="btn btn-primary" onClick={() => setAdding(true)}>
-              <Plus size={14} /> {strings.artefactLinks.addLink}
-            </button>
+            compactView ? (
+              <button
+                className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.addLink} title={strings.artefactLinks.addLink}
+                aria-haspopup="dialog" onClick={() => setAdding(true)}
+              >
+                <Plus size={14} aria-hidden="true" />
+              </button>
+            ) : (
+              <button className="btn btn-primary" onClick={() => setAdding(true)}>
+                <Plus size={14} /> {strings.artefactLinks.addLink}
+              </button>
+            )
           )}
+          {(compactView ? graph !== null : groups.length > 0) && (
+            compactView ? (
+              <button
+                className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.traceButton} title={strings.artefactLinks.traceButton}
+                aria-haspopup="dialog" onClick={() => setTracing(true)}
+              >
+                <GitBranch size={14} aria-hidden="true" />
+              </button>
+            ) : (
+              <button className="btn" onClick={() => setTracing(true)}>
+                <GitBranch size={14} /> {strings.artefactLinks.traceButton}
+              </button>
+            )
+          )}
+          {viewOptions}
         </div>
       </div>
       {actions && canLink && (
@@ -187,25 +293,54 @@ export function ArtefactLinksPanel({
       ) : groups.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.none}</p>
       ) : (
-        groups.map((group) => (
-          <div key={group.label} className="stack" style={{ gap: "0.35rem" }}>
-            <h3 className="artefact-links__group">{group.label}</h3>
-            <ul className="artefact-links__list">
-              {group.rows.map((row) => (
-                <LinkRowView
-                  key={row.edge.id}
-                  row={row}
-                  currentProjectId={projectId}
-                  canRemove={canLink && !row.edge.dedicated}
-                  onRemove={() => {
-                    setRemoveReason("");
-                    setRemoving(row);
-                  }}
-                />
-              ))}
-            </ul>
-          </div>
-        ))
+        groups.map((group) => {
+          const isCollapsed = collapsed[group.type] ?? (collapsedTypes?.includes(group.type) ?? false);
+          const listId = `artefact-links-${artefactId}-${group.type}`;
+          return (
+            <div key={group.label} className="stack" style={{ gap: "0.35rem" }}>
+              <div className="row artefact-links__group-row">
+                <h3 className="artefact-links__group">
+                  <button
+                    type="button" className="artefact-links__toggle" aria-expanded={!isCollapsed} aria-controls={listId}
+                    onClick={() => setCollapsed((current) => ({ ...current, [group.type]: !isCollapsed }))}
+                  >
+                    {isCollapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                    {group.label}
+                  </button>
+                </h3>
+                {(group.rows.length > 1 || isCollapsed) && (
+                  <span className="artefact-links__count" aria-label={strings.artefactLinks.groupCount(group.rows.length)}>{group.rows.length}</span>
+                )}
+              </div>
+              <div id={listId} className="stack artefact-links__phrases" hidden={isCollapsed}>
+                {(showRelationships ? group.phrases : [{ phrase: null, rows: [...group.rows].sort((a, b) => a.node.label.localeCompare(b.node.label)) }]).map((entry) => (
+                  <div key={entry.phrase ?? ""} className="stack artefact-links__phrase">
+                    {showRelationships && (
+                      <span className="artefact-links__phrase-label">
+                        {entry.phrase ?? strings.artefactLinks.untyped}
+                        {entry.rows.length > 1 && <span className="artefact-links__count" aria-label={strings.artefactLinks.groupCount(entry.rows.length)}>{entry.rows.length}</span>}
+                      </span>
+                    )}
+                    <ul className="artefact-links__list">
+                      {entry.rows.map((row) => (
+                        <LinkRowView
+                          key={row.edge.id}
+                          row={row}
+                          currentProjectId={projectId}
+                          canRemove={canLink && !row.edge.dedicated}
+                          onRemove={() => {
+                            setRemoveReason("");
+                            setRemoving(row);
+                          }}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })
       )}
       {graph && graph.hidden_count > 0 && (
         <p className="text-muted artefact-links__note">{strings.artefactLinks.hiddenNote(graph.hidden_count)}</p>
@@ -284,11 +419,11 @@ function LinkRowView({
   const { edge, node } = row;
   const phrase = edge.phrase ?? strings.artefactLinks.untyped;
   return (
-    <li className="artefact-links__row">
-      <LinkedRecordSummary edge={edge} node={node} currentProjectId={currentProjectId} />
+    <li className="artefact-links__row" title={phrase}>
+      <LinkedRecordSummary edge={edge} node={node} currentProjectId={currentProjectId} layout="list" />
       {canRemove && (
         <button
-          className="btn btn-danger artefact-links__remove"
+          className="btn btn-danger btn-sm btn-icon artefact-links__remove"
           title={strings.artefactLinks.removeAction}
           aria-label={strings.artefactLinks.removeLabel(phrase, node.label)}
           onClick={onRemove}

@@ -1855,6 +1855,7 @@ const en = {
     addFailed: "Could not add this link.",
     removeFailed: "Could not remove this link.",
     removeLabel: (phrase: string, target: string) => `Remove link: ${phrase} ${target}`,
+    groupCount: (count: number) => `${count} ${count === 1 ? "link" : "links"}`,
     removeTitle: "Remove this link?",
     removeConfirm: "The link is removed from both records; the records themselves are unaffected.",
     removeConfirmViaChangeRequest:
@@ -1881,6 +1882,10 @@ const en = {
     superseded: "Supersession recorded.",
     supersedeFailed: "Could not record this supersession.",
     traceButton: "Trace",
+    viewOptions: "View options",
+    viewCompact: "Compact view",
+    viewRelationships: "Show relationships",
+    viewRelationshipsHint: "Name how each record is linked (Has participant, Raised). The trace always shows them.",
     traceTitle: (label: string) => `Trace: ${label}`,
     traceViewsLabel: "Trace view",
     traceTabTree: "Tree",

@@ -490,6 +490,8 @@ export interface Engagement {
   id: string;
   project_id: string;
   creator_id: string;
+  /** Project-scoped code, e.g. "ENG-003" (never reused). */
+  unique_code: string;
   title: string;
   channel: EngagementChannel;
   /** YYYY-MM-DD. */
@@ -624,6 +626,8 @@ export interface ResearchFinding {
   project_id: string;
   engagement_id: string;
   creator_id: string;
+  /** Project-scoped code, e.g. "FND-003" (never reused). */
+  unique_code: string;
   title: string;
   description: string;
   created_at: string;

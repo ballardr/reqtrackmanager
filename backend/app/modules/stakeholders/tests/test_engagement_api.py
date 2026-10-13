@@ -258,6 +258,44 @@ def test_migration_0088_moves_the_single_facilitator_into_the_list_and_back(clie
         assert _count(db, EngagementFacilitator, engagement_id=uuid.UUID(none["id"])) == 0
 
 
+def test_engagements_get_project_scoped_codes_that_are_never_reused(client, admin_token):
+    org, project, token = _setup(client, admin_token, "Engagement Codes Co")
+    sibling = create_project(client, token, org["id"], "Engagement Codes Sibling")
+    h = auth_headers(token)
+    first, second = _create(client, token, project["id"], title="One"), _create(client, token, project["id"], title="Two")
+    assert (first["unique_code"], second["unique_code"]) == ("ENG-001", "ENG-002")
+    assert _create(client, token, sibling["id"], title="Elsewhere")["unique_code"] == "ENG-001"  # numbered per project
+    url = f"{_engagements(project['id'])}/{first['id']}"
+    assert client.get(url, headers=h).json()["unique_code"] == "ENG-001"
+    assert client.put(url, json={"title": "One, renamed"}, headers=h).json()["unique_code"] == "ENG-001"  # an edit keeps it
+    assert client.delete(f"{_engagements(project['id'])}/{second['id']}", headers=h).status_code == 204
+    assert _create(client, token, project["id"], title="Three")["unique_code"] == "ENG-003"  # a deleted code is not reused
+    listed = client.get(_engagements(project["id"]), headers=h).json()
+    assert sorted(e["unique_code"] for e in listed) == ["ENG-001", "ENG-003"]
+
+
+def test_migration_0091_numbers_existing_engagements_per_project_in_order(client, admin_token):
+    """Runs the real 0091 migration: engagements logged before codes existed are numbered ENG-001.. per project in
+    the order they were logged, and the project's counter continues after them."""
+    org, project, token = _setup(client, admin_token, "Engagement Code Migration Co")
+    h = auth_headers(token)
+    pid = project["id"]
+    for title in ("Older", "Newer"):
+        _create(client, token, pid, title=title)
+    command.downgrade(build_alembic_config(), "0090")
+    try:
+        with engine.begin() as conn:
+            gone = conn.execute(text(
+                "SELECT count(*) FROM information_schema.columns WHERE table_name = 'engagements' AND column_name = 'unique_code'"
+            )).scalar()
+            assert gone == 0
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    codes = {e["title"]: e["unique_code"] for e in client.get(_engagements(pid), headers=h).json()}
+    assert codes == {"Older": "ENG-001", "Newer": "ENG-002"}
+    assert _create(client, token, pid, title="After")["unique_code"] == "ENG-003"
+
+
 def test_retention_due_flag_and_filter(client, admin_token):
     _, project, token = _setup(client, admin_token, "Engagement Retention Co")
     h = auth_headers(token)
@@ -829,9 +867,9 @@ def test_summary_providers_label_and_scope_engagements_and_findings(client, admi
     providers = get_module(MODULE_KEY).artefact_summary_providers
     with SessionLocal() as db:
         summary = providers["engagement"].get(db, uuid.UUID(engagement["id"]))
-        assert summary.label == "Summary call" and summary.facets["channel"] == ("workshop", "Workshop")
+        assert summary.label == "ENG-001 Summary call" and summary.facets["channel"] == ("workshop", "Workshop")
         found = providers["research_finding"].get(db, uuid.UUID(finding["id"]))
-        assert found.label == "A finding" and found.facets["engagement"] == (engagement["id"], "Summary call")
+        assert found.label == "FND-001 A finding" and found.facets["engagement"] == (engagement["id"], "Summary call")
         for kind, record in (("engagement", engagement), ("research_finding", finding)):
             provider, record_id = providers[kind], uuid.UUID(record["id"])
             assert [s.id for s in provider.list_for_project(db, uuid.UUID(project["id"]))] == [record_id]

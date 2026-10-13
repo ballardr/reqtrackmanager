@@ -204,7 +204,7 @@ export function PersonaDetailPage() {
             {persona.is_archived && " · Archived"}
           </p>
           {!readOnlyInProject && (
-            <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}

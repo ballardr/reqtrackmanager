@@ -25,6 +25,7 @@ An Engagement belongs to **one project**. There is no organisation-wide Engageme
 
 | Field | What it holds |
 | --- | --- |
+| Code | A project-scoped identifier, such as **ENG-003**, given when it is logged and never reused. Shown beside the title, searchable in the list, and used when linking to or reporting on the Engagement. |
 | Title | What happened, for example "Quarterly review with the regulator". |
 | Channel | Email, Call, Meeting, Workshop, Interview, Focus group, Usability test or Survey. |
 | Date | When it took place. |

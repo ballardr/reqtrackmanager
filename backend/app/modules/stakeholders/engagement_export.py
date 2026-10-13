@@ -46,7 +46,6 @@ from app.modules.stakeholders.models import (
     EngagementFile,
     EngagementPrompt,
     Persona,
-    ResearchFinding,
     Stakeholder,
 )
 from app.modules.stakeholders.service import (
@@ -102,7 +101,7 @@ def _engagement_json(
     ]
     findings = [
         {
-            "title": f.title, "description": f.description, "created_by_email": emails.get(f.creator_id),
+            "unique_code": f.unique_code, "title": f.title, "description": f.description, "created_by_email": emails.get(f.creator_id),
             "created_at": _j(f.created_at), "outcomes": _outcomes_json(db, project, FINDING_ARTEFACT_TYPE, f.id),
         }
         for f in eng.list_findings(db, engagement.id)
@@ -116,6 +115,7 @@ def _engagement_json(
             "persona_scope": persona.scope.value if persona else None,
         })
     return {
+        "unique_code": engagement.unique_code,
         **{f: getattr(engagement, f) for f in _TEXT_FIELDS}, "channel": engagement.channel.value,
         "engagement_date": _j(engagement.engagement_date), "retain_until": _j(engagement.retain_until),
         "consent_recorded": engagement.consent_recorded,
@@ -220,11 +220,12 @@ def import_project_data(
         tuple((n["scope"], n["name"].lower()) for n in _group_path(universe, gid)): gid for gid in universe
     }
     resolve = _outcome_lookup(db, project)
-    for e in data.get(_KEY, []):
+    # Numbered in their original order, so a new project's ENG-nnn follow the exported ones.
+    for e in sorted(data.get(_KEY, []), key=lambda entry: entry.get("unique_code", "")):
         context = f"Engagement {e['title']!r}"
         creator_id = users.resolve(e.get("created_by_email"), required=True, context=f"{context} creator")
         engagement = eng.create_engagement(
-            db, project_id=project.id, creator=db.get(User, creator_id),
+            db, project=project, creator=db.get(User, creator_id),
             channel=EngagementChannel(e["channel"]), engagement_date=_d(e["engagement_date"]),
             consent_recorded=bool(e.get("consent_recorded")), retain_until=_d(e.get("retain_until")),
             **{f: e.get(f, "") for f in _TEXT_FIELDS},
@@ -286,12 +287,11 @@ def import_project_data(
         db.flush()
         for f in e.get("findings", []):
             finding_creator = users.resolve(f.get("created_by_email"), required=True, context=f"{context} finding creator")
-            finding = ResearchFinding(
-                project_id=project.id, engagement_id=engagement.id, creator_id=finding_creator, title=f["title"],
+            # A new project numbers its findings afresh, so the bundled code is informational only.
+            finding = eng.create_finding(
+                db, project, engagement, creator_id=finding_creator, actor=current_user, title=f["title"],
                 description=f.get("description", ""),
             )
-            db.add(finding)
-            db.flush()
             _import_outcomes(
                 db, engagement, FINDING_ARTEFACT_TYPE, finding.id, f.get("outcomes", []), resolve, current_user,
                 organization_id, warnings, f"{context} finding {f['title']!r}",

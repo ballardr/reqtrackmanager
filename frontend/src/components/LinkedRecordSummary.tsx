@@ -7,6 +7,11 @@
  * another project when the record lives in one, and a warning when the link's
  * type no longer permits the link.
  *
+ * Two layouts. `inline` (the trace tree) leads with the relationship as a pill. `list` (the Links
+ * panel) groups rows under their relationship, so it shows no pill: the record's title is the
+ * link (named in full, code included, for assistive technology), its code is a small muted
+ * suffix, and the status, archived flag and project are plain muted text.
+ *
  * Responsibilities: presentation only. It renders a fragment, so the caller
  * owns the row container (and any controls beside it, such as Remove).
  */
@@ -15,6 +20,7 @@ import { Link } from "react-router-dom";
 import type { LinkGraphEdge, LinkGraphNode } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { getArtefactPath, getArtefactStatusLabel } from "../modules/artefactPaths";
+import { splitArtefactCode } from "./artefactCode";
 
 /**
  * Renders the badges and link for one edge and the record at its far end.
@@ -29,18 +35,44 @@ export function LinkedRecordSummary({
   node,
   currentProjectId,
   via = [],
+  layout = "inline",
 }: {
   edge: LinkGraphEdge;
   node: LinkGraphNode;
   currentProjectId: string;
   /** Labels of hidden records the link was joined through (the trace's "Hide inactive records"). */
   via?: string[];
+  /** `inline` (default): relationship pill first, badges after. `list`: grouped-list row, no pills. */
+  layout?: "inline" | "list";
 }) {
   const strings = useStrings();
   const phrase = edge.phrase ?? strings.artefactLinks.untyped;
   const path = getArtefactPath(node.type, node.project_id ?? currentProjectId, node.id);
   const statusLabel = getArtefactStatusLabel(node.type, node.status);
   const elsewhere = node.project_id !== null && node.project_id !== currentProjectId;
+  if (layout === "list") {
+    const { code, title } = splitArtefactCode(node.label);
+    return (
+      <>
+        <span className="artefact-links__target">
+          {path ? <Link to={path} aria-label={node.label}>{title}</Link> : title}
+          {code && <span className="artefact-links__code" title={node.label}>{code}</span>}
+        </span>
+        {statusLabel && <span className="artefact-links__meta">{statusLabel}</span>}
+        {node.is_archived && <span className="artefact-links__meta">{strings.artefactLinks.archivedBadge}</span>}
+        {elsewhere && (
+          <Link className="artefact-links__meta" to={`/projects/${node.project_id}`}>
+            {strings.artefactLinks.otherProjectBadge(node.project_name ?? "")}
+          </Link>
+        )}
+        {!edge.nesting_permitted && (
+          <span className="badge badge--warning" title={strings.artefactLinks.notPermittedExplanation}>
+            {strings.artefactLinks.notPermitted}
+          </span>
+        )}
+      </>
+    );
+  }
   return (
     <>
       <span className="badge">{phrase}</span>

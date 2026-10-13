@@ -214,7 +214,7 @@ export function OpenQuestionDetailPage() {
             {openQuestion.due_date ? ` · due ${openQuestion.due_date}` : ""}
           </p>
           {!openQuestion.is_locked && (
-            <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}

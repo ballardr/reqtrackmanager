@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "../e2e-workflows/helpers";
+import { installCleanupHook, showLinkRelationships } from "../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -102,6 +102,7 @@ test.describe("Links panel on every artefact detail page", () => {
   });
 
   test("a Pain Point is addressed by a Decision that implements a Requirement, readable from all three pages", async ({ page }) => {
+    await showLinkRelationships(page);
     const { suffix, painPoint, decision, requirement, pages } = await setUpRecords(page);
     const painPointTitle = `Reports arrive late ${suffix}`;
     const decisionLabel = `${decision.unique_code} Use Postgres ${suffix}`;
@@ -115,7 +116,7 @@ test.describe("Links panel on every artefact detail page", () => {
 
     await test.step("the Pain Point's page reads the link from its own side", async () => {
       await page.goto(pages["Pain point"]);
-      const row = links(page).locator(".artefact-links__row", { hasText: "Is addressed by" });
+      const row = links(page).locator(".artefact-links__phrase", { hasText: "Is addressed by" });
       await expect(row.getByRole("link", { name: new RegExp(decisionLabel) })).toBeVisible();
       await row.getByRole("link", { name: new RegExp(decisionLabel) }).click();
       await expect(page).toHaveURL(new RegExp(`/modules/decisions/${decision.id}$`));
@@ -124,7 +125,7 @@ test.describe("Links panel on every artefact detail page", () => {
 
     await test.step("the Requirement's page shows the Decision, and the link can be removed from there", async () => {
       await page.goto(pages.Requirement);
-      const row = links(page).locator(".artefact-links__row", { hasText: "Is implemented by" });
+      const row = links(page).locator(".artefact-links__phrase", { hasText: "Is implemented by" });
       await expect(row.getByRole("link", { name: new RegExp(decisionLabel) })).toBeVisible();
       await row.getByRole("button", { name: /^Remove link/ }).click();
       await page.getByRole("dialog", { name: "Remove this link?" }).getByRole("button", { name: "Remove link" }).click();

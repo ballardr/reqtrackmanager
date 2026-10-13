@@ -239,11 +239,11 @@ ARTEFACT_SUMMARY_PROVIDERS: dict[str, ArtefactSummaryProvider] = {
     ),
     "stakeholder_group": _group_provider(),
     "engagement": _project_record_provider(
-        Engagement, lambda e: e.title, _engagement_facets, (BrowseLevel("channel", "Channel"),),
+        Engagement, lambda e: f"{e.unique_code} {e.title}", _engagement_facets, (BrowseLevel("channel", "Channel"),),
         Engagement.engagement_date.desc(),
     ),
     "research_finding": _project_record_provider(
-        ResearchFinding, lambda f: f.title, _finding_facets, (BrowseLevel("engagement", "Engagement"),),
+        ResearchFinding, lambda f: f"{f.unique_code} {f.title}", _finding_facets, (BrowseLevel("engagement", "Engagement"),),
         ResearchFinding.created_at.desc(),
     ),
 }

@@ -45,6 +45,7 @@ export function EngagementOutcomesPanel({
   holderId,
   api,
   loadTargets,
+  onChanged,
 }: {
   heading?: string;
   projectId: string;
@@ -53,6 +54,8 @@ export function EngagementOutcomesPanel({
   api: OutcomeApi;
   /** The project's records of a type, for the picker. */
   loadTargets: (targetType: OutcomeTargetType) => Promise<OutcomeTarget[]>;
+  /** Called after an outcome is added or removed, so a page's Links panel can refresh. */
+  onChanged?: () => void;
 }) {
   const { showToast } = useToast();
   const [outcomes, setOutcomes] = useState<EngagementOutcome[] | null>(null);
@@ -97,6 +100,7 @@ export function EngagementOutcomesPanel({
       await action();
       showToast(success);
       setRefresh((n) => n + 1);
+      onChanged?.();
     } catch (err) {
       showToast(toErrorMessage(err, failure), "error");
     }
@@ -110,7 +114,7 @@ export function EngagementOutcomesPanel({
       gap="0.35rem"
       action={
         <button
-          type="button" className="btn btn-icon-compact" aria-label={`Add to ${heading}`} title={`Add to ${heading}`}
+          type="button" className="btn btn-sm btn-icon" aria-label={`Add to ${heading}`} title={`Add to ${heading}`}
           aria-haspopup="dialog" onClick={() => setAdding(true)}
         >
           <Plus size={14} aria-hidden="true" />

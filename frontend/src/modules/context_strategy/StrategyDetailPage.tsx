@@ -199,7 +199,7 @@ export function StrategyDetailPage() {
             {STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · {STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]} · v{strategy.version_number}
           </p>
           {!strategy.is_locked && (
-            <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}

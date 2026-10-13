@@ -14,11 +14,11 @@ const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
 const ENGAGEMENTS: Engagement[] = [
   buildEngagement(),
   buildEngagement({
-    id: "engagement-2", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02",
+    id: "engagement-2", unique_code: "ENG-002", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02",
     participant_count: 1, retain_until: "2026-04-30", retention_due: true,
   }),
   buildEngagement({
-    id: "engagement-3", title: "Technician focus group", channel: "focus_group", engagement_date: "2026-02-20",
+    id: "engagement-3", unique_code: "ENG-003", title: "Technician focus group", channel: "focus_group", engagement_date: "2026-02-20",
     participant_count: 0, anonymous_participant_count: 5,
   }),
 ];

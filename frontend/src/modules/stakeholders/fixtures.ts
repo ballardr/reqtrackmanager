@@ -89,7 +89,7 @@ export function buildNeed(overrides: Partial<Need> = {}): Need {
 /** A complete email `Engagement` of project-1 with `overrides` applied. */
 export function buildEngagement(overrides: Partial<Engagement> = {}): Engagement {
   return {
-    id: "engagement-1", project_id: "project-1", creator_id: "user-1", title: "Quarterly review with the regulator",
+    id: "engagement-1", project_id: "project-1", creator_id: "user-1", unique_code: "ENG-001", title: "Quarterly review with the regulator",
     channel: "meeting", engagement_date: "2026-03-12", facilitators: [],
     purpose: "Walk through the audit findings.", summary: "Agreed to share evidence by the end of April.",
     notes: "Pat asked for the traceability export.", consent_recorded: true, retain_until: null, retention_due: false,
@@ -102,7 +102,7 @@ export function buildEngagement(overrides: Partial<Engagement> = {}): Engagement
 /** A research finding of `engagement-1` with `overrides` applied. */
 export function buildFinding(overrides: Partial<ResearchFinding> = {}): ResearchFinding {
   return {
-    id: "finding-1", project_id: "project-1", engagement_id: "engagement-1", creator_id: "user-1",
+    id: "finding-1", project_id: "project-1", engagement_id: "engagement-1", creator_id: "user-1", unique_code: "FND-001",
     title: "Technicians skip the checklist when offline", description: "Four of five said they note it down later.",
     created_at: "2026-03-12T09:00:00Z", updated_at: "2026-03-12T09:00:00Z",
     ...overrides,

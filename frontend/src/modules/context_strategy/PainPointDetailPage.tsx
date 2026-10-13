@@ -239,7 +239,7 @@ export function PainPointDetailPage() {
             {painPoint.pain_point_type_name} · {PAIN_POINT_PRIORITY_LABEL[painPoint.priority]} priority · identified {painPoint.date_identified}
           </p>
           {!painPoint.is_locked && (
-            <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}

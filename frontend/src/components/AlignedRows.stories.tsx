@@ -5,8 +5,8 @@ import { AlignedRows } from "./AlignedRows";
 
 const buttons = (name: string) => (
   <>
-    <button className="btn btn-icon-compact" aria-label={`Edit ${name}`}>E</button>
-    <button className="btn btn-icon-compact" aria-label={`Delete ${name}`}>D</button>
+    <button className="btn btn-sm btn-icon" aria-label={`Edit ${name}`}>E</button>
+    <button className="btn btn-sm btn-icon" aria-label={`Delete ${name}`}>D</button>
   </>
 );
 

@@ -66,6 +66,7 @@ from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.files import delete_file
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
+from app.services.sequences import generate_unique_code
 
 ENGAGEMENT_ARTEFACT_TYPE = "engagement"
 FINDING_ARTEFACT_TYPE = "research_finding"
@@ -77,6 +78,7 @@ OPEN_QUESTION_TYPE = "open_question"
 PARTICIPANT_FORWARD, PARTICIPANT_REVERSE = "Has participant", "Participated in"
 COVERS_FORWARD, COVERS_REVERSE = "Covers persona", "Is covered in"
 AUDIENCE_FORWARD, AUDIENCE_REVERSE = "Is aimed at", "Is the audience of"
+FINDING_FORWARD, FINDING_REVERSE = "Has finding", "Is a finding of"
 
 ENGAGEMENT_CONTENT_FIELDS: tuple[str, ...] = (
     "title", "channel", "engagement_date", "purpose", "summary", "notes", "consent_recorded", "retain_until",
@@ -116,16 +118,22 @@ def get_outcome_kind(key: str) -> OutcomeKind | None:
 # --- Engagement ----------------------------------------------------------------
 
 
-def create_engagement(db: Session, *, project_id: uuid.UUID, creator: User, **content: Any) -> Engagement:
-    """Creates an engagement.
+ENGAGEMENT_CODE_PREFIX = "ENG"
+
+
+def create_engagement(db: Session, *, project: Project, creator: User, **content: Any) -> Engagement:
+    """Creates an engagement with the project's next `ENG-nnn` code (never reused).
 
     Args:
-        project_id: The owning project.
+        project: The owning project (its sequence counter is advanced).
         creator: The acting user (who logged it).
         **content: Any `ENGAGEMENT_CONTENT_FIELDS`; `title`, `channel` and `engagement_date` are required.
     """
     content = {k: v for k, v in content.items() if k in ENGAGEMENT_CONTENT_FIELDS}
-    engagement = Engagement(project_id=project_id, creator_id=creator.id, **content)
+    engagement = Engagement(
+        project_id=project.id, creator_id=creator.id,
+        unique_code=generate_unique_code(db, project, ENGAGEMENT_ARTEFACT_TYPE, ENGAGEMENT_CODE_PREFIX), **content,
+    )
     db.add(engagement)
     db.flush()
     return engagement
@@ -174,6 +182,35 @@ def set_facilitators(db: Session, engagement: Engagement, facilitators: Sequence
                 engagement_id=engagement.id, sort_order=position, facilitator_type=kind, facilitator_id=principal_id,
             ))
     db.flush()
+
+
+FINDING_CODE_PREFIX = "FND"
+
+
+def create_finding(
+    db: Session, project: Project, engagement: Engagement, *, creator_id: uuid.UUID, actor: User, title: str,
+    description: str = "",
+) -> ResearchFinding:
+    """Records a finding on `engagement` with the project's next `FND-nnn` code (never reused, even after a
+    delete), and the structural "Has finding" link from the engagement, so a trace from anything the
+    finding is linked to reaches the engagement it came from. Flushes; the caller commits.
+
+    Args:
+        project: The engagement's project (its sequence counter is advanced).
+        creator_id: Who recorded it.
+        actor: The acting user (who the link is recorded as created by).
+    """
+    finding = ResearchFinding(
+        project_id=project.id, engagement_id=engagement.id, creator_id=creator_id, title=title, description=description,
+        unique_code=generate_unique_code(db, project, FINDING_ARTEFACT_TYPE, FINDING_CODE_PREFIX),
+    )
+    db.add(finding)
+    db.flush()
+    _add_link(
+        db, engagement, FINDING_ARTEFACT_TYPE, finding.id, FINDING_FORWARD, FINDING_REVERSE, actor,
+        organization_id=project.organization_id, duplicate_message="The finding is already attached.",
+    )
+    return finding
 
 
 def retention_due(engagement: Engagement, today: date | None = None) -> bool:

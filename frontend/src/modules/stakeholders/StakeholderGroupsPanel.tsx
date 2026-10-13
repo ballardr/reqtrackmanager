@@ -186,15 +186,15 @@ export function StakeholderGroupsPanel({
                 {n.exclusive_children && <span className="badge" title="A stakeholder can be in only one child group.">One branch</span>}
                 {editable(n) && (
                   <>
-                    <button className="btn" style={{ padding: "0.15rem" }} title={`Add a group under ${n.name}`} aria-label={`Add a group under ${n.name}`}
+                    <button className="btn btn-sm btn-icon" title={`Add a group under ${n.name}`} aria-label={`Add a group under ${n.name}`}
                       onClick={() => { setFormError(null); setForm({ parentId: n.id }); }}><Plus size={14} /></button>
-                    <button className="btn" style={{ padding: "0.15rem" }} title={`Edit ${n.name}`} aria-label={`Edit ${n.name}`}
+                    <button className="btn btn-sm btn-icon" title={`Edit ${n.name}`} aria-label={`Edit ${n.name}`}
                       onClick={() => { setFormError(null); setForm({ initial: n }); }}><Pencil size={14} /></button>
-                    <button className="btn" style={{ padding: "0.15rem" }} title={`Move ${n.name} up`} aria-label={`Move ${n.name} up`}
+                    <button className="btn btn-sm btn-icon" title={`Move ${n.name} up`} aria-label={`Move ${n.name} up`}
                       onClick={() => act(() => groupApi.move(scopeId, n.id, "up"), "Group moved.", "Could not move this group.")}><ArrowUp size={14} /></button>
-                    <button className="btn" style={{ padding: "0.15rem" }} title={`Move ${n.name} down`} aria-label={`Move ${n.name} down`}
+                    <button className="btn btn-sm btn-icon" title={`Move ${n.name} down`} aria-label={`Move ${n.name} down`}
                       onClick={() => act(() => groupApi.move(scopeId, n.id, "down"), "Group moved.", "Could not move this group.")}><ArrowDown size={14} /></button>
-                    <button className="btn" style={{ padding: "0.15rem" }} title={`Delete ${n.name}`} aria-label={`Delete ${n.name}`}
+                    <button className="btn btn-sm btn-icon" title={`Delete ${n.name}`} aria-label={`Delete ${n.name}`}
                       onClick={() => setDeleting(n)}><Trash2 size={14} /></button>
                   </>
                 )}

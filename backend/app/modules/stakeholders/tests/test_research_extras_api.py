@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy import text as sql_text
 
 from app.database import SessionLocal
 from app.models.custom_role import CustomRoleDefinition, CustomRolePermission, UserCustomRoleGrant
@@ -194,6 +195,117 @@ def test_findings_crud_project_list_and_outcomes(client, admin_token):
         links = db.scalars(select(ArtefactLink).where(ArtefactLink.source_id == uuid.UUID(finding["id"]))).all()
         assert links == []
     assert client.get(f"/api/v1/projects/{pid}/modules/context_strategy/pain-points/{pain['id']}", headers=h).status_code == 200
+
+
+def test_findings_get_project_scoped_codes_that_are_never_reused(client, admin_token):
+    org, project, token = _research_setup(client, admin_token, "Research Codes Co")
+    sibling = create_project(client, token, org["id"], "Research Codes Sibling")
+    h = auth_headers(token)
+    pid = project["id"]
+    engagement = _create(client, token, pid)
+    sibling_engagement = _create(client, token, sibling["id"])
+
+    def add(project_id, engagement_id, title):
+        resp = client.post(f"{_engagements(project_id)}/{engagement_id}/findings", json={"title": title}, headers=h)
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    first, second = add(pid, engagement["id"], "One"), add(pid, engagement["id"], "Two")
+    assert (first["unique_code"], second["unique_code"]) == ("FND-001", "FND-002")
+    assert add(sibling["id"], sibling_engagement["id"], "Elsewhere")["unique_code"] == "FND-001"  # numbered per project
+    assert client.get(f"{_project_base(pid)}/findings/{first['id']}", headers=h).json()["unique_code"] == "FND-001"
+    # An edit keeps the code, and a deleted code is not handed out again.
+    assert client.put(f"{_project_base(pid)}/findings/{first['id']}", json={"title": "One, renamed"}, headers=h).json()["unique_code"] == "FND-001"
+    assert client.delete(f"{_project_base(pid)}/findings/{second['id']}", headers=h).status_code == 204
+    assert add(pid, engagement["id"], "Three")["unique_code"] == "FND-003"
+    assert sorted(f["unique_code"] for f in client.get(_project_base(pid) + "/findings", headers=h).json()) == ["FND-001", "FND-003"]
+
+
+def test_a_finding_is_linked_to_its_engagement_so_a_trace_reaches_it(client, admin_token):
+    org, project, token = _research_setup(client, admin_token, "Research Trace Co")
+    h = auth_headers(token)
+    pid = project["id"]
+    engagement = _create(client, token, pid, title="Trace interview")
+    finding = client.post(f"{_engagements(pid)}/{engagement['id']}/findings", json={"title": "Traceable"}, headers=h).json()
+    pain = _create_pain_point(client, token, org["id"], pid)
+    outcome = {"kind": "raised", "target_type": "pain_point", "target_id": pain["id"]}
+    assert client.post(f"{_project_base(pid)}/findings/{finding['id']}/outcomes", json=outcome, headers=h).status_code == 201
+
+    graph_url = f"/api/v1/projects/{pid}/artefacts/research_finding/{finding['id']}/link-graph"
+    graph = client.get(graph_url, params={"depth": 2, "direction": "both"}, headers=h).json()
+    nodes = {n["type"]: n for n in graph["nodes"]}
+    assert nodes["engagement"]["label"] == "ENG-001 Trace interview" and nodes["pain_point"]["id"] == pain["id"]
+    structural = next(e for e in graph["edges"] if e["from_type"] == "research_finding" and e["to_type"] == "engagement")
+    assert structural["phrase"] == "Is a finding of" and structural["dedicated"] is True
+    # A trace that starts at the Pain Point walks through the finding to the engagement.
+    from_pain = client.get(
+        f"/api/v1/projects/{pid}/artefacts/pain_point/{pain['id']}/link-graph", params={"depth": 3, "direction": "both"}, headers=h
+    ).json()
+    assert {"research_finding", "engagement"} <= {n["type"] for n in from_pain["nodes"]}
+    # The structural link cannot be removed through the generic endpoint, and goes with the finding.
+    link_id = structural["id"]
+    assert client.delete(f"{graph_url.replace('/link-graph', '')}/links/{link_id}", headers=h).status_code == 400
+    assert client.delete(f"{_project_base(pid)}/findings/{finding['id']}", headers=h).status_code == 204
+    after = client.get(
+        f"/api/v1/projects/{pid}/artefacts/engagement/{engagement['id']}/link-graph", params={"depth": 2, "direction": "both"}, headers=h
+    ).json()
+    assert "research_finding" not in {n["type"] for n in after["nodes"]}
+
+
+def test_migration_0090_links_existing_findings_to_their_engagement(client, admin_token):
+    """Runs the real 0090 migration: findings that predate the structural link get one, and the downgrade removes it."""
+    from alembic import command
+    from app.database import engine
+    from tests.conftest import build_alembic_config
+
+    org, project, token = _research_setup(client, admin_token, "Research Backfill Co")
+    h = auth_headers(token)
+    pid = project["id"]
+    engagement = _create(client, token, pid)
+    finding = client.post(f"{_engagements(pid)}/{engagement['id']}/findings", json={"title": "Old"}, headers=h).json()
+    command.downgrade(build_alembic_config(), "0089")
+    try:
+        with engine.begin() as conn:
+            links = conn.execute(sql_text(
+                "SELECT count(*) FROM artefact_links WHERE target_type = 'research_finding' AND target_id = :i"
+            ), {"i": finding["id"]}).scalar()
+            assert links == 0
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    graph = client.get(
+        f"/api/v1/projects/{pid}/artefacts/research_finding/{finding['id']}/link-graph", params={"depth": 1, "direction": "both"}, headers=h
+    ).json()
+    assert "engagement" in {n["type"] for n in graph["nodes"]}
+    assert graph["edges"][0]["dedicated"] is True
+
+
+def test_migration_0089_numbers_existing_findings_per_project_in_order(client, admin_token):
+    """Runs the real 0089 migration: findings recorded before codes existed are numbered FND-001.. per project
+    in the order they were recorded, and the project's counter continues after them."""
+    from alembic import command
+    from app.database import engine
+    from tests.conftest import build_alembic_config
+
+    org, project, token = _research_setup(client, admin_token, "Research Migration Co")
+    h = auth_headers(token)
+    pid = project["id"]
+    engagement = _create(client, token, pid)
+    for title in ("Older", "Newer"):
+        client.post(f"{_engagements(pid)}/{engagement['id']}/findings", json={"title": title}, headers=h)
+    command.downgrade(build_alembic_config(), "0088")
+    try:
+        with engine.begin() as conn:
+            gone = conn.execute(sql_text(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_name = 'research_findings' AND column_name = 'unique_code'"
+            )).scalar()
+            assert gone == 0
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    codes = {f["title"]: f["unique_code"] for f in client.get(_project_base(pid) + "/findings", headers=h).json()}
+    assert codes == {"Older": "FND-001", "Newer": "FND-002"}
+    added = client.post(f"{_engagements(pid)}/{engagement['id']}/findings", json={"title": "After"}, headers=h).json()
+    assert added["unique_code"] == "FND-003"
 
 
 def test_findings_are_404_across_projects(client, admin_token):

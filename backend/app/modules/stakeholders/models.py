@@ -798,6 +798,8 @@ class Engagement(UUIDPKMixin, TimestampMixin, Base):
     Attributes:
         project_id: The owning project.
         creator_id: Who logged it.
+        unique_code: Project-scoped identifier (e.g. `"ENG-003"`), from `services.sequences.generate_unique_code`;
+            never reused.
         title: Short title.
         channel: How it took place.
         engagement_date: When it took place (not when it was logged). Who ran it is a list of
@@ -810,11 +812,13 @@ class Engagement(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "engagements"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_engagements_project_unique_code"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    unique_code: Mapped[str] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(300))
     channel: Mapped[EngagementChannel] = mapped_column(str_enum(EngagementChannel, 30))
     engagement_date: Mapped[date] = mapped_column(Date, index=True)
@@ -947,11 +951,14 @@ class ResearchFinding(UUIDPKMixin, TimestampMixin, Base):
         project_id: The owning project (same as the engagement's).
         engagement_id: The engagement it came from.
         creator_id: Who recorded it.
+        unique_code: Project-scoped identifier (e.g. `"FND-003"`), from `services.sequences.generate_unique_code`;
+            never reused, so a link or a conversation can name the finding.
         title: Short statement of the finding.
         description: Evidence and detail.
     """
 
     __tablename__ = "research_findings"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_research_findings_project_unique_code"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
@@ -960,5 +967,6 @@ class ResearchFinding(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), index=True
     )
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    unique_code: Mapped[str] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")

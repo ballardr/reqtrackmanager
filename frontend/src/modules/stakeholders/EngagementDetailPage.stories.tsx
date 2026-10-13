@@ -71,7 +71,7 @@ function mockDetailApis(current: Engagement, { researchExtras = false }: Mocks =
     if (path === `${EBASE}/prompts`) return PROMPTS;
     if (path === `${EBASE}/anonymous-participants`) return ANONYMOUS;
     if (path === `${EBASE}/findings`) return [buildFinding()];
-    if (path === `${BASE}/findings/finding-1/outcomes`) return [];
+    if (path.includes("/artefacts/research_finding/finding-1/link-graph")) return buildGraph([]);
     if (path.endsWith("/comments")) return [];
     if (path.endsWith("/files")) return [];
     throw new Error(`Unmocked GET: ${path}`);
