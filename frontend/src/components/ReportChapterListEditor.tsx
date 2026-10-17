@@ -54,7 +54,7 @@ export function ReportChapterListEditor({
                 aria-label="Move chapter up"
                 onClick={() => move(idx, "up")}
               >
-                <ArrowUp size={14} />
+                <ArrowUp />
               </button>
               <button
                 className="btn"
@@ -63,7 +63,7 @@ export function ReportChapterListEditor({
                 aria-label="Move chapter down"
                 onClick={() => move(idx, "down")}
               >
-                <ArrowDown size={14} />
+                <ArrowDown />
               </button>
               <button
                 className="btn btn-danger"
@@ -71,7 +71,7 @@ export function ReportChapterListEditor({
                 aria-label="Delete chapter"
                 onClick={() => setList(list.filter((_, i) => i !== idx))}
               >
-                <Trash2 size={14} />
+                <Trash2 />
               </button>
             </div>
           </div>
@@ -89,7 +89,7 @@ export function ReportChapterListEditor({
         </div>
       ))}
       <button className="btn" onClick={() => setList([...list, { title: "", body: "" }])} style={{ alignSelf: "flex-start" }}>
-        <Plus size={14} /> Add chapter
+        <Plus /> Add chapter
       </button>
     </div>
   );

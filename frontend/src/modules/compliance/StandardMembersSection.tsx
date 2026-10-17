@@ -228,7 +228,7 @@ export function StandardMembersSection({
     <div className="stack">
       <div className="row" style={{ justifyContent: "flex-end" }}>
         <button ref={addTriggerRef} type="button" className="btn" onClick={() => setAddOpen((o) => !o)}>
-          <UserPlus size={14} /> Add member
+          <UserPlus /> Add member
         </button>
       </div>
       {addOpen && (

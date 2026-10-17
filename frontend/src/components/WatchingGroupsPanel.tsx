@@ -83,7 +83,7 @@ export function WatchingGroupsPanel({
                 <button
                   type="button" className="btn" onClick={() => remove(group)} aria-label={`${strings.watchers.stopWatching}: ${group.label}`}
                 >
-                  <X size={14} />
+                  <X />
                 </button>
               )}
             </li>

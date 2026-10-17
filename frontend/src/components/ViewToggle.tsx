@@ -54,7 +54,7 @@ export function ViewToggle({
           aria-label="Tile view"
           aria-pressed={mode === "tiles"}
         >
-          <LayoutGrid size={16} />
+          <LayoutGrid />
         </button>
       )}
       <button
@@ -64,7 +64,7 @@ export function ViewToggle({
         aria-label="List view"
         aria-pressed={mode === "list"}
       >
-        <List size={16} />
+        <List />
       </button>
       {showTreeOption && (
         <button
@@ -74,7 +74,7 @@ export function ViewToggle({
           aria-label="Tree view"
           aria-pressed={mode === "tree"}
         >
-          <GitBranch size={16} />
+          <GitBranch />
         </button>
       )}
     </div>

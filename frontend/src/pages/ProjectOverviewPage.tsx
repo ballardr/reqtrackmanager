@@ -141,7 +141,7 @@ export function ProjectOverviewPage() {
           <ProjectHierarchyLabels project={hierarchySummary} />
         </div>
         <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
-          <Plus size={16} /> {strings.requirements.newRequirement}
+          <Plus /> {strings.requirements.newRequirement}
         </Link>
       </div>
       <div className="grid grid-metrics">

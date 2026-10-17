@@ -2383,7 +2383,7 @@ export function OrgAdminPage() {
                 title={strings.admin.resendInviteAria(invite.email)}
                 aria-label={strings.admin.resendInviteAria(invite.email)}
               >
-                <Send size={14} /> {strings.admin.resendInvite}
+                <Send /> {strings.admin.resendInvite}
               </button>
             </div>
           );
@@ -2565,7 +2565,7 @@ export function OrgAdminPage() {
                     className="btn btn-primary" onClick={previewImportMerge}
                     disabled={!importMergeFile || importMergePreviewing} style={{ alignSelf: "flex-start" }}
                   >
-                    <Upload size={14} /> {importMergePreviewing ? strings.importMerge.previewing : strings.importMerge.preview}
+                    <Upload /> {importMergePreviewing ? strings.importMerge.previewing : strings.importMerge.preview}
                   </button>
                 </div>
               )}
@@ -2626,7 +2626,7 @@ export function OrgAdminPage() {
                     aria-label={strings.orgAdmin.deleteResource(r.filename)}
                     onClick={() => deleteResource(r.id)}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 />
                   </button>
                 </div>
               ))}
@@ -2645,10 +2645,10 @@ export function OrgAdminPage() {
                 <div className="stack" style={{ gap: "0.25rem" }}>
                   <div className="row" style={{ gap: "0.5rem" }}>
                     <button className="btn" onClick={() => setInviteUserModalOpen(true)}>
-                      <Send size={14} /> {strings.orgAdmin.inviteUser}
+                      <Send /> {strings.orgAdmin.inviteUser}
                     </button>
                     <button className="btn btn-primary" onClick={() => setNewUserModalOpen(true)}>
-                      <Plus size={14} /> {strings.orgAdmin.newUser}
+                      <Plus /> {strings.orgAdmin.newUser}
                     </button>
                   </div>
                   {/* "New user" (immediate password account) vs. "Invite
@@ -2911,7 +2911,7 @@ export function OrgAdminPage() {
                 style={{ alignSelf: "flex-start" }}
                 onClick={() => setNewGroupModalOpen(true)}
               >
-                <Plus size={14} /> {strings.orgAdmin.newGroup}
+                <Plus /> {strings.orgAdmin.newGroup}
               </button>
               {newGroupModalOpen && (
                 // Style guide "Pattern: modal dialog for entity create/rename"
@@ -3020,7 +3020,7 @@ export function OrgAdminPage() {
                                 aria-label={strings.admin.removeMember(u.display_name)}
                                 onClick={() => removeGroupMember(g.id, u.user_id)}
                               >
-                                <Trash2 size={14} />
+                                <Trash2 />
                               </button>
                             </span>
                           </li>
@@ -3044,7 +3044,7 @@ export function OrgAdminPage() {
                                 aria-label={strings.admin.removeNestedGroup(strings.orgAdmin.nestedGroupLabel(og.name))}
                                 onClick={() => removeNestedGroupMember(g.id, og.id)}
                               >
-                                <Trash2 size={14} />
+                                <Trash2 />
                               </button>
                             </span>
                           </li>
@@ -3072,7 +3072,7 @@ export function OrgAdminPage() {
                           aria-label={strings.orgAdmin.addNestedGroup}
                           onClick={() => addNestedGroupMember(g.id, nestSelections[g.id])}
                         >
-                          <Plus size={14} />
+                          <Plus />
                         </button>
                       </div>
                     )}
@@ -3140,7 +3140,7 @@ export function OrgAdminPage() {
                       style={{ alignSelf: "flex-start" }}
                       onClick={() => setDeletingOrgGroupId(g.id)}
                     >
-                      <Trash2 size={14} /> {strings.admin.deleteGroup}
+                      <Trash2 /> {strings.admin.deleteGroup}
                     </button>
                   </div>
                 </SidePanel>
@@ -3202,7 +3202,7 @@ export function OrgAdminPage() {
               <Modal title={strings.orgAdmin.manageUsersModalTitle(manageUsersProjectName)} onClose={closeManageUsers} size="lg">
                 <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
                   <button className="btn btn-primary" onClick={() => setManageUsersAddMemberModalOpen(true)}>
-                    <Plus size={14} /> {strings.admin.addMember}
+                    <Plus /> {strings.admin.addMember}
                   </button>
                   {/* No sibling "Add group" button (corrected during the own
                       review): the autocomplete below is expanded to match
@@ -3418,7 +3418,7 @@ export function OrgAdminPage() {
             <CollapsibleSection sectionKey="orgAdmin.reportTemplates" title={strings.admin.reportTemplates}>
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button className="btn btn-primary" onClick={openNewTemplateForm}>
-                  <Plus size={14} /> {strings.admin.newReportTemplate}
+                  <Plus /> {strings.admin.newReportTemplate}
                 </button>
               </div>
               {reportTemplates.map((tpl) => (
@@ -3436,7 +3436,7 @@ export function OrgAdminPage() {
                       aria-label={strings.orgAdmin.deleteReportTemplate(tpl.name)}
                       onClick={() => deleteReportTemplate(tpl.id)}
                     >
-                      <Trash2 size={14} />
+                      <Trash2 />
                     </button>
                   </div>
                 </div>
@@ -3499,7 +3499,7 @@ export function OrgAdminPage() {
                 </label>
                 <div className="row">
                   <button className="btn btn-primary" onClick={saveReportTemplate} disabled={!newTemplateName}>
-                    <Plus size={14} /> {editingTemplateId ? strings.common.save : strings.common.create}
+                    <Plus /> {editingTemplateId ? strings.common.save : strings.common.create}
                   </button>
                   <button className="btn" onClick={closeTemplateForm}>
                     {strings.common.cancel}
@@ -4006,7 +4006,7 @@ export function OrgAdminPage() {
                   style={{ alignSelf: "flex-start" }}
                   onClick={openCreateCustomRoleModal}
                 >
-                  <Plus size={14} /> {strings.orgAdmin.newCustomRole}
+                  <Plus /> {strings.orgAdmin.newCustomRole}
                 </button>
                 <DirectoryTable
                   ariaLabel={strings.orgAdmin.customRolesTitle}
@@ -4037,7 +4037,7 @@ export function OrgAdminPage() {
                             title={strings.orgAdmin.editCustomRole(r.name)}
                             onClick={() => openEditCustomRoleModal(r)}
                           >
-                            <Pencil size={14} />
+                            <Pencil />
                           </button>
                           <button
                             className="btn"
@@ -4045,7 +4045,7 @@ export function OrgAdminPage() {
                             title={strings.orgAdmin.deleteCustomRole(r.name)}
                             onClick={() => setConfirmDeleteCustomRole(r)}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 />
                           </button>
                         </div>
                       ),

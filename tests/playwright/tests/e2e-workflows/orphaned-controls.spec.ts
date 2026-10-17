@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { iconSizeGeometry } from "../../../../frontend/src/testing/iconSizes";
 import { controlGeometry } from "../../../../frontend/src/testing/orphanedControls";
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 
@@ -10,6 +11,10 @@ installCleanupHook();
  * Job to be done: a record with a very long title, or a status with a long name, must not push its
  * Delete/Edit control onto a new line or make a pill change height. Text wraps; the controls beside
  * it do not.
+ *
+ * Also asserts every icon inside a button is the size its button calls for (16px medium, 14px small;
+ * `iconSizeGeometry`, the same check the Storybook stories run). Set `ICON_REPORT=1` to print each
+ * icon measurement per page.
  *
  * Covers: the main project lists and detail pages (with a 200-character requirement name and action
  * title, one link between two such requirements) and the admin pages, at 1280px and 1440px, against
@@ -43,6 +48,14 @@ async function reportControls(page: Page, label: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 900 });
   const { measurements, violations } = await page.evaluate(controlGeometry, undefined);
   console.log(`ORPHAN_REPORT ${JSON.stringify({ label, measurements, violations })}`);
+}
+
+/** Asserts every icon in a button is the size the button's size calls for. */
+async function expectButtonIconsSized(page: Page, label: string): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { measurements, violations } = await page.evaluate(iconSizeGeometry, undefined);
+  if (process.env.ICON_REPORT) console.log(`ICON_REPORT ${JSON.stringify({ label, measurements, violations })}`);
+  expect.soft(violations, `${label}: button icon sizes`).toEqual([]);
 }
 
 test.describe("controls beside long text", () => {
@@ -99,6 +112,7 @@ test.describe("controls beside long text", () => {
         await page.waitForLoadState("networkidle");
         await reportControls(page, label);
         await expectNoOrphans(page, label);
+        await expectButtonIconsSized(page, label);
       });
     }
   });

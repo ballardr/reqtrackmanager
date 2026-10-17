@@ -205,7 +205,7 @@ export function DefinitionList<T extends { id: string }>({
                 ))}
                 {dirty && isValid(draft) && (
                   <button className="btn" title={strings.admin.rename} aria-label={strings.admin.rename} onClick={() => handleRename(item)}>
-                    <Pencil size={14} />
+                    <Pencil />
                   </button>
                 )}
               </div>
@@ -220,7 +220,7 @@ export function DefinitionList<T extends { id: string }>({
                       aria-label={strings.common.up}
                       onClick={() => onMove(item.id, "up")}
                     >
-                      <ArrowUp size={14} />
+                      <ArrowUp />
                     </button>
                     <button
                       className="btn"
@@ -229,7 +229,7 @@ export function DefinitionList<T extends { id: string }>({
                       aria-label={strings.common.down}
                       onClick={() => onMove(item.id, "down")}
                     >
-                      <ArrowDown size={14} />
+                      <ArrowDown />
                     </button>
                   </>
                 )}
@@ -240,7 +240,7 @@ export function DefinitionList<T extends { id: string }>({
                   aria-label={atFloor ? floorHint : deleteLabel}
                   onClick={() => handleAttemptDelete(item)}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 />
                 </button>
               </div>
             </div>
@@ -288,7 +288,7 @@ export function DefinitionList<T extends { id: string }>({
           />
         ))}
         <button className="btn btn-primary" onClick={handleAdd} disabled={!isValid(newDraft)}>
-          <Plus size={14} /> {addLabel}
+          <Plus /> {addLabel}
         </button>
       </div>
     </div>

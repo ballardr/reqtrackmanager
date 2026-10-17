@@ -92,7 +92,7 @@ export function ActionMenu({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        <MoreVertical size={14} />
+        <MoreVertical />
       </button>
       {open && (
         <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)}>

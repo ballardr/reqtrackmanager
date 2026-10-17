@@ -116,7 +116,7 @@ export function ResearchFindingsPanel({
       <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
         <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Findings</span>
         <button type="button" className="btn btn-sm btn-icon" aria-label="Add finding" title="Add finding" aria-haspopup="dialog" onClick={() => setCreating(true)}>
-          <Plus size={14} aria-hidden="true" />
+          <Plus aria-hidden="true" />
         </button>
       </span>
       {findings.length === 0 && <span className="text-muted">No findings recorded for this engagement.</span>}
@@ -128,8 +128,8 @@ export function ResearchFindingsPanel({
               <strong>{f.title}</strong>
             </span>
             <span className="row" style={{ gap: "0.35rem" }}>
-              <button className="btn btn-sm btn-icon" aria-label={`Edit ${f.title}`} title={`Edit ${f.title}`} onClick={() => { setFormError(null); setEditing(f); }}><Pencil size={14} /></button>
-              <button className="btn btn-sm btn-icon" aria-label={`Delete ${f.title}`} title={`Delete ${f.title}`} onClick={() => setDeleting(f)}><Trash2 size={14} /></button>
+              <button className="btn btn-sm btn-icon" aria-label={`Edit ${f.title}`} title={`Edit ${f.title}`} onClick={() => { setFormError(null); setEditing(f); }}><Pencil /></button>
+              <button className="btn btn-sm btn-icon" aria-label={`Delete ${f.title}`} title={`Delete ${f.title}`} onClick={() => setDeleting(f)}><Trash2 /></button>
             </span>
           </div>
           {f.description && <div style={{ whiteSpace: "pre-wrap" }}>{f.description}</div>}

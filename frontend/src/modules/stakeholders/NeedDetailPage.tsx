@@ -151,7 +151,7 @@ export function NeedDetailPage() {
             {need.is_archived && " · Archived"}
           </p>
           <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-            <Pencil size={14} />
+            <Pencil />
           </button>
         </div>
 

@@ -121,7 +121,7 @@ export function ScoringBandsEditor({
           <Badge tone={band.tone}>{band.label || "—"}</Badge>
           <button type="button" className="btn btn-danger" aria-label={`Remove band ${i + 1}`} title="Remove band"
             disabled={draft.length <= 1} onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}>
-            <Trash2 size={14} />
+            <Trash2 />
           </button>
         </div>
       ))}
@@ -129,7 +129,7 @@ export function ScoringBandsEditor({
       <div className="row" style={{ gap: "0.5rem" }}>
         <button type="button" className="btn" disabled={draft.length >= MAX_BANDS}
           onClick={() => setDraft((d) => [...d, { label: "", percent: d.length ? "" : "0", tone: "muted" }])}>
-          <Plus size={14} /> Add band
+          <Plus /> Add band
         </button>
         <button type="button" className="btn btn-primary" disabled={!dirty || !!error || busy}
           onClick={() => void run(() => onSave(draft.map((b) => ({ label: b.label.trim(), min_score: Number(b.percent) / 100, tone: b.tone }))))}>

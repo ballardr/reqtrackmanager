@@ -178,7 +178,7 @@ export function ServerOrganisationsPage() {
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations(orgLabelPlural)}</h1>
         <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
-          <Plus size={16} /> New {orgLabel}
+          <Plus /> New {orgLabel}
         </button>
       </div>
 

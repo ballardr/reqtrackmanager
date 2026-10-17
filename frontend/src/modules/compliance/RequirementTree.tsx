@@ -310,7 +310,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
               aria-label={isExpanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
               onClick={() => toggleExpand(node.id)}
             >
-              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              {isExpanded ? <ChevronDown /> : <ChevronRight />}
             </button>
             <div className="stack" style={{ gap: "0.1rem", flex: 1, marginLeft: "0.5rem" }}>
               <strong className="row" style={{ gap: "0.4rem" }}>
@@ -322,11 +322,11 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
             </div>
             <div className="row">
               <button className="btn" title="View mappings" aria-label={`View mappings for ${node.name}`} onClick={() => setMappingsRequirement(node)}>
-                <Link2 size={14} />
+                <Link2 />
               </button>
               {isPublished && (
                 <button className="btn" title="Clarify" aria-label={`Clarify ${node.name}`} onClick={() => setClarifyingRequirement(node)}>
-                  <MessageSquareText size={14} />
+                  <MessageSquareText />
                 </button>
               )}
               {isDraft && (
@@ -337,13 +337,13 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                     aria-label={`Add child requirement under ${node.name}`}
                     onClick={() => setEditingRequirement({ parentId: node.id })}
                   >
-                    <Plus size={14} />
+                    <Plus />
                   </button>
                   <button className="btn" title="Edit" aria-label={`Edit ${node.name}`} onClick={() => setEditingRequirement({ parentId: node.parent_requirement_id, requirement: node })}>
-                    <Pencil size={14} />
+                    <Pencil />
                   </button>
                   <button className="btn" disabled={index === 0} title="Move up" aria-label={`Move ${node.name} up`} onClick={() => handleMoveRequirement(node.id, "up")}>
-                    <ArrowUp size={14} />
+                    <ArrowUp />
                   </button>
                   <button
                     className="btn"
@@ -352,10 +352,10 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                     aria-label={`Move ${node.name} down`}
                     onClick={() => handleMoveRequirement(node.id, "down")}
                   >
-                    <ArrowDown size={14} />
+                    <ArrowDown />
                   </button>
                   <button className="btn btn-danger" title="Delete" aria-label={`Delete ${node.name}`} onClick={() => setDeletingRequirement(node)}>
-                    <Trash2 size={14} />
+                    <Trash2 />
                   </button>
                 </>
               )}
@@ -380,7 +380,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                       {isDraft && (
                         <div className="row">
                           <button className="btn" title="Edit" aria-label={`Edit required action ${action.name}`} onClick={() => setEditingAction({ requirementId: node.id, action })}>
-                            <Pencil size={14} />
+                            <Pencil />
                           </button>
                           <button
                             className="btn"
@@ -389,7 +389,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                             aria-label={`Move required action ${action.name} up`}
                             onClick={() => handleMoveAction(node.id, action.id, "up")}
                           >
-                            <ArrowUp size={14} />
+                            <ArrowUp />
                           </button>
                           <button
                             className="btn"
@@ -398,7 +398,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                             aria-label={`Move required action ${action.name} down`}
                             onClick={() => handleMoveAction(node.id, action.id, "down")}
                           >
-                            <ArrowDown size={14} />
+                            <ArrowDown />
                           </button>
                           <button
                             className="btn btn-danger"
@@ -406,7 +406,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                             aria-label={`Delete required action ${action.name}`}
                             onClick={() => setDeletingAction({ requirementId: node.id, action })}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 />
                           </button>
                         </div>
                       )}
@@ -422,7 +422,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                   title={actionTypes.length === 0 ? "Create an action type first" : undefined}
                   onClick={() => setEditingAction({ requirementId: node.id })}
                 >
-                  <Plus size={14} /> Add required action
+                  <Plus /> Add required action
                 </button>
               )}
             </div>
@@ -442,7 +442,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         {isDraft ? (
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setEditingRequirement({ parentId: null })}>
-            <Plus size={14} /> Add requirement
+            <Plus /> Add requirement
           </button>
         ) : (
           <span />
@@ -643,7 +643,7 @@ function RequirementDetailPanel({
           <ClarificationBadge requirement={requirement} />
           {isPublished && (
             <button className="btn" onClick={onClarify}>
-              <MessageSquareText size={14} /> Clarify
+              <MessageSquareText /> Clarify
             </button>
           )}
         </div>

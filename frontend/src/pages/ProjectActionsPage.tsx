@@ -165,7 +165,7 @@ export function ProjectActionsPage() {
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.actions.title}</h1>
         <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
-          <Plus size={16} /> {strings.actions.newAction}
+          <Plus /> {strings.actions.newAction}
         </button>
       </div>
 

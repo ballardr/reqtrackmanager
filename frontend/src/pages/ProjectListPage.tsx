@@ -305,7 +305,7 @@ export function ProjectListPage() {
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.projects.title}</h1>
         <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
-          <Plus size={16} /> {strings.projects.newProject}
+          <Plus /> {strings.projects.newProject}
         </button>
       </div>
 
@@ -527,7 +527,7 @@ export function ProjectListPage() {
                       aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
                       style={{ flexShrink: 0 }}
                     >
-                      <Star size={16} fill={p.is_favorite ? "currentColor" : "none"} />
+                      <Star fill={p.is_favorite ? "currentColor" : "none"} />
                     </button>
                   </div>
                   {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
@@ -587,7 +587,7 @@ export function ProjectListPage() {
                           title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
                           aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
                         >
-                          <Star size={14} fill={p.is_favorite ? "currentColor" : "none"} />
+                          <Star fill={p.is_favorite ? "currentColor" : "none"} />
                         </button>
                       </td>
                       <td>

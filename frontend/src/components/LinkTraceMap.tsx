@@ -177,7 +177,7 @@ export function LinkTraceMap({
           aria-expanded={keyOpen}
           onClick={() => setKeyOpen((open) => !open)}
         >
-          <Info size={14} /> {strings.artefactLinks.traceLegendLabel}
+          <Info /> {strings.artefactLinks.traceLegendLabel}
         </button>
         {keyOpen && (
           <Popover anchorRef={keyButtonRef} title={strings.artefactLinks.traceLegendLabel} onClose={() => setKeyOpen(false)}>

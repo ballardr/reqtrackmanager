@@ -362,7 +362,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
           type="button" className="btn"
           onClick={() => setExportMenuOpen((v) => !v)}
         >
-          <Download size={16} /> {exporting ? "Exporting…" : "Export"}
+          <Download /> {exporting ? "Exporting…" : "Export"}
         </button>
         {exportMenuOpen && (
           <Popover anchorRef={exportTriggerRef} title="Export" onClose={() => setExportMenuOpen(false)}>
@@ -374,7 +374,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                   exportCsv();
                 }}
               >
-                <Download size={14} /> {exporting ? "Exporting…" : "Export CSV"}
+                <Download /> {exporting ? "Exporting…" : "Export CSV"}
               </button>
               <button
                 type="button" className="btn" style={{ justifyContent: "flex-start" }}
@@ -386,7 +386,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                   );
                 }}
               >
-                <Download size={14} /> Download template
+                <Download /> Download template
               </button>
             </div>
           </Popover>

@@ -154,7 +154,7 @@ export function EngagementDetailPage() {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <p className="text-muted" style={{ margin: 0 }}>{engagement.engagement_date}</p>
           <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-            <Pencil size={14} />
+            <Pencil />
           </button>
         </div>
 

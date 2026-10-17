@@ -1513,7 +1513,7 @@ export function ProjectAdminPage() {
           title={project.can_be_parent ? undefined : strings.admin.canBeParentHint}
           onClick={() => navigate(`/projects?parentProjectId=${project.id}&organizationId=${project.organization_id}`)}
         >
-          <Plus size={14} /> {strings.projects.addSubProject}
+          <Plus /> {strings.projects.addSubProject}
         </button>
       </div>
 
@@ -1802,7 +1802,7 @@ export function ProjectAdminPage() {
               {strings.admin.saveSettings}
             </button>
             <button className="btn" onClick={exportProject} disabled={exporting} title={strings.admin.exportProjectHint(orgLabel)}>
-              <Download size={16} /> {exporting ? "Exporting…" : strings.admin.exportProject}
+              <Download /> {exporting ? "Exporting…" : strings.admin.exportProject}
             </button>
           </div>
           <button className="btn btn-danger" onClick={toggleArchive}>
@@ -1861,7 +1861,7 @@ export function ProjectAdminPage() {
                     title={strings.admin.rename}
                     aria-label={strings.admin.rename}
                   >
-                    <Pencil size={14} />
+                    <Pencil />
                   </button>
                 )}
                 <Badge>{STAGE_STATUS_LABEL[s.status]}</Badge>
@@ -1874,7 +1874,7 @@ export function ProjectAdminPage() {
                   aria-label={otherStages.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteStage}
                   onClick={() => setDeletingStageId(s.id)}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 />
                 </button>
               </div>
               {s.status === "scoping" && (
@@ -1884,7 +1884,7 @@ export function ProjectAdminPage() {
               )}
               {s.status === "review" && (
                 <button className="btn" onClick={() => approveStage(s.id)}>
-                  <Check size={14} /> {strings.admin.approveStage}
+                  <Check /> {strings.admin.approveStage}
                 </button>
               )}
               {s.status === "approved" && (
@@ -1936,7 +1936,7 @@ export function ProjectAdminPage() {
             onChange={(e) => setNewStageName(e.target.value)}
           />
           <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
-            <Plus size={14} /> {strings.admin.newStage}
+            <Plus /> {strings.admin.newStage}
           </button>
         </div>
         </CollapsibleSection>
@@ -1972,7 +1972,7 @@ export function ProjectAdminPage() {
                       aria-label={strings.admin.rename}
                       onClick={() => renameComponent(c.id, componentEdit.name, componentEdit.prefix)}
                     >
-                      <Pencil size={14} />
+                      <Pencil />
                     </button>
                   )}
                 </div>
@@ -1984,7 +1984,7 @@ export function ProjectAdminPage() {
                     aria-label={strings.common.up}
                     onClick={() => moveComponent(c.id, "up")}
                   >
-                    <ArrowUp size={14} />
+                    <ArrowUp />
                   </button>
                   <button
                     className="btn"
@@ -1993,7 +1993,7 @@ export function ProjectAdminPage() {
                     aria-label={strings.common.down}
                     onClick={() => moveComponent(c.id, "down")}
                   >
-                    <ArrowDown size={14} />
+                    <ArrowDown />
                   </button>
                   <button
                     className="btn btn-danger"
@@ -2014,7 +2014,7 @@ export function ProjectAdminPage() {
                     }
                     onClick={() => setDeletingComponentId(c.id)}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 />
                   </button>
                 </div>
               </div>
@@ -2053,7 +2053,7 @@ export function ProjectAdminPage() {
                             aria-label={strings.admin.rename}
                             onClick={() => renameCategory(cat.id, categoryEdit.name, categoryEdit.prefix)}
                           >
-                            <Pencil size={14} />
+                            <Pencil />
                           </button>
                         )}
                       </div>
@@ -2065,7 +2065,7 @@ export function ProjectAdminPage() {
                           aria-label={strings.common.up}
                           onClick={() => moveCategory(cat.id, "up")}
                         >
-                          <ArrowUp size={14} />
+                          <ArrowUp />
                         </button>
                         <button
                           className="btn"
@@ -2074,7 +2074,7 @@ export function ProjectAdminPage() {
                           aria-label={strings.common.down}
                           onClick={() => moveCategory(cat.id, "down")}
                         >
-                          <ArrowDown size={14} />
+                          <ArrowDown />
                         </button>
                         <button
                           className="btn btn-danger"
@@ -2083,7 +2083,7 @@ export function ProjectAdminPage() {
                           aria-label={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
                           onClick={() => setDeletingCategoryId(cat.id)}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 />
                         </button>
                       </div>
                     </div>
@@ -2111,7 +2111,7 @@ export function ProjectAdminPage() {
                     onClick={() => addCategory(c.id)}
                     disabled={!categoryInput.name || !categoryInput.prefix}
                   >
-                    <Plus size={14} /> {strings.admin.newCategory}
+                    <Plus /> {strings.admin.newCategory}
                   </button>
                 </div>
               </div>
@@ -2128,7 +2128,7 @@ export function ProjectAdminPage() {
             onChange={(e) => setNewComponentPrefix(e.target.value.toUpperCase())}
           />
           <button className="btn btn-primary" onClick={addComponent} disabled={!newComponentName || !newComponentPrefix}>
-            <Plus size={14} /> {strings.admin.newComponent}
+            <Plus /> {strings.admin.newComponent}
           </button>
         </div>
         </CollapsibleSection>
@@ -2150,7 +2150,7 @@ export function ProjectAdminPage() {
               aria-label={strings.admin.deleteCustomField(f.name)}
               onClick={() => setDeletingFieldId(f.id)}
             >
-              <Trash2 size={14} />
+              <Trash2 />
             </button>
             {deletingFieldId === f.id && (
               <ConfirmDialog
@@ -2188,7 +2188,7 @@ export function ProjectAdminPage() {
             {strings.admin.required}
           </label>
           <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
-            <Plus size={14} /> {strings.admin.newCustomField}
+            <Plus /> {strings.admin.newCustomField}
           </button>
         </div>
         </CollapsibleSection>
@@ -2234,7 +2234,7 @@ export function ProjectAdminPage() {
           </div>
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
             <button className="btn btn-primary" onClick={() => setAddMemberModalOpen(true)}>
-              <Plus size={14} /> {strings.admin.addMember}
+              <Plus /> {strings.admin.addMember}
             </button>
             {/* No sibling "Add group" button (corrected during the own review):
                 the autocomplete below is expanded to match org groups too,
@@ -2329,7 +2329,7 @@ export function ProjectAdminPage() {
           style={{ alignSelf: "flex-start" }}
           onClick={() => setNewGroupModalOpen(true)}
         >
-          <Plus size={14} /> {strings.admin.newGroup}
+          <Plus /> {strings.admin.newGroup}
         </button>
         {newGroupModalOpen && (
           // Style guide "Pattern: modal dialog for entity create/rename" —
@@ -2540,7 +2540,7 @@ export function ProjectAdminPage() {
                   title={strings.admin.deleteGroup}
                   onClick={() => setDeletingGroupId(g.id)}
                 >
-                  <Trash2 size={14} /> {strings.admin.deleteGroup}
+                  <Trash2 /> {strings.admin.deleteGroup}
                 </button>
 
                 {g.member_user_ids.length > 0 && (
@@ -2561,7 +2561,7 @@ export function ProjectAdminPage() {
                             // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeGroupMember(g.id, userId)}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 />
                           </button>
                         </li>
                       );
@@ -2623,7 +2623,7 @@ export function ProjectAdminPage() {
                           // eslint-disable-next-line react-hooks/refs
                           onClick={() => removeOrgGroupMember(g.id, og.id)}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 />
                         </button>
                       </li>
                     ))}
@@ -2654,7 +2654,7 @@ export function ProjectAdminPage() {
                       // eslint-disable-next-line react-hooks/refs
                       onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
                     >
-                      <Plus size={14} />
+                      <Plus />
                     </button>
                   </div>
                 )}
@@ -2676,7 +2676,7 @@ export function ProjectAdminPage() {
                             // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeProjectRefMember(g.id, p.id)}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 />
                           </button>
                         </li>
                       ))}
@@ -2709,7 +2709,7 @@ export function ProjectAdminPage() {
                       // eslint-disable-next-line react-hooks/refs
                       onClick={() => addProjectRefMember(g.id, sourceProjectSelections[g.id])}
                     >
-                      <Plus size={14} />
+                      <Plus />
                     </button>
                   </div>
                 )}

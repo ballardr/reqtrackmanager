@@ -67,7 +67,7 @@ export function DetailLayout({
             title={collapsed ? strings.artefactLinks.asideToggleShow : strings.artefactLinks.asideToggleHide}
             onClick={() => setCollapsed(!collapsed)}
           >
-            {collapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+            {collapsed ? <PanelRightOpen /> : <PanelRightClose />}
             {collapsed && <span>{label}</span>}
           </button>
         )}

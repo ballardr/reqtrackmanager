@@ -256,11 +256,11 @@ export function ArtefactLinksPanel({
                 className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.addLink} title={strings.artefactLinks.addLink}
                 aria-haspopup="dialog" onClick={() => setAdding(true)}
               >
-                <Plus size={14} aria-hidden="true" />
+                <Plus aria-hidden="true" />
               </button>
             ) : (
               <button className="btn btn-primary" onClick={() => setAdding(true)}>
-                <Plus size={14} /> {strings.artefactLinks.addLink}
+                <Plus /> {strings.artefactLinks.addLink}
               </button>
             )
           )}
@@ -270,11 +270,11 @@ export function ArtefactLinksPanel({
                 className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.traceButton} title={strings.artefactLinks.traceButton}
                 aria-haspopup="dialog" onClick={() => setTracing(true)}
               >
-                <GitBranch size={14} aria-hidden="true" />
+                <GitBranch aria-hidden="true" />
               </button>
             ) : (
               <button className="btn" onClick={() => setTracing(true)}>
-                <GitBranch size={14} /> {strings.artefactLinks.traceButton}
+                <GitBranch /> {strings.artefactLinks.traceButton}
               </button>
             )
           )}
@@ -431,7 +431,7 @@ function LinkRowView({
           aria-label={strings.artefactLinks.removeLabel(phrase, node.label)}
           onClick={onRemove}
         >
-          <Trash2 size={14} />
+          <Trash2 />
         </button>
       )}
     >

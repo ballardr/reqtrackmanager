@@ -161,7 +161,7 @@ export function RiskDetailPage() {
           <h2 style={{ margin: 0 }}>{risk.title}</h2>
           {!risk.is_archived && (
             <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil size={14} />
+              <Pencil />
             </button>
           )}
         </div>

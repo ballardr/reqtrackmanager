@@ -195,7 +195,7 @@ export function FutureStateDetailPage() {
           </p>
           {!futureState.is_locked && (
             <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil size={14} />
+              <Pencil />
             </button>
           )}
         </div>

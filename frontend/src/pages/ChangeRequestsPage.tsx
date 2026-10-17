@@ -569,7 +569,7 @@ export function ChangeRequestsPage() {
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.changeRequests.title}</h1>
         <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-          <Plus size={16} /> {strings.changeRequests.newChangeRequest}
+          <Plus /> {strings.changeRequests.newChangeRequest}
         </button>
       </div>
 

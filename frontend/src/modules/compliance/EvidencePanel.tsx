@@ -192,7 +192,7 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
             <div className="row" style={{ justifyContent: "space-between" }}>
               <h3 style={{ margin: 0 }}>Files</h3>
               <button className="btn" onClick={() => setShowResourcePicker(true)}>
-                <FolderOpen size={14} /> Link from shared resources
+                <FolderOpen /> Link from shared resources
               </button>
             </div>
             <FileAttachmentList
@@ -344,7 +344,7 @@ export function EvidenceFormModal({
                   aria-label={`Remove ${file.name}`}
                   onClick={() => setStagedFiles((prev) => prev.filter((_, i) => i !== index))}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 />
                 </button>
               </div>
             ))}

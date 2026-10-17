@@ -70,7 +70,7 @@ export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">
   return (
     <>
       <button ref={triggerRef} type="button" className="btn" onClick={() => setMenuOpen((v) => !v)}>
-        <Download size={16} /> {downloading ? "Exporting…" : label}
+        <Download /> {downloading ? "Exporting…" : label}
       </button>
       {menuOpen && (
         <Popover anchorRef={triggerRef} title="Export" onClose={() => setMenuOpen(false)}>
@@ -80,7 +80,7 @@ export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">
                 key={kind} type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
                 onClick={() => handleDownload(kind)}
               >
-                <Download size={14} /> {downloading === kind ? "…" : OPTION_LABEL[kind]}
+                <Download /> {downloading === kind ? "…" : OPTION_LABEL[kind]}
               </button>
             ))}
           </div>

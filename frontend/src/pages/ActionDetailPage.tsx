@@ -223,11 +223,11 @@ export function ActionDetailPage() {
         actions={
           action.is_archived ? (
             <button className="btn" onClick={restore}>
-              <ArchiveRestore size={16} /> {strings.actions.restoreAction}
+              <ArchiveRestore /> {strings.actions.restoreAction}
             </button>
           ) : (
             <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
-              <Archive size={16} /> {strings.actions.archiveAction}
+              <Archive /> {strings.actions.archiveAction}
             </button>
           )
         }

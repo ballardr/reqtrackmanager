@@ -130,7 +130,7 @@ export function FavouritesPage() {
                   aria-label={strings.projects.unfavorite}
                   style={{ flexShrink: 0 }}
                 >
-                  <Star size={16} fill="currentColor" />
+                  <Star fill="currentColor" />
                 </button>
               </div>
               <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>
@@ -176,7 +176,7 @@ export function FavouritesPage() {
                       title={strings.projects.unfavorite}
                       aria-label={strings.projects.unfavorite}
                     >
-                      <Star size={14} fill="currentColor" />
+                      <Star fill="currentColor" />
                     </button>
                   </td>
                   <td>

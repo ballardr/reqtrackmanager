@@ -14,7 +14,7 @@ export function SubscribeButton({
 }) {
   return (
     <button className={`btn ${subscribed ? "btn-primary" : ""}`} onClick={onToggle}>
-      {subscribed ? <Bell size={16} /> : <BellOff size={16} />}
+      {subscribed ? <Bell /> : <BellOff />}
       {subscribed ? strings.requirements.subscribed : strings.requirements.subscribe}
     </button>
   );

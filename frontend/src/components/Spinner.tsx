@@ -7,7 +7,7 @@ import { Loader2 } from "lucide-react";
 export function Spinner({ label }: { label?: string }) {
   return (
     <div className="row text-muted" role="status" aria-live="polite">
-      <Loader2 className="spin" size={18} />
+      <Loader2 className="spin" size={16} />
       <span>{label ?? "Loading…"}</span>
       <style>{`
         .spin { animation: reqtrack-spin 0.8s linear infinite; }

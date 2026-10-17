@@ -49,7 +49,7 @@ export function FileAttachmentList({
               aria-label={`Remove ${f.filename}`}
               onClick={() => onRemove(f.id)}
             >
-              <Trash2 size={14} />
+              <Trash2 />
             </button>
           )}
         </div>

@@ -607,7 +607,7 @@ export function RequirementDetailPage() {
           <SubscribeButton subscribed={requirement.is_subscribed} onToggle={toggleSubscription} />
           {canApprove && requirement.requires_approval && (
             <button className="btn btn-primary" onClick={approveRequirement}>
-              <CheckCircle size={14} /> {strings.requirements.approve}
+              <CheckCircle /> {strings.requirements.approve}
             </button>
           )}
           {/* Only offered once the {requirement} is actually locked — a
@@ -616,7 +616,7 @@ export function RequirementDetailPage() {
               unlocked {requirement} is edited directly instead. */}
           {requirement.is_locked && (
             <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
-              <GitPullRequest size={14} /> {strings.requirements.makeChangeRequest}
+              <GitPullRequest /> {strings.requirements.makeChangeRequest}
             </Link>
           )}
           {canArchive && requirement.status === "approved" && !requirement.is_completed && (
@@ -636,7 +636,7 @@ export function RequirementDetailPage() {
           )}
           {canArchive && requirement.is_archived && (
             <button className="btn" onClick={restore}>
-              <ArchiveRestore size={14} /> {strings.requirements.restore}
+              <ArchiveRestore /> {strings.requirements.restore}
             </button>
           )}
         </div>
@@ -890,7 +890,7 @@ export function RequirementDetailPage() {
               aria-label={strings.requirements.versionHistory}
               aria-pressed={historyView === "versions"}
             >
-              <TableIcon size={16} />
+              <TableIcon />
             </button>
             <button
               className={`btn ${historyView === "activity" ? "btn-primary" : ""}`}
@@ -899,7 +899,7 @@ export function RequirementDetailPage() {
               aria-label={strings.requirements.activity}
               aria-pressed={historyView === "activity"}
             >
-              <ActivityIcon size={16} />
+              <ActivityIcon />
             </button>
           </div>
         </div>
@@ -938,7 +938,7 @@ export function RequirementDetailPage() {
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.attachments}</h2>
           {!requirement.is_locked && organizationId && (
             <button className="btn" onClick={() => setShowResourcePicker(true)}>
-              <FolderOpen size={14} /> {strings.resourcePicker.linkFromSharedResources}
+              <FolderOpen /> {strings.resourcePicker.linkFromSharedResources}
             </button>
           )}
         </div>
@@ -977,7 +977,7 @@ export function RequirementDetailPage() {
                 setLinkExistingActionPopoverOpen((o) => !o);
               }}
             >
-              <Plus size={14} /> {strings.requirements.linkExistingAction}
+              <Plus /> {strings.requirements.linkExistingAction}
             </button>
             <button
               className="btn btn-primary"
@@ -986,7 +986,7 @@ export function RequirementDetailPage() {
                 setShowCreateAction(true);
               }}
             >
-              <Plus size={14} /> {strings.requirements.createAndLinkAction}
+              <Plus /> {strings.requirements.createAndLinkAction}
             </button>
           </div>
           {linkExistingActionPopoverOpen && (
@@ -1063,7 +1063,7 @@ export function RequirementDetailPage() {
                 setActionToUnlink(a);
               }}
             >
-              <Trash2 size={14} />
+              <Trash2 />
             </button>
           </div>
         ))}

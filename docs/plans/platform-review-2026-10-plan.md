@@ -5,14 +5,14 @@
 
 ## Status / Resume Here
 
-4 / 22 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3 and 12 done 2026-10-18, uncommitted at hand-back). **Phase 3 was built ahead of 13–14 at the user's instruction.** Next: Phases 13–14 (module availability and navigation bugs: defects and a missing admin UI, so they go before the remaining polish work), then Phase 4.
+5 / 22 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4 and 12 done 2026-10-18, uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phases 13 and 14 are still open and come after Phases 4–11 now. **Next: Phase 5.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
 | 1 | Neutral report-template label; Help becomes a configurable link; docs site image | N3, N5 | [x] |
 | 2 | Archive closed plans, rewrite links, link checker, agent rule | N6 | [x] |
 | 3 | Layout contract: `Badge`, no-wrap rule, `ItemRow`, geometry checks | N1, N2 | [x] |
-| 4 | Icon sizes driven by CSS, sweep, check | N9 | [ ] |
+| 4 | Icon sizes driven by CSS, sweep, check | N9 | [x] |
 | 5 | Shared record header and one object-action menu | N8 | [ ] |
 | 6 | Codes I: project codes, org policy, qualified display | N7 | [ ] |
 | 7 | Codes II: every codeless project-scoped type, change requests | N7 | [ ] |
@@ -65,7 +65,7 @@ flowchart LR
 
 Codes (6–8) and layout (3–5) touch the same pages for different reasons, so they run one after the other, not in parallel; layout goes first because codes then land in the new shared header once.
 
-**Suggested delivery (Decided by: Agent):** six branches, each reviewable and shippable alone, in this order. **0** phases 12–14 (defects and the missing module admin UI: ship first, they affect real deployments today). **A** phases 1–5 (polish and consistency). **B** phases 6–8 (codes), then phase 20 (the scope filter shows qualified codes, so it follows phase 6). **C** phases 15–17 and 19 (create/edit conventions: org-default hide/restore, People page, quick-link, create parity). **D** phases 18 and 21 (tags, field help). **E** phases 9–11 and 22 (activity tab, forms, ontology, close-out). Phases 17 and 21 build components the Phase 10 forms sweep then applies everywhere, so they precede it. Twenty-two phases in one branch is the kind of size that stalls review.
+**Suggested delivery (Decided by: Agent; superseded for ordering by the user's 2026-10-18 instruction to work the table sequentially, so branch 0 now comes after A–E's earlier phases):** six branches, each reviewable and shippable alone, in this order. **0** phases 12–14 (defects and the missing module admin UI: ship first, they affect real deployments today). **A** phases 1–5 (polish and consistency). **B** phases 6–8 (codes), then phase 20 (the scope filter shows qualified codes, so it follows phase 6). **C** phases 15–17 and 19 (create/edit conventions: org-default hide/restore, People page, quick-link, create parity). **D** phases 18 and 21 (tags, field help). **E** phases 9–11 and 22 (activity tab, forms, ontology, close-out). Phases 17 and 21 build components the Phase 10 forms sweep then applies everywhere, so they precede it. Twenty-two phases in one branch is the kind of size that stalls review.
 
 ## 1. Summary of the review (read this first)
 
@@ -219,6 +219,18 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 - **Outside buttons (Q9, deferred to a UX review):** before changing any non-button icon, review how icons are used beside text, in pills and chips, in empty states and in spinners (screenshots of real pages at realistic data), propose a scale, and bring it back to you for sign-off. Only then replace the stray 12/13/18 uses (comment attachments, `Info` in `ProjectMembersTable`, `Spinner`) and add the scale to the style guide's Icons section. The CSS-driven button rule above does not wait for this.
 - **Check:** `iconSizeViolations()` (computed width of every `svg` inside `.btn`, `.btn-sm`; pills once the scale is signed off) used by the long-text Playwright spec and by Storybook stories for each shared component.
 - **Page review:** a table of every page and its result goes into this phase's notes (84 files import `lucide-react`); pages the CSS already corrects are listed as such.
+
+- **4a done 2026-10-18 (uncommitted at hand-back).** Details in `docs/decisions.md`. CSS rules `.btn svg` 16px, `.btn-sm svg` 14px, `.badge svg` 12px; codemod removed 181 redundant `size` props inside buttons; `frontend/src/testing/iconSizes.ts` plus `Patterns/Button icons` stories plus the check in `orphaned-controls.spec.ts`; style guide updated.
+
+  | Page (long-title spec, 1280px) | Medium-button icons off-size before | After |
+  |------|------|------|
+  | Requirements list | 5 (14px) | 0 |
+  | Requirement detail | 9 (14px) | 0 |
+  | Action detail | 4 (14px) | 0 |
+  | Project admin, organisation admin, preferences | 1 each | 0 |
+  | Project overview, actions list, change requests, history, files, reports, projects list, organisations list, organisation overview | 0 (already correct) | 0 |
+
+- **4b done 2026-10-18 (Q9 accepted by the user, review after Phase 21).** Scale: 12px pills and chips; 14px beside caption or small text, chevrons, menu items and in the collapsed nav rail; 16px beside body text, headings, expanded nav rail. Changed `Spinner` (18 to 16), `Info` in `ProjectMembersTable` (13 to 14), the nav "Customise navigation" icon (12 to 14). Found and fixed nav-rail icons squeezed to 12.8 and 15.8px by long labels (`.nav-link svg { flex: none }`). `iconSizeViolations` now also covers pills (12px) and nav links (whole-pixel square). Scale is in the style guide's Icons section. Done from code and measurement, not screenshots, hence the later review.
 
 ### Phase 5 — Shared record header and object-action menu (N8)
 

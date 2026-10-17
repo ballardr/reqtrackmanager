@@ -194,6 +194,20 @@ textarea {
   height: 1.75rem;
 }
 
+/* One icon size per button size (style guide "Pattern: button sizes"): the button decides, not a
+   `size` prop on each icon, so the rule cannot drift per call site. `flex: none` stops a long label
+   squeezing the icon. The pill rule (`.badge svg`, 12px) sits with the pill styles. */
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.btn-sm svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* `SplitButtonTrigger` (style guide "Pattern: split-button trigger"): two
    adjacent `.btn`s read as one joined control — the primary action on the
    left, a narrow chevron affordance revealing alternatives on the right,
@@ -364,6 +378,8 @@ select.input {
 }
 
 .badge svg {
+  width: 12px;
+  height: 12px;
   flex: none;
 }
 
@@ -1426,6 +1442,11 @@ a.figure-projects-link:hover {
   font-size: 0.92rem;
 }
 
+/* A long label squeezed the icon (16px rendered as 12.8 or 15.8); the label shrinks, the icon does not. */
+.nav-link svg {
+  flex: none;
+}
+
 /* Wraps a nav-rail link while the rail is collapsed (see
    components/Tooltip.tsx) — without this, the tooltip's own shrink-wrapped
    `inline-flex` box would only cover the icon's own width, not the full
@@ -1581,6 +1602,12 @@ given to the entity quick-switch chevron itself since it
 
 .nav-rail-icons .nav-link {
   justify-content: center;
+}
+
+/* The icon-only rail uses the smaller icon (14px, the same step as other small-context icons). */
+.nav-rail-icons .nav-link svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Collapsed section labels ("Project", "Global", "Server Management")

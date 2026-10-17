@@ -65,7 +65,7 @@ export function AddToGroupControl({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <UserPlus size={14} />
+        <UserPlus />
       </button>
       {open && (
         <Popover anchorRef={triggerRef} title={label} onClose={() => setOpen(false)}>

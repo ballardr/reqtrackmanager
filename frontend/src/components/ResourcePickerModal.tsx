@@ -114,7 +114,7 @@ export function ResourcePickerModal({
               onClick={() => setActiveSourceId(s.id)}
               aria-pressed={s.id === activeSourceId}
             >
-              <FolderOpen size={14} /> {s.label}
+              <FolderOpen /> {s.label}
             </button>
           ))}
         </div>

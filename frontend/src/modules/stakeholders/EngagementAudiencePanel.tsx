@@ -117,7 +117,7 @@ export function EngagementAudiencePanel({
           type="button" className="btn btn-sm btn-icon" aria-label="Add to Audience groups"
           title="Add to Audience groups" aria-haspopup="dialog" disabled={nodes.length === 0} onClick={() => setPicking(true)}
         >
-          <Plus size={14} aria-hidden="true" />
+          <Plus aria-hidden="true" />
         </button>
       }
     >

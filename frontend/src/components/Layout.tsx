@@ -197,7 +197,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
                   className="btn"
                   aria-label={strings.nav.helpNewTab}
                 >
-                  <HelpCircle size={16} />
+                  <HelpCircle />
                 </a>
               </Tooltip>
             )}
@@ -214,7 +214,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
             </Tooltip>
             <Tooltip label={strings.nav.signOut}>
               <button className="btn" onClick={logout} aria-label={strings.nav.signOut}>
-                <LogOut size={16} />
+                <LogOut />
               </button>
             </Tooltip>
           </div>
@@ -302,7 +302,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
             onClick={() => setRailCollapsed(!railCollapsed)}
             aria-label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
           >
-            {railCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            {railCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
           </button>
         </Tooltip>
       )}

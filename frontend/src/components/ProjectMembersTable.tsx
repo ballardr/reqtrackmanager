@@ -248,7 +248,7 @@ function MemberSourceSummary({ strings, member }: { strings: Strings; member: Ef
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <Info size={13} />
+        <Info size={14} />
         {label}
       </button>
       {open && (
@@ -474,7 +474,7 @@ export function ProjectMembersTable({
                 title={strings.admin.resendInviteAria(invite.email)}
                 aria-label={strings.admin.resendInviteAria(invite.email)}
               >
-                <Send size={14} /> {strings.admin.resendInvite}
+                <Send /> {strings.admin.resendInvite}
               </button>
             </div>
           );

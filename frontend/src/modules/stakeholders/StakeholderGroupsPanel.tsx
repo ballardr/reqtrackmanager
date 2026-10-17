@@ -188,15 +188,15 @@ export function StakeholderGroupsPanel({
                 {editable(n) && (
                   <>
                     <button className="btn btn-sm btn-icon" title={`Add a group under ${n.name}`} aria-label={`Add a group under ${n.name}`}
-                      onClick={() => { setFormError(null); setForm({ parentId: n.id }); }}><Plus size={14} /></button>
+                      onClick={() => { setFormError(null); setForm({ parentId: n.id }); }}><Plus /></button>
                     <button className="btn btn-sm btn-icon" title={`Edit ${n.name}`} aria-label={`Edit ${n.name}`}
-                      onClick={() => { setFormError(null); setForm({ initial: n }); }}><Pencil size={14} /></button>
+                      onClick={() => { setFormError(null); setForm({ initial: n }); }}><Pencil /></button>
                     <button className="btn btn-sm btn-icon" title={`Move ${n.name} up`} aria-label={`Move ${n.name} up`}
-                      onClick={() => act(() => groupApi.move(scopeId, n.id, "up"), "Group moved.", "Could not move this group.")}><ArrowUp size={14} /></button>
+                      onClick={() => act(() => groupApi.move(scopeId, n.id, "up"), "Group moved.", "Could not move this group.")}><ArrowUp /></button>
                     <button className="btn btn-sm btn-icon" title={`Move ${n.name} down`} aria-label={`Move ${n.name} down`}
-                      onClick={() => act(() => groupApi.move(scopeId, n.id, "down"), "Group moved.", "Could not move this group.")}><ArrowDown size={14} /></button>
+                      onClick={() => act(() => groupApi.move(scopeId, n.id, "down"), "Group moved.", "Could not move this group.")}><ArrowDown /></button>
                     <button className="btn btn-sm btn-icon" title={`Delete ${n.name}`} aria-label={`Delete ${n.name}`}
-                      onClick={() => setDeleting(n)}><Trash2 size={14} /></button>
+                      onClick={() => setDeleting(n)}><Trash2 /></button>
                   </>
                 )}
               </span>

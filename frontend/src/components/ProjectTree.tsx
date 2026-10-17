@@ -46,7 +46,7 @@ export function ProjectTree({
               title={`Add a sub-project under ${node.name}`}
               aria-label={`Add a sub-project under ${node.name}`}
             >
-              <Plus size={14} />
+              <Plus />
             </button>
           )}
         </>

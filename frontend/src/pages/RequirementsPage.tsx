@@ -675,7 +675,7 @@ export function RequirementsPage() {
                             setAddLinkPopoverOpen((o) => !o);
                           }}
                         >
-                          <Plus size={14} /> {strings.requirements.addLink}
+                          <Plus /> {strings.requirements.addLink}
                         </button>
                         {addLinkPopoverOpen && (
                           <Popover anchorRef={addLinkTriggerRef} title={strings.requirements.addLink} onClose={() => setAddLinkPopoverOpen(false)}>
@@ -760,7 +760,7 @@ export function RequirementsPage() {
                         onClick={createInlineComponent}
                         disabled={!newInlineComponentName || !newInlineComponentPrefix}
                       >
-                        <Plus size={14} /> {strings.admin.newComponent}
+                        <Plus /> {strings.admin.newComponent}
                       </button>
                     </div>
                   )}
@@ -791,7 +791,7 @@ export function RequirementsPage() {
                         onClick={createInlineCategory}
                         disabled={!newInlineCategoryName || !newInlineCategoryPrefix}
                       >
-                        <Plus size={14} /> {strings.admin.newCategory}
+                        <Plus /> {strings.admin.newCategory}
                       </button>
                     </div>
                   )}
@@ -1017,10 +1017,10 @@ export function RequirementsPage() {
                     </span>
                     <div className="row" style={{ gap: "0.25rem" }}>
                       <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
-                        <ArrowUp size={14} />
+                        <ArrowUp />
                       </button>
                       <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
-                        <ArrowDown size={14} />
+                        <ArrowDown />
                       </button>
                     </div>
                   </div>
@@ -1139,10 +1139,10 @@ export function RequirementsPage() {
                       <td>
                         <div className="row" style={{ gap: "0.25rem" }}>
                           <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
-                            <ArrowUp size={14} />
+                            <ArrowUp />
                           </button>
                           <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
-                            <ArrowDown size={14} />
+                            <ArrowDown />
                           </button>
                         </div>
                       </td>

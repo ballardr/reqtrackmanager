@@ -171,20 +171,20 @@ export function ProjectNavEditor({
               aria-label={section === "main" ? customise.moveToMore(item.label) : customise.moveToNavigation(item.label)}
               title={section === "main" ? customise.moveToMore(item.label) : customise.moveToNavigation(item.label)}
             >
-              {section === "main" ? <ChevronsDown size={14} /> : <ChevronsUp size={14} />}
+              {section === "main" ? <ChevronsDown /> : <ChevronsUp />}
             </button>
           )}
           <button
             type="button" className="btn" onClick={() => move(section, key, -1)} disabled={index === 0}
             aria-label={customise.moveUp(item.label)} title={customise.moveUp(item.label)}
           >
-            <ArrowUp size={14} />
+            <ArrowUp />
           </button>
           <button
             type="button" className="btn" onClick={() => move(section, key, 1)} disabled={index === list.length - 1}
             aria-label={customise.moveDown(item.label)} title={customise.moveDown(item.label)}
           >
-            <ArrowDown size={14} />
+            <ArrowDown />
           </button>
         </span>
       </li>

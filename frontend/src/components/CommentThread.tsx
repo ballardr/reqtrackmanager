@@ -156,7 +156,7 @@ export function CommentThread({
                     aria-pressed={c.reacted_by_me}
                     onClick={() => onToggleReaction(c.id, c.reacted_by_me)}
                   >
-                    <Heart size={14} fill={c.reacted_by_me ? "currentColor" : "none"} />
+                    <Heart fill={c.reacted_by_me ? "currentColor" : "none"} />
                     {c.reaction_count > 0 ? c.reaction_count : ""}
                   </button>
                   {onEdit && currentUserId === c.author_id && (
@@ -166,7 +166,7 @@ export function CommentThread({
                       aria-label={strings.requirements.editComment}
                       onClick={() => startEdit(c)}
                     >
-                      <Pencil size={14} />
+                      <Pencil />
                     </button>
                   )}
                 </div>

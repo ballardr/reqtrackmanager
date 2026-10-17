@@ -539,7 +539,7 @@ export function RequirementAssessmentPanel({
               }}
             />
             <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => setShowNewEvidenceResourcePicker(true)}>
-              <FolderOpen size={14} /> Link from shared resources
+              <FolderOpen /> Link from shared resources
             </button>
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button className="btn btn-primary" onClick={() => setNewEvidence(null)}>Done</button>

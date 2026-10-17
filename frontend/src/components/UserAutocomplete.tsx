@@ -326,7 +326,7 @@ export function UserAutocomplete({
                 onMouseEnter={() => setHighlightedIndex(index)}
                 onClick={() => pickGroup(g)}
               >
-                <Users size={14} aria-hidden="true" />
+                <Users aria-hidden="true" />
                 {g.name} <Badge>{strings.userAutocomplete.groupBadge}</Badge>
               </button>
             );
@@ -348,7 +348,7 @@ export function UserAutocomplete({
                 onMouseEnter={() => setHighlightedIndex(index)}
                 onClick={() => pickProjectGroup(g)}
               >
-                <FolderKanban size={14} aria-hidden="true" />
+                <FolderKanban aria-hidden="true" />
                 {g.name} <Badge>{strings.userAutocomplete.projectGroupBadge}</Badge>
               </button>
             );

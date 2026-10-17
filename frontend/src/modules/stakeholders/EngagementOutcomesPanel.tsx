@@ -117,7 +117,7 @@ export function EngagementOutcomesPanel({
           type="button" className="btn btn-sm btn-icon" aria-label={`Add to ${heading}`} title={`Add to ${heading}`}
           aria-haspopup="dialog" onClick={() => setAdding(true)}
         >
-          <Plus size={14} aria-hidden="true" />
+          <Plus aria-hidden="true" />
         </button>
       }
     >

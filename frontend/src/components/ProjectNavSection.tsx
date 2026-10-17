@@ -78,7 +78,7 @@ export function ProjectNavSection({
             type="button" className="nav-section-action" aria-label={customiseLabel} title={customiseLabel}
             onClick={() => setEditorOpen(true)}
           >
-            <SlidersHorizontal size={12} />
+            <SlidersHorizontal size={14} />
           </button>
         )}
       </div>

@@ -541,7 +541,7 @@ export function ChangeRequestDetailPage() {
             </Badge>
             {tally.votes.some((v) => v.comment) && (
               <button className="btn" onClick={() => setShowVoteComments(true)}>
-                <MessageSquare size={14} /> {strings.changeRequests.viewComments}
+                <MessageSquare /> {strings.changeRequests.viewComments}
               </button>
             )}
           </div>

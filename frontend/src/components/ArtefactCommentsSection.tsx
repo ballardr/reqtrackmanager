@@ -138,7 +138,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
                 )}
                 {onEdit && currentUserId === c.author_id && (
                   <button className="btn" title="Edit comment" aria-label="Edit comment" onClick={() => startEdit(c)}>
-                    <Pencil size={14} />
+                    <Pencil />
                   </button>
                 )}
               </>

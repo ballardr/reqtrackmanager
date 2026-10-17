@@ -696,7 +696,7 @@ export function PreferencesPage() {
             <p className="text-muted" style={{ margin: 0 }}>{strings.preferences.patsHint(orgLabel)}</p>
           </div>
           <button className="btn btn-primary" onClick={openPatForm}>
-            <Plus size={14} /> {strings.preferences.patNew}
+            <Plus /> {strings.preferences.patNew}
           </button>
         </div>
 
