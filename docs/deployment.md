@@ -289,7 +289,7 @@ Sizing: each worker holds up to 15 database connections (SQLAlchemy's default po
 
 After `docker compose up -d`, confirm:
 
-1. `curl http://localhost:8000/health` (or your production hostname) returns `{"status": "ok", "database": "ok"}`.
+1. `curl http://localhost:8000/health` (or your production hostname) returns HTTP 200 with `{"status": "ok", "database": "ok"}` (HTTP 503 and `"degraded"` if the database is unreachable).
 2. `curl http://localhost:8000/metrics` returns Prometheus-format metrics.
 3. The frontend loads and you can log in with the bootstrap admin credentials you configured.
 4. If using email notifications, trigger one (e.g. change your password) and confirm it arrives at your configured SMTP provider (or MailHog's UI in non-production environments).

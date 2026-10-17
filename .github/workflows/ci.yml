@@ -1009,6 +1009,9 @@ jobs:
       - name: Check documentation references resolve
         working-directory: .
         run: python3 scripts/check_doc_links.py
+      - name: Check health probes use 127.0.0.1
+        working-directory: .
+        run: python3 scripts/check_health_probes.py
       - run: npm ci
       - run: npm run typecheck
       # The agent-skill downloads are built from mcp-server/skill and backend/mcp_skill_reference, not committed.

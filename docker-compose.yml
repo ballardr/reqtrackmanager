@@ -150,8 +150,9 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 10s
+      start_period: 120s
       timeout: 5s
       retries: 10
 
@@ -184,8 +185,9 @@ services:
     # volumes:
     #   - ./external-modules:/usr/share/nginx/external-modules:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 10s
+      start_period: 60s
       timeout: 5s
       retries: 10
 
@@ -218,8 +220,9 @@ services:
     ports:
       - "8100:8100"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8100/health"]
       interval: 10s
+      start_period: 60s
       timeout: 5s
       retries: 10
 
@@ -245,6 +248,7 @@ services:
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
+      start_period: 60s
       timeout: 5s
       retries: 10
 

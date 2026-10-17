@@ -20,7 +20,7 @@ COPY --from=build /app /app
 
 EXPOSE 3001
 
-HEALTHCHECK --interval=10s --timeout=5s --retries=10 \
-    CMD wget -qO- http://localhost:3001/reqtrackmanager/ || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=10 \
+    CMD wget -qO- http://127.0.0.1:3001/reqtrackmanager/ || exit 1
 
-CMD ["npm", "run", "serve", "--", "--host", "0.0.0.0", "--port", "3001", "--no-open"]
+CMD ["npm", "run", "serve", "--", "--host", "::", "--port", "3001", "--no-open"]

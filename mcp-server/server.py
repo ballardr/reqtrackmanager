@@ -2078,4 +2078,10 @@ async def health_check(request: Request) -> PlainTextResponse:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="http", host="0.0.0.0", port=8100)
+    # IPv4 and IPv6 are both served. Handing uvicorn the host alone is not
+    # enough: asyncio binds `::` IPv6-only, so a socket is bound up front the
+    # way uvicorn's own CLI does (dual-stack on Linux) and passed in.
+    import uvicorn
+
+    _listen_socket = uvicorn.Config(app=None, host="::", port=8100).bind_socket()
+    mcp.run(transport="http", host="::", port=8100, sockets=[_listen_socket])

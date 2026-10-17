@@ -39,8 +39,8 @@ USER app
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=10s --timeout=5s --retries=10 \
-    CMD curl -f http://localhost:8000/health || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=10 \
+    CMD curl -f http://127.0.0.1:8000/health || exit 1
 
 # Multi-worker uvicorn plus Prometheus multi-process setup — see the script.
 CMD ["./docker-entrypoint.sh"]

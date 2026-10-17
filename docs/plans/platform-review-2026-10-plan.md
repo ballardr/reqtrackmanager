@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review. Phases 1 and 2 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Ready to implement.
-**Decision tags:** the ten notes and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21). Phases 1, 2 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q24 (section 3b) carry a recommended answer and need sign-off before the phase they gate.
+**Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-2 / 12 phases complete (Phases 1 and 2 done 2026-10-14, uncommitted at hand-back). Start with Phase 3.
+3 / 22 phases complete (Phases 1 and 2 done 2026-10-14, Phase 12 done 2026-10-18, uncommitted at hand-back). **Start with Phases 13–14** (module availability and navigation bugs: they are defects and a missing admin UI, so they go before the polish work), then Phase 3.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -20,7 +20,17 @@
 | 9 | Aside tabs: Links and Activity, one activity endpoint | N10 | [ ] |
 | 10 | Forms aligned to the style guide | N7 (forms) | [ ] |
 | 11 | Ontology: pull Module 15 Phase 1 forward, module-contributed concept map | N4 | [ ] |
-| 12 | Docs website, seeds, README and close-out | all | [ ] |
+| 12 | Container health check reports unhealthy on a working install | N11 | [x] |
+| 13 | Module availability: new-install defaults, server admin UI, hide unavailable modules | N12, N13, N14 | [ ] |
+| 14 | Navigation: ordering, scrollbar, sub-component hiding | N15, N16, N17 | [ ] |
+| 15 | Org defaults can be hidden per project and restored (delete plus "add org defaults") | N18 | [ ] |
+| 16 | One People page (Personas and Stakeholders) and "Save and activate" | N19, N20 | [ ] |
+| 17 | Quick-link on create | N21 | [ ] |
+| 18 | Tags on every item type | N22 | [ ] |
+| 19 | Create forms accept every field the edit form does (pain point first) | N23 | [ ] |
+| 20 | Nested-project scope filter on every list | N24 | [ ] |
+| 21 | Field help (?) tooltips | N25 | [ ] |
+| 22 | Docs website, seeds, README and close-out | all | [ ] |
 
 ```mermaid
 flowchart LR
@@ -33,15 +43,29 @@ flowchart LR
     P7 --> P11["11 Ontology"]
     P4 --> P10["10 Forms sweep"]
     P5 --> P10
-    P9 --> P12["12 Close-out"]
-    P10 --> P12
-    P11 --> P12
-    P8 --> P12
+    P9 --> P22["22 Close-out"]
+    P10 --> P22
+    P11 --> P22
+    P8 --> P22
+    P12["12 Health check"] --> P13["13 Module availability"] --> P14["14 Navigation"] --> P3
+    P13 --> P15["15 Org-default hide/restore"]
+    P13 --> P16["16 People page + Save and activate"]
+    P5 --> P18["18 Tags"]
+    P17["17 Quick-link on create"] --> P19["19 Create-form parity"]
+    P6 --> P20["20 Nested scope filter"]
+    P21["21 Field help"] --> P10
+    P15 --> P22
+    P16 --> P22
+    P18 --> P22
+    P19 --> P22
+    P20 --> P22
+    P21 --> P22
+    P17 --> P10
 ```
 
 Codes (6–8) and layout (3–5) touch the same pages for different reasons, so they run one after the other, not in parallel; layout goes first because codes then land in the new shared header once.
 
-**Suggested delivery (Decided by: Agent):** three branches, each reviewable and shippable alone: **A** phases 1–5 (polish and consistency), **B** phases 6–8 (codes), **C** phases 9–12 (activity tab, forms, ontology, close-out). Twelve phases in one branch is the kind of size that stalls review.
+**Suggested delivery (Decided by: Agent):** six branches, each reviewable and shippable alone, in this order. **0** phases 12–14 (defects and the missing module admin UI: ship first, they affect real deployments today). **A** phases 1–5 (polish and consistency). **B** phases 6–8 (codes), then phase 20 (the scope filter shows qualified codes, so it follows phase 6). **C** phases 15–17 and 19 (create/edit conventions: org-default hide/restore, People page, quick-link, create parity). **D** phases 18 and 21 (tags, field help). **E** phases 9–11 and 22 (activity tab, forms, ontology, close-out). Phases 17 and 21 build components the Phase 10 forms sweep then applies everywhere, so they precede it. Twenty-two phases in one branch is the kind of size that stalls review.
 
 ## 1. Summary of the review (read this first)
 
@@ -59,6 +83,21 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 | N8 Object actions | Do it; answered: record header, always a menu (Q4, Q5) | The Links panel lives in the aside, which collapses at 1280px+ and stacks under the content below it. A menu there disappears or moves to the page bottom. Put it in the record header, always visible, one position at every width. Also build a shared header: every detail page hand-builds its own `<h1>` row. |
 | N9 Icon sizes | Do it; enforce in CSS | About 224 icons are `size={14}`, 65 are 16, 10 are 12, plus one each of 13 and 18. About 75 14px icons sit in medium buttons, where the guide says 16px (including the pencil on every detail page). Reviewing 84 files by eye regresses; sizing by CSS from the button class makes the rule structural. The scale for icons outside buttons is deferred to a UX review (Q9). |
 | N10 History/activity in the aside | Do it, as Tabs; Activity is a timeline (Q12) | Tabs are the style guide's pattern for views of one object. The aside is 340px wide, so the full version *table* cannot go in it; the aside gets the activity timeline and the table stays in the page body. Only requirements and change requests have a per-record activity endpoint today, and module records' audit coverage is unverified (Phase 9a). |
+| N11 Health reports unhealthy on another device | Do it first; **not reproduced, one strong suspect** | The app serves, so the failing check is a container health probe, not the app. The frontend probe is `wget http://localhost:3000/health` (BusyBox) while nginx has `listen 3000;` (IPv4 only); on a host where `localhost` resolves to `::1` first, BusyBox `wget` does not fall back and the probe fails for ever while browsers (IPv4 port mapping) work. The repo already hit the same class on the storage service and on the docs image (which uses `127.0.0.1`). Separately, `/health` returns HTTP 200 with `"degraded"` when the database is down, so `curl -f` cannot ever detect that. Diagnose with the real output before changing anything (Phase 12). |
+| N12 New installs: every module available | Do it, **as a seeded server default, not a registry flip** | Every module except Compliance has `default_enabled=False` (a deliberate opt-in). Flipping that constant would silently switch modules and nav sections on for every existing deployment on upgrade. Instead: a server-wide default module state table, seeded all-on on a fresh install only, consulted wherever the registry default is today (Phase 13). |
+| N13 Server UI for default org module states and per-org availability | Confirmed missing; backend exists | `GET/PUT /system/module-entitlement-policy`, `GET /system/modules` and `GET/PUT /system/orgs/{id}/module-entitlements[/{key}]` exist; the only entitlement strings in the frontend are in Org Admin. There is no Server Management page for any of it, and no endpoint for "default org enabled / project default state" (Phase 13). |
+| N14 Hide unavailable modules from admins | Do it; **reverses a recorded behaviour** | `list_org_modules` deliberately returns non-entitled modules so Org Admin can show them greyed. You want them gone: org-disabled modules vanish for project admins; server-disabled (not entitled) modules vanish for org and project admins. Server admins keep the full view. Record the reversal as Decided by: User (Phase 13). |
+| N15 Project Admin and History last in the project nav | Do it | Today they sit before the module-contributed items. Ordering becomes: core work items, module items, then Project Admin and History pinned at the end (Phase 14). |
+| N16 Nav scrollbar | Do it | The rail scrolls with the browser's native bar, which looks wrong in the dark theme and collides with the fixed collapse toggle. Style the scrollbar from tokens and keep the toggle outside the scroll container (Phase 14). |
+| N17 Disabling a sub-component does not remove its nav item | Treat as a bug; root cause not yet known | Module nav entries come from the frontend manifest; the sub-component state is in `GET /projects/{id}/modules`. Either the nav is not filtered by sub-component state or the cached project-module query is not invalidated after the toggle. Reproduce first (Phase 14). |
+| N18 Cannot hide an org default (for example pain point types) | Do it, for **every** definition table that has an org version | Today the project delete button only shows a message. Wanted: delete hides the org default in this project, and an "Add organisation defaults" button restores it. This is the same shape in several places (action types, decision types, pain point types, custom fields, statuses, ...), so build one mechanism and make it an agent rule (Phase 15). |
+| N19 Personas and Stakeholders as one page | Do it for the **list and create**, not the detail | The two have different fields and lifecycles, so merging detail pages would be a regression. One People list with a type filter and a New ▾ menu; each row opens its own detail page (Phase 16). |
+| N20 Save and activate | Do it, **gated on the existing transition permission** | A second button on create for users who may activate. Segregation of duties must not be bypassed: where an approval gate forbids self-approval, the button does not appear. A review of every draft-to-active type decides where it applies (Phase 16). |
+| N21 Quick-link on create | Do it; shared component plus a rule | One compact search-and-add field in create forms, backed by an atomic bulk-link call, applied to every create form where linking makes sense (Phase 17). |
+| N22 Tags | Do it; **largest item of the second round** | Project-scoped vocabulary, free or restricted by project setting, on every artefact type via the registry; rename, merge, delete, bulk reclassify; filter in every list; per-type usage tables with exclusion filters (Phase 18). |
+| N23 Pain point: severity, frequency, confidence on create | Do it, and audit every create form for the same gap | A general class (create form narrower than edit form), so the audit is part of the phase (Phase 19). |
+| N24 Nested-project scope filter | Do it; **authorisation is the hard part** | Items from other projects must obey that project's read gate and module enablement; the list must say which project a row is from (Phase 20). |
+| N25 Field help tooltips | Do it; component plus a checkable rule | A `(?)` button on every non-obvious field; persona importance weighting is the motivating case (Phase 21). |
 
 ### Interpretation of imprecise wording (CLAUDE.md: inputs may be casual)
 
@@ -67,13 +106,20 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 - **"Object action"** = an action on the whole record that is not a workflow step: Edit, Archive/Restore, Delete permanently, Export, Subscribe. **Workflow transitions** (Submit, Approve, Reject, Retire, Withdraw) are different: they depend on status and stay visible beside the status.
 - **"Project codes … nested"** = each project gets its own short code used to qualify item codes; confirmed it does not concatenate down the tree (Q7).
 - **"Forms"** = every create/edit form in a Modal, SidePanel or inline card, whatever its field count (Q13).
+- **"Available"** (N12) = a module is *entitled* to the organisation by the server, *enabled* by the organisation, and *on by default for new projects*. These are three existing tiers (`OrganizationModuleEntitlement`, `OrganizationModuleEnablement.enabled`, `.default_project_enabled`); "all available on new installs" means all three default to on.
+- **"Org pain points" / "org versions"** (N18) = organisation-level definition rows (pain point types, action types, ...) that a project inherits when it has none of its own.
+- **"Active"** (N20) = the state a record reaches when it leaves draft and becomes usable (persona `active`, requirement `approved`, ...), whatever each type calls it; the per-type mapping is in Phase 16's review.
+- **"Tags (aka keywords)"** (N22) = free-text labels on a record, not custom fields (typed, structured) and not categories (a fixed type).
+- **"Parent" / "children"** (N24) = ancestor and descendant projects along `Project.parent_project_id`; whether that means one level or the whole chain is Q22.
 
 ## 2. Findings that were not in the notes
 
 - `CLAUDE.md` and `docs/ux-style-guide.md` link to `docs/plans/completed/ux-audit-2026-08.md`; the file is `docs/plans/completed/ux-audit-2026-08.md`. Fixed by Phase 2's link checker.
-- The style guide's token table still lists `--color-entity-compliance` as a core variable; `theme.css` says it was removed (module boundary). The table is stale. Fixed in Phase 12.
+- The style guide's token table still lists `--color-entity-compliance` as a core variable; `theme.css` says it was removed (module boundary). The table is stale. Fixed in Phase 22.
 - `RecordLifecycleControls` (archive, retire) lives in `frontend/src/modules/stakeholders/` but other modules need the same control. It moves to `components/` in Phase 5 (module-boundary rule: shared code must not live in one module).
 - The style guide's "Not yet migrated" paragraph says to migrate pages "when next touched, not as a drive-by". N7b supersedes that for forms; Phase 10 updates the paragraph.
+- Round two, module gating: `list_org_modules` returns non-entitled modules on purpose ("Non-entitled modules are included, not filtered out"); N14 reverses this for non-server-admin callers (Phase 13).
+- Round two, health: three health probes disagree on the host: frontend and backend/MCP use `localhost`, the docs image uses `127.0.0.1`. Only the frontend can fail on an IPv6-first host, because nginx binds IPv4 only (Phase 12).
 
 ## 3. Decisions (answered 2026-10-14, **Decided by: User** unless marked)
 
@@ -93,6 +139,21 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 | Q12 | Activity tab content | **Timeline of audit events, versions and link changes.** The full version table stays in the page body. |
 | Q13 | Forms in scope | **Every form**, including one- and two-field forms. |
 | Q14 | Ontology | **Pull Module 15 Phase 1 forward, with a hand-written concept map, and make both contributable by modules** so future modules extend them without core edits. |
+
+### 3b. Round-two questions (2026-10-18; recommended answer given, **sign-off needed** before the phase named)
+
+| # | Question | Recommendation (Decided by: Agent until you answer) | Gates |
+|---|----------|-----------------------------------------------------|-------|
+| Q15 | Existing deployments and "all modules available" | Fresh installs only. An upgrade keeps its current effective states; the new Server page lets an admin apply "enable all" in one action. Avoids switching on modules in live orgs. | 13 |
+| Q16 | Does a server default of "all on" also pre-create module rows for new orgs? | No rows: the server default is consulted wherever the registry default is today, so a later change to the default reaches orgs that never overrode it. | 13 |
+| Q17 | Hiding an org default in one project: tombstone or copy? | **Tombstone**: a generic `ProjectDefinitionSuppression(project_id, definition_kind, org_definition_id)` row. A copy would freeze the project away from later org changes (the problem the nested-project fallback exists to avoid). "Add organisation defaults" deletes the tombstones. | 15 |
+| Q18 | An org default that is in use (for example a pain point type on existing pain points) | Hiding is allowed and only stops new use; existing records keep the value and still display it. Hard delete of a project's own row stays blocked while in use. | 15 |
+| Q19 | What does "the various options" in the People New ▾ menu include? | Persona, Stakeholder, Stakeholder Need, Stakeholder Group (each only if its sub-component is on and the user can create it). Needs and groups are listed in the same table with a type column. | 16 |
+| Q20 | Tags on organisation-scoped types (personas, stakeholders, strategies, ...) | Org-level tag vocabulary in addition to the project one; a record uses the vocabulary of its own scope. Project-only tags would leave these types untaggable. | 18 |
+| Q21 | Tag vocabulary on nested projects | Follows the nested-project rule (CLAUDE.md): a child with no tags of its own and no mode set inherits its nearest ancestor's vocabulary and mode (always on). Decision recorded in `docs/decisions.md` before building. | 18 |
+| Q22 | "Parent" and "children" in the scope filter | The whole ancestor chain and the whole descendant tree, with a "direct only" refinement not offered in v1. Nesting is rarely deeper than two or three levels, and "direct only" doubles the options. | 20 |
+| Q23 | Where the per-project filter choice is stored | Per user, per project (`ui_preferences`, keyed by project id), seeded from the user's global default. Not stored on the project (it is a viewing choice, not project state). | 20 |
+| Q24 | Tag character set and normalisation | Case-insensitive uniqueness, trimmed, internal spaces allowed, 1–40 characters, no commas; stored with the first-seen casing. Prevents `Safety`/`safety`/`safety ` becoming three tags. | 18 |
 
 ## 4. Phase specs
 
@@ -191,7 +252,7 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 **Why:** 98 files contain inputs and 6 use `FormGrid`; you chose every form (Q13); the guide has since gained compact-form, add-on-demand and alignment rules. **Risk addressed:** a sweep with no definition of done. **Outcome:** every in-scope form follows the guide, with a recorded checklist per form.
 
 - **Inventory (generated, you review):** every form regardless of field count, its container (Modal, SidePanel, inline) and the checklist columns below, ordered by traffic. One- and two-field forms get the lighter subset (labels, button and icon sizes, label maps, Toast, accessible names, no needless grid).
-- **Per-form checklist:** `FormGrid`/`FormGridFull`; `PrincipalPicker compact` for single owners and `PrincipalListField` for lists; add control on the heading line; `AlignedRows` for repeating rows; `RemovableItemList` and Tier-1 confirm on removal; `CappedList` for unbounded lists; Modal vs Popover (no nested popovers); button sizes and icon sizes (phases 3–4); enum values through label maps; Toast on every mutation; accessible names; Storybook worst-case story.
+- **Per-form checklist:** `FormGrid`/`FormGridFull`; `PrincipalPicker compact` for single owners and `PrincipalListField` for lists; add control on the heading line; `AlignedRows` for repeating rows; `RemovableItemList` and Tier-1 confirm on removal; `CappedList` for unbounded lists; Modal vs Popover (no nested popovers); button sizes and icon sizes (phases 3–4); enum values through label maps; Toast on every mutation; accessible names; Storybook worst-case story; `help` text on every non-obvious field (Phase 21); `QuickLinkField` on create forms of linkable types (Phase 17); create form field parity with edit (Phase 19); organisation-default hide/restore where the form edits a definition with an org version (Phase 15).
 - **Already known gaps to close:** Persona, Stakeholder and Need edit modals (single column), owner/assignee fields on six module detail pages still using the always-open picker, "other modules' link lists and per-row Remove buttons".
 - **Batching:** by area, about eight forms per batch (org admin, project admin, requirements and actions, each module). Each batch ships with its stories and updated specs; the user can stop between batches.
 
@@ -204,21 +265,135 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 - **Concept map (new, small):** the core of it is hand-written; a page in `docs/website/docs/reference/` — organisation, project nesting, the core chain (requirement, change request, action, stage and baseline), the modules by purpose, how links connect any pair, where reports and MCP read from. Mermaid, with the explanatory sentence before each diagram. The generated tables link to it; a test confirms every registered type appears in the generated tables, not in the hand-written map.
 - **Out of scope:** OWL/JSON-LD, the workflow designer.
 
-### Phase 12 — Close-out
+### Phase 12 — Container health check reports unhealthy on a working install (N11)
 
-- Docs website audit for every user-visible change (the label, Help, header and menu, codes, activity tab, forms), retake affected screenshots, README, `docs/solution-architecture.md` (project codes, activity endpoint, ontology), `docs/modules.md` (any new registration fields), `docs/decisions.md` entries with Decided-by tags, style guide updates (list below), memory index.
-- Seeds: both seed scripts get organisation and project codes under the org policy, a long-titled record per type for the layout check, and no codeless record.
-- Style guide sections added or changed: pills, text beside controls, icon scale, record header and object actions, links aside tabs, form checklist, the stale token-table row.
-- Move this plan to `docs/plans/completed/` (Phase 2's rule) when 12/12.
+**Why:** an operator on a second device sees the app serving but a container reported unhealthy; monitoring and `depends_on: service_healthy` are only trustworthy if the probe matches reality. **Risk addressed:** false "unhealthy" (alert noise, blocked dependants) and its opposite, `/health` returning 200 while the database is down. **Outcome:** probes that agree with what users see on any host, IPv4-only, IPv6-first or dual-stack.
+
+1. **Diagnose with evidence first.** Ask for, from the failing host: `docker compose ps`, `docker inspect --format '{{json .State.Health}}' <container>` (the last five probe outputs name the failing command and its error), `docker exec <frontend> getent hosts localhost`, and `docker exec <frontend> wget -qO- http://127.0.0.1:3000/health`. Ranked suspects: (1) frontend probe `localhost` resolves to `::1` and nginx listens on IPv4 only; (2) a slow host exceeding the 100-second retry budget during first-boot migrations (`HEALTHCHECK` has no `start-period`); (3) a monitor probing a path the reverse proxy does not expose (`/health` is not under `/api/`, see `docs/deployment.md`); (4) the MCP server or docs container rather than the app. Record the finding in `docs/decisions.md`.
+2. **Fix (applies whichever suspect is confirmed, because all are cheap):** probes use `127.0.0.1` in `frontend/Dockerfile`, `backend/Dockerfile`, `mcp-server/Dockerfile`, `docs/website/Dockerfile` and `docker-compose.yml`; nginx gets `listen [::]:3000;` beside the IPv4 listener; every `HEALTHCHECK` and compose `healthcheck` gets a `start_period` (60s, backend 120s) so slow first boots do not burn the retry budget; keep the retry count.
+3. **`/health` honesty.** Return HTTP 503 with the existing JSON body when the database is unreachable, so `curl -f` and load balancers see it. Keep the 200 body shape for healthy. Add a bounded timeout to the probe query so a hung database does not hang the check. `/metrics` unchanged.
+4. **Docs:** troubleshooting page entry "container shows unhealthy but the app works" with the three commands above; `docs/deployment.md` and the website observability page mention the probe address.
+- **Tests:** backend test that `/health` returns 503 and the degraded body with the database dependency forced to fail, 200 when healthy; a CI check (script) that every probe command in the Dockerfiles and compose files uses `127.0.0.1`, not `localhost`.
+- **Done 2026-10-18 (notes).** Diagnosed on the local test stack (`localhost` is `::1`, services IPv4-only: suspect 1 confirmed). The IPv6 listeners were added too (user instruction, and a standing `CLAUDE.md` rule): nginx `[::]`, backend and docs dev server on `::`, MCP server on a pre-bound dual-stack socket. Details in `docs/decisions.md`.
+
+### Phase 13 — Module availability: defaults, server UI, hiding (N12, N13, N14)
+
+**Why:** a new install shows few modules because each is opt-in per organisation, and the server admin has no UI for the entitlement and default levers the backend already has. **Risk addressed:** a feature set that looks absent; admins offered switches they cannot meaningfully use. **Outcome:** a fresh install has everything on; the server admin controls defaults and per-organisation availability from Server Management; nobody sees a module they cannot use.
+
+```mermaid
+flowchart LR
+    S["Server: entitled to org?"] -->|no| H1["Hidden from org and project admins"]
+    S -->|yes| O["Org: enabled?"]
+    O -->|no| H2["Hidden from project admins"]
+    O -->|yes| D["Org: on by default for new projects?"]
+    D --> P["Project override"]
+```
+
+Reading the diagram: a module is checked at three levels from the server down. A "no" at the server hides it from the organisation and its projects; a "no" at the organisation hides it from project admins. Server administrators always see every module with its state.
+
+- **Server default module states (Q15, Q16).** New table `ServerModuleDefault(module_key, org_enabled, project_default_enabled)` (explicit-override-only, same pattern as `OrganizationModuleEntitlement`); `registry.is_module_enabled` and `resolve_default_project_enabled` fall back to it before the registry's `default_enabled`. The first-run bootstrap seeds every registered module on/on for a **fresh** database only; the migration seeds nothing, so an upgrade changes nothing (Q15). `ModuleDefinition.default_enabled` stays the code-level fallback for third-party modules registered later.
+- **Server Management UI (new "Modules" section, `ModuleAdministrator` or Server Admin):** (a) entitlement policy toggle (Open/Closed; exists as `PUT /system/module-entitlement-policy`); (b) default org module states grid (module × "enabled for new orgs" × "on for new projects"), with a "Apply to all organisations" confirm (Tier 2) that writes org rows; (c) per-organisation availability: pick an organisation, toggle entitlement per module, show the effective state and which tier decided it. Follows the style guide's override-visibility pattern ("platform default" vs "overridden") and uses `ModuleSettingsList`. Every change is audit-logged (`services/audit.py`) and covered by the access-control policy.
+- **Hiding (N14, Decided by: User).** `GET /orgs/{id}/modules` omits non-entitled modules for non-server-admin callers; `GET /projects/{id}/modules` omits modules the organisation has disabled or has no entitlement for, and the sub-component lists follow. The project admin module list, project-module toggles and sub-component toggles render only what the API returns. Server admins calling the system endpoints see everything. A project that already holds an override for a now-hidden module keeps the row (re-enabling the module brings it back).
+- **Existing orgs (Q15):** nothing changes automatically; the "Apply to all" action is the explicit route.
+- **Module boundary:** no per-module code; the server table and UI iterate the registry. `org_creation_choices` seeding is unchanged (check at build time that it does not conflict with the new default).
+- **Nested projects:** `ServerModuleDefault` is server-wide, not a project definition table; not applicable, recorded.
+- **Tests:** resolution matrix (entitled/not × org enabled/not × server default × org override × project override) for module and sub-component; fresh-install bootstrap seeds all on, migration on an existing database seeds nothing; non-server-admin responses omit hidden modules, server admin sees all; audit rows for each change; Storybook for the Server Modules section; Playwright for the full path (server admin withdraws a module from an org; the org admin and project admin no longer see it).
+
+### Phase 14 — Navigation: ordering, scrollbar, sub-component hiding (N15, N16, N17)
+
+**Why:** three small nav defects with a shared root, the rail. **Risk addressed:** navigation that shows entries that lead nowhere, and a rail that looks broken when long. **Outcome:** an orderly rail that reflects what is enabled.
+
+- **Order (N15):** `Layout.tsx` builds the project items as core entries, then Project Admin and History, then modules. New order: core work items (Overview ... Reviews due), module items, then History and Project Admin last. `ProjectNavSection` still applies the user's saved order and "More"; the new product default only changes the starting order. A user with a saved order keeps it (decision: Agent; offer a "Reset to default" if it is not already present).
+- **Scrollbar (N16):** style the rail's scrollbar from tokens (`scrollbar-width: thin`, `scrollbar-color` plus `::-webkit-scrollbar` for older WebKit), in both themes; make the rail a flex column whose item list is the scroll container, so the fixed `.nav-rail-toggle-wrapper` sits outside the scroll area and never overlaps the bar. The scrollbar and toggle must not overlap at 1280px, collapsed and expanded.
+- **Sub-component hiding (N17).** Root cause is visible in the code: `ModuleNavEntry` has no link to a sub-component, so every entry of an enabled module is shown. Add a generic optional field `sub_component: str | None` to `ModuleNavEntry` (backend) and the manifest schema (`ManifestNavEntryOut`), have `Layout.tsx` filter entries by the project's sub-component state from `GET /projects/{id}/modules`, and set the field on each existing entry in the modules that declare sub-components (Context & Strategy, Stakeholders, Risk). Invalidate the same query on toggle so the rail updates without a reload. Direct URLs to a disabled sub-component's pages already 404 server-side (check and pin with a test).
+- **Module boundary:** the filter is generic over `sub_component`; no module key appears in `Layout.tsx`.
+- **Tests:** Playwright: toggle a sub-component off in project admin and assert the nav entry disappears without a reload and returns when toggled on; ordering assertion; a geometry check that the rail's scrollbar and toggle do not overlap with 40 modules' worth of entries (story with a long rail). Storybook for the long rail in both themes.
+
+### Phase 15 — Hide and restore organisation defaults per project (N18)
+
+**Why:** a project cannot remove an organisation-level definition it does not want (the delete button only shows a message), and the same gap exists wherever an organisation version of a definition exists. **Risk addressed:** projects forced to carry irrelevant definitions; five different future workarounds. **Outcome:** one mechanism: delete hides an org default in this project, one button restores them, in every place with org versions; and an agent rule so new definition tables ship with it.
+
+- **Inventory (first, generated list):** every definition table with an organisation tier and project use: action types, decision types, pain point types, risk categories/scoring, custom field definitions, requirement statuses/project statuses, personas' importance scale, scoring schemes, and any the scan finds. For each: does the project read path resolve org defaults (nearest-ancestor fallback, `resolve_effective_*`)? Record the table in this phase's notes and `docs/decisions.md`.
+- **Mechanism (Q17, Q18):** a generic `ProjectDefinitionSuppression(project_id, definition_kind, org_definition_id)` (kind a registry-validated string, so modules register their own kinds: module boundary, same pattern as `ArtefactLink.source_type`). The effective-set resolver (`resolve_effective_action_types` and its siblings) subtracts suppressed ids from the inherited org set. A shared `DefinitionList` frontend component renders org-inherited rows with **Delete** (confirm tier 1; label "Hide in this project") and an **Add organisation defaults** button that appears only when something is hidden, and restores all (or a chosen subset) by deleting the tombstones. A project's own rows keep the real delete. Hidden-but-in-use values stay on existing records (Q18).
+- **Nested projects (CLAUDE.md check):** the fallback chain order stays own rows, then nearest ancestor, then organisation; a tombstone applies to the layer it was created against. Decision recorded before building.
+- **Agent rule (added to `CLAUDE.md` when the component lands):** "Any project-scoped definition with an organisation version must support hide-and-restore through `DefinitionList`; a delete that only shows an explanatory message is a defect." Also in the style guide ("Pattern: organisation defaults in a project").
+- **Tests:** backend: hide, restore, in-use, nested chain, cross-project and cross-org isolation, audit logging, per kind; Storybook for `DefinitionList` (inherited, hidden, none left); Playwright: hide an org pain point type in a project, see it disappear from the project's choices, restore it.
+
+### Phase 16 — One People page and "Save and activate" (N19, N20)
+
+**Why:** Personas and Stakeholders are two pages for what a user thinks of as "the people we are designing for/with", and creating a persona then separately activating it is two steps for a user who is allowed to do both. **Risk addressed:** navigation sprawl; draft records nobody activates; self-approval where the process forbids it. **Outcome:** one list, one New ▾ menu, and a second create button only where the same user could already activate the record.
+
+- **People page (module `stakeholders`, inside its own directory):** the existing Personas, Stakeholders, Needs (and Groups, Q19) lists become one `PeoplePage` with a type filter (multi-select, default all enabled), a type badge column, and a **New ▾** menu listing each creatable type (hidden when the sub-component is off or the user cannot create). Detail pages are unchanged. Old routes redirect (`/personas`, `/stakeholders`, `/needs`) so bookmarks keep working; the nav keeps one "People" entry instead of three (the sub-component nav filter from Phase 14 hides a type, not the page, unless all are off). The shared directory-table work and the `ENTITY_ACCENT_COLOR`-style per-kind colour stay module-registered (module boundary). Reuse the existing list shell; do not fork a second one.
+- **Save and activate (N20):** a review table first (every type with a draft/active lifecycle: persona, stakeholder, need, requirement, decision, risk, strategy, future state, guiding principle, pain point, open question, engagement, action, change request) giving: lifecycle states, the permission that governs activation, whether a separation-of-duties rule applies, and a verdict (applies / does not apply, with reason). Where it applies, the create form shows **Save and activate** beside **Save**, only to a user who holds the transition permission for that type *and* would pass any self-approval rule; it performs create then the real transition in one request so the audit trail shows both events with the same actor, and one failing means neither is applied. Never a bypass of a gate: if the review finds a type whose transition requires a second person, it is listed as "not applicable" with that reason.
+- **Users and groups parity:** no new person field; if activation is gated on a group, the gate uses effective membership.
+- **Tests:** backend: atomic create+activate, permission and self-approval refusal, both audit events; Storybook for People page (types on/off, no create permission) and the dual button; Playwright: filter, New ▾ for each type, redirect from an old route, and Save and activate for a persona.
+
+### Phase 17 — Quick-link on create (N21)
+
+**Why:** records are rarely meaningful alone, and linking after creation means a second trip through a separate panel. **Risk addressed:** unlinked orphan records; a different linking widget per form. **Outcome:** one compact "Link to ..." field in create forms; an agent rule so it appears by default.
+
+- **Component:** `QuickLinkField` in `components/` — a single-line search combobox (type to search records across the link types the registry allows for this record's type, add as removable chips, chosen link type defaulted per pair from the registry with a "change" affordance). It reuses the Links panel's finder and permission rules, not a second search. Chips show the code and title; qualified codes outside the project (Phase 6).
+- **Backend:** one atomic `POST /projects/{pid}/links/bulk` (all or nothing, each link validated by the existing link service: registry-valid pair, same-organisation, caller can read the target, proposed-link rules apply). The create call stays unchanged; the form calls bulk-link immediately after a successful create. If the link step fails the record is kept, the user sees a Toast naming what failed and a retry on the new record (a record without links is valid state; making creation itself transactional with links would mean changing every create endpoint).
+- **Inventory and rollout (generated):** every create form (modal, side panel, inline), the link types sensible for it (for example pain point to persona, risk to requirement, decision to requirement), and a verdict. Implement in all where relevant: pain point (persona first), stakeholder need, risk, decision, open question, action, change request, requirement.
+- **Agent rule (added to `CLAUDE.md` and the style guide with the component):** "Every create form for a linkable item type includes `QuickLinkField`; omitting it needs a stated reason."
+- **Tests:** backend bulk-link (atomic, permission, cross-org, duplicate, proposed link); Storybook (empty, with chips, no results, error); Playwright: create a pain point with a persona linked and see it in both Links panels.
+
+### Phase 18 — Tags on every item type (N22)
+
+**Why:** items need lightweight, cross-cutting classification (a theme, a release, a regulation) that no fixed field covers. **Risk addressed:** tag sprawl and near-duplicates, an unfindable folksonomy, tags that bypass project permissions. **Outcome:** tags on any item, a governed vocabulary, filters in every list, and the tools to keep it tidy.
+
+- **Data (module boundary, dynamic):** `Tag(id, organization_id, project_id nullable, name, name_key)` with `(scope, name_key)` unique (Q24 normalisation); `ArtefactTag(tag_id, artefact_type, artefact_id)` where `artefact_type` is a plain string validated against `get_all_registered_artefact_types()` (the `ArtefactLink` reference implementation), so modules need no core edit. Project-scoped types use the project vocabulary; org-scoped types (personas, stakeholders, ...) use the organisation vocabulary (Q20). Project setting `tag_mode`: `free` (default) or `restricted` (only listed tags can be applied; only a project admin adds to the list). Child projects inherit the nearest ancestor's vocabulary and mode when they have none of their own (Q21; decision recorded first). Tags are not Restricted-classified data.
+- **API (generic, one router):** list/add/remove tags on any record; manage vocabulary (create, rename, merge, delete with "remove from items" semantics, colour optional); **bulk reclassify** (selected items or all items with tag A: add B, remove A, optionally per item type, preview count first, one audit event per batch with per-record version rows); list endpoints gain `?tag=a&tag=b&tag_mode=any|all`; usage report `GET .../tags/usage?artefact_type=` giving tag × count per type. Permissions: apply/remove tags needs edit rights on the record; vocabulary management needs project admin; all FGAC and module-enablement gates apply; every mutation uses the audit pattern in `services/audit.py`.
+- **UI:** `TagChips` + `TagInput` (autocomplete; in restricted mode a picker only) shown in the shared record header (Phase 5) and in every create form; a tag filter in every list through the shared list-filter component; a Project Admin "Tags" page: vocabulary table (rename, merge, delete, colour), mode switch, and **usage tables, one per item type** (tags as rows, counts, last used, sortable), each with a filter box and checkboxes to hide tags from the table while reviewing; bulk reclassify launched from a table row or from list multi-select. Org Admin gets the same for org-scoped types.
+- **Elsewhere:** project export/import carries tags and the mode; search indexes tags; reports gain a tags column; MCP tools (`list_*` filter, `get_*` field, add/remove) with the skill and generated reference updated in the same change (CLAUDE.md MCP rule); demo and e2e seeds carry tags. Deleting a tag is a Tier-2 confirm that names the number of affected records.
+- **Not done:** hierarchical tags, tag permissions per tag, tag-triggered workflows.
+- **Sub-phases (each shippable):** 18a data, API, bulk operations, tests; 18b chips, filters, record integration; 18c admin tables, usage tables, MCP, export/import.
+- **Tests:** normalisation and uniqueness, restricted vs free, inheritance, cross-project and cross-org isolation, module boundary (a module type is taggable with no core edit), bulk reclassify counts and atomicity, filter and/or semantics on a sample of list endpoints, usage table correctness; Storybook; Playwright: tag an item, filter by it, rename the tag, reclassify, delete it.
+
+### Phase 19 — Create forms accept every field the edit form does (N23)
+
+**Why:** a user cannot enter severity, frequency and confidence when creating a pain point and must reopen it to do so; probably true elsewhere. **Risk addressed:** unscored records that look complete; the class of "create narrower than edit". **Outcome:** create and edit show the same fields (except those that cannot exist before creation, such as comments or attachments).
+
+- **Audit first:** for every create/edit pair, diff the writable fields in the create schema, the edit schema and the two forms; table in this phase's notes, ordered by user impact. Fix the pain point immediately (severity, frequency, confidence, and any derived score shown read-only on create).
+- **Rule:** where possible the create and edit forms share one field-group component, so a field added later appears in both; the audit table lists which pairs were unified.
+- **Tests:** per fixed form, a backend test that the create endpoint accepts and persists the fields, and a Playwright create with all fields set.
+
+### Phase 20 — Nested-project scope filter on every list (N24)
+
+**Why:** in a project tree a user often needs the picture across parent and children, but each list shows one project. **Risk addressed:** cross-project data exposure; slow queries; confusion about which project a row belongs to. **Outcome:** one filter, the same on every list, with a sensible default.
+
+- **Filter options (Q22):** "This project", "This + parents", "This + children", "This + parents + children", shown only when the project has a parent or children. Items come from every project in the chosen set that the user can read (FGAC, project membership/inherited roles) **and** where the item's module and sub-component are enabled for that source project; anything else is silently omitted, never returned redacted.
+- **Backend:** a generic `project_scope` query parameter handled by one helper (`services/project_hierarchy.py`) that resolves the allowed project id set once (cycle-safe, capped, like the existing resolver) and by a shared list-query builder, so each list endpoint changes by one dependency, not new logic; the response row carries `project_id`, `project_name`, `project_code` (Phase 6) so the UI can label it. Cross-organisation is impossible by construction (hierarchy stays inside one organisation). Writes are unchanged: a row from another project opens in that project's own page (the cross-project link behaviour already built).
+- **Frontend:** `ProjectScopeFilter` in the shared list-filter bar; rows from another project show a muted project label; counts and stat blocks state their scope. **Preference (Q23):** user preference `default_project_scope` in `ui_preferences` (Preferences page, with an explainer), overridden per user and project by the filter itself, persisted under a project-keyed key so a change in one project sticks there without changing the global default.
+- **Inventory:** the lists to cover (requirements, change requests, actions, files, every module list) with a verdict each; reports and exports keep their own scope control and are listed, not changed.
+- **Tests:** backend: each option's id set on a three-level tree, a user with access to the parent but not the child, module disabled in the child, cross-org isolation, performance bound (one query for the id set, not per row); Storybook for the filter and a mixed list; Playwright: default from preference, change in a project and revisit.
+
+### Phase 21 — Field help (?) tooltips (N25)
+
+**Why:** several fields have no context for what they mean or do (persona importance weighting, scoring weights, severity scales, link types). **Risk addressed:** guessed values and inconsistent data. **Outcome:** a standard help affordance on every non-obvious field, enforced by a check.
+
+- **Component:** extend the shared form field (`FormGrid` field/label primitive) with an optional `help` prop that renders a `(?)` icon button after the label: keyboard-focusable, accessible name "Help: {label}", opens a `Popover`/`Tooltip` (no nested popovers), dismisses on Escape, works on touch; the text may include a short example. Fields explicitly marked `helpNotNeeded` (title, name, description, obvious ones) opt out and the opt-out is greppable.
+- **Copy:** help text lives in `i18n/strings.ts` beside the labels, written for the end user in one or two sentences stating what it is, what it affects and typical values. Start with the fields with no context: persona importance weighting, scoring weights and scales, severity/frequency/confidence, review cadence, sync and SCIM settings, project codes, RBAC role options, link types.
+- **Check:** a unit test that scans form components for field wrappers that have neither `help` nor `helpNotNeeded`, and fails the build; the sweep batches follow Phase 10's batches.
+- **Agent rule (added to `CLAUDE.md` and the style guide with the component):** "Every non-obvious form field has `help` text; opting out requires `helpNotNeeded` and is reserved for self-explanatory fields."
+- **Tests:** Storybook (default, open, long text, narrow); Playwright: open and close help by mouse and keyboard on the persona form.
+
+### Phase 22 — Close-out
+
+- Docs website audit for every user-visible change (the label, Help, header and menu, codes, activity tab, forms, Server Management modules page, hide/restore of org defaults, People page, Save and activate, quick-link, tags, scope filter, field help, nav order), retake affected screenshots, README, `docs/solution-architecture.md` (project codes, activity endpoint, ontology), `docs/modules.md` (any new registration fields), `docs/decisions.md` entries with Decided-by tags, style guide updates (list below), memory index.
+- Seeds: both seed scripts get organisation and project codes under the org policy, tags (free and restricted projects, one nested tree for the scope filter), a hidden org default in one project, server module defaults, all modules on, a long-titled record per type for the layout check, and no codeless record.
+- `CLAUDE.md` agent rules added by their phases are confirmed present: org-default hide/restore (15), quick-link on create (17), field help (21), module-visibility (13), plus the save-and-activate review (16).
+- Style guide sections added or changed: organisation defaults in a project, quick-link, field help, People list and New menu, scope filter, tags, pills, text beside controls, icon scale, record header and object actions, links aside tabs, form checklist, the stale token-table row.
+- Move this plan to `docs/plans/completed/` (Phase 2's rule) when 22/22.
 
 ## 5. Standing checklist per phase
 
 - Tests: backend pytest for every backend change (one `pytest` at a time); Playwright and Storybook for every UI change; tests independent and idempotent.
-- SOC 2: consult the access-control, system-operations and data-classification policies for phases 6–9 (codes are not Restricted, but the activity endpoint reads audit data); identify → verify → remediate recorded in `docs/decisions.md`.
+- SOC 2: consult the access-control, system-operations and data-classification policies for phases 6–9 (codes are not Restricted, but the activity endpoint reads audit data) and 13, 15, 18, 20 (module gating, RBAC-adjacent suppression, tag permissions, cross-project reads); identify → verify → remediate recorded in `docs/decisions.md`.
 - Module boundary: no core file imports a module; per-module values (prefixes, accent, scope) come from registrations; Phase 8's counter change is a generic extension, not a per-module edit.
 - Users and groups parity: no new person field is introduced; any one found is built for groups too.
-- Nested projects: stated per phase where a table is added (none is a definition table).
-- Seeds, docs website, README, decisions log, style guide: as listed in Phase 12, but updated in the phase that changes the behaviour.
+- Nested projects: stated per phase where a table is added. Round two adds two that need the explicit decision: tags (Q21, definition-like) and org-default suppression (Phase 15); `ServerModuleDefault` is server-wide and not applicable.
+- Seeds, docs website, README, decisions log, style guide: as listed in Phase 22, but updated in the phase that changes the behaviour.
 - Git: the user commits; work is handed back verified.
 
 ## 6. Risks
@@ -234,4 +409,13 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 | Organisation code collides with a project code, making a qualified code ambiguous | Codes share one namespace per organisation; the uniqueness check covers both; tested. |
 | Docs image built with the wrong base path, so internal links 404 | `baseUrl` is a build arg; CI smoke test requests a nested page at the configured path. |
 | Forms sweep never ends | Rule-based inventory, signed off; batches; user can stop between them. |
-| Scope: this is large | Phases 1–2 ship alone; each later phase is independently shippable; order above is the recommendation, not a dependency chain beyond the arrows. |
+| Flipping module defaults switches modules on in live orgs | Fresh-install seeding only; server default table, not the registry constant; explicit "Apply to all" action (Q15). |
+| Hiding modules from admins hides a module someone is still using | Hiding is display only; rows and data stay; server admin sees all; the module's own 404 gates are unchanged. |
+| Health probe change masks a real fault | Probe still hits `/health`; `/health` now returns 503 on database failure; the diagnosis step records evidence before the fix. |
+| Org-default tombstones diverge from the nested-project fallback | One resolver subtracts them; nested-chain tests; decision recorded before building (Phase 15). |
+| Save and activate bypasses a separation-of-duties rule | Same permission and self-approval checks as the transition; atomic create plus transition; per-type review. |
+| Quick-link leaves a record created but unlinked | Documented as valid state; Toast with retry; bulk call is atomic. |
+| Tags become an unmanaged folksonomy, or leak across projects | Normalisation, restricted mode, merge and usage tables; tags carry the same read gate as the record; cross-project isolation tests. |
+| Scope filter exposes or slows | Allowed project set resolved once and filtered by read gate and module enablement; omit, never redact; query-count test. |
+| Help text written once and rotting | Text beside the labels in `strings.ts`, build-failing scan for missing `help`, reviewed in Phase 10 batches. |
+| Scope: this is large | Phases 1–2 and 12–14 ship alone; each later phase is independently shippable; order above is the recommendation, not a dependency chain beyond the arrows. |

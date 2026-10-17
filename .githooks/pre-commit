@@ -33,6 +33,14 @@ if git diff --cached --name-only | grep -qE '\.(md|py|ts|tsx|css|ya?ml|sh|txt)$|
   }
 fi
 
+# Container health probes must use 127.0.0.1, not localhost; see scripts/check_health_probes.py.
+if git diff --cached --name-only | grep -qE '(^|/)(Dockerfile[^/]*|docker-compose[^/]*\.ya?ml)$'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check_health_probes.py" || {
+    echo "pre-commit: use 127.0.0.1 (not localhost) in the health probe(s) above, re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
 for project in "${PROJECTS[@]}"; do
   if ! git diff --cached --name-only | grep -qE "^${project}/(package\.json|package-lock\.json)$"; then
     continue

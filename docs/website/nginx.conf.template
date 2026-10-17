@@ -2,6 +2,7 @@
 # Docusaurus is built with `trailingSlash: false`, so /a/b is the file a/b.html.
 server {
     listen 8080;
+    listen [::]:8080;  # keep: IPv6 is always supported
     root /usr/share/nginx/html;
 
     add_header X-Content-Type-Options "nosniff" always;

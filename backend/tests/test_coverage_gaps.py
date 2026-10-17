@@ -13,6 +13,21 @@ def test_health_endpoint_reports_ok(client):
     assert resp.json() == {"status": "ok", "database": "ok"}
 
 
+def test_health_endpoint_returns_503_when_database_unreachable(client, monkeypatch):
+    """`curl -f` and load balancers only see the status code, so a database
+    outage must not be reported as HTTP 200."""
+    from app.routers import health as health_router
+
+    class _BrokenEngine:
+        def connect(self):
+            raise RuntimeError("database down")
+
+    monkeypatch.setattr(health_router, "engine", _BrokenEngine())
+    resp = client.get("/health")
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "degraded", "database": "unreachable"}
+
+
 def test_metrics_endpoint_returns_prometheus_text(client, admin_token):
     # Generate at least one request so a counter has a nonzero sample.
     client.get("/api/v1/auth/me", headers=auth_headers(admin_token))

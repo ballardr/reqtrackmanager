@@ -41,7 +41,8 @@ def test_all_documentation_references_resolve():
 
 def test_checker_flags_a_dangling_mention(tmp_path, monkeypatch):
     """A `docs/` path that does not exist is reported, so the check cannot silently pass."""
-    (tmp_path / "note.md").write_text("See docs/does-not-exist.md and [x](missing.md).\n")
+    # Built by concatenation so the checker does not flag this test's own fixture text.
+    (tmp_path / "note.md").write_text("See docs/" + "does-not-exist.md and [x](missing.md).\n")
     monkeypatch.setattr(checker, "ROOT", tmp_path)
     problems = checker.check_file("note.md")
     assert any("does-not-exist.md" in p for p in problems)
@@ -53,7 +54,7 @@ def test_source_files_may_not_name_plan_documents(tmp_path, monkeypatch):
     (tmp_path / "docs" / "plans").mkdir(parents=True)
     (tmp_path / "docs" / "plans" / "example-plan.md").write_text("# Example\n")
     (tmp_path / "mod.py").write_text('"""Built per example-plan.md Phase 2."""\n')
-    (tmp_path / "other.py").write_text("# See docs/plans/anything.md\n")
+    (tmp_path / "other.py").write_text("# See docs/plans/" + "anything.md\n")
     monkeypatch.setattr(checker, "ROOT", tmp_path)
     assert any("names a plan document" in p for p in checker.check_file("mod.py"))
     assert any("names a plan document" in p for p in checker.check_file("other.py"))

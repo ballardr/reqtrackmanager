@@ -44,8 +44,10 @@ This adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, and Gr
 
 Every container in both Compose stacks has a Docker health check, so `docker compose ps` reports each service's actual liveness rather than just "running." The backend additionally exposes:
 
-- `GET /health` — `{"status": "ok", "database": "ok"}` when the app and its database connection are both healthy.
+- `GET /health` — HTTP 200 with `{"status": "ok", "database": "ok"}` when the app and its database connection are both healthy. When the database is unreachable (or does not answer within 3 seconds) it returns HTTP 503 with `{"status": "degraded", "database": "unreachable"}`, so `curl -f` and load balancers see the failure.
 - `GET /metrics` — Prometheus-format metrics, pre-scraped by the bundled Prometheus configuration when the observability profile is enabled.
+
+Container probes address `127.0.0.1` (not `localhost`) and have a start period, so a slow first boot or an IPv6-first host does not report a working service as unhealthy.
 
 ### Request rate and database activity
 
