@@ -86,8 +86,7 @@ export const ImagePickerLoadError: Story = {
 };
 
 /** The link toolbar button opens the app's own Modal rather than the
- * browser's native `window.prompt()` (2026-08 UX audit finding — this was
- * the one native-prompt usage in the app) — portalled to `document.body`,
+ * browser's native `window.prompt()` — portalled to `document.body`,
  * same as every other Modal usage in this codebase. */
 export const InsertLink: Story = {
   play: async ({ canvasElement }) => {

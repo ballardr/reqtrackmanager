@@ -1,6 +1,6 @@
 """Regression pins for the `ServerSettings` singleton race found
-incidentally while verifying the follow-up UX batch's Phase D
-(docs/decisions.md) — unrelated to that phase's own work, but a real bug:
+incidentally on 2026-08-31
+(docs/decisions.md) — unrelated to the work being verified, but a real bug:
 `get_server_settings` (`backend/app/services/branding.py`) used to be a
 pure application-level "read then insert if absent" check with no DB
 constraint backing it, so two concurrent requests could both observe "no

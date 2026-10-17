@@ -11,8 +11,7 @@ export default meta;
 
 type Story = StoryObj<typeof ResultCount>;
 
-/** No filter/search narrowing the result set (`matching === total`,
- * 2026-08 UX audit roadmap: persistent "showing X of Y" result count) —
+/** No filter/search narrowing the result set —
  * shows just the total, e.g. on first load of a list page before any
  * filter/search is applied. */
 export const TotalOnly: Story = {

@@ -1,4 +1,4 @@
-"""Generic scoring-matrix tables (Module 1 — Context & Strategy — Phase 10)
+"""Generic scoring-matrix tables (Context & Strategy)
 
 Revision ID: 0057
 Revises: 0056

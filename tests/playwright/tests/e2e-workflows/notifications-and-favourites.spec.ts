@@ -61,8 +61,7 @@ test.describe("notifications page and favourites page", () => {
         await Promise.all([page.waitForResponse((r) => r.url().includes("/favorite")), favouriteButton.click()]);
       }
 
-      // Reactive nav rail (2026-08 UX audit roadmap row 512,
-      // `FavouritesContext`) — the "Favourites" rail link appears right
+      // Reactive nav rail — the "Favourites" rail link appears right
       // away, without needing to navigate to /projects or /favourites again
       // first (the previous behaviour this spec used to have to work
       // around by going straight to /favourites via `page.goto` instead of

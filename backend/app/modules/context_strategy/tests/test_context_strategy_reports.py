@@ -1,5 +1,4 @@
-"""Tests for the Context & Strategy reports R1–R9 (docs/plans/module-01-
-context-and-strategy-plan.md Phase 12), through the real HTTP endpoints.
+"""Tests for the Context & Strategy reports R1–R9, through the real HTTP endpoints.
 
 Covers, per report: content, gap detection and the sections the summary pack
 re-lists. Cross-cutting: model and roll-up switching (R1), intentional-item

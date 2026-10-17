@@ -14,7 +14,7 @@ lived as `_collect_compliance_export_data`/`_import_compliance_vocab`/
 `_collect_project_compliance_data`/`_apply_project_compliance_data`; see
 `docs/decisions.md`'s "Compliance module self-containment" entry for why.
 
-Two bundle levels, matching this module's own established Phase 15 split
+Two bundle levels, matching this module's established split
 (see `modules.compliance.reports`'s identical org/project distinction):
 
 - Organisation level (`export_org_data`/`import_org_data`/`compute_org_
@@ -43,7 +43,7 @@ action_key`'s `(reference, name)`/`name` matching keys), never a raw
 database id — mirroring every other cross-reference in this bundle format
 (`org_export`/`project_export`'s own established convention).
 
-Phase 21 (docs/compliance-module-plan.md, §29) adds a third, narrower level:
+A third, narrower level (§29):
 `export_standard_data`/`import_standard_data` — a single `ComplianceStandard`
 as its own portable JSON document (`GET .../standards/{id}/export`/
 `POST .../standards/import` on `router.py`), distinct from the whole-org
@@ -174,7 +174,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     (`"<standard reference>::v<version number>::<n>"`) so `parent_
     requirement_id`, `cloned_from_requirement_id` (which may point at a
     requirement in an *earlier* version of the same standard — see
-    `models.py`'s own Phase 11 notes), and requirement-mapping endpoints
+    `models.py`'s notes), and requirement-mapping endpoints
     never carry a raw database id, mirroring every other cross-reference in
     this bundle format. `standard.versions` is walked in its own natural
     `version_number` order (see `ComplianceStandard.versions`'s own
@@ -392,7 +392,7 @@ def _import_compliance_vocab(db: Session, org: Organization, data: dict[str, Any
     labels with no history or sub-content, and overwriting `implies_
     equivalence` on an existing type as a side effect of an unrelated import
     would silently change a Compliance Manager's own prior decision about it
-    (see `models.py`'s own Phase 11 notes on why that flag defaults `False`
+    (see `models.py` on why that flag defaults `False`
     and is deliberately never inferred). Must run before `_import_
     compliance_standards`, whose required actions resolve `action_type_name`
     against the rows this creates."""
@@ -629,13 +629,13 @@ def import_org_data(
     _import_compliance_requirement_mappings(db, org, data, users, requirement_id_by_ref, warnings)
 
 
-# --- Phase 21: standard-level import/export -----------------------------------
+# --- standard-level import/export -----------------------------------
 #
 # A narrower sibling to `export_org_data`/`import_org_data` above: a single
 # `ComplianceStandard` (with every version's full requirement/required-
 # action tree) as its own portable, self-contained JSON document — for
 # backing up or transferring just one standard, rather than an entire
-# organisation. See docs/compliance-module-plan.md's Phase 21 spec for the
+# organisation. See spec for the
 # full design; the short version is in each function's own docstring below.
 
 STANDARD_EXPORT_FORMAT = "reqtrackmanager.compliance_standard.v1"
@@ -666,7 +666,7 @@ def _mapping_side_json(
 
 
 def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str, Any]:
-    """Exports a single `ComplianceStandard` (Phase 21, §29) as a portable,
+    """Exports a single `ComplianceStandard` (§29) as a portable,
     self-contained JSON document distinct from `export_org_data`'s whole-
     organisation bundle — every version's full requirement/required-action
     tree, plus only the subset of the organisation's action-type/mapping-
@@ -680,8 +680,7 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
     `compliance_action_types`/`compliance_mapping_relationship_types`
     top-level key names, so `import_standard_data` can hand this
     document's own `data` straight to `_import_compliance_vocab` unchanged
-    — "reuse `export.py`'s existing portable-key convention wholesale" per
-    this phase's own spec.
+    — "reuse `export.py`'s existing portable-key convention wholesale".
 
     A requirement mapping (§19) touching this standard is always included,
     even when its *other* side belongs to a different standard — that side
@@ -724,7 +723,7 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
     # Only the action types this standard's own required actions actually
     # use, resolved by name after the loop above (mirrors `export_org_
     # data`'s own `action_type_name_by_id`, scoped down) — "not the whole
-    # org's vocabulary" per this phase's own spec.
+    # org's vocabulary".
     action_type_ids = {a.action_type_id for a in all_required_actions}
     action_types_used = (
         list(db.scalars(select(ComplianceActionTypeDefinition).where(ComplianceActionTypeDefinition.id.in_(action_type_ids))))
@@ -884,7 +883,7 @@ def import_standard_data(
     """Creates a single `ComplianceStandard` — with every version's full
     requirement/required-action tree, always re-created as `DRAFT`
     regardless of the exported version's own status — from an
-    `export_standard_data` document (Phase 21, §29), in `org`. §4/§31: an
+    `export_standard_data` document (§29), in `org`. §4/§31: an
     imported standard must be reviewed and re-published locally before it
     governs any project, never silently live — this is the one deliberate
     departure from the export's own recorded `status`/`published_*`/
@@ -1110,7 +1109,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         action_by_id = {a.id: a for actions in actions_by_requirement_id.values() for a in actions}
 
         # Evidence links now live in the generic `ArtefactLink` table
-        # (Module 0 — Platform Foundations, Phase 3), evidence as source;
+        #, evidence as source;
         # filtering to `source_type == COMPLIANCE_EVIDENCE` keeps this
         # correct by construction (mirrors `routers.requirements.
         # list_links`'s established precedent for the same filter shape).

@@ -8,7 +8,7 @@
  * Interest show the org's level *names* (`scheme`); they are plain labels, the
  * grid position itself is only computed server-side.
  *
- * Groups (Phase 3c): `groups` adds a Groups column, a group filter (a group's
+ * Groups: `groups` adds a Groups column, a group filter (a group's
  * members include those in its descendants unless "Directly in the group only" is
  * ticked) and a "Group by" control. Grouping by a top-level group adds a column
  * named for it that shows each stakeholder's branch(es) under it and orders the

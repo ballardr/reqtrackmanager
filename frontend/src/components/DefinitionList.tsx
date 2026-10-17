@@ -79,7 +79,7 @@ export interface DefinitionListProps<T extends { id: string }> {
    * reorder/delete buttons — for a field this component's own text-only
    * `fields` contract can't express (e.g. a boolean toggle). Added for the
    * Compliance Module's mapping-relationship-type vocabulary
-   * (`implies_equivalence`, docs/compliance-module-plan.md Phase 12) rather
+   * (`implies_equivalence`) rather
    * than bolting a boolean-specific field type onto `DefinitionListField`
    * itself — a generic escape hatch here benefits any future "definition"
    * entity with one extra non-text attribute, not just this one caller.

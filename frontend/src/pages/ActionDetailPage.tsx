@@ -155,8 +155,7 @@ export function ActionDetailPage() {
   // Restore: no `ConfirmDialog` (unlike archive above) — mirrors
   // `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
   // immediately, since restoring is reversible again (archive it right
-  // back) rather than a Tier-1-confirmed action (2026-08 UX audit roadmap:
-  // unarchive endpoint + Restore button).
+  // back) rather than a Tier-1-confirmed action.
   async function restore() {
     try {
       await api.post(`/api/v1/projects/${projectId}/actions/${actionId}/unarchive`);

@@ -12,8 +12,7 @@ import { RISK_SCORING_SCHEME, RISK_STATUS_LABEL } from "./types";
 /**
  * Module: modules/risk_management/module
  *
- * The Risk Management module's frontend registration (docs/plans/module-03-
- * risk-management-plan.md Phase 5) — the mirror of `backend/app/modules/
+ * The Risk Management module's frontend registration — the mirror of `backend/app/modules/
  * risk_management/module.py`'s `MODULE_DEFINITION`. `registry.ts`
  * auto-discovers this file; no core file is edited to add it.
  *

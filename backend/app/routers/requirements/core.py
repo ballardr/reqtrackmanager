@@ -316,16 +316,14 @@ def list_requirements(
     returned in the `X-Total-Count` response header so a client can tell
     whether more pages remain.
 
-    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
-    tables") optionally overrides the default component/category/manual-
+    `sort` optionally overrides the default component/category/manual-
     order sort below with a single-column sort by `unique_code`, `name`,
     `status`, or `created_at`; `order` picks `asc` (default) or `desc`.
     Omitting `sort` leaves the existing default ordering completely
     unchanged, so this is additive, not a breaking change to callers that
     don't ask for it.
 
-    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
-    2026-08 UX audit roadmap) is a second response header reporting the
+    `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory project + default archived-visibility
     scope, before component/category/search/status/completed/stage/comments/
     watched filters below narrow it further — unlike `X-Total-Count`, it does not
@@ -749,8 +747,7 @@ def restore_requirement(
     """Restores an archived requirement to the active list, undoing
     `delete_requirement` — same permission gate (managers/administrators),
     same audit-log shape, mirroring `routers.projects::unarchive_project`
-    (see that endpoint's docstring/precedent, per the 2026-08 UX audit's
-    roadmap item on one-way archive). Unlike `delete_requirement`, calling
+. Unlike `delete_requirement`, calling
     this on a requirement that isn't archived is a harmless no-op rather
     than an error, matching `unarchive_project`'s own idempotent shape.
     """

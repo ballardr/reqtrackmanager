@@ -1,11 +1,10 @@
-"""Persona data model (Module 2 Phase 1.1)
+"""Persona data model
 
 Revision ID: 0058
 Revises: 0057
 Create Date: 2026-10-05
 
-Adds the Persona tables (docs/plans/module-02-stakeholders-and-personas-plan.md
-Phase 1.1): `persona_type_definitions`/`project_persona_types` (two-tier type
+Adds the Persona tables: `persona_type_definitions`/`project_persona_types` (two-tier type
 vocabulary), `personas`/`persona_versions` (identity + temporal content, org or
 project scope), `project_persona_weights` (per-project weight override), and the
 module-local comment/attachment tables.

@@ -1,8 +1,7 @@
 """
 Module: modules.stakeholders.groups
 
-Business logic for Stakeholder Groups (Phase 3c, docs/plans/module-02-
-stakeholders-and-personas-plan.md Phase 0 addendum 3): a tree of org- or
+Business logic for Stakeholder Groups: a tree of org- or
 project-scoped classification groups with many-to-many stakeholder membership.
 
 Responsibilities:
@@ -19,7 +18,7 @@ Responsibilities:
 - Proposing and creating groups from the stakeholders' free-text
   "organisation / group" field.
 
-Design decisions (Decided by: Agent, see the plan's addendum 3):
+Design decisions (Decided by: Agent):
 - Walks are cycle-safe and depth-capped (`MAX_GROUP_DEPTH`).
 - A viewer's "universe" is its org's groups plus, in a project, that project's
   own groups: another project's groups are never read or named.
@@ -223,7 +222,7 @@ def _validate_parent(
     parent_group_id: uuid.UUID, *, own_subtree: dict[uuid.UUID, StakeholderGroup] | None = None,
     own: StakeholderGroup | None = None,
 ) -> StakeholderGroup:
-    """The parent group, after the scope, cycle and depth rules (item 26).
+    """The parent group, after the scope, cycle and depth rules.
 
     Raises:
         GroupRuleError: 400 if the parent is absent/out of reach or the depth cap would be exceeded;
@@ -302,7 +301,7 @@ def update_group(
 def delete_group(db: Session, group: StakeholderGroup) -> tuple[int, int]:
     """Deletes a group: its memberships and every `ArtefactLink` touching it (an Engagement's audience
     link, a Requirement's "affects") go (never the stakeholders) and its children are promoted
-    to its parent (item 32). Returns `(members removed, children promoted)`.
+    to its parent. Returns `(members removed, children promoted)`.
 
     Raises:
         GroupRuleError: 409 if a promoted child's name clashes with a sibling at the new level, or
@@ -381,7 +380,7 @@ def add_member(
     """Adds `stakeholder` to `group` directly.
 
     Raises:
-        GroupRuleError: 400 if the scope rules (item 26) forbid the pair; 409 on a duplicate or an
+        GroupRuleError: 400 if the scope rules forbid the pair; 409 on a duplicate or an
             `exclusive_children` conflict naming the existing branch.
     """
     if group.scope == StakeholderScope.ORGANIZATION:

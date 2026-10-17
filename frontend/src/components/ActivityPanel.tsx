@@ -10,8 +10,7 @@ import { useOrgLabelCapitalized } from "../context/BrandingContext";
  * (`describeActivityEntry`/`activityEntityLabel` in `api/types.ts`) —
  * previously each of the three built its own, inconsistent rendering.
  *
- * `ProjectHistoryPage.tsx` also renders this component directly (2026-08
- * UX audit roadmap row 515, "same data, duplicated rendering") rather than
+ * `ProjectHistoryPage.tsx` also renders this component directly rather than
  * hand-rolling its own list markup, which needed two additions beyond the
  * original single-requirement/-change-request side panel use:
  * `getLink` — a project-wide list spans many different requirements/change
@@ -38,7 +37,7 @@ export function ActivityPanel({
   /** Skips the outer `.card` wrapper and "Activity" heading, rendering
    * just the entry list — for a caller that already provides its own card
    * and (possibly toggled) heading, e.g. `RequirementDetailPage`'s merged
-   * History/Activity card (2026-08 UX audit roadmap item 516), whose
+   * History/Activity card, whose
    * heading switches between "Version history" and "Activity" depending
    * on which view is selected rather than always reading "Activity". */
   bare?: boolean;

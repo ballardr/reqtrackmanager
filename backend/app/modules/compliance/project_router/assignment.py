@@ -1,7 +1,7 @@
 """
 Module: modules.compliance.project_router.assignment
 
-A project's own compliance-standard assignments (Phase 7/9/11): list/
+A project's own compliance-standard assignments: list/
 get, self-service assignment (§20), version migration (§27, with its
 optional `confirmed_replacement_requirement_ids` carry-forward), plus
 this project's overall status/non-compliant-requirements/pending-
@@ -65,7 +65,7 @@ def list_project_compliance(
     """Lists every standard assigned to this project (§21's "All compliance
     standards assigned to the project"), including archived ones — a
     caller wanting only active assignments can filter client-side; unlike
-    Phase 6's standards listing, this project-scoped list is small enough
+    the org-wide standards listing, this project-scoped list is small enough
     that a query flag isn't worth adding yet."""
     return db.scalars(
         select(ProjectCompliance).where(ProjectCompliance.project_id == project_id)
@@ -88,14 +88,13 @@ def create_project_compliance_self_service(
     project_id: UUID, payload: ProjectComplianceCreate,
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
 ):
-    """Phase 20's **default, primary** way a project acquires a standard:
+    """The **default, primary** way a project acquires a standard:
     a `compliance_officer` grant or `ProjectRole.PROJECT_MANAGER` (this
     router's own established `_require_officer` composition, unchanged) may
     assign any `PUBLISHED` version of any non-archived standard in their
     project's own organisation, without needing a Compliance Manager to act
     on their behalf first. Payload/response shape is identical to the org
-    router's own `create_project_compliance` (`router.py:1485` before this
-    phase) — the two endpoints differ only in *who* may call them and
+    router's own `create_project_compliance` — the two endpoints differ only in *who* may call them and
     *which router* they live on, matching this repo's existing "assignment
     lives wherever the RBAC boundary for that action already lives" split
     (`project_router.py`'s own module docstring).
@@ -104,7 +103,7 @@ def create_project_compliance_self_service(
     own `applicability_default`/exclusion-list setting (§3) — that stays
     Compliance-Manager/org-admin territory on `router.py`. This endpoint
     only ever creates a `ProjectCompliance` row for *this* project, the
-    exact same boundary Phase 7 already drew between "who curates the
+    exact same boundary already drawn between "who curates the
     org-wide catalogue" and "who runs day-to-day assessment" — making PM-
     initiated assignment the default path shifts *which project links
     exist*, not *who governs the standard itself*."""
@@ -182,7 +181,7 @@ def migrate_project_compliance_version(
 
     Never mutates the existing assignment's own `standard_version_id`
     (§27's "Existing Project Compliance assignments must remain associated
-    with their original version" — Phase 7's own pinned-forever design) —
+    with their original version" — the pinned-forever design) —
     creates a new `ProjectCompliance` row instead (`service.migrate_
     project_compliance`) and archives the old one here, so the old row's
     own `ProjectComplianceRequirement` history is retained completely
@@ -192,7 +191,7 @@ def migrate_project_compliance_version(
 
     `payload.confirmed_replacement_requirement_ids` is the officer's own
     per-migration opt-in to carry an assessment forward across a
-    `replaced` version-diff pair (§27; `models.py`'s own Phase 11 notes on
+    `replaced` version-diff pair (§27; `models.py`'s cross-standard mapping design decisions on
     `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`).
     Validated against a freshly computed diff *before* calling `service.
     migrate_project_compliance` — every id must name a new-version
@@ -314,7 +313,7 @@ def get_project_status(
 ):
     """§20's overall status summary, one entry per active (non-archived)
     standard assigned to this project — the `compliance_get_project_status`
-    MCP tool (Phase 4/6's module.py). A project may have several standards
+    MCP tool. A project may have several standards
     assigned at once (§7's own worked example), so this returns a list
     rather than inventing a single cross-standard aggregate nothing in the
     requirements asks for."""
@@ -334,8 +333,8 @@ def list_non_compliant_requirements(
     active standard assignments (§20/§21's "Non-Compliant requirements" as
     its own drillable list) — the `compliance_list_non_compliant_
     requirements` MCP tool. Delegates to `service.py::list_non_compliant_
-    requirements_for_project`, shared verbatim with `router.py`'s Phase 14
-    org-wide aggregation (moved there in Phase 14; behaviour unchanged)."""
+    requirements_for_project`, shared verbatim with `router.py`'s
+    org-wide aggregation."""
     return list_non_compliant_requirements_for_project(db, project_id=project_id)
 
 
@@ -347,8 +346,7 @@ def list_pending_approvals(
     active standard assignments (§12's "Pending Approval" as its own
     drillable list) — the `compliance_list_pending_approvals` MCP tool.
     Delegates to `service.py::list_pending_approvals_for_project`, shared
-    verbatim with `router.py`'s Phase 14 org-wide aggregation (moved there
-    in Phase 14; behaviour unchanged)."""
+    verbatim with `router.py`'s org-wide aggregation."""
     return list_pending_approvals_for_project(db, project_id=project_id)
 
 
@@ -358,11 +356,10 @@ def list_outstanding_required_actions(
 ):
     """Every incomplete required-action assessment whose owning requirement
     is currently applicable, across this project's active standard
-    assignments (Phase 14, §22's "outstanding Required Actions" as its own
-    drillable list — added alongside the org-wide aggregation of the same
-    name in `router.py` since no flattened listing existed for this at
-    either scope before Phase 14, only the per-requirement nested
-    `.../required-action-assessments` endpoint from Phase 7). Delegates to
+    assignments (§22's "outstanding Required Actions" as its own
+    drillable list, alongside the org-wide aggregation of the same
+    name in `router.py` and the per-requirement nested
+    `.../required-action-assessments` endpoint). Delegates to
     `service.py::list_outstanding_required_actions_for_project`, shared
     verbatim with the org-wide version."""
     return list_outstanding_required_actions_for_project(db, project_id=project_id)
@@ -387,7 +384,7 @@ def get_project_compliance_report(
     caller couldn't already read via the JSON endpoints it's built from
     (see `app.modules.compliance.reports`'s own module docstring).
 
-    `standard_id`/`standard_version_id`/`requirement_id` (Phase 43) are
+    `standard_id`/`standard_version_id`/`requirement_id` are
     optional scoping filters — see `collect_project_compliance_report`'s own
     docstring — passed by `OutstandingPanel.tsx`'s Export trigger to match
     whatever that panel's own Standard/Standard version/Sub-section filters

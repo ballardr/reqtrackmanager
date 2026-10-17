@@ -23,20 +23,20 @@
  * (not its component) is the right level of reuse, matching how
  * `ProjectTree` itself is not shared beyond project hierarchy either.
  *
- * Phase 23 (Standard workspace UX overhaul) adds a `ViewToggle` between
- * this tree (unchanged — still the authoring/reordering view, hierarchy
- * intact) and a new flat list view for scanning/searching a large
+ * A `ViewToggle` switches between
+ * this tree (the authoring/reordering view, hierarchy
+ * intact) and a flat list view for scanning/searching a large
  * standard, with a `FilterPanel` (search text, mandatory-only, action
  * type) that applies to the list view only — filtering the flat list
  * before the tree is built would silently hide a matching child whose
  * ancestor didn't match, so the tree itself stays deliberately unfiltered,
- * matching this phase's own "the tree is for authoring, the list is for
+ * matching the "the tree is for authoring, the list is for
  * scanning" framing. Clicking a list-view row opens a `SidePanel` detail
  * view (`RequirementDetailPanel` below) with `AutoGrowTextarea` fields for
  * description/reasoning, the same component `RequirementsPage.tsx`'s own
  * detail editing already uses, editable only while `isDraft`.
  *
- * Phase 24 adds a "Clarify" action (tree and list/detail view alike),
+ * A "Clarify" action (tree and list/detail view alike) is
  * shown once `isPublished` is true (mutually exclusive with `isDraft`'s own
  * edit/delete/move controls — a requirement is either freely editable, on
  * a draft version, or only clarifiable, on a published one; never both) —
@@ -65,7 +65,7 @@ interface Props {
   standardId: string;
   versionId: string;
   isDraft: boolean;
-  /** Phase 24 — whether the owning version is `published` (as opposed to
+  /** Whether the owning version is `published` (as opposed to
    * `draft` or `retired`), the one status the "Clarify" action is offered
    * on (mirrors `clarify_requirement`'s own backend 409 on any other
    * status). */
@@ -73,8 +73,8 @@ interface Props {
   actionTypes: ComplianceActionType[];
 }
 
-/** A small `.badge` marking a requirement clarified at least once (Phase
- * 24) — shown in the tree, list, and detail views alike. The note is
+/** A small `.badge` marking a requirement clarified at least once —
+ * shown in the tree, list, and detail views alike. The note is
  * surfaced via the native `title` tooltip on hover/click, mirroring how
  * this codebase already surfaces secondary detail without a second
  * control (e.g. this same file's own `title="View mappings"` buttons). */
@@ -598,7 +598,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
 }
 
 /**
- * The list view's "open full detail" panel (Phase 23) — a `SidePanel`
+ * The list view's "open full detail" panel — a `SidePanel`
  * reusing `AutoGrowTextarea` for description/reasoning, the same field
  * component `RequirementsPage.tsx`'s own detail editing already uses.
  * Reference/name/description/reasoning are editable while `isDraft`
@@ -826,7 +826,7 @@ function RequiredActionFormModal({
 }
 
 /**
- * Phase 24's "Clarify" action — a narrower, mandatory-note-gated sibling of
+ * The "Clarify" action — a narrower, mandatory-note-gated sibling of
  * `RequirementFormModal`, for a requirement on a **published** version.
  * Pre-fills the same reference/name/description/reasoning fields (a
  * clarification is a correction/elaboration to this requirement's own

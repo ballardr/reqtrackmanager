@@ -1,10 +1,9 @@
-"""Tests for Fine-Grained Access Control's Phase 2
-(`docs/plans/core-fine-grained-access-control-plan.md`): `get_effective_
+"""Tests for Fine-Grained Access Control's `get_effective_
 permissions`, `permission_satisfied`'s sub-type wildcard composition rule,
 and the `require_permission` FastAPI dependency factory — the resolution
-engine Phase 1's data model (`test_custom_roles.py`) was inert without.
+engine the data model (`test_custom_roles.py`) is inert without.
 
-Covers, in order: the static fixed-role mapping (Design Principle 3, zero
+Covers, in order: the static fixed-role mapping (zero
 behavioural change for an org that never touches custom roles), direct and
 group custom-role grants at both `"org"` and `"project"` scope (including
 tenant isolation across organisations), the optional `ModuleRoleDefinition.
@@ -54,7 +53,7 @@ class _FakeRequest:
 @pytest.fixture
 def fake_module():
     """Registers a fake module with one project-scoped role declaring a
-    `permissions` entry, for testing Phase 2's module-role-permissions
+    `permissions` entry, for testing the module-role-permissions
     union — mirrors `test_module_contributed_roles.py`'s own fixture
     mechanics exactly (mutate `INSTALLED_MODULES` in place, rebuild the
     registry cache, always tear down)."""
@@ -89,7 +88,7 @@ def _set_project_role(client, admin_token, project_id, user_id, role) -> None:
     assert resp.status_code in (200, 201, 204), resp.text
 
 
-# --- Static fixed-role mapping (Design Principle 3) --------------------------
+# --- Static fixed-role mapping --------------------------------------------
 
 
 def test_org_admin_has_administrative_but_no_artefact_permissions(client, admin_token):
@@ -364,7 +363,7 @@ def test_module_role_permissions_field_absent_when_module_disabled(client, admin
 def test_module_role_permissions_field_absent_when_project_level_override_disables(
     client, admin_token, fake_module
 ):
-    """Module 0 (Platform Foundations) Phase 5 regression: `_module_role_
+    """Regression (Platform Foundations): `_module_role_
     permission_grants` (inside `get_effective_permissions`) used to check
     the org-only `is_module_enabled` for a project-scoped grant, bypassing
     any project-level override entirely. A project that has disabled this
@@ -399,7 +398,7 @@ def test_module_role_permissions_field_absent_when_project_level_override_disabl
         db.close()
 
 
-# --- Sub-type wildcard composition (Phase 0 Q3) -------------------------------
+# --- Sub-type wildcard composition -------------------------------
 
 
 def test_permission_satisfied_wildcard_composition():
@@ -426,8 +425,8 @@ def test_permission_satisfied_wildcard_composition():
 
 def test_require_permission_server_admin_bypasses(client, admin_token):
     """A route declaring an `organization_id` path parameter, as every real
-    caller does, still needs one even for a server admin (Phase 8 fix moved
-    scope resolution ahead of the `is_server_admin` check, so the "no scope
+    caller does, still needs one even for a server admin (scope resolution runs
+    ahead of the `is_server_admin` check, so the "no scope
     path parameter at all" construction error below now fires for every
     caller, not only a non-admin — see `test_require_permission_raises_
     construction_error_without_scope_path_param`); the admin bypass itself
@@ -446,7 +445,7 @@ def test_require_permission_server_admin_bypasses(client, admin_token):
 
 
 def test_require_permission_module_frame_scope_mismatch_403s_even_for_server_admin(client, admin_token):
-    """Fine-Grained Access Control Phase 8 finding: `_enforce_module_frame_
+    """`_enforce_module_frame_
     scope` must run, and 403, before the `is_server_admin` bypass — the
     same invariant `test_require_module_role_scope_mismatch_403s_even_for_
     server_admin` (test_module_frontend_integration.py) already pins for
@@ -454,7 +453,7 @@ def test_require_permission_module_frame_scope_mismatch_403s_even_for_server_adm
     user)` rejects a real module-frame token outright, so this can only be
     reached by a caller invoking the dependency directly with an
     already-resolved `current_user` and a `request.state.module_frame_
-    scope` already set — exactly what Compliance's Phase 6 fallback call
+    scope` already set — exactly what Compliance's fallback call
     sites (`_require_evidence_manage`/`_require_standard_content_manage`)
     do. Covers both the org-scoped and the project-scoped branch."""
     db = SessionLocal()

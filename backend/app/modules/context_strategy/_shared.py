@@ -21,14 +21,14 @@ router (e.g. `modules.compliance.router`/`project_router`), rather than
 inventing a new dynamic-route-building mechanism this codebase has no
 other example of.
 
-Phase 2 (Future State) adds the same shape of helpers for the standalone
-Future State artefact, under distinct names (`future_state_to_out`,
+Future State has the same shape of helpers for the standalone
+artefact, under distinct names (`future_state_to_out`,
 `get_future_state_in_scope`, `require_future_state_manage_role`,
-`require_future_state_approve_permission`) since both artefact types'
-helpers now live in this one file — see each function's own docstring for
+`require_future_state_approve_permission`) since every artefact type's
+helpers live in this one file — see each function's own docstring for
 anything that isn't a pure rename of its Strategy counterpart.
 
-Phase 3 (Pain Points) adds `pain_point_to_out`, `get_pain_point_in_scope`,
+Pain Points have `pain_point_to_out`, `get_pain_point_in_scope`,
 `require_pain_point_manage_role`, and `require_pain_point_decide_
 permission` — Pain Point has only **one** module role (`pain_point_manager`,
 project-scoped only; Pain Point itself has no org scope), unlike Strategy/
@@ -39,7 +39,7 @@ for the "decide"-tier triage/reject/duplicate/accept/address/close actions,
 mirroring `require_approve_permission`; `require_pain_point_manage_role`
 does not, for type-vocabulary CRUD, mirroring `require_manage_role`).
 
-Phase 4 (Guiding Principles) adds `guiding_principle_to_out`, `get_guiding_
+Guiding Principles have `guiding_principle_to_out`, `get_guiding_
 principle_in_scope`, `require_guiding_principle_manage_role`, and `require_
 guiding_principle_approve_permission` — back to the Strategy/Future State
 owner+approver shape (`guiding_principle_owner`/`guiding_principle_approver`
@@ -47,10 +47,10 @@ project-scoped, `org_guiding_principle_owner`/`org_guiding_principle_
 approver` org-scoped), since Guiding Principle is org/project dual-scoped
 like Strategy/Future State, not project-scoped-only like Pain Point.
 
-Phase 5 (Open Questions) adds `open_question_to_out`, `get_open_question_
+Open Questions have `open_question_to_out`, `get_open_question_
 in_scope`, `require_open_question_manage_role`, and `require_open_question_
 resolve_permission` — project-scoped only, like Pain Point, but with **two**
-flat module roles rather than Pain Point's one: source overview §9.4 names
+flat module roles rather than Pain Point's one: §9.4 names
 three distinct permission tiers (project members; "Question Owner / Project
 Manager"; "Decision Maker"), not Pain Point's §6.5 two-tier split (broad
 members; a single Pain Point Manager). `require_open_question_manage_role`
@@ -297,7 +297,7 @@ def apply_value_error_as_conflict(fn, *args, **kwargs):
     (an illegal transition) into an HTTP 409 — mirrors `modules.decisions.
     project_router.workflow._apply_value_error_as_conflict`. Shared as-is
     by both Strategy's and Future State's routers — this helper is already
-    generic over the callable, so Phase 2 needed no Future-State-specific
+    generic over the callable, so Future State needs no specific
     variant."""
     try:
         return fn(*args, **kwargs)
@@ -305,7 +305,7 @@ def apply_value_error_as_conflict(fn, *args, **kwargs):
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
-# --- Future State (Phase 2) -------------------------------------------------
+# --- Future State -------------------------------------------------
 
 
 def future_state_to_out(future_state: FutureState, version: FutureStateVersion) -> FutureStateOut:
@@ -399,7 +399,7 @@ def require_future_state_approve_permission(
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
 
 
-# --- Pain Points (Phase 3) ---------------------------------------------------
+# --- Pain Points ---------------------------------------------------
 
 
 def _effective_pain_point_type_name(db: Session, project_pain_point_type: ProjectPainPointType) -> str:
@@ -508,7 +508,7 @@ def require_pain_point_decide_permission(
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
 
 
-# --- Guiding Principles (Phase 4) --------------------------------------------
+# --- Guiding Principles --------------------------------------------
 
 
 def guiding_principle_to_out(
@@ -634,7 +634,7 @@ def require_guiding_principle_approve_permission(
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
 
 
-# --- Open Questions (Phase 5) -------------------------------------------------
+# --- Open Questions -------------------------------------------------
 
 
 def open_question_to_out(db: Session, open_question: OpenQuestion, labels: OwnerLabels | None = None) -> OpenQuestionOut:
@@ -708,7 +708,7 @@ def require_open_question_resolve_permission(
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
 
 
-# --- Phase 6: cross-artefact relationships -----------------------------------
+# --- cross-artefact relationships -----------------------------------
 
 
 def _resolve_other_artefact_display(db: Session, other_type: str, other_id: uuid.UUID) -> tuple[str | None, str | None]:

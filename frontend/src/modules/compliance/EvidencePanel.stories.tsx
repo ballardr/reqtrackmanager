@@ -113,7 +113,7 @@ export const AddEvidence: Story = {
   },
 };
 
-/** Phase 41 (compliance-module-plan.md): attaching file(s) at evidence
+/** Attaching file(s) at evidence
  * creation time itself, rather than saving first and attaching afterwards
  * from the newly-created record's own Files section. One staged file is
  * removed before save (proving the local staging list, not just the upload

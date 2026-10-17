@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/RepresentationPanel
  *
- * The "represents Persona" links (Phase 0 resolution 12), shown from either
+ * The "represents Persona" links, shown from either
  * end on the detail pages: a Stakeholder's "Represents" list (editable: pick a
  * Persona to add, remove one) and a Persona's "Represented by" list
  * (read-only: the link is owned from the Stakeholder side). One component for

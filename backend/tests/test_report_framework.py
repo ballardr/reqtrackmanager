@@ -1,4 +1,4 @@
-"""Tests for the core report framework (`services.report_framework`, Module 1 Phase 12b).
+"""Tests for the core report framework (`services.report_framework`).
 
 Everything here runs against a synthetic `report_probe` module that is *not*
 Context & Strategy, so the framework is proven generic: parameter validation,
@@ -455,7 +455,7 @@ def test_template_branding_applies_to_pdf_and_foreign_templates_are_rejected(cli
     _get(probe, token, _project_url(project["id"]), expect=422, report_template_id="nope")
 
 
-# --- Authored content (Phase 10) ----------------------------------------------------------------
+# --- Authored content ----------------------------------------------------------------
 
 
 def _docx_paragraphs(content: bytes) -> list[str]:

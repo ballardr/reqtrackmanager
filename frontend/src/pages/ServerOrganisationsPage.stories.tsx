@@ -18,7 +18,7 @@ function org(overrides: Partial<Organization>): Organization {
   };
 }
 
-// Module 4 (Decision Management) Phase 1 — this page's own `useEffect`
+// This page's own `useEffect`
 // fetches `/api/v1/orgs/creation-choices` unconditionally on mount,
 // alongside the `/api/v1/orgs` list, so every story's `api.get` mock must
 // branch on the requested path rather than returning one fixed value for
@@ -134,7 +134,7 @@ export const CreateOrganisation: Story = {
   },
 };
 
-/** Module 4 (Decision Management) Phase 1 — a module's optional
+/** A module's optional
  * org-creation seeding choices (e.g. Decision Management's three ADR
  * template packs) render generically, grouped by `group_label`, with only
  * each option's own `default_selected` value pre-checked. */
@@ -214,8 +214,7 @@ export const CreateOrganisationModalCancel: Story = {
   },
 };
 
-/** Disable opens the shared `ConfirmDialog` (2026-08 UX audit, sixth pass —
- * this used to fire via `window.confirm`), then shows a success toast
+/** Disable opens the shared `ConfirmDialog`, then shows a success toast
  * (Principle 7) once the action completes. Reached via the row's
  * `ActionMenu` now, not a standalone "Disable" button — the menu is just
  * the entry point, it doesn't replace the confirmation itself. */

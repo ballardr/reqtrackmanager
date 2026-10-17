@@ -1,19 +1,18 @@
 """
 Module: modules.stakeholders.project_router
 
-Project-scoped API for the Stakeholders & Personas module (Phase 1.1), mounted
+Project-scoped API for the Stakeholders & Personas module, mounted
 at `/api/v1/projects/{project_id}/modules/stakeholders`: project-scoped
 Persona CRUD/lifecycle/comments/files, the project's Persona type vocabulary
 (effective list plus rename/reorder/disable/add) and the per-project weight
 override and the per-project visibility override of an org persona.
 
 Reads (`GET /personas`, `GET /personas/{id}`) return the project's own
-personas *and* the organisation's live org-scoped ones (Phase 0 resolution
-2), each with the project's `effective_weight`. Every mutation targets a
+personas *and* the organisation's live org-scoped ones, each with the project's `effective_weight`. Every mutation targets a
 project-scoped persona only; an org persona is edited through the org router.
 The weight override and the visibility override are the exceptions: a project
 may override the weight of any persona it can see, and hide an org persona from
-itself (Phase 3b; nearest ancestor project's setting wins). A hidden persona is
+itself (nearest ancestor project's setting wins). A hidden persona is
 absent from the project's list and 404s here, so it cannot be scored or linked;
 `include_hidden=true` lists it for the manage UI.
 

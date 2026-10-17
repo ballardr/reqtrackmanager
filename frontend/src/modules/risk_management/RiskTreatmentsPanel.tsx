@@ -1,7 +1,7 @@
 /**
  * Module: modules/risk_management/RiskTreatmentsPanel
  *
- * The treatment section of a risk's detail page (plan Phase 0 Q3 / Phase 3): the
+ * The treatment section of a risk's detail page: the
  * requirements, designs and actions linked as a treatment (Mitigated by, Treated
  * by), each with the risk owner's verdict on whether it *effectively* reduces the
  * risk — a link alone only proposes one. A risk counts as treated only through

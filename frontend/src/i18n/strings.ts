@@ -75,13 +75,13 @@ const en = {
     addExisting: (email: string, org: string) => `Add ${email} (existing account, not yet in this ${org})`,
     inviteNew: "Invite {email}",
     canInviteHint: "Not a member yet? Type their email to invite them.",
-    // PR5 of the members/groups directory rework plan — the visible badge
+    // the members/groups directory rework — the visible badge
     // distinguishing an org-group match from a user match in the same
     // dropdown. Tightened from the original bare "Group" to "Org group"
-    // when PR7 added a second, similarly-named match kind below — bare
+    // when a second, similarly-named match kind was added below — bare
     // "Group" would read as ambiguous next to "Project group".
     groupBadge: "Org group",
-    // PR7 of the members/groups directory rework plan — the visible badge
+    // the members/groups directory rework — the visible badge
     // distinguishing a project-group match (local to this one project)
     // from an org-group match (org-wide) in the same dropdown.
     projectGroupBadge: "Project group",
@@ -173,8 +173,7 @@ const en = {
     importFromBundle: "Or import from an exported {project} bundle (.zip)",
     importWarnings: "Imported with warnings",
     created: "{Project} created",
-    // Small usability fix noted in the 2026-08 UX audit's "How things get
-    // created" section: picking an import file used to silently hide the
+    // Small usability fix: picking an import file used to silently hide the
     // template picker with no explanation — this note replaces it instead.
     importIgnoresTemplate: "A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.",
     // Hierarchical projects (docs/decisions.md).
@@ -233,15 +232,14 @@ const en = {
     // No `ConfirmDialog` here, unlike Archive: mirrors `ProjectAdminPage.tsx`'s
     // existing unarchive button, which also fires immediately — restoring is
     // reversible again (archive it right back), unlike the Tier-1-confirmed
-    // archive action itself (2026-08 UX audit roadmap: unarchive endpoint +
-    // Restore button).
+    // archive action itself.
     restore: "Restore",
     restored: "{Requirement} restored",
     save: "Save",
     changeNote: "Reason for change",
     when: "When",
     // The History/Activity cards merged into one, with a view toggle
-    // (2026-08 UX audit roadmap item 516) — "Version history" is
+    // — "Version history" is
     // specifically this {requirement}'s own approved version/status
     // transitions (the `RequirementVersion` ledger); "Activity" is the
     // broader audit-log feed covering everything that happened to it,
@@ -265,9 +263,9 @@ const en = {
     unlinkAction: "Unlink",
     unlinkActionTitle: "Unlink this action?",
     unlinkActionConfirm: "The action itself isn't affected — it just stops appearing on this {requirement}'s Actions card.",
-    // Platform review 2026-09, Phase 8 — `unlink_action` previously had no
-    // lock check at all, an asymmetry with the already-gated add side
-    // (item 514); unconditional across every {project}, unlike the
+    // `unlink_action` previously had no
+    // lock check at all, an asymmetry with the already-gated add side;
+    // unconditional across every {project}, unlike the
     // traceability-link strings above.
     unlinkActionViaChangeRequestTitle: "Unlink this action via change request?",
     unlinkActionViaChangeRequestConfirm:
@@ -374,13 +372,13 @@ const en = {
     kindAddAction: "Add action",
     proposedAddAction: "Proposed action",
     proposedLinkAction: "Linking existing action",
-    // Platform review 2026-09, Phase 8 — REMOVE_ACTION/ADD_LINK/REMOVE_LINK
+    // REMOVE_ACTION/ADD_LINK/REMOVE_LINK
     // change requests, rendered in `ChangeRequestDetailPage.tsx` the same
     // way ADD_ACTION's two labels above are.
     proposedRemoveAction: "Removing this action",
     proposedAddLink: "Proposed link",
     proposedRemoveLink: "Removing this link",
-    // Phase 6b — links proposed on a request, merged on approval.
+    // Links proposed on a request, merged on approval.
     proposedLinks: "Proposed links",
     proposedLinksHelp: "Created only when this {changeRequest} is approved; the approver chooses which to merge.",
     proposedLinksEditorHelp: "Optionally propose links for this {requirement}. They are created only if the approver merges them.",
@@ -435,8 +433,7 @@ const en = {
     fieldsToChangeHint: "Select which fields this {changeRequest} proposes to change — values are pre-filled from the {requirement}'s current content. Unselected fields are left untouched when approved.",
     selectARequirement: "Select a {requirement}",
     // A modify {changeRequest} can only target an already-approved
-    // {requirement} (2026-08 UX audit roadmap, "No requirement approval
-    // action; change requests can target draft requirements") — a
+    // {requirement} — a
     // still-draft/reviewed one is edited directly instead.
     noLockableRequirements: "No {requirements} are approved yet — approve one first, or edit a draft {requirement} directly.",
     selectAtLeastOneField: "Select at least one field to change.",
@@ -463,7 +460,7 @@ const en = {
     name: "Name",
     summary: "Summary",
     allowMemberChangeRequests: "Allow members to submit {changeRequests}",
-    // Platform review 2026-09, Phase 8. When the organisation's own
+    // When the organisation's own
     // `force_require_change_request_for_approved_links` is active and this
     // {project} isn't exempt, this checkbox renders checked-and-disabled
     // (the `disabled`+`title` "why is this checked and I can't touch it"
@@ -515,9 +512,8 @@ const en = {
     memberSourceModeSelect: "Mirror mode",
     memberSourceFilterRoleSelect: "Mirrored role",
     projectReferenceSelect: "Referenced {project}",
-    // Effective-members-derived "Members" section heading/hint (Phase D,
-    // follow-up UX batch, 2026-08-31) — since default project groups no
-    // longer exist (Phase C), no title collision risk remains with a
+    // Effective-members-derived "Members" section heading/hint — since default project groups no
+    // longer exist, no title collision risk remains with a
     // group literally named "Members" the way there once was.
     effectiveMembers: "Members",
     effectiveMembersHint: "Everyone with access to this {project}, direct or inherited — add, edit, and invite from this one table.",
@@ -547,7 +543,7 @@ const en = {
     } as Record<"project" | "stage" | "component" | "category" | "requirement" | "change_request", string>,
     // Distinct from `saveSettings` only because Terminology's Save button
     // now shares a screen with Overview's own "Save settings" button
-    // (2026-08 UX audit roadmap: 8 tabs -> 5) — two identically-labelled
+    // — two identically-labelled
     // buttons on one view is an accessible-naming collision (style guide
     // Principle 8), not just a test-locator inconvenience.
     saveTerminology: "Save terminology",
@@ -567,7 +563,7 @@ const en = {
     // queries targeting the field itself, a real ambiguity, not just an
     // accessible-naming nicety.
     defaultTemplateSection: "Default template",
-    // Module 0 (Platform Foundations) Phases 4/5 — Project Admin's own
+    // Project Admin's own
     // "Modules" tab: a project's whole-module enablement override and,
     // for a module with sub-components, its own per-sub-component
     // override — one level below Org Admin's `orgAdmin.modules*` (which
@@ -630,18 +626,17 @@ const en = {
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Reviewers",
     groupRole: "Role",
-    // PR7 of the members/groups directory rework plan — the Groups tab's
+    // the members/groups directory rework — the Groups tab's
     // per-row `MultiSelectDropdown` and the group's own `SidePanel` role
     // editor share these two: the dropdown's accessible name/title, and its
     // closed-state summary when the group holds no role at all yet.
     groupRolesFor: (name: string) => `${name}'s roles`,
     noRolesAssigned: "No roles assigned",
-    // Column header for the `DirectoryTable` row-count column (Phase B,
-    // follow-up UX batch, 2026-08-31) — distinct from `memberCount(n)`
+    // Column header for the `DirectoryTable` row-count column — distinct from `memberCount(n)`
     // below, which renders the actual "N member(s)" cell content.
     groupMembersColumn: "Members",
     groupCreated: "Group created",
-    // PR5 of the members/groups directory rework plan — the Groups tab's
+    // the members/groups directory rework — the Groups tab's
     // `DirectoryTable` now mixes two row kinds (a real `ProjectGroup` and a
     // `ProjectMemberSource`, moved here from the Overview tab); this column
     // and its two badge values are what tells them apart. "Project" (not
@@ -655,7 +650,7 @@ const en = {
     addMember: "Add member",
     addMemberPlaceholder: "Type a name or email to add…",
     addOrInviteMemberPlaceholder: "Type a name to add, or an email to invite…",
-    // PR7 of the members/groups directory rework plan: the "Add member"
+    // the members/groups directory rework: the "Add member"
     // modal's autocomplete also matches this project's own groups
     // (`UserAutocomplete`'s `projectGroups` prop) — picking one switches
     // the same modal into this second step instead of granting a role
@@ -680,12 +675,12 @@ const en = {
       `${email} was added and will get the '${role}' role next time they sign in via SSO.`,
     externalAddError: "Could not add this user.",
     memberCount: (n: number) => `${n} member(s)`,
-    // Pending invites (Phase 3, docs/decisions.md): originally their own
+    // Pending invites (docs/decisions.md): originally their own
     // small, self-contained section (`components/PendingInvitesSection.tsx`)
     // — folded into the unified `ProjectMembersTable` as a per-row status
-    // instead (Phase D, follow-up UX batch, 2026-08-31) — these four
+    // instead — these four
     // "Resend" strings are still shared with Org Admin's own org-level
-    // resend flow (Phase A, same batch), so they stay here rather than
+    // resend flow, so they stay here rather than
     // moving into `membersTable`'s own namespace.
     resendInvite: "Resend",
     resendInviteAria: (email: string) => `Resend invite to ${email}`,
@@ -737,9 +732,9 @@ const en = {
     removeNestedGroup: (label: string) => `Remove ${label}`,
     deleteCustomField: (name: string) => `Delete ${name}`,
     deleteCustomFieldConfirm: (name: string) => `This removes the "${name}" field and its values from every {requirement}/{changeRequest} that has it set. This cannot be undone.`,
-    // Phase 5 (docs/decisions.md): "Members" split out of the old combined
+    // (docs/decisions.md): "Members" split out of the old combined
     // "Project groups" tab into its own resource-menu section. Rebuilt
-    // again in Phase D (follow-up UX batch, 2026-08-31): the editable
+    // again: the editable
     // users+groups table, the effective-members audit table, and pending
     // invites — three sections doing one job — became the single unified
     // `ProjectMembersTable` (`components/ProjectMembersTable.tsx`).
@@ -763,17 +758,17 @@ const en = {
     groupInUseClearDescription: "Optional fields that name this group are left empty. Required fields cannot be cleared.",
     groupInUseClearBlocked: "Some of these fields are required, so a replacement is needed.",
     groupInUseClearConfirm: (name: string) => `Type the group's name to delete “${name}” and leave the optional fields empty.`,
-    // member_source_project_ids groups (Phase 5) — extends the existing
+    // member_source_project_ids groups — extends the existing
     // `viaProjectMembers` line with a link to the referenced {project}'s
     // own new Members page and a clarifying sentence that this isn't a
-    // fixed list (`docs/ux-style-guide.md`'s Phase-5 addendum).
+    // fixed list (`docs/ux-style-guide.md`'s addendum).
     viaProjectMembersLinkLabel: "View members",
     viaProjectMembersHint: "Live — always mirrors that {project}'s own current direct members, not a fixed list captured at the time it was added.",
   },
   membersTable: {
     // frontend/src/components/ProjectMembersTable.tsx — the unified
     // "effective members, editable, with pending invites folded in" table
-    // (Phase D, follow-up UX batch, 2026-08-31, docs/decisions.md) that
+    // (docs/decisions.md) that
     // replaced `MemberRoleTable`/`PendingInvitesSection`: one call site on
     // Project Admin's own "Members" section (`ProjectAdminPage.tsx`), one
     // inside Org Admin's "Manage users" modal (`OrgAdminPage.tsx`).
@@ -793,7 +788,7 @@ const en = {
     revokeRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
     // Client-side hint only — a fast approximation of C-U-08 ("a project
     // must always have at least one manager"), sourced from `direct_role`-
-    // kind entries only (Phase D's `kind` split — see `MemberSourceProvenanceKind`'s
+    // kind entries only (the `kind` split — see `MemberSourceProvenanceKind`'s
     // own doc comment), not the old collapsed `direct` bucket, since a
     // manager whose role actually comes from a group or org-wide
     // visibility would otherwise misreport here. The backend guard
@@ -854,11 +849,10 @@ const en = {
     // name is ever missing.
     sourceDirectGroup: (groupName: string) => `Via group '${groupName}'`,
     sourceDirectOrgGroup: (groupName: string) => `Via nested org group '${groupName}'`,
-    // `direct_org_group_role` (PR4/PR5 of the members/groups directory
-    // rework plan) — a genuinely different mechanism from
+    // `direct_org_group_role` (the members/groups directory rework) — a genuinely different mechanism from
     // `sourceDirectOrgGroup` above (nested inside a `ProjectGroup`): the
     // org group holds this role directly, granted from the Members
-    // section's own "Add member" autocomplete (PR5). Distinct wording so
+    // section's own "Add member" autocomplete. Distinct wording so
     // the two don't read as the same thing.
     sourceDirectOrgGroupRole: (groupName: string) => `Via group '${groupName}' (direct)`,
     sourceDirectProjectRef: "Via project reference",
@@ -875,8 +869,7 @@ const en = {
     // `PendingInvitesSection.tsx` — status badge + Resend button replace
     // the MultiSelectDropdown a real member row's Role cell would show.
     invitedSentOn: (date: string) => `Sent ${date}`,
-    // Per-row Actions column (PR6 of the members/groups directory rework
-    // plan, docs/decisions.md) — `ActionMenu` trigger name and its two
+    // Per-row Actions column (docs/decisions.md) — `ActionMenu` trigger name and its two
     // conditionally-offered items; see `ProjectMembersTable.tsx`'s own
     // eligibility rules for when each is shown.
     actionsFor: (name: string) => `${name}'s actions`,
@@ -891,7 +884,7 @@ const en = {
     // scoped to this one row's own outcome instead of a count.
     convertToDirectSuccess: (name: string) => `Converted ${name}'s inherited access to a direct role.`,
     convertToDirectNoOp: (name: string) => `${name} already holds an equal or higher direct role — nothing to convert.`,
-    // Phase 6 (docs/platform-review-2026-09-plan.md): an org group holding a
+    // An org group holding a
     // direct `OrgGroupProjectRole` grant on this project now gets its own
     // `kind: "group"` row instead of being visible only through a member's
     // own `direct_org_group_role` Source line. `rolesFor`/`grantRole`/
@@ -968,8 +961,7 @@ const en = {
     actionsFor: (name: string) => `${name} actions`,
   },
   orgAdmin: {
-    // Resource-menu group labels (2026-08 UX audit, style guide "Pattern:
-    // settings hierarchy") — Org Admin's 15 flat accordions regrouped into
+    // Resource-menu group labels — Org Admin's 15 flat accordions regrouped into
     // 6 route-addressable groups. Static text, not org-dependent, matching
     // the style guide's own "after" diagram exactly.
     //
@@ -992,16 +984,15 @@ const en = {
     groupOauthSso: "OAuth/SSO",
     groupEmail: "Email",
     groupSecurity: "Security",
-    // Module system Phase 1 (compliance-module-plan.md) — a new top-level
+    // A new top-level
     // group rather than folded into "Security", since it's a distinct
     // day-to-day admin surface (enabling/disabling optional feature
     // modules) rather than an authentication/access-policy setting.
     groupModules: "Modules",
-    // Fine-Grained Access Control (core, `docs/plans/core-fine-grained-
-    // access-control-plan.md` Phase 3) — a new top-level group covering
+    // Fine-Grained Access Control (core) — a new top-level group covering
     // both custom-role definition (org-admin-only) and the broader
     // grant_roles-based assignment surface for fixed/module/custom roles
-    // together (Phase 0 Q8/Q9: named "Role Management," not "Custom
+    // together (named "Role Management," not "Custom
     // Roles," since it spans more than custom roles alone).
     groupRoleManagement: "Role management",
     customRolesTitle: "Custom roles",
@@ -1037,14 +1028,14 @@ const en = {
     customRoleRevokeFieldLabel: "Revoke from user or group",
     customRoleGrantedTo: (target: string) => `Granted to ${target}`,
     customRoleRevokedFrom: (target: string) => `Revoked from ${target}`,
-    // Compliance module Phase 12 (compliance-module-plan.md) — the org-
+    // The org-
     // level Compliance Manager surface (standards/versions/requirements/
     // required actions/mapping vocabulary), a new top-level group rather
     // than nested under "Modules" (that group is the generic enable/
     // disable toggle table any module gets, not a home for a specific
     // module's own content).
     groupCompliance: "Compliance",
-    // Compliance module Phase 14 (compliance-module-plan.md) — the org-
+    // The org-
     // wide compliance dashboard/reporting surface (§22/§23), separate flat
     // top-level groups from "Compliance" above (standards management)
     // rather than a fourth tab on that group's panel — the style guide's
@@ -1052,7 +1043,7 @@ const en = {
     // are different jobs for a different (if overlapping) audience.
     // Originally one combined "Compliance overview" group with its own
     // internal `Tabs` (Dashboard / Compliance by standard / Outstanding);
-    // Phase 25b applied the same addendum a second time, one level deeper —
+    // The same addendum applies a second time, one level deeper —
     // that inner `Tabs` was itself a second, redundant navigation
     // mechanism nested inside the `ResourceMenu` group's own left-hand
     // menu, so the three tabs became three flat top-level
@@ -1093,10 +1084,10 @@ const en = {
     projects: "{Projects}",
     projectsHint: (org: string) => `Every {project} in this ${org}, including ones you don't otherwise have a role on — lets you manage a {project}'s users without needing its own admin access.`,
     manageUsers: "Manage users",
-    // Phase 5 (docs/decisions.md): the inline "Manage users" expand-in-place
+    // (docs/decisions.md): the inline "Manage users" expand-in-place
     // became a `Modal` wrapping the same `ProjectMembersTable`
     // `ProjectAdminPage.tsx`'s own Members section uses (rebuilt onto that
-    // component in Phase D, follow-up UX batch, 2026-08-31) — literally the
+    // component) — literally the
     // same component, not a parallel reimplementation.
     manageUsersModalTitle: (projectName: string) => `Manage users — ${projectName}`,
     users: (orgCap: string) => `${orgCap} users`,
@@ -1111,14 +1102,14 @@ const en = {
     statusActive: "Active",
     statusArchived: "Archived",
     statusDeactivated: "Deactivated",
-    // 2026-08-31 clarity pass (Phase A, follow-up UX batch): "Active" means
+    // 2026-08-31 clarity pass : "Active" means
     // "not deactivated", not "has ever logged in" — a freshly created user
     // (or an invite the moment it's accepted) shows Active immediately,
     // which read as surprising until this tooltip spelled out why.
     statusActiveHint: "This account is not deactivated. It doesn't necessarily mean the person has logged in yet.",
     newUser: "New user",
     userCreated: "User created",
-    // "Invite user" (Phase A, follow-up UX batch): a second, distinct way
+    // "Invite user" : a second, distinct way
     // to add a user, alongside "New user" — an email link the invitee
     // completes themselves, rather than an admin-set password. The hint
     // below sits next to both buttons so the difference is obvious rather
@@ -1149,8 +1140,7 @@ const en = {
     // differs, since an org group can carry roles across many projects.
     deleteGroupMessage:
       "Members lose every role and project access this group gave them, and it is removed from any group it's nested in. Access they hold some other way is unaffected. This cannot be undone.",
-    // `DirectoryTable`'s row-detail panel (Phase B, follow-up UX batch,
-    // 2026-08-31) — same "{name} details" shape `admin.groupDetails` already
+    // `DirectoryTable`'s row-detail panel — same "{name} details" shape `admin.groupDetails` already
     // established for Project Groups.
     groupDetails: (name: string) => `${name} details`,
     // Column header text for the row-count column both Org and Project
@@ -1159,27 +1149,26 @@ const en = {
     groupMembersColumn: "Members",
     addNestedGroup: "Nest a group…",
     nestedGroupLabel: (name: string) => `${name} (nested group)`,
-    // Renamed from "IdP-synced group name" (Phase B, follow-up UX batch,
-    // 2026-08-31 bug-fix pass) to match this app's existing "SSO group"
+    // Renamed from "IdP-synced group name" (2026-08-31) to match this app's existing "SSO group"
     // terminology (`oidcRequiredGroup`'s "Required SSO group" label below)
     // rather than the more technical "IdP" term, which appears nowhere else
     // in this org's own SSO copy. Key name kept as-is to avoid touching
     // every existing call site for a copy-only change.
     idpSyncedGroupName: "SSO group name",
     idpSyncedGroupNamePlaceholder: "e.g. eng-team",
-    // The explicit enable/disable toggle (Phase B) wrapping the sync name +
+    // The explicit enable/disable toggle wrapping the sync name +
     // granted-role fields — checked by default only when the group already
     // has a sync name set; unchecking clears both fields via the same PATCH
     // the Save button already uses.
     syncFromSso: "Sync membership and role from an SSO/IdP group",
-    // Role-granting (2026-08 UX audit roadmap item 522) is surfaced right
+    // Role-granting is surfaced right
     // next to the sync name and saved together via one button — replaces
     // the old, disconnected "SSO group mappings" list this org's Advanced/
     // OAuth-SSO settings used to carry (`ssoMappings` etc., retired).
     grantedOrgRole: "Grants role on sync",
     grantedOrgRoleNone: "No role granted",
     grantedOrgRoleHint: "A user whose IdP group claim matches the sync name above is granted this role — requires a sync name to also be set.",
-    // Phase B bug fix (2026-08-31, follow-up UX batch): this hint used to
+    // This hint used to
     // sit next to a granted-role select that was the *only* gated field —
     // the sync-name input and Save button rendered unconditionally above it
     // even with no SSO configured at all. Now the whole sync sub-section
@@ -1190,8 +1179,7 @@ const en = {
     groupSyncUpdated: "Sync settings updated",
     resources: "Shared resources",
     resourcesHint: (org: string) => `Uploaded resources can be linked to {requirements} in any {project} in this ${org}.`,
-    // Users table Actions column (PR6 of the members/groups directory
-    // rework plan, docs/decisions.md) — the two existing bare buttons
+    // Users table Actions column (docs/decisions.md) — the two existing bare buttons
     // (View access, lock/unlock display name) consolidated into one
     // `ActionMenu`, plus two new actions: "Remove from {org}" (a genuinely
     // new, access-mutating endpoint) and "Add to group" (pure UI
@@ -1219,7 +1207,7 @@ const en = {
     userAccessProjects: "Projects",
     userAccessNoProjects: "No access to any project in this organisation.",
     userAccessProjectGroups: "Via project group(s)",
-    // 2026-08 UX audit reversal (docs/decisions.md, docs/ux-style-guide.md
+    // Reversal (docs/decisions.md, docs/ux-style-guide.md
     // "Pattern: role display"): this panel now shows the collapsed summary
     // by default per project row, with this pair of toggle labels revealing/
     // hiding the full, uncollapsed role set on demand.
@@ -1233,7 +1221,7 @@ const en = {
     // (see `pats` below) rather than getting a heading of its own.
     smtpEmailTitle: "SMTP & email",
     securityTitle: "Security",
-    // Module system Phase 1: the org admin's "Modules" section (enable/
+    // The org admin's "Modules" section (enable/
     // disable a feature module among those the org is entitled to).
     modulesTitle: "Modules",
     modulesDescription:
@@ -1260,12 +1248,10 @@ const en = {
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
     orgRole: (orgCap: string) => `${orgCap} role`,
     // SSO group→role mapping moved from here (a flat, disconnected list)
-    // onto the group being synced into instead (2026-08 UX audit roadmap
-    // item 522) — see `grantedOrgRole` etc. above, managed from Groups.
+    // onto the group being synced into instead — see `grantedOrgRole` etc. above, managed from Groups.
     ssoMappingsMovedHint: "Granting a role via an SSO group claim is now set on the group itself — see the Groups section.",
     // `saveAdvanced` submits the whole `OrgAdvancedSettings` object — one
-    // shared PUT behind three separate resource-menu groups now (2026-08
-    // UX audit roadmap item 523: OAuth/SSO, Email, Security), each with
+    // shared PUT behind three separate resource-menu groups now, each with
     // its own button calling it. Labelled per the group it's actually on,
     // not the retired "Advanced" concept the object's own backend name
     // still carries.
@@ -1276,7 +1262,7 @@ const en = {
     filterNo2fa: "No 2FA",
     filterNoProjectAccess: "No {project} access",
     filterClear: "Clear filters",
-    // "Show invited" (Phase A, follow-up UX batch): pending, not-yet-
+    // "Show invited" : pending, not-yet-
     // accepted invites are a new row kind merged into this table — this
     // checkbox lets an admin hide them again, defaulting on since they're
     // new and otherwise invisible.
@@ -1319,7 +1305,7 @@ const en = {
     allowRelaxedChildProjectCreationHint:
       "When enabled, anyone who manages a {project} can create a new {project} nested under it without needing Project creator or Organisation admin rights. Turning this off means only an Organisation admin or Project creator can create any {project}, including sub-{project}s.",
     selfSignupSsoConflict: (org: string) => `Self-signup can't be enabled while this ${org} is SSO-only — turn off "SSO only" in the SSO configuration below first, or turn off self-signup here.`,
-    // Platform review 2026-09, Phase 8 — org-wide force of
+    // Org-wide force of
     // `Project.require_change_request_for_approved_links`, minus a
     // per-project `exempt_from_org_link_lock` opt-out. See `Organization`'s
     // own field docstring (`frontend/src/api/types.ts`) for the full
@@ -1533,13 +1519,13 @@ const en = {
     organizations: (orgPlural: string) => orgPlural,
     organizationCount: (n: number, org: string) => `Member of ${n} ${org}(s)`,
     noOrganizations: "None",
-    // Platform review 2026-09, Phase 5: Organisations column "show more"
+    // Organisations column "show more"
     // toggle past 2 orgs, mirroring `orgAdmin.userAccessShowAllRoles`/
     // `userAccessShowFewerRoles`'s copy shape.
     showAllOrganizations: (n: number) => `Show all ${n}`,
     showFewerOrganizations: "Show fewer",
     groups: "Groups",
-    // Platform review 2026-09, Phase 5: Groups column compact summary +
+    // Groups column compact summary +
     // "View groups" modal (replacing the old unconditional joined string).
     groupsMore: (n: number) => `+${n} more`,
     viewGroups: "View groups",
@@ -1554,7 +1540,7 @@ const en = {
     viewOrphaned: "Orphaned accounts",
     viewServerAdmins: "Server administrators",
     viewAll: "All users",
-    // Phase E (follow-up UX batch, 2026-08-31): FilterPanel search box and
+    // FilterPanel search box and
     // DirectoryTable empty state, added alongside the FilterPanel/
     // DirectoryTable rebuild — matches Org Admin's own `searchUsers`/
     // `noUsersFound` copy style.
@@ -1584,11 +1570,11 @@ const en = {
     revokeServerAdminTitle: "Revoke server admin from this user?",
     revokeServerAdminConfirm: "They will lose access to server-wide management immediately.",
     revokedServerAdminToast: "Server admin revoked",
-    // Module system Phase 0 (docs/compliance-module-plan.md): server-tier
+    // Server-tier
     // role strings, mirroring Org Admin's own roles column string shapes
     // (rolesFor/noRoles/grantRole/revokeRole). Originally an always-visible
     // "Server roles" MultiSelectDropdown column; moved behind an ActionMenu
-    // modal in Platform review 2026-09, Phase 5 (see `assignServerRoles`/
+    // modal (see `assignServerRoles`/
     // `assignServerRolesModalTitle` below) — these per-role strings are
     // still used there.
     serverRolesFor: (name: string) => `${name}'s server roles`,
@@ -1724,8 +1710,7 @@ const en = {
     myGroups: "Groups",
     inheritedGroup: "via a nested group",
     manageOrganisation: (org: string) => `Manage ${org}`,
-    // "Leave organisation" moved here from Org Admin (2026-08 UX audit
-    // roadmap item 520) — it's about the current user's own membership,
+    // "Leave organisation" moved here from Org Admin — it's about the current user's own membership,
     // not an org-level setting, so it belongs alongside the rest of "your
     // access" rather than Org Admin's danger-zone-adjacent controls.
     leaveOrg: "Leave",
@@ -1808,8 +1793,7 @@ const en = {
     created: "Action created",
   },
   // The Compliance module's own strings that live inside core's shared
-  // `ResourcePickerModal` (style guide "Pattern: resource picker dialog",
-  // 2026-08 UX audit roadmap row 508) — a two-pane dialog for picking a
+  // `ResourcePickerModal` — a two-pane dialog for picking a
   // shared file from a source (today just org shared resources) and
   // attaching it to whatever opened the dialog.
   resourcePicker: {
@@ -1969,12 +1953,11 @@ const en = {
     // per-instance, since the chevron's own job ("reveal the alternatives")
     // doesn't change with what those alternatives are.
     moreOptions: "More options",
-    // `ResultCount` (2026-08 UX audit roadmap: persistent "showing X of Y"
-    // result count in `FilterPanel`'s header) — generic across every list
+    // `ResultCount` — generic across every list
     // page that uses it, same reasoning as `moreOptions` above.
     resultCountTotal: (total: number) => `${total} total`,
     resultCountMatching: (matching: number, total: number) => `Showing ${matching} matching · ${total} total`,
-    // `FilterPanel`'s collapsible filter body (2026-08 UX audit roadmap) —
+    // `FilterPanel`'s collapsible filter body —
     // below the mobile breakpoint it's a `CollapsibleSection` titled this.
     filters: "Filters",
     showMore: "More",

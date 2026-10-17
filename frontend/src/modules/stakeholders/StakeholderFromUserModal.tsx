@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/StakeholderFromUserModal
  *
- * "Add from org user" (Phase 0 resolution 13): picks an organisation member and
+ * "Add from org user": picks an organisation member and
  * creates a Stakeholder for them with their name and email prefilled, linked to
  * their account (`user_id`). It removes the friction of retyping a colleague
  * who is also a stakeholder; most stakeholders have no account and use the

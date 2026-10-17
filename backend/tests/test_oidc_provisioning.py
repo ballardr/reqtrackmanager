@@ -520,7 +520,7 @@ def test_org_group_idp_sync_target_round_trips(client, admin_token, org_id):
 
 
 def test_granted_org_role_is_masked_from_a_plain_member_but_visible_to_an_org_admin(client, admin_token, org_id):
-    """Hardening-review finding: `granted_org_role` (item 522) landed on
+    """Hardening-review finding: `granted_org_role` landed on
     `GET .../groups`, which — unlike the `ORG_ADMIN`-only
     `GET .../advanced-settings` that held the equivalent
     `sso_group_mappings` data before this feature replaced it — is open to

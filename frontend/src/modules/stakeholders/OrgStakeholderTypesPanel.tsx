@@ -1,8 +1,7 @@
 /**
  * Module: modules/stakeholders/OrgStakeholderTypesPanel
  *
- * The organisation tier of the Stakeholder type vocabulary (Phase 0 resolution
- * 3) — a thin wrapper over the shared `OrgTypeVocabularyPanel`
+ * The organisation tier of the Stakeholder type vocabulary — a thin wrapper over the shared `OrgTypeVocabularyPanel`
  * (`components/TypeVocabularyPanels.tsx`). Registered on `orgAdminSections`
  * (Org Management). Gated server-side on `stakeholder_type_admin`.
  */

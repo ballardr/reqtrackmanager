@@ -4,8 +4,7 @@
  * A true split button: clicking the main control performs the one common
  * action immediately; a small adjacent chevron reveals a menu of less-common
  * alternatives, without the common case ever stopping at a menu first. See
- * `docs/ux-style-guide.md`'s "Pattern: split-button trigger" (roadmap item
- * 505) and `docs/ux-audit-2026-08.md`'s "The 'New Requirement' trigger
+ * `docs/ux-style-guide.md`'s "Pattern: split-button trigger" and "The 'New Requirement' trigger
  * doesn't match the requested split-button interaction" — this replaces
  * `RequirementsPage.tsx`'s previous shape, where the *whole* button opened a
  * `Popover` offering "Add one"/"Import from CSV", making every click

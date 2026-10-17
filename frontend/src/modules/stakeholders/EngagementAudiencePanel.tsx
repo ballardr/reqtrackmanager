@@ -1,8 +1,8 @@
 /**
  * Module: modules/stakeholders/EngagementAudiencePanel
  *
- * The Stakeholder groups an engagement was aimed at (Phase 0 addendum 3, item
- * 29). Picking groups in the shared `TreeSelect` and pressing "Add everyone in
+ * The Stakeholder groups an engagement was aimed at.
+ * Picking groups in the shared `TreeSelect` and pressing "Add everyone in
  * group" records an audience link and copies each group's current members
  * (descendants included) into the participant list as a **snapshot**: the
  * engagement is a historical record, so later membership changes never alter who

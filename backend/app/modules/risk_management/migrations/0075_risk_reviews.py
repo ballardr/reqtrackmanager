@@ -1,10 +1,10 @@
-"""Risk reviews and reassessment scheduling (Module 3 Phase 4)
+"""Risk reviews and reassessment scheduling
 
 Revision ID: 0075
 Revises: 0074
 Create Date: 2026-10-12
 
-Adds `risk_reviews` (docs/plans/module-03-risk-management-plan.md Phase 4): an
+Adds `risk_reviews`: an
 immutable record of each periodic review with a snapshot of the ratings it was
 made against. Also adds the two per-risk columns that make the review-due sweep
 notify once per scheduled date, and `reassessment_reason` on treatment

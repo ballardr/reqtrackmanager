@@ -1,12 +1,12 @@
 /**
  * Module: modules/compliance/VersionDiffModal
  *
- * §27's version-diff viewer — fetches `GET .../diff/{other}` (Phase 11) for
+ * §27's version-diff viewer — fetches `GET .../diff/{other}` for
  * two versions of the same standard and renders its five categories
  * (added/removed/modified/replaced/re-mapped). Read-only: the actual
  * "migrate a project to this version" action is project-scoped
  * (`project_router.py::migrate_project_compliance_version`) and explicitly
- * out of Phase 12's org-level scope (Phase 13) — this is the "preview
+ * out of the org-level scope — this is the "preview
  * before you commit" half only, per that endpoint's own docstring.
  */
 import { useEffect, useState, type ReactNode } from "react";

@@ -1,11 +1,10 @@
-"""Tests for Context & Strategy's Phase 3 backend API
-(docs/plans/module-01-context-and-strategy-plan.md Phase 3 — Pain Points)
+"""Tests for Context & Strategy's Pain Point backend API
 — the real HTTP endpoints (`router.py`'s org-scoped Pain Point type CRUD,
 `project_router.py`'s project-scoped Pain Point/type-override surface),
 through the `client` fixture, mirroring `test_context_strategy_future_
 state_api.py`'s own "go through the real API" convention. A new sibling
 file rather than appending to either existing one (Decided by: Agent,
-following Phase 2's own precedent for the same reason: one file per
+following the same precedent: one file per
 artefact type reads more cleanly than a single ever-growing combined file).
 
 Covers: Pain Point create/get (project-scoped only — no org-scoped Pain

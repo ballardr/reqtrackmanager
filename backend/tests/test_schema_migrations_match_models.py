@@ -16,7 +16,7 @@ migration is needed. A nonempty diff here means a model field was
 added/changed/removed without a matching migration in either
 backend/alembic/versions/ (core) or a first-party module's own
 `migrations_dir` (e.g. backend/app/modules/compliance/migrations/,
-compliance-module-plan.md Phase 11 follow-up) — `app.modules.registry.
+ follow-up) — `app.modules.registry.
 configure_alembic_version_locations` merges both into the one chain this
 test's own `_schema` fixture (conftest.py) migrates against, so a drift in
 either location is caught identically here.

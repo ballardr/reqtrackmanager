@@ -2,7 +2,7 @@
  * Module: modules/compliance/ComplianceProjectOverviewTiles
  *
  * This module's contribution to `ProjectOverviewPage.tsx`'s summary-tile
- * grid (Phase 17d, `docs/compliance-module-plan.md`) — one tile per
+ * grid — one tile per
  * compliance standard assigned to the project, clicking through to the
  * project's own Compliance page, matching every other tile on that page's
  * "click through to what was clicked" convention.
@@ -12,7 +12,7 @@
  * `ProjectOverviewPage.tsx` (module boundary cleanup, 2026-09-08 — a core
  * page importing this module's own `api.ts`/`types.ts` directly, the same
  * "core file reaches into a specific module" mistake caught and fixed
- * elsewhere during Phase 18's own review — see `docs/decisions.md`'s
+ * elsewhere — see `docs/decisions.md`'s
  * "Module system follow-up: on_org_created / project_nav_visible hooks"
  * entry). Registered as a `projectOverviewTiles` entry in `./module.ts`;
  * `ProjectOverviewPage.tsx` renders whatever this returns without knowing

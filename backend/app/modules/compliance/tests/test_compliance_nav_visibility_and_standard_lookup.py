@@ -1,13 +1,12 @@
-"""Permission-boundary tests for the Compliance Module's Phase 18 global (no
-org/project id in the path) endpoints (docs/compliance-module-plan.md
-Phase 18): `GET /api/v1/compliance/nav-visibility` and `GET /api/v1/
+"""Permission-boundary tests for the Compliance Module's global (no
+org/project id in the path) endpoints: `GET /api/v1/compliance/nav-visibility` and `GET /api/v1/
 compliance/standards/{standard_id}` — mounted via `ModuleDefinition.
 get_global_router` rather than either of this module's other two routers,
 since neither endpoint has a single org/project id of its own to key a
 per-request permission dependency off (see `global_router.py`'s own module
 docstring for the full reasoning).
 
-Covers the exact matrix compliance-module-plan.md Phase 18 asks for, and
+Covers the exact matrix asks for, and
 this repo's `docs/soc2/policies/access-control-policy.md` posture every
 other compliance endpoint already gives (404, not 403, for "not a member of
 this org at all" — a disabled/inaccessible resource must be

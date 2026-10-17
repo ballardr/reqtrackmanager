@@ -7,12 +7,12 @@
  * (`RequirementTree.tsx`, §5/§6). Rendered full-width in place of the
  * Standards tab's list (not a `SidePanel`, whose 420px max-width is too
  * narrow for a usable tree editor — see this component's own "why not a
- * SidePanel" note in docs/compliance-module-plan.md's Phase 12 notes) —
+ * SidePanel" note notes) —
  * a "drill into the content column, keep a Back control" shape, the same
  * one `RequirementsPage`'s own detail view already uses elsewhere in this
  * app for a similarly content-heavy child view.
  *
- * Phase 24 adds an always-editable "Version summary" field (distinct from
+ * An always-editable "Version summary" field (distinct from
  * `change_note`, which describes what changed *relative to the previous
  * version*, not this version's own current standing) — editable
  * regardless of the version's own status, unlike everything else here,
@@ -24,8 +24,7 @@
  * pre-computing permissions in the UI (see e.g. Publish/Retire above,
  * unconditionally shown regardless of the caller's actual role).
  *
- * Phase 29b adds the entity quick-switch chevron (Phase 28's
- * `EntitySwitcher`) next to the version heading, so a user already
+ * The entity quick-switch chevron (`EntitySwitcher`) sits next to the version heading, so a user already
  * viewing one version can jump straight to a sibling without returning to
  * the flat "Versions" list first. Its sibling list is simply this
  * component's own `versions` prop — no new fetch, since `StandardNavSection`

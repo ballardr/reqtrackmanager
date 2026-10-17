@@ -1,10 +1,10 @@
-"""Risk Management data model (Module 3 Phase 1)
+"""Risk Management data model
 
 Revision ID: 0073
 Revises: 0072
 Create Date: 2026-10-12
 
-Adds the Risk tables (docs/plans/module-03-risk-management-plan.md Phase 1):
+Adds the Risk tables:
 `risk_type_definitions`/`project_risk_types` (two-tier type vocabulary),
 `risks`/`risk_versions` (identity + temporal content, project scope) and the
 module-local comment/attachment tables.

@@ -112,7 +112,7 @@ export const Empty: Story = {
   },
 };
 
-/** `Pattern: view toggle` (2026-08 UX audit roadmap row 513) — `FavouritesPage`
+/** `Pattern: view toggle` — `FavouritesPage`
  * wired onto the same `useViewMode`/`ViewToggle` `ProjectListPage.tsx`/
  * `RequirementsPage.tsx` already use, replacing its previous fixed
  * CSS-grid-only layout. */

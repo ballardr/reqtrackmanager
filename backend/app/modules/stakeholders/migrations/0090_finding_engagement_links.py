@@ -1,4 +1,4 @@
-"""Findings are linked to their engagement (Module 2 Phase 5 follow-up)
+"""Findings are linked to their engagement
 
 Revision ID: 0090
 Revises: 0089

@@ -1,7 +1,7 @@
 /**
  * Module: modules/compliance/StandardNavSection
  *
- * The "Standard" left-nav section (docs/compliance-module-plan.md Phase 18)
+ * The "Standard" left-nav section
  * — Overview/Details, Versions, History — registered via `module.ts`'s
  * `standaloneWorkspaces` (`modules/types.ts`), rendered by `Layout.tsx` as a
  * sibling structural pattern to its own "Project" section whenever the
@@ -15,8 +15,8 @@
  * this kind of module-owned reuse, so these links render indistinguishably
  * from every core rail entry (including the project section's own).
  *
- * Phase 23 introduces this app's first **expandable nav-rail group**: the
- * "Versions" entry gains a disclosure toggle (the same `ChevronDown`/
+ * This is this app's first **expandable nav-rail group**: the
+ * "Versions" entry has a disclosure toggle (the same `ChevronDown`/
  * `ChevronUp` pair `CollapsibleSection` already uses for the same meaning
  * elsewhere, though not `CollapsibleSection` itself — its card chrome
  * doesn't fit a nav-rail row) that, when expanded, lists one link per
@@ -28,8 +28,8 @@
  * expandable nav-rail group" for the next project-like drill-down entity
  * with its own many-child collection.
  *
- * Phase 29 fixes three defects in that group:
- * - **29a**: landing directly on `/standards/:id/versions/:versionId`
+ * Behaviours of that group:
+ * - Landing directly on `/standards/:id/versions/:versionId`
  *   (bookmark, link, refresh) now force-expands the group so the "which
  *   version am I on" context is visible without an extra click. This is a
  *   local, render-time override (`routeForcesExpand`), not a `setExpanded`
@@ -39,13 +39,13 @@
  *   toggle actually collapse the group while a route is still forcing it
  *   open, without touching the persisted preference either; it resets
  *   whenever the route changes so the next version page auto-expands fresh.
- * - **29c**: the "Versions" `NavRailLink`/row now uses an exact match
+ * - The "Versions" `NavRailLink`/row uses an exact match
  *   (`location.pathname === versionsBase`) instead of the default
  *   startsWith match, so it no longer stays highlighted alongside the
- *   specific version's own row underneath it (the same fix Phase 25a
- *   already applied to `ComplianceGlobalNavLink.tsx` for the identical
+ * specific version's own row underneath it (the same fix as in
+ * `ComplianceGlobalNavLink.tsx` for the identical
  *   "parent stays highlighted under a child route" shape).
- * - **29d**: the disclosure toggle no longer renders as a separately
+ * - The disclosure toggle does not render as a separately
  *   bordered `.btn` chip. `.nav-link-row` (theme.css) carries the row's
  *   hover/active background instead of the inner link, so hovering
  *   anywhere in the row — including the toggle's own area — highlights
@@ -149,7 +149,7 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
           })}
         </ul>
       )}
-      {/* Phase 22: this standard's own standards_manager/standards_contributor
+      {/* This standard's own standards_manager/standards_contributor
           working group. */}
       <NavRailLink to={`/standards/${entityId}/members`} label="Members" icon={<Users size={16} />} railCollapsed={railCollapsed} />
       <NavRailLink to={`/standards/${entityId}/history`} label="History" icon={<History size={16} />} railCollapsed={railCollapsed} />

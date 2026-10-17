@@ -10,7 +10,7 @@ never imports another module's package.
 Design decisions:
 - No ancestor fallback for nested projects: the org list is the base every
   project already sees, so an empty project table already means "use org
-  defaults" (resolution 3, Decided by: Agent).
+  defaults" (Decided by: Agent).
 - Org types are never deleted while referenced; a project is asked to stop
   using one, or it is disabled instead. Cross-project reassignment has no
   single correct target (same reasoning as Pain Point types).

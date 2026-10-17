@@ -17,7 +17,7 @@
  * list, since a hidden stakeholder is no longer reachable from the project.
  *
  * Personal data: contact info is Confidential, so it sits behind the same
- * visibility as the record. "Delete permanently" (Phase 0 resolution 15) is
+ * visibility as the record. "Delete permanently" is
  * the module's one irreversible action, so it is a tier-2 `ConfirmDialog`
  * requiring the stakeholder's exact name to be typed, and says exactly what is
  * removed. Every mutating control always renders regardless of role; the

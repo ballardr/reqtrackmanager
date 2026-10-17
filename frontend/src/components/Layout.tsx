@@ -103,7 +103,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // Every installed module's own top-level nav links (`globalNavItems`) and
   // "standalone workspace" nav sections (`standaloneWorkspaces`,
   // `modules/types.ts`) — a generic mechanism a module registers into
-  // (compliance-module-plan.md Phase 18 is its first user, "Compliance
+  // (is its first user, "Compliance
   // Standards"/"Standard"), the same "core doesn't hardcode a specific
   // module's UI" boundary `orgAdminSections` already establishes for
   // `OrgAdminPage.tsx`. Each global nav item owns its own visibility
@@ -126,8 +126,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
 
   // The Project nav section's items, in product-default order: the core entries, then one per
   // (module, nav entry) pair for every currently-enabled module that declares a frontend
-  // manifest, Tier A or Tier B alike (compliance-module-plan.md Phase 3; several entries per
-  // module since Module 1 — Context & Strategy — Phase 7.1). A module whose manifest was
+  // manifest, Tier A or Tier B alike (several entries per
+  // module since Context & Strategy). A module whose manifest was
   // rejected (e.g. a Tier B frame_url outside the deployment's allowlist) simply has no entry,
   // since `get_frontend_manifest` already omitted it server-side. `ProjectNavSection` applies
   // the user's order/"More" preference to this list without knowing what any item is.
@@ -226,17 +226,17 @@ function LayoutShell({ children }: { children: ReactNode }) {
           style={{ gap: "0.15rem" }}
         >
           {projectId && <ProjectNavSection projectId={projectId} items={projectNavItems} railCollapsed={railIconOnly} />}
-          {/* A module-contributed "standalone workspace" section (Phase
-              18's "Standard" is the first one) — a sibling structural
+          {/* A module-contributed "standalone workspace" section
+              ("Standard" is the first one) — a sibling structural
               pattern to "Project" above, not nested inside it. See this
               file's own `activeStandaloneWorkspace` computation above. */}
           {activeStandaloneWorkspace &&
             activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed: railIconOnly })}
           <div className="nav-section-label">Global</div>
           <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
-          {/* "Organisation Overview" (Phase 19) — a core, always-visible
-              nav-rail link (unlike Phase 18's "Compliance Standards" tab
-              below, this one carries general-purpose org stats every org
+          {/* "Organisation Overview" — a core, always-visible
+              nav-rail link (unlike the module-contributed
+              nav links below, this one carries general-purpose org stats every org
               has regardless of compliance, so it's shown unconditionally,
               the same precedent as the always-shown Projects link above —
               see docs/decisions.md's "Compliance module, human review
@@ -244,7 +244,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
               single-org/multi-org auto-redirect convention as its entry
               point, the same way `/orgs` already does for org admin. */}
           <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
-          {/* Module-contributed top-level nav links (Phase 18's "Compliance
+          {/* Module-contributed top-level nav links ("Compliance
               Standards" is the first one) — each item owns its own
               visibility and may render nothing at all; see this file's own
               `globalNavItems` computation above. */}
@@ -256,8 +256,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
           )}
           <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
           <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railIconOnly} />
-          {/* The only path to org administration (U-P-02-adjacent IA gap
-              found in the 2026-08 UX audit): /orgs already auto-redirects
+          {/* The only path to org administration: /orgs already auto-redirects
               straight to a single org's admin page, or lists every org a
               user belongs to otherwise — it just had no rail entry before
               this, for anyone but a server admin drilling in through
@@ -272,7 +271,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
             </>
           )}
           {/* Build identity — "a way to see the version and date of the
-              frontend and backend in the UI" (2026-08 UX audit follow-up).
+              frontend and backend in the UI".
               Pinned to the bottom of the rail via `marginTop: auto` on the
               flex-column `<nav>`; hidden in icon-only mode rather than
               squeezed into it, same as every other rail label. The sha/date

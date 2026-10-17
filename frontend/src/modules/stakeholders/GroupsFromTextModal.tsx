@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/GroupsFromTextModal
  *
- * The one-off "create groups from Organisation / group text" action (Phase 3c):
+ * The one-off "create groups from Organisation / group text" action:
  * lists the distinct values of the stakeholders' free-text field with how many
  * stakeholders each covers, lets the user untick any, and on confirm creates an
  * "Organisation / group" parent, a child group per ticked value and the

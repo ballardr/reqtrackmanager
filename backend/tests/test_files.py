@@ -232,7 +232,7 @@ def test_org_logo_and_login_background_are_downloadable_with_no_authentication(c
 
 
 def test_delete_org_logo_and_login_background_revert_to_the_platform_default(client, admin_token, org_id):
-    """UX audit finding: logo and login background had no revert path at
+    """Logo and login background had no revert path at
     all, in the UI or the API — unlike the text-based branding overrides
     (`OverridePill`). These `DELETE` endpoints close that gap: clearing
     the override falls back to the platform default (`GET /system/branding`)

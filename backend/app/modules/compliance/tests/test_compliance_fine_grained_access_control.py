@@ -1,5 +1,5 @@
-"""Tests for the Compliance Module's Fine-Grained Access Control Phase 6
-(docs/plans/core-fine-grained-access-control-plan.md): the `permissions`
+"""Tests for the Compliance Module's Fine-Grained Access Control:
+the `permissions`
 declared on all four of this module's `ModuleRoleDefinition`s
 (`compliance_manager`, `compliance_officer`, `standards_manager`,
 `standards_contributor`, `module.py`), and the two endpoints migrated to
@@ -10,8 +10,8 @@ accept `require_permission` as an alternative to their existing
 `"standard"` axis).
 
 Regression coverage first (no new grant — every existing role's access to
-these three endpoints must be unaffected by this phase), then the two new
-capability proofs the plan's own Phase 6 scope names explicitly: a plain
+these three endpoints must be unaffected), then the two new
+capability proofs a plain
 custom role reaching the evidence endpoints without ever holding
 `compliance_officer`, and an entity-scoped (`"standard"`) custom role
 reaching `update_requirement` without ever holding `standards_manager`/
@@ -67,7 +67,7 @@ def _grant_custom_role_to_user(client, admin_token, org_id, role_id, user_id, *,
 
 def test_evidence_create_update_regression_officer_and_plain_member(client, admin_token, org_id):
     """`create_evidence`/`update_evidence` still gate on `compliance_officer`
-    exactly as before this phase (the `_require_officer` branch of
+    exactly as before (the `_require_officer` branch of
     `_require_evidence_manage` is tried first and succeeds outright for an
     officer), and a plain org member with no compliance role and no new
     permission grant still gets 403 on both — proving the additive
@@ -141,7 +141,7 @@ def test_update_requirement_regression_standard_roles_and_plain_member(client, a
 
     # Org-wide `compliance_manager` still overrides the standard-scoped
     # check too (`overridden_by=(("org", "compliance_manager"),)`, unrelated
-    # to this phase but exercised through the new combinator's first,
+    # to the permission fallback but exercised through the new combinator's first,
     # role-based branch, not the `require_permission` fallback).
     manager_id = create_org_user(client, admin_token, org_id, "fgac.manager@example.com", role="member")
     _grant_compliance_manager(client, admin_token, org_id, manager_id)
@@ -160,7 +160,7 @@ def test_update_requirement_regression_standard_roles_and_plain_member(client, a
 def test_evidence_manage_permission_custom_role_reaches_create_and_update_without_officer_role(
     client, admin_token, org_id
 ):
-    """The concrete new capability this phase's org/project-axis migration
+    """The concrete new capability the org/project-axis migration
     adds: a custom role granting only `(compliance_evidence, manage)`
     (no `compliance_officer` module role at all) reaches `create_evidence`/
     `update_evidence`."""
@@ -198,7 +198,7 @@ def test_evidence_manage_permission_custom_role_reaches_create_and_update_withou
 
 
 def test_evidence_manage_permission_check_still_404s_when_module_disabled(client, admin_token, org_id):
-    """The subtle edge Fine-Grained Access Control Phase 4 flagged: a
+    """The subtle edge: a
     caller who only reaches this endpoint via the new `require_permission`
     fallback (never `compliance_officer`) must still 404, not succeed or
     403, once the module is disabled — `_require_evidence_manage` tries
@@ -234,8 +234,8 @@ def test_evidence_manage_permission_check_still_404s_when_module_disabled(client
 
 
 def test_standard_content_manage_entity_scoped_custom_role_reaches_update_requirement(client, admin_token, org_id):
-    """The concrete new capability this phase's entity-scoped-axis migration
-    adds — the actual point of building Phase 5's registry first: a custom
+    """The concrete capability the entity-scoped-axis migration
+    adds — the actual point of the entity-scope registry: a custom
     role granting `(project_compliance_requirement, manage)` scoped to one
     specific standard reaches `update_requirement` for that standard
     without ever holding `standards_manager`/`standards_contributor` (or

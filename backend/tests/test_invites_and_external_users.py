@@ -6,7 +6,7 @@ redeemed at native signup for a regular org, and immediate provisioning
 `services/invites.py` and docs/decisions.md's "Self-signup, invites, and
 SSO" entry.
 
-Also covers Phase 3 ("resend a pending invite", docs/decisions.md): listing
+Also covers "resend a pending invite" (docs/decisions.md): listing
 a project's pending invites (`GET .../pending-invites`) and resending one
 (`POST .../pending-invites/{id}/resend`)."""
 
@@ -307,7 +307,7 @@ def test_expired_or_wrong_invite_token_is_rejected_at_signup(client, admin_token
     assert resp.status_code == 400
 
 
-# --- Phase 3: list + resend pending invites (docs/decisions.md) ------------
+# --- list + resend pending invites (docs/decisions.md) ------------
 
 
 def test_list_pending_invites_computes_pending_and_expired_status(client, admin_token):
@@ -376,7 +376,7 @@ def test_list_pending_invites_excludes_already_accepted(client, admin_token):
 
 
 def test_resend_pending_invite_rotates_token_and_resends_email(client, admin_token):
-    """Pins the two core Phase 3 guarantees: the old token stops working and
+    """Pins the two core guarantees: the old token stops working and
     the new one redeems normally (rotation, not reuse), and `send_email` is
     actually invoked again (mocked/captured, the same
     `patch.object(<module>, "send_email", ...)` style

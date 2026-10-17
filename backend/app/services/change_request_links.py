@@ -2,7 +2,7 @@
 Module: services.change_request_links
 
 Links proposed on a change request, validated now and merged on approval
-(Platform Enhancements Phase 6b, Q15).
+
 
 Responsibilities:
 - Check a proposed link (`check_proposed_link`) with the same rules as creating a link

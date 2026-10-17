@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/FutureStateFormModal
  *
- * Create/edit dialog for a Future State's content fields (docs/plans/
- * module-01-context-and-strategy-plan.md Phase 7.2) — mirrors
+ * Create/edit dialog for a Future State's content fields — mirrors
  * `StrategyFormModal.tsx`'s exact "shared by create and edit, distinguished
  * by whether `initial` is passed" / create-as-a-layer shape, adapted to
  * Future State's own field list: no `priority`/`time_horizon` (Future State

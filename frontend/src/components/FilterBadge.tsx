@@ -11,7 +11,7 @@ import type { BadgeTone } from "../api/types";
  * whether the underlying filter is already set to this value stays
  * obvious even before hovering.
  *
- * `tone` (platform review 2026-09, Phase 4) applies the status-colour
+ * `tone` applies the status-colour
  * `.badge--<tone>` modifier — pass the value from the relevant `*_TONE`
  * map (api/types.ts) when this badge represents a status/outcome enum;
  * omit it for badges that don't (e.g. a target-stage filter), which keeps

@@ -4,7 +4,7 @@ See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout, including the
 Governance-vs-Traceability-vs-relationships worked distinction table.
 
-**Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
+**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 §29–36 ("Module 8 — Governance / Policies" through "Governance Permissions").
 
 **Status:** Proposed. Not started. Sixth in the overview's recommended
@@ -127,7 +127,7 @@ explicit requirement). This is where Decision Management's own Phase 0 Q2a
 (deferred approver-assignment question) was originally expected to get its
 real answer, but that answer arrived earlier and from a different
 direction than this section originally assumed: [Fine-Grained Access
-Control (core)](core-fine-grained-access-control-plan.md) shipped a
+Control (core)](completed/core-fine-grained-access-control-plan.md) shipped a
 general organisation-definable-role mechanism first (2026-09-27), and
 Decision Management's own Phase 8 (complete) already binds Decision
 approval to it directly — a caller needs `(decision, approve_baseline,
@@ -227,7 +227,7 @@ MCP-tools addition above, applied to every not-yet-built module plan); the
 specific scope below is **Decided by: Agent**.
 
 **Goal:** add Governance's user-facing surface to `docs/website/` (the
-published docs site, `docs/plans/docs-website-plan.md`) — modeled closely
+published docs site, `docs/plans/completed/docs-website-plan.md`) — modeled closely
 on `module-04-decision-management-plan.md`'s own "Phase 6 — Docs website
 coverage", adapted to this module's own content rather than copied.
 
@@ -276,7 +276,7 @@ are all easy to under-explain in a single paragraph folded into Phase 5.
 - **Screenshot requirement (2026-09-22 addendum).** Making this explicit
   here rather than leaving it implicit is **Decided by: User** (the same
   instruction as the phase itself, applied specifically to screenshots this
-  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  time — `docs/plans/completed/docs-website-plan.md`'s "Screenshots" section already
   bound this page to its standard, but this phase's Scope above never said
   so in as many words). This page is subject to that standard in full:
   1440×900 viewport, captured against the seeded demo dataset

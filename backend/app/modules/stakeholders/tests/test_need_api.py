@@ -1,6 +1,5 @@
-"""Tests for the Stakeholders & Personas module's Phase 2 backend API
-(docs/plans/module-02-stakeholders-and-personas-plan.md — Stakeholder Need),
-through the real HTTP endpoints.
+"""Tests for the Stakeholders & Personas module's backend API
+(Stakeholder Need), through the real HTTP endpoints.
 
 Covers: project-scoped CRUD, partial update, version history, the lifecycle,
 the "has need" links from Stakeholders and Personas (both directions, with

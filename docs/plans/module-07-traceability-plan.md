@@ -3,12 +3,12 @@
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout, especially the
 relationship-vs-traceability-vs-governance distinction table. This module
-hard-depends on [Module 0 — Platform Foundations](module-00-platform-foundations-plan.md)
+hard-depends on [Module 0 — Platform Foundations](completed/module-00-platform-foundations-plan.md)
 for the relationship model — this module is the heaviest *consumer* of
 that infrastructure (a generic rule/matrix engine needs it far more than
 any single content module does), not its origin.
 
-**Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
+**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 §17–28 ("Module 7 — Traceability" through "Traceability Configuration
 Permissions") — the most detailed and heavily-specified module in the
 entire overview.
@@ -243,7 +243,7 @@ MCP-tools addition above, applied to every not-yet-built module plan); the
 specific scope below is **Decided by: Agent**.
 
 **Goal:** add Traceability's user-facing surface to `docs/website/` (the
-published docs site, `docs/plans/docs-website-plan.md`) — modeled closely
+published docs site, `docs/plans/completed/docs-website-plan.md`) — modeled closely
 on `module-04-decision-management-plan.md`'s own "Phase 6 — Docs website
 coverage", adapted to this module's own content rather than copied.
 
@@ -288,7 +288,7 @@ land in the same Phase 6 UI at once).
 - **Screenshot requirement (2026-09-22 addendum).** Making this explicit
   here rather than leaving it implicit is **Decided by: User** (the same
   instruction as the phase itself, applied specifically to screenshots this
-  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  time — `docs/plans/completed/docs-website-plan.md`'s "Screenshots" section already
   bound this page to its standard, but this phase's Scope above never said
   so in as many words). This page is subject to that standard in full:
   1440×900 viewport, captured against the seeded demo dataset

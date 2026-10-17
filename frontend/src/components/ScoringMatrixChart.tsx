@@ -1,8 +1,8 @@
 /**
  * Module: components/ScoringMatrixChart
  *
- * A two-axis scoring matrix (generic scoring-matrix core, Module 1 Phase
- * 10): rows are the Y axis's levels (top level first), columns the X
+ * A two-axis scoring matrix (generic scoring-matrix core):
+ * rows are the Y axis's levels (top level first), columns the X
  * axis's; each cell is coloured by the rating band its normalised score
  * (x weight × y weight ÷ the product of both top weights) falls in. Items
  * can be plotted as dots in their cell, sized by an optional 0–1 value

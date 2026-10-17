@@ -1,16 +1,16 @@
 """
 Module: modules.stakeholders.stakeholder_project_router
 
-Project-scoped Stakeholder API (Phase 1.2), mounted at
+Project-scoped Stakeholder API, mounted at
 `/api/v1/projects/{project_id}/modules/stakeholders` alongside
 `project_router.py`'s Persona routes: project-scoped Stakeholder
 CRUD/lifecycle/comments/files/erasure, the project's Stakeholder type
 vocabulary (effective list plus rename/reorder/disable/add), "create from org
 user", the cadence hint, the "represents Persona" links and the project's
-per-stakeholder visibility override (Phase 3b).
+per-stakeholder visibility override.
 
 Reads return the project's own stakeholders *and* the organisation's live
-org-scoped ones (Phase 0 resolution 2), minus org ones the project (or an
+org-scoped ones, minus org ones the project (or an
 ancestor) has hidden. Every mutation targets a project-scoped stakeholder
 only; an org stakeholder is edited through the org router — the one exception
 is hiding/showing it, which writes only the project's own override row. A project stakeholder may represent an org persona or one of its own
@@ -192,8 +192,8 @@ def get_cadence_hint(
     project_id: UUID, influence_level_id: UUID | None = None, interest_level_id: UUID | None = None,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """The power/interest quadrant and suggested cadence for a pair of levels
-    (resolution 21); a hint only. Declared before `/stakeholders/{id}` so the
+    """The power/interest quadrant and suggested cadence for a pair of levels;
+    a hint only. Declared before `/stakeholders/{id}` so the
     literal path wins."""
     project = _project(db, project_id)
     try:
@@ -339,7 +339,7 @@ def erase_project_stakeholder(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Permanently deletes a stakeholder and every row/file/link holding data
-    about them (Phase 0 resolution 15). Irreversible; the audit event keeps
+    about them. Irreversible; the audit event keeps
     only the id."""
     project = _project(db, project_id)
     stakeholder = _get(db, project_id, stakeholder_id)

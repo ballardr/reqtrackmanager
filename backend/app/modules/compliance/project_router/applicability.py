@@ -1,7 +1,7 @@
 """
 Module: modules.compliance.project_router.applicability
 
-A project's own per-requirement compliance rows (Phase 8/9): list/
+A project's own per-requirement compliance rows: list/
 get, and updating a requirement's applicability or assessment value.
 The approval *workflow* actions on the same rows (submit/approve/
 reject) are `assessment_workflow.py`'s own sibling bucket, split out

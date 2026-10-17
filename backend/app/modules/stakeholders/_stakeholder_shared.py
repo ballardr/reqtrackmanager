@@ -7,13 +7,13 @@ for Personas: the routers declare their own routes and these hold the bodies
 the two would otherwise duplicate. Comments and files go through the shared
 `services.module_attachments` kit.
 
-RBAC (Phase 0 resolution 6): viewing is gated by sub-component enablement
+RBAC: viewing is gated by sub-component enablement
 alone; create/edit/archive/retire/erase need the scope's owner role
 (`org_stakeholder_owner`/`stakeholder_owner`) or a Fine-Grained Access Control
 `(stakeholder, manage)` grant. Stakeholder-type admin (and scoring
 configuration) is the separate org-scoped `stakeholder_type_admin` role.
 
-Personal data (Phase 0 resolution 15): a stakeholder is a record about an
+Personal data: a stakeholder is a record about an
 identifiable person, so audit events here never carry the name, contact info
 or filenames, and `erase_stakeholder_endpoint` hard-deletes the record.
 """
@@ -280,7 +280,7 @@ def create_stakeholder_from_user(
     db: Session, scope: StakeholderScope, payload: StakeholderFromUserCreate, creator: User, *,
     organization_id: uuid.UUID, project_id: uuid.UUID | None,
 ) -> StakeholderOut:
-    """"Create stakeholder from org user" (resolution 13): prefills the name
+    """"Create stakeholder from org user": prefills the name
     and contact info from the user's account.
 
     Raises:

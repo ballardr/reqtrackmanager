@@ -9,7 +9,7 @@ from producing unreadable button/badge text.
 is the only way anything in this app should read or create it, so "there
 might be zero rows" only ever needs handling here. True singleton-ness is
 now enforced at the DB level (`ServerSettings.singleton_guard`, migration
-0020, follow-up UX batch Phase D) after live evidence showed the earlier
+0020, 2026-08-31) after live evidence showed the earlier
 purely-application-level "read then insert if absent" check really did let
 two concurrent requests both create a row in practice — see that migration
 and the model's own docstring for the full incident.

@@ -1,8 +1,7 @@
 /**
  * Module: modules/compliance/StandardProjectsPanel
  *
- * The standard workspace's "Projects" section (docs/compliance-module-
- * plan.md Phase 23) — the destination for the Overview's "Projects"/
+ * The standard workspace's "Projects" section — the destination for the Overview's "Projects"/
  * "Compliant" `MetricTile`s: a simple, single-standard list of every
  * project this standard is assigned to, each with its own §20 overall
  * status, drilling through to that project's own Compliance page

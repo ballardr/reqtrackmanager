@@ -2,9 +2,9 @@
  * Module: modules/compliance/ProjectCompliancePage
  *
  * The Compliance Module's project-scoped, Project-Manager/Compliance-
- * Officer-facing view (docs/compliance-module-plan.md Phase 13;
- * requirements doc §21, plus UI portions of §7-§10, §12, §13) — the route
- * component Phase 3's Tier A mechanism mounts at
+ * Officer-facing view
+ * (requirements doc §21, plus UI portions of §7-§10, §12, §13) — the route
+ * component the Tier A mechanism mounts at
  * `/projects/:projectId/modules/compliance` (see `modules/registry.ts`).
  *
  * Top-level shape: three `Tabs` — "Standards" (every standard assigned to
@@ -18,7 +18,7 @@
  * easy... to determine what remains outstanding").
  *
  * Standard-to-project *assignment itself* is a Compliance Manager action on
- * the *org* router (`router.py::create_project_compliance`'s own Phase 7
+ * the *org* router (`router.py::create_project_compliance`'s
  * design — see that endpoint's docstring), even though this whole page is
  * project-scoped; this page fetches the owning project's `organization_id`
  * once and passes it down wherever an org-router call is needed. Mirrors
@@ -30,24 +30,20 @@
  * Every mutating control always renders; the backend enforces
  * `require_module_role("compliance", "compliance_officer")`/
  * `_require_manage` and a 403 surfaces as a toast — the same "no client-side
- * can-i-manage precomputation" posture `ComplianceAdminPanel.tsx` (Phase 12)
+ * can-i-manage precomputation" posture `ComplianceAdminPanel.tsx`
  * established, since no "my effective roles including module roles" endpoint
  * exists to check against without adding one (flagged there, still true
  * here).
  *
- * The Standards tab's "Export" trigger (Phase 15, §29) hits
+ * The Standards tab's "Export" trigger (§29) hits
  * `GET .../modules/compliance/reports?format={pdf,csv}` directly via
  * `api.getForBlob` + `downloadBlob` — the exact same fetch-a-blob-and-save-
  * it idiom `pages/ReportsPage.tsx`'s own PDF/CSV buttons already use for
  * core requirement reports (that page's `generate` function), reused
  * rather than reinvented for this module's own report generator
- * (`app.modules.compliance.reports`). Originally two permanently-visible
- * adjacent buttons; Phase 43 moved it onto the shared `ReportExportButton`
- * (a single "Export" trigger opening a PDF/CSV `Popover`) once
- * `OrgComplianceDashboard.tsx`'s own identical Phase 25b fix was extracted
- * into a reusable component for three new callers — this page's own
- * pre-25b layout had been left behind unfixed until then; see that
- * component's own docstring.
+ * (`app.modules.compliance.reports`). It uses the shared `ReportExportButton`
+ * (a single "Export" trigger opening a PDF/CSV `Popover`) rather than two
+ * permanently-visible adjacent buttons; see that component's own docstring.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -227,10 +223,9 @@ export function ProjectCompliancePage() {
           onCancel={() => setAssigning(false)}
           onSave={async (values) => {
             try {
-              // Phase 20's default, primary assignment path — works for a
+              // The default, primary assignment path — works for a
               // plain Project Manager with no `compliance_officer` grant,
-              // not gated behind it (see docs/compliance-module-plan.md
-              // Phase 20).
+              // not gated behind it.
               await complianceApi.createProjectComplianceAsProjectManager(projectId, values);
               showToast("Standard assigned to project.");
               setAssigning(false);

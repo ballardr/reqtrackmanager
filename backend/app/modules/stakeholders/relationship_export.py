@@ -1,8 +1,8 @@
 """
 Module: modules.stakeholders.relationship_export
 
-The §10.5 relationships part of this module's project bundle export/import
-(Phase 3); `module.py` composes it with the Persona, Stakeholder and Need halves.
+The §10.5 relationships part of this module's project bundle export/import;
+`module.py` composes it with the Persona, Stakeholder and Need halves.
 
 Design decisions:
 - Only a holder's relationships to records *of this project* travel, so a

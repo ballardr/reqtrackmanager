@@ -11,8 +11,7 @@ stages/baselines/change-request history, since a template is a starting
 point for a new project's own lifecycle, not a copy of the source
 project's current lifecycle state.
 
-Direct `UserProjectRole` grants are copied as of the follow-up UX batch's
-Phase C (2026-08-31, docs/decisions.md): once a project's initial manager
+Direct `UserProjectRole` grants are copied 2026-08-31 (2026-08-31, docs/decisions.md): once a project's initial manager
 (and any other directly-granted role) is normally established via a direct
 grant rather than group membership (`routers.projects.create_project`'s
 non-template path), a template project's own directly-granted managers/
@@ -20,7 +19,7 @@ admins/stakeholders/members would otherwise silently vanish on clone for
 everyone except whoever happens to be doing the cloning (who still gets a
 manager role via `_ensure_project_has_a_manager`'s fallback, but nobody
 else the template creator intended to carry over). This was a real,
-identified gap in an earlier draft of that phase's plan, not a
+identified gap in an earlier draft, not a
 pre-existing, deliberately-scoped-out behaviour.
 
 The new project's `status_id` is deliberately *not* copied from the
@@ -145,7 +144,7 @@ def clone_project(
         db.add(new_group)
         db.flush()
         group_id_map[group.id] = new_group.id
-        # Roles (PR7, docs/decisions.md): a group's role(s) live in the
+        # Roles (docs/decisions.md): a group's role(s) live in the
         # separate ProjectGroupRole grant table now, not a scalar column on
         # ProjectGroup itself — copy every role the template's group holds,
         # not just one, the same "copy everything" precedent this loop
@@ -158,7 +157,7 @@ def clone_project(
             # All three member-target kinds are copied — `source_project_id`
             # ("this group's members = that project's own direct members")
             # was a real, pre-existing gap found while reviewing this
-            # function for Phase C: only `user_id`/`org_group_id` were ever
+            # function: only `user_id`/`org_group_id` were ever
             # carried over, so a template group referencing another
             # project's roster silently lost that reference on every clone.
             # `source_project_id` itself points at the *original* project it
@@ -175,7 +174,7 @@ def clone_project(
                 )
             )
 
-    # Direct role grants (Phase C, follow-up UX batch, 2026-08-31 — see this
+    # Direct role grants (2026-08-31 — see this
     # module's own docstring for why this is now needed). Copied verbatim,
     # including any `PROJECT_MANAGER` grant the template's own creator or
     # anyone else held directly — `_ensure_project_has_a_manager`

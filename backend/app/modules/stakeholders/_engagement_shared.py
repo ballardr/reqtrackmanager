@@ -430,7 +430,7 @@ def _audience_with_members(
 ) -> EngagementAudienceAdded:
     """Records `group_id` as an audience and adds its current members (the group and every group beneath
     it, minus archived and hidden Stakeholders) as participants: a snapshot, so later membership changes
-    do not alter who the engagement involved (Phase 0 addendum 3, item 29). Existing participants are kept."""
+    do not alter who the engagement involved Existing participants are kept."""
     group = grp.load_groups(db, project.organization_id, project.id).get(group_id)
     if group is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder group not found.")

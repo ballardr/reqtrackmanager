@@ -19,9 +19,9 @@
  * `columnsAfterScope` slot the kind's own columns around them.
  *
  * A kind can add its own filters (`extraFilters`) and narrow `records` before
- * passing them in (Stakeholders do both for groups, Phase 3c).
+ * passing them in.
  *
- * Per-project visibility (Phase 3b): a page that lets the project hide org
+ * Per-project visibility: a page that lets the project hide org
  * records passes `onIncludeHiddenChange` for a "Show hidden" filter and
  * `onShowHidden`, which adds a Visibility column to a hidden row stating who
  * hid it and offering "Show". A hidden row is not openable (the project API

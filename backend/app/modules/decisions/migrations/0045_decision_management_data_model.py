@@ -1,11 +1,11 @@
-"""Decision Management data model (Module 4 Phase 1)
+"""Decision Management data model
 
 Revision ID: 0045
 Revises: 0044
 Create Date: 2026-09-21
 
 Adds the six tables backing Decision Management's data model
-(docs/plans/module-04-decision-management-plan.md Phase 1):
+:
 
 - `decision_type_definitions` (project-scoped, mirrors
   `action_type_definitions` exactly).
@@ -25,9 +25,9 @@ pattern for compliance action types: an `INSERT ... SELECT ... WHERE NOT
 EXISTS` per project, safe to run unconditionally.
 
 No `decision_template_definitions` backfill — template seeding is opt-in
-per organisation at creation time (Phase 0 addendum Q1), so a pre-existing
+per organisation at creation time, so a pre-existing
 organisation simply starts with none; an org admin can create custom ones
-by hand once Phase 4's API ships.
+by hand through the API.
 """
 
 from collections.abc import Sequence

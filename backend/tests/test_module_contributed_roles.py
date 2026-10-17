@@ -1,5 +1,5 @@
-"""Tests for the module system's Phase 2 module-contributed RBAC
-(docs/compliance-module-plan.md): `ModuleRoleDefinition`/`user_module_roles`
+"""Tests for the module system's module-contributed RBAC:
+`ModuleRoleDefinition`/`user_module_roles`
 grant-and-revoke idempotency (both org- and project-scoped), `services.rbac.
 require_module_role`'s admin-override composition at each scope, the
 404-not-403 behaviour when a role's module is disabled/non-entitled, the
@@ -8,15 +8,14 @@ the two "available module roles" read endpoints all apply, the 400
 validation on `POST .../module-roles`, and `sync_module_role_definitions`'s
 own upsert-never-delete behaviour.
 
-This is a separate file from `test_module_system_rbac.py` (Phase 0's
+This is a separate file from `test_module_system_rbac.py` (the
 server-tier RBAC tests) rather than an extension of it — same reasoning
-Phase 0's own notes give for why it isn't folded into `test_access_review.py`:
+as for why it isn't folded into `test_access_review.py`:
 this is a genuinely different module-system concern (module-contributed
 roles, not server-tier roles), even though both files register a fixture
 module into the same `INSTALLED_MODULES` list.
 
-Since no real module is registered in `INSTALLED_MODULES` yet (Compliance
-doesn't land until Phase 5), every test here uses the `fake_module` fixture
+Since no real module is registered in `INSTALLED_MODULES` yet, every test here uses the `fake_module` fixture
 below, which mirrors `test_module_registry.py`'s own fixture mechanics
 exactly (mutate `INSTALLED_MODULES` in place, rebuild the registry cache,
 always tear down) — see that fixture's own comment for why reassigning the
@@ -81,7 +80,7 @@ def fake_module():
     the registry cache before and after so the change (and its later
     removal) actually takes effect — mirrors `test_module_registry.py`'s
     own `fake_module` fixture. Also syncs `module_role_definitions` so rows
-    exist for it, per this phase's own spec."""
+    exist for it."""
     module_registry.INSTALLED_MODULES.append(_fake_module())
     build_registry(force=True)
     db = SessionLocal()
@@ -294,11 +293,11 @@ def test_require_module_role_project_scope_composition(client, admin_token, org_
         db.close()
 
 
-# --- Group-based grants (module system Phase 30) ----------------------------
+# --- Group-based grants ----------------------------
 
 
 def test_require_module_role_org_scope_group_grant_composition(client, admin_token, org_id, fake_module):
-    """A `GroupModuleRole` grant (module system Phase 30) is honoured for a
+    """A `GroupModuleRole` grant is honoured for a
     user who is a member of the granted group, and stops being honoured
     once they're removed from it or the grant itself is revoked — mirrors
     `test_require_module_role_org_scope_composition`'s own direct-grant
@@ -427,8 +426,8 @@ def test_require_module_role_404_when_module_disabled_even_for_admins(client, ad
         db.close()
 
 
-def test_require_module_role_project_scope_respects_phase5_project_override(client, admin_token, org_id, fake_module):
-    """Module 0 (Platform Foundations) Phase 5 regression: `require_module_
+def test_require_module_role_project_scope_respects_project_override(client, admin_token, org_id, fake_module):
+    """Regression: `require_module_
     role`'s project-scoped branch used to resolve whole-module state via
     the org-only `is_module_enabled` directly, bypassing any project-level
     override entirely. It must now 404 when *this project's own*
@@ -446,7 +445,7 @@ def test_require_module_role_project_scope_respects_phase5_project_override(clie
     second case below."""
     from app.models.module import OrganizationModuleEnablement, ProjectModuleEnablement
 
-    project = create_project(client, admin_token, org_id, "Require Module Role Phase 5 Project Override")
+    project = create_project(client, admin_token, org_id, "Require Module Role Project Override")
     db = SessionLocal()
     try:
         project_uuid = uuid_lib.UUID(project["id"])
@@ -455,7 +454,7 @@ def test_require_module_role_project_scope_respects_phase5_project_override(clie
         dependency = require_module_role(fake_module, PROJECT_ROLE_KEY)
 
         # Org default stays enabled; this project alone disables the
-        # module via its own Phase 5 override.
+        # module via its own project override.
         # Replace the row copied in at project creation (snapshot_project_module_state).
         db.query(ProjectModuleEnablement).filter_by(project_id=project_uuid, module_key=fake_module).delete()
         db.add(ProjectModuleEnablement(project_id=project_uuid, module_key=fake_module, enabled=False))

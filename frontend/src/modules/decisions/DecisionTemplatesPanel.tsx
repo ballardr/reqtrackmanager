@@ -1,9 +1,9 @@
 /**
  * Module: modules/decisions/DecisionTemplatesPanel
  *
- * The org-scoped Decision Template library (Phase 0 addendum items 1/2/6/7)
+ * The org-scoped Decision Template library
  * — registered as this module's `orgAdminSections` contribution
- * (`module.ts`; moved here from `orgOverviewSections` in Phase 9,
+ * (`module.ts`; moved here from `orgOverviewSections` on
  * 2026-09-22, per explicit user direction — an org admin manages this
  * library on Org Management, not the Org Dashboard), the org-level
  * counterpart to the opt-in template-pack picker

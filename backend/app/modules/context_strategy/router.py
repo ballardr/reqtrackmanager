@@ -1,12 +1,11 @@
 """
 Module: modules.context_strategy.router
 
-Context & Strategy's Phase 1 org-scoped API (docs/plans/module-01-context-
-and-strategy-plan.md Phase 1) — CRUD, lifecycle transitions, comments, and
+Context & Strategy's org-scoped API — CRUD, lifecycle transitions, comments, and
 file attachments for **organisation-scoped** Strategy records. Mounted at
 `/api/v1/orgs/{organization_id}/modules/context_strategy`.
 
-Phase 2 adds the same surface for **organisation-scoped** Future State
+The same surface exists for **organisation-scoped** Future State
 records, at `/future-states` (this module's own established hyphenated
 multi-word URL-segment convention — see e.g. `modules.compliance`'s
 `/action-types`), gated by `require_org_subcomponent_enabled
@@ -14,7 +13,7 @@ multi-word URL-segment convention — see e.g. `modules.compliance`'s
 manage_role`/`require_future_state_approve_permission` — exact structural
 mirror of the Strategy surface below, under distinct function names.
 
-Phase 4 adds the same surface for **organisation-scoped** Guiding
+The same surface exists for **organisation-scoped** Guiding
 Principle records, at `/guiding-principles`, gated by `require_org_
 subcomponent_enabled("context_strategy", "guiding_principle")` and
 `_shared.require_guiding_principle_manage_role`/`require_guiding_principle_
@@ -25,11 +24,9 @@ GuidingPrincipleStatus` has no `UNDER_REVIEW` state to submit into).
 RBAC: reads/creation are gated by `require_org_subcomponent_enabled
 ("context_strategy", "strategy")` (`_require_view`) — any org member with
 the module *and* this sub-component enabled may browse and propose a
-Strategy ("project members (View + Propose)" from the plan's Phase 1,
-applied at org scope by direct analogy). Module 0 (Platform Foundations)
-Phase 4's own org-scoped-gating design question (see that plan's Phase 4
-section and `docs/decisions.md`'s "Module 0 (Platform Foundations) Phase
-4" entry): an org-scoped Strategy has no `project_id` for a project-level
+Strategy ("project members (View + Propose)", applied at org scope by direct
+analogy). On org-scoped gating (see `docs/decisions.md`'s Platform Foundations
+sub-component entry): an org-scoped Strategy has no `project_id` for a project-level
 override to key against at all, so `require_org_subcomponent_enabled`
 resolves purely from the organisation's own default (`app.modules.
 registry.is_org_module_subcomponent_enabled`) rather than reusing
@@ -231,7 +228,7 @@ def create_org_strategy(
 ):
     """Creates an organisation-scoped Strategy in `DRAFT` status. Any org
     member with the module enabled may create one — no `org_strategy_owner`
-    grant required (Phase 1's "project members (View + Propose)", applied
+    grant required ("project members (View + Propose)", applied
     at org scope)."""
     org = db.get(Organization, organization_id)
     if org is None:
@@ -640,7 +637,7 @@ def unlink_org_strategy_file(
 
 
 # =============================================================================
-# --- Future State (Phase 2) -------------------------------------------------
+# --- Future State -------------------------------------------------
 # =============================================================================
 
 
@@ -1078,12 +1075,12 @@ def unlink_org_future_state_file(
 
 
 # =============================================================================
-# --- Pain Point types (Phase 3) ----------------------------------------------
+# --- Pain Point types ----------------------------------------------
 # =============================================================================
 #
-# Organisation-scoped `PainPointTypeDefinition` CRUD only (Phase 0 Q3's
+# Organisation-scoped `PainPointTypeDefinition` CRUD only (the
 # shared base tier) — the Pain Point *artefact* itself is project-scoped
-# only (source overview §6) and lives entirely in `project_router.py`,
+# only (§6) and lives entirely in `project_router.py`,
 # alongside the project-scoped `ProjectPainPointType` override/local-type
 # endpoints. Reads are gated by `require_org_subcomponent_enabled
 # ("context_strategy", "pain_point")` (any org member with the module and
@@ -1199,7 +1196,7 @@ def delete_pain_point_type(
 
 
 # =============================================================================
-# --- Guiding Principles (Phase 4) --------------------------------------------
+# --- Guiding Principles --------------------------------------------
 # =============================================================================
 
 
@@ -1677,7 +1674,7 @@ def unlink_org_guiding_principle_file(
     db.commit()
 
 
-# --- Phase 6: cross-artefact relationships -----------------------------------
+# --- cross-artefact relationships -----------------------------------
 #
 # Org-scoped list + create relationship endpoints for Strategy/Future State/
 # Guiding Principle (the three artefact types with an org-scoped half — Pain
@@ -1685,7 +1682,7 @@ def unlink_org_guiding_principle_file(
 # already covered above, and Open Question has no org scope at all) — exact
 # structural mirror of `project_router.py`'s own relationship section, under
 # distinct function names, `organization_id` in place of `project_id`. See
-# `service.py`'s own Phase 6 docstring section for the overall design.
+# `service.py`'s relationships docstring section for the overall design.
 
 
 @router.get("/strategies/{strategy_id}/relationships", response_model=list[ContextStrategyLinkOut])
@@ -1876,5 +1873,5 @@ def create_org_guiding_principle_supersession(
     )
 
 
-# Phases 12/12b: reports (core `services.report_framework`, declared in `reports.py`).
+# Reports (core `services.report_framework`, declared in `reports.py`).
 router.include_router(REPORT_ROUTERS.org)

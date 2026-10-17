@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
- * 2026-08 UX audit roadmap item 514: once a requirement is locked
+ * Once a requirement is locked
  * (APPROVED/COMPLETED), adding an action to it no longer bypasses the
  * change-request-only-once-locked rule its own fields already follow
  * (`services.requirements.LOCKED_STATUSES`) — "Create and link a new

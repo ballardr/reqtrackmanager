@@ -1,8 +1,8 @@
 /**
  * Module: modules/context_strategy/reportTypes
  *
- * The `ReportResult.data` shapes this module's custom report views read
- * (Module 1 Phase 13), mirroring the dataclasses `collect_pain_point_
+ * The `ReportResult.data` shapes this module's custom report views read,
+ * mirroring the dataclasses `collect_pain_point_
  * prioritisation` (R1) and `collect_open_question_register` (R4) return in
  * `backend/app/modules/context_strategy/reports.py`. Dates arrive as ISO
  * strings; scores are normalised 0–1 (shown as 0–100).

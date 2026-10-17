@@ -47,8 +47,7 @@ function mockWorkspaceApis() {
 
 /**
  * `StandardWorkspacePage` — the per-standard drill-down at `/standards/
- * :standardId[/versions|/history]` (docs/compliance-module-plan.md Phase
- * 18). Resolves its owning org via the new `GET /api/v1/compliance/
+ * :standardId[/versions|/history]`. Resolves its owning org via the new `GET /api/v1/compliance/
  * standards/{id}` before threading it through to every existing org-scoped
  * nested call (action types, versions, history) unchanged.
  */
@@ -69,10 +68,10 @@ export const Overview: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: /ISO-27001 — ISO 27001/ })).toBeInTheDocument());
     await expect(canvas.getByText("Information security management.")).toBeInTheDocument();
     await expect(canvas.getByText("Issued by ISO")).toBeInTheDocument();
-    // Phase 20: the applicability-default panel renders in Overview too.
+    // The applicability-default panel renders in Overview too.
     await waitFor(() => expect(canvas.getByRole("switch")).toHaveAttribute("aria-checked", "false"));
 
-    // Phase 23: clickable stat tiles — one version, zero requirements (the
+    // Clickable stat tiles — one version, zero requirements (the
     // mock's empty `/requirements` list), zero assigned projects.
     await waitFor(() => {
       const tile = canvas.getByRole("link", { name: /Versions/ });
@@ -179,7 +178,7 @@ const SIBLING_STANDARD: ComplianceStandard = {
   ...STANDARD, id: "std-2", reference: "EN-60529", name: "EN 60529", organization_id: ORG.id,
 };
 
-/** Phase 28 — with more than one standard reachable across the caller's
+/** With more than one standard reachable across the caller's
  * orgs, a chevron next to the standard's name opens a popover listing the
  * others as plain links to their own workspace, via the same cross-org
  * fan-out `StandardListPage.tsx` uses (`listStandardsAcrossMyOrgs`). */

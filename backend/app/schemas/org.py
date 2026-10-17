@@ -19,7 +19,7 @@ from app.schemas.report import ReportContentEntry
 
 class OrganizationCreate(BaseModel):
     name: str = Field(min_length=1)
-    # Module 4 (Decision Management) Phase 1 — `None` (the default) means
+    # `None` (the default) means
     # "caller didn't specify," resolved to every module's `default_selected`
     # org-creation choice by `app.modules.registry.run_on_org_created_hooks`;
     # an explicit list (including `[]`) is used exactly as given. See
@@ -100,7 +100,7 @@ class OrganizationOut(BaseModel):
     email_footer_company_name: str | None = None
     email_footer_website: str | None = None
     email_footer_address: str | None = None
-    # Platform review 2026-09, Phase 8 — readable by any org member (unlike
+    # Readable by any org member (unlike
     # most other org policy toggles, which live behind
     # `OrgAdvancedSettingsOut`/`ORG_ADMIN`) since a project manager who isn't
     # an org admin still needs this to render their own project's settings
@@ -209,7 +209,7 @@ class OrgAdvancedSettingsOut(BaseModel):
     docstring and docs/decisions.md. SSO group→role mapping used to live
     here too (`sso_group_mappings`); it's now a per-`OrgGroup` property
     (`OrgGroup.granted_org_role`, alongside `idp_synced_group_name`) —
-    2026-08 UX audit roadmap item 522 — managed via the org groups
+    managed via the org groups
     endpoints, not this one."""
 
     smtp_host: str | None = None
@@ -244,8 +244,8 @@ class OrgAdvancedSettingsUpdate(BaseModel):
 
 class ManifestNavEntryOut(BaseModel):
     """Wire shape of one `app.modules.registry.ModuleNavEntry` — one of a
-    Tier A module's `additional_nav_entries` (Module 1 — Context & Strategy
-    — Phase 7.1, 2026-09-29). `model_config`'s `from_attributes=True` lets
+    Tier A module's `additional_nav_entries` (Context & Strategy
+). `model_config`'s `from_attributes=True` lets
     `ModuleFrontendManifestOut(**vars(manifest))` (below) construct this
     list directly from the dataclass's own tuple of `ModuleNavEntry`
     instances, without every call site needing to convert them by hand."""
@@ -258,9 +258,8 @@ class ManifestNavEntryOut(BaseModel):
 
 
 class ModuleFrontendManifestOut(BaseModel):
-    """Wire shape of `app.modules.registry.ModuleFrontendManifest` (module
-    system Phase 3, extended with Tier C/`"federated"` in a same-system
-    follow-up) — see that dataclass's docstring for what each field means.
+    """Wire shape of `app.modules.registry.ModuleFrontendManifest` (including Tier C/`"federated"`) — see that dataclass's docstring for what
+    each field means.
     Only ever constructed from `app.modules.registry.get_frontend_manifest`'s
     return value, never a raw `ModuleDefinition.frontend_manifest`, so a
     Tier B entry whose `frame_url` origin isn't allowlisted, or a Tier C
@@ -280,17 +279,16 @@ class ModuleFrontendManifestOut(BaseModel):
 
 
 class OrgModuleOut(BaseModel):
-    """A single module's state as seen by an org admin (module system
-    Phase 1) — combines the registry's static description with this
+    """A single module's state as seen by an org admin — combines the registry's static description with this
     organisation's own effective entitlement/enablement, computed by
     `app.modules.registry.is_module_entitled`/`is_module_enabled`.
 
     Non-entitled modules are included in this response, not filtered out:
-    per the plan, the org admin's Modules UI shows them greyed out with an
+    the org admin's Modules UI shows them greyed out with an
     explanatory note rather than hiding them entirely — the frontend does
     the graying, not this schema/endpoint.
 
-    `enabled` is the hard floor (Module 0 Phase 5 correction, 2026-09-29):
+    `enabled` is the hard floor (corrected 2026-09-29):
     `False` means no project of this organisation may use this module at
     all. `default_project_enabled` is a separate, independent tier, only
     meaningful when `enabled` is `True` — whether a project gets this
@@ -313,8 +311,7 @@ class OrgModuleOut(BaseModel):
 
 
 class ModuleNavEntryOut(BaseModel):
-    """One currently-*enabled* module's nav-facing summary (module system
-    Phase 3, `GET /projects/{id}/enabled-modules`) — unlike `OrgModuleOut`
+    """One currently-*enabled* module's nav-facing summary (`GET /projects/{id}/enabled-modules`) — unlike `OrgModuleOut`
     (an org-admin bookkeeping view that deliberately includes non-entitled/
     disabled modules, greyed out), this is the lean, read-only shape any
     project member uses to render module nav entries/routes, so a
@@ -327,8 +324,7 @@ class ModuleNavEntryOut(BaseModel):
 
 
 class ModuleFrameTokenOut(BaseModel):
-    """A freshly-minted Tier B `<ModuleFrame>` token (module system Phase
-    3, `POST /orgs/{id}/modules/{module_key}/frame-token` / `POST
+    """A freshly-minted Tier B `<ModuleFrame>` token (`POST /orgs/{id}/modules/{module_key}/frame-token` / `POST
     /projects/{id}/modules/{module_key}/frame-token`) — see `app.security.
     create_module_frame_token`'s docstring for what it's scoped to and why."""
 
@@ -358,8 +354,8 @@ class OrgModuleEnablementUpdate(BaseModel):
 
 
 class ProjectModuleEnablementOut(BaseModel):
-    """One module's state as seen by one project (Module 0 — Platform
-    Foundations — Phase 5) — `GET`/`PUT /projects/{id}/modules/{module_key}`,
+    """One module's state as seen by one project (Platform
+    Foundations) — `GET`/`PUT /projects/{id}/modules/{module_key}`,
     the project-tier sibling of `OrgModuleOut`'s org-tier whole-module view,
     one level below it in the same `registry default -> org default ->
     project override` stack `ProjectModuleSubComponentOut` already uses for
@@ -372,7 +368,7 @@ class ProjectModuleEnablementOut(BaseModel):
     "platform-default override visibility" principle), the same reasoning
     `ProjectModuleSubComponentOut` already documents.
 
-    `org_default_enabled` (Module 0 Phase 5 correction, 2026-09-29) is
+    `org_default_enabled` (corrected 2026-09-29) is
     specifically `OrganizationModuleEnablement.default_project_enabled` —
     "what would this project get absent its own override" — not the hard
     `enabled` floor. `org_hard_enabled` (added the same correction) *is*
@@ -442,7 +438,7 @@ class ModuleSubComponentDefaultUpdate(BaseModel):
 
 class ProjectModuleSubComponentOut(BaseModel):
     """One sub-component `module_key` declares, as seen from one project
-    (Module 0 — Platform Foundations — Phase 4) — `GET`/`PUT /projects/
+    (Platform Foundations) — `GET`/`PUT /projects/
     {id}/modules/{module_key}/subcomponents[/{subcomponent_key}]`.
 
     `org_default_enabled` is the org's `default_project_enabled` (what a
@@ -470,8 +466,7 @@ class ProjectModuleSubComponentEnablementUpdate(BaseModel):
 
 
 class ModuleRoleDefinitionOut(BaseModel):
-    """One available module-contributed role (module system Phase 2,
-    `GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
+    """One available module-contributed role (`GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
     only roles of a *currently effectively-enabled* module are ever
     returned (`app.modules.registry.list_enabled_module_roles`), so a role
     belonging to a disabled/non-entitled module simply doesn't appear
@@ -495,7 +490,7 @@ class ModuleRoleDefinitionOut(BaseModel):
 
 class ModuleRoleGrantOut(BaseModel):
     """One `UserModuleRole` grant, as surfaced on `OrgUserOut.module_roles`/
-    `EffectiveMemberOut.module_roles` (module system Phase 2) — deliberately
+    `EffectiveMemberOut.module_roles` — deliberately
     minimal (just enough for the frontend to match it against a
     `ModuleRoleDefinitionOut` option's `module_key`/`role_key`), unlike
     `ModuleRoleDefinitionOut` which also carries the display `name`/
@@ -535,8 +530,7 @@ class CustomRolePresetOut(BaseModel):
 
 class PermissionOut(BaseModel):
     """One permission atom in this organisation's currently-valid vocabulary
-    (Fine-Grained Access Control, `docs/plans/core-fine-grained-access-
-    control-plan.md` Phase 3, `GET /orgs/{id}/permissions`) — mirrors
+    (Fine-Grained Access Control, `GET /orgs/{id}/permissions`) — mirrors
     `app.services.permissions.Permission`'s own fields exactly, so the
     frontend's permission-atom picker never hardcodes the vocabulary
     itself (the same "derived, not hand-maintained" principle
@@ -550,8 +544,7 @@ class PermissionOut(BaseModel):
 
 
 class EntityScopeEntityOut(BaseModel):
-    """One entity of a registered module-owned entity scope (Fine-Grained
-    Access Control (core) plan Phase 5, `GET /orgs/{id}/entity-scopes`) —
+    """One entity of a registered module-owned entity scope (`GET /orgs/{id}/entity-scopes`) —
     e.g. one `ComplianceStandard` row for the `"standard"` scope."""
 
     id: UUID
@@ -572,8 +565,7 @@ class EntityScopeOut(BaseModel):
 
 
 class CustomRoleDefinitionOut(BaseModel):
-    """One organisation-defined `CustomRoleDefinition` (Fine-Grained Access
-    Control Phase 3), with its full permission-atom set — `GET /orgs/{id}/
+    """One organisation-defined `CustomRoleDefinition` with its full permission-atom set — `GET /orgs/{id}/
     custom-roles` / `GET /orgs/{id}/custom-roles/{role_id}`.
 
     `permissions` is the encoded `CustomRolePermission.permission` keys
@@ -598,10 +590,10 @@ class CustomRoleDefinitionOut(BaseModel):
 
 class CustomRoleDefinitionCreate(BaseModel):
     """Body for `POST /orgs/{id}/custom-roles` — `ORG_ADMIN`-only, never
-    delegable via `grant_roles` (Phase 0 Q5: no "manage custom roles"
+    delegable via `grant_roles` (no "manage custom roles"
     permission atom exists or should be invented). `scope` must be `"org"`,
     `"project"`, or a key currently present in `app.modules.registry.
-    get_all_registered_entity_scopes()` (Phase 5, e.g. `"standard"`) — and
+    get_all_registered_entity_scopes()` (e.g. `"standard"`) — and
     every entry of `permissions` must be a currently-valid key for this
     organisation (`app.services.permissions.validate_permission_key`) —
     both checked server-side, not just implied by this schema's typing.
@@ -632,8 +624,7 @@ class CustomRoleDefinitionUpdate(BaseModel):
 
 class CustomRoleGrantOut(BaseModel):
     """One held, org-scoped `UserCustomRoleGrant`, as surfaced on
-    `OrgUserOut.custom_roles` (Fine-Grained Access Control Phase 3 —
-    frontend Role Management UI) — mirrors `ModuleRoleGrantOut`'s identical
+    `OrgUserOut.custom_roles` (for the frontend Role Management UI) — mirrors `ModuleRoleGrantOut`'s identical
     "deliberately minimal" shape one tier down (a custom role instead of a
     module-contributed one): just enough for the Users table's role
     dropdown to render a checked/unchecked state and a human label without
@@ -669,7 +660,7 @@ class CustomRoleGrantTarget(BaseModel):
     granted (not just by this schema's typing), mirroring `UserCustomRoleGrant`/
     `GroupCustomRoleGrant`'s own model docstrings: a `scope="org"` role must
     never accept a `project_id`, and a `scope="project"` role must always
-    require one. `scope_entity_id` is the Phase 5 analogue, required if and
+    require one. `scope_entity_id` is the entity-scope analogue, required if and
     only if the target role's own `scope` is a registered module-owned
     entity scope (e.g. `"standard"`) — the two are mutually exclusive,
     exactly as `project_id`/`scope_entity_id` already are on `UserModuleRole`/
@@ -699,13 +690,13 @@ class OrgUserOut(BaseModel):
     display_name_locked: bool = False
     last_login_at: datetime | None = None
     is_2fa_enabled: bool = False
-    # Module system Phase 2: this user's org-scoped module-contributed role
+    # This user's org-scoped module-contributed role
     # grants, filtered to currently-enabled modules only (see
     # `ModuleRoleGrantOut`'s docstring and `routers.orgs.list_org_users`'s
     # population of this field) — a grant for a since-disabled module is
     # simply omitted here, not deleted from `user_module_roles`.
     module_roles: list[ModuleRoleGrantOut] = []
-    # Fine-Grained Access Control Phase 3 (frontend Role Management UI):
+    # For the frontend Role Management UI:
     # this user's org-scoped (`project_id IS NULL`) `CustomRoleDefinition`
     # grants — see `CustomRoleGrantOut`'s own docstring for why this is
     # org-scoped only, mirroring `module_roles`' identical scope limit.
@@ -713,8 +704,7 @@ class OrgUserOut(BaseModel):
 
 
 class OrgPendingInviteCreate(BaseModel):
-    """Creates an org-only invite (Phase A, follow-up UX batch —
-    docs/decisions.md): a `PendingInvite` with no `project_id`/
+    """Creates an org-only invite (docs/decisions.md): a `PendingInvite` with no `project_id`/
     `project_role`, granting only organisation membership on redemption.
     See `routers/orgs.py::create_org_pending_invite`."""
 
@@ -730,7 +720,7 @@ class OrgPendingInviteOut(BaseModel):
 
     Unlike the project-level shape, this carries `invited_by_display_name`
     (who sent it) — surfaced in Org Admin's merged Users table alongside
-    email/sent-date/status, per the Phase A UX ask. `status` is computed at
+    email/sent-date/status, as asked. `status` is computed at
     read time (`expires_at` vs. now), not stored, matching the project-level
     endpoint's own behaviour.
     """
@@ -854,8 +844,7 @@ class OrgProjectSummaryOut(BaseModel):
 
 
 class OrgOverviewStatsOut(BaseModel):
-    """The "Organisation Overview" page's stats header (compliance-module-
-    plan.md Phase 19) — project/requirement/member counts and total
+    """The "Organisation Overview" page's stats header — project/requirement/member counts and total
     uploaded file size.
 
     `is_full_org_total` tells the frontend which of the two meanings the
@@ -951,8 +940,7 @@ class UserAccessProject(BaseModel):
 
 
 class UserAccessOut(BaseModel):
-    """One user's access within a single organisation (2026-08 UX audit,
-    sixth pass: "No way to view a user's access") — every project in the
+    """One user's access within a single organisation — every project in the
     org where the user holds at least one effective role (direct
     assignment, direct/nested project-group membership, or org-wide
     project visibility — see `rbac.get_effective_project_roles`), each

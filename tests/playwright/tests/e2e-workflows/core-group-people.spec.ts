@@ -7,8 +7,7 @@ import { installCleanupHook, loginAs, logout, openOrgGroupPanel, PASSWORD, selec
 installCleanupHook();
 
 /**
- * Job to be done: users and groups on parity, Phase 6 (docs/plans/
- * users-and-groups-parity-plan.md) — the core records name groups too. A
+ * Job to be done: users and groups on parity — the core records name groups too. A
  * Requirement's owner and reviewer, an Action's assignee and a record's watchers can
  * each be an organisation or project group; a member of the reviewer group sees the
  * review on their own due list; and deleting a group that still owns Requirements makes

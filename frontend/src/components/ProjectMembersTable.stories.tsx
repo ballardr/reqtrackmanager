@@ -24,7 +24,7 @@ const MEMBERS: EffectiveMember[] = [
     display_name: "Priya Shah",
     email: "priya@example.com",
     effective_role: "stakeholder",
-    // Named-group provenance (PR1: `via_group_id`/`via_group_name`) — the
+    // Named-group provenance (`via_group_id`/`via_group_name`) — the
     // Source column must say *which* group granted the role, not just "Via
     // group". See the `NamedGroupSourceLine` story below.
     sources: [
@@ -57,7 +57,7 @@ const MEMBERS: EffectiveMember[] = [
     display_name: "Morgan Casey",
     email: "morgan@example.com",
     effective_role: "member",
-    // `direct_org_group_role` (PR4/PR5) — an org group holding this role
+    // `direct_org_group_role` — an org group holding this role
     // *directly*, distinct from `direct_group`/`direct_org_group`'s nested
     // mechanisms above. See `NamedOrgGroupRoleSourceLine` below.
     sources: [
@@ -160,8 +160,7 @@ export const AtScalePaginated: Story = {
 };
 
 /** A `direct_group` source names the actual granting `ProjectGroup`
- * (`via_group_name`) instead of the generic "Via group" — PR1 of the
- * members/groups directory rework. Priya's fixture source carries
+ * (`via_group_name`) instead of the generic "Via group" — the members/groups directory rework. Priya's fixture source carries
  * `via_group_id`/`via_group_name` for the "Reviewers" group. That detail
  * now lives inside the Source column's click-to-open popover (platform
  * review 2026-09 follow-up) rather than always-visible in the cell — the
@@ -201,9 +200,8 @@ export const SourceSummaryDirectAndGroup: Story = {
   },
 };
 
-/** `direct_org_group_role` (PR4/PR5 of the members/groups directory rework
- * plan) — an org group holding a role *directly* on this project, granted
- * from the Members section's own "Add member" autocomplete (PR5). Distinct
+/** `direct_org_group_role` (the members/groups directory rework) — an org group holding a role *directly* on this project, granted
+ * from the Members section's own "Add member" autocomplete. Distinct
  * wording ("(direct)") from `direct_org_group`'s "Via nested org group"
  * (a different mechanism — nesting inside a `ProjectGroup`), and — like
  * every non-`direct_role` kind — checked-but-disabled with an explanatory
@@ -234,7 +232,7 @@ export const NamedOrgGroupRoleSourceLine: Story = {
 
 /** A role sourced from a group (not a genuine `direct_role` grant) shows
  * checked but disabled, with a title explaining it must be changed at its
- * actual source — the core Phase D fix: `DELETE /roles` would silently
+ * actual source — the core fix: `DELETE /roles` would silently
  * no-op against this option, so it must never look freely toggle-off-able.
  * Its own visible label also carries the "(by group)" suffix inline
  * (platform review 2026-09 follow-up) so the reason is visible without
@@ -326,8 +324,7 @@ export const WithAddControl: Story = {
   },
 };
 
-/** Per-row Actions column (PR6 of the members/groups directory rework
- * plan) — hidden entirely when the caller doesn't supply either handler
+/** Per-row Actions column — hidden entirely when the caller doesn't supply either handler
  * (every story above), so this and the following two stories opt in via
  * `onRemoveAllAccess`/`onConvertToDirect` args. Alex's only source is a
  * genuine `direct_role` grant, so "Remove all access" is offered but
@@ -397,7 +394,7 @@ export const ActionsMenuHiddenWhenNoEligibleAction: Story = {
   },
 };
 
-/** Module system Phase 2: `availableModuleRoles` merges module-contributed
+/** `availableModuleRoles` merges module-contributed
  * role options into the same Role `MultiSelectDropdown` as the four core
  * `ProjectRole` options — Alex holds one (checked) and not the other
  * (unchecked), and neither is ever disabled the way a group/inherited-
@@ -406,8 +403,7 @@ export const ActionsMenuHiddenWhenNoEligibleAction: Story = {
  * Every other story on this page implicitly covers the opposite,
  * real-world-default case — `availableModuleRoles` simply isn't passed, so
  * it defaults to `[]` and the dropdown shows only the four core roles,
- * unchanged from before this phase (no module has any roles registered
- * until Phase 5). */
+ * unchanged (no module has any roles registered in this case). */
 const MODULE_ROLES: ModuleRoleDefinition[] = [
   { module_key: "compliance", role_key: "compliance_officer", name: "Compliance Officer", description: "Manages this project's compliance assessments." },
   { module_key: "compliance", role_key: "evidence_reviewer", name: "Evidence Reviewer", description: "Reviews submitted compliance evidence." },
@@ -434,7 +430,7 @@ export const ModuleRolesAvailable: Story = {
   },
 };
 
-// --- Group rows (Phase 6, docs/platform-review-2026-09-plan.md) -----------
+// --- Group rows -----------
 //
 // An org group holding a direct `OrgGroupProjectRole` grant on this project
 // now gets its own `kind: "group"` row (previously visible only through a

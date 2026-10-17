@@ -7,8 +7,7 @@ FastAPI dependencies that enforce them (C-U-01, C-U-03).
 Effective project role resolution combines eight sources:
     1. Direct per-user role assignments (UserProjectRole).
     2. Membership in a project group (ProjectGroupMember with user_id set),
-       for each role the group holds (ProjectGroupRole — PR7 of the
-       members/groups directory rework plan replaced a group's old single,
+       for each role the group holds (ProjectGroupRole — the members/groups directory rework replaced a group's old single,
        required `role` scalar with this separate grant table, mirroring
        source 8's own OrgGroupProjectRole shape: a group can now hold zero,
        one, or several roles at once, resolved here as one provenance entry
@@ -70,7 +69,7 @@ Effective project role resolution combines eight sources:
        kind, since it resolves at the project's own level via its own
        group configuration.
     8. Direct org-group project role assignment (`OrgGroupProjectRole`,
-       added alongside the members/groups directory rework's PR4): an org
+       added alongside the members/groups directory rework): an org
        group holding a project role directly, as its own
        independently-revocable record — parallel to source 1
        (`UserProjectRole`) but at the group level, and genuinely distinct
@@ -129,12 +128,11 @@ between projects, never touch org-role resolution.
 
 `get_effective_permissions`/`require_permission`, near the end of this
 module, are a separate, later addition (Fine-Grained Access Control,
-`docs/plans/core-fine-grained-access-control-plan.md` Phase 2) — a fourth,
+) — a fourth,
 independently-resolving path (alongside the org/project role resolution
 above and module-contributed roles below) over a different vocabulary
 (permission atoms, not `OrgRole`/`ProjectRole`), built as a parallel
-function rather than threaded through the resolution above, per that
-plan's Design Principle 5.
+function rather than threaded through the resolution above.
 """
 
 from __future__ import annotations
@@ -484,7 +482,7 @@ def _descendant_org_group_ids(db: Session, group_ids: set[UUID]) -> set[UUID]:
 
 def effective_org_group_member_ids(db: Session, org_group_id: UUID) -> set[UUID]:
     """Every user who is a direct member of `org_group_id` or of any group
-    transitively nested inside it (module system Phase 30) — resolves an
+    transitively nested inside it — resolves an
     org group "downward" to the users it actually reaches, the mirror
     image of `_descendant_org_group_ids`/`_ancestor_org_group_ids` (which
     resolve group-to-group, never all the way to users).
@@ -494,7 +492,7 @@ def effective_org_group_member_ids(db: Session, org_group_id: UUID) -> set[UUID]
     and by any caller that needs the same enumeration directly (e.g.
     compliance's own standards-manager floor check,
     `modules.compliance.service.fallback_standards_manager_ids` — migrated
-    onto this function by Phase 30, which is what makes group-based
+    onto this function, which is what makes group-based
     module-role resolution a genuine core mechanism rather than the
     narrow, single-purpose helper that function's own docstring originally
     described).
@@ -651,8 +649,8 @@ def _direct_effective_project_roles_by_kind(
     (`"direct_org_wide"`) is not — neither endpoint above touches those
     rows, so offering either delete against any of those four kinds would
     204 as a silent no-op while a naive caller's UI showed the role as
-    removed. Before the original split (Phase D, follow-up UX batch), all
-    five of the then-existing kinds were collapsed into one `"direct"`
+    removed. Before the kinds were split apart, all
+    five of them were collapsed into one `"direct"`
     bucket by `_direct_effective_project_roles` below, which can't support
     that distinction at all.
 
@@ -698,13 +696,12 @@ def _direct_effective_project_roles_by_kind_for_projects(
         result[project_id]["direct_role"].add(ProjectRole(role))
 
     # Source 2: same-project group membership, for each role the group
-    # holds (`ProjectGroupRole` — PR7 of the members/groups directory
-    # rework plan replaced the group's old single, required `role` scalar
+    # holds (`ProjectGroupRole` — the members/groups directory rework replaced the group's old single, required `role` scalar
     # with this separate grant table, mirroring source 8's own
     # `OrgGroupProjectRole` shape). Joining through the grant table
     # (instead of reading `ProjectGroup.role` directly) produces one row
     # per (group, granted role) pair the membership matches — a group
-    # holding two roles yields two entries here, same principle PR1 already
+    # holding two roles yields two entries here, same principle already
     # established for two *different* groups granting the same role.
     for project_id, role, group_id, group_name in db.execute(
         select(ProjectGroup.project_id, ProjectGroupRole.role, ProjectGroup.id, ProjectGroup.name)
@@ -910,7 +907,7 @@ def _direct_project_member_ids_base(db: Session, project_id: UUID) -> set[UUID]:
     both walks read *this* function (via `_direct_project_member_ids`) at
     each ancestor/source hop.
 
-    PR7 (members/groups directory rework plan, docs/decisions.md) added an
+    The members/groups directory rework (docs/decisions.md) added an
     `EXISTS` requirement to both `ProjectGroupMember` arms below — a group
     with zero roles (now possible; a group used to always have exactly one)
     no longer counts its members here. An earlier draft of this PR left
@@ -1383,7 +1380,7 @@ def _group_forward_inherited_roles(db: Session, org_group_id: UUID, project_id: 
     *direct* `OrgGroupProjectRole` grant for `org_group_id` (source 8 of
     the module docstring) instead of a user's combined direct roles.
 
-    Added for PR6 of the members/groups directory rework plan (per-group
+    Added for the members/groups directory rework (per-group
     "convert inherited to direct" action,
     `materialize_inherited_access_for_group` in routers/projects.py): that
     action needs to know what an org group's *own* forward-inherited role
@@ -1485,7 +1482,7 @@ def get_group_inherited_project_roles(db: Session, org_group_id: UUID, project_i
     any user's combined effective access.
 
     Powers `POST /{project_id}/materialize-inherited-access/group/
-    {org_group_id}` (PR6 of the members/groups directory rework plan):
+    {org_group_id}`:
     whether this group has anything inherited worth converting to a direct
     `OrgGroupProjectRole` grant, and if so, which role ranks highest. Does
     not include the group's own already-direct grants on `project_id`
@@ -1585,7 +1582,7 @@ def _direct_project_managers(db: Session, project_id: UUID) -> set[UUID]:
     DO count towards this — unlike a nested org group or an org group's own
     direct `OrgGroupProjectRole` grant, neither of which this function
     resolves at all (see `revoke_group_project_role`'s own docstring for
-    why those two are deliberately excluded from the C-U-08 floor). PR7
+    why those two are deliberately excluded from the C-U-08 floor). The members/groups directory rework
     (docs/decisions.md) changed only *how* a group's manager-role status is
     read — joined through `ProjectGroupRole` now that a group can hold zero,
     one, or several roles, instead of the old scalar `ProjectGroup.role` —
@@ -1728,7 +1725,7 @@ def lock_project_for_update(db: Session, project_id: UUID) -> None:
     both proceed, leaving the project with zero managers even though each
     individual check correctly enforced C-U-08 against the state it saw.
 
-    Also reused (Module 0 — Platform Foundations, Phase 2) by
+    Also reused by
     `services.sequences._next_sequence` to serialize concurrent per-project
     sequence-number generation the same way — the same "two transactions
     both read the pre-increment value, both increment, one overwrites the
@@ -1869,7 +1866,7 @@ def get_effective_project_members_with_provenance(db: Session, project_id: UUID)
         (`"direct_role"`/`"direct_group"`/`"direct_org_group"`/
         `"direct_project_ref"`/`"direct_org_wide"` were split from a single
         collapsed `"direct"` kind — see `_direct_effective_project_roles_
-        by_kind`'s docstring for why: only `"direct_role"` (and, since PR4,
+        by_kind`'s docstring for why: only `"direct_role"` (and
         `"direct_org_group_role"` for a group-scoped equivalent) is safe to
         offer as freely toggle-off-able in a UI, since `DELETE /
         {project_id}/roles/{user_id}/{role}` only ever deletes
@@ -2019,15 +2016,15 @@ def require_server_admin(request: Request, current_user: User = Depends(get_curr
 
 def require_server_role(*allowed: ServerRole):
     """FastAPI dependency factory requiring one of the given server-tier
-    roles (module system Phase 0), granted via `UserServerRole`.
+    roles, granted via `UserServerRole`.
 
-    Composes with `User.is_server_admin` by design, not left for a later
-    phase to discover: a genuine server admin always passes, regardless of
+    Composes with `User.is_server_admin` by design, not left for later
+    discovery: a genuine server admin always passes, regardless of
     which specific `allowed` roles were requested — the same "a higher tier
     already retains full access without needing every narrower role
     explicitly granted too" principle `require_org_role`'s own callers rely
-    on for `ORG_ADMIN`, and the one Phase 2's `require_module_role` will
-    extend to module-contributed roles. `ServerRole.SERVER_ADMIN` itself is
+    on for `ORG_ADMIN`, and the one `require_module_role`
+    extends to module-contributed roles. `ServerRole.SERVER_ADMIN` itself is
     never checked against a `UserServerRole` row — see that enum member's
     docstring for why `is_server_admin` remains its sole source of truth.
 
@@ -2274,8 +2271,7 @@ def _enforce_module_frame_scope(
     request: Request, *, organization_id: UUID | None = None, project_id: UUID | None = None
 ) -> None:
     """Enforces that a Tier B `<ModuleFrame>` token's own scope matches the
-    resource this specific request is naming (compliance-module-plan.md
-    Phase 3).
+    resource this specific request is naming.
 
     A no-op for a normal session/PAT request — `request.state.module_frame_
     scope` is only ever set by `app.deps.get_current_user_or_module_frame`,
@@ -2320,12 +2316,12 @@ def require_org_module_enabled(module_key: str):
     """FastAPI dependency factory requiring `module_key` to be effectively
     enabled (entitled AND enabled — `app.modules.registry.is_module_enabled`)
     for the org named by the `organization_id` path parameter, for a caller
-    who is otherwise a member of that organisation (module system Phase 1).
+    who is otherwise a member of that organisation.
 
     Expects an `organization_id` path parameter, same as `require_org_role`.
 
     Deliberately returns **404, not 403**, when the module is disabled or
-    not entitled — compliance-module-plan.md Phase 1 is explicit that
+    not entitled — is explicit that
     disabled/non-entitled functionality "should not be presented," which
     this codebase treats the same way it already treats a project a caller
     has no role on (`require_project_view`'s sibling 403) or a genuinely
@@ -2334,13 +2330,12 @@ def require_org_module_enabled(module_key: str):
     rather than leaking their existence via a 403.
 
     No first-party module router is wired behind this yet (none exists
-    until Phase 5) — this is infrastructure a module's own router uses
+    yet) — this is infrastructure a module's own router uses
     internally once it has one, not something applied at the `app.main`
     mount-loop level (see `app.modules.registry`'s module docstring).
 
     Also accepts a Tier B `<ModuleFrame>` token scoped to this exact
-    `module_key` and this exact `organization_id` (compliance-module-
-    plan.md Phase 3, `app.deps.get_current_user_or_module_frame` +
+    `module_key` and this exact `organization_id` (`app.deps.get_current_user_or_module_frame` +
     `_enforce_module_frame_scope`) — a remote module's own backend calls,
     authenticated with the narrower token the Host UI Bridge handed it
     rather than the user's real session token, are checked by this exact
@@ -2372,8 +2367,8 @@ def require_org_subcomponent_enabled(module_key: str, subcomponent_key: str):
     `module_key` to be effectively enabled (`app.modules.registry.
     is_org_module_subcomponent_enabled`) for the org named by the
     `organization_id` path parameter, for a caller who is otherwise a
-    member of that organisation (Module 0 — Platform Foundations — Phase
-    4). Org-scoped sibling of `require_project_subcomponent_enabled` below
+    member of that organisation (Platform Foundations).
+    Org-scoped sibling of `require_project_subcomponent_enabled` below
     — see that factory's docstring for why an org-scoped artefact (no
     project in the picture at all, e.g. an org-scoped Context & Strategy
     Strategy record) resolves through the organisation's own default
@@ -2412,8 +2407,7 @@ def require_org_module_enabled_dynamic(
     db: Session = Depends(get_db),
 ) -> User:
     """Like `require_org_module_enabled`, but `module_key` is itself a path
-    parameter rather than fixed at router-definition time (compliance-
-    module-plan.md Phase 3).
+    parameter rather than fixed at router-definition time.
 
     Used only by the generic Tier B module-frame-token minting endpoint
     (`POST /orgs/{organization_id}/modules/{module_key}/frame-token`),
@@ -2446,7 +2440,7 @@ def require_org_access_and_module_enabled(
     """Non-dependency-factory sibling of `require_org_module_enabled`, for a
     module endpoint that resolves its owning `organization_id` from some
     *other* identifier in the path rather than from `organization_id`
-    itself (compliance-module-plan.md Phase 18) — e.g. `GET /api/v1/
+    itself — e.g. `GET /api/v1/
     compliance/standards/{standard_id}`, mounted on a module's `get_global_
     router()` (`app.modules.registry`) with no `organization_id` path
     parameter at all, which resolves org membership only *after* looking
@@ -2496,9 +2490,8 @@ def require_org_access_and_module_enabled(
 def require_project_module_enabled(module_key: str):
     """FastAPI dependency factory requiring `module_key` to be effectively
     enabled for the project named by the `project_id` path parameter, for
-    a caller who is otherwise a member of that project (module system
-    Phase 1; project-level override added Module 0 — Platform
-    Foundations — Phase 5). Project-scoped sibling of `require_org_module_
+    a caller who is otherwise a member of that project (module system, with a
+    project-level override). Project-scoped sibling of `require_org_module_
     enabled` — see that factory's docstring for the 404-not-403 rationale,
     which applies identically here.
 
@@ -2507,7 +2500,7 @@ def require_project_module_enabled(module_key: str):
     -> registry default), not the org-only `is_module_enabled` directly —
     a project admin's own `ProjectModuleEnablement` override, when one
     exists, wins symmetrically over the organisation's own default in
-    either direction (Phase 5).
+    either direction.
 
     Expects a `project_id` path parameter, same as `require_project_view`.
 
@@ -2544,8 +2537,8 @@ def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str)
     sub-component of `module_key` to be effectively enabled (`app.modules.
     registry.is_module_subcomponent_enabled`) for the organisation owning
     the project named by the `project_id` path parameter, for a caller who
-    is otherwise a member of that project (Module 0 — Platform
-    Foundations — Phase 4). Project-scoped sibling of `require_project_
+    is otherwise a member of that project (Platform
+    Foundations). Project-scoped sibling of `require_project_
     module_enabled` — see that factory's docstring for the 404-not-403
     rationale, which applies identically here: a disabled sub-component
     (or a disabled whole module, checked first, with no sub-component
@@ -2590,12 +2583,12 @@ def require_project_module_enabled_dynamic(
 ) -> User:
     """Project-scoped sibling of `require_org_module_enabled_dynamic` —
     used only by `POST /projects/{project_id}/modules/{module_key}/frame-
-    token` (compliance-module-plan.md Phase 3). See that function's
+    token`. See that function's
     docstring for why `module_key` is a path parameter here and why this
     depends on plain `get_current_user`, not a module-frame-accepting one.
 
     Resolves effective enablement via `is_module_enabled_for_project`
-    (Module 0 — Platform Foundations — Phase 5), the same project-level-
+    (Platform Foundations), the same project-level-
     override-aware resolution `require_project_module_enabled` uses.
     """
     check_pat_scope_for_project(request, db, project_id)
@@ -2622,10 +2615,10 @@ def _has_module_role_grant(
     scope_entity_id: UUID | None = None,
 ) -> bool:
     """Returns whether `user_id` holds `(module_key, role_key)` — either a
-    direct `UserModuleRole` grant, or (module system Phase 30) membership
+    direct `UserModuleRole` grant, or membership
     in an org group holding a matching `GroupModuleRole` grant — optionally
     scoped to a specific `organization_id`/`project_id`/`scope_entity_id`
-    (module system Phase 2; `scope_entity_id` added by Phase 22 for a
+    (module system; `scope_entity_id` is for a
     module-owned entity scope).
 
     Checks the direct `UserModuleRole` table first (the common case, one
@@ -2695,8 +2688,7 @@ def user_satisfies_module_role(
 ) -> bool:
     """Returns whether `current_user` satisfies module-contributed role
     `(module_key, role_key)` — the composed predicate `require_module_
-    role`'s own three scope branches each apply, factored out here (module
-    system Phase 22) so a module's own router can compose **two or more**
+    role`'s own three scope branches each apply, factored out here so a module's own router can compose **two or more**
     of its own roles into a single check (e.g. compliance's "standards_
     manager OR standards_contributor may edit a draft" gate,
     `modules.compliance.router._require_standard_edit`) without duplicating
@@ -2719,8 +2711,7 @@ def user_satisfies_module_role(
       - `ProjectRole.PROJECT_MANAGER` on `project_id`, for a `"project"`-
         scoped role only.
       - The specific `(module_key, role_key)` grant itself — direct
-        (`UserModuleRole`) or via group membership (`GroupModuleRole`,
-        module system Phase 30) — scoped to whichever of `organization_id`/
+        (`UserModuleRole`) or via group membership (`GroupModuleRole`) — scoped to whichever of `organization_id`/
         `project_id`/`scope_entity_id` matches the role's declared scope
         (`_has_module_role_grant`).
       - Any role named in this role's own `overridden_by` — checked at
@@ -2777,7 +2768,7 @@ def user_satisfies_module_role(
 
 def require_module_role(module_key: str, role_key: str):
     """FastAPI dependency factory requiring a specific module-contributed
-    role, granted via `UserModuleRole` (module system Phase 2).
+    role, granted via `UserModuleRole`.
 
     Resolves the role's declared `scope` (`"org"` or `"project"`) once, at
     construction time — i.e. when a module's own router calls this factory
@@ -2802,8 +2793,8 @@ def require_module_role(module_key: str, role_key: str):
     here).
 
     Once the module-enabled check passes, the caller is authorized if
-    **any** of the following hold — composed by design, not left for a
-    later phase to discover, mirroring the same "a higher-tier admin
+    **any** of the following hold — composed by design, not left for
+    later discovery, mirroring the same "a higher-tier admin
     already retains full access without needing every narrower role
     explicitly granted too" principle `require_server_role`/`require_org_
     role` already rely on for `SERVER_ADMIN`/`ORG_ADMIN`:
@@ -2814,21 +2805,21 @@ def require_module_role(module_key: str, role_key: str):
         caller's effective roles on `project_id`.
       - The caller holds the specific `(module_key, role_key)` grant
         itself, directly (`UserModuleRole`) or via membership in an org
-        group holding it (`GroupModuleRole`, module system Phase 30) —
+        group holding it (`GroupModuleRole`) —
         `_has_module_role_grant`, scoped to `organization_id`/`project_id`
         as appropriate.
     Otherwise, 403.
 
     This is generic module-system infrastructure with **no real caller
     yet** — the same position `require_org_module_enabled`/`require_
-    project_module_enabled` were left in after Phase 1, until Phase 5
-    registers the first module (Compliance) that actually declares roles
-    and wires its own router's endpoints behind this. It is not dead code;
+    project_module_enabled` were left in before
+    the first module (Compliance) that actually declares roles registered
+    and wired its own router's endpoints behind this. It is not dead code;
     it is the mechanism every future module's own RBAC gating will use,
     proven here against `tests/test_module_contributed_roles.py`'s fixture
     module in the absence of a real one yet.
 
-    Module system Phase 22 generalised this beyond the two core-recognised
+    This is generalised beyond the two core-recognised
     scopes: a `scope` value other than `"org"`/`"project"` is a
     **module-owned entity scope** (compliance's own `"standard"` scope is
     the first example — one role per `ComplianceStandard` row) — see the
@@ -2901,7 +2892,7 @@ def require_module_role(module_key: str, role_key: str):
             _require_org_active(db, organization_id)
             _require_org_2fa(db, organization_id, current_user)
             # `is_module_enabled_for_project`, not the org-only `is_module_
-            # enabled` — Module 0 Phase 5's project-level override must
+            # enabled` — the project-level override must
             # apply here too: a project that has disabled this module via
             # its own override must 404 a project-scoped module role check
             # (e.g. Compliance's `compliance_officer`, Decision
@@ -2918,7 +2909,7 @@ def require_module_role(module_key: str, role_key: str):
 
         return _project_dependency
 
-    # A module-owned entity scope (module system Phase 22) — any `scope`
+    # A module-owned entity scope — any `scope`
     # string other than the two core-recognised ones above (compliance's
     # own `"standard"` scope is the first). There is no path parameter
     # literally named `organization_id`/`project_id` to bind here the way
@@ -2965,10 +2956,9 @@ def require_module_role(module_key: str, role_key: str):
 
 
 # ---------------------------------------------------------------------------
-# Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
-# plan.md` Phase 2): effective-permission resolution and `require_permission`.
+# Fine-Grained Access Control: effective-permission resolution and `require_permission`.
 #
-# A parallel resolution path (Design Principle 5 in that plan), not a
+# A parallel resolution path, not a
 # rewrite of `get_effective_org_roles`/`get_effective_project_roles` above —
 # those keep resolving the fixed `OrgRole`/`ProjectRole` vocabulary exactly
 # as they do today, for every organisation that never touches custom roles.
@@ -2985,7 +2975,7 @@ _PROJECT_ROLE_LEVELS: dict[ProjectRole, tuple[PermissionLevel, ...]] = {
     # Every artefact-type permission at every level — C-U-03's clarification
     # has Project Managers performing "all project administrator and
     # stakeholder tasks" plus approvals: the ceiling of this taxonomy. This
-    # is Phase 2's own worked example, restated here rather than invented.
+    # restates the worked example in the design rather than inventing one.
     ProjectRole.PROJECT_MANAGER: (
         PermissionLevel.VIEW,
         PermissionLevel.PROPOSE_CREATE,
@@ -3009,7 +2999,7 @@ _PROJECT_ROLE_LEVELS: dict[ProjectRole, tuple[PermissionLevel, ...]] = {
     # "requirement"/"change_request" specifically (**Decided by: Agent** —
     # this mapping is a ceiling, not a precise replica of C-U-03's own
     # two-artefact-type wording; harmless today since this mapping has no
-    # live consumer yet other than Phase 4's own two, neither of which is
+    # live consumer yet other than two, neither of which is
     # STAKEHOLDER-shaped, and a future module's own artefact type gets the
     # same treatment for free rather than needing a hand-edit here — the
     # same "derived, not hand-maintained" principle
@@ -3019,7 +3009,7 @@ _PROJECT_ROLE_LEVELS: dict[ProjectRole, tuple[PermissionLevel, ...]] = {
     # "view requirements and generate reports only".
     ProjectRole.MEMBER: (PermissionLevel.VIEW,),
 }
-"""Design Principle 3's static, hand-authored mapping from a fixed
+"""The static, hand-authored mapping from a fixed
 `ProjectRole` to the artefact-type permissions it implies — built once, so
 an organisation that never touches custom roles sees no behavioural change
 in `get_effective_permissions`'s output at all. Deliberately excludes any
@@ -3043,7 +3033,7 @@ _ORG_ROLE_PERMISSIONS: dict[OrgRole, tuple[str, ...]] = {
     # model; project creation itself is a separate, existing check, not
     # part of this permission-atom system.
 }
-"""Design Principle 3's static mapping from a fixed `OrgRole` to the
+"""The static mapping from a fixed `OrgRole` to the
 administrative permissions it implies. See `_PROJECT_ROLE_LEVELS`'s own
 docstring for the same "built once, zero behavioural change until an
 admin opts in" rationale, applied here to `OrgRole` instead.
@@ -3085,11 +3075,11 @@ def _module_role_pairs_for_scope(
     Always includes the org-scoped grants (`project_id IS NULL`); when
     `project_id` is given, also includes the grants scoped to that exact
     project. `scope_entity_id IS NULL` on every branch — a module-owned
-    entity scope (module system Phase 22, e.g. compliance's own
+    entity scope (e.g. compliance's own
     `"standard"` scope) is deliberately excluded here: it has no
     `organization_id`/`project_id`-only meaning for this function's two
     callers to resolve against (`get_effective_permissions` takes no
-    generic entity id), the same restriction Phase 1 already applied to
+    generic entity id), the same restriction already applied to
     `CustomRoleDefinition.scope` for the identical reason.
     """
     query = select(model.module_key, model.role_key).where(
@@ -3110,8 +3100,7 @@ def _module_role_pairs_for_entity(
     entity_id: UUID,
 ) -> set[tuple[str, str]]:
     """Every `(module_key, role_key)` pair `model` grants `identifying_filter`
-    scoped to this exact `entity_id` (Fine-Grained Access Control (core)
-    plan Phase 5) — the entity-scoped counterpart to `_module_role_pairs_
+    scoped to this exact `entity_id` — the entity-scoped counterpart to `_module_role_pairs_
     for_scope` above, which deliberately excludes these rows
     (`scope_entity_id IS NULL`). Callers (`_module_role_permission_grants`)
     additionally filter each returned role by `role.scope == entity_scope`
@@ -3136,7 +3125,7 @@ def _module_role_permission_grants(
     entity_id: UUID | None = None,
 ) -> set[str]:
     """Every permission implied by module-contributed roles `user_id`
-    holds at this org/project scope (Phase 0 Q4 / Phase 1's optional
+    holds at this org/project scope (the optional
     `ModuleRoleDefinition.permissions` field) — direct (`UserModuleRole`)
     or via org-group membership (`GroupModuleRole`), mirroring
     `_has_module_role_grant`'s own direct-then-group resolution shape but
@@ -3193,8 +3182,8 @@ def _module_role_permission_grants(
         # `require_module_role`'s own 404 posture for the same condition —
         # a stale `UserModuleRole` row for a module an org later disabled
         # must not keep contributing permissions this vocabulary can act on.
-        # When resolving at project scope, this must also respect Module 0
-        # Phase 5's own project-level override (`is_module_enabled_for_
+        # When resolving at project scope, this must also respect the
+        # project-level override (`is_module_enabled_for_
         # project`), not just the org-only state — a project that has
         # disabled this module via its own override must not have a stale
         # module-role grant keep contributing its permissions either, the
@@ -3237,13 +3226,13 @@ def _custom_role_ids_for_scope(
     also includes the grants scoped to that exact project
     (`scope == "project"`). An org-scoped custom role's grant is therefore
     visible throughout every project in the organisation that defined it —
-    a deliberate consequence of Phase 0 Q2 reusing `ModuleRoleDefinition.
+    a deliberate consequence of reusing `ModuleRoleDefinition.
     scope`'s own two values as-is with no further restriction on which
     permission atoms an org-scoped role may hold (**Decided by: Agent**):
     an org admin who wants a role scoped to one specific project instead
     simply defines it with `scope == "project"` and grants it there.
 
-    `scope_entity_id IS NULL` on every branch (Phase 5) — an entity-scoped
+    `scope_entity_id IS NULL` on every branch — an entity-scoped
     grant also has `project_id IS NULL` (the two are mutually exclusive,
     never both set), so without this exclusion it would be misidentified as
     an org-scoped grant here and its permissions applied org-wide instead
@@ -3270,8 +3259,7 @@ def _custom_role_ids_for_entity_scope(
     entity_id: UUID,
 ) -> set[UUID]:
     """Every `custom_role_id` `model` grants `identifying_filter` scoped to
-    this exact `(entity_scope, entity_id)` pair (Fine-Grained Access Control
-    (core) plan Phase 5) — the entity-scoped counterpart to `_custom_role_
+    this exact `(entity_scope, entity_id)` pair — the entity-scoped counterpart to `_custom_role_
     ids_for_scope` above. Joins to `CustomRoleDefinition` to additionally
     require `scope == entity_scope`, unlike `_module_role_pairs_for_entity`'s
     own after-the-fact filter, since a custom role's `scope` is available
@@ -3302,8 +3290,7 @@ def _custom_role_permission_grants(
 ) -> set[str]:
     """Every permission implied by `CustomRoleDefinition` grants `user_id`
     holds at this org/project scope — direct (`UserCustomRoleGrant`) or via
-    org-group membership (`GroupCustomRoleGrant`), Phase 0 Q7's grant
-    shape.
+    org-group membership (`GroupCustomRoleGrant`).
 
     Re-checks `CustomRoleDefinition.organization_id == organization_id` as
     defense in depth when resolving the actual permission atoms, even
@@ -3362,7 +3349,7 @@ def get_effective_permissions(
     permissions.encode_permission`/`ADMINISTRATIVE_PERMISSIONS`) `user_id`
     currently holds at the given org/project scope — the Fine-Grained
     Access Control counterpart to `get_effective_org_roles`/`get_effective_
-    project_roles` above, but standalone (Design Principle 5): unions,
+    project_roles` above, but standalone: unions,
     rather than replaces, whatever those two already resolve.
 
     `organization_id` is derived from `project_id` when only the latter is
@@ -3373,25 +3360,23 @@ def get_effective_permissions(
 
     Unions four independent sources, none of which needs the caller to
     have touched custom roles at all for an organisation that hasn't
-    (Design Principle 1 — zero behavioural change until an admin opts in):
+    (zero behavioural change until an admin opts in):
 
     1. The caller's *existing* effective `OrgRole`s — always resolved, even
        when only `project_id` is given. `grant_roles` and the other
        administrative atoms are inherently organisation-scoped and must
        stay visible to a permission check made from a project-scoped
-       endpoint too (Phase 0 Q6's own requirement — Phase 3 wires `require_
-       permission("grant_roles")` onto *project*-role-assignment endpoints
-       as well as org ones). When `project_id` is given, the caller's
+       endpoint too (`require_permission("grant_roles")` is wired onto
+       *project*-role-assignment endpoints as well as org ones). When `project_id` is given, the caller's
        effective `ProjectRole`s are additionally resolved. Each set is
        mapped through the static tables above (`_ORG_ROLE_PERMISSIONS`/
        `_PROJECT_ROLE_LEVELS`).
-    2. Module-contributed roles' own optional `permissions` field (Phase 0
-       Q4), for whichever roles the caller actually holds at this scope,
+    2. Module-contributed roles' own optional `permissions` field, for whichever roles the caller actually holds at this scope,
        direct or via group membership (`_module_role_permission_grants`).
     3. Direct `UserCustomRoleGrant`s.
     4. `GroupCustomRoleGrant`s, via the caller's transitive org-group
        membership (`get_user_org_group_ids`, already exists, reused not
-       reinvented — Phase 2's own scope note). Sources 3 and 4 are both
+       reinvented). Sources 3 and 4 are both
        resolved by `_custom_role_permission_grants`.
 
     Server admin is deliberately **not** special-cased here — every
@@ -3401,15 +3386,15 @@ def get_effective_permissions(
     that same convention.
 
     Args:
-        entity_scope: Fine-Grained Access Control (core) plan Phase 5 — a
+        entity_scope: A
             registered module-owned entity scope key (`app.modules.registry.
             get_all_registered_entity_scopes()`, e.g. compliance's
             `"standard"`). When given (with `entity_id`), sources 2 and 3/4
             additionally include any module-role or custom-role grant scoped
             to this exact `(entity_scope, entity_id)` pair. **Omitted —
             every existing call site — behaviour is completely unchanged**:
-            entity-scoped grants stay excluded exactly as before Phase 5
-            (Design Principle 1). Every broader-tier grant that already
+            entity-scoped grants stay excluded exactly as before
+            (additive-only). Every broader-tier grant that already
             composes (server admin, the static org/project role mapping, an
             org-scoped custom role's permissions applying org-wide) continues
             to satisfy an entity-scoped check too, without new code, since
@@ -3447,7 +3432,7 @@ def get_effective_permissions(
 
 def permission_satisfied(held: set[str], required: str) -> bool:
     """True if `held` (a `get_effective_permissions` result) satisfies a
-    check for `required` — exact membership, or (Phase 0 Q3's sub-type
+    check for `required` — exact membership, or (the sub-type
     wildcard composition rule) a broader, unscoped grant of the same
     `(artefact_type, level)` pair: a held `(decision, approve_baseline,
     subtype=None)` satisfies a check for `(decision, approve_baseline,
@@ -3462,7 +3447,7 @@ def permission_satisfied(held: set[str], required: str) -> bool:
     satisfy it.
 
     This is the function Decision Management's own per-decision-type
-    approval check (Phase 7) calls directly, alongside `get_effective_
+    approval check calls directly, alongside `get_effective_
     permissions`, for a sub-type known only from a loaded row rather than
     a path parameter — see `require_permission`'s own docstring for why
     that case can't go through the FastAPI dependency below.
@@ -3480,11 +3465,11 @@ def permission_satisfied(held: set[str], required: str) -> bool:
 
 def require_permission(*allowed: str, entity_scope: str | None = None):
     """FastAPI dependency factory requiring at least one of the given
-    Fine-Grained Access Control permission atoms (Phase 2), resolved via
+    Fine-Grained Access Control permission atoms, resolved via
     `get_effective_permissions`/`permission_satisfied` — coexisting with,
     never replacing, `require_org_role`/`require_project_role`/`require_
-    module_role`. An endpoint migrating to a permission-based check (Phase
-    4) swaps its dependency for this one; every endpoint that doesn't
+    module_role`. An endpoint migrating to a permission-based check
+    swaps its dependency for this one; every endpoint that doesn't
     migrate keeps working exactly as today, indefinitely (Design
     Principle 1).
 
@@ -3508,8 +3493,7 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
 
     Server admins bypass every check, consistent with every existing
     `require_*` dependency in this module — but only after `_enforce_
-    module_frame_scope` has already run for the resolved scope (Phase 8
-    finding, see the inner `_dependency`'s own docstring): a mis-scoped
+    module_frame_scope` has already run for the resolved scope (see the inner `_dependency`'s own docstring): a mis-scoped
     Tier B `<ModuleFrame>` token must never be rescued by the fact that
     the underlying real user happens to be a server admin (or to hold a
     broader permission at a *different* org/project/entity than the one
@@ -3519,13 +3503,12 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
     This factory only covers the *static*, path-parameter-derived case. A
     sub-type-scoped check where the sub-type is only known from a loaded
     row rather than a path parameter (Decision Management's own
-    per-decision-type approval, Phase 7) calls `get_effective_permissions`
+    per-decision-type approval) calls `get_effective_permissions`
     and `permission_satisfied` directly from inside the service function
     instead of through this dependency.
 
     Args:
-        entity_scope: Fine-Grained Access Control (core) plan Phase 5 —
-            when given, this specific check is against a registered
+        entity_scope: When given, this specific check is against a registered
             module-owned entity scope (`app.modules.registry.
             get_all_registered_entity_scopes()`, e.g. `"standard"`) rather
             than the plain org/project axis: the entity's id is read from
@@ -3552,10 +3535,10 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
         Resolves scope and enforces `_enforce_module_frame_scope` **before**
         the `is_server_admin` bypass, matching every other `require_*`
         dependency's ordering (`require_module_role`/`require_org_module_
-        enabled`) — found necessary during Phase 8's identify->verify->
+        enabled`) — found necessary by the identify->verify->
         remediate review: this dependency's own `Depends(get_current_user)`
         default rejects a module-frame token outright (so ordinary FastAPI-
-        DI usage was never actually exposed), but two Compliance Phase 6
+        DI usage was never actually exposed), but two Compliance
         call sites (`_require_evidence_manage`/`_require_standard_content_
         manage`) invoke this closure directly as a plain function with an
         already-resolved `current_user` from `get_current_user_or_module_
@@ -3636,8 +3619,7 @@ def require_org_admin_or_grant_roles(
     db: Session = Depends(get_db),
 ) -> User:
     """Dependency for an org-scoped action that is `ORG_ADMIN`-gated by
-    default but additionally delegable to a `grant_roles` holder (Fine-
-    Grained Access Control Phase 0 Q6/Phase 3) — used by the custom-role
+    default but additionally delegable to a `grant_roles` holder — used by the custom-role
     grant/revoke endpoints (`routers.orgs.custom_roles`) and by the
     existing org/module-role-assignment endpoints (`routers.orgs.
     membership.assign_org_role`/`assign_org_module_role` and their revoke
@@ -3660,7 +3642,7 @@ def require_org_admin_or_grant_roles(
 
     `assign_org_role`/`revoke_org_role` layer their own additional check on
     top of this dependency for the one value (`OrgRole.ORG_ADMIN` itself)
-    that Phase 0 Q6 carves out as staying admin-only even for a
+    that is carved out as staying admin-only even for a
     `grant_roles` holder — that carve-out lives in those endpoints' own
     bodies, not here, since it depends on the specific role value being
     granted/revoked, which this dependency has no visibility into.
@@ -3695,7 +3677,7 @@ def require_project_manage_or_grant_roles(
     an alternative to their previous `require_project_manage` gate.
 
     Unlike `require_org_admin_or_grant_roles`, no special-value carve-out
-    is layered on top by any caller: Phase 0 Q6's only two non-delegable
+    is layered on top by any caller: the only two non-delegable
     values are `OrgRole.ORG_ADMIN` and `ServerRole.MODULE_ADMINISTRATOR`,
     neither of which is a `ProjectRole` — there is no project-role
     equivalent tier this dependency needs to protect, so a plain OR is the

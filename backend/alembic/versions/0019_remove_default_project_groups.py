@@ -4,7 +4,7 @@ Revision ID: 0019
 Revises: 0018
 Create Date: 2026-08-31
 
-Follow-up UX batch, Phase C (docs/decisions.md): `create_project`'s
+Default project groups removed (docs/decisions.md): `create_project`'s
 non-template path used to auto-create four "standard" `ProjectGroup` rows
 per project (`is_default=True` — "Project Managers"/"Project
 Administrators"/"Stakeholders"/"Members", `DEFAULT_GROUPS` in

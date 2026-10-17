@@ -10,8 +10,7 @@ import { apiHeaders, ensureExpanded, installCleanupHook, loginAs, onCleanup, ope
  * attempted nesting would create a cycle.
  *
  * Org Groups moved off the old `CollapsibleSection`-of-`CollapsibleSection`s
- * accordion onto `DirectoryTable` + a per-row `SidePanel` (Phase B,
- * follow-up UX batch, 2026-08-31, docs/decisions.md) — this spec was
+ * accordion onto `DirectoryTable` + a per-row `SidePanel` (docs/decisions.md) — this spec was
  * rewritten for that shape rather than patched in place, since the old
  * `openGroupCard`/`ensureExpanded`-per-card flow no longer applies (a row
  * now opens a real `SidePanel`, not an inline expand).
@@ -32,13 +31,11 @@ test.describe("org group nesting", () => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-    // Groups is its own top-level resource-menu group (2026-08 UX audit's
-    // Org Admin restructure; split out of the combined "People" group in a
-    // later pass) — a real navigation, so it must be selected before the
+    // Groups is its own top-level resource-menu group — a real navigation, so it must be selected before the
     // section is reachable at all.
     await selectOrgAdminGroup(page, "Groups");
     // The "Organisation groups" `CollapsibleSection` now wraps a
-    // `DirectoryTable` + `SidePanel` (Phase B) rather than an accordion of
+    // `DirectoryTable` + `SidePanel` rather than an accordion of
     // per-group cards, but it's still itself a `CollapsibleSection` whose
     // collapse state persists server-side per user across specs sharing
     // this persona.

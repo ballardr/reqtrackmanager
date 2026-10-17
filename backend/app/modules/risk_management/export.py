@@ -4,8 +4,7 @@ Module: modules.risk_management.export
 This module's contribution to the core org/project bundle export/import
 (`app.services.org_export`/`project_export`), registered through
 `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION` rather
-than those core files importing this module (docs/plans/module-03-risk-
-management-plan.md Phase 8).
+than those core files importing this module.
 
 - Org level: the Risk type vocabulary.
 - Project level: the project's type overrides and local types; each Risk (its

@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/PainPointPrioritisationReportView
  *
  * The on-screen view of report R1 (Pain Point prioritisation), registered as
- * `TierAModuleDefinition.reportViews.r1` (Module 1 Phase 13). A table of
+ * `TierAModuleDefinition.reportViews.r1`. A table of
  * ranked rows fails the reader here: the point of R1 is *where* Pain Points
  * sit on the Severity × Frequency matrix and which are Blockers, so this view
  * draws the shared `ScoringMatrixChart` per scoring model and a ranked list

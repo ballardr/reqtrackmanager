@@ -1,15 +1,14 @@
-"""Compliance traceability links onto the generic ArtefactLink table (Platform Enhancements Phase 6c)
+"""Compliance traceability links onto the generic ArtefactLink table
 
 Revision ID: 0069
 Revises: 0068
 Create Date: 2026-10-11
 
 Moves every `compliance_requirement_traceability_links` row (a core requirement
--> a Compliance standard's clause, Compliance Phase 34) into core `artefact_links`
+-> a Compliance standard's clause) into core `artefact_links`
 as `source_type='requirement'` -> `target_type='compliance_requirement'`, keeping
 the row id, link type, creator and timestamps, then drops the table. Links were
-polymorphic and any-to-any by the time this ran (Module 0 Phase 3, Platform
-Enhancements Phase 5b), so the module-private table no longer had a reason to
+polymorphic and any-to-any by the time this ran (any-to-any, registry-validated types), so the module-private table no longer had a reason to
 exist; with it gone the Links panel, the link graph, link-type rules, hiding and
 delete-in-use, change requests and project bundles all see these links.
 

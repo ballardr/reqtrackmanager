@@ -6,8 +6,7 @@ import { buildProjectNavItems, NAV_PROJECT_ID } from "../testing/projectNavFixtu
 import { ProjectNavSection } from "./ProjectNavSection";
 
 /**
- * The nav rail's "Project" section with the user's layout applied (docs/plans/platform-
- * enhancements-2026-10-plan.md Phase 4). Rendered in a plain 240px column rather than inside the
+ * The nav rail's "Project" section with the user's layout applied. Rendered in a plain 240px column rather than inside the
  * fixed-position `.nav-rail`, which is `Layout`'s concern.
  */
 const meta: Meta<typeof ProjectNavSection> = {

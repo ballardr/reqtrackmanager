@@ -62,8 +62,7 @@ def _decision_to_out(db: Session, decision: Decision) -> DecisionOut:
 
 def _validate_effective_decision_type(db: Session, project_id: UUID, decision_type_id: UUID) -> None:
     """400s unless `decision_type_id` is one of `project_id`'s *effective*
-    decision types — its own, or (hierarchical projects, always on,
-    Phase 9 2026-09-22) a fallback inherited from its nearest ancestor
+    decision types — its own, or (hierarchical projects, always on) a fallback inherited from its nearest ancestor
     (`service.resolve_effective_decision_types`). This is what lets a
     Decision in a child project reference a decision type defined on the
     parent directly — the same cross-project FK reference `actions.py`'s
@@ -150,7 +149,7 @@ def list_decisions(
     principal exactly; `owner_mine` / `decision_maker_mine` match the caller's own and their
     groups' (`services.principals.principal_filter_clause`). No `limit`/`offset` pagination yet — a
     project's Decision set is expected to be small relative to its
-    Requirement set, and nothing in this phase's scope asks for it; can be
+    Requirement set, and nothing asks for it; can be
     added later the same way `list_requirements` added it, without a
     breaking change. **Decided by: Agent** (scope containment)."""
     query = select(Decision).where(Decision.project_id == project_id)
@@ -234,8 +233,7 @@ def archive_decision(
     project_id: UUID, decision_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Soft-deletes a Decision (never hard-deleted — source overview
-    §13/10.6's "remains available for historical purposes" applies to every
+    """Soft-deletes a Decision (never hard-deleted — §13/10.6's "remains available for historical purposes" applies to every
     non-current Decision, not just a rejected one). Not blocked by the
     content lock: archiving isn't a content edit, the same distinction
     `routers.requirements.delete_requirement` draws (no `is_locked` check

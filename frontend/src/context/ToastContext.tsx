@@ -25,8 +25,8 @@ const AUTO_DISMISS_MS = 4000;
  * Style guide "Pattern: confirmation, in two tiers — and feedback,
  * always" / Principle 7 ("every mutation ends with feedback") — one
  * shared success/error toast, fired from `useToast()` anywhere in the
- * tree, replacing the ad hoc per-page "did it work?" silence the 2026-08
- * UX audit found almost everywhere outside the CSV import wizard's own
+ * tree, replacing the ad hoc per-page "did it work?" silence found
+ * almost everywhere outside the CSV import wizard's own
  * one-off summary card.
  */
 export function ToastProvider({ children }: { children: ReactNode }) {

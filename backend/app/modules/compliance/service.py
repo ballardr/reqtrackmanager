@@ -1,15 +1,11 @@
 """
 Module: modules.compliance.service
 
-Pure/near-pure business logic for the Compliance Module's Phase 7 project
-compliance assessment layer (docs/compliance-module-plan.md Phase 7;
-docs/Compliance_Module_Requirements.md §9, §20) — kept out of `project_
-router.py`/`router.py` so it's independently testable and reusable by later
-phases (Phase 9's approval workflow and Phase 10's scheduled reviews both
-need "what is this assignment's current overall state" the same way Phase 7
-does; Phase 6 had no equivalent need for a dedicated service module, so it
-kept its logic inline in `router.py` — this phase's logic is different
-enough, and reused widely enough later, to earn its own file).
+Pure/near-pure business logic for the Compliance Module's project
+compliance assessment layer (§9, §20) — kept out of `project_router.py`/`router.py` so it's independently
+testable and reusable (the approval workflow and scheduled reviews both need
+"what is this assignment's current overall state" the same way the
+assessment layer does).
 
 Responsibilities:
 - `resolve_applicability_for_version`: §9's hierarchical applicability
@@ -22,30 +18,30 @@ Responsibilities:
   per `ComplianceRequirement`, and one `ComplianceRequiredActionAssessment`
   per `ComplianceRequiredAction`, for a newly-created `ProjectCompliance`.
 - `summarize_project_compliance`: §20's overall status calculation — the
-  exact, documented rule this phase is required to define. See that
+  exact, documented rule. See that
   function's own docstring for the full rule.
-- `compute_evidence_validity_state`/`build_evidence_out` (Phase 8, §14):
+- `compute_evidence_validity_state`/`build_evidence_out` (§14):
   the exact, documented "valid/expiring/expired" derivation for a
   `ComplianceEvidence` row — see `compute_evidence_validity_state`'s own
   docstring for the rule and its warning-window constant.
 - `advance_approval_state_on_assessment`/`invalidate_approval_if_in_flight`
-  (Phase 9, §12/§16/§27): the two state-machine transition rules a
+  (§12/§16/§27): the two state-machine transition rules a
   `ProjectComplianceRequirement`'s `approval_state` goes through outside
   the explicit `submit-for-approval`/`approve`/`reject` actions themselves
   (which are simple enough to stay inline in `project_router.py`, mirroring
-  how Phase 7's own `update_requirement_applicability`/`update_requirement_
+  how `update_requirement_applicability`/`update_requirement_
   assessment` never needed a service-layer wrapper for their own direct
   transitions either) — see each function's own docstring for the exact
   rule and why the two mutation-triggers (a fresh assessment vs. every
   other material change) transition differently.
 - `compute_review_schedule_state`/`build_review_out`/`complete_review`
-  (Phase 10, §17): the "upcoming/due/overdue" derivation for a `SCHEDULED`
+  (§17): the "upcoming/due/overdue" derivation for a `SCHEDULED`
   `ComplianceReview` (computed, never stored — mirrors `compute_evidence_
   validity_state`'s own reasoning), the response-schema builder, and the
   completion action's recurrence logic (creates the next cycle's row when
   `recurrence_days` is set — see that function's own docstring).
 - `get_effective_compliance_officers`/`get_effective_compliance_managers`
-  (Phase 10, §18): notification-recipient resolution for Compliance's own
+  (§18): notification-recipient resolution for Compliance's own
   event-driven notifications (`router.py`/`project_router.py`) — deliberately
   *not* an authorization check (RBAC gating stays exactly
   `require_module_role`, unchanged), just "who should be told about this,"
@@ -53,29 +49,28 @@ Responsibilities:
   group granting `ORG_ADMIN`, which this codebase's groups don't support
   anyway — see each function's own docstring) is a missed notification, not
   a security gap.
-- `diff_standard_versions`/`build_diff_out` (Phase 11, §27): the exact,
+- `diff_standard_versions`/`build_diff_out` (§27): the exact,
   documented "added/removed/modified/replaced/re-mapped" derivation
   between any two versions of the same standard, walking `Compliance
   Requirement.cloned_from_requirement_id`'s clone-lineage chain and
   `ComplianceRequirementMapping`'s links — see `diff_standard_versions`'s
   own docstring for the full rule.
-- `migrate_project_compliance`/`build_migration_result_out` (Phase 11,
-  §27): the explicit, user-triggered project version-migration action —
+- `migrate_project_compliance`/`build_migration_result_out` (§27): the explicit, user-triggered project version-migration action —
   creates a new `ProjectCompliance` row and carries forward only the
   assessments `diff_standard_versions` proves are for content-identical,
   lineage-matched requirements, downgrading a carried-forward `APPROVED`/
-  `PENDING_APPROVAL` state via the existing (Phase 9) `invalidate_approval_
+  `PENDING_APPROVAL` state via the existing `invalidate_approval_
   if_in_flight` — see that function's own docstring for the full rule and
   for why a `replaced`/`modified`/`added` requirement is deliberately never
   carried forward.
-- `seed_compliance_action_types` (Phase 17c): the two default
+- `seed_compliance_action_types`: the two default
   `ComplianceActionTypeDefinition` rows a fresh organisation ships with,
   mirroring `services.definitions.seed_action_types`'s existing pattern for
   the generic per-project `ActionTypeDefinition` — see that function's own
   docstring for why organisation-creation time, not a module-enablement
   hook, is where this has to run.
 - `get_latest_published_version`/`reconcile_standard_applicability`/
-  `reconcile_new_project_for_all_standards` (Phase 20, §3/§7): a standard's
+  `reconcile_new_project_for_all_standards` (§3/§7): a standard's
   "applies to all projects by default, except..." mode — materialises a
   real `ProjectCompliance` row (never a virtual/computed default) for every
   current, non-archived, non-excluded project when a standard is switched
@@ -219,8 +214,7 @@ def assessment_to_out(db: Session, assessment: ComplianceRequiredActionAssessmen
 
 ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, ComplianceApplicabilitySource]]
 
-# Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
-# plan.md` Phase 6) — the permission atoms this module's four
+# Fine-Grained Access Control — the permission atoms this module's four
 # `ModuleRoleDefinition`s declare via their `permissions` field (`module.py`)
 # and the two endpoints migrated to accept `require_permission` as an
 # alternative to their existing `require_module_role` gate (`project_router/
@@ -239,8 +233,8 @@ ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, Complia
 # linkable artefact types (`models.py`), and none of them is this one;
 # adding a fourth purely to obtain an accurately-named permission atom, with
 # no `ArtefactLink` ever pointing at it, was judged not worth the scope
-# creep here (**Decided by: Agent** — see `docs/decisions.md`'s Phase 6
-# entry for the full reasoning). The `MANAGE`/`APPROVE_BASELINE` *level*
+# creep here (**Decided by: Agent** — see `docs/decisions.md` for the full
+# reasoning). The `MANAGE`/`APPROVE_BASELINE` *level*
 # distinction still maps cleanly onto "edit this standard's draft content"
 # vs. "publish/retire one of its versions," even though the atom's
 # artefact-type label in the Role Management UI's permission picker reads
@@ -335,7 +329,7 @@ def has_assignable_standard(db: Session, organization_id: uuid.UUID) -> bool:
     )
 
 
-# --- Phase 20: applicability defaults, exceptions, PM assignment -------------
+# --- applicability defaults, exceptions, PM assignment -------------
 
 
 def get_latest_published_version(db: Session, standard_id: uuid.UUID) -> ComplianceStandardVersion | None:
@@ -345,7 +339,7 @@ def get_latest_published_version(db: Session, standard_id: uuid.UUID) -> Complia
     every time reconciliation runs (standard flipped to "applies to all," a
     new project created, a project un-excluded) rather than pinned once at
     the moment `applicability_default` was first set — see `models.py`'s
-    own Phase 20 design-decisions section for why."""
+    applicability defaults design decisions for why."""
     return db.scalar(
         select(ComplianceStandardVersion)
         .where(
@@ -430,7 +424,7 @@ def reconcile_standard_applicability(
     db: Session, *, standard: ComplianceStandard, actor_id: uuid.UUID
 ) -> list[ProjectCompliance]:
     """Reconciles every current, non-archived, non-excluded project in
-    `standard.organization_id` against `standard` (Phase 20) — called when
+    `standard.organization_id` against `standard` — called when
     a standard is switched to `APPLIES_TO_ALL_PROJECTS` and when a project
     is removed from its exclusion list (both a "make reality match the
     declared default" event). A project already tracking this standard, or
@@ -463,7 +457,7 @@ def reconcile_standard_applicability(
 def reconcile_new_project_for_all_standards(
     db: Session, *, project: Project, actor_id: uuid.UUID
 ) -> list[ProjectCompliance]:
-    """The `on_project_created` half of Phase 20's reconciliation — called
+    """The `on_project_created` half of the applicability-default reconciliation — called
     once, right after a brand-new `Project` row is flushed
     (`app.routers.projects.create_project`, via the generic `ModuleDefinition.
     on_project_created` hook, never a direct import), for every non-archived
@@ -656,10 +650,8 @@ def _aggregate_approval_state(states: list[ComplianceApprovalState]) -> Complian
     but still have an overall status of 'Pending Approval'" — the same
     "worst wins" principle applied generically across every
     `ComplianceApprovalState` member, not just that one example pairing).
-    No endpoint sets anything but `NOT_ASSESSED` until Phase 9 ships, so
-    this always returns `NOT_ASSESSED` in practice today — see `models.py`'s
-    own docstring for why the column/this calculation exist a phase ahead
-    of the workflow that transitions it.
+    Only the approval workflow moves a row off `NOT_ASSESSED` — see
+    `models.py`'s own docstring.
     """
     if not states:
         return ComplianceApprovalState.NOT_ASSESSED
@@ -675,7 +667,7 @@ def summarize_project_compliance(
     applicability: ApplicabilityResolution,
 ) -> ProjectComplianceStatusSummary:
     """§20's "Overall Project Compliance Status" — the exact, documented
-    calculation this phase is required to define:
+    calculation:
 
     - `total_requirements`: every `ProjectComplianceRequirement` row for
       this assignment, applicable or not (§20's own "152 total
@@ -705,7 +697,7 @@ def summarize_project_compliance(
       binary "is this non-compliant?" affordance from `has_non_compliant`
       alone must check this field too, so "nobody has assessed this yet"
       is never displayed the same way as "assessed and found compliant"
-      (compliance-module-plan.md Phase 31 — a prior binary Yes/No render
+      (a prior binary Yes/No render
       of `has_non_compliant` alone did exactly that).
     - `overall_compliance_state`: `"not_applicable"` if nothing is
       applicable; else `"non_compliant"` if `has_non_compliant`; else
@@ -880,7 +872,7 @@ def build_status_out(db: Session, project_compliance: ProjectCompliance) -> Proj
     )
 
 
-# --- Phase 9: Approval / sign-off workflow -----------------------------------------
+# --- Approval / sign-off workflow -----------------------------------------
 
 #: `approval_state` values a material change (an applicability change, or a
 #: change to supporting evidence) downgrades to `REQUIRES_REASSESSMENT` —
@@ -960,8 +952,7 @@ def find_pcrs_linked_to_evidence(db: Session, *, evidence_id: uuid.UUID) -> list
     piece of evidence should be capable of supporting multiple compliance
     requirements," extended to required actions of those requirements too).
 
-    Reads via `services.relationships` (Module 0 — Platform Foundations,
-    Phase 3): this evidence's own `ArtefactLink` rows as source replace the
+    Reads via `services.relationships`: this evidence's own `ArtefactLink` rows as source replace the
     old dedicated `ComplianceEvidenceRequirementLink`/
     `ComplianceEvidenceActionLink` tables."""
     links = relationships.get_links_from(db, ARTEFACT_TYPE_EVIDENCE, evidence_id)
@@ -984,15 +975,15 @@ def find_pcrs_linked_to_evidence(db: Session, *, evidence_id: uuid.UUID) -> list
     return list(db.scalars(select(ProjectComplianceRequirement).where(ProjectComplianceRequirement.id.in_(pcr_ids))).all())
 
 
-# --- Phase 8: Evidence ------------------------------------------------------------
+# --- Evidence ------------------------------------------------------------
 
 #: Days before `ComplianceEvidence.expiry_date` that it is reported
 #: `EXPIRING_SOON` rather than `VALID` (§14: "The system should provide
 #: appropriate warnings/notifications when evidence is approaching
 #: expiry"). A plain constant, not a per-project/per-org configurable
-#: setting: §14 names no specific lead time, and Phase 10 (Scheduled
-#: Reviews + Notifications) is where this module's actual warning/
-#: notification delivery is built — if that phase needs this to be
+#: setting: §14 names no specific lead time, and the scheduled
+#: notification sweeps (`scheduler.py`) are where this module's actual warning/
+#: notification delivery is built — if they need this to be
 #: configurable (mirroring `Project.review_reminder_lead_days_default`'s
 #: own precedent for an analogous "how many days before X is this
 #: worth flagging" setting), it can promote this constant to a column
@@ -1048,8 +1039,7 @@ def build_evidence_out(db: Session, evidence: ComplianceEvidence) -> ComplianceE
     that returns one or more evidence rows, so these two derived/joined
     fields are never built ad hoc per call site.
 
-    Reads via `services.relationships` (Module 0 — Platform Foundations,
-    Phase 3) — see `find_pcrs_linked_to_evidence` above for the same
+    Reads via `services.relationships` — see `find_pcrs_linked_to_evidence` above for the same
     replacement applied to a different query shape."""
     links = relationships.get_links_from(db, ARTEFACT_TYPE_EVIDENCE, evidence.id)
     requirement_ids = [link.target_id for link in links if link.target_type == ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT]
@@ -1120,7 +1110,7 @@ def resolve_evidence_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
     return evidence.project_id if evidence is not None else None
 
 
-# --- Phase 10: Scheduled reviews ---------------------------------------------------
+# --- Scheduled reviews ---------------------------------------------------
 
 #: Days before `ComplianceReview.next_due_date` that a still-`SCHEDULED`
 #: review is reported `DUE` rather than `UPCOMING` (§17/§28's "identify
@@ -1167,8 +1157,7 @@ def build_review_out(
     db: Session, review: ComplianceReview, labels: PrincipalLabels | None = None
 ) -> ComplianceReviewOut:
     """Builds the response schema for one `ComplianceReview` row, filling in
-    its computed `schedule_state`, current linked evidence ids, and (Phase
-    40) its resolved standard/version identity — used by every endpoint
+    its computed `schedule_state`, current linked evidence ids, and its resolved standard/version identity — used by every endpoint
     (`router.py`/`project_router.py`) that returns one or more review rows,
     so these derived/joined fields are never built ad hoc per call site.
 
@@ -1238,7 +1227,7 @@ def complete_review(
     deleted or reopened) and, when `review.recurrence_days` is set, creates
     and returns a **new** `SCHEDULED` row for the next cycle (`next_due_date
     = today + recurrence_days`, same owner/standard-or-project-compliance/
-    frequency_label/recurrence_days) — see `models.py`'s own Phase 10 notes
+    frequency_label/recurrence_days) — see `models.py`'s review design decisions
     for why a new row rather than reopening this one. A one-off review
     (`recurrence_days is None`) simply stays `COMPLETED` with nothing
     scheduled after it.
@@ -1286,7 +1275,7 @@ def get_effective_compliance_officers(db: Session, project_id: uuid.UUID) -> set
     """Users who should be notified as a project's compliance officers
     (§18) — this project's effective project managers (who already hold
     every Compliance Officer capability via `require_module_role`'s own
-    composition, Phase 2) union anyone holding a direct `compliance_officer`
+    composition) union anyone holding a direct `compliance_officer`
     `UserModuleRole` grant on this project. Not an authorization check —
     see this module's own docstring for why "misses an edge case" here is
     only a missed notification, not a security gap."""
@@ -1340,12 +1329,12 @@ def get_effective_compliance_managers(db: Session, organization_id: uuid.UUID) -
     return ids
 
 
-# --- Phase 22: standard-scoped RBAC (standards_manager/standards_contributor) ----
+# --- standard-scoped RBAC (standards_manager/standards_contributor) ----
 
 
 def resolve_standard_organization_id(db: Session, standard_id: uuid.UUID) -> uuid.UUID | None:
     """This module's `ModuleRoleDefinition.resolve_entity_organization_id`
-    hook for the `"standard"` scope (Phase 22) — `app.services.rbac.
+    hook for the `"standard"` scope — `app.services.rbac.
     require_module_role`'s generic module-owned-entity-scope branch calls
     this to resolve a `standard_id` path parameter to its owning
     organisation, exactly the same role a project's own id already plays
@@ -1356,8 +1345,7 @@ def resolve_standard_organization_id(db: Session, standard_id: uuid.UUID) -> uui
 
 def list_standards_for_entity_scope(db: Session, organization_id: uuid.UUID) -> list[tuple[uuid.UUID, str]]:
     """This module's `EntityScopeDefinition.list_entities` hook for the
-    `"standard"` scope (Fine-Grained Access Control (core) plan Phase 5) —
-    every current standard in `organization_id`, as `(id, name)` pairs, for
+    `"standard"` scope — every current standard in `organization_id`, as `(id, name)` pairs, for
     the Role Management UI's entity picker to render generically."""
     rows = db.execute(
         select(ComplianceStandard.id, ComplianceStandard.name)
@@ -1371,15 +1359,10 @@ def _effective_org_group_member_ids(db: Session, org_group_id: uuid.UUID) -> set
     """Every user who is a direct or transitively-nested member of
     `org_group_id`.
 
-    Originally a narrow, compliance-owned BFS (Phase 22's own fallback-
-    group floor check), deliberately *not* a generalisation of
-    `services.rbac`'s own group-membership resolution back when Phase 2's
-    "grant a module role via group membership" capability was still out of
-    scope. Phase 30 reversed that scope boundary and built the general
-    mechanism in core (`services.rbac.effective_org_group_member_ids`,
-    used by `_has_module_role_grant`'s own new group-grant branch) — this
-    is now a thin wrapper over that shared implementation rather than a
-    second copy of the same BFS."""
+    A thin wrapper over the shared implementation in core
+    (`services.rbac.effective_org_group_member_ids`, also used by
+    `_has_module_role_grant`'s group-grant branch), not a second copy of the
+    same BFS."""
     from app.services import rbac
 
     return rbac.effective_org_group_member_ids(db, org_group_id)
@@ -1390,8 +1373,7 @@ def standard_manager_floor_covered_by_group_grants(
 ) -> bool:
     """Whether this standard's manager floor is currently covered by at
     least one `GroupModuleRole` `standards_manager` grant whose granted
-    group has at least one effective (possibly transitive) member (module
-    system Phase 30) — the group-grant sibling of `standard_manager_floor_
+    group has at least one effective (possibly transitive) member — the group-grant sibling of `standard_manager_floor_
     covered_by_fallback`'s org-wide fallback-group check, checked
     alongside it wherever a `standards_manager` grant is about to be
     revoked (`router.py::revoke_standard_member_role`/`revoke_standard_
@@ -1416,7 +1398,7 @@ def standard_manager_floor_covered_by_group_grants(
 
 def get_default_standards_manager_group_id(db: Session, organization_id: uuid.UUID) -> uuid.UUID | None:
     """This organisation's designated fallback compliance-managers group
-    (Phase 22, `ComplianceOrgSettings.default_standards_manager_group_id`),
+    (`ComplianceOrgSettings.default_standards_manager_group_id`),
     or `None` if never configured."""
     from app.modules.compliance.models import ComplianceOrgSettings
 
@@ -1428,7 +1410,7 @@ def get_default_standards_manager_group_id(db: Session, organization_id: uuid.UU
 
 def fallback_standards_manager_ids(db: Session, organization_id: uuid.UUID) -> set[uuid.UUID]:
     """Current members of this organisation's designated fallback
-    compliance-managers group (Phase 22) — empty if none is configured, or
+    compliance-managers group — empty if none is configured, or
     if the configured group currently has no members."""
     group_id = get_default_standards_manager_group_id(db, organization_id)
     if group_id is None:
@@ -1438,7 +1420,7 @@ def fallback_standards_manager_ids(db: Session, organization_id: uuid.UUID) -> s
 
 def standard_has_direct_manager_grant(db: Session, standard_id: uuid.UUID) -> bool:
     """Whether `standard_id` has at least one direct `standards_manager`
-    `UserModuleRole` grant of its own (Phase 22) — the primary way a
+    `UserModuleRole` grant of its own — the primary way a
     standard's manager floor is satisfied; see `standard_manager_floor_
     covered_by_fallback` for the secondary, group-based way."""
     from app.models.module_role import UserModuleRole
@@ -1457,7 +1439,7 @@ def standard_has_direct_manager_grant(db: Session, standard_id: uuid.UUID) -> bo
 
 def standard_manager_floor_covered_by_fallback(db: Session, organization_id: uuid.UUID) -> bool:
     """Whether this organisation's designated fallback compliance-managers
-    group currently has at least one member (Phase 22) — if so, removing a
+    group currently has at least one member — if so, removing a
     standard's last remaining explicit `standards_manager` grant is safe,
     since the floor ("a standard must always have at least one
     standards_manager") is still genuinely satisfied by a real,
@@ -1470,7 +1452,7 @@ def validate_fallback_group_member_removal(
     db: Session, org_group_id: uuid.UUID, member_user_id: uuid.UUID
 ) -> str | None:
     """This module's `ModuleDefinition.validate_org_group_member_removal`
-    hook body (Phase 22) — mirrors the project/org "last manager" floor's
+    hook body — mirrors the project/org "last manager" floor's
     own "can't leave zero" shape one level up: if `org_group_id` is some
     organisation's designated fallback compliance-managers group,
     `member_user_id` is currently its *only* member, and at least one
@@ -1551,14 +1533,13 @@ def validate_fallback_group_deletion(db: Session, org_group_id: uuid.UUID) -> st
 
 def get_effective_standard_managers(db: Session, standard_id: uuid.UUID, organization_id: uuid.UUID) -> set[uuid.UUID]:
     """Users who currently satisfy this standard's `standards_manager`
-    floor (Phase 22) — direct `standards_manager` grants on this standard,
+    floor — direct `standards_manager` grants on this standard,
     union the fallback group's current members when this standard has no
     direct grant of its own (the fallback covers *every standard with no
     explicit grant*, not every standard unconditionally — a standard with
     its own explicit manager(s) is governed by exactly those people, not
     silently also by the whole fallback group). Does **not** include the
-    org-wide `compliance_manager`/`OrgRole.ORG_ADMIN` override tier — see
-    `docs/compliance-module-plan.md` Phase 22's own reasoning for why the
+    org-wide `compliance_manager`/`OrgRole.ORG_ADMIN` override tier — own reasoning for why the
     floor is deliberately about a *dedicated, per-standard working group*,
     not merely "someone with access, one way or another." Not an
     authorization check — see this module's own docstring's "not an
@@ -1579,7 +1560,7 @@ def get_effective_standard_managers(db: Session, standard_id: uuid.UUID, organiz
     return fallback_standards_manager_ids(db, organization_id)
 
 
-# --- Phase 11: Cross-standard mapping + version impact -----------------------------
+# --- Cross-standard mapping + version impact -----------------------------
 
 
 def _changed_content_fields(old: ComplianceRequirement, new: ComplianceRequirement) -> list[str]:
@@ -1629,7 +1610,7 @@ def _find_replacement_mapping(
     surface its `implies_equivalence` flag on the `replaced` entry so a
     caller can tell, without a second lookup, whether this specific pair is
     even eligible to be offered for migration carry-forward (`models.py`'s
-    own Phase 11 notes)."""
+    cross-standard mapping design decisions)."""
     candidates = sorted(mappings_by_requirement_id.get(new_requirement.id, []), key=lambda m: m.created_at)
     for mapping in candidates:
         other_id = (
@@ -1690,7 +1671,7 @@ def diff_standard_versions(
     new_version: ComplianceStandardVersion,
 ) -> StandardVersionDiff:
     """§27's "what changed between standard versions" — the exact,
-    documented diff this phase is required to define, computed between any
+    documented diff, computed between any
     two versions of the *same* standard, not necessarily directly adjacent
     ones (e.g. diffing v1 against v3 when v3 was itself cloned from v2, not
     v1 — `router.py::_clone_requirement_tree` always clones from exactly
@@ -1719,8 +1700,8 @@ def diff_standard_versions(
     - **replaced**: no old-version ancestor via lineage, but an explicit,
       non-archived `ComplianceRequirementMapping` links it (in either
       direction) to a specific, not-yet-matched `old_version` requirement
-      (`_find_replacement_mapping`) — see `models.py`'s own Phase 11 notes
-      for why marking a same-standard, cross-version "this replaces that"
+      (`_find_replacement_mapping`) — see `models.py`'s cross-standard mapping design
+      decisions for why marking a same-standard, cross-version "this replaces that"
       link reuses the general-purpose cross-standard mapping table rather
       than a second, parallel mechanism. Each entry also carries the
       mapping's own relationship type's `implies_equivalence` flag
@@ -1988,7 +1969,7 @@ def migrate_project_compliance(
 ) -> ProjectComplianceMigrationOutcome:
     """§27's explicit, user-triggered version-migration action. Creates a
     **new** `ProjectCompliance` row rather than mutating the existing one
-    in place — `models.py`'s own Phase 7 notes and §27 itself both require
+    in place — `models.py`'s project assessment design decisions and §27 itself both require
     that "Existing Project Compliance assignments must remain associated
     with their original version," not just by default. Does not archive
     the old assignment, and does not log or notify anything — the caller
@@ -2015,8 +1996,7 @@ def migrate_project_compliance(
       copied — those describe one specific human sign-off decision against
       the *old* row's own id, which stays in that row's own (untouched)
       audit trail; the new row needs a fresh decision if/when it reaches
-      `PENDING_APPROVAL` again. `invalidate_approval_if_in_flight` (Phase
-      9, reused verbatim — exactly the "future caller" its own docstring
+      `PENDING_APPROVAL` again. `invalidate_approval_if_in_flight` (reused verbatim — exactly the "future caller" its own docstring
       already anticipated for "a standard version change") is then applied
       to the *copied* value: a carried-forward `PENDING_APPROVAL`/
       `APPROVED` state downgrades to `REQUIRES_REASSESSMENT` (§27:
@@ -2042,7 +2022,7 @@ def migrate_project_compliance(
       same field list, same `invalidate_approval_if_in_flight` call on the
       copied `approval_state` — but **only** when *both*: (1) the mapping's
       own relationship type has `implies_equivalence=True` (an org-level
-      Compliance Manager decision — see `models.py`'s own Phase 11 notes on
+      Compliance Manager decision — see `models.py`'s cross-standard mapping design decisions on
       `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`),
       and (2) the new requirement's id is present in this call's own
       `confirmed_replacement_requirement_ids` (a separate, per-migration
@@ -2249,19 +2229,17 @@ def build_migration_result_out(
     )
 
 
-# --- Phase 14: cross-assignment listings shared between project and org scope -----
+# --- cross-assignment listings shared between project and org scope -----
 #
 # Each function below computes one project's slice of a cross-assignment
 # listing — extracted here (rather than left inline in `project_router.py`)
-# so `router.py`'s Phase 14 org-wide aggregation endpoints can call the
+# so `router.py`'s org-wide aggregation endpoints can call the
 # exact same per-project computation once per project in the organisation,
 # rather than re-implementing it. `list_non_compliant_requirements_for_
-# project`/`list_pending_approvals_for_project` are Phase 7/9's own
-# pre-existing loop bodies moved here verbatim (previously inline in
-# `project_router.py::list_non_compliant_requirements`/`list_pending_
-# approvals`) — behaviour is unchanged, only the location. `list_
-# outstanding_required_actions_for_project`/`list_recent_compliance_
-# activity` are new in Phase 14.
+# project`/`list_pending_approvals_for_project` hold the loop bodies that
+# used to be inline in `project_router.py::list_non_compliant_requirements`/
+# `list_pending_approvals`. `list_outstanding_required_actions_for_project`/
+# `list_recent_compliance_activity` are the org-wide additions.
 
 
 class ComplianceVersionCache:
@@ -2414,7 +2392,7 @@ def list_non_compliant_requirements_for_project(
     active standard assignments (§20/§21's "Non-Compliant requirements" as
     its own drillable list) — shared by `project_router.py::list_non_
     compliant_requirements` (the `compliance_list_non_compliant_
-    requirements` MCP tool) and `router.py`'s Phase 14 org-wide
+    requirements` MCP tool) and `router.py`'s org-wide
     aggregation."""
     cache = cache or ComplianceVersionCache(db)
     assignments = cache.assignments(project_id)
@@ -2461,7 +2439,7 @@ def list_pending_approvals_for_project(
     active standard assignments (§12's "Pending Approval" as its own
     drillable list) — shared by `project_router.py::list_pending_approvals`
     (the `compliance_list_pending_approvals` MCP tool) and `router.py`'s
-    Phase 14 org-wide aggregation. Mirrors `list_non_compliant_requirements_
+    org-wide aggregation. Mirrors `list_non_compliant_requirements_
     for_project`'s exact loop shape above."""
     cache = cache or ComplianceVersionCache(db)
     assignments = cache.assignments(project_id)
@@ -2505,10 +2483,9 @@ def list_outstanding_required_actions_for_project(
     """Every incomplete `ComplianceRequiredActionAssessment` whose owning
     requirement is currently applicable, across one project's active
     standard assignments (§22's "outstanding Required Actions" as its own
-    drillable list — no flattened listing existed for this before Phase 14,
-    only the per-requirement nested `.../required-action-assessments`
-    endpoint from Phase 7). Shared by `project_router.py::list_outstanding_
-    required_actions` and `router.py`'s Phase 14 org-wide aggregation.
+    drillable list, alongside the per-requirement nested
+    `.../required-action-assessments` endpoint). Shared by `project_router.py::list_outstanding_
+    required_actions` and `router.py`'s org-wide aggregation.
     Mirrors `list_non_compliant_requirements_for_project`'s exact loop
     shape, one level deeper (per-PCR required-action assessments rather
     than the PCR itself)."""
@@ -2579,8 +2556,8 @@ def list_reviews_due_for_project(
     project: its own project-level reviews, plus every review of a standard
     the project is currently (non-archived-ly) assigned to — shared by
     `project_router.py::list_reviews_due` (the `compliance_list_reviews_
-    due` MCP tool, always `include_upcoming=False`) and `router.py`'s Phase
-    14 org-wide aggregation (which passes `include_upcoming=True` for
+    due` MCP tool, always `include_upcoming=False`) and `router.py`'s
+    org-wide aggregation (which passes `include_upcoming=True` for
     §23's "Upcoming compliance deadlines/reviews" widget, since that needs
     reviews not yet due as well as ones already due/overdue).
 
@@ -2588,7 +2565,7 @@ def list_reviews_due_for_project(
         db: Active session.
         project_id: The project to gather reviews for.
         include_upcoming: When `False` (the default, matching this
-            function's pre-Phase-14 behaviour), only `due`/`overdue`
+            function's original behaviour), only `due`/`overdue`
             reviews are returned. When `True`, `upcoming` reviews are
             included too.
         cache: Shared by org-wide callers across projects; one is created

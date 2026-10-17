@@ -1,9 +1,7 @@
 """
 Module: modules.compliance.scheduler
 
-The Compliance Module's Phase 10 date-driven notification sweeps (docs/
-compliance-module-plan.md Phase 10; docs/Compliance_Module_Requirements.md
-§18, §28) — registered with the core scheduler generically via
+The Compliance Module's date-driven notification sweeps (§18, §28) — registered with the core scheduler generically via
 `app.modules.registry.ModuleScheduledJob` (`module.py`'s `MODULE_DEFINITION.
 scheduled_jobs`), the same way `services/scheduler.py`'s own two core jobs
 are, but without that core file importing anything from this module
@@ -11,7 +9,7 @@ directly. Mirrors `app.services.reviews.send_due_review_reminders`'s own
 shape exactly: a plain `(db: Session) -> None` function, no session opened
 inside it, one `db.commit()` at the end.
 
-Four sweeps, one per §28 bullet-group this phase covers:
+Four sweeps, one per §28 bullet-group covered:
 - `send_evidence_expiry_notifications`: evidence approaching/past expiry
   (§14, §18's "Evidence approaching expiry"/"Evidence expiring").
 - `send_review_due_notifications`: scheduled compliance reviews becoming

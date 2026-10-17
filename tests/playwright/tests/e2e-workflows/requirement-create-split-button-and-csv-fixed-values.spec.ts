@@ -4,7 +4,7 @@ import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: three pieces of the "New Requirement" creation-flow
- * roadmap batch (2026-08 UX audit, roadmap items 505/506/507) that the
+ * roadmap batch that the
  * rest of the suite exercises indirectly but never proves directly:
  *
  * - The split-button trigger (style guide "Pattern: split-button trigger")
@@ -15,10 +15,9 @@ import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
  *   "New requirement" and start typing); this spec is the one place that
  *   actually asserts no menu appears, and separately exercises the
  *   chevron.
- * - The CSV wizard's column-mapping step living in a `Modal` (roadmap item
- *   506) — a real `role="dialog"` layer, not an inline block.
- * - The per-field "same value for every row" fixed-value toggle (roadmap
- *   item 507) actually producing the right import result end to end.
+ * - The CSV wizard's column-mapping step living in a `Modal` — a real `role="dialog"` layer, not an inline block.
+ * - The per-field "same value for every row" fixed-value toggle
+ * actually producing the right import result end to end.
  */
 test.describe("New Requirement split-button trigger", () => {
   test("a plain click opens the create form directly; the chevron reveals Import from CSV", async ({ page }) => {

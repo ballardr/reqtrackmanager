@@ -34,7 +34,7 @@ export function ConfirmDialog({
   requireTypedText?: string;
   /** Generic extra gate on the confirm button, alongside `requireTypedText`
    * above — for a caller whose `message` embeds its own extra required
-   * input (e.g. platform-review-2026-09 Phase 8's "reason for change"
+   * input (e.g. a "reason for change"
    * field on a confirm that's about to submit a change request instead of
    * acting directly) rather than the typed-exact-text pattern. */
   confirmDisabled?: boolean;

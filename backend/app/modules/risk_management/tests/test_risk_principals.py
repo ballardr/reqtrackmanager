@@ -1,5 +1,5 @@
 """Tests for groups as Risk owners (users and groups on parity, Risk "5b" —
-docs/plans/users-and-groups-parity-plan.md).
+).
 
 Covers: each principal kind on create/update/clear with the group's display
 fields; the owner on every version so history shows who owned each one;

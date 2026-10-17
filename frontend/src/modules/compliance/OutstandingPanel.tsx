@@ -8,10 +8,8 @@
  * for as their own lists, not just counts: Non-Compliant requirements
  * (§20/§21), requirements Pending Approval (§12), outstanding Required
  * Actions (§22's own explicit "identifying projects with outstanding
- * Required Actions," added in Phase 14 alongside the org-wide equivalent
- * once a flattened, cross-assignment listing existed to show here — before
- * Phase 14 only the per-requirement nested endpoint existed, nothing to
- * power this section with), and scheduled reviews currently due/overdue
+ * Required Actions," shown from the flattened, cross-assignment listing
+ * that also powers the org-wide equivalent), and scheduled reviews currently due/overdue
  * (§17/§21) across every one of this project's active standard
  * assignments, all in one place rather than requiring each assignment to
  * be opened in turn.
@@ -20,17 +18,17 @@
  * a review, completing a required action) happens in `ApplicabilityTree`/
  * `ReviewsPanel` via the Standards tab, not duplicated here.
  *
- * Phase 40 adds Standard/Standard version/Sub-section filtering — parity
- * with the org-wide `OrgComplianceOutstandingPanel`'s own Phase 40 filters,
+ * Standard/Standard version/Sub-section filtering has parity
+ * with the org-wide `OrgComplianceOutstandingPanel`'s filters,
  * minus a Project filter (this page is already scoped to one project). A
  * project with several standards assigned would otherwise show every
  * non-compliant requirement/pending approval/outstanding action/review
  * from all of them in one flat set of four sections; see
- * `OrgComplianceOutstandingPanel.tsx`'s own Phase 40 notes for why
+ * `OrgComplianceOutstandingPanel.tsx`'s notes for why
  * Evidence and the per-requirement Sub-section filter are scoped the way
  * they are.
  *
- * Phase 43 adds an "Export" trigger (`ReportExportButton`) scoped to this
+ * An "Export" trigger (`ReportExportButton`) is scoped to this
  * panel's current Standard/Standard version/Sub-section filters —
  * `complianceApi.downloadProjectComplianceReport` passes them through as
  * query params, matching `OrgComplianceOutstandingPanel.tsx`'s identical
@@ -154,7 +152,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
   async function downloadReport(kind: "pdf" | "csv") {
     try {
       // Scoped to this panel's own current Standard/Standard version/Sub-
-      // section filters (Phase 43) — matches `OrgComplianceOutstandingPanel.tsx`'s
+      // section filters — matches `OrgComplianceOutstandingPanel.tsx`'s
       // identical convention. No Project filter here to pass through (this
       // page is already scoped to one project by URL).
       const blob = await complianceApi.downloadProjectComplianceReport(projectId, kind, {

@@ -1,7 +1,7 @@
 /**
  * Module: utils/entitySwitcherLoaders
  *
- * Shared `EntitySwitcher` (docs/compliance-module-plan.md Phase 28) loaders
+ * Shared `EntitySwitcher` loaders
  * for the two core entity types a page can switch between — organisations
  * and projects. Each loader hits the same `?mine=true`/`?archived=false`
  * list endpoint every list page for that entity type already calls

@@ -1,13 +1,12 @@
-"""Tests for Fine-Grained Access Control's Phase 3 backend API
-(`docs/plans/core-fine-grained-access-control-plan.md`): the `GET .../
+"""Tests for Fine-Grained Access Control's backend API: the `GET .../
 permissions` vocabulary endpoint, `CustomRoleDefinition` CRUD (`ORG_ADMIN`-
-only, never delegable — Phase 0 Q5), its user/group grant/revoke endpoints
-(delegable via `grant_roles` — Phase 0 Q6), tenant isolation, the
+only, never delegable), its user/group grant/revoke endpoints
+(delegable via `grant_roles`), tenant isolation, the
 `scope`/`project_id` cross-validation, and the `grant_roles` wiring onto
 the six pre-existing role-assignment endpoints (including the `OrgRole.
 ORG_ADMIN` carve-out).
 
-Phases 1/2's own test files (`test_custom_roles.py`, `test_effective_
+The data-model and resolution tests (`test_custom_roles.py`, `test_effective_
 permissions.py`) cover the data model and resolution engine directly; this
 file is the first to exercise the actual HTTP surface built on top of them.
 """
@@ -110,8 +109,7 @@ def test_create_custom_role_rejects_invalid_permission_key(client, admin_token):
 
 
 def test_create_custom_role_rejects_invalid_scope(client, admin_token):
-    # Fine-Grained Access Control (core) Phase 5 widened valid `scope`
-    # values to include any registered module-owned entity scope (e.g.
+    # Valid `scope` values include any registered module-owned entity scope (e.g.
     # compliance's own `"standard"`, exercised in `test_entity_scope_
     # permissions.py`) — this test now uses a scope string no module could
     # ever register, so it stays a genuine "always invalid" case.
@@ -147,7 +145,7 @@ def test_custom_role_crud_rejects_non_admin_org_member(client, admin_token):
 
 
 def test_custom_role_crud_rejects_grant_roles_only_holder(client, admin_token):
-    """Confirms Phase 0 Q5: role *definition* (create/update/delete) is
+    """Confirms role *definition* (create/update/delete) is
     never delegable via `grant_roles`, unlike *assignment* below."""
     org, org_admin_token = create_org_admin_in(client, admin_token, "Grant Roles Non Delegable Org")
     _user_id, grant_roles_token = _grant_roles_only_user(client, org_admin_token, org)
@@ -350,7 +348,7 @@ def test_grant_and_revoke_custom_role_to_user_via_org_admin(client, admin_token)
 def test_org_user_listing_surfaces_org_scoped_custom_role_grants(client, admin_token):
     """`GET /orgs/{id}/users` surfaces each user's own org-scoped
     (`project_id` null) custom-role grants via `OrgUserOut.custom_roles`
-    (frontend Role Management UI, Phase 3) — the same "attach this user's
+ — the same "attach this user's
     own grants" treatment `ModuleRoleGrantOut`/`module_roles` already gets,
     extended to custom roles. Pins the shape (`custom_role_id`/`name`) and
     that a revoke removes the entry again, mirroring `test_org_module_role_
@@ -416,7 +414,7 @@ def test_project_scoped_custom_role_grant_not_surfaced_on_user_listing(client, a
 
 
 def test_grant_and_revoke_custom_role_to_user_via_grant_roles_only_holder(client, admin_token):
-    """Confirms Phase 0 Q6: role *assignment* is delegable via `grant_roles`."""
+    """Confirms role *assignment* is delegable via `grant_roles`."""
     org, org_admin_token = create_org_admin_in(client, admin_token, "User Grant Delegable Org")
     grantee_id = create_org_user(client, org_admin_token, org["id"], "delegable_grantee@example.com", role="member")
     _holder_id, grant_roles_token = _grant_roles_only_user(client, org_admin_token, org)
@@ -545,7 +543,7 @@ def test_assign_org_role_reachable_via_grant_roles_holder_but_not_org_admin_valu
     )
     assert ok_resp.status_code == 204, ok_resp.text
 
-    # ...but is rejected specifically for OrgRole.ORG_ADMIN itself (Phase 0 Q6 carve-out).
+    # ...but is rejected specifically for OrgRole.ORG_ADMIN itself (a deliberate carve-out).
     admin_resp = client.post(
         f"/api/v1/orgs/{org['id']}/users/{target_id}/roles",
         json={"user_id": target_id, "role": "org_admin"},

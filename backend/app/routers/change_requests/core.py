@@ -189,8 +189,7 @@ def create_change_request(
         requirement = db.get(Requirement, payload.requirement_id)
         if requirement is None or requirement.project_id != project_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
-        # Requirement-status guard (2026-08 UX audit roadmap, "No requirement
-        # approval action; change requests can target draft requirements"):
+        # Requirement-status guard:
         # a change request exists to gate edits once direct editing is
         # locked (`LOCKED_STATUSES = {APPROVED}`, services/requirements.py)
         # — a draft or reviewed requirement isn't locked, so it should be
@@ -263,7 +262,7 @@ def create_change_request(
                     status.HTTP_400_BAD_REQUEST, "proposed_action_type_id must be an action type defined in this project."
                 )
     elif payload.kind == ChangeRequestKind.REMOVE_ACTION:
-        # Platform review 2026-09, Phase 8 — mirrors ADD_ACTION's own guard
+        # Mirrors ADD_ACTION's own guard
         # above, and is unconditional (no project/org opt-in): removing an
         # already-linked action from a locked requirement always requires a
         # change request, closing the asymmetry `unlink_action` used to have
@@ -288,7 +287,7 @@ def create_change_request(
         if existing is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is not linked to this requirement.")
     elif payload.kind in (ChangeRequestKind.ADD_LINK, ChangeRequestKind.REMOVE_LINK):
-        # Platform review 2026-09, Phase 8 — a project/org opt-in sibling of
+        # A project/org opt-in sibling of
         # ADD_ACTION/REMOVE_ACTION above: only reachable once
         # `services.requirements.requires_change_request_for_links` is true
         # for this project (links otherwise stay ungated — see
@@ -454,8 +453,7 @@ def list_change_requests(
     `limit`/`offset` (U-P-06) are optional pagination — see `list_requirements`
     for the same pattern.
 
-    `active_only` (2026-08 UX audit roadmap, "Default Change Requests to
-    an active-only status filter") filters to the three non-terminal
+    `active_only` filters to the three non-terminal
     statuses (`draft`/`submitted`/`in_review`) in one round trip, so the
     frontend's default view doesn't have to request every status and then
     hide `approved`/`rejected`/`withdrawn` rows client-side — with the
@@ -464,8 +462,7 @@ def list_change_requests(
     set. Ignored when `cr_status` is also given — an explicit single
     status is more specific than "any active status" and wins.
 
-    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
-    tables") optionally sorts by `proposed_name`, `status`, or
+    `sort` optionally sorts by `proposed_name`, `status`, or
     `created_at`, `order` picks `asc` (default) or `desc`. Omitting `sort`
     keeps the existing default (creation/query) order unchanged. Rows with
     no `proposed_name` (a MODIFY_REQUIREMENT change request that didn't
@@ -482,8 +479,7 @@ def list_change_requests(
     falls back to the requirement's name when there's no proposed name). The
     requirement names are looked up in one batched query.
 
-    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
-    2026-08 UX audit roadmap) is a second response header reporting the
+    `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory project scope (change requests have no
     archived-visibility concept), before `cr_status`/`active_only`/
     `target_stage_id` narrow it further — unlike `X-Total-Count`, it does

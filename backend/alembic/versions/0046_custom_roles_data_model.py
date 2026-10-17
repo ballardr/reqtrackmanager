@@ -4,10 +4,10 @@ Revision ID: 0046
 Revises: 0045
 Create Date: 2026-09-23
 
-`docs/plans/core-fine-grained-access-control-plan.md` Phase 1: four new
+: four new
 tables backing an organisation-definable custom role, additive to the
 fixed `OrgRole`/`ProjectRole` enums and every module-contributed role
-(never a replacement — Design Principle 1 of that plan).
+(never a replacement).
 
 - `custom_role_definitions` (`app.models.custom_role.CustomRoleDefinition`)
   — one row per org-defined role: name/description/scope, org-scoped,

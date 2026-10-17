@@ -2,7 +2,7 @@
  * Module: modules/compliance/orgComplianceSummary
  *
  * Shared "org-wide headline compliance numbers" computation — extracted
- * (compliance-module-plan.md Phase 25b) so `OrgComplianceDashboard.tsx`'s
+ * so `OrgComplianceDashboard.tsx`'s
  * own Dashboard-tab stats and `ComplianceOrgOverviewTiles.tsx`'s new
  * `OrgOverviewPage.tsx` header tiles compute the exact same numbers from
  * the exact same `listOrgProjectComplianceStatus` rows, rather than two

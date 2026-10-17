@@ -20,9 +20,7 @@ installCleanupHook();
  *
  * Uses a brand-new, disposable organisation + two throwaway projects
  * created via the API, not the shared "E2E Beta Software" org this spec
- * previously ran against. Found and fixed along the way (not part of the
- * 2026-08 UX audit roadmap batch that prompted a look at this file, but a
- * genuine bug per this project's own "fix, don't defer" rule): the
+ * previously ran against. Found and fixed along the way: the
  * previous version deleted 3 of Beta org's 4 seeded default statuses down
  * to a single renamed one, permanently — `seed_e2e_dataset.py` only seeds
  * once ("already seeded, exiting" on a re-run), so this spec could only
@@ -105,8 +103,7 @@ test.describe("org admin: project statuses and link types", () => {
 
     await test.step("Project statuses: the 4 default statuses are present", async () => {
       // Project statuses and Link types both live in the "Projects &
-      // workflow" resource-menu group (2026-08 UX audit's Org Admin
-      // restructure) — selecting the group is a real navigation, not a
+      // workflow" resource-menu group — selecting the group is a real navigation, not a
       // client-side toggle, and must happen before either section is
       // reachable at all.
       await selectOrgAdminGroup(page, "Projects & workflow");

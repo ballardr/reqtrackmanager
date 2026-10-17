@@ -3,7 +3,7 @@
  *
  * A grouped, multi-select checkbox grid over an organisation's currently-
  * valid permission-atom vocabulary (Fine-Grained Access Control,
- * `docs/plans/core-fine-grained-access-control-plan.md` Phase 0 Q1/Phase 3)
+ *)
  * — the picker `CustomRoleDefinition` create/edit uses to build up a
  * role's `permissions` set. Options are grouped by `Permission.artefact_type`
  * (a `null` artefact type — the short, hand-maintained administrative list,
@@ -12,7 +12,7 @@
  * (every registered artefact type × 4 levels × however many sub-types)
  * doesn't read as one undifferentiated wall of checkboxes.
  *
- * Deliberately the one new, reusable UI shape this phase introduces (no
+ * Deliberately the one reusable UI shape of its kind (no
  * grouped multi-select checkbox grid existed anywhere else in this
  * codebase — `MultiSelectDropdown` is the closest precedent, but that's a
  * closed, compact *dropdown* over a small flat option list, the wrong

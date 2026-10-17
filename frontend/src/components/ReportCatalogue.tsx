@@ -1,7 +1,7 @@
 /**
  * Module: components/ReportCatalogue
  *
- * The one Reports destination (Module 1 Phase 13): a "Report" picker over
+ * The one Reports destination: a "Report" picker over
  * every report the backend catalogue lists for a project or organisation,
  * and the selected report below it, run by `ReportRunner`. Used by the
  * project Reports page and the Organisation Overview "Reports" group, so a

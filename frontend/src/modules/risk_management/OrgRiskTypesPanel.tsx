@@ -1,7 +1,7 @@
 /**
  * Module: modules/risk_management/OrgRiskTypesPanel
  *
- * The organisation tier of the Risk type vocabulary (Phase 0 resolution 2) — a
+ * The organisation tier of the Risk type vocabulary — a
  * thin wrapper over the shared `OrgTypeVocabularyPanel`. Registered on
  * `orgAdminSections` (Org Management). Gated server-side on `risk_type_admin`.
  */

@@ -17,7 +17,7 @@ Responsibilities:
 
 Design decisions:
 - Ancestry only. Siblings and unrelated projects stay unlinkable (that is the
-  general cross-project problem, Module 7 Phase 4).
+  general cross-project problem).
 - Related projects are walked outward from the request project and stop at the
   first project the user cannot open, so a hole in the chain never looks
   contiguous and nothing beyond it is disclosed (the `/ancestors` rule).

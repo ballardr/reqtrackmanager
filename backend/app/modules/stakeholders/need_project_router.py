@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.need_project_router
 
-Project-scoped Stakeholder Need API (Phase 2), mounted at
+Project-scoped Stakeholder Need API, mounted at
 `/api/v1/projects/{project_id}/modules/stakeholders` beside the Persona and
 Stakeholder project routers: need CRUD/lifecycle/comments/files, the "has need"
 links to Stakeholders and Personas, the "gives rise to" links to Requirements,

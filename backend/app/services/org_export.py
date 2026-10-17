@@ -665,7 +665,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
     seed_custom_role_presets(db, org.id)
-    # Scoring levels likewise start at registry defaults (Module 1 Phase 10).
+    # Scoring levels likewise start at registry defaults.
     seed_missing_scoring_levels(db, org.id)
     if data.get("source_sso_only"):
         warnings.add(

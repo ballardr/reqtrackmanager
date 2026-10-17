@@ -115,10 +115,7 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
     this org that both is IdP-synced (`idp_synced_group_name` set) and
     grants a role (`granted_org_role` set) — matched against the IdP's
     group/role claim (C-U-07, E-U-01). Replaces the previous flat
-    `Organization.sso_group_mappings` list (2026-08 UX audit roadmap item
-    522 — role-granting via an SSO group claim is a property of the group
-    being synced into, not a disconnected list keyed by a string that may
-    or may not correspond to a real `OrgGroup`).
+    `Organization.sso_group_mappings` list.
 
     This is the concrete answer to "how does a user provisioned via SSO gain
     their application permissions": the IdP asserts group membership (in the

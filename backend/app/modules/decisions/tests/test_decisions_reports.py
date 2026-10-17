@@ -1,5 +1,4 @@
-"""Tests for the Decision Management reports D1–D4 (docs/plans/platform-
-enhancements-2026-10-plan.md Phase 8), through the real HTTP endpoints.
+"""Tests for the Decision Management reports D1–D4, through the real HTTP endpoints.
 
 Covers, per report: content, filters and the sections gap tables are built
 from. Cross-cutting: access (non-member and disabled module are 404), scope

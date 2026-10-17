@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/OrgPersonasPanel
  *
- * An organisation's own org-scoped Personas (Phase 0 resolution 2: one live,
+ * An organisation's own org-scoped Personas (one live,
  * shared record every project can see and score against), rendered as an
  * `OrgOverviewPage` `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
  *

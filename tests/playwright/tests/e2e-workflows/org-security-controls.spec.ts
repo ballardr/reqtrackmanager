@@ -24,8 +24,7 @@ const apiBaseUrl = "http://localhost:8000";
  * still meant this spec's org-wide 2FA toggle (which blocks every member
  * of the org, including its own admin, from project access until 2FA is
  * enabled) could collide with any *other* spec reading/writing Gamma
- * concurrently once the suite runs with more than one worker (Phase 1,
- * docs/platform-review-2026-09-plan.md) — org-admin-modules.spec.ts is a
+ * concurrently once the suite runs with more than one worker — org-admin-modules.spec.ts is a
  * real example, since it also flips a Gamma-wide toggle. A disposable org
  * removes the collision entirely, the same way the statuses/link-types
  * spec's own disposable org removed an analogous risk for Beta.
@@ -68,15 +67,12 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
     await test.step("member directory filters: stale, no-2FA, no-project-access", async () => {
-      // Users is its own top-level resource-menu group (2026-08 UX audit's
-      // Org Admin restructure; split out of the combined "People" group in
-      // a later pass) — a real navigation, so it must be selected before
+      // Users is its own top-level resource-menu group — a real navigation, so it must be selected before
       // the section is reachable at all.
       await selectOrgAdminGroup(page, "Users");
       await ensureExpanded(page, "Organisation users");
       // Migrated from three ad-hoc toggle `<button>`s to `FilterCheckbox`es
-      // inside the shared `FilterPanel` (Phase A, follow-up UX batch,
-      // 2026-08-31) — now genuinely independent (checking one no longer
+      // inside the shared `FilterPanel` — now genuinely independent (checking one no longer
       // implicitly clears another), so each is unchecked explicitly rather
       // than via a single "Clear filters" button, which no longer exists.
       // Each toggle waits for its own reload (`/users?` with or without the
@@ -100,7 +96,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     });
 
     await test.step("lock then unlock a display name", async () => {
-      // PR6 of the members/groups directory rework plan (docs/decisions.md)
+      // the members/groups directory rework (docs/decisions.md)
       // consolidated the Users table's previously-bare "Lock/Unlock display
       // name" button into the row's `ActionMenu` — reachable via its kebab
       // trigger (`${display name}'s actions`), then the `menuitem` inside
@@ -134,9 +130,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     let projectId = "";
     await test.step("enabling org-wide 2FA blocks the admin's own project/settings access until they enrol", async () => {
       // 2FA/self-signup/external-user-policy live in the "Security"
-      // top-level resource-menu group (2026-08 UX audit's Org Admin
-      // restructure, later split further from a combined "Integrations &
-      // security" group) — a real navigation, so it must be selected
+      // top-level resource-menu group — a real navigation, so it must be selected
       // before the card is reachable at all.
       await selectOrgAdminGroup(page, "Security");
       await ensureExpanded(page, "Security");
@@ -248,13 +242,12 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await page.goto("/projects");
       await page.getByText(projectName).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      // No group is auto-created on project creation any more (follow-up
-      // UX batch Phase C, 2026-08-31) — invite via the Members section's
+      // No group is auto-created on project creation any more (2026-08-31) — invite via the Members section's
       // own add control instead, which grants the by-email invite a
       // *direct* role the exact same way a project group's own member
       // picker used to.
       await selectProjectAdminGroup(page, "Members");
-      // PR3 (members/groups directory rework): the add control now opens in
+      // The add control now opens in
       // a Modal behind an "Add member" button, per docs/ux-style-guide.md
       // Principle 3 ("create is a layer, not a page reflow"), instead of
       // sitting permanently above the table.

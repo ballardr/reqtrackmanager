@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/StrategyDetailPage
  *
- * A single Strategy's full detail (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.1) — full field display, current lifecycle
+ * A single Strategy's full detail — full field display, current lifecycle
  * status, version history, comments, attachments, and relationships, plus
  * every lifecycle action. Mirrors `modules/decisions/DecisionDetailPage.tsx`'s
  * exact structure and its `docs/ux-style-guide.md` "Pattern: entity detail
@@ -12,7 +11,7 @@
  * here too.
  *
  * **Scope-aware, Decided by: Agent:** unlike Decision (project-scoped
- * only), a Strategy is org- **or** project-scoped (Phase 0 Q2), so this one
+ * only), a Strategy is org- **or** project-scoped, so this one
  * component serves both `ProjectStrategiesPage.tsx`'s row-click navigation
  * (`/projects/:projectId/modules/context_strategy/strategies/:strategyId`,
  * registered via `module.ts`'s `routes`) and `OrgStrategiesPanel.tsx`'s own

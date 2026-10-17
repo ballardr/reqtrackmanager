@@ -3,7 +3,7 @@
  *
  * A single risk's full detail as a routed page (`/projects/:projectId/modules/
  * risk_management/risks/:riskId`, `module.ts`; the path `module.ts` also
- * declares for `artefactPaths`) — plan Phase 5. A risk carries a lifecycle with
+ * declares for `artefactPaths`). A risk carries a lifecycle with
  * a dialog per move, treatment verdicts, a review history, version history,
  * attachments, comments and a Links panel, so it is a page rather than a
  * `SidePanel` (docs/ux-style-guide.md "Pattern: entity detail panel").

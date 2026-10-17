@@ -7,7 +7,7 @@ baselines (C-G-10).
 
 Traceability links (C-G-09) used to live here as `RequirementLink`, and
 action membership as `RequirementActionLink` (`models.requirement_action`).
-Module 0 (Platform Foundations), Phase 1 folded both into the generic
+Both were folded into the generic
 polymorphic `ArtefactLink` (`models.relationship`) — a requirement-to-
 requirement traceability link is now an `ArtefactLink` row with
 `source_type`/`target_type` both `ArtefactType.REQUIREMENT` and a non-null

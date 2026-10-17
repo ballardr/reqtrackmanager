@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/groupTree
  *
- * Pure helpers over the flat Stakeholder-group list the API returns (Phase 3c):
+ * Pure helpers over the flat Stakeholder-group list the API returns:
  * building the tree from `parent_group_id`, ancestor/descendant walks, a
  * group's path label, and a stakeholder's branch under a top-level group.
  * Kept free of React so the list, the picker and the manager share one reading

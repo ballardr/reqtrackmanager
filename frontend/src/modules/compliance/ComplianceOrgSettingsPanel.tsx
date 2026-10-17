@@ -1,8 +1,7 @@
 /**
  * Module: modules/compliance/ComplianceOrgSettingsPanel
  *
- * The org-level Compliance settings panel (docs/compliance-module-plan.md
- * Phase 22) — so far, one field: this organisation's designated **default
+ * The org-level Compliance settings panel — so far, one field: this organisation's designated **default
  * compliance-managers group**, the SSO-friendly fallback that keeps a
  * standard from ever being left with no `standards_manager` at all (§3).
  * Every current member of the picked `OrgGroup` counts as an effective

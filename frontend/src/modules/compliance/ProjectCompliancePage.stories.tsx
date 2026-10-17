@@ -36,7 +36,7 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
 }
 
 /**
- * `ProjectCompliancePage` is the route component Phase 3's Tier A mechanism
+ * `ProjectCompliancePage` is the route component the Tier A mechanism
  * mounts for the Compliance module — see `modules/registry.ts`. These
  * stories exercise the top-level Standards list and the "Assign standard"
  * flow; a drill-in into `ProjectComplianceDetail`'s own applicability
@@ -45,7 +45,7 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
  * mocked to resolve empty so a drill-in story here settles cleanly, the
  * same "settle cleanly, don't duplicate coverage" approach
  * `StandardVersionsSection.stories.tsx` (the retired `StandardsPanel.
- * stories.tsx`'s successor, docs/compliance-module-plan.md Phase 18)
+ * stories.tsx`'s successor)
  * already established for its own `VersionWorkspace` drill-in.
  */
 function mockApis(overrides: {
@@ -104,7 +104,7 @@ export const ListsAssignedStandards: Story = {
   },
 };
 
-// Phase 31: a standard attached but never assessed must render "Unknown" in
+// A standard attached but never assessed must render "Unknown" in
 // the Non-compliant column, never "No" (which would read as confirmed clean).
 export const ListsUnassessedStandard: Story = {
   beforeEach: () =>
@@ -144,7 +144,7 @@ export const AssignStandardFlow: Story = {
     await waitFor(() => expect(body.getByLabelText("Standard version")).toBeInTheDocument());
     await userEvent.click(body.getByRole("button", { name: "Assign" }));
 
-    // Phase 20: the default assignment path is now the project-scoped
+    // The default assignment path is now the project-scoped
     // endpoint (usable by a plain Project Manager), not the org-scoped
     // Compliance-Manager-only one.
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
@@ -154,7 +154,7 @@ export const AssignStandardFlow: Story = {
   },
 };
 
-/** Phase 43: the Standards tab's report download moved onto the shared
+/** The Standards tab's report download moved onto the shared
  * `ReportExportButton` (a single "Export" trigger opening a PDF/CSV
  * `Popover`) — see that component's own docstring for why this page's
  * previously-separate "Download PDF report"/"Download CSV report" buttons

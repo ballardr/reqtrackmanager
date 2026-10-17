@@ -5,7 +5,7 @@
  * list in the app (Org Users, Org Groups, Project Groups, Project Members,
  * Server Admin's Access Review) — see docs/ux-style-guide.md's "Pattern:
  * directories at scale" and "Pattern: sortable column header". Pulled out
- * as Phase 0 of a follow-up UX batch after a design-review pass found four
+ * after a design-review pass found four
  * separate pages about to each hand-roll their own version of the exact
  * shape `MemberRoleTable.tsx` already proved out (see that component's own
  * docstring) — and that the *existing* Project Groups list wasn't a real

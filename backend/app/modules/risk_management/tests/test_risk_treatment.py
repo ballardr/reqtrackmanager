@@ -1,5 +1,5 @@
-"""Tests for the Risk Management module's Phase 3 relationships and treatment
-assessments (docs/plans/module-03-risk-management-plan.md), through the real HTTP
+"""Tests for the Risk Management module's relationships and treatment
+assessments, through the real HTTP
 endpoints.
 
 Covers: the link-type seeds and the Risk summary provider, which treatment links

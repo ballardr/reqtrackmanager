@@ -2,10 +2,8 @@
 Module: modules.stakeholders.module
 
 Registers the Stakeholders & Personas module into the modular feature
-system's registry via `MODULE_DEFINITION` (docs/plans/module-02-stakeholders-
-and-personas-plan.md). Phase 1.1 delivers the Persona artefact, Phase 1.2 the
-Stakeholder artefact, Phase 2 the Stakeholder Need artefact, Phase 4 the
-Engagement contact log and the research extras.
+system's registry via `MODULE_DEFINITION`. It delivers the Persona, Stakeholder and
+Stakeholder Need artefacts, the Engagement contact log and the research extras.
 
 Registered contributions:
 - Roles (not additions to core enums): `persona_owner` (project) and
@@ -13,7 +11,7 @@ Registered contributions:
   role carries the FGAC `(persona, manage)` atom, since an org-level role's
   atoms would apply to every project; `persona_type_admin` (org) gates the org
   Persona type vocabulary. There is no approver role because Personas have no
-  approval gate (Phase 0 resolution 6).
+  approval gate.
 - The same trio for Stakeholders: `stakeholder_owner` (project, carries the FGAC
   `(stakeholder, manage)` atom), `org_stakeholder_owner` (org, no atom) and
   `stakeholder_type_admin` (org; also administers the `stakeholder` scoring
@@ -24,11 +22,11 @@ Registered contributions:
   Engagements, which are project-scoped only so have no org role.
 - `artefact_types=("persona", "stakeholder", "stakeholder_need", "stakeholder_group",
   "engagement", "research_finding")` so all six are valid `ArtefactLink` endpoints and
-  get FGAC atoms. Groups (Phase 3c) have no role of their own: they are managed with
+  get FGAC atoms. Groups have no role of their own: they are managed with
   the Stakeholder gate.
 - `scoring_schemes`: the Influence × Interest `stakeholder` scheme (`scoring.py`).
-- `scoring_target_providers["persona"]`: the generic hook Module 1's
-  per-persona Pain Point scoring reads (Phase 0 resolution 10), so Context &
+- `scoring_target_providers["persona"]`: the generic hook Context & Strategy's
+  per-persona Pain Point scoring reads, so Context &
   Strategy never imports this module.
 - `on_org_created` seeds each new organisation's default Persona and
   Stakeholder types; the migrations backfill existing organisations.
@@ -40,7 +38,7 @@ Registered contributions:
   `research_extras` (session prompts, anonymous participants and findings; off by
   default), so a project can switch any off without disabling the whole module. The
   Engagement log itself is always on with the module.
-- `reports` (Phase 6): five project-level reports (`reports.py`: S1 power/interest grid,
+- `reports`: five project-level reports (`reports.py`: S1 power/interest grid,
   S2 Persona validation, S3 Need coverage, S4 Engagement staleness, S5 Engagement &
   research yield); the framework generates their routes, catalogue entries and
   `get_<slug>_report` MCP tools.
@@ -343,7 +341,7 @@ def _query(name: str, type_: str, description: str) -> dict:
 
 
 def _build_link_mcp_tools() -> tuple[McpToolDefinition, ...]:
-    """Link tools (Phase 3): the §10.5 relationships, "represents Persona", "has
+    """Link tools: the §10.5 relationships, "represents Persona", "has
     need" and "gives rise to". Writes need the same role as the REST endpoints;
     removing a link deletes only the link, never either record."""
     prefix = _PROJECT_ROUTER_PREFIX
@@ -447,7 +445,7 @@ def _build_link_mcp_tools() -> tuple[McpToolDefinition, ...]:
 
 
 def _build_group_mcp_tools() -> tuple[McpToolDefinition, ...]:
-    """Stakeholder group tools (Phase 3c). Writes act on this project's own groups; the organisation's
+    """Stakeholder group tools. Writes act on this project's own groups; the organisation's
     groups are read-only here (an org admin edits them in the UI). Deleting a group keeps its
     Stakeholders and moves its child groups up."""
     base = f"{_PROJECT_ROUTER_PREFIX}/stakeholder-groups"
@@ -499,7 +497,7 @@ def _build_group_mcp_tools() -> tuple[McpToolDefinition, ...]:
 
 
 def _build_engagement_mcp_tools() -> tuple[McpToolDefinition, ...]:
-    """Engagement log and research-extras tools (Phase 4). Writes need the same Engagement Owner role as the REST
+    """Engagement log and research-extras tools. Writes need the same Engagement Owner role as the REST
     endpoints. There is deliberately no tool to delete an engagement, finding, prompt or anonymous participant:
     irreversible deletion of possible personal data stays a human action in the UI. Removing a link removes only
     the link."""

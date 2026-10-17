@@ -238,8 +238,7 @@ def unarchive_action(
 ):
     """Restores an archived action to the active list, undoing `archive_action`
     — same permission gate, mirroring `routers.projects::unarchive_project`
-    (see that endpoint's docstring/precedent, per the 2026-08 UX audit's
-    roadmap item on one-way archive). Unlike `archive_action`'s 409-on-
+. Unlike `archive_action`'s 409-on-
     already-archived, calling this on an action that isn't archived is a
     harmless no-op rather than an error, matching `unarchive_project`'s own
     idempotent shape.

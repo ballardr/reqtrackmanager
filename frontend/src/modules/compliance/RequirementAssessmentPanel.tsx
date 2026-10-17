@@ -16,14 +16,13 @@
  * stale client check can never let a bad payload through undetected: any
  * 400 still surfaces as a toast either way.
  *
- * Evidence section (Phase 33): alongside linking already-existing evidence,
+ * Evidence section: alongside linking already-existing evidence,
  * "Upload new evidence" reuses `EvidencePanel.tsx`'s own exported
  * `EvidenceFormModal` to create a new `Evidence` record the same way that
  * panel does, immediately auto-links it to this assessment (no separate
  * manual "link existing" step), then reuses `FileAttachmentList`/
  * `ResourcePickerModal` — again exactly as `EvidencePanel.tsx` already does
- * — so the actual file attaches in the same flow. Since Phase 41,
- * `EvidenceFormModal`'s create form itself stages files before save, so
+ * — so the actual file attaches in the same flow. `EvidenceFormModal`'s create form itself stages files before save, so
  * `createAndLinkEvidence` uploads those in the same step and only falls
  * back to the follow-up "Attach files" modal when none were staged —
  * a user who already attached a file at creation time isn't asked again.

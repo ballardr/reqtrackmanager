@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/StakeholderGroupsField
  *
- * A Stakeholder's groups on its detail page (Phase 3c): the group names as
+ * A Stakeholder's groups on its detail page: the group names as
  * badges (with their full path on hover) and a `TreeSelect` to change them,
  * applied with an explicit Save so a multi-group change lands in one request
  * (and an `exclusive_children` conflict rejects the whole set, not half of it).

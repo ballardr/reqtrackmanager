@@ -1,11 +1,10 @@
-"""Tests for groups on core fields (users and groups on parity, Phase 6 —
-docs/plans/users-and-groups-parity-plan.md), through the real HTTP endpoints.
+"""Tests for groups on core fields (users and groups on parity), through the real HTTP endpoints.
 
-Sub-phase 6b: a change request task's assignee (a member of an assigned group may mark
+A change request task's assignee (a member of an assigned group may mark
 the task done, a non-member or removed member may not; project bundle round trip; the
 `0083` migration).
 
-Sub-phase 6a: a requirement action's assignee and a change
+A requirement action's assignee and a change
 request's proposed action assignee — each principal kind on create, update,
 clear and list; validation (a foreign organisation's group or user, another
 project's group, an unknown id — the assignee was not validated at all before);

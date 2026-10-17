@@ -153,8 +153,7 @@ export const ArchivedActionIsReadOnly: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByLabelText("Title")).toBeDisabled());
     await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
-    // Restore replaces Archive once archived (2026-08 UX audit roadmap:
-    // unarchive endpoint + Restore button).
+    // Restore replaces Archive once archived.
     await expect(canvas.getByRole("button", { name: "Restore" })).toBeInTheDocument();
   },
 };

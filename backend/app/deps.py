@@ -164,8 +164,8 @@ def get_current_user_or_module_frame(module_key: str):
     """FastAPI dependency factory accepting either a normal session/PAT
     bearer token (delegates entirely to `_resolve_user_from_token`, exactly
     like `get_current_user`) or a short-lived Tier B `<ModuleFrame>` JWT
-    (`app.security.create_module_frame_token`, compliance-module-plan.md
-    Phase 3) scoped to exactly `module_key`.
+    (`app.security.create_module_frame_token`
+    ) scoped to exactly `module_key`.
 
     Used only by `app.services.rbac`'s module-gating dependencies
     (`require_org_module_enabled`, `require_project_module_enabled`,

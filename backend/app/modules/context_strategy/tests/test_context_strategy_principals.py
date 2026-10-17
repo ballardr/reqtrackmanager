@@ -1,5 +1,5 @@
 """Tests for groups as Pain Point, Guiding Principle and Open Question owners
-(users and groups on parity, Phase 4 — docs/plans/users-and-groups-parity-plan.md).
+(users and groups on parity).
 
 Covers: each principal kind on create/update/clear and the display fields of a
 group; Guiding Principle versions carrying the owner so history shows who owned

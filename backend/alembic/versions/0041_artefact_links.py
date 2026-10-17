@@ -1,11 +1,11 @@
-"""Generic polymorphic relationship model (Module 0 — Platform Foundations, Phase 1)
+"""Generic polymorphic relationship model
 
 Revision ID: 0041
 Revises: 0040
 Create Date: 2026-09-21
 
-Per the Phase 0 decision record (docs/decisions.md, "Module 0 (Platform
-Foundations) Phase 0"): builds the generic `artefact_links` table
+Per the decision record (docs/decisions.md, Platform
+Foundations): builds the generic `artefact_links` table
 (`app.models.relationship.ArtefactLink`) and folds both `requirement_links`
 (`RequirementLink` — typed, requirement-to-requirement traceability) and
 `requirement_action_links` (`RequirementActionLink` — untyped

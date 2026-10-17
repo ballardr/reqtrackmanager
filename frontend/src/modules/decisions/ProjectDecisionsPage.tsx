@@ -1,13 +1,13 @@
 /**
  * Module: modules/decisions/ProjectDecisionsPage
  *
- * The Decision Management module's project-scoped route component
- * (docs/plans/module-04-decision-management-plan.md Phase 5), mounted at
+ * The Decision Management module's project-scoped route component,
+ * mounted at
  * `/projects/:projectId/modules/decisions` (`module.ts`): a `DirectoryTable`
  * + `FilterPanel` list, a "New decision" `Modal`, and a row click opening
  * `DecisionQuickViewPanel` as a minimal read-only `SidePanel` peek — whose
  * own "View full details" link leads to `DecisionDetailPage.tsx`'s full
- * page for management and full context (Phase 9, 2026-09-22; see that
+ * page for management and full context (see that
  * page's own docstring and `docs/ux-style-guide.md`'s "Pattern: entity
  * detail panel" checklist for why the two-tier shape replaced the original
  * SidePanel-only `DecisionDetailPanel.tsx`). Fetches the owning project's
@@ -17,7 +17,7 @@
  * .tsx` describes.
  *
  * Decision Types moved off this page's own tab bar to Project Admin's
- * `projectAdminSections` contribution in the same phase (grouped with the
+ * `projectAdminSections` contribution (grouped with the
  * project's other definition-table settings — Action Types, Custom
  * Fields — rather than the module's day-to-day working page); this page
  * still fetches the project's decision types (`decisionTypes` state) for

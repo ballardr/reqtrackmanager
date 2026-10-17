@@ -2,7 +2,7 @@
 Module: routers.report_catalogue
 
 Lists the module-contributed reports a caller can run, so the Reports UI
-decides what to show without probing for 403/404 (Module 1 Phase 12b). The
+decides what to show without probing for 403/404. The
 list is computed by `services.report_framework` from the registry's
 `ReportDefinition`s: module enabled, declared sub-component enabled, and (for
 organisation-wide reports) the declaring module's org role held. It is the

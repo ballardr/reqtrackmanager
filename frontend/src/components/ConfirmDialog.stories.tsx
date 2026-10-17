@@ -65,7 +65,7 @@ export const Tier2TypeToConfirm: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 8 — a caller with its own extra required
+/** A caller with its own extra required
  * input embedded in `message` (e.g. a "reason for change" field feeding a
  * change request instead of a direct action) uses `confirmDisabled` rather
  * than `requireTypedText`, which is reserved for the typed-exact-text Tier

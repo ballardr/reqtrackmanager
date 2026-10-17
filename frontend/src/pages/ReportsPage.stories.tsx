@@ -168,7 +168,7 @@ export const NoTemplatesHidesTemplatePicker: Story = {
   },
 };
 
-/** Module 1 Phase 13 — catalogue reports are offered in the same picker as the requirement report
+/** Catalogue reports are offered in the same picker as the requirement report
  * (which stays first and the default); picking one runs it. */
 export const CatalogueReportsAppearBesideTheRequirementReport: Story = {
   beforeEach: () => mockReportsApis({ catalogue: [buildReportCatalogueEntry()] }),

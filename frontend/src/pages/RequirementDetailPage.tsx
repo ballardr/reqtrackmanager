@@ -65,14 +65,11 @@ import { getInstalledModule } from "../modules/registry";
  * Links aren't gated by `is_locked` — they're metadata about the
  * requirement, not its own governed content, *by default* — a project (or
  * an org-wide force, minus a per-project exemption) can opt into gating
- * link add/remove too (platform review 2026-09, Phase 8:
+ * link add/remove too (platform review 2026-09:
  * `Project.require_change_request_for_approved_links`/
  * `Organization.force_require_change_request_for_approved_links`), routing
  * through `ADD_LINK`/`REMOVE_LINK` change requests the same way actions
- * already do. Actions *are* always gated once locked (2026-08 UX audit
- * roadmap item 514, a deliberate reversal of this page's own former
- * "actions are metadata too" stance, extended by Phase 8 to the remove
- * side too — `unlink_action` had no lock check at all until then): once
+ * already do. Actions *are* always gated once locked: once
  * locked, adding, linking, or removing one requires an `ADD_ACTION`/
  * `REMOVE_ACTION` change request instead of the direct endpoint, the same
  * change-request-only-once-locked rule the requirement's own fields
@@ -92,7 +89,7 @@ export function RequirementDetailPage() {
   // approval as a Project Manager privilege specifically, not shared with
   // Administrator — the same split `decide_change_request` and
   // `update_requirement`'s own status=approved branch already enforce
-  // server-side (2026-08 UX audit roadmap, "No requirement approval action").
+  // server-side.
   const canApprove = myRoles.includes("project_manager");
   const canEdit = canArchive || myRoles.includes("stakeholder");
   const [requirement, setRequirement] = useState<Requirement | null>(null);
@@ -133,8 +130,7 @@ export function RequirementDetailPage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [stages, setStages] = useState<ProjectStage[]>([]);
   const [activity, setActivity] = useState<ChangeEntry[]>([]);
-  // History/Activity merged into one card with a view toggle (2026-08 UX
-  // audit roadmap item 516) — server-synced per-user via `useUiPreference`,
+  // History/Activity merged into one card with a view toggle — server-synced per-user via `useUiPreference`,
   // the same mechanism `useViewMode` (tile/list) already uses, so the
   // user's last-selected view becomes their remembered default. Defaults to
   // "activity" (the broader feed) rather than "versions", since Activity
@@ -153,7 +149,7 @@ export function RequirementDetailPage() {
   // right after it (org users, link types) succeed for this user.
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [showResourcePicker, setShowResourcePicker] = useState(false);
-  // Platform review 2026-09, Phase 8 — the project's own
+  // The project's own
   // `require_change_request_for_approved_links` plus the org's
   // `force_require_change_request_for_approved_links` (minus this
   // project's `exempt_from_org_link_lock`) determine whether link
@@ -167,7 +163,7 @@ export function RequirementDetailPage() {
 
   // --- Traceability links (C-G-09) ------------------------------------
   // Links are shown and edited by the shared Links panel in the aside
-  // (`ArtefactLinksPanel`, Phase 6 of the October 2026 platform enhancements) —
+  // (`ArtefactLinksPanel`) —
   // requirement-to-requirement, module-origin (Decisions, Pain Points,
   // Compliance, ...) and cross-project links alike. This page only decides
   // whether link changes must go through a change request (`linksLockedForCR`,
@@ -210,12 +206,12 @@ export function RequirementDetailPage() {
   const [newActionAssignee, setNewActionAssignee] = useState<PrincipalRef | null>(null);
   const [newActionDueDate, setNewActionDueDate] = useState("");
   // Once locked, both flows above route through an ADD_ACTION change
-  // request instead of the direct endpoint (item 514) — same "reason for
+  // request instead of the direct endpoint — same "reason for
   // change" field every other change request requires.
   const [addActionReason, setAddActionReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionToUnlink, setActionToUnlink] = useState<RequirementAction | null>(null);
-  // Platform review 2026-09, Phase 8 — only rendered/required once
+  // Only rendered/required once
   // `requirement.is_locked` (unlinking an action is unconditionally gated
   // once locked, unlike links above).
   const [unlinkActionReason, setUnlinkActionReason] = useState("");
@@ -286,7 +282,7 @@ export function RequirementDetailPage() {
 
   /** Links one or more already-uploaded organisation shared resources onto
    * this requirement, via the `POST .../files/link` endpoint (previously
-   * unused from the frontend — see docs/ux-audit-2026-08.md "Shared org
+   * unused from the frontend — "Shared org
    * resources have almost no way to consume them"). One request per file
    * id, sequentially — the endpoint itself only accepts one id at a time. */
   async function linkOrgResources(fileIds: string[]) {
@@ -358,7 +354,7 @@ export function RequirementDetailPage() {
     }
   }
 
-  /** Platform review 2026-09, Phase 8 — `unlink_action` previously had no
+  /** `unlink_action` previously had no
    * lock check at all, an asymmetry with the already-gated add side (item
    * 514); unconditional across every project, unlike `removeLink` above
    * which only gates when `linksLockedForCR`. */
@@ -394,7 +390,7 @@ export function RequirementDetailPage() {
       try {
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
         setOrgUsers(users);
-        // Platform review 2026-09, Phase 8 — `OrganizationOut.
+        // `OrganizationOut.
         // force_require_change_request_for_approved_links` is readable by
         // any org member (unlike most other org policy toggles), so this
         // shares the same try/catch as the org-member-only calls above.
@@ -409,7 +405,7 @@ export function RequirementDetailPage() {
     })();
   }, [projectId]);
 
-  // Platform review 2026-09, Phase 8 — mirrors `services.requirements.
+  // Mirrors `services.requirements.
   // requires_change_request_for_links`'s resolution exactly: the project's
   // own opt-in always wins when set; otherwise the org's force applies
   // unless this project is marked exempt.
@@ -419,7 +415,7 @@ export function RequirementDetailPage() {
   );
   const linksLockedForCR = !!requirement?.is_locked && requiresCRForLinks;
 
-  /** Platform review 2026-09, Phase 8 — once `linksLockedForCR`, the Links panel
+  /** Once `linksLockedForCR`, the Links panel
    * proposes link changes as `add_link`/`remove_link` change requests instead of
    * calling the link endpoints (the same branch `linkExistingAction` below takes
    * for `add_action`). `undefined` when links are not locked. An `add_link` request
@@ -484,8 +480,7 @@ export function RequirementDetailPage() {
   // Restore: no `ConfirmDialog` (unlike archive above) — mirrors
   // `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
   // immediately, since restoring is reversible again (archive it right
-  // back) rather than a Tier-1-confirmed action (2026-08 UX audit roadmap:
-  // unarchive endpoint + Restore button).
+  // back) rather than a Tier-1-confirmed action.
   async function restore() {
     try {
       await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/unarchive`);
@@ -616,8 +611,7 @@ export function RequirementDetailPage() {
           )}
           {/* Only offered once the {requirement} is actually locked — a
               change request against a still-draft/reviewed one is rejected
-              server-side (2026-08 UX audit roadmap, "No requirement approval
-              action; change requests can target draft requirements"); an
+              server-side; an
               unlocked {requirement} is edited directly instead. */}
           {requirement.is_locked && (
             <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
@@ -871,7 +865,7 @@ export function RequirementDetailPage() {
       )}
 
       {/* History and Activity merged into one card with a view toggle
-          (2026-08 UX audit roadmap item 516) — "Version history" is
+ — "Version history" is
           specifically this requirement's own approved version/status
           transitions (the RequirementVersion ledger); "Activity" is the
           broader audit-log feed covering everything that happened to it,

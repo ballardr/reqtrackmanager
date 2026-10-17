@@ -40,8 +40,7 @@ function mockApis(rows: ProjectComplianceStatus[]) {
 }
 
 /**
- * The standard workspace's "Projects" section (docs/compliance-module-
- * plan.md Phase 23) — reached from the Overview's "Projects"/"Compliant"
+ * The standard workspace's "Projects" section — reached from the Overview's "Projects"/"Compliant"
  * `MetricTile`s. A single standard's own project-assignment list, each row
  * drilling through to that project's own Compliance page.
  */

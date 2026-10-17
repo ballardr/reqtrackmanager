@@ -1,5 +1,4 @@
-"""Tests for the Risk Management reports RK1-RK4 (docs/plans/module-03-risk-
-management-plan.md Phase 7), through the real HTTP endpoints.
+"""Tests for the Risk Management reports RK1-RK4, through the real HTTP endpoints.
 
 Covers, per report: content, labels, filters and the gap tables. Cross-cutting:
 access (non-member, other organisation and disabled module are 404), scope

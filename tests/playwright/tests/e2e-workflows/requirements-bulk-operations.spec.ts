@@ -6,7 +6,7 @@ import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup 
  * Job to be done: `RequirementsPage`'s list/table view supports selecting
  * several requirements at once and applying a bulk action to all of them —
  * the first pilot of style guide "Pattern: bulk operations on a list"
- * (2026-08 UX audit roadmap: bulk operations on list pages). Covers the
+ *. Covers the
  * golden path for both bulk actions: archive and move-to-stage. No new
  * backend endpoint exists for either — the page loops over the existing
  * single-requirement archive/update endpoints client-side — so this spec

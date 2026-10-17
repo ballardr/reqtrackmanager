@@ -754,16 +754,16 @@ def apply_project_data(
     # project manager regardless (see the `get_effective_project_managers` fallback
     # below), matching the same guarantee `create_project` gives its caller.
     for g in data.get("groups", []):
-        # A bundle exported before Phase C (follow-up UX batch, 2026-08-31)
+        # A bundle exported before default project groups were removed
         # may still carry an `"is_default"` key from the old format —
         # ignored on import, same as any other retired field: `is_default`
         # no longer exists on `ProjectGroup` at all, and re-creating a
         # group from a bundle is always an ordinary, fully-manageable group
         # regardless of what it originally was.
         #
-        # `"roles"` (PR7, docs/decisions.md) replaced the old single
+        # `"roles"` (docs/decisions.md) replaced the old single
         # required `"role"` key with a list — a group may now hold zero,
-        # one, or several roles. A bundle exported before PR7 still carries
+        # one, or several roles. A bundle exported before the group-roles change still carries
         # the old singular `"role"` key instead; read either shape so an
         # older export can still be imported without losing its group's
         # role, without needing to re-export it first.

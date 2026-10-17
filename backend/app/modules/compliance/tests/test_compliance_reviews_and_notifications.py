@@ -1,12 +1,10 @@
-"""Tests for the Compliance Module's Phase 10 Scheduled Reviews +
-Notifications (docs/compliance-module-plan.md Phase 10; docs/Compliance_
-Module_Requirements.md §17, §18, §28): the `ComplianceReview` CRUD/complete/
+"""Tests for the Compliance Module's Scheduled Reviews +
+Notifications (§17, §18, §28): the `ComplianceReview` CRUD/complete/
 evidence-linkage surface on both the org router (standard-level reviews)
 and the project router (project-level reviews), the computed `schedule_
 state` derivation, the unified `reviews-due` listing, the four date-driven
 notification sweeps (`app.modules.compliance.scheduler`), and the six
-event-driven notifications wired into the Phase 6/7/9 endpoints this phase
-extends.
+event-driven notifications wired into the standards, assessment and approval endpoints.
 
 Reuses `test_compliance_standards_api.py`'s and `test_project_compliance_
 api.py`'s helpers for setup, the same way `test_compliance_evidence_api.py`/
@@ -416,7 +414,7 @@ def test_reviews_due_listing_spans_project_and_standard_level(client, admin_toke
     ids = {r["id"] for r in rows}
     assert ids == {due_project_review["id"], due_standard_review["id"]}
 
-    # Phase 40: `standard_id`/`standard_reference`/`standard_name` are
+    # `standard_id`/`standard_reference`/`standard_name` are
     # resolved for *both* kinds of review — a project-level one (through its
     # assignment's own standard version) and a standard-level one (directly)
     # — so a review can be filtered/grouped by standard regardless of which

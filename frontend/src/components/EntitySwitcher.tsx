@@ -1,8 +1,7 @@
 /**
  * Module: components/EntitySwitcher
  *
- * The generic "entity quick-switch" chevron (docs/compliance-module-plan.md
- * Phase 28) — a small `ChevronDown` button that sits next to an entity's
+ * The generic "entity quick-switch" chevron — a small `ChevronDown` button that sits next to an entity's
  * name in a page's own `<h1>` and opens a `Popover` listing every sibling
  * instance of the same entity type the current user can reach, as plain
  * links to the equivalent page for that instance.
@@ -36,12 +35,12 @@
  * idiom (not the component itself — this list has no user/group-selection
  * semantics) rather than inventing a second filtering convention.
  *
- * Phase 35b: the trigger uses its own borderless `.entity-switcher-trigger`
+ * The trigger uses its own borderless `.entity-switcher-trigger`
  * class (`theme.css`), not the generic `.btn` — `.btn`'s own border/
  * background gave the bare chevron a separately bordered-chip look next to
  * the entity name rather than reading as part of it, the same defect class
  * already fixed once for `StandardNavSection.tsx`'s disclosure toggle
- * (Phase 29d, `.nav-link-row-toggle`). Fixed here at the source so every
+ * (`.nav-link-row-toggle`). Fixed here at the source so every
  * consuming page (Org Overview, Project Overview, Project Admin, the
  * Standard workspace, Org Admin) gets it in one change.
  */

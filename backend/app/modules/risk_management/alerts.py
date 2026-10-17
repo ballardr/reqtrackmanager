@@ -1,8 +1,7 @@
 """
 Module: modules.risk_management.alerts
 
-Notifications for Risk Management (docs/plans/module-03-risk-management-plan.md
-Phase 4, overview §11.6): a review coming due or overdue, and a treatment whose
+Notifications for Risk Management (overview §11.6): a review coming due or overdue, and a treatment whose
 verdict may no longer hold because the artefact behind it changed.
 
 Responsibilities:
@@ -16,7 +15,7 @@ Responsibilities:
 Design decisions:
 - Detection and notification only. A change never rewrites a risk: the verdict
   moves to `NEEDS_REASSESSMENT` (which already fails the `Mitigated` guard) and a
-  human decides, using the lifecycle the risk already has. This is the Module 0
+  human decides, using the lifecycle the risk already has. This is the platform
   "invalidation" convention for a mutable-status artefact. Decided by: Agent.
 - Only `EFFECTIVE` verdicts are moved. A `proposed` link makes no claim to
   invalidate; an `INEFFECTIVE` one is not made wrong by a change. Because a

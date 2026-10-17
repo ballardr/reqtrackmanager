@@ -331,7 +331,7 @@ path.
 ## Phase 4 — Docs website coverage
 
 **Goal:** add "Acting on Behalf Of" to `docs/website/` (the published docs
-site, `docs/plans/docs-website-plan.md`) — what the annotation records,
+site, `docs/plans/completed/docs-website-plan.md`) — what the annotation records,
 when to use it, and its explicit boundary (it never grants authority, only
 attributes an already-authorized action to someone else) — following the
 site's existing structure, tone, and Mermaid-diagram conventions.
@@ -376,7 +376,7 @@ afterthought bundled into a general approval-workflow page.
 - **Screenshot requirement (2026-09-22 addendum).** Making this explicit
   here rather than leaving it implicit is **Decided by: User** (the same
   instruction as the phase itself, applied specifically to screenshots this
-  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  time — `docs/plans/completed/docs-website-plan.md`'s "Screenshots" section already
   bound this page to its standard, but this phase's Scope above never said
   so in as many words). This page is subject to that standard in full:
   1440×900 viewport, captured against the seeded demo dataset, stored

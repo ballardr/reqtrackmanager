@@ -2,8 +2,7 @@
 Module: services.membership_notifications
 
 Tells a project's managers when someone *without* a manager/administrator
-role on that project changed its membership through an org-level route
-(docs/plans/platform-enhancements-2026-10-plan.md Phase 2).
+role on that project changed its membership through an org-level route.
 
 Responsibilities:
 - Decide whether an actor bypassed the project's own managers

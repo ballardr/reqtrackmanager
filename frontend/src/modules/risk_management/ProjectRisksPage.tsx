@@ -3,7 +3,7 @@
  *
  * The project's risk register, mounted at `/projects/:projectId/modules/
  * risk_management/risks` (`module.ts`, reached from the "Risks" nav-rail
- * entry) — docs/plans/module-03-risk-management-plan.md Phase 5.
+ * entry) —
  *
  * Two views over the same filtered set, switched with `Tabs`:
  * - *Register*: a `DirectoryTable` (code opens the detail page) with inherent

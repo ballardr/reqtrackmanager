@@ -38,7 +38,7 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
  * `ApplicabilityTree.stories.tsx`'s own, deeper coverage of that behaviour
  * — the same "settle cleanly, don't duplicate" precedent
  * `StandardVersionsSection.stories.tsx` (the retired `StandardsPanel.
- * stories.tsx`'s successor, docs/compliance-module-plan.md Phase 18) set
+ * stories.tsx`'s successor) set
  * for its own `VersionWorkspace` drill-in.
  */
 function mockApis() {
@@ -120,7 +120,7 @@ export const NonCompliantAssignment: Story = {
   },
 };
 
-// Phase 31: a standard attached but never assessed must never render the
+// A standard attached but never assessed must never render the
 // same as "assessed and found compliant" — see `types.ts::complianceRiskLabel`.
 export const NotYetAssessedAssignment: Story = {
   beforeEach: () => mockApis(),

@@ -8,7 +8,7 @@ which module role gates a mutation. Each router still declares its own
 routes; the bodies that would otherwise be duplicated (comments, file
 attachment, type updates) live here.
 
-RBAC (Phase 0 resolution 6): viewing is gated by sub-component enablement
+RBAC: viewing is gated by sub-component enablement
 alone; create/edit/archive/retire need the scope's owner role
 (`persona_owner`/`org_persona_owner`) or a Fine-Grained Access Control
 `(persona, manage)` grant. There is no approve action. Persona-type admin is

@@ -30,7 +30,7 @@ function decision(overrides: Partial<Decision> = {}): Decision {
 }
 
 /**
- * A minimal, read-only peek (Phase 9, 2026-09-22) — see this component's
+ * A minimal, read-only peek — see this component's
  * own docstring and `docs/ux-style-guide.md`'s "Pattern: entity detail
  * panel" checklist. Portals via `SidePanel` (`createPortal`), so
  * assertions query `document.body`, not `canvasElement`.

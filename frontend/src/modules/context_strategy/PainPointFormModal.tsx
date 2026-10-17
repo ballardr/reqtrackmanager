@@ -1,14 +1,12 @@
 /**
  * Module: modules/context_strategy/PainPointFormModal
  *
- * Create/edit dialog for a Pain Point's content fields (docs/plans/module-
- * 01-context-and-strategy-plan.md Phase 7.3) — mirrors `StrategyFormModal.tsx`'s
+ * Create/edit dialog for a Pain Point's content fields — mirrors `StrategyFormModal.tsx`'s
  * "shared by create and edit, distinguished by whether `initial` is passed"
  * convention.
  *
  * **No create/edit field-set asymmetry, unlike `StrategyFormModal`'s
- * `change_note` (Decided by: Agent).** Pain Point has no version table
- * (Phase 3's own scope decision), so there is no "explain what changed"
+ * `change_note` (Decided by: Agent).** Pain Point has no version table, so there is no "explain what changed"
  * concept to add in edit mode — `PainPointFieldValues` is identical for both
  * calls.
  *

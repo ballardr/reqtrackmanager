@@ -7,8 +7,8 @@ import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 1.2's exit criteria — Playwright e2e coverage for the Stakeholder UI
+ * Job to be done:
+ * Playwright e2e coverage for the Stakeholder UI
  * (`frontend/src/modules/stakeholders/`) against a real backend: create with
  * Influence/Interest and a cadence (with the suggestion hint), activate, link
  * Personas from both ends, add from an org user, org records read-only in a

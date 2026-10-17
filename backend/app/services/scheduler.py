@@ -13,7 +13,7 @@ services/disk_monitor.py) are deliberately left on their own
 additive infrastructure for the new date-driven jobs, not a replacement for
 proven, already-tested code.
 
-Compliance-module-plan.md Phase 10 extends this file with a **generic**
+The Compliance module extends this file with a **generic**
 module-contributed job mechanism (`app.modules.registry.ModuleScheduledJob`/
 `get_all_module_scheduled_jobs`) rather than importing Compliance's own
 sweep functions here directly — the same "core code shouldn't need much
@@ -56,7 +56,7 @@ def _run_stage_auto_approval() -> None:
 
 def _run_module_job(job: ModuleScheduledJob) -> None:
     """Opens a DB session and runs one module-contributed sweep
-    (compliance-module-plan.md Phase 10) — the generic counterpart of
+ — the generic counterpart of
     `_run_review_reminders`/`_run_stage_auto_approval` above, for any
     module's own `ModuleScheduledJob.run`."""
     db = SessionLocal()
@@ -68,7 +68,7 @@ def _run_module_job(job: ModuleScheduledJob) -> None:
 
 def start_scheduler() -> None:
     """Starts the daily review-reminder and stage-deadline sweeps, plus
-    every registered module's own declared scheduled jobs (Phase 10).
+    every registered module's own declared scheduled jobs.
 
     Called once from `main.py`'s lifespan startup.
     """

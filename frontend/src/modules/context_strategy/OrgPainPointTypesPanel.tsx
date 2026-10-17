@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/OrgPainPointTypesPanel
  *
  * The organisation-scoped shared base tier of Pain Point's type vocabulary
- * (Phase 0 Q3, source overview §6.2) — a thin wrapper over the shared
+ * (§6.2) — a thin wrapper over the shared
  * `OrgTypeVocabularyPanel` (`components/TypeVocabularyPanels.tsx`, which
  * documents the shared behaviour: `DefinitionList` rename/reorder/add/
  * delete, the active toggle, and why a 409 on delete blocks rather than

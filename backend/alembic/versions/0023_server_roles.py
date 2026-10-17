@@ -1,14 +1,13 @@
-"""Server-tier RBAC extension (module system Phase 0)
+"""Server-tier RBAC extension
 
 Revision ID: 0023
 Revises: 0022
 Create Date: 2026-09-04
 
-Foundation for the modular feature system (docs/compliance-module-plan.md
-Phase 0): a new `server_roles` table (`app.models.server_role.
+Foundation for the modular feature system: a new `server_roles` table (`app.models.server_role.
 UserServerRole`) granting a user a server-tier role beyond the existing
 `User.is_server_admin` boolean, plus `server_settings.
-default_module_entitlement_policy` for Phase 1's entitlement resolution.
+default_module_entitlement_policy` for the entitlement resolution.
 
 `User.is_server_admin` is left completely untouched — this migration adds
 new, additive columns/tables only, no backfill of existing data into the

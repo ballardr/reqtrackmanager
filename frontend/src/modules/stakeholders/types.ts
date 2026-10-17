@@ -1,9 +1,8 @@
 /**
  * Module: modules/stakeholders/types
  *
- * Frontend types for the Stakeholders & Personas module (docs/plans/
- * module-02-stakeholders-and-personas-plan.md), Phase 1.1 (Persona) and
- * Phase 1.2 (Stakeholder) — the wire shapes of `backend/app/modules/
+ * Frontend types for the Stakeholders & Personas module (Persona and
+ * Stakeholder) — the wire shapes of `backend/app/modules/
  * stakeholders/schemas.py` plus the label/tone maps every rendered enum value
  * must go through (UX style guide principle 12).
  *
@@ -152,7 +151,7 @@ export interface EffectivePersonaType {
 }
 
 
-// --- Stakeholder (Phase 1.2) --------------------------------------------------
+// --- Stakeholder --------------------------------------------------
 
 export type StakeholderScope = "organization" | "project";
 export type StakeholderStatus = "draft" | "active" | "retired";
@@ -339,7 +338,7 @@ export interface RepresentedLink {
 }
 
 
-// --- Stakeholder Need (Phase 2) -----------------------------------------------
+// --- Stakeholder Need -----------------------------------------------
 
 export type NeedStatus = "draft" | "active" | "retired";
 
@@ -434,7 +433,7 @@ export interface NeedRequirement {
 }
 
 
-// --- Stakeholder groups (Phase 3c) --------------------------------------------
+// --- Stakeholder groups --------------------------------------------
 
 /** A group a stakeholder is directly in, as listed on the stakeholder. */
 export interface StakeholderGroupRef {
@@ -483,7 +482,7 @@ export interface GroupFromTextResult {
   memberships_added: number;
 }
 
-// --- Engagements (Phase 4 backend, Phase 5 UI) --------------------------------
+// --- Engagements ----------------------------------------------------------------
 
 /** An Engagement as the project API returns it. `retention_due` is true once `retain_until` has been reached. */
 export interface Engagement {

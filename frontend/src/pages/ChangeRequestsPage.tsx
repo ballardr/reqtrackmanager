@@ -52,8 +52,7 @@ const CR_STATUS_OPTIONS: ChangeRequestStatus[] = [
   "draft", "submitted", "in_review", "approved", "rejected", "withdrawn",
 ];
 
-// Tri-state status filter (2026-08 UX audit roadmap, "Default Change
-// Requests to an active-only status filter") — a change request list is
+// Tri-state status filter — a change request list is
 // usually consulted for what still needs a decision, not a permanent
 // archive of every decision ever made, so the default view narrows to the
 // three non-terminal statuses (draft/submitted/in_review, matching the
@@ -109,8 +108,7 @@ export function ChangeRequestsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [crs, setCrs] = useState<ChangeRequest[] | null>(null);
   const [total, setTotal] = useState(0);
-  // Unfiltered mandatory-scope count (`X-Total-Unfiltered-Count`, 2026-08
-  // UX audit roadmap: persistent "showing X of Y" result count) — powers
+  // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
   // is the filtered count.
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
@@ -130,7 +128,7 @@ export function ChangeRequestsPage() {
   const [changedFields, setChangedFields] = useState<Set<ChangeableRequirementField>>(new Set());
   const [proposed, setProposed] = useState<ProposedFields>(BLANK_PROPOSED);
   const [attachmentFileIds, setAttachmentFileIds] = useState<string[]>([]);
-  // Links proposed with the request (Phase 6b), created only if the approver merges them. They belong
+  // Links proposed with the request, created only if the approver merges them. They belong
   // to one requirement (or to the one a new request creates), so a different target starts over.
   const linksTarget = kind === "new_requirement" ? DRAFT_ARTEFACT_ID : requirementId;
   const [collectedLinks, setCollectedLinks] = useState<{ target: string; links: CollectedLink[] }>({ target: "", links: [] });
@@ -155,7 +153,7 @@ export function ChangeRequestsPage() {
   // so it finds a change request on any page of the paginated list.
   const [search, setSearch] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
-  // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
+  // Column-header sorting — backend `sort`/
   // `order` param, same reasoning as `RequirementsPage.tsx`: this list is
   // already backend-paginated (`PAGE_SIZE`/`LoadMoreButton`), so a
   // client-side sort would only reorder the currently-loaded page.
@@ -228,9 +226,7 @@ export function ChangeRequestsPage() {
     // requested via the "Make change request" deep link (?requirement=) —
     // uses the value captured above, not a fresh read, for the reason
     // explained there. Defaults to the first *locked* one — the backend now
-    // rejects a modify-CR against a still-draft/reviewed requirement (2026-08
-    // UX audit roadmap, "No requirement approval action; change requests can
-    // target draft requirements"), so defaulting to an unlocked one would
+    // rejects a modify-CR against a still-draft/reviewed requirement, so defaulting to an unlocked one would
     // just fail on submit.
     const firstLockedRequirement = reqs.find((r) => r.is_locked);
     if (!requirementId && !deepLinkRequirementId && firstLockedRequirement) setRequirementId(firstLockedRequirement.id);
@@ -294,8 +290,7 @@ export function ChangeRequestsPage() {
 
   const selectedRequirement = requirements.find((r) => r.id === requirementId) ?? null;
   // A modify-CR can only target an already-locked (approved/completed)
-  // requirement (2026-08 UX audit roadmap, same reasoning as the default-
-  // selection comment above) — offering an unlocked one in this dropdown
+  // requirement — offering an unlocked one in this dropdown
   // would just produce a 400 on submit.
   const lockableRequirements = requirements.filter((r) => r.is_locked);
 

@@ -1,4 +1,4 @@
-"""Module sub-component enablement (Module 0 — Platform Foundations, Phase 4)
+"""Module sub-component enablement
 
 Revision ID: 0049
 Revises: 0048
@@ -6,10 +6,9 @@ Create Date: 2026-09-28
 
 Adds the two-tier gating tables for `app.modules.registry.
 ModuleSubComponentDefinition`/`is_module_subcomponent_enabled`/`is_org_
-module_subcomponent_enabled` (`docs/plans/module-00-platform-foundations-
-plan.md`'s new Phase 4): finer-grained, per-sub-component on/off toggling
+module_subcomponent_enabled` finer-grained, per-sub-component on/off toggling
 one tier below whole-module enablement (`organization_modules`,
-migration for compliance-module-plan.md Phase 1).
+migration for).
 
 - `organization_module_subcomponent_defaults` (`app.models.module.
   OrganizationModuleSubComponentDefault`) — org-tier default, mirrors

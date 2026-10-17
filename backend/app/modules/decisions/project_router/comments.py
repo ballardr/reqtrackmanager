@@ -154,6 +154,6 @@ def remove_decision_comment_attachment(
         # backend bytes), this uses `delete_file` so the underlying object
         # is actually removed, not just its metadata row — a same-shape
         # improvement kept local to this module rather than editing that
-        # unrelated core file as part of this phase. **Decided by: Agent.**
+        # unrelated core file. **Decided by: Agent.**
         delete_file(db, asset)
     db.commit()

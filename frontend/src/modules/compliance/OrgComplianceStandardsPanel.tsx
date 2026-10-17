@@ -3,7 +3,7 @@
  *
  * §22's "Organisation Compliance View" table — the org-wide "Standard |
  * Projects | Compliant | Non-Compliant | In Progress" summary, grouped
- * client-side (mirroring `api.ts::buildRequirementTree`'s Phase 12
+ * client-side (mirroring `api.ts::buildRequirementTree`'s
  * precedent for client-side aggregation over a flat backend listing) from
  * `GET .../project-compliance` (`listOrgProjectComplianceStatus`) —
  * `ProjectComplianceStatusOut` already carries everything one row needs
@@ -14,32 +14,29 @@
  * project, compliance state) and drills down past the aggregate row to
  * the individual projects behind it, then further to that project's own
  * Compliance page — which already drills down to individual requirements
- * (§21's own drill-down chain, Phase 13) — rather than rebuilding a
- * parallel requirement-level drill-down at org scope. See
- * docs/compliance-module-plan.md's Phase 14 notes for why this reuse-the-
- * existing-page approach was chosen over a second requirement browser.
+ * (§21's own drill-down chain) — rather than rebuilding a
+ * parallel requirement-level drill-down at org scope.
  *
- * Phase 36 added a "Group by" pivot (standard, the original/default shape,
- * or project) over the exact same `statusRows` — the "way to view all
- * projects for a compliance manager" that phase asked for, following the
- * user's own suggested direction of extending this tab rather than adding
- * a fourth widget shape elsewhere. `groupBy`/`stateFilter` also read an
+ * A "Group by" pivot (standard, the default shape, or project) works over
+ * the exact same `statusRows` — the "way to view all projects for a
+ * compliance manager", extending this tab rather than adding a fourth
+ * widget shape elsewhere. `groupBy`/`stateFilter` also read an
  * initial value off the URL (`?groupBy=`/`?state=`) so `OrgComplianceDashboard.tsx`'s
  * top-grid tiles can link straight into a pre-filtered, pre-pivoted view
  * rather than landing on the unfiltered default and asking the user to
  * re-apply the same filter the tile already counted.
  *
- * Phase 39 fixes three defects in the expanded row: **39a** the expand/
- * collapse control no longer renders as a separately bordered `.btn` chip
+ * The expanded row: the expand/
+ * collapse control does not render as a separately bordered `.btn` chip
  * — it's `.disclosure-toggle` (`theme.css`), a borderless row-filling
  * button, the third instance of this fix after `StandardNavSection.tsx`
- * (Phase 29d) and `EntitySwitcher.tsx` (Phase 35b); its `▾`/`▸` text
+ * and `EntitySwitcher.tsx`; its `▾`/`▸` text
  * glyphs are also replaced with fixed-size `ChevronDown`/`ChevronRight`
- * icons, matching Phase 29d's own icon choice. **39c** the expanded child
+ * icons, matching `StandardNavSection.tsx`'s icon choice. The expanded child
  * list is indented under its parent row using `RequirementTree.tsx`'s own
  * nested-list convention (`marginLeft`/`borderLeft`/`paddingLeft`) so it
- * reads as a tree rather than a flush-left list. **39d** the default
- * (group-by-standard) view's expanded row now groups its projects by
+ * reads as a tree rather than a flush-left list. The default
+ * (group-by-standard) view's expanded row groups its projects by
  * `standard_version_id` first, rendering one sub-heading per version with
  * that version's projects nested a level deeper underneath — so a user no
  * longer has to read every row's own version suffix to see which versions
@@ -51,10 +48,9 @@
  * collapsible when a standard has more than one — but when it has only
  * one, that sub-group renders pre-expanded with no toggle at all, since a
  * lone version behind an already-explicit "expand this standard" click has
- * nothing left to disambiguate (Decided by: User, live follow-up during
- * this phase's implementation).
+ * nothing left to disambiguate (Decided by: User, live follow-up).
  *
- * Phase 43 adds an "Export" trigger (`ReportExportButton`, the same shape
+ * An "Export" trigger (`ReportExportButton`, the same shape
  * `OrgComplianceDashboard.tsx`'s own report download uses) above the table,
  * scoped to this panel's current Standard/Standard version/Project filters
  * — `complianceApi.downloadOrgComplianceReport` passes them through as
@@ -221,10 +217,10 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
 
   async function downloadReport(kind: "pdf" | "csv") {
     try {
-      // Scoped to this panel's own current filters (Phase 43) — "Export"
+      // Scoped to this panel's own current filters — "Export"
       // means "export what I'm looking at," not the whole organisation.
       // `groupBy`/`stateFilter` have no report-side equivalent (the
-      // backend's assignment-row filter set mirrors this panel's Phase 40
+      // backend's assignment-row filter set mirrors this panel's
       // filters only) and are deliberately not passed through.
       const blob = await complianceApi.downloadOrgComplianceReport(orgId, kind, {
         standardId: standardFilter || undefined,

@@ -1,6 +1,6 @@
 # Module 3 — Risk Management — Implementation Plan
 
-See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
+See [future-modules-2026-09-index.md](../future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout — this module consumes
 [Module 0](module-00-platform-foundations-plan.md)'s relationship
 infrastructure (a hard dependency) and the existing `RequirementAction`
@@ -469,7 +469,7 @@ than a monitored fact.
 
 **MCP tools.** Added 2026-09-21 at the user's explicit instruction, applied
 across every not-yet-built module plan (**Decided by: User**) — see
-`docs/modules.md` §6 and [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+`docs/modules.md` §6 and [Module 4 (Decision Management)](../module-04-decision-management-plan.md)'s
 shipped `mcp_tools` (`backend/app/modules/decisions/module.py`) as the
 precedent to follow. This module has no single dedicated "backend API"
 phase the way Decision Management's later, more granular plan does — Phase
@@ -587,11 +587,11 @@ flowchart LR
 Added 2026-09-21 at the user's explicit instruction, applied across every
 not-yet-built module plan (**Decided by: User**); the specific scope and
 placement below are this session's own judgment (**Decided by: Agent**),
-modelled closely on [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+modelled closely on [Module 4 (Decision Management)](../module-04-decision-management-plan.md)'s
 Phase 6 of the same name.
 
 **Goal:** add Risk Management's user-facing surface to `docs/website/` (the
-published docs site, `docs/plans/docs-website-plan.md`) — what a Risk
+published docs site, `docs/plans/completed/docs-website-plan.md`) — what a Risk
 record is, its lifecycle, the configurable scoring matrix, and how it
 relates to Requirements, Designs, Actions, and Decisions — following the
 site's existing structure, tone, and Mermaid-diagram conventions (per this
@@ -633,8 +633,8 @@ under-scope or miss amid everything else Phase 5 ships.
   mitigate a Risk, if it does.
 - **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
   every not-yet-built module plan's own "Docs website coverage" phase,
-  alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
-  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  alongside [Module 4](../module-04-decision-management-plan.md)'s Phase 6
+  addendum of the same date). Follow `docs/plans/completed/docs-website-plan.md`'s
   "Screenshots" standard (1440×900 viewport, captured against the seeded
   demo dataset, stored under `docs/website/static/img/screenshots/`, real
   alt text plus a one-line caption, no surrounding "what this shows/why it

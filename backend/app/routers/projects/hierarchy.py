@@ -314,7 +314,7 @@ def get_effective_members(
     db: Session = Depends(get_db),
 ):
     """Every user with effective access to this project, with provenance —
-    direct (and, since the follow-up UX batch's Phase D, which of the five
+    direct (and, 2026-08-31, which of the five
     direct sources specifically — see `MemberSourceProvenanceOut`'s
     docstring), or inherited (and how) — for the project admin/access-review
     view (decision 10 in docs/decisions.md) and the unified Members table
@@ -356,7 +356,7 @@ def get_effective_members(
             project_name_cache[pid] = p.name if p is not None else ""
         return project_name_cache[pid] or None
 
-    # Module system Phase 2: this project's module-contributed role grants,
+    # This project's module-contributed role grants,
     # filtered to currently-*enabled* modules only (see `ModuleRoleGrantOut`'s
     # docstring for the "filter, don't delete" rationale) — computed once
     # for the whole response, then attached per member below.
@@ -468,8 +468,7 @@ def materialize_inherited_access_for_user(
     project_id: UUID, user_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Per-row counterpart to `materialize_inherited_access` (PR6 of the
-    members/groups directory rework plan) — `ProjectMembersTable`'s
+    """Per-row counterpart to `materialize_inherited_access` — `ProjectMembersTable`'s
     per-member "Convert inherited access to direct roles" action. Same
     rank logic, idempotency, and audit action as the bulk endpoint, just
     filtered to `user_id`'s own provenance entries rather than iterating
@@ -513,11 +512,11 @@ def materialize_inherited_access_for_group(
     project_id: UUID, org_group_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Group-scoped counterpart to `materialize_inherited_access` (PR6) —
+    """Group-scoped counterpart to `materialize_inherited_access` —
     converts an org group's *own* forward-/member-source-inherited role on
     this project (`get_group_inherited_project_roles`, walking ancestor/
     source projects' `OrgGroupProjectRole` grants for this exact group —
-    PR4's inheritance-cascade extension) into a direct `OrgGroupProjectRole`
+    the inheritance-cascade extension) into a direct `OrgGroupProjectRole`
     grant, parallel to how the per-user endpoint above converts a user's
     inherited role into a direct `UserProjectRole`.
 
@@ -530,14 +529,14 @@ def materialize_inherited_access_for_group(
     group_project_role`'s own entity-type choice for the same mechanism.
 
     No UI currently renders a group row in an "inherited" state to offer
-    this action from (see docs/decisions.md's PR6 entry): the unified
+    this action from (see docs/decisions.md): the unified
     Groups directory (`ProjectAdminPage.tsx`'s `groupsTabRows`) only has
-    `ProjectGroup` rows (direct by construction since PR7) and
+    `ProjectGroup` rows (direct by construction) and
     `ProjectMemberSource` virtual rows (a different mechanism, no
     "inherited" state of its own to convert) — no row kind represents an
     org group's own `OrgGroupProjectRole` provenance the way this endpoint
     needs. The endpoint exists and is tested directly via the API
-    regardless, since the underlying provenance kind is real (PR4 built the
+    regardless, since the underlying provenance kind is real (built the
     cascade) and a future UI surfacing a group's direct-grant provenance
     should be able to call straight into this without a backend change.
     """

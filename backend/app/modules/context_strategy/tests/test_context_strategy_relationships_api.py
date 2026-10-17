@@ -1,11 +1,10 @@
-"""Tests for Context & Strategy's Phase 6 backend API (docs/plans/
-module-01-context-and-strategy-plan.md Phase 6 — Cross-artefact
-relationships) — the real HTTP endpoints this phase added to both
+"""Tests for Context & Strategy's cross-artefact relationships backend API
+— the real HTTP endpoints on both
 `project_router.py` (all five source artefact types) and `router.py`
 (Strategy/Future State/Guiding Principle's org-scoped halves), through the
 `client` fixture, mirroring every sibling artefact-type test file's own
 "go through the real API" convention. A new sibling file, matching
-Phase 2-5's own precedent (one file per concern).
+the other test files' precedent (one file per concern).
 
 Covers: typed relationship creation (Pain Point -> drives -> Strategy,
 Strategy -> drives -> Requirement, Strategy -> defines -> Future State,
@@ -13,10 +12,9 @@ Guiding Principle -> informs -> Requirement), an untyped "related to"
 association (Future State -> Pain Point), duplicate-link rejection (409),
 cross-organisation rejection (409), plain-member-cannot-create (403) vs.
 manager-can-create, org-scoped Strategy relationship creation (`router.py`),
-Strategy supersession (the deferred `ArtefactLink` side effect Phase 1
-promised this phase would add — creates the typed link *and* transitions
+Strategy supersession (creates the typed `ArtefactLink` *and* transitions
 the old Strategy to `Superseded`), and the MCP AI-approvals gate on
-`approve_strategy` (one of Phase 6's five gated tools) as a representative
+`approve_strategy` (one of the five gated tools) as a representative
 case, mirroring `test_decisions_ai_approvals_via_mcp.py`'s own pattern.
 
 No `RequirementLinkTypeDefinition` reuse-across-relationship-shape claims
@@ -291,7 +289,7 @@ def test_strategy_defines_future_state_relationship(client, admin_token):
 
 
 def test_org_scoped_strategy_defines_org_scoped_future_state(client, admin_token):
-    """The retrofit case this phase's own brief calls out: an org-scoped
+    """The retrofit case: an org-scoped
     Strategy and an org-scoped Future State, linked via `router.py`'s
     org-scoped relationship endpoint."""
     org, project, org_admin_token = _setup(client, admin_token, "Relationships Org Strategy Defines Org FS Co")
@@ -382,7 +380,7 @@ def test_strategy_supersession_of_non_active_strategy_is_409(client, admin_token
 
 
 def test_approve_strategy_via_mcp_requires_ai_approvals_enabled(client, admin_token):
-    """One of Phase 6's five `require_ai_approvals_enabled`-gated MCP
+    """One of the five `require_ai_approvals_enabled`-gated MCP
     tools (`approve_strategy`) — representative coverage, mirroring
     `test_decisions_ai_approvals_via_mcp.py`'s own pattern rather than
     repeating it for all five gated tools (the gate itself is generic,

@@ -54,7 +54,7 @@ function ProtectedRoutes() {
   // own docstring. Called unconditionally, before this component's own
   // `loading`/`!user` early returns.
   const federatedModuleStates = useFederatedModules(enabledModules);
-  // Same navigation-race class of bug Phase 13's own notes describe for
+  // Same navigation-race class of bug as
   // `modulesLoaded` below, one layer further out: `modulesLoaded` only
   // means "the enabled-modules list itself was fetched," not "every
   // federated module it named has finished its own async remote-entry
@@ -82,15 +82,15 @@ function ProtectedRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
-        {/* "Organisation Overview" (compliance-module-plan.md Phase 19) —
+        {/* "Organisation Overview" —
             reuses `OrgListPage`'s single-org/multi-org auto-redirect
             convention (`target="overview"`) as its own entry point, the
             same way `/orgs` already does for `/orgs/:orgId/admin`. */}
         <Route path="/org-overview" element={<OrgListPage target="overview" />} />
         <Route path="/orgs/:orgId/overview/:group?" element={<OrgOverviewPage />} />
         {/* Every installed module's own always-mounted top-level routes
-            (`TierAModuleDefinition.globalRoutes`, compliance-module-plan.md
-            Phase 18) — unlike `buildModuleRoutes` above (project-scoped,
+            (`TierAModuleDefinition.globalRoutes`)
+            — unlike `buildModuleRoutes` above (project-scoped,
             gated on a specific project's own currently-enabled-modules
             list), these are plain top-level routes the same as `/projects`/
             `/orgs`, for a module surface with no single project/org to key
@@ -124,7 +124,7 @@ function ProtectedRoutes() {
             above, including every route `buildModuleRoutes` above would
             contribute once loaded. While a project-scoped path's own
             enabled-modules fetch is still in flight, that list is
-            genuinely `[]` (module system Phase 3's own hook) whether or
+            genuinely `[]` (the enabled-modules hook) whether or
             not this path is actually a module's route — redirecting to
             /projects here is only correct once we actually know, so this
             renders a brief loading state instead and lets `<Routes>`

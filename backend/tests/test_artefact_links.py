@@ -1,5 +1,4 @@
-"""Tests for the generic polymorphic relationship model (Module 0 —
-Platform Foundations, Phase 1): `app.models.relationship.ArtefactLink` and
+"""Tests for the generic polymorphic relationship model (Platform Foundations): `app.models.relationship.ArtefactLink` and
 `app.services.relationships`.
 
 `test_requirement_links.py`/`test_requirement_action_links.py` already
@@ -8,8 +7,8 @@ REST endpoints (`routers.requirements`'s links/actions sections), which
 internally call this generic service — this file instead exercises the
 *service layer itself* directly, across artefact types, since the entire
 point of building a polymorphic table is that it generalises past one type
-pair (per the plan's own verification bar: "exercise the cross-module
-case... rather than only a single-type-pair happy path").
+pair (the cross-module
+case, rather than only a single-type-pair happy path).
 """
 
 from uuid import UUID

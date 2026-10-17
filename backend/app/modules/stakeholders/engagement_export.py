@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.engagement_export
 
-The Engagement part of this module's project bundle export/import (Phase 4);
+The Engagement part of this module's project bundle export/import;
 `module.py` composes it with the Persona, Stakeholder, Need and relationship
 halves, and runs it last because an engagement links to all of them. An
 Engagement is project-scoped, so there is no org-level half.

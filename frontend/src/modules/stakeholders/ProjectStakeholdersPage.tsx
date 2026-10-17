@@ -4,7 +4,7 @@
  * The project-scoped Stakeholder list route, mounted at
  * `/projects/:projectId/modules/stakeholders/stakeholders` (`module.ts`,
  * reached via the "Stakeholders" nav-rail entry). Lists the project's own
- * stakeholders *and* the organisation's live ones (Phase 0 resolution 2); new
+ * stakeholders *and* the organisation's live ones; new
  * stakeholders created here are project-scoped. The list/filter/create UI is
  * the shared `StakeholderListView`. Every row opens inside this project (an org
  * stakeholder too); `StakeholderDetailPage` makes an org stakeholder read-only

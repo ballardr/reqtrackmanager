@@ -37,13 +37,13 @@
   --color-accent: #2f855a;
   --color-danger: #c53030;
   --color-warning: #b7791f;
-  /* Platform review 2026-09, Phase 4: "awaiting decision" status tone
+  /* "awaiting decision" status tone
      (reviewed/submitted/in_review/pending), deliberately distinct from
      --color-warning so routine in-progress states don't compete visually
      with things that actually need attention (e.g. an applicability
      override, an overdue review). See docs/decisions.md. */
   --color-info: #0e7490;
-  /* Entity-type accent (Phase 4, item 2) — the 3 entity kinds core itself
+  /* Entity-type accent — the 3 entity kinds core itself
      owns (requirement/action/change_request) only. A *module's* own accent
      colour (e.g. Compliance's) is never a variable here — see
      frontend/src/modules/entityAccentColor.ts's own docstring for why a
@@ -215,8 +215,7 @@ textarea {
 
 /* `Tabs` (style guide "Pattern: Tabs") — deliberately distinct from `.btn`:
    the active tab used to be styled `.btn btn-primary`, making it
-   pixel-identical to a primary button (see docs/decisions.md, "Platform
-   review 2026-09, Phase 3"). An underline indicator reads as "the current
+   pixel-identical to a primary button (see docs/decisions.md). An underline indicator reads as "the current
    view of this object," not "an action to take," which a filled button
    shape doesn't. */
 .tabs-list {
@@ -317,7 +316,7 @@ select.input {
   border: 1px solid var(--color-border);
 }
 
-/* Platform review 2026-09, Phase 4 — status colour, applied as a modifier
+/* Status colour, applied as a modifier
    on top of the plain `.badge` shape rather than a parallel badge
    implementation. Text + border colour only (fill stays the neutral
    --color-surface-alt) to keep this additive to the graphite palette
@@ -346,7 +345,7 @@ select.input {
   border-color: var(--color-warning);
 }
 
-/* Entity-type accent (Phase 4, item 2): a left-border stripe applied to a
+/* Entity-type accent: a left-border stripe applied to a
    list row or card, coloured via the `--entity-accent-color` custom
    property each call site sets from `ENTITY_ACCENT_COLOR` (api/types.ts)
    — not a bespoke colour per call site. `<tr>` uses a box-shadow inset
@@ -447,8 +446,7 @@ select.input {
    no minWidth of its own, so it just gets a slightly roomier column, but a
    track minimum *smaller* than an item's own minimum content width made
    `auto-fit` resolve columns narrower than the `StatCard`s placed in them,
-   overlapping neighbouring tiles at moderate viewport widths (Phase 27a —
-   confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
+   overlapping neighbouring tiles at moderate viewport widths (confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
    grid once a module contributes headline tiles). */
 .grid-metrics {
   /* `min(100%, 220px)` lets a track shrink below 220px in a narrow container instead of overflowing it. */
@@ -1371,7 +1369,7 @@ a.figure-projects-link:hover {
 }
 
 /* Joins a disclosure toggle to its own nav-rail link into one shared
-   hover/active surface (compliance-module-plan.md Phase 29d —
+   hover/active surface (e.g.
    StandardNavSection.tsx's expandable "Versions" row). The background
    moves to this wrapping row rather than the inner link, so hovering
    anywhere in the row — including the toggle's own area — highlights the
@@ -1474,10 +1472,10 @@ a.figure-projects-link:hover {
   display: none;
 }
 
-/* `EntitySwitcher`'s chevron trigger (compliance-module-plan.md Phase 35b)
+/* `EntitySwitcher`'s chevron trigger
    — the same "no separately bordered chip" fix `.nav-link-row-toggle`
-   above already applies to the expandable nav-rail disclosure toggle
-   (Phase 29d), given to the entity quick-switch chevron itself since it
+   above already applies to the expandable nav-rail disclosure toggle,
+given to the entity quick-switch chevron itself since it
    has no wrapping row of its own to inherit a shared hover surface from
    (it sits directly beside a page's plain `<h1>` text, owned by each
    caller, not by this component). Borderless and transparent at rest so
@@ -1557,8 +1555,7 @@ td {
   border-bottom: 1px solid var(--color-border);
 }
 
-/* Sortable column headers (`SortableHeader`, 2026-08 UX audit roadmap
-   "Column-header sorting on data tables") — the button fills the `<th>`'s
+/* Sortable column headers — the button fills the `<th>`'s
    own padding rather than adding its own, so a sortable header lines up
    exactly with a plain-text one next to it. */
 th:has(> .th-sort) {
@@ -1591,9 +1588,9 @@ th:has(> .th-sort) {
    a plain cell next to it), but with a hover *background* rather than a
    text-colour change, since this control's whole row is the click target,
    not just its text. Introduced for `OrgComplianceStandardsPanel.tsx`
-   (compliance-module-plan.md Phase 39a) — the third instance of "no
+ — the third instance of "no
    bolted-on `.btn` chip on a disclosure control" after `.nav-link-row-
-   toggle` (Phase 29d) and `.entity-switcher-trigger` (Phase 35b); see
+   toggle` and `.entity-switcher-trigger`; see
    docs/ux-style-guide.md's "Pattern: expandable nav-rail group". */
 td:has(> .disclosure-toggle) {
   padding: 0;
@@ -1943,7 +1940,7 @@ td:has(> .disclosure-toggle) {
   padding: 0.35rem 0;
 }
 
-/* Scoring matrix (components/ScoringMatrixChart.tsx, Module 1 Phase 10):
+/* Scoring matrix (components/ScoringMatrixChart.tsx):
    cells tinted with the same 5 BadgeTone colours as `.badge--<tone>`,
    mixed into the surface so text stays readable in both themes. The
    wrapper scrolls horizontally rather than the page on narrow screens. */

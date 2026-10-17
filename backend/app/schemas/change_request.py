@@ -134,9 +134,9 @@ class ChangeRequestCreate(BaseModel):
     proposed_review_date: date | None = None  # C-R-06
     proposed_review_lead_days: int | None = None
     proposed_reviewer: PrincipalRef | None = None  # C-R-10
-    # ADD_ACTION-only (item 514) — see `ChangeRequestVersion`'s docstring
+    # ADD_ACTION-only — see `ChangeRequestVersion`'s docstring
     # for the mutually-exclusive link-existing-vs-create-new split.
-    # Also REMOVE_ACTION's only field (Platform review 2026-09, Phase 8):
+    # Also REMOVE_ACTION's only field:
     # which already-linked action to unlink on approval.
     proposed_action_link_id: UUID | None = None
     proposed_action_title: str | None = None
@@ -144,11 +144,11 @@ class ChangeRequestCreate(BaseModel):
     proposed_action_type_id: UUID | None = None
     proposed_action_assignee: PrincipalRef | None = None
     proposed_action_due_date: date | None = None
-    # Links to create on approval (Platform Enhancements Phase 6b): the whole
+    # Links to create on approval the whole
     # payload of an ADD_LINK request (at least one), optional on NEW_REQUIREMENT
     # and MODIFY_REQUIREMENT, not allowed on the other kinds.
     proposed_links: list[ProposedLinkIn] = []
-    # REMOVE_LINK-only (Platform review 2026-09, Phase 8).
+    # REMOVE_LINK-only.
     proposed_link_id: UUID | None = None
 
 
@@ -208,7 +208,7 @@ class ChangeRequestDecision(BaseModel):
     # approver says a particular change is substantial enough that
     # completion needs re-verifying, distinct from every other approval.
     clear_completion: bool = False
-    # Which proposed links to merge on approval (Phase 6b). Omitted merges every
+    # Which proposed links to merge on approval. Omitted merges every
     # link that is valid at decision time, which is what approving an ADD_LINK
     # request has always done; an empty list merges none. Ignored on rejection.
     merge_link_ids: list[UUID] | None = None

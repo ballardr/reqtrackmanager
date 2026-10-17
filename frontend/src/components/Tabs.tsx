@@ -12,7 +12,7 @@ export interface TabDef<K extends string> {
  * byte-for-byte-identical hand-rolled tab bars (`ProjectAdminPage`,
  * `ServerManagementPage`, `PreferencesPage`) that had neither
  * `role="tablist"`/`"tab"` nor keyboard navigation beyond plain Tab-through
- * (2026-08 UX audit, style guide Principle 4 — one component per pattern).
+ *.
  *
  * Renders only the tab strip. Pair each panel's own wrapper element with
  * `tabPanelProps(idPrefix, key)` so the tablist/tabpanel relationship

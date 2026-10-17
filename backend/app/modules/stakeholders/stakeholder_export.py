@@ -8,7 +8,7 @@ the two into the single `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`).
 - Org level: the Stakeholder type vocabulary and org-scoped stakeholders.
 - Project level: project-scoped stakeholders (with direct file attachments)
   and the project's Stakeholder type overrides/local types.
-- Stakeholder groups (Phase 3c), at both levels: each group is keyed by its
+- Stakeholder groups, at both levels: each group is keyed by its
   name path from the root (every element carries its scope, since a project
   group may sit under an org group), with its members by stakeholder name and
   scope. Importing merges into an existing group of the same path and warns

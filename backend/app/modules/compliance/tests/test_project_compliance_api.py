@@ -1,17 +1,16 @@
-"""Tests for the Compliance Module's Phase 7 Project Compliance Assignment &
-Assessment API (docs/compliance-module-plan.md Phase 7; docs/Compliance_
-Module_Requirements.md §7-§11, §16, §20, §26): assigning a published standard
+"""Tests for the Compliance Module's Project Compliance Assignment &
+Assessment API (§7-§11, §16, §20, §26): assigning a published standard
 version to a project (org router), the full per-project assessment surface
 (project router) — applicability (including §9's hierarchical inheritance/
 override), compliance status, mandatory-justification enforcement (§9/§16),
 required action assessments, assessment history, the §20 overall-status
-calculation, the two Phase 7 MCP-tool-backing endpoints
+calculation, the two MCP-tool-backing endpoints
 (`compliance_get_project_status`/`compliance_list_non_compliant_
 requirements`), the compliance_officer/PROJECT_MANAGER RBAC composition,
 and cross-scope isolation.
 
 Reuses `test_compliance_standards_api.py`'s own small API helpers for the
-Phase 6 standards-catalog side of each test's setup (create/publish a
+standards-catalog side of each test's setup (create/publish a
 standard version with a requirement tree), the same way `test_oidc_
 provisioning.py`/`test_scim.py` already import helpers from `test_access_
 review.py` — this file's own job starts once a published version exists.
@@ -332,7 +331,7 @@ def test_rbac_officer_grant_manager_override_and_member_forbidden(client, admin_
     assert _try_assess(manager_token).status_code == 200
 
 
-# --- Phase 20: Project-Manager self-service assignment (the default path) ------
+# --- Project-Manager self-service assignment (the default path) ------
 
 
 def _self_service_base(project_id: str) -> str:
@@ -340,7 +339,7 @@ def _self_service_base(project_id: str) -> str:
 
 
 def test_project_manager_can_self_assign_without_officer_grant(client, admin_token, org_id):
-    """Phase 20's own headline capability: a plain `ProjectRole.
+    """The headline capability: a plain `ProjectRole.
     PROJECT_MANAGER`, with no `compliance_officer` module-role grant at
     all, may assign any published standard in their project's own org via
     the *project*-scoped endpoint — this is now the default, primary
@@ -438,8 +437,8 @@ def test_self_service_assignment_rejects_archived_standard(client, admin_token, 
 
 def test_project_status_calculation(client, admin_token, org_id):
     """§20: total/applicable/not-applicable counts, per-status breakdown,
-    compliance percentage, has_non_compliant flag, not_yet_assessed flag
-    (Phase 31), and overall_compliance_state — computed from four
+    compliance percentage, has_non_compliant flag, not_yet_assessed flag,
+and overall_compliance_state — computed from four
     requirements (one made Not Applicable) with a deliberate mix of statuses
     among the rest."""
     standard = _create_standard(client, admin_token, org_id, reference="STATUS-STD")
@@ -458,7 +457,7 @@ def test_project_status_calculation(client, admin_token, org_id):
     ).json()
     pcr_by_requirement_id = {p["requirement_id"]: p for p in pcrs}
 
-    # Phase 31: freshly assigned, zero assessments performed yet — every
+    # Freshly assigned, zero assessments performed yet — every
     # applicable row is still Not Started. `not_yet_assessed` must be True
     # and `has_non_compliant` must be False, so a caller rendering a binary
     # "non-compliant?" affordance from `has_non_compliant` alone can check
@@ -506,11 +505,11 @@ def test_project_status_calculation(client, admin_token, org_id):
     # `not_yet_assessed` must not still read True once assessment has begun.
     assert summary["not_yet_assessed"] is False
     assert summary["overall_compliance_state"] == "in_progress"
-    # Phase 9: performing an assessment always advances that row's own
+    # Performing an assessment always advances that row's own
     # approval_state to "assessed" (service.py::advance_approval_state_on_
     # assessment) — all three applicable rows here have been assessed
     # (the fourth is Not Applicable, excluded from this aggregation), so
-    # the overall approval state is "assessed," not the Phase 7-era
+    # the overall approval state is "assessed," not the
     # "not_assessed" default.
     assert summary["overall_approval_state"] == "assessed"
 
@@ -529,7 +528,7 @@ def test_project_status_calculation(client, admin_token, org_id):
     assert len(non_compliant.json()) == 1
     assert non_compliant.json()[0]["requirement_id"] == requirement_ids[2]
     assert non_compliant.json()[0]["justification"] == "Did not pass inspection."
-    # Phase 40: `standard_id`/`standard_version_id` alongside the pre-
+    # `standard_id`/`standard_version_id` alongside the pre-
     # existing display-only reference/name/label strings, so the frontend's
     # Outstanding-items filters can match on a stable id.
     assert non_compliant.json()[0]["standard_id"] == standard["id"]
@@ -542,7 +541,7 @@ def test_project_status_calculation(client, admin_token, org_id):
 
 
 def test_standard_project_summary_filters_to_one_standard_and_is_view_gated(client, admin_token, org_id):
-    """docs/compliance-module-plan.md Phase 23: `GET .../standards/{id}/
+    """: `GET .../standards/{id}/
     project-summary` is the same §20 per-assignment status `list_all_
     project_compliance` computes org-wide, narrowed to one standard's own
     assignments — a project assigned to a *different* standard must not

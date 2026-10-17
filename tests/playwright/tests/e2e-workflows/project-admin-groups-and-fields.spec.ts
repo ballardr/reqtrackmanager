@@ -111,7 +111,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     });
     await test.step("create a custom field of each type", async () => {
       // Custom fields now lives inside the merged "Fields & actions" tab
-      // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
+      //.
       await selectProjectAdminGroup(page, "Fields & actions");
 
       const fieldNameInput = page.getByPlaceholder("Field name");
@@ -176,15 +176,14 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
   test("project groups: member add/remove, nesting, new group, and org-group role grants", async ({ page }) => {
     const { projectId, sessionToken } = await openBeta2Admin(page);
 
-    // No group is auto-created on project creation any more (follow-up UX
-    // batch Phase C, 2026-08-31) — this spec creates its own throwaway
+    // No group is auto-created on project creation any more (2026-08-31) — this spec creates its own throwaway
     // group up front (via the API, same as the `token`/`projectId` resolved
     // above) rather than reaching for a default "Members" group that no
     // longer exists.
     const memberGroupName = await test.step("create a project group to exercise member add/remove and org-group nesting against", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const groupName = `E2E Beta-2 Group ${Date.now()}`;
-      // PR7 of the members/groups directory rework plan: `ProjectGroupCreate`
+      // the members/groups directory rework: `ProjectGroupCreate`
       // no longer accepts a role at all — this group is created bare, which
       // is fine here since none of the steps below (member add/remove,
       // the `?openGroup=` deep link, org-group nesting) exercise its role.
@@ -211,7 +210,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // its own row lookup.
       await page.getByPlaceholder("Search by name").fill(memberGroupName);
       await page.waitForLoadState("networkidle");
-      // Each group row now opens a `SidePanel` (Phase 5, docs/decisions.md)
+      // Each group row now opens a `SidePanel` (docs/decisions.md)
       // instead of an always-expanded `CollapsibleSection` accordion — the
       // panel's own accessible name ("<group> details") scopes every
       // interaction below to it.
@@ -239,7 +238,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // `rowHref`, `ProjectAdminPage.tsx`'s own `useSearchParams` effect) —
       // no in-app link currently produces this exact query param (the
       // Members table stopped linking into Groups once it dropped group
-      // rows entirely, Phase D, follow-up UX batch, 2026-08-31), but the
+      // rows entirely), but the
       // deep link itself is still live, bookmarkable behavior worth
       // pinning directly rather than only indirectly via whatever produces
       // it at any given time.
@@ -304,10 +303,9 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     });
 
     // Style guide "Pattern: create panels, popovers, and one door for
-    // bulk" — closes the 2026-08 UX audit's "Groups tab manages membership
-    // only, no create form at all" finding. Mirrors Org Admin's own "New
-    // group" popover coverage, against the project-scoped endpoint. PR7 of
-    // the members/groups directory rework plan (docs/decisions.md) dropped
+    // bulk" — closes the "Groups tab manages membership
+    // only, no create form at all" gap. Mirrors Org Admin's own "New
+    // group" popover coverage, against the project-scoped endpoint. the members/groups directory rework (docs/decisions.md) dropped
     // the role picker this modal used to have — a group is created bare
     // (zero roles) and a role is a separate grant made afterward via the
     // new row's own `MultiSelectDropdown`, not at creation time.
@@ -318,7 +316,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.getByRole("button", { name: "New group" }).click();
       const dialog = page.getByRole("dialog", { name: "New group" });
       await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
-      // No role picker any more (PR7) — just the name field.
+      // No role picker any more — just the name field.
       await expect(dialog.getByLabel("Role")).toHaveCount(0);
       await dialog.getByPlaceholder("e.g. Reviewers").fill(newGroupName);
       await dialog.getByRole("button", { name: "Create" }).click();
@@ -343,8 +341,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // into the box before that chain settled — `reload()`'s own slower,
       // stale-search fetch could resolve after a fresh, filtered one and
       // silently overwrite it with the unfiltered list. `loadGroups` now
-      // guards against that with a request-id ref (Platform review 2026-09
-      // Phase 4, docs/decisions.md), so this is no longer a live race —
+      // guards against that with a request-id ref (docs/decisions.md), so this is no longer a live race —
       // waiting for the network to settle first here is just the ordinary
       // "let the create mutation's own refresh finish before searching"
       // sequencing, not a workaround for a bug still open.
@@ -355,14 +352,14 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // `<td>`, so this checks the whole `<tr>`, not just the button itself.
       const row = page.getByRole("button", { name: new RegExp(`^${newGroupName}`) }).locator("xpath=ancestor::tr[1]");
       await expect(row).toContainText("No roles assigned");
-      // PR5 of the members/groups directory rework plan: the Groups tab's
+      // the members/groups directory rework: the Groups tab's
       // `DirectoryTable` now type-badges every row — a real `ProjectGroup`
       // reads "Project group", distinguishing it from a `ProjectMemberSource`
       // row's "Project" badge (see the dedicated member-source coverage
       // below, and `project-hierarchy.spec.ts`'s own member-source steps).
       await expect(row).toContainText("Project group");
 
-      // Grant a role via the new per-row MultiSelectDropdown (PR7) —
+      // Grant a role via the new per-row MultiSelectDropdown —
       // mirrors `ProjectMembersTable`'s own Role column interaction. Uses
       // `.click()`, not `.check()`: the checkbox's own accessible name
       // flips from "Grant X to Y" to "Revoke X from Y" the moment the
@@ -379,10 +376,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await expect(row).not.toContainText("No roles assigned");
     });
 
-    // PR5 of the members/groups directory rework plan: the same "Add
-    // member" autocomplete (button + `Modal`, PR3) that already grants a
+    // the members/groups directory rework: the same "Add
+    // member" autocomplete (button + `Modal`) that already grants a
     // direct role to a user also matches org groups by name — selecting
-    // one grants it a role *directly* via PR4's new mechanism
+    // one grants it a role *directly* via the new mechanism
     // (`OrgGroupProjectRole`, `POST .../group-roles`), with no
     // `ProjectGroup` wrapper created and no nesting involved. Distinct from
     // the "nest an org group into a project group" step above, which is
@@ -451,7 +448,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await expect(dialog).not.toBeVisible();
 
       // Visible on the group's member's own row, naming the granting
-      // group directly (PR1's per-group provenance) and distinguishing
+      // group directly (the per-group provenance) and distinguishing
       // this direct grant from the nesting mechanism's own wording. The
       // Source column now shows a plain-language summary per row
       // (platform review 2026-09 follow-up) rather than this line being
@@ -468,7 +465,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       ).toBeVisible();
       await page.keyboard.press("Escape");
 
-      // Phase 6 (docs/platform-review-2026-09-plan.md): the grant just
+      // The grant just
       // made above is now also visible and manageable as the group's own
       // row — previously there was no way to see, edit, or remove it
       // except by reaching into a member's Source line above, or calling
@@ -548,8 +545,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         }
       });
       // Terminology now lives inside Overview ("Project settings") rather
-      // than its own tab (2026-08 UX audit roadmap: Project Admin's 8
-      // tabs -> 5) — still needs a tab click since we're currently on
+      // than its own tab — still needs a tab click since we're currently on
       // "Project groups" from the step above (Overview is only the
       // *default* tab on a fresh mount, not the currently-active one
       // here). Its own Save button is labelled "Save terminology",

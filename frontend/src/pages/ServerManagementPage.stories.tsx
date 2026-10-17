@@ -58,9 +58,8 @@ export const AccessReviewOrphanedAccounts: Story = {
     // Deactivate/ban/assign-roles now all sit behind one `ActionMenu` kebab
     // instead of separate always-visible buttons/columns — style guide
     // "Pattern: action menu", same "OrgAdminPage.tsx" consolidation applied
-    // here. "Assign server roles" moved here in Platform review 2026-09,
-    // Phase 5, off its own always-visible "Server roles" dropdown column
-    // (module system Phase 0) — see `AccessReviewGrantServerAdmin` below.
+    // here. "Assign server roles" lives here, not in its own always-visible "Server roles" dropdown column
+    // — see `AccessReviewGrantServerAdmin` below.
     await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
     const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
     await expect(within(menu).getByRole("menuitem", { name: "Deactivate" })).toBeInTheDocument();
@@ -86,7 +85,7 @@ export const AccessReviewShowsGroups: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 5: past 2 groups the row shows a "+N
+/** Past 2 groups the row shows a "+N
  * more" summary instead of an unbounded joined string, with the full list
  * reachable via "View groups" on the row's `ActionMenu`. */
 export const AccessReviewGroupsShowMoreAndViewGroups: Story = {
@@ -115,7 +114,7 @@ export const AccessReviewGroupsShowMoreAndViewGroups: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 5: the Organisations column stays inline
+/** The Organisations column stays inline
  * (unlike Groups above) but gains a "Show all N" toggle past 2 orgs. */
 export const AccessReviewOrganisationsShowMore: Story = {
   beforeEach: () =>
@@ -153,9 +152,8 @@ export const AccessReviewBannedAndAdminBadges: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Banned")).toBeInTheDocument());
     // The old standalone "Server admin" badge, and the "Server roles"
-    // dropdown's own closed-state summary that replaced it (module system
-    // Phase 0), are both gone — Platform review 2026-09, Phase 5 moved role
-    // state behind an "Assign server roles" modal with no row-level summary
+    // dropdown's own closed-state summary that replaced it, are both gone —
+    // role state sits behind an "Assign server roles" modal with no row-level summary
     // at all, so this now opens the modal to confirm the checked state.
     await userEvent.click(canvas.getByRole("button", { name: "Admin User's actions" }));
     const menu = within(document.body).getByRole("menu", { name: "Admin User's actions" });
@@ -169,9 +167,9 @@ export const AccessReviewBannedAndAdminBadges: Story = {
 
 /** Granting server admin opens the shared `ConfirmDialog` (sixth-pass audit
  * — this used to fire via `window.confirm`), then shows a success toast
- * once the role change completes. Platform review 2026-09, Phase 5: role
+ * once the role change completes. Role
  * checkboxes moved from an always-visible "Server roles" dropdown column
- * (module system Phase 0) into an "Assign server roles" modal opened from
+ * into an "Assign server roles" modal opened from
  * the `ActionMenu`, rendered directly rather than via `MultiSelectDropdown`
  * — see `docs/decisions.md`. Still confirms via `ConfirmDialog` first,
  * since this grant is cross-tenant. */
@@ -197,7 +195,7 @@ export const AccessReviewGrantServerAdmin: Story = {
   },
 };
 
-/** Module system Phase 0: granting `MODULE_ADMINISTRATOR` follows the exact
+/** Granting `MODULE_ADMINISTRATOR` follows the exact
  * same modal-then-`ConfirmDialog` flow as server admin above, via the new
  * `/server-roles` grant endpoint rather than `/server-admin`. */
 export const AccessReviewGrantModuleAdministrator: Story = {
@@ -248,7 +246,7 @@ export const AccessReviewDeactivateCancelled: Story = {
   },
 };
 
-/** U-P-06 / 2026-08 UX audit "Scale: two unbounded lists" — the deployment's
+/** U-P-06 "Scale: two unbounded lists" — the deployment's
  * cross-org user directory previously fetched every matching user with no
  * `limit`/`offset` at all. Clicking "Load more" requests the next page at
  * the correct offset and appends its rows below the first page's. */
@@ -279,7 +277,7 @@ export const AccessReviewLoadMoreAppendsTheNextPage: Story = {
   },
 };
 
-/** Phase E (follow-up UX batch, 2026-08-31) — Access Review moved onto the
+/** Access Review moved onto the
  * shared `DirectoryTable` + `FilterPanel` layout (Org Admin's Users table
  * is the direct composition template). Pins that the pre-existing "view"/
  * "includeDeactivated" filters still behave identically now that they're a
@@ -324,7 +322,7 @@ export const AccessReviewFilterPanelSearchAndFilters: Story = {
   },
 };
 
-/** Column-header sorting (Phase E) — Email/Name/Last login/Created are
+/** Column-header sorting — Email/Name/Last login/Created are
  * sortable via `DirectoryTable`'s `SortableHeader`, backed by
  * `list_system_users`'s new `sort`/`order` params (mirrors `list_org_
  * users`'s pre-existing contract) so the full filtered result re-sorts

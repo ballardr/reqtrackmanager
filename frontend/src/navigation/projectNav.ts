@@ -2,7 +2,7 @@
  * Module: navigation/projectNav
  *
  * Pure logic for the per-user "Project" nav-rail section layout
- * (docs/plans/platform-enhancements-2026-10-plan.md Phase 4): which items show in which
+ *: which items show in which
  * order, and which sit behind "More".
  *
  * Responsibilities:

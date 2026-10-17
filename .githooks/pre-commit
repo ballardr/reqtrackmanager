@@ -25,6 +25,14 @@ if git diff --cached --name-only | grep -qE '^(\.github/workflows/ci\.yml|fronte
   }
 fi
 
+# A moved or renamed doc must not leave dangling references; see scripts/check_doc_links.py.
+if git diff --cached --name-only | grep -qE '\.(md|py|ts|tsx|css|ya?ml|sh|txt)$|^docs/'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check_doc_links.py" || {
+    echo "pre-commit: fix the broken documentation reference(s) above, re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
 for project in "${PROJECTS[@]}"; do
   if ! git diff --cached --name-only | grep -qE "^${project}/(package\.json|package-lock\.json)$"; then
     continue

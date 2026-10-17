@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.research_project_router
 
-Project-scoped research-extras API (Phase 4), mounted beside the engagement
+Project-scoped research-extras API, mounted beside the engagement
 router: an engagement's session prompts, anonymous participants and findings,
 and a finding's raised/answered links. Every route needs the `research_extras`
 sub-component to be on for the project (404 otherwise), so turning it off hides

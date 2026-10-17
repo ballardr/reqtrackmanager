@@ -4,10 +4,7 @@ import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } 
 
 /**
  * The `/unarchive` counterpart to `requirement-archive-confirm.spec.ts`
- * (2026-08 UX audit roadmap: "archive was one-way for requirements and
- * actions, not projects" — `projects.py` already had both `/archive` and
- * `/unarchive`, with a working "Restore" button in Project Admin;
- * requirements and actions had only `/archive`). Covers the full
+ *. Covers the full
  * archive-then-restore round trip for both a requirement and an action:
  * archive it, confirm it's reachable only via each list's own "Include
  * archived" filter with an "Archived" badge, restore it via the detail

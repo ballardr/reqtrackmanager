@@ -1,5 +1,5 @@
 """Tests for the optional `sort`/`order` column-header sorting query params
-(2026-08 UX audit roadmap, "Column-header sorting on data tables") on the
+ on the
 requirements, change-request, and org-users list endpoints.
 
 Each endpoint's default (no `sort` given) ordering is asserted unchanged

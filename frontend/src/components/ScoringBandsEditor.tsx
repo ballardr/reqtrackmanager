@@ -1,8 +1,8 @@
 /**
  * Module: components/ScoringBandsEditor
  *
- * Edits one scoring model's rating bands (generic scoring-matrix core,
- * Module 1 Phase 10) at org or project level. A band is a label, a lower
+ * Edits one scoring model's rating bands (generic scoring-matrix core)
+ * at org or project level. A band is a label, a lower
  * threshold (entered as a percentage of the model's maximum score) and a
  * tone from the shared `BadgeTone` palette. Client-side validation mirrors
  * the backend's `validate_scoring_bands` so mistakes show before saving.

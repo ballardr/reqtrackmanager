@@ -2,8 +2,8 @@
  * Module: modules/context_strategy/api
  *
  * Thin wrapper functions over `api` (frontend/src/api/client.ts) for every
- * Strategy (Phase 7.1), Future State (Phase 7.2), Pain Point (Phase 7.3),
- * Guiding Principle (Phase 7.4), and Open Question (Phase 7.5) endpoint
+ * Strategy, Future State, Pain Point,
+ * Guiding Principle, and Open Question endpoint
  * `backend/app/modules/context_strategy/{router,project_router}.py` exposes
  * — mirrors `modules/decisions/api.ts`'s own dedicated-per-module-file
  * precedent. See `buildFutureStateApi`'s own docstring below for why Future
@@ -18,7 +18,7 @@
  * (which only needed a project/org split for two small definition-table
  * resources — Decision Types/Templates — while the Decision artefact
  * itself is project-scoped only), Strategy's own backend gives every single
- * endpoint an *identical* org-scoped and project-scoped twin (Phase 0 Q2's
+ * endpoint an *identical* org-scoped and project-scoped twin (the
  * scope discriminator — `router.py`/`project_router.py` mirror each other
  * exactly, same schemas, same suffixes, same behaviour, differing only in
  * which id the URL is built from). Rather than hand-writing ~25 functions
@@ -147,7 +147,7 @@ function buildStrategyApi(base: (id: string) => string) {
       return api.delete<void>(`${base(id)}/strategies/${strategyId}/files/${fileId}`);
     },
 
-    // --- Relationships (Phase 6) -------------------------------------------
+    // --- Relationships -------------------------------------------
     listRelationships(id: string, strategyId: string) {
       return api.get<ContextStrategyLink[]>(`${base(id)}/strategies/${strategyId}/relationships`);
     },
@@ -174,7 +174,7 @@ export const projectStrategyApi = buildStrategyApi(projectBase);
  * `organization_id`. */
 export const orgStrategyApi = buildStrategyApi(orgBase);
 
-// --- Future State (Phase 7.2) ------------------------------------------------
+// --- Future State ------------------------------------------------
 
 export interface FutureStateListFilters {
   include_archived?: boolean;
@@ -184,8 +184,7 @@ export interface FutureStateListFilters {
  * **A sibling factory, not a reuse of `buildStrategyApi` (Decided by:
  * Agent).** Future State's backend endpoint *shapes* are identical to
  * Strategy's (org/project twin routers, same CRUD/lifecycle/comments/files/
- * relationships surface — Phase 2's own "exact structural mirror" of
- * Phase 1), which is the same condition that justified `buildStrategyApi`
+ * relationships surface — an exact structural mirror), which is the same condition that justified `buildStrategyApi`
  * as one factory instantiated twice rather than ~25 hand-written functions
  * per scope. But Future State's own *field list* genuinely diverges from
  * Strategy's (no `priority`/`time_horizon`; adds `target_date`), so forcing
@@ -286,7 +285,7 @@ function buildFutureStateApi(base: (id: string) => string) {
       return api.delete<void>(`${base(id)}/future-states/${futureStateId}/files/${fileId}`);
     },
 
-    // --- Relationships (Phase 6) -------------------------------------------
+    // --- Relationships -------------------------------------------
     listRelationships(id: string, futureStateId: string) {
       return api.get<ContextStrategyLink[]>(`${base(id)}/future-states/${futureStateId}/relationships`);
     },
@@ -310,14 +309,14 @@ export const projectFutureStateApi = buildFutureStateApi(projectBase);
  * `organization_id`. */
 export const orgFutureStateApi = buildFutureStateApi(orgBase);
 
-// --- Pain Point (Phase 7.3) --------------------------------------------------
+// --- Pain Point --------------------------------------------------
 //
 // **No `buildPainPointApi` factory, unlike Strategy/Future State (Decided by:
 // Agent).** The factory shape exists specifically for an artefact with an
-// *identical* org-scoped and project-scoped twin endpoint set (Phase 0 Q2's
+// *identical* org-scoped and project-scoped twin endpoint set (the
 // scope discriminator) — Pain Point has no organisation scope at all (source
 // overview §6), so there is nothing to instantiate twice. `orgPainPointTypeApi`
-// (the org-scoped `PainPointTypeDefinition` CRUD tier, Phase 0 Q3) and
+// (the org-scoped `PainPointTypeDefinition` CRUD tier) and
 // `projectPainPointApi` (everything else — the project-scoped type-override
 // tier plus the Pain Point artefact itself) are two plain, hand-written
 // objects instead, mirroring `modules/decisions/api.ts`'s own flat-function
@@ -337,7 +336,7 @@ export interface PainPointListFilters {
   include_archived?: boolean;
 }
 
-/** Org-scoped `PainPointTypeDefinition` CRUD (Phase 0 Q3's shared base
+/** Org-scoped `PainPointTypeDefinition` CRUD (the shared base
  * tier) — `id` parameters below are an `organization_id`. */
 export const orgPainPointTypeApi = {
   list(organizationId: string) {
@@ -360,7 +359,7 @@ export const orgPainPointTypeApi = {
 };
 
 /** Every project-scoped Pain Point endpoint — both tiers of the type
- * vocabulary (Phase 0 Q3) and the Pain Point artefact itself (Phase 3) —
+ * vocabulary and the Pain Point artefact itself —
  * `id` parameters below are a `project_id`. */
 export const projectPainPointApi = {
   // --- Pain Point type vocabulary, project tier ---------------------------
@@ -396,7 +395,7 @@ export const projectPainPointApi = {
   update(projectId: string, painPointId: string, values: PainPointFieldValues & { owner: PrincipalRef | null }) {
     return api.put<PainPoint>(`${projectBase(projectId)}/pain-points/${painPointId}`, values);
   },
-  // --- Per-persona scoring (Phase 11) ---------------------------------------
+  // --- Per-persona scoring ---------------------------------------
   listScores(projectId: string, params: { model_key?: string; rollup?: PainPointRollup; include_archived?: boolean } = {}) {
     return api.get<PainPointScoringList>(`${projectBase(projectId)}/pain-point-scores${scoringQuery(params)}`);
   },
@@ -467,7 +466,7 @@ export const projectPainPointApi = {
     return api.delete<void>(`${projectBase(projectId)}/pain-points/${painPointId}/files/${fileId}`);
   },
 
-  // --- Relationships (Phase 6) -------------------------------------------
+  // --- Relationships -------------------------------------------
   listRelationships(projectId: string, painPointId: string) {
     return api.get<ContextStrategyLink[]>(`${projectBase(projectId)}/pain-points/${painPointId}/relationships`);
   },
@@ -478,7 +477,7 @@ export const projectPainPointApi = {
   },
 };
 
-// --- Guiding Principle (Phase 7.4) -------------------------------------------
+// --- Guiding Principle -------------------------------------------
 //
 // Back to a `buildStrategyApi`-shaped factory (Decided by: Agent) — Guiding
 // Principle's backend gives every endpoint an identical org-scoped/
@@ -576,7 +575,7 @@ function buildGuidingPrincipleApi(base: (id: string) => string) {
       return api.delete<void>(`${base(id)}/guiding-principles/${guidingPrincipleId}/files/${fileId}`);
     },
 
-    // --- Relationships (Phase 6) -------------------------------------------
+    // --- Relationships -------------------------------------------
     listRelationships(id: string, guidingPrincipleId: string) {
       return api.get<ContextStrategyLink[]>(`${base(id)}/guiding-principles/${guidingPrincipleId}/relationships`);
     },
@@ -600,7 +599,7 @@ export const projectGuidingPrincipleApi = buildGuidingPrincipleApi(projectBase);
  * an `organization_id`. */
 export const orgGuidingPrincipleApi = buildGuidingPrincipleApi(orgBase);
 
-// --- Open Question (Phase 7.5) ------------------------------------------------
+// --- Open Question ------------------------------------------------
 //
 // No `buildOpenQuestionApi` factory (Decided by: Agent) — the same
 // "nothing to instantiate twice" reasoning `projectPainPointApi`'s own
@@ -613,8 +612,8 @@ export interface OpenQuestionListFilters {
   include_archived?: boolean;
 }
 
-/** Every Open Question endpoint (Phase 5's CRUD/lifecycle/comments/files,
- * Phase 6's relationships) — `id` parameters below are a `project_id`. */
+/** Every Open Question endpoint (CRUD/lifecycle/comments/files and
+ * relationships) — `id` parameters below are a `project_id`. */
 export const projectOpenQuestionApi = {
   // --- CRUD -----------------------------------------------------------------
   list(projectId: string, filters: OpenQuestionListFilters = {}) {
@@ -681,7 +680,7 @@ export const projectOpenQuestionApi = {
     return api.delete<void>(`${projectBase(projectId)}/open-questions/${openQuestionId}/files/${fileId}`);
   },
 
-  // --- Relationships (Phase 6) -------------------------------------------
+  // --- Relationships -------------------------------------------
   listRelationships(projectId: string, openQuestionId: string) {
     return api.get<ContextStrategyLink[]>(`${projectBase(projectId)}/open-questions/${openQuestionId}/relationships`);
   },

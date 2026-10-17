@@ -31,7 +31,7 @@ function mockSettingsApis() {
 
 /**
  * `ComplianceSettingsPage` — org-level compliance settings at `/standards/
- * settings/:orgId` (docs/compliance-module-plan.md Phase 18), the two
+ * settings/:orgId`, the two
  * extensible vocabularies (`ActionTypesPanel`, `MappingTypesPanel`) that
  * used to be tabs inside the now-deleted `ComplianceAdminPanel.tsx`,
  * re-hosted behind a `ResourceMenu` instead — a fixed pair of org-wide

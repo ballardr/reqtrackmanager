@@ -3,10 +3,10 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS } from "./helpers";
 
 /**
- * Job to be done: compliance-module-plan.md Phase 28 — the "entity
+ * Job to be done: — the "entity
  * quick-switch" chevron next to an entity's name in a page's own `<h1>`,
  * opening a popover that lists every sibling instance of the same entity
- * type the current user can reach. Phase 37 extended this to Org Settings'
+ * type the current user can reach. This also covers Org Settings'
  * normal (non-degraded) admin header, whose title renders via
  * `ResourceMenu`'s own `titleAdornment` slot rather than a bespoke `<h1>`.
  *
@@ -15,7 +15,7 @@ import { loginAs, ORG_NAMES, PERSONAS } from "./helpers";
  * the Organisation Overview and Org Settings chevrons both have a real
  * sibling to offer.
  */
-test.describe("entity quick-switch (Phase 28)", () => {
+test.describe("entity quick-switch", () => {
   test("switches organisations from the Organisation Overview page via the chevron popover", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
 
@@ -41,7 +41,7 @@ test.describe("entity quick-switch (Phase 28)", () => {
     await expect(dialog).not.toBeVisible();
   });
 
-  // Phase 37 — the same chevron, now also on Org Settings' normal (non-
+  // The same chevron, now also on Org Settings' normal (non-
   // degraded) admin header, whose title renders via `ResourceMenu`'s own
   // `titleAdornment` slot rather than a bespoke `<h1>` of its own.
   test("switches organisations from Org Settings' admin header via the chevron popover", async ({ page }) => {

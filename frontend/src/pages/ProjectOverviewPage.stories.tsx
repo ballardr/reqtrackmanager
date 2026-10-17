@@ -125,7 +125,7 @@ export const LoadError: Story = {
   },
 };
 
-/** Phase 28 — with more than one project to switch between, a chevron next
+/** With more than one project to switch between, a chevron next
  * to the project name opens a popover listing the others as plain links
  * to their own Project Overview page. */
 export const EntitySwitcherOffersSiblingProjects: Story = {

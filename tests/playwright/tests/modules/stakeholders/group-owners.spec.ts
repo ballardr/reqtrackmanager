@@ -7,8 +7,7 @@ import { API_BASE_URL, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: users and groups on parity, Phase 3 (docs/plans/
- * users-and-groups-parity-plan.md) — a Persona's owner can be an organisation
+ * Job to be done: users and groups on parity — a Persona's owner can be an organisation
  * group and its champion a project group, a Stakeholder and a Need can be owned
  * by a group, an organisation-level record cannot name a project group, and
  * deleting a group that still owns them lets the admin clear or reassign.

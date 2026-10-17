@@ -195,8 +195,7 @@ def test_delete_cascades_through_everything_including_non_fk_references(client, 
     assert subscribe_resp.status_code == 204
 
     # A modify change request can only target an already-locked requirement
-    # (2026-08 UX audit roadmap, "No requirement approval action; change
-    # requests can target draft requirements") — approve it directly first
+    # — approve it directly first
     # (org_admin_token is this project's creator, so also its manager).
     approve_resp = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(org_admin_token)

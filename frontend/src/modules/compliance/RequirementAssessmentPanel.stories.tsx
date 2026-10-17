@@ -97,7 +97,7 @@ function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEviden
   };
 }
 
-/** Phase 33: the Evidence section's "link existing" `<select>` alongside its
+/** The Evidence section's "link existing" `<select>` alongside its
  * new "Upload new evidence" create-and-link-and-attach flow. Distinct from
  * `mockApis` above since it needs to track evidence state (linked vs.
  * library-only) across requests, the same way `EvidencePanel.stories.tsx`'s
@@ -237,7 +237,7 @@ export const RejectRequiresDecisionNote: Story = {
   },
 };
 
-/** Phase 32 (compliance-module-plan.md): the required action's assignee
+/** The required action's assignee
  * field is `AssigneePicker` (a `UserAutocomplete`, not a plain unfiltered
  * `<select>`) — searching narrows the org's users and picking one saves via
  * the same `updateRequiredActionAssessment` PATCH the old `<select>` used. */
@@ -304,7 +304,7 @@ export const RequiredActionGroupAssigneeIsNamed: Story = {
   },
 };
 
-/** Phase 33 (compliance-module-plan.md): the Evidence section's two paths
+/** The Evidence section's two paths
  * side by side — linking an already-existing library item via the
  * "Link existing evidence" `<select>`, and the new "Upload new evidence"
  * flow, which creates a fresh `Evidence` record (`EvidencePanel.tsx`'s own
@@ -360,7 +360,7 @@ export const EvidenceLinkExistingAndUploadNew: Story = {
   },
 };
 
-/** Phase 41 (compliance-module-plan.md): `EvidenceFormModal`'s create form
+/** `EvidenceFormModal`'s create form
  * itself now stages a file before save, so attaching one there uploads it in
  * the same step and skips the old follow-up "Attach files to..." modal
  * entirely — a user who already attached a file at creation isn't asked

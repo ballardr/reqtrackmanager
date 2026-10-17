@@ -7,7 +7,7 @@ import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } 
  * log" (a table of this requirement's own `RequirementVersion` rows) and
  * "Activity" (the general audit-log feed, including but not limited to
  * those same version changes) cards are now one card with a view toggle
- * (2026-08 UX audit roadmap item 516) — both renderings still exist, the
+ * — both renderings still exist, the
  * toggle only changes which one is on screen, and the chosen view is
  * remembered per-user across page loads via `useUiPreference` (server-
  * synced, the same mechanism the tile/list view toggles elsewhere already

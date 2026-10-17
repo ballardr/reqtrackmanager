@@ -1,9 +1,7 @@
 """
 Module: modules.stakeholders.engagements
 
-Business logic for Engagements, the contact log, and the research extras
-(Phase 4; docs/plans/module-02-stakeholders-and-personas-plan.md, Phase 0
-addenda 14, 15, 20, 29).
+Business logic for Engagements, the contact log, and the research extras.
 
 Responsibilities:
 - Engagement create/update (a single row, no version history) and the retention
@@ -11,13 +9,13 @@ Responsibilities:
 - Participants: Stakeholders, personas covered and an audience group, all
   `ArtefactLink`s from the engagement. A group is expanded to its members by the
   caller and recorded as a snapshot, so an engagement keeps saying who it
-  involved after membership changes (addendum 29).
+  involved after membership changes.
 - Outcome links: an engagement or finding "raised" Pain Points, Needs and Open
   Questions, or "answered" Open Questions.
 - Research extras: session prompts, anonymous participants, findings.
 - `last_engaged_by_stakeholder`, the derived "last engaged" S4 staleness reads.
 - `erase_engagement`, the hard delete of an engagement, its participant data and
-  its files (Phase 0 resolution 15).
+  its files.
 
 Design decisions:
 - Link types are created per organisation on first use (`service.get_or_create_link_type`),
@@ -325,7 +323,7 @@ def list_audience_links(db: Session, engagement: Engagement, organization_id: uu
 
 def participant_counts(db: Session, project: Project, engagement_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, int]:
     """Stakeholder participants per engagement, in one query (engagements with none are absent). A
-    Stakeholder hidden from the project (Phase 3b) is not counted, so the count never discloses them."""
+    Stakeholder hidden from the project is not counted, so the count never discloses them."""
     type_id = link_type_id_if_exists(db, project.organization_id, PARTICIPANT_FORWARD)
     if type_id is None or not engagement_ids:
         return {}
@@ -481,7 +479,7 @@ def list_findings(db: Session, engagement_id: uuid.UUID) -> list[ResearchFinding
 
 
 def erase_engagement(db: Session, engagement: Engagement, actor: User) -> None:
-    """Hard-deletes an engagement and everything that holds data about it (Phase 0 resolution 15):
+    """Hard-deletes an engagement and everything that holds data about it:
     its notes, comments, prompts, anonymous participants, findings, every file in storage (direct and
     comment attachments) and every `ArtefactLink` touching it or its findings. Writes one audit event
     carrying only the id and the acting user, never the title or any content. The caller commits.

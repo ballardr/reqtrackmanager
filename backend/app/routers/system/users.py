@@ -83,8 +83,7 @@ class SystemUserOut(BaseModel):
 
 
 class ServerRoleAssign(BaseModel):
-    """Payload for granting/revoking a server-tier role (module system
-    Phase 0) via `POST /users/{user_id}/server-roles`.
+    """Payload for granting/revoking a server-tier role via `POST /users/{user_id}/server-roles`.
 
     Attributes:
         role: The server role to grant. `ServerRole.SERVER_ADMIN` is
@@ -171,7 +170,7 @@ def grant_server_role(
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
-    """Grants a server-tier role (module system Phase 0) to a user.
+    """Grants a server-tier role to a user.
 
     Server-admin only (`require_server_admin`, no `MODULE_ADMINISTRATOR`
     fallback) — a narrower role can never grant itself or others a role,
@@ -210,7 +209,7 @@ def revoke_server_role(
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
-    """Revokes a server-tier role (module system Phase 0) from a user.
+    """Revokes a server-tier role from a user.
     No-op if the user doesn't currently hold `role`. Server-admin only —
     see `grant_server_role`."""
     existing = db.scalar(
@@ -265,12 +264,12 @@ def list_system_users(
     intentionally is *not* restricted to org-less accounts — I-M-08 lets a
     bootstrap server admin also hold an organisation of their own).
 
-    `search` (Phase E, follow-up UX batch, 2026-08-31) is name/email
+    `search`  is name/email
     substring, case-insensitive — the exact same Python-side matching
     approach `list_org_users` (`routers/orgs.py`) already established,
     reused verbatim rather than reinvented as a SQL `ilike`.
 
-    `sort`/`order` (same phase) mirror `list_org_users`'s own `sort`/`order`
+    `sort`/`order` mirror `list_org_users`'s own `sort`/`order`
     contract: `display_name` (default), `email`, `last_login_at`, or
     `created_at`, ascending unless `order=desc`. This is necessary plumbing
     for `DirectoryTable`'s sortable Email/Name/Last login/Created columns to

@@ -1,16 +1,12 @@
 /**
  * Module: modules/compliance/StandardMembersSection
  *
- * The "Members" section of a standard's workspace (docs/compliance-module-
- * plan.md Phase 22) — this standard's own dedicated working group:
+ * The "Members" section of a standard's workspace — this standard's own dedicated working group:
  * `standards_manager`/`standards_contributor` role grants, direct and
- * scoped to just this one `ComplianceStandard` row (module system Phase 2's
- * new generalised entity-scope mechanism). Renders through the same
+ * scoped to just this one `ComplianceStandard` row (the generalised entity-scope mechanism). Renders through the same
  * `DirectoryTable` + `MultiSelectDropdown` combination every other role
  * roster in this app already uses (`OrgAdminPage.tsx`'s Users table,
- * `ProjectMembersTable.tsx`) — per docs/compliance-module-plan.md's own
- * "Reused Existing Patterns" section, the single most-corrected point in
- * this plan's whole design history, this is not a bespoke roster table.
+ * `ProjectMembersTable.tsx`) — this is not a bespoke roster table.
  *
  * The last remaining `standards_manager` row's checkbox is disabled (with
  * an explanatory `title`) whenever unchecking it would leave the standard
@@ -21,8 +17,8 @@
  * role`'s own 400) regardless of what this component renders — this is a
  * UX hint, not the authorization boundary.
  *
- * Phase 30 (module system's generic group-based module-role grants,
- * `GroupModuleRole`) rebuilt this section's add-member flow onto
+ * The add-member flow (module system's generic group-based module-role grants,
+ * `GroupModuleRole`) is built on
  * `UserAutocomplete` — search-as-you-type over this org's real user
  * directory (`organizationId` set, debounced server-side search) plus
  * org-group matching (`groups`/`onSelectGroup`), mirroring `OrgAdminPage.

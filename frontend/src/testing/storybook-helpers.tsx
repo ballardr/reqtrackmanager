@@ -229,9 +229,7 @@ export function buildRequirement(overrides: Partial<Requirement> = {}): Requirem
   // backend/app/routers/requirements.py) so a story only needs to set
   // `status` and gets a consistent, real derived state — rather than every
   // "approved" story call site having to separately remember to
-  // also pass `is_locked: true` (2026-08 UX audit roadmap, "No requirement
-  // approval action" — added when the Approve button/"Make change request"
-  // gating started actually reading these two fields). An explicit override
+  // also pass `is_locked: true`. An explicit override
   // for either still wins, via the trailing `...overrides` spread.
   //
   // C-G-11: completion (`is_completed`/`completed_at`/`completed_by`) is now

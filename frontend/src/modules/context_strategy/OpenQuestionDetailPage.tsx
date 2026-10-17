@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/OpenQuestionDetailPage
  *
- * A single Open Question's full detail (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.5) — mirrors `PainPointDetailPage.tsx`'s overall
+ * A single Open Question's full detail — mirrors `PainPointDetailPage.tsx`'s overall
  * shape (full field display, branching lifecycle actions, attachments,
  * comments, relationships, owner assignment via a dedicated `PrincipalPicker`)
  * closely, since both artefacts share the same "project-scoped only,
@@ -26,8 +25,8 @@
  *    outcome convention `reject_pain_point`/`mark_pain_point_duplicate`
  *    already established, applied here to the module's second branching
  *    lifecycle).
- * 2. **Two roles, not one, gate the lifecycle actions** (source overview
- *    §9.4's three-tier permission split — see `enums.py`'s own docstring):
+ * 2. **Two roles, not one, gate the lifecycle actions** (§9.4's
+ * three-tier permission split — see `enums.py`'s own docstring):
  *    `open_question_owner` gates `investigate`/`mark-ready-for-decision`/
  *    `withdraw`/edit/archive; a *separate* `open_question_resolver` gates
  *    `resolve` alone. This page renders every action button unconditionally

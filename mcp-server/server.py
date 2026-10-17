@@ -40,8 +40,7 @@ Responsibilities:
   gate can only *restrict* what an already-authorized human's account could
   do directly, never grant more. See docs/decisions.md's "AI approval via
   MCP" entry for the full reasoning.
-- Registers module-contributed tools declaratively (compliance-module-plan.md
-  Phase 4): a backend module (e.g. a future Compliance module) can declare
+- Registers module-contributed tools declaratively: a backend module (e.g. a future Compliance module) can declare
   its own tools, which this server discovers by fetching `GET /api/v1/
   system/modules/mcp-tools` (lazily, authenticated with whatever session's
   token is on hand, cached in-process) and registers as plain proxy calls
@@ -465,8 +464,8 @@ async def list_custom_roles(organization_id: str | None = None) -> list[dict]:
     set) only, never who currently holds it.
 
     Deliberately excludes grant-roster visibility (which users/groups hold
-    a role) — per `docs/plans/core-fine-grained-access-control-plan.md`'s
-    own MCP-tools addendum, an access-control privilege map (who holds
+    a role) —
+    an access-control privilege map (who holds
     elevated permissions) is a real reconnaissance-value disclosure this
     server's read tools otherwise never expose, unlike a role/standard/
     decision-type *definition*. There is no tool to list or query grants.
@@ -1394,7 +1393,7 @@ if MCP_WRITES_ENABLED:
         return {"deleted": True, "link_id": lid}
 
 
-# --- Module-contributed tools (compliance-module-plan.md Phase 4) ----------
+# --- Module-contributed tools ----------
 #
 # A module (e.g. a future Compliance module) can declare its own MCP tools
 # declaratively — see docs/modules.md's "Module-contributed MCP tools"

@@ -1,5 +1,5 @@
 """Tests for links between a project and its ancestors/descendants
-(docs/plans/platform-enhancements-2026-10-plan.md Phase 5d): each link type's
+: each link type's
 `nesting_scope` decides whether and in which direction such a link is allowed;
 every end is authorised in its own project; a cross-level link never reaches a
 reader that assumes both ends share a project; and reparenting makes a link
@@ -735,7 +735,7 @@ def test_decision_in_the_parent_cannot_address_a_pain_point_below_it_but_the_rev
 
 # --- the reader audit, kept as a guard -----------------------------------------------------------
 
-# Files reviewed for how they treat cross-level links (docs/decisions.md, Phase 5d): each either asks
+# Files reviewed for how they treat cross-level links (docs/decisions.md): each either asks
 # for them deliberately (the graph, usage counts, deletion, the export count) or filters them out.
 # A new file that queries `ArtefactLink` directly, or asks `services.relationships` for cross-level
 # links, must be reviewed against the "another project's artefact" rule and added here.

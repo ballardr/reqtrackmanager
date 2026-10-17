@@ -16,8 +16,7 @@ import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES, s
  * untouched requirements (HW-FN-005/SW-PERF-006) so this spec never
  * mutates that shared fixture.
  *
- * Links are shown and edited in the shared Links panel (`ArtefactLinksPanel`,
- * October 2026 platform enhancements Phase 6): "Add link" opens a dialog (record
+ * Links are shown and edited in the shared Links panel (`ArtefactLinksPanel`): "Add link" opens a dialog (record
  * finder, then the relationship) and removing a link goes through a
  * `ConfirmDialog` (Tier 1). A link's phrase is also one of the dialog's own
  * `<option>` labels, so every assertion below is scoped to the panel's rendered

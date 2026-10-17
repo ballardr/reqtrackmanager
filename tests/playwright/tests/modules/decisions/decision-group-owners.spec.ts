@@ -8,8 +8,7 @@ installCleanupHook();
 const API = "http://localhost:8000/api/v1";
 
 /**
- * Job to be done: users and groups on parity, Phase 2 (docs/plans/
- * users-and-groups-parity-plan.md; Module 4 Phase 10) — a Decision's owner and
+ * Job to be done: users and groups on parity — a Decision's owner and
  * decision maker can be an organisation group or a project group, a member of
  * the owner group passes the "owner may propose" gate, and deleting a group
  * that still owns Decisions walks the admin through handing them to someone

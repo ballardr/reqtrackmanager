@@ -13,21 +13,21 @@ import { getInstalledModule, installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { formatFileSize } from "../utils/formatFileSize";
 
-/** The always-present first group (Phase 27c) — contributed directly by
+/** The always-present first group — contributed directly by
  * this core page, not by any module, so it can never collide with a real
  * module section key. */
 const OVERVIEW_GROUP_KEY = "overview";
 
-/** The core "Reports" group (Module 1 Phase 13): the organisation-wide
+/** The core "Reports" group: the organisation-wide
  * reports from the backend catalogue, shown only when the caller can run at
  * least one. Contributed by this page, not a module, so it can never collide
  * with a module section key. */
 const REPORTS_GROUP_KEY = "reports";
 
 /**
- * "Organisation Overview" (compliance-module-plan.md Phase 19) — a new
- * top-level, always-visible nav-rail page (unlike Phase 18's "Compliance
- * Standards" tab, this one carries general-purpose org stats every org has
+ * "Organisation Overview" — a new
+ * top-level, always-visible nav-rail page (unlike the module-contributed
+ * "Compliance Standards" tab, this one carries general-purpose org stats every org has
  * regardless of whether compliance applies, so it's shown unconditionally
  * to any org member, the same precedent as the always-shown Projects link;
  * see `docs/decisions.md`'s "Compliance module, human review follow-ups"
@@ -38,27 +38,27 @@ const REPORTS_GROUP_KEY = "reports";
  * A stats header (project/requirement/member counts, total file storage —
  * `GET /orgs/{id}/overview-stats` — plus any installed, currently-enabled
  * module's own `orgOverviewTiles`, e.g. Compliance's overall-compliance-
- * percentage/standards-count/non-compliant-projects headline gauges, Phase
- * 25b) is always shown as one compact `StatBar` row (Phase 27b — previously
+ * percentage/standards-count/non-compliant-projects headline gauges)
+ * is always shown as one compact `StatBar` row (previously
  * a `.grid.grid-metrics` of `StatCard`s, redesigned into a tighter, table-
  * like layout since a small set of numbers meant to be scanned at a glance
  * doesn't need `.card`'s full chrome repeated per tile).
  *
  * That stats row is itself the content of a real, always-present "Overview"
- * `ResourceMenu` group (Phase 27c) contributed by this page directly, not by
+ * `ResourceMenu` group contributed by this page directly, not by
  * a module — the whole page is one `ResourceMenu`-driven surface with
  * nothing separately pinned above it, rather than a stats block pinned above
  * a menu that only sometimes renders. Any installed, currently-enabled
  * module's own `orgOverviewSections` (e.g. Compliance's Dashboard/
  * Compliance-by-standard/Outstanding groups, relocated here from
- * `OrgAdminPage.tsx`'s `"compliance-overview"` group, Phase 19, then split
- * from one nested-`Tabs` group into three flat top-level groups, Phase 25b)
+ * `OrgAdminPage.tsx`'s `"compliance-overview"` group, then split
+ * from one nested-`Tabs` group into three flat top-level groups)
  * become additional groups alongside "Overview" — this core page never
  * imports a specific module directly, the same "core doesn't hardcode one
  * module" boundary `Layout.tsx`/`OrgAdminPage.tsx` already establish for
  * `globalNavItems`/`orgAdminSections`. With no module contributing a
  * section, "Overview" is the only group, and `ResourceMenu` itself hides its
- * own menu chrome whenever there's nothing to switch between (Phase 27c).
+ * own menu chrome whenever there's nothing to switch between.
  */
 export function OrgOverviewPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();

@@ -60,7 +60,7 @@ function mockDetailApis(current: Decision) {
 
 /**
  * `DecisionDetailPage` replaced the `SidePanel`-only `DecisionDetailPanel`
- * (Phase 9, 2026-09-22) — see that page's own module docstring. It's a real
+ * — see that page's own module docstring. It's a real
  * routed page, so stories go through `withRouter`/`withAuth` rather than
  * passing props directly.
  */

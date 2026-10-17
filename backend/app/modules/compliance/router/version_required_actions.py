@@ -2,7 +2,7 @@
 Module: modules.compliance.router.version_required_actions
 
 Required actions nested under a standard version's requirement
-(Phase 6): create/list/get/update/delete/reorder, all `DRAFT`-version-
+: create/list/get/update/delete/reorder, all `DRAFT`-version-
 only (`_require_draft_version`) — sibling bucket to
 `version_requirements.py`, split out separately since that bucket was
 still large on its own. `_get_required_action_or_404` is local to this
@@ -171,7 +171,7 @@ def delete_required_action(
 ):
     """Deletes a required action. 409 if the owning version is no longer a
     draft. No manual cascade needed for its `action_type_id` FK (implicit
-    RESTRICT, not CASCADE, per Phase 5's schema) — deleting the required
+    RESTRICT, not CASCADE, per the schema) — deleting the required
     action itself is unaffected by that."""
     _, version, _, action = _get_required_action_or_404(
         db, organization_id, standard_id, version_id, requirement_id, action_id

@@ -5,8 +5,7 @@
  * ...>` block that `RequirementMappingsModal.tsx`, the old inline "Add
  * compliance link" popover, and the new requirement-link picker's cascading
  * selects all needed byte-for-byte — extracted once a third and fourth
- * occurrence made it a genuine repeated pattern (platform-review-2026-09
- * Phase 7, `CLAUDE.md`'s reuse rule). Purely presentational: one labelled
+ * occurrence made it a genuine repeated pattern (`CLAUDE.md`'s reuse rule). Purely presentational: one labelled
  * `<select>` with a leading placeholder option and an optional disabled
  * state. Callers own any cascading-reset behaviour (e.g. clearing a child
  * selection when its parent changes) — this component only renders.

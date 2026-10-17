@@ -236,8 +236,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # Local preview of docs/website/ (Docusaurus) — see
-  # docs/plans/docs-website-plan.md. Port 3001 (not 3000, already taken by
+  # Local preview of docs/website/ (Docusaurus).
+  # Port 3001 (not 3000, already taken by
   # `frontend` above). No `depends_on`: unlike every other service in this
   # stack, the docs site is fully static and built entirely from files in
   # docs/website/ — it neither calls nor is called by db/backend/frontend/

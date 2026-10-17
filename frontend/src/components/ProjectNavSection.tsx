@@ -1,8 +1,7 @@
 /**
  * Module: components/ProjectNavSection
  *
- * The "Project" section of the nav rail (docs/plans/platform-enhancements-2026-10-plan.md
- * Phase 4): the project's nav items in the user's chosen order, a "More" disclosure for the
+ * The "Project" section of the nav rail: the project's nav items in the user's chosen order, a "More" disclosure for the
  * ones they moved out of the way, and the entry point to the layout editor.
  *
  * Responsibilities:

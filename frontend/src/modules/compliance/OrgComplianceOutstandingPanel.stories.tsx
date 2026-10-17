@@ -127,7 +127,7 @@ export const WithOutstandingItems: Story = {
   },
 };
 
-/** Phase 36 — `OrgComplianceDashboard.tsx`'s "Projects with expired
+/** `OrgComplianceDashboard.tsx`'s "Projects with expired
  * evidence" tile links here with `?category=evidence&validity=expired`, so
  * only the Evidence section renders, narrowed to the expired row alone. */
 export const CategoryFilteredViaUrl: Story = {
@@ -167,7 +167,7 @@ const REQUIREMENTS_VER_1: ComplianceRequirement[] = [
   { id: "req-2", standard_version_id: "ver-1", parent_requirement_id: "sec-5", reference: "A.5.16", name: "Identity management", sort_order: 1, ...REQUIREMENT_DEFAULTS },
 ];
 
-/** Phase 40 — filtering by Project narrows every section that carries a
+/** Filtering by Project narrows every section that carries a
  * `project_id` (all five), and filtering by Standard then Sub-section
  * additionally narrows the three requirement-scoped sections (both
  * `req-1`/`req-2` sit under "Annex A.5," so picking "Clause 4" empties
@@ -199,7 +199,7 @@ export const FilteredByProjectStandardAndSubSection: Story = {
   },
 };
 
-/** Phase 43: the "Export" trigger scopes its download to this panel's
+/** The "Export" trigger scopes its download to this panel's
  * current Project/Standard/Sub-section filters, matching `OrgComplianceStandardsPanel.tsx`'s
  * identical convention. */
 export const ExportPassesActiveFiltersAsQueryParams: Story = {

@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/GuidingPrincipleFormModal
  *
- * Create/edit dialog for a Guiding Principle's content fields (docs/plans/
- * module-01-context-and-strategy-plan.md Phase 7.4) — mirrors
+ * Create/edit dialog for a Guiding Principle's content fields — mirrors
  * `StrategyFormModal.tsx`'s exact "shared by create and edit, distinguished
  * by whether `initial` is passed" convention and `docs/ux-style-guide.md`'s
  * "create-as-a-layer" principle.

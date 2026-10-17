@@ -1,11 +1,11 @@
-"""Generic per-project sequence counter (Module 0 — Platform Foundations, Phase 2)
+"""Generic per-project sequence counter
 
 Revision ID: 0042
 Revises: 0041
 Create Date: 2026-09-21
 
-Per the Phase 0 decision record (docs/decisions.md, "Module 0 (Platform
-Foundations) Phase 0"): builds `project_sequence_counters`
+Per the decision record (docs/decisions.md, Platform
+Foundations): builds `project_sequence_counters`
 (`app.models.sequence.ProjectSequenceCounter`), the shared mechanism every
 *new* identified artefact type in the future-modules roadmap (Decision,
 Design, Risk, Pain Point, Strategy, Guiding Principle, Open Question,
@@ -15,7 +15,7 @@ its own `next_<type>_seq` column to `projects` the way
 
 `projects.next_requirement_seq`/`next_action_seq` are deliberately left
 untouched — this table is additive, for new artefact types only, per the
-Phase 0 decision. No rows are backfilled; counter rows are created lazily
+decision record. No rows are backfilled; counter rows are created lazily
 on first use by `services.sequences.generate_unique_code`.
 """
 

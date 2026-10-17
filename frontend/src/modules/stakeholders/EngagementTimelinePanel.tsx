@@ -7,7 +7,7 @@
  * newest first, each row "date · channel · title" linking to the engagement.
  * "Log contact" opens the compact `EngagementFormModal`, records an engagement
  * with this person (or Persona) already attached, toasts, and refreshes the
- * list, so a one-line email is a few seconds' work (Phase 0 addendum 2, item 20).
+ * list, so a one-line email is a few seconds' work.
  * Renders nothing outside a project: engagements are project-scoped, so the
  * organisation route has no history to show.
  */

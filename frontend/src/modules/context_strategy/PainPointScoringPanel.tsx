@@ -1,15 +1,15 @@
 /**
  * Module: modules/context_strategy/PainPointScoringPanel
  *
- * The scoring section of a Pain Point's detail page (Phase 11): rate the
+ * The scoring section of a Pain Point's detail page: rate the
  * Pain Point's Severity, Frequency and Confidence either for all personas
  * together or per persona, and see the roll-up under a model and persona
- * roll-up chosen right here ("chosen when viewing", Phase 9 Q3/Q5).
+ * roll-up chosen right here ("chosen when viewing").
  *
  * Built from the generic scoring core's shared pieces (`ScoringLevelPicker`,
  * `ScoringModelSwitcher`, the `projectScoringApi` scheme read); the persona
  * list arrives from the backend's `available_targets`, so this module never
- * knows Module 2 exists. If personas aren't available, only the
+ * knows the Stakeholders module exists. If personas aren't available, only the
  * "all personas" mode is offered. Existing rows whose persona has since
  * vanished stay editable as "Persona unavailable" so they can be removed.
  *

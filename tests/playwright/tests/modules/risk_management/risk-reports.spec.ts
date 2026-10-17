@@ -9,7 +9,7 @@ import { API_BASE_URL, createRisk, riskLevels, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-03-risk-management-plan.md Phase 7 — the
+ * Job to be done: — the
  * four Risk Management reports appear in the shared Reports page (rendered by
  * the generic viewer, no custom view), show the project's risks with display
  * labels, narrow through the generated option controls, and download as PDF and

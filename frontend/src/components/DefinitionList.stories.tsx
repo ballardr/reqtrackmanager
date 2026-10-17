@@ -209,7 +209,7 @@ interface FlaggedItem {
 
 /**
  * `renderExtra` (added for the Compliance Module's mapping-relationship-type
- * vocabulary, docs/compliance-module-plan.md Phase 12 — see
+ * vocabulary — see
  * `frontend/src/modules/compliance/MappingTypesPanel.tsx`) — a per-row slot
  * for an attribute `DefinitionList`'s own text-only `fields` contract can't
  * express, rendered between the text field(s) and the reorder/delete
@@ -259,7 +259,7 @@ export const WithRenderExtra: Story = {
 };
 
 /** Derived order (no `onMove`), a numeric field, an optional field, and a
- * two-item floor — the shape scoring levels use (Module 1 Phase 10). */
+ * two-item floor — the shape scoring levels use. */
 export const DerivedOrderWithFloorAndOptionalField: Story = {
   render: () => {
     function Harness() {

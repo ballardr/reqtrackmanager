@@ -273,9 +273,7 @@ def decide_change_request(
                 reasoning=version.proposed_reasoning if "reasoning" in changed else None,
                 clarification=version.proposed_clarification if "clarification" in changed else None,
                 description=version.proposed_description if "description" in changed else None,
-                # Was unconditionally `RequirementStatus.APPROVED` (2026-08
-                # UX audit roadmap, found alongside "No requirement approval
-                # action") — silently reverted an already-completed
+                # Was unconditionally `RequirementStatus.APPROVED` — silently reverted an already-completed
                 # requirement's *lifecycle status* as a side effect of any
                 # modify-CR approval. `create_change_request`'s own guard
                 # (above) only allows a MODIFY_REQUIREMENT change request
@@ -416,7 +414,7 @@ def decide_change_request(
                         },
                     )
         elif cr.kind == ChangeRequestKind.REMOVE_ACTION:
-            # Platform review 2026-09, Phase 8 — mirrors ADD_ACTION's own
+            # Mirrors ADD_ACTION's own
             # re-check above: the link could have already been removed
             # directly (before this requirement was re-locked, say) between
             # submission and approval, so re-verify rather than assume.
@@ -436,11 +434,11 @@ def decide_change_request(
                 )
                 db.delete(existing)
         elif cr.kind == ChangeRequestKind.ADD_LINK:
-            # Phase 6b: an add-link request is nothing but its proposed links, which
+            # An add-link request is nothing but its proposed links, which
             # `resolve_links` below merges (re-validated now, as the approver chose).
             pass
         elif cr.kind == ChangeRequestKind.REMOVE_LINK:
-            # Platform review 2026-09, Phase 8 — same re-check posture as
+            # Same re-check posture as
             # ADD_LINK above: the link may already have been removed via
             # some other path between submission and approval.
             link = db.get(ArtefactLink, version.proposed_link_id)

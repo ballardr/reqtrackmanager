@@ -14,7 +14,7 @@
  *   alternative is the Tree tab.
  *
  * Design decisions:
- * - Layered, not force-directed (docs/plans/platform-enhancements-2026-10-plan.md Q1), and
+ * - Layered, not force-directed, and
  *   hand-built SVG: no graph library, and none of the click-through limits of a Mermaid
  *   diagram at its required security level.
  * - Colours come from theme variables (light and dark); direction is carried by position,

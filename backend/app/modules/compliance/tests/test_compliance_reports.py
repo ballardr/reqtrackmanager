@@ -1,6 +1,5 @@
-"""Tests for Phase 15's PDF/CSV compliance report generation
-(docs/compliance-module-plan.md Phase 15; docs/Compliance_Module_
-Requirements.md §29): `GET /projects/{id}/modules/compliance/reports` and
+"""Tests for PDF/CSV compliance report generation
+(§29): `GET /projects/{id}/modules/compliance/reports` and
 `GET /orgs/{id}/modules/compliance/reports`, both taking a required
 `format=pdf|csv` query param (merged from separate `/reports/pdf`/
 `/reports/csv` GETs, 2026-09-22 — see docs/decisions.md), mirroring
@@ -106,7 +105,7 @@ def test_project_compliance_csv_report_includes_assessment_and_neutralizes_injec
     data_rows = rows[1:]
     assert len(data_rows) == 2  # parent + child requirement
 
-    # Phase 42: the "Requirement name" column was relabelled "Requirement
+    # The "Requirement name" column was relabelled "Requirement
     # title" for clarity, since "Requirement path"/"Requirement reference"/
     # "Requirement title" otherwise leaves a reader guessing which column is
     # the human-readable one.
@@ -187,11 +186,11 @@ def test_org_compliance_csv_report_lists_project_assignment_roll_up(client, admi
     assert row[non_compliant_col] == "1"
 
 
-# --- Phase 42: narrative requirement cell (title always shown) ------------------
+# --- narrative requirement cell (title always shown) ------------------
 
 
 def test_narrative_requirement_paragraph_always_shows_title_and_folds_in_free_text_fields(client, admin_token, org_id):
-    """Phase 42's core fix: a requirement with a `reference` set must still
+    """A requirement with a `reference` set must still
     show its own `name` (title) in the PDF's requirement cell — the PDF's
     "Requirement" column used to be built from `_requirement_path`'s
     breadcrumb, which drops a leaf requirement's `name` whenever it also
@@ -199,7 +198,7 @@ def test_narrative_requirement_paragraph_always_shows_title_and_folds_in_free_te
     Also pins the narrative-cell format itself: title first, then each of
     reasoning/description/clarification/justification/notes present, in
     that order, bold-prefixed on its own line — the `docs/requirements.md`-
-    style single-cell layout this phase replaces one-column-per-field with.
+    style single-cell layout that replaces one-column-per-field.
     """
     _create_action_type(client, admin_token, org_id, name="Verification")
     standard = _create_standard(client, admin_token, org_id, reference="NAR-1", name="Narrative Cell Standard")
@@ -282,7 +281,7 @@ def test_narrative_requirement_paragraph_omits_empty_sections(client, admin_toke
     assert "Justification:" in text  # the Not Applicable decision's own justification is present and must still show
 
 
-# --- Phase 43: scoped report export (standard/version/sub-section/project) ------
+# --- scoped report export (standard/version/sub-section/project) ------
 
 
 def test_project_compliance_report_filters_by_standard_version_and_sub_section(client, admin_token, org_id):
@@ -445,11 +444,11 @@ def test_org_compliance_report_csv_endpoint_accepts_project_filter(client, admin
     assert len(empty_rows) == 1  # header only, no data rows
 
 
-# --- Phase 43 hardening pass: filtered-empty vs. genuinely-unassigned PDF message -
+# --- Filtered-empty vs. genuinely-unassigned PDF message -
 
 
 def test_project_report_empty_message_distinguishes_filtered_from_unassigned():
-    """Found during Phase 43's own hardening pass: the PDF's empty-state
+    """The PDF's empty-state
     text must not claim "this project has no assigned compliance standards"
     when the true cause is a Standard/Standard version/Sub-section filter
     matching none of several real assignments — a materially misleading
@@ -462,8 +461,8 @@ def test_project_report_empty_message_distinguishes_filtered_from_unassigned():
 
 
 def test_org_report_empty_message_distinguishes_filtered_from_unassigned():
-    """Org-level counterpart to the project-level test above — same Phase 43
-    hardening-pass finding, `OrgComplianceReportData.filtered` set whenever
+    """Org-level counterpart to the project-level test above — same
+    finding, `OrgComplianceReportData.filtered` set whenever
     any of `project_id`/`standard_id`/`standard_version_id`/`requirement_id`
     is non-`None`."""
     assert _org_report_empty_message(OrgComplianceReportData()) == "No projects in this organisation are assigned any compliance standard."

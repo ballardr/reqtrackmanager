@@ -2,15 +2,15 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout. This module hard-depends
-on [Module 0](module-00-platform-foundations-plan.md), in addition to
+on [Module 0](completed/module-00-platform-foundations-plan.md), in addition to
 Modules 7 and 8 below.
 
-**Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
+**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 §37 "Module 9 — Compliance Integration".
 
 **Status:** Proposed — but unlike every other module in this roadmap,
 **the underlying module already exists and is complete**: Compliance
-shipped as `docs/plans/compliance-module-plan.md`, 44/44 phases done as of
+shipped as `docs/plans/completed/compliance-module-plan.md`, 44/44 phases done as of
 2026-09-13 (per that plan's own status and this project's memory). This
 plan is scoped narrowly to the *integration* work the overview asks for
 (§37) — participating in Traceability and Governance once those exist — not

@@ -3,7 +3,7 @@
  *
  * The Pain Points, Needs and Open Questions an engagement (or one of its
  * research findings) raised or answered — the trace from a contact to the
- * backlog (Phase 0 addendum, item 20). One component for both holders: the
+ * backlog. One component for both holders: the
  * caller passes the matching `OutcomeApi`. A row names the kind and target type
  * through their label maps and links to the target's own page through the
  * generic `getArtefactPath`, so no other module is imported. Only an Open

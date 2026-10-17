@@ -2,8 +2,8 @@
 Module: modules.risk_management.module
 
 Registers the Risk Management module into the modular feature system's registry
-via `MODULE_DEFINITION` (docs/plans/module-03-risk-management-plan.md). Phases 1-4
-deliver the Risk artefact, its type vocabulary, the `risk` scoring scheme, module
+via `MODULE_DEFINITION`. It
+delivers the Risk artefact, its type vocabulary, the `risk` scoring scheme, module
 RBAC, the lifecycle, treatment relationships, reviews with reassessment
 scheduling, and MCP tools.
 
@@ -29,20 +29,20 @@ Registered contributions:
   are core defaults and need no seed. Relationships are made with the generic
   link endpoints; `treatment.py` adds the verdict on each treatment link.
 
-- Phase 4: `notification_types` (review due, review overdue, treatment needs
+- `notification_types` (review due, review overdue, treatment needs
   reassessment) so core's closed `NotificationType` enum is untouched;
   `scheduled_jobs` (the daily review sweep); `on_artefact_changed`, which moves
   effective treatment verdicts to `needs_reassessment` when the requirement or
   design behind them changes; and `mcp_tools` with `mcp_guidance`.
 
-- Phase 5: `frontend_manifest` (Tier A; `frontend/src/modules/risk_management/
+- `frontend_manifest` (Tier A; `frontend/src/modules/risk_management/
   module.ts` serves the register and detail routes and the admin sections).
 
-- Phase 7: `reports` (four project-level reports, `reports.py`; the framework
+- `reports` (four project-level reports, `reports.py`; the framework
   generates their routes, catalogue entries and `get_<slug>_report` MCP tools).
 - Users and groups on parity: `principal_references` declares the risk owner, so
   an in-use group cannot be deleted without reassigning or clearing it.
-- Phase 8: `org_bundle_hooks`/`project_bundle_hooks` (`export.py`): Risk types,
+- `org_bundle_hooks`/`project_bundle_hooks` (`export.py`): Risk types,
   and each Risk's current content, attachments, reviews and requirement
   treatment links with their verdicts.
 
@@ -96,7 +96,7 @@ from app.modules.risk_management.treatment import (
 # Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
 _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
 
-# "Design" and "System Element" (Module 6) are listed so the link types accept them
+# "Design" and "System Element" are listed so the link types accept them
 # the day those modules register; until then they are simply not offered.
 LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
     LinkTypeSeed(

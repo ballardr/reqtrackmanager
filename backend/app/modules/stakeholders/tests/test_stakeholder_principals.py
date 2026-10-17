@@ -1,5 +1,5 @@
 """Tests for groups as Persona / Stakeholder / Need owners and Persona champions
-(users and groups on parity, Phase 3 — docs/plans/users-and-groups-parity-plan.md).
+(users and groups on parity).
 
 Covers: each principal kind on create, update and clear; the display fields of a
 group; an organisation-scoped record rejecting a project group while a project

@@ -1,4 +1,4 @@
-"""Organisation-tier default project state for a module (Module 0 — Platform Foundations, Phase 5 correction)
+"""Organisation-tier default project state for a module
 
 Revision ID: 0055
 Revises: 0054
@@ -9,10 +9,10 @@ tier between the existing `enabled` (hard on/off, an absolute floor: `False`
 means no project may use this module at all, no override possible) and a
 project's own `ProjectModuleEnablement.enabled` override (Decided by: User,
 2026-09-29 — see `docs/decisions.md`'s dated entry and
-`docs/plans/module-00-platform-foundations-plan.md`'s Phase 5 correction
+ correction
 note for the full reasoning this migration implements).
 
-This is the piece that was missing from Phase 5's original design: an org
+This is the piece that was missing from the original design: an org
 admin needs to be able to say "this module is available (not hard-
 disabled), but off by default for every project — an individual project
 manager can still opt in for their own project if they want it" — a case

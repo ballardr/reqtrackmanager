@@ -16,10 +16,8 @@ const FRAME_ORIGIN = window.location.origin;
 const FRAME_URL = `${FRAME_ORIGIN}/module-frame-test-fixture`;
 
 /**
- * Storybook coverage for the Tier B Host UI Bridge (compliance-module-
- * plan.md Phase 3): no real remote module exists yet to point this at (the
- * plan's own Phase 3 spec builds the mechanism only — see docs/compliance-
- * module-plan.md), so every story here drives the bridge directly —
+ * Storybook coverage for the Tier B Host UI Bridge: no real remote module exists yet to point this at (this
+ * builds the mechanism only), so every story here drives the bridge directly —
  * dispatching a synthetic `MessageEvent` with `source` set to the rendered
  * iframe's own `contentWindow` and `origin` set to `FRAME_ORIGIN` — exactly
  * the shape a real cross-origin module's own script would send.

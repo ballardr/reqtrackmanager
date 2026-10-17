@@ -1,6 +1,5 @@
-"""Tests for the Compliance Module's Phase 8 Evidence API
-(docs/compliance-module-plan.md Phase 8; docs/Compliance_Module_
-Requirements.md §13-§15): creating evidence and linking it to a
+"""Tests for the Compliance Module's Evidence API
+(§13-§15): creating evidence and linking it to a
 requirement's/required action's own project-specific assessment (§13's
 multi-linkage), updating metadata, archiving, revalidation and its
 append-only history (§15), the §14 valid/expiring/expired derivation and
@@ -10,9 +9,9 @@ officer/PROJECT_MANAGER RBAC composition, and cross-project isolation
 (including through the generic `GET /api/v1/files/{id}` download endpoint,
 now resolved via `app.modules.registry.resolve_module_file_project_id`).
 
-Reuses `test_compliance_standards_api.py`'s helpers for the Phase 6
+Reuses `test_compliance_standards_api.py`'s helpers for the
 standards-catalog side of setup and `test_project_compliance_api.py`'s
-helpers for the Phase 7 assignment/assessment side, the same way that file
+helpers for the assignment/assessment side, the same way that file
 already reuses the former — this file's own job starts once a project has
 a materialised requirement/required-action assessment to attach evidence
 to.
@@ -308,7 +307,7 @@ def test_evidence_mutation_rbac_composition(client, admin_token, org_id):
     forbidden from creating evidence but can still read it; an assigned
     `compliance_officer` can; a `PROJECT_MANAGER` with no explicit officer
     grant can too, via `require_module_role`'s existing admin-override
-    composition (Phase 2), reused here unmodified."""
+    composition, reused here unmodified."""
     project, _a, _p, _aa = _setup_project_with_assessment(client, admin_token, org_id)
 
     plain_member_id = create_org_user(client, admin_token, org_id, "plain.evidence@example.com", role="member")
@@ -388,7 +387,7 @@ def test_evidence_file_upload_download_and_isolation(client, admin_token, org_id
 def test_inline_upload_from_assessment_panel_creates_uploads_and_links_like_the_library_flow(
     client, admin_token, org_id
 ):
-    """Phase 33 (compliance-module-plan.md): `RequirementAssessmentPanel`'s
+    """`RequirementAssessmentPanel`'s
     "Upload new evidence" affordance is pure frontend composition of three
     already-existing endpoints (create, upload file, link-to-requirement) —
     no new backend endpoint. Pins that chaining them in that order (create

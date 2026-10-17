@@ -1,5 +1,5 @@
-"""Tests for the PR7 data migration (`alembic/versions/0022_project_group_
-roles.py`, members/groups directory rework plan, docs/decisions.md): every
+"""Tests for the group-roles data migration (`alembic/versions/0022_project_group_
+roles.py`, members/groups directory rework, docs/decisions.md): every
 pre-existing `project_groups` row's scalar `role` is backfilled into exactly
 one `project_group_roles` row before the `role` column itself is dropped.
 
@@ -14,7 +14,7 @@ the result via the ordinary API. Always upgrades back to head, even on
 failure, so the shared session-scoped test database (`conftest.py`'s
 `_schema` fixture) is left in the state every other test in this suite
 expects — the same pattern `test_default_group_migration.py` established
-for the Phase C `is_default` column removal precedent this migration
+for the `is_default` column removal precedent this migration
 follows.
 
 Unlike that precedent, the project/user setup here must happen *before*

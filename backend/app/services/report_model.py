@@ -1,8 +1,7 @@
 """
 Module: services.report_model
 
-The neutral report document every renderer consumes (Phase 9 of
-docs/plans/platform-enhancements-2026-10-plan.md). A report is built once, as a
+The neutral report document every renderer consumes . A report is built once, as a
 `ReportDocument` of simple blocks, and then rendered by `report_pdf`
 (ReportLab) and `report_docx` (python-docx), so a layout change is made in one
 place rather than once per output format.

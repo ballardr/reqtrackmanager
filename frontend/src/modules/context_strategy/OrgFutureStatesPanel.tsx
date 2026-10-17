@@ -2,15 +2,13 @@
  * Module: modules/context_strategy/OrgFutureStatesPanel
  *
  * The org-scoped equivalent of `ProjectFutureStatesPage.tsx` — an
- * organisation's own org-scoped Future State records (Phase 0 Q1's
- * follow-on scope discriminator), rendered as an `OrgOverviewPage.tsx`
+ * organisation's own org-scoped Future State records (the
+ * org/project scope discriminator), rendered as an `OrgOverviewPage.tsx`
  * `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
  *
  * **Placement, Decided by: Agent — follows `OrgStrategiesPanel.tsx`'s own
- * placement directly, per this phase's own brief ("use whatever surface
- * Phase 7.1 decided for Strategy's org-scoped list... for consistency,
- * unless you find a concrete reason Future State should differ").** No such
- * reason was found: an org-scoped Future State is the same kind of org-level
+ * placement directly, for consistency.** No reason for Future State to differ
+ * was found: an org-scoped Future State is the same kind of org-level
  * content a Future State Owner/Approver works with day to day that
  * `OrgStrategiesPanel.tsx`'s own docstring already reasons through for
  * Strategy, so it lands on `orgOverviewSections` (Org Dashboard) too, not

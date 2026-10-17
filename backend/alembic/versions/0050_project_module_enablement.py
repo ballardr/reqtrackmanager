@@ -1,4 +1,4 @@
-"""Project-level override of whole-module enablement (Module 0 — Platform Foundations, Phase 5)
+"""Project-level override of whole-module enablement
 
 Revision ID: 0050
 Revises: 0049
@@ -6,12 +6,12 @@ Create Date: 2026-09-28
 
 Adds `project_module_enablements` (`app.models.module.ProjectModuleEnablement`)
 — a project-tier override of whole-module enablement itself, one tier below
-`organization_modules` (migration for compliance-module-plan.md Phase 1),
+`organization_modules` (migration for),
 mirroring that table's own shape (`project_id`/`module_key`/`enabled`/
 `updated_by`, unique on `(project_id, module_key)`). This is a genuinely
 new capability, not previously covered by any table: whole-module
 enablement had no project-level override at all before this migration —
-only Module 0 Phase 4's own sub-component layer
+only the sub-component layer
 (`organization_module_subcomponent_defaults`/
 `project_module_subcomponent_enablements`, migration 0049) got one.
 

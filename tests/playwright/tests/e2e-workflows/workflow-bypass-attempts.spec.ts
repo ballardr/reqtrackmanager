@@ -19,7 +19,7 @@ const apiBaseUrl = "http://localhost:8000";
  * belongs to, which is fine to do once against a disposable project but
  * not safe against Alpha-1 itself: 27 other spec files reference Alpha-1,
  * and the lock is irreversible (no "unapprove" endpoint). Found during
- * Phase 1 of docs/platform-review-2026-09-plan.md (turning on Playwright
+ * (turning on Playwright
  * parallelism) — previously safe only because this suite ran single-
  * worker/serial. Also grants stakeholderAlpha/memberAlphaBeta project
  * roles on this disposable project rather than relying on their existing

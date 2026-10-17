@@ -1,8 +1,7 @@
 /**
  * Module: modules/stakeholders/OrgPersonaTypesPanel
  *
- * The organisation tier of the Persona type vocabulary (Phase 0 resolution
- * 3) — a thin wrapper over the shared `OrgTypeVocabularyPanel`
+ * The organisation tier of the Persona type vocabulary — a thin wrapper over the shared `OrgTypeVocabularyPanel`
  * (`components/TypeVocabularyPanels.tsx`). Registered on `orgAdminSections`
  * (Org Management): a type list is configuration an org admin manages, not
  * day-to-day persona content. Gated server-side on `persona_type_admin`.

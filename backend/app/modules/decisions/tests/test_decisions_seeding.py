@@ -1,23 +1,20 @@
-"""Tests for Decision Management's two seeding hooks (docs/plans/module-04-
-decision-management-plan.md Phase 1):
+"""Tests for Decision Management's two seeding hooks:
 
 - `app.modules.decisions.module._seed_new_project` (`on_project_created`)
   — every new *root* project (no parent) gets the 5 default
   `DecisionTypeDefinition` rows, not gated on module enablement. A project
-  with a parent is deliberately left unseeded as of Phase 9 (2026-09-22,
+  with a parent is deliberately left unseeded (2026-09-22,
   see `test_decisions_hierarchy.py`) so its own hierarchical-project
   fallback (`service.resolve_effective_decision_types`) has something to
   do — exact mirror of `ActionTypeDefinition`'s own root-only seeding.
 - `app.modules.decisions.module._seed_org_templates` (`on_org_created_
   with_choices`) — a new organisation gets a `DecisionTemplateDefinition`
-  row per selected ADR template pack, opt-in (Phase 0 addendum Q1) rather
+  row per selected ADR template pack, opt-in rather
   than unconditional, exercised end-to-end through the real `POST /orgs`
   endpoint's `module_choice_keys` field.
 
-No HTTP endpoint exists yet for either `DecisionTypeDefinition` or
-`DecisionTemplateDefinition` (Phase 1 is data model only — Phase 4 adds
-the API), so these assert by querying the database directly, the same
-"data-model-only phase, test through the DB" approach `test_module_
+These assert by querying the database directly, the same
+"test through the DB" approach `test_module_
 registry.py` uses for the generic hook-dispatch mechanism itself.
 """
 
@@ -61,7 +58,7 @@ def test_creating_a_project_seeds_default_decision_types(client, admin_token):
 
 
 def test_creating_a_child_project_seeds_no_decision_types_of_its_own(client, admin_token):
-    # Phase 9 (2026-09-22): a child starts empty so it actually falls back
+    # A child starts empty so it actually falls back
     # to its parent's decision types (`test_decisions_hierarchy.py` covers
     # the fallback itself through the API) — mirrors `test_action_types.py`'s
     # own root-only-seeding assumption.

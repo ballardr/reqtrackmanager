@@ -2,7 +2,7 @@
  * Module: api/reports
  *
  * Types and calls for the core report framework's catalogue and run
- * endpoints (Module 1 Phase 12b/13). A module declares reports on the
+ * endpoints. A module declares reports on the
  * backend; `GET .../report-catalogue` lists the ones the caller can run, and
  * each entry's `path` is a runnable route taking `format=json|pdf|csv` plus
  * the entry's declared parameters. Core UI addresses a report only through

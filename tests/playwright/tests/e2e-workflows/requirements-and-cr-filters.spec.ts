@@ -138,8 +138,7 @@ test.describe("requirements list filters and view-mode persistence", () => {
       await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
     });
 
-    // Column-header sorting (2026-08 UX audit roadmap, "Column-header
-    // sorting on data tables") — this list is backend-paginated, so a
+    // Column-header sorting — this list is backend-paginated, so a
     // header click refetches with `sort`/`order` query params. Asserts
     // general sortedness of the ID column's displayed text rather than
     // specific rows, since which requirements exist/how many can shift as
@@ -198,8 +197,7 @@ test.describe("requirements list filters and view-mode persistence", () => {
 });
 
 /**
- * Change requests list sorting (2026-08 UX audit roadmap, "Column-header
- * sorting on data tables") — separate `describe` from the requirements one
+ * Change requests list sorting — separate `describe` from the requirements one
  * above since it needs its own fixtures: `ChangeRequest.proposed_name` is
  * nullable, and the list falls back to the linked requirement's own name
  * for display (`crTitle()` in ChangeRequestsPage.tsx) — sorting the raw
@@ -281,8 +279,7 @@ test.describe("change requests list sorting", () => {
 });
 
 /**
- * Default active-only status filter (2026-08 UX audit roadmap, "Default
- * Change Requests to an active-only status filter") — a change request list
+ * Default active-only status filter — a change request list
  * is usually consulted for what still needs a decision, not a permanent
  * archive of every decision ever made, so the page now loads with "Active"
  * selected (sending `active_only=true`) rather than every status. Creates

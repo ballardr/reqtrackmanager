@@ -2,7 +2,7 @@
  * Module: modules/compliance/StandardWorkspacePage
  *
  * The per-standard workspace at `/standards/:standardId[/versions|/history]`
- * (docs/compliance-module-plan.md Phase 18) — the drill-down a row on
+ * — the drill-down a row on
  * `StandardListPage.tsx` opens into. Structurally a sibling to a project's
  * own workspace (`Layout.tsx`'s "Standard" nav-rail section, rendered only
  * while a `standardId` is present in the URL — the same trigger pattern the
@@ -26,22 +26,22 @@
  * Types/Mapping Types, a fixed pair of org-wide screens, get a
  * `ResourceMenu` instead on `ComplianceSettingsPage.tsx`).
  *
- * Phase 20 (docs/compliance-module-plan.md) adds `StandardApplicabilityPanel`
- * to the Overview section — the "applies to all projects by default,
+ * `StandardApplicabilityPanel` is in
+ * the Overview section — the "applies to all projects by default,
  * except..." toggle and exclusion-list editor, Compliance-Manager-only.
  * The *default, primary* way a project acquires a standard (Project-
  * Manager self-service assignment) has no surface here at all — it lives
  * entirely on `ProjectCompliancePage.tsx`, since it's a project-scoped
  * action, not a standard-governance one.
  *
- * Phase 21 (standard-level import/export) adds an "Export" action beside
+ * Standard-level import/export: an "Export" action sits beside
  * Edit/Archive — downloads this standard's own portable JSON document
  * (`complianceApi.exportStandard` + `downloadBlob`, the same shape
  * `OrgComplianceDashboard.tsx`'s report downloads already use), for backup
  * or transfer into a different organisation/deployment via
  * `StandardListPage.tsx`'s "Import standard" entry point.
  *
- * Phase 23 replaces the Overview's plain description-only card with a
+ * The Overview has a
  * `.grid.grid-metrics` row of `MetricTile`s (versions/requirements/
  * projects/compliant counts — the same clickable-stat-tile convention
  * `ProjectOverviewPage.tsx`/`OrgOverviewPage.tsx` already established), and
@@ -97,7 +97,7 @@ function currentVersion(versions: ComplianceStandardVersion[]): ComplianceStanda
   return pool.reduce((latest, v) => (v.version_number > latest.version_number ? v : latest));
 }
 
-/** `EntitySwitcher` loader (Phase 28) — reuses `listStandardsAcrossMyOrgs`,
+/** `EntitySwitcher` loader — reuses `listStandardsAcrossMyOrgs`,
  * the same cross-org fan-out `StandardListPage.tsx` uses, rather than
  * duplicating it here. */
 async function loadStandardSwitcherOptions(): Promise<EntitySwitcherOption[]> {
@@ -154,7 +154,7 @@ export function StandardWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [standard?.organization_id]);
 
-  // Phase 23 Overview stats: version count, this standard's own slice of
+  // Overview stats: version count, this standard's own slice of
   // §20 project-compliance status (projects/compliant tiles), and the
   // current version's requirement count (fetched once the version list
   // resolves which version counts as "current" — a second, small request

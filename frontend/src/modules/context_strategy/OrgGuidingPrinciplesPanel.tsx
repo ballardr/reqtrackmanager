@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/OrgGuidingPrinciplesPanel
  *
  * The org-scoped equivalent of `ProjectGuidingPrinciplesPage.tsx` — an
- * organisation's own org-scoped Guiding Principle records (Phase 0 Q2's
+ * organisation's own org-scoped Guiding Principle records (the
  * org/project scope discriminator), rendered as an `OrgOverviewPage.tsx`
  * `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
  *
@@ -14,7 +14,7 @@
  * Owner/Approver works with day to day, not an admin-configuration table —
  * so it lands on `orgOverviewSections` (Org Dashboard) too, for the same
  * reasoning those two components' own docstrings already give. Pain Point
- * Type (Phase 7.3) landed on `orgAdminSections` instead because it *is* a
+ * Type landed on `orgAdminSections` instead because it *is* a
  * configuration table with no org-scoped artefact behind it at all — a
  * different case entirely, not a competing precedent for this one. No
  * deviation found worth flagging: Guiding Principle's org/project dual scope

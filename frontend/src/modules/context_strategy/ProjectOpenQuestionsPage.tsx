@@ -1,10 +1,10 @@
 /**
  * Module: modules/context_strategy/ProjectOpenQuestionsPage
  *
- * The Context & Strategy module's project-scoped Open Question list route
- * (docs/plans/module-01-context-and-strategy-plan.md Phase 7.5), mounted at
+ * The Context & Strategy module's project-scoped Open Question list route,
+ * mounted at
  * `/projects/:projectId/modules/context_strategy/open-questions`, reached
- * via this module's fifth and last top-level nav-rail entry (Phase 0 Q7).
+ * via this module's fifth and last top-level nav-rail entry.
  * Mirrors `ProjectPainPointsPage.tsx`'s exact `DirectoryTable` + `FilterPanel`
  * + "New X" `Modal` shape — Open Question is project-scoped only (source
  * overview §9), so unlike `ProjectStrategiesPage.tsx`/

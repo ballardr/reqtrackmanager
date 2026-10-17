@@ -234,8 +234,7 @@ def test_cannot_disable_inheritance_when_only_manager_is_inherited(client, admin
         role_inheritance_mode="mirror_all",
     )
     # A manually-created project's creator becomes a manager via a direct
-    # PROJECT_MANAGER UserProjectRole (C-U-10, follow-up UX batch Phase C,
-    # 2026-08-31 — no default group exists to remove them from any more) —
+    # PROJECT_MANAGER UserProjectRole (C-U-10, 2026-08-31 — no default group exists to remove them from any more) —
     # revoke that direct role to leave child with zero *direct* managers of
     # its own. admin_token remains an inherited manager of child throughout,
     # via their own still-intact direct manager status on parent.
@@ -884,14 +883,13 @@ def test_materialize_converts_inherited_access_to_direct_and_survives_disabling_
     assert client.get(f"/api/v1/projects/{child['id']}", headers=auth_headers(token)).status_code == 200
 
 
-# --- Per-user materialize (PR6 of the members/groups directory rework plan,
-# docs/decisions.md) --------------------------------------------------------
+# --- Per-user materialize (docs/decisions.md) --------------------------------------------------------
 #
 # `POST /{project_id}/materialize-inherited-access/{user_id}` is the per-row
 # counterpart to the bulk endpoint above: same rank logic, idempotency, and
 # audit action (`inherited_access_materialized`), just filtered to one
 # user's own provenance entries. These tests pin its own behaviour rather
-# than re-deriving the bulk endpoint's, per the plan's explicit note that
+# than re-deriving the bulk endpoint's, since
 # this reuses (not rebuilds) the bulk logic.
 
 
@@ -1090,8 +1088,7 @@ def test_materialize_for_user_requires_manage_not_just_view(client, admin_token,
     assert resp.status_code == 403
 
 
-# --- Org-admin hierarchy-visibility bypass (PR2 of the follow-up UX batch,
-# 2026-09) -----------------------------------------------------------------
+# --- Org-admin hierarchy-visibility bypass (2026-09) -----------------------------------------------------------------
 #
 # `_project_out_with_redacted_parent`'s own manager/org-admin exemption
 # (`can_manage_project_settings`, which already checks `is_org_admin`) was

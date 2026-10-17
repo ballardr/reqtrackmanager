@@ -1,8 +1,7 @@
 """
 Module: modules.decisions.reports
 
-Report data layer for Decision Management (docs/plans/platform-enhancements-
-2026-10-plan.md Phase 8): four project-level reports, one `collect_*` function
+Report data layer for Decision Management: four project-level reports, one `collect_*` function
 each, returning the core framework's `ReportResult`, plus the
 `REPORT_DEFINITIONS` that declare them to the registry. Result shapes, scope
 (`readable_projects`), PDF/CSV rendering, routes, MCP tools and the catalogue
@@ -13,14 +12,14 @@ Reports: D1 Decision register, D2 Approval ageing, D3 Decision log, D4
 Rationale coverage.
 
 Design decisions (all Decided by: Agent unless stated):
-- Project-level only; no organisation-wide variant (Decided by: User, Q8). The
+- Project-level only; no organisation-wide variant (Decided by: User). The
   module defines no org-scoped role to gate one with.
 - The module has no sub-components, so the collectors narrow `ctx.projects` to
   projects where the module is effectively enabled themselves (a child project
   can have it off while its parent has it on).
 - "Overdue" in D2 is a waiting-time threshold (`overdue_days`), because a
   Decision has no due date; "unowned" is a missing *decision maker*, because
-  `owner_id` is mandatory. Both are the nearest honest reading of the plan's
+  `owner_id` is mandatory. Both are the nearest honest reading of
   "overdue and unowned highlighted".
 - D2 measures the wait from the audit event that put the Decision into its
   current status (`proposed` / `submitted_for_review`), falling back to its

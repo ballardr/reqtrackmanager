@@ -2,7 +2,7 @@
 Module: services.summary_facets
 
 Helpers modules use to give their `ArtefactSummary`s the `facets` the link finder's
-browse levels read (Platform Enhancements Phase 6c).
+browse levels read.
 
 Responsibilities:
 - Build a status facet with a human label.

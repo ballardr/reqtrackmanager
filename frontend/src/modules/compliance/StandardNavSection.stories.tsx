@@ -30,14 +30,14 @@ function mockNavApis(versions: ComplianceStandardVersion[]) {
 }
 
 /**
- * The "Standard" left-nav section (docs/compliance-module-plan.md Phase 18)
+ * The "Standard" left-nav section
  * — Overview/Details, Versions, History — registered via `module.ts`'s
  * `standaloneWorkspaces`, rendered by `Layout.tsx` as a sibling structural
  * pattern to its own "Project" section, never imported by `Layout.tsx`
  * directly.
  *
- * Phase 23 adds this app's first expandable nav-rail group: "Versions"
- * gains a disclosure toggle that lists one link per version underneath.
+ * This is the app's first expandable nav-rail group: "Versions"
+ * has a disclosure toggle that lists one link per version underneath.
  * Resolving `organization_id` and the version list are this component's
  * own fetches (`standaloneWorkspaces.render` only passes `entityId`/
  * `railCollapsed`), so every story here mocks those two `GET`s.
@@ -112,7 +112,7 @@ export const Collapsed: Story = {
   },
 };
 
-// --- Phase 29: auto-expand, exact-match highlight, restyled toggle ----------
+// --- auto-expand, exact-match highlight, restyled toggle ----------
 
 /** 29a/29c — landing directly on a version's own route (not via an in-app
  * click) auto-expands the group and highlights only that version's row —

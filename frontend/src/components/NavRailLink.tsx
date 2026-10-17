@@ -12,7 +12,7 @@ import { Tooltip } from "./Tooltip";
  * is `width: 100%` (see theme.css) so the whole row is clickable/highlit,
  * not just the icon+text's own shrink-wrapped width.
  *
- * Exported (module system follow-up, compliance-module-plan.md Phase 18) so
+ * Exported (module system follow-up) so
  * a Tier A module's own `globalNavItems`/`standaloneWorkspaces` render
  * functions (`modules/types.ts`) can build visually-consistent rail links
  * themselves — `Layout.tsx` invites those contributions to render but has

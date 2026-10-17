@@ -4,9 +4,8 @@ Module: schemas.audit
 Read-only response model for `AuditEvent` (`app.models.audit`). Until now,
 `AuditEvent` was write-only from the API's perspective — every router calls
 `services.audit.log_event` to record a mutation, but nothing ever read one
-back over HTTP. The Compliance Module's Phase 7 project-compliance-
-assessment history endpoints (docs/compliance-module-plan.md Phase 7,
-docs/Compliance_Module_Requirements.md §8/§11/§16 — "view compliance
+back over HTTP. The Compliance Module's project-compliance-
+assessment history endpoints (§8/§11/§16 — "view compliance
 history") are the first real caller, so this schema lives here, generically,
 rather than under `app.modules.compliance`, so a future core or module
 feature needing the same "show me this entity's own audit trail" shape

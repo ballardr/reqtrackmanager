@@ -104,8 +104,7 @@ export function PreferencesPage() {
   const [myOrgs, setMyOrgs] = useState<Organization[]>([]);
   const [myOrgRoles, setMyOrgRoles] = useState<Record<string, OrgRole[]>>({});
   const [myGroupsByOrg, setMyGroupsByOrg] = useState<Record<string, MyOrgGroup[]>>({});
-  // "Leave organisation" (2026-08 UX audit roadmap item 520, moved here
-  // from Org Admin) — Tier 1 `ConfirmDialog`, keyed on the whole
+  // "Leave organisation" — Tier 1 `ConfirmDialog`, keyed on the whole
   // `Organization` rather than just its id so the dialog can name it.
   const [orgToLeave, setOrgToLeave] = useState<Organization | null>(null);
   const [pats, setPats] = useState<PersonalAccessToken[]>([]);
@@ -120,7 +119,7 @@ export function PreferencesPage() {
   // The "New personal access token" form creates a brand-new entity, not
   // contextual detail about anything already on screen — per the revised
   // Principle 3 it opens in a `Modal`, not the permanently-visible nested
-  // accordion it used to be (2026-08 UX audit roadmap item 526).
+  // accordion it used to be.
   const [patFormOpen, setPatFormOpen] = useState(false);
 
   /**
@@ -640,8 +639,7 @@ export function PreferencesPage() {
                   {roles.includes("org_admin") && (
                     <Link to={`/orgs/${org.id}/admin`} className="btn">{strings.preferences.manageOrganisation(orgLabel)}</Link>
                   )}
-                  {/* Moved here from Org Admin (2026-08 UX audit roadmap
-                      item 520) — leaving is about this user's own
+                  {/* Moved here from Org Admin — leaving is about this user's own
                       membership, not an org-level setting, so it lives
                       alongside the rest of "your access" rather than Org
                       Admin's danger-zone-adjacent controls. Previously

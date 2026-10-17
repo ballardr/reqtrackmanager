@@ -1,16 +1,16 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review. Phase 1 is built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Ready to implement.
+**Status:** planned 2026-10-14, from a ten-note user review. Phases 1 and 2 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Ready to implement.
 **Decision tags:** the ten notes and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-1 / 12 phases complete (Phase 1 done 2026-10-14, uncommitted at hand-back). Start with Phase 2.
+2 / 12 phases complete (Phases 1 and 2 done 2026-10-14, uncommitted at hand-back). Start with Phase 3.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
 | 1 | Neutral report-template label; Help becomes a configurable link; docs site image | N3, N5 | [x] |
-| 2 | Archive closed plans, rewrite links, link checker, agent rule | N6 | [ ] |
+| 2 | Archive closed plans, rewrite links, link checker, agent rule | N6 | [x] |
 | 3 | Layout contract: `Badge`, no-wrap rule, `ItemRow`, geometry checks | N1, N2 | [ ] |
 | 4 | Icon sizes driven by CSS, sweep, check | N9 | [ ] |
 | 5 | Shared record header and one object-action menu | N8 | [ ] |
@@ -53,7 +53,7 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 | N3 Report label | Do it; trivial | Also search for other labels that name PDF/Word (one found in `ReportRunner`, its stories and one website page). |
 | N4 Ontology | **Already planned** | `module-15-workflows-plan.md` Phase 1 specifies a registry-derived ontology (API, MCP tool, generated `docs/ontology.md`, staleness test). Building a second one by hand would rot. Pull that phase forward, standalone, add the human-facing concept map it lacks, and let modules contribute to both (Q14). See Phase 11. |
 | N5 Remove Help, redirect | Do it, with one addition | The product is self-hosted, so a hard-coded GitHub Pages URL breaks air-gapped installs and always shows `main`'s docs, not the deployed version. Make the URL one server setting, default to the site, with an off switch, and ship the docs site as an image so it can be hosted internally (Q3, Phase 1). Also: removing the page lets us drop the `mermaid` dependency if nothing else uses it (to verify). |
-| N6 Completed plans | Do it; the cost is the links | Ten closed plans are referenced from 156, 41, 38, 26, 24, 22, 20, 19, 17 and 3 files (including backend docstrings and migration comments). A plain `git mv` breaks about 785 references. Move, rewrite mechanically, and add a link checker so it cannot rot. `CLAUDE.md` already points at a wrong path for the UX audit (`docs/ux-audit-2026-08.md`; the file is under `docs/plans/`). |
+| N6 Completed plans | Do it; the cost is the links | Ten closed plans are referenced from 156, 41, 38, 26, 24, 22, 20, 19, 17 and 3 files (including backend docstrings and migration comments). A plain `git mv` breaks about 785 references. Move, rewrite mechanically, and add a link checker so it cannot rot. `CLAUDE.md` already points at a wrong path for the UX audit (`docs/plans/completed/ux-audit-2026-08.md`; the file is under `docs/plans/`). |
 | N7 Codes everywhere | Do it; larger than it looks | (a) Ten types have no code: change request, persona, stakeholder, need, stakeholder group, strategy, future state, guiding principle, pain point, open question (compliance types to be classified in Phase 6). Change requests are not even a registered artefact type, and `project_export.py` invents `CR-1…` per export that match nothing stored. (b) Org-scoped types cannot use a per-project counter. (c) **Do not store project codes inside item codes and do not build them from the parent chain** (Q7, Q8): answered as own-code-only, derived at display time. |
 | N7b Forms | Do it, all forms (Q13) | About 98 files contain inputs and only 6 use `FormGrid`. You chose every form, including one- and two-field ones, so the phase is the largest after codes; it is batched so it can pause. |
 | N8 Object actions | Do it; answered: record header, always a menu (Q4, Q5) | The Links panel lives in the aside, which collapses at 1280px+ and stacks under the content below it. A menu there disappears or moves to the page bottom. Put it in the record header, always visible, one position at every width. Also build a shared header: every detail page hand-builds its own `<h1>` row. |
@@ -70,7 +70,7 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 
 ## 2. Findings that were not in the notes
 
-- `CLAUDE.md` and `docs/ux-style-guide.md` link to `docs/ux-audit-2026-08.md`; the file is `docs/plans/ux-audit-2026-08.md`. Fixed by Phase 2's link checker.
+- `CLAUDE.md` and `docs/ux-style-guide.md` link to `docs/plans/completed/ux-audit-2026-08.md`; the file is `docs/plans/completed/ux-audit-2026-08.md`. Fixed by Phase 2's link checker.
 - The style guide's token table still lists `--color-entity-compliance` as a core variable; `theme.css` says it was removed (module boundary). The table is stale. Fixed in Phase 12.
 - `RecordLifecycleControls` (archive, retire) lives in `frontend/src/modules/stakeholders/` but other modules need the same control. It moves to `components/` in Phase 5 (module-boundary rule: shared code must not live in one module).
 - The style guide's "Not yet migrated" paragraph says to migrate pages "when next touched, not as a drive-by". N7b supersedes that for forms; Phase 10 updates the paragraph.
@@ -115,7 +115,7 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 
 - **Closed now (verify each "N / N complete" line before moving):** `compliance-module-plan`, `core-fine-grained-access-control-plan`, `docs-website-plan`, `module-00-platform-foundations-plan`, `module-01-context-and-strategy-plan` (20/20), `module-03-risk-management-plan`, `platform-enhancements-2026-10-plan`, `platform-review-2026-09-plan`, `react19-eslint10-upgrade-plan`, `users-and-groups-parity-plan`. **Stay:** `module-02` (3d open), `module-04` (Phase 7 blocked), modules 5–15, indexes, `resource-profiling-plan`, `ux-audit-2026-08.md` (living roadmap), `Compliance_Module_Requirements.md` (requirements input, not a plan), `engineering-design-vs-decisions.md`.
 - **Rewrite:** `git mv`, then one script that rewrites `docs/plans/<name>.md` to `docs/plans/completed/<name>.md` across docs, backend and frontend comments, `CLAUDE.md`, memory, and fixes the moved files' own relative links (`../x.md` becomes `../../x.md`). Alembic migration edits are comment-only. Review the diff by file count and a grep for any remaining old path.
-- **Link checker:** `scripts/check_doc_links.py` validates relative Markdown links and `docs/…` paths in Markdown and in code comments; run in CI and as a pytest so a future move cannot silently break references. It also catches the existing `docs/ux-audit-2026-08.md` error.
+- **Link checker:** `scripts/check_doc_links.py` validates relative Markdown links and `docs/…` paths in Markdown and in code comments; run in CI and as a pytest so a future move cannot silently break references. It also catches the existing `docs/plans/completed/ux-audit-2026-08.md` error.
 - **Agent rule:** add to `CLAUDE.md`: "When the last phase of a plan is done and its Status table reads N/N, `git mv` it to `docs/plans/completed/`, run `scripts/check_doc_links.py`, and update the memory index." Write the same rule into the plan template so new plans carry it.
 - **Open-question note:** the memory index lists plan status; update the entries for moved plans.
 

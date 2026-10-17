@@ -2,7 +2,7 @@
  * Module: modules/compliance/ComplianceOrgOverviewTiles
  *
  * This module's contribution to `pages/OrgOverviewPage.tsx`'s always-
- * visible stats header (compliance-module-plan.md Phase 25b) — three
+ * visible stats header — three
  * headline gauges (overall compliance percentage, active standards count,
  * non-compliant projects count) computed from the same
  * `listOrgProjectComplianceStatus` rows `OrgComplianceDashboard.tsx`'s own
@@ -35,7 +35,7 @@
  * `getByText`/accessible-name lookups ambiguous on every page load, not
  * just an edge case.
  *
- * Renders `StatBarEntry` (Phase 27b), not `StatCard` — `OrgOverviewPage.tsx`
+ * Renders `StatBarEntry`, not `StatCard` — `OrgOverviewPage.tsx`
  * folded its stats header into a `StatBar` compact row, and this tile splices
  * directly into that same row via `orgOverviewTiles`, so it needs to match
  * that row's entries rather than the older card grid.

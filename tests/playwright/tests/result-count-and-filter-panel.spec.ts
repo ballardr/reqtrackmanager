@@ -2,8 +2,7 @@ import { expect, test } from "@playwright/test";
 
 /**
  * `ResultCount`'s two display states and `FilterPanel`'s header/collapsible-
- * body restructure (2026-08 UX audit roadmap: persistent "showing X of Y"
- * result count) — verified against the demo dataset (scripts/
+ * body restructure — verified against the demo dataset (scripts/
  * seed_demo_data.py) on `RequirementsPage`, which seeds requirements at
  * varied lifecycle statuses so a status filter and a name search are both
  * guaranteed to narrow the list without emptying it.
@@ -104,8 +103,7 @@ test("ResultCount's matching count re-fetches as the user types in the relocated
   const baselineTotal = Number((await resultCount.textContent())?.match(/^(\d+) total$/)?.[1]);
   expect(baselineTotal).toBeGreaterThan(0);
 
-  // The search box now lives in `FilterPanel`'s header (moved there from
-  // the main content column, 2026-08 UX audit roadmap) — resolve a real,
+  // The search box now lives in `FilterPanel`'s header — resolve a real,
   // currently-rendered requirement name from the page itself rather than
   // hardcoding demo-data content, so this doesn't drift if the seed script
   // changes what it creates.

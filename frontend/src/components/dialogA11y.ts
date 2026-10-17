@@ -14,8 +14,7 @@ export const FOCUSABLE_SELECTOR =
  * triggered it once it closes.
  *
  * Escape only closes *this* dialog if it currently contains focus — found
- * as a real bug (not just a test-selector artifact) while adding the
- * follow-up UX batch's Phase C Playwright coverage for the "Manage users"
+ * as a real bug (not just a test-selector artifact) while adding 2026-08-31 Playwright coverage for the "Manage users"
  * modal's per-row `MultiSelectDropdown`: every open `Modal`/`SidePanel`/
  * `Popover` registers its own independent `window` "keydown" listener, all
  * of which fire for a single Escape press regardless of nesting, since

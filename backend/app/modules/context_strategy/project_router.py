@@ -1,12 +1,11 @@
 """
 Module: modules.context_strategy.project_router
 
-Context & Strategy's Phase 1 project-scoped API (docs/plans/module-01-
-context-and-strategy-plan.md Phase 1) — CRUD, lifecycle transitions,
+Context & Strategy's project-scoped API — CRUD, lifecycle transitions,
 comments, and file attachments for **project-scoped** Strategy records.
 Mounted at `/api/v1/projects/{project_id}/modules/context_strategy`.
 
-Phase 2 adds the same surface for **project-scoped** Future State records,
+The same surface exists for **project-scoped** Future State records,
 at `/future-states`, gated by `require_project_subcomponent_enabled
 ("context_strategy", "future_state")` and `_shared.require_future_state_
 manage_role`/`require_future_state_approve_permission` — exact structural
@@ -15,9 +14,8 @@ project-scoped Future State's file attachments resolve through this
 module's own `resolve_file_owner_project_id` hook (`module.py` ->
 `service.resolve_future_state_file_project_id`), the same as Strategy's.
 
-Phase 3 adds Pain Points, at `/pain-points`, plus their own two-tier type
-vocabulary's project-scoped half at `/pain-point-types` (Phase 0 Q3 —
-the org-scoped half, `PainPointTypeDefinition` CRUD, lives in `router.py`
+Pain Points live at `/pain-points`, plus their own two-tier type
+vocabulary's project-scoped half at `/pain-point-types` (the org-scoped half, `PainPointTypeDefinition` CRUD, lives in `router.py`
 instead, since Pain Point's *type vocabulary* has an org-level component
 even though the Pain Point *artefact* does not). Gated by `require_
 project_subcomponent_enabled("context_strategy", "pain_point")`
@@ -41,11 +39,8 @@ with, since Pain Point itself has no org scope at all.
 RBAC: reads/creation are gated by `require_project_subcomponent_enabled
 ("context_strategy", "strategy")` (`_require_view`) — any project member
 with the module *and* this sub-component enabled may browse and propose a
-Strategy (Phase 1's "project members (View + Propose)"). Module 0
-(Platform Foundations) Phase 4 added the sub-component tier on top of the
-whole-module check this router originally used (see `docs/decisions.md`'s
-"Module 1 (Context & Strategy) Phase 1" entry's "Coordination note" for
-why Phase 1 shipped whole-module-gated first) — `require_project_
+Strategy ("project members (View + Propose)"). The sub-component tier sits
+on top of the whole-module check (see `docs/decisions.md`'s "Context & Strategy" entry's "Coordination note") — `require_project_
 subcomponent_enabled` still checks whole-module enablement first
 internally, so this is a strict narrowing, not a parallel/replacement
 check. Direct edits/archival require the
@@ -65,7 +60,7 @@ project_router.files`'s identical shape. See `router.py`'s own module
 docstring for the org-scoped sibling of this router (whose files instead
 use `is_org_resource=True`), and `_shared.py` for the helpers both share.
 
-Phase 4 adds the same surface for **project-scoped** Guiding Principle
+The same surface exists for **project-scoped** Guiding Principle
 records, at `/guiding-principles`, gated by `require_project_subcomponent_
 enabled("context_strategy", "guiding_principle")` and `_shared.require_
 guiding_principle_manage_role`/`require_guiding_principle_approve_
@@ -76,9 +71,9 @@ Guiding Principle's file attachments resolve through this module's own
 `resolve_file_owner_project_id` hook (`module.py` -> `service.resolve_
 guiding_principle_file_project_id`), the same as Strategy's/Future State's.
 
-Phase 5 adds Open Questions, at `/open-questions` — project-scoped only,
-like Pain Point (no org-scoped counterpart in `router.py` at all this
-time, unlike Pain Point's own org-scoped type-vocabulary half, since Open
+Open Questions live at `/open-questions` — project-scoped only,
+like Pain Point (no org-scoped counterpart in `router.py` at all,
+unlike Pain Point's own org-scoped type-vocabulary half, since Open
 Question has no type vocabulary of its own). Gated by `require_project_
 subcomponent_enabled("context_strategy", "open_question")`
 (`_require_open_question_view`) for reads/creation — §9.4's broad-creation
@@ -92,7 +87,7 @@ resolve_permission` (`open_question_resolver` — §9.4's own "Decision Maker"
 tier, distinct from "Question Owner / Project Manager"; see `module.py`'s
 own docstring for why this is two roles, not Pain Point's one). `resolve`
 is deliberately a plain status transition, not the actual "Create Decision
-from Open Question" workflow (§9.5, Module 4's own Phase 7) — see `service.
+from Open Question" workflow (§9.5, a separate Decision Management workflow) — see `service.
 resolve_open_question`'s own docstring. A project-scoped Open Question's
 file attachments resolve through this module's own `resolve_file_owner_
 project_id` hook (`module.py` -> `service.resolve_open_question_file_
@@ -355,7 +350,7 @@ def create_project_strategy(
 ):
     """Creates a project-scoped Strategy in `DRAFT` status. Any project
     member with the module enabled may create one — no `strategy_owner`
-    grant required (Phase 1's "project members (View + Propose)")."""
+    grant required ("project members (View + Propose)")."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
@@ -526,7 +521,7 @@ def approve_project_strategy(
     channel: str = Depends(get_request_channel),
 ):
     """Formally approves a Strategy (`UNDER_REVIEW` -> `APPROVED`). MCP-
-    reachable (Phase 6, `module.py`'s `mcp_tools`) — per the 2026-09-22
+    reachable (`module.py`'s `mcp_tools`) — per the 2026-09-22
     write-enabled-MCP decision (`docs/decisions.md`), reached through the
     MCP server this additionally requires this project and its organisation
     to both have explicitly enabled AI approval (`require_ai_approvals_
@@ -785,7 +780,7 @@ def unlink_project_strategy_file(
 
 
 # =============================================================================
-# --- Future State (Phase 2) -------------------------------------------------
+# --- Future State -------------------------------------------------
 # =============================================================================
 
 
@@ -986,7 +981,7 @@ def approve_project_future_state(
     channel: str = Depends(get_request_channel),
 ):
     """Formally approves a Future State (`UNDER_REVIEW` -> `APPROVED`).
-    MCP-reachable (Phase 6) — same `require_ai_approvals_enabled` gate as
+    MCP-reachable — same `require_ai_approvals_enabled` gate as
     `approve_project_strategy`, see that endpoint's own docstring."""
     project = db.get(Project, project_id)
     if channel == "mcp":
@@ -1265,7 +1260,7 @@ def unlink_project_future_state_file(
 
 
 # =============================================================================
-# --- Pain Points (Phase 3) ---------------------------------------------------
+# --- Pain Points ---------------------------------------------------
 # =============================================================================
 
 
@@ -1280,7 +1275,7 @@ def _get_project_pain_point_type(db: Session, project_id: UUID, project_pain_poi
     return row
 
 
-# --- Pain Point type vocabulary (project-scoped half, Phase 0 Q3) -----------
+# --- Pain Point type vocabulary -----------
 
 
 @router.get("/pain-point-types", response_model=list[EffectivePainPointTypeOut])
@@ -1508,7 +1503,7 @@ def unarchive_project_pain_point(
     return pain_point_to_out(db, pain_point)
 
 
-# --- Pain Point scoring (Phase 11) ---------------------------------------------
+# --- Pain Point scoring ---------------------------------------------
 
 
 def _score_out(score) -> ScoreOut | None:
@@ -1670,7 +1665,7 @@ def mark_project_pain_point_duplicate(
 ):
     """`TRIAGED` -> `DUPLICATE`. A comment is required (`service.mark_
     pain_point_duplicate`'s own docstring — this is also where the
-    canonical Pain Point is noted, pending Phase 6's real link)."""
+    canonical Pain Point is noted)."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to mark a Pain Point as a duplicate.")
     project = db.get(Project, project_id)
@@ -1857,7 +1852,7 @@ async def upload_project_pain_point_file(
 ):
     """**Deliberately open to any project member**, not manager-gated —
     unlike `upload_project_strategy_file`/`upload_project_future_state_
-    file` (both owner-gated), source overview §6.5 explicitly lists "Add
+    file` (both owner-gated), §6.5 explicitly lists "Add
     evidence" among the broad-creation-model capabilities every project
     member gets for a Pain Point. Still 409s once the Pain Point has
     reached a terminal outcome."""
@@ -1923,7 +1918,7 @@ def unlink_project_pain_point_file(
 
 
 # =============================================================================
-# --- Guiding Principles (Phase 4) --------------------------------------------
+# --- Guiding Principles --------------------------------------------
 # =============================================================================
 
 
@@ -2155,10 +2150,10 @@ def activate_project_guiding_principle(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Activates an approved Guiding Principle. MCP-reachable (Phase 6) —
-    per the plan's own 2026-09-22 update, Guiding Principle's own
+    """Activates an approved Guiding Principle. MCP-reachable —
+    per the 2026-09-22 update, Guiding Principle's own
     `require_ai_approvals_enabled`-gated actions are `activate`/`retire`,
-    not `approve` (see `service.py`'s own Phase 6 docstring for the
+    not `approve` (see `service.py`'s relationships docstring for the
     reasoning) — same gate pattern as `approve_project_strategy`."""
     project = db.get(Project, project_id)
     if channel == "mcp":
@@ -2203,7 +2198,7 @@ def retire_project_guiding_principle(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Retires a Guiding Principle. MCP-reachable (Phase 6) — same
+    """Retires a Guiding Principle. MCP-reachable — same
     `require_ai_approvals_enabled` gate as `activate_project_guiding_
     principle`, see that endpoint's own docstring."""
     project = db.get(Project, project_id)
@@ -2442,7 +2437,7 @@ def unlink_project_guiding_principle_file(
 
 
 # =============================================================================
-# --- Open Questions (Phase 5) -------------------------------------------------
+# --- Open Questions -------------------------------------------------
 # =============================================================================
 
 
@@ -2625,8 +2620,8 @@ def resolve_project_open_question(
     through a Decision" tier — gated separately from `open_question_owner`
     (`_shared.require_open_question_resolve_permission`). A plain status
     transition here, not the actual "Create Decision from Open Question"
-    workflow (§9.5, Module 4's own Phase 7) — see `service.resolve_open_
-    question`'s own docstring. MCP-reachable (Phase 6) — same `require_ai_
+    workflow (§9.5, a separate Decision Management workflow) — see `service.resolve_open_
+    question`'s own docstring. MCP-reachable — same `require_ai_
     approvals_enabled` gate as `approve_project_strategy`, see that
     endpoint's own docstring."""
     project = db.get(Project, project_id)
@@ -2851,13 +2846,13 @@ def unlink_project_open_question_file(
     db.commit()
 
 
-# --- Phase 6: cross-artefact relationships -----------------------------------
+# --- cross-artefact relationships -----------------------------------
 #
 # List + create relationship endpoints for all five project-scoped source
 # artefact types, plus supersession endpoints for the three that support
 # one (Strategy/Future State/Guiding Principle — Pain Point/Open Question
 # have no "supersedes" concept in their own lifecycles). See `service.py`'s
-# own Phase 6 docstring section for the overall design and why Decision is
+# relationships docstring section for the overall design and why Decision is
 # not a valid `target_id` for any of these yet.
 
 
@@ -3145,5 +3140,5 @@ def create_project_open_question_relationship(
     )
 
 
-# Phases 12/12b: reports (core `services.report_framework`, declared in `reports.py`).
+# Reports (core `services.report_framework`, declared in `reports.py`).
 router.include_router(REPORT_ROUTERS.project)

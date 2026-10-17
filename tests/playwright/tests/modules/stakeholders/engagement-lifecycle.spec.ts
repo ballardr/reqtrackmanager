@@ -7,8 +7,8 @@ import { API_BASE_URL, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 5's exit criteria — Playwright e2e coverage for the Engagement UI
+ * Job to be done:
+ * Playwright e2e coverage for the Engagement UI
  * (`frontend/src/modules/stakeholders/`) against a real backend: log, edit and
  * permanently delete an engagement; add participants and covered Personas;
  * aim it at a Stakeholder group (a snapshot of members); log a contact from a

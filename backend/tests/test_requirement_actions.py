@@ -166,8 +166,7 @@ def test_archive_action_hides_it_from_default_list(client, admin_token, org_id):
 
 def test_unarchive_action_restores_it_and_is_idempotent(client, admin_token, org_id):
     """Pins the `/unarchive` counterpart to
-    `test_archive_action_hides_it_from_default_list` above (2026-08 UX audit
-    roadmap: archive was previously one-way for actions, unlike projects).
+    `test_archive_action_hides_it_from_default_list` above.
     Also covers the idempotency contract: unlike `archive`'s 409-on-already-
     archived above, calling unarchive on an already-active action is a
     no-op, matching `unarchive_project`'s own shape."""

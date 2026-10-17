@@ -1,8 +1,7 @@
 """
 Module: models.report_content
 
-Per-report-type introduction, chapters and appendices (Phase 10 of
-docs/plans/platform-enhancements-2026-10-plan.md).
+Per-report-type introduction, chapters and appendices .
 
 One table holds the content of every tier (report template, project,
 organisation) so there is a single store and a single resolution path instead

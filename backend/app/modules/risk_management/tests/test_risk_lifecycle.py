@@ -1,5 +1,5 @@
-"""Tests for the Risk Management module's Phase 2 lifecycle
-(docs/plans/module-03-risk-management-plan.md), through the real HTTP endpoints.
+"""Tests for the Risk Management module's lifecycle,
+through the real HTTP endpoints.
 
 Covers: the full transition table (legal and illegal moves, the offered
 `allowed_next_statuses`), the per-target guards (inherent rating, owner and

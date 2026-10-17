@@ -2,7 +2,7 @@
  * Module: modules/decisions/DecisionQuickViewPanel
  *
  * A minimal, read-only `SidePanel` peek at a Decision, opened on row click
- * from `ProjectDecisionsPage.tsx`'s list — Phase 9 (2026-09-22)'s
+ * from `ProjectDecisionsPage.tsx`'s list — the
  * "quick view + full page" pattern (docs/ux-style-guide.md's "Pattern:
  * entity detail panel"): a Decision's full detail (lifecycle actions,
  * relationships, comments, attachments) is too much for a side panel alone,

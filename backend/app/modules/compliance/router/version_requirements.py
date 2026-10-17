@@ -1,17 +1,16 @@
 """
 Module: modules.compliance.router.version_requirements
 
-A standard version's own hierarchical requirements (Phase 6):
+A standard version's own hierarchical requirements:
 create/list/get/update/delete/reorder, all `DRAFT`-version-only
-(`_require_draft_version`) except `clarify_requirement` (Phase 24), a
+(`_require_draft_version`) except `clarify_requirement`, a
 narrow published-version, mandatory-note exception. Required actions
 nested under a requirement are `version_required_actions.py`'s own
 sibling bucket, split out separately since this one was still large
 on its own.
 
-`update_requirement` is Fine-Grained Access Control Phase 6's
-entity-scoped-axis migration (`docs/plans/core-fine-grained-access-
-control-plan.md`) — `_require_standard_content_manage` (below) tries the
+`update_requirement` is the Fine-Grained Access Control
+entity-scoped-axis migration — `_require_standard_content_manage` (below) tries the
 existing `_require_standard_manage_or_contribute` gate first, falling back
 to `require_permission(..., entity_scope="standard")`'s `(project_
 compliance_requirement, manage)` atom only on a 403 (never a 404 — both
@@ -63,7 +62,7 @@ def _require_standard_content_manage(
     current_user: User = Depends(get_current_user_or_module_frame("compliance")),
     db: Session = Depends(get_db),
 ) -> User:
-    """`update_requirement`'s gate (Fine-Grained Access Control Phase 6,
+    """`update_requirement`'s gate (Fine-Grained Access Control,
     see this module's own docstring) — additive: a caller who already
     holds `standards_manager`/`standards_contributor` (or org-wide
     `compliance_manager`, via `overridden_by`) sees no behaviour change; a
@@ -228,11 +227,11 @@ def clarify_requirement(
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Applies a non-substantive correction/elaboration to a requirement
-    already belonging to a **`PUBLISHED`** version (Phase 24) — a distinct,
+    already belonging to a **`PUBLISHED`** version — a distinct,
     narrower sibling of `update_requirement` above, for exactly the one
     case that endpoint's own `_require_draft_version` gate forbids.
 
-    This is a deliberate, explicitly-flagged revision of Phase 6's "a
+    This is a deliberate, explicitly-flagged revision of the "a
     published version's requirements become immutable" rule
     (`_require_draft_version`, still governing every other requirement
     mutation unchanged), not a reopening of it — §4/§31 forbid *silently*/
@@ -243,19 +242,19 @@ def clarify_requirement(
     - **409** if the version is `DRAFT` (use the ordinary `update_requirement`
       endpoint instead — this endpoint's whole reason to exist is the one
       case that endpoint forbids) or `RETIRED` (retired stays fully frozen,
-      per this module's Phase 4 design — a clarification is only ever
+      as designed — a clarification is only ever
       offered on the version projects are actively being assessed against).
     - **400** if `clarification_note` is blank — mandatory, mirroring every
       other conditionally-mandatory-justification field in this module
       (Not Applicable, Non-Compliant, Rejection). There is no reliable way
       to detect "substantive" vs. "non-substantive" from a text diff alone
-      (see `models.py`'s own Phase 24 notes) — the note is what makes this
+      (see `models.py`'s clarification design decisions) — the note is what makes this
       human-asserted distinction accountable and auditable, never silent.
     - Gated to `standards_manager`-or-override only (`_require_standard_manage`,
       composing with org-scoped `compliance_manager`/`OrgRole.ORG_ADMIN`/
       `is_server_admin`) — **not** `_require_standard_manage_or_contribute`:
       a `standards_contributor`'s role is deliberately scoped to
-      draft-stage authoring (Phase 22's own definition); extending it to
+      draft-stage authoring (as defined); extending it to
       also touch published content would quietly widen that boundary.
     - Every call stamps `last_clarified_at`/`last_clarified_by`/
       `last_clarification_note` and increments `clarification_count`, and
@@ -264,8 +263,7 @@ def clarify_requirement(
       exactly the "explicit, restricted, and fully audited" shape that
       keeps this compliant with §4/§31 rather than in tension with them.
 
-    Per this phase's own explicitly-flagged open question (docs/compliance-
-    module-plan.md's Phase 24 spec): a clarification deliberately does
+    Per an explicitly-flagged open question: a clarification deliberately does
     **not** call `service.invalidate_approval_if_in_flight` — a
     clarification never changes the compliance obligation itself, so an
     already-in-flight approval is not invalidated by one, unlike an
@@ -319,7 +317,7 @@ def delete_requirement(
 ):
     """Deletes a requirement (and, via the database's own `ON DELETE
     CASCADE`, its child requirements and their required actions — no
-    manual cascade code needed, per Phase 5's schema). Also removes the
+    manual cascade code needed). Also removes the
     generic `ArtefactLink`s (a core requirement's traceability links) that
     point at the requirement or any descendant, which no foreign key does
     because links are polymorphic. 409 if the owning version is no longer a

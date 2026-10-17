@@ -7,8 +7,8 @@ import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 2's exit criteria — Playwright e2e coverage for the Stakeholder Need UI
+ * Job to be done:
+ * Playwright e2e coverage for the Stakeholder Need UI
  * (`frontend/src/modules/stakeholders/`) against a real backend: create, activate
  * and edit a need; link it to a Stakeholder, a Persona and a Requirement and see
  * it from the Stakeholder's and Persona's own pages; archive and unarchive.

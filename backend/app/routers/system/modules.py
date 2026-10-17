@@ -1,7 +1,7 @@
 """
 Module: routers.system.modules
 
-Module system Phase 0/1/4 administration: the deployment-wide default
+Module system administration: the deployment-wide default
 module entitlement policy, the module registry listing, per-organisation
 module entitlement overrides, and the module-contributed MCP tool
 manifest. The entitlement-policy and registry/entitlement endpoints accept
@@ -48,7 +48,7 @@ class ModuleEntitlementPolicyUpdate(BaseModel):
 
 
 class ModuleOut(BaseModel):
-    """A registered module's static description (module system Phase 1) —
+    """A registered module's static description —
     "what modules exist," with no per-organisation data. See
     `OrgModuleEntitlementOut` for the per-organisation entitlement view."""
 
@@ -62,7 +62,7 @@ class ModuleOut(BaseModel):
 
 class OrgModuleEntitlementOut(BaseModel):
     """One module's entitlement state for a specific organisation, as seen
-    by a `MODULE_ADMINISTRATOR`/`SERVER_ADMIN` (module system Phase 1).
+    by a `MODULE_ADMINISTRATOR`/`SERVER_ADMIN`.
 
     Attributes:
         module_key: The module's registry key.
@@ -85,13 +85,13 @@ class OrgModuleEntitlementOut(BaseModel):
 
 class OrgModuleEntitlementUpdate(BaseModel):
     """Sets an explicit server-tier entitlement override for one
-    organisation/module pair (module system Phase 1)."""
+    organisation/module pair."""
 
     entitled: bool
 
 
 class ModuleMcpToolOut(BaseModel):
-    """One module-contributed `mcp-server/` tool (module system Phase 4) —
+    """One module-contributed `mcp-server/` tool —
     the wire shape of `app.modules.registry.ResolvedMcpTool`. Every field
     here has already been through `build_mcp_tool_manifest`'s mechanical
     verification; see that function's docstring for what that means.
@@ -110,7 +110,7 @@ class ModuleMcpToolOut(BaseModel):
     params: list[dict[str, Any]]
 
 
-# --- Module entitlement policy (module system Phase 0/1) --------------------
+# --- Module entitlement policy --------------------
 
 
 @router.get("/module-entitlement-policy", response_model=ModuleEntitlementPolicyOut)
@@ -120,7 +120,7 @@ def get_module_entitlement_policy(
 ):
     """Returns the deployment-wide default module entitlement policy
     (`ServerSettings.default_module_entitlement_policy`) — the value
-    Phase 1's entitlement resolution falls back to when an organisation has
+    the entitlement resolution falls back to when an organisation has
     no explicit `organization_module_entitlements` override row.
 
     Gated the same as the PUT below (`SERVER_ADMIN` or
@@ -139,7 +139,7 @@ def update_module_entitlement_policy(
 ):
     """Sets the deployment-wide default module entitlement policy.
     `SERVER_ADMIN` or `MODULE_ADMINISTRATOR` may call this — the one
-    genuinely per-deployment lever Phase 0 introduces alongside the new
+    genuinely per-deployment lever introduced alongside the new
     role itself."""
     server_settings = get_server_settings(db)
     server_settings.default_module_entitlement_policy = payload.default_module_entitlement_policy
@@ -152,7 +152,7 @@ def update_module_entitlement_policy(
     return server_settings
 
 
-# --- Module registry & entitlement (module system Phase 1) ------------------
+# --- Module registry & entitlement ------------------
 
 
 @router.get("/modules", response_model=list[ModuleOut])
@@ -181,7 +181,7 @@ def list_org_module_entitlements(
 ):
     """Lists every registered module combined with `organization_id`'s
     current effective and explicit entitlement state — the server-tier
-    licensing/plan view (module system Phase 1)."""
+    licensing/plan view."""
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
@@ -216,7 +216,7 @@ def update_org_module_entitlement(
     db: Session = Depends(get_db),
 ):
     """Sets an explicit server-tier entitlement override for one
-    organisation/module pair (module system Phase 1).
+    organisation/module pair.
 
     Turning entitlement off does NOT cascade-delete any existing
     `OrganizationModuleEnablement` row for this org/module — that's
@@ -257,20 +257,20 @@ def update_org_module_entitlement(
     )
 
 
-# --- Module-contributed MCP tools (module system Phase 4) -------------------
+# --- Module-contributed MCP tools -------------------
 
 
 @router.get("/modules/mcp-tools", response_model=list[ModuleMcpToolOut])
 def list_module_mcp_tools(current_user: User = Depends(get_current_user)):
     """Returns the manifest of every module-contributed `mcp-server/` tool
-    across the live module registry (compliance-module-plan.md Phase 4) —
+    across the live module registry —
     what `mcp-server` fetches (lazily, on a caller's own already-presented
     token, cached in-process for a refresh window) to register declarative
     tools that proxy to a module's own REST endpoints.
 
     Gated by plain `get_current_user` — normal bearer-token authentication,
-    deliberately with **no exemption**, per this phase's own hardening pass
-    (docs/compliance-module-plan.md's "SOC2 / Security Planning" section):
+    deliberately with **no exemption**, per the hardening pass
+    ("SOC2 / Security Planning" section):
     this must never become an unauthenticated boot-time call, even though
     the manifest itself carries no organisation-specific data. Per-call
     access to whatever a listed tool actually proxies to is still fully

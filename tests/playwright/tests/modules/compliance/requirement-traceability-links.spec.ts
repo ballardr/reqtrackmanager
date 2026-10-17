@@ -5,8 +5,7 @@ import { createStandardWithVersion } from "./helpers";
 
 /**
  * Job to be done: a core requirement traces to the compliance standard's clause it
- * satisfies. The clause is an ordinary link target (docs/plans/platform-enhancements-
- * 2026-10-plan.md Phase 6c, replacing Compliance Phase 34's own table and section): it is
+ * satisfies. The clause is an ordinary link target (replacing the former dedicated table and section): it is
  * found from the shared Links panel's "Add a link" finder, either by searching its text
  * across every record type or by narrowing step by step (Standard -> Version ->
  * Requirement), appears in the panel under the clause's record type, survives a reload,

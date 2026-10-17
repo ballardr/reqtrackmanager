@@ -1,6 +1,5 @@
-"""Tests for the Stakeholders & Personas module's Phase 4 backend API
-(docs/plans/module-02-stakeholders-and-personas-plan.md — Engagements), through
-the real HTTP endpoints.
+"""Tests for the Stakeholders & Personas module's backend API
+(Engagements), through the real HTTP endpoints.
 
 Covers: CRUD and validation, the quick log, participants / covered personas /
 audience groups (snapshot expansion, hide-aware, group deletion), raised and

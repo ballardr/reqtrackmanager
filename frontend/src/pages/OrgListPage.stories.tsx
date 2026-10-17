@@ -100,7 +100,7 @@ const withOrgOverviewRoutes: Decorator = (Story) => (
   </MemoryRouter>
 );
 
-/** `target="overview"` (compliance-module-plan.md Phase 19) — `/org-overview`
+/** `target="overview"` — `/org-overview`
  * reuses this same single-org/multi-org auto-redirect convention, targeting
  * `/orgs/:id/overview` instead of the default `/orgs/:id/admin`. */
 export const SingleOrganisationRedirectsToOverview: Story = {

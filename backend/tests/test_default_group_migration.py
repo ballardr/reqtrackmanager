@@ -1,6 +1,5 @@
-"""Tests for the Phase C default-project-group data migration
-(`alembic/versions/0019_remove_default_project_groups.py`, follow-up UX
-batch, 2026-08-31): for every pre-existing `is_default=True` `ProjectGroup`,
+"""Tests for the default-project-group data migration
+(`alembic/versions/0019_remove_default_project_groups.py`): for every pre-existing `is_default=True` `ProjectGroup`,
 its direct user members are materialized into direct `UserProjectRole`
 grants (idempotently, with the group's own role), and the group is then
 either deleted (plain direct members only) or demoted to an ordinary group
@@ -21,15 +20,15 @@ other test in this suite expects (matching `Base.metadata`, per
 `test_schema_migrations_match_models.py`).
 
 The project/user setup must happen *before* entering the downgraded window,
-not inside it — a regression found while implementing PR7 of the members/
-groups directory rework plan (docs/decisions.md): `create_project`'s own
+not inside it — a regression found while implementing the members/
+groups directory rework (docs/decisions.md): `create_project`'s own
 manager-assignment fallback (`_ensure_project_has_a_manager`) unconditionally
-calls `get_effective_project_managers`, which (at head, from PR7 onward)
+calls `get_effective_project_managers`, which (at head)
 queries the new `project_group_roles` table — a table that doesn't exist
 yet at revision 0018 (or anywhere below 0022). These two tests used to call
 `create_project` *inside* the downgraded window without issue, since 0018's
 own schema still had everything `create_project` needed at the time this
-file was written; PR7's own new table broke that assumption. See
+file was written; the own new table broke that assumption. See
 `test_project_group_role_migration.py`'s module docstring for the identical
 issue found there first, and the same `contextmanager`-based fix applied
 here.
@@ -139,7 +138,7 @@ def test_default_group_with_extra_composition_materializes_members_and_survives_
     groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token)).json()
     reloaded = next((g for g in groups if g["id"] == str(group_id)), None)
     assert reloaded is not None, "a group with extra composition must survive the migration, not be deleted"
-    # PR7 of the members/groups directory rework plan (docs/decisions.md):
+    # the members/groups directory rework (docs/decisions.md):
     # `role` was replaced by `roles` on `ProjectGroupOut` — the migrated
     # group's pre-existing role now survives as exactly one grant in that
     # list, backfilled by 0022 immediately after 0019's own conversion runs.

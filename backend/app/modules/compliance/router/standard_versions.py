@@ -1,9 +1,9 @@
 """
 Module: modules.compliance.router.standard_versions
 
-A standard's own versions (Phase 6): create (optionally cloning
+A standard's own versions: create (optionally cloning
 another version's full requirement tree), list, get, update the
-editable summary (Phase 24), and the one-way publish/retire lifecycle
+editable summary, and the one-way publish/retire lifecycle
 (§4) — no endpoint here ever moves a version backwards or deletes one.
 """
 
@@ -55,10 +55,10 @@ def _clone_requirement_tree(
     id exists to point at.
 
     Also stamps every new requirement's `cloned_from_requirement_id` at the
-    source requirement's own id (Phase 11, §27) — the durable lineage link
+    source requirement's own id (§27) — the durable lineage link
     `service.py::diff_standard_versions` walks to tell an unchanged/
     modified requirement apart from a genuinely added one; see `models.py`'s
-    own Phase 11 notes for why this column was added and `models.py`'s
+    cross-standard mapping design decisions for why this column was added and `models.py`'s
     docstring on the pre-existing in-memory old-id -> new-id remap this
     function already performed for parent/child structure, which persisting
     `cloned_from_requirement_id` piggybacks on directly."""
@@ -124,8 +124,8 @@ def create_standard_version(
 
     `clone_from_version_id`, when given, deep-copies that version's full
     requirement tree and required actions into the new draft version. This
-    is a deliberate Phase 6 design decision beyond what the plan's own spec
-    text spells out: §4 requires that "changes to a standard should result
+    is a deliberate design decision beyond what the requirements
+    spell out: §4 requires that "changes to a standard should result
     in a new version rather than modifying requirements historical
     assessments depend upon," but without a way to version existing content
     forward, every new version would have to be rebuilt from scratch,
@@ -173,8 +173,8 @@ def list_standard_versions(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Lists a standard's versions, ordered by `version_number` — every
-    version, published or retired, remains listed (Phase 5's "never
-    superseded/deleted" design)."""
+    version, published or retired, remains listed (versions are never
+    superseded or deleted)."""
     standard = _get_standard_or_404(db, organization_id, standard_id)
     return db.scalars(
         select(ComplianceStandardVersion)
@@ -199,12 +199,12 @@ def update_standard_version(
     request: Request,
     current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
-    """Updates a version's own `summary` (Phase 24) — the version's
+    """Updates a version's own `summary` — the version's
     *current* standing, distinct from `change_note`. Unlike every other
     field on this row, editable at **any** lifecycle stage (`DRAFT`/
     `PUBLISHED`/`RETIRED` alike, never `_require_draft_version`-gated) —
     the motivating example is marking an already-retired version's summary
-    to note it's deprecated (see `models.py`'s own Phase 24 notes).
+    to note it's deprecated (see `models.py`'s clarification design decisions).
 
     RBAC is stage-dependent: a `standards_contributor` may call this while
     the version is still `DRAFT` (this is the ordinary contributor-level
@@ -231,10 +231,10 @@ def _notify_projects_of_standard_update(
     archived-ly) assigned to an *older* version of `standard` that a new
     version has been published (§18's "A compliance standard being updated
     where affected projects require review") — those projects stay pinned
-    to their own assigned version (Phase 7's own design; publishing never
+    to their own assigned version (publishing never
     moves an existing assignment), so this is purely informational: a
     project's Compliance Manager decides separately whether/when to
-    actually migrate (Phase 11)."""
+    actually migrate."""
     other_version_ids = set(
         db.scalars(
             select(ComplianceStandardVersion.id).where(
@@ -298,7 +298,7 @@ def retire_standard_version(
 ):
     """Retires a version — from either `DRAFT` or `PUBLISHED` (§4). 409 if
     already retired. A retired version is never deleted and stays
-    addressable indefinitely (Phase 5's own design)."""
+    addressable indefinitely."""
     _, version = _get_version_or_404(db, organization_id, standard_id, version_id)
     if version.status == ComplianceStandardVersionStatus.RETIRED:
         raise HTTPException(status.HTTP_409_CONFLICT, "This version is already retired.")

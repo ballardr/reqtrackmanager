@@ -7,8 +7,8 @@ import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 1.1's exit criteria — Playwright e2e coverage for the Persona UI
+ * Job to be done:
+ * Playwright e2e coverage for the Persona UI
  * (`frontend/src/modules/stakeholders/`) against a real backend.
  *
  * Each test builds a disposable org + admin (+ project) through the API, per
@@ -16,8 +16,8 @@ installCleanupHook();
  * `Date.now()`-suffixes every name. The module is `default_enabled=False`, so
  * each test switches it on from Org Admin's Modules group first.
  *
- * `backend/scripts/seed_e2e_dataset.py` still gains Personas (the plan asks
- * for both seed scripts to carry them), but these specs don't depend on them.
+ * `backend/scripts/seed_e2e_dataset.py` still gains Personas (both seed scripts carry
+ * them), but these specs don't depend on them.
  *
  * The org admin is the project's `PROJECT_MANAGER`, which composes with the
  * module's project-scoped `persona_owner` role, so one persona can create,

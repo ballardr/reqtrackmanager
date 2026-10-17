@@ -1,8 +1,7 @@
 /**
  * Module: components/ReportParamsForm
  *
- * The parameter form of the core report framework's Reports UI (Module 1
- * Phase 13): one labelled control per parameter a report declares (a select
+ * The parameter form of the core report framework's Reports UI: one labelled control per parameter a report declares (a select
  * for `choices`, a bounded number, a switch, a date, or text for string/uuid),
  * plus the framework-level options: the "include child projects" switch for
  * project reports and, for organisation-wide reports, a "Project" picker that

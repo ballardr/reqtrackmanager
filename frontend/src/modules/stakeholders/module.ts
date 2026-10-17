@@ -27,9 +27,8 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
 /**
  * Module: modules/stakeholders/module
  *
- * The Stakeholders & Personas module's frontend registration (docs/plans/
- * module-02-stakeholders-and-personas-plan.md Phase 1.1 — Persona, Phase 1.2 —
- * Stakeholder, Phase 2 — Stakeholder Need, Phase 5 — Engagements), the mirror of `backend/app/modules/stakeholders/module.py`.
+ * The Stakeholders & Personas module's frontend registration (Persona, Stakeholder,
+ * Stakeholder Need, Engagements), the mirror of `backend/app/modules/stakeholders/module.py`.
  * Auto-discovered by `modules/registry.ts` (`import.meta.glob('./*\/module.ts')`),
  * so no core file is edited to add it.
  *
@@ -43,7 +42,7 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  * - `orgOverviewSections`: the org Persona and Stakeholder lists and the
  *   Stakeholder group manager (org-level content); the project's own group
  *   manager is the `groups` route.
- * - `reportViews` (Phase 6): the custom on-screen views of reports S1 (the power/interest grid)
+ * - `reportViews`: the custom on-screen views of reports S1 (the power/interest grid)
  *   and S4 (engagement staleness); each owns the `group_id`/`group_by` parameters so the
  *   generic form does not show a raw id box. S2, S3 and S5 use the generic viewer.
  * - `orgAdminSections`/`projectAdminSections`: the Persona and Stakeholder

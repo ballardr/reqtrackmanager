@@ -73,7 +73,7 @@ function mockApis(options: { exclusions?: ComplianceStandardDefaultExclusion[] }
 }
 
 /**
- * Phase 20's org-wide-mandate secondary path — the toggle switching a
+ * The org-wide-mandate secondary path — the toggle switching a
  * standard's `applicability_default`, and (once switched on) the
  * exclusion-list `DirectoryTable` + "Exclude a project" modal. The
  * default, primary Project-Manager self-service assignment path has no

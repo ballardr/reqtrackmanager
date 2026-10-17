@@ -1,8 +1,8 @@
-"""Tests for Platform review 2026-09, Phase 8:
+"""Tests for link and action locking on approved requirements:
 
 1. `unlink_action` (`DELETE .../actions/{action_id}`) previously had no lock
-   check at all, an asymmetry with the already-gated add side (item 514,
-   `test_requirement_action_change_requests.py`). It's now gated the same
+   check at all, an asymmetry with the already-gated add side
+   (`test_requirement_action_change_requests.py`). It's now gated the same
    way, unconditionally across every project, via a new `REMOVE_ACTION`
    change request kind.
 

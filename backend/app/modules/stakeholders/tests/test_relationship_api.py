@@ -1,6 +1,5 @@
-"""Tests for the Stakeholders & Personas module's Phase 3 relationships
-(docs/plans/module-02-stakeholders-and-personas-plan.md — §10.5), through the
-real HTTP endpoints.
+"""Tests for the Stakeholders & Personas module's relationships
+(§10.5), through the real HTTP endpoints.
 
 Covers: the declared kinds (including the reserved Design/System Element one),
 adding/listing/removing each kind from a Stakeholder and a Persona, the

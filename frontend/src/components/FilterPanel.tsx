@@ -15,7 +15,7 @@ const MOBILE_BREAKPOINT_PX = 860;
 
 /**
  * Filter shell (mock's Search/Status/Category/Filters panel), restructured
- * (2026-08 UX audit roadmap: persistent "showing X of Y" result count) into
+ * into
  * a header + collapsible body:
  *
  *  - Header (always rendered, never collapses): when the caller passes

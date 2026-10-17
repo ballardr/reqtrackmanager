@@ -1,5 +1,4 @@
-"""Tests for the `link` permission level (docs/plans/platform-enhancements-2026-10-plan.md
-Phase 6d): the vocabulary, the "every record type" atom, the generic link endpoints
+"""Tests for the `link` permission level: the vocabulary, the "every record type" atom, the generic link endpoints
 accepting `link` or `manage`, the graph's `can_link`, the audit detail, and the
 `Link editor` preset role.
 

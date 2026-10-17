@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/GuidingPrincipleDetailPage
  *
- * A single Guiding Principle's full detail (docs/plans/module-01-context-
- * and-strategy-plan.md Phase 7.4) — mirrors `StrategyDetailPage.tsx`'s exact
+ * A single Guiding Principle's full detail — mirrors `StrategyDetailPage.tsx`'s exact
  * shape (full field display, current lifecycle status, version history,
  * comments, attachments, relationships, every lifecycle action), adjusted
  * for two genuine differences in Guiding Principle's own backend design:
@@ -19,7 +18,7 @@
  *    `PUT` every other field uses (`schemas.GuidingPrincipleUpdate`,
  *    structurally closer to `FutureStateFieldValues.target_date` than to
  *    Pain Point's genuinely separate "assign owner" surface) — but this
- *    phase's own frontend still reuses `components/RecordDetailParts`'
+ * frontend still reuses `components/RecordDetailParts`'
  *    `RecordPrincipalField` (a user, an organisation group and, on a project
  *    principle, a project group), mirroring `PainPointDetailPage.tsx`'s
  *    identical choice, for the same reasons: assigning a person or team is a
@@ -30,9 +29,9 @@
  *    fields plus the newly chosen `owner`, the same full-replace pattern
  *    `PainPointDetailPage.tsx`'s own `assignOwner` already establishes —
  *    this exercises the exact "explicit owner-assign-then-clear" behaviour
- *    Phase 4's own backend test suite pins.
+ * the backend test suite pins.
  *
- * **Scope-aware** (Phase 0 Q2, same as `StrategyDetailPage.tsx`): reads
+ * **Scope-aware** (same as `StrategyDetailPage.tsx`): reads
  * whichever of `projectId`/`organizationId` its current route supplies.
  * Unlike `PainPointDetailPage.tsx` (project-scoped only), an org-scoped
  * Guiding Principle has no *project* to fetch for its own organisation id —

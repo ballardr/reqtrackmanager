@@ -174,8 +174,8 @@ def test_csv_report_header_uses_project_terminology_overrides_for_component_and_
     """C-C-03: a project that renamed "component"/"category" (Project
     Admin's Terminology tab) should see its own vocabulary in the CSV
     header, not always the English default — this is the fix for the
-    hardcoded ["ID", "Name", "Component", "Category", ...] header row the
-    2026-08 UX audit's "Terminology coverage" finding named. Every other
+    hardcoded ["ID", "Name", "Component", "Category", ...] header row.
+    Every other
     header cell (ID/Name/Status/Reasoning/Clarification) isn't one of the
     six overridable nouns, so it must stay literal regardless of override."""
     rows = [_row("SW-PERF-001", "Software", 0, "Performance", 0)]

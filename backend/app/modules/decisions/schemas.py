@@ -1,8 +1,8 @@
 """
 Module: modules.decisions.schemas
 
-Pydantic request/response models for Decision Management's Phase 4 backend
-API (docs/plans/module-04-decision-management-plan.md Phase 4) — sits
+Pydantic request/response models for Decision Management's backend
+API — sits
 alongside `models.py` (the ORM shapes these expose over HTTP),
 `project_router.py` (the project-scoped Decision/comment/file/relationship
 endpoints), and `router.py` (the org-scoped Decision Template endpoints).
@@ -11,7 +11,7 @@ Conventions, matching `app.modules.compliance.schemas`' own established
 shape for this codebase's module schemas:
 - Every `*Out` schema that maps 1:1 onto an ORM row sets
   `model_config = {"from_attributes": True}`.
-- `DecisionOut` is the one exception: `is_locked` (Phase 4's own
+- `DecisionOut` is the one exception: `is_locked` (the
   content-lock-after-approval rule, enforced at the router layer — see
   `project_router.py`'s module docstring) is a computed field, not a
   column, so `DecisionOut` is always built explicitly by the router from a
@@ -24,14 +24,12 @@ shape for this codebase's module schemas:
   requirement-to-requirement link (`source_requirement_id`/
   `target_requirement_id`/`other_requirement_*`) and no generic link-
   presentation schema exists in `app.schemas` to reuse instead (checked
-  before writing this one, per this module's own Phase 4 build
-  instructions) — a Decision's own links can point at either another
+  before writing this one) — a Decision's own links can point at either another
   Decision or a Requirement, so the shape needs to stay polymorphic rather
   than assume one target type. **Decided by: Agent.**
 - `DecisionCommentOut` mirrors `app.schemas.requirement.CommentOut`'s
   shape minus the reaction fields (`reaction_count`/`reacted_by_me`) — a
-  `DecisionComment` has no reaction mechanism (not asked for by this
-  phase's scope, and the module-local `DecisionComment` table has no
+  `DecisionComment` has no reaction mechanism (not asked for, and the module-local `DecisionComment` table has no
   `CommentReaction`-equivalent join table), so those two fields are simply
   omitted rather than carried over unused. **Decided by: Agent.**
 """
@@ -139,7 +137,7 @@ class DecisionCreate(BaseModel):
 class DecisionUpdate(BaseModel):
     """Full replace of every content field — rejected outright (409) by
     `project_router.py::update_decision` once the Decision's own `status`
-    is `APPROVED`/`SUPERSEDED` (source overview §13/10.6's "approved
+    is `APPROVED`/`SUPERSEDED` (§13/10.6's "approved
     decisions should not normally be edited in-place"), mirroring
     `services.requirements.is_locked`'s router-layer enforcement pattern
     exactly (see that router's own module docstring)."""
@@ -191,13 +189,13 @@ class DecisionOut(BaseModel):
 
 
 class DecisionTransitionRequest(BaseModel):
-    """Payload for `approve`/`reject` (Phase 2's `service.approve_decision`/
-    `reject_decision` own optional `comment` parameter). `comment` is
+    """Payload for `approve`/`reject` (`service.approve_decision`/
+    `reject_decision`'s optional `comment` parameter). `comment` is
     validated as mandatory specifically for `reject`, at the router layer,
     not here — mirrors `record_review_outcome`'s identical mandatory-
     comment-on-failure rule (`routers.requirements.py`,
     `RequirementReviewOutcome.FAILED`) rather than making it unconditionally
-    required and breaking `approve`, which the plan explicitly allows to
+    required and breaking `approve`, which explicitly allows an
     carry an *optional* comment."""
 
     comment: str | None = None
@@ -257,7 +255,7 @@ class DecisionLinkOut(BaseModel):
     reused. `other_display_code`/`other_display_name` are best-effort:
     populated when `other_type` is one this module knows how to resolve
     (`"decision"` or the core `"requirement"`), `None` otherwise (a
-    Phase 6 reserved relationship target with no rows to resolve yet)."""
+    reserved relationship target with no rows to resolve yet)."""
 
     id: UUID
     source_type: str

@@ -1,11 +1,10 @@
-"""Risk treatment assessments (Module 3 Phase 3)
+"""Risk treatment assessments
 
 Revision ID: 0074
 Revises: 0073
 Create Date: 2026-10-12
 
-Adds `risk_treatment_assessments` (docs/plans/module-03-risk-management-plan.md
-Phase 3): the per-link verdict on whether a mitigating/treating artefact
+Adds `risk_treatment_assessments`: the per-link verdict on whether a mitigating/treating artefact
 actually reduces a risk, keyed to `artefact_links` with a cascading FK so
 deleting a link drops its verdict.
 

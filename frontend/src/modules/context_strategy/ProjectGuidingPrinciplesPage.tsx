@@ -2,10 +2,10 @@
  * Module: modules/context_strategy/ProjectGuidingPrinciplesPage
  *
  * The Context & Strategy module's project-scoped Guiding Principle list
- * route (docs/plans/module-01-context-and-strategy-plan.md Phase 7.4),
+ * route,
  * mounted at `/projects/:projectId/modules/context_strategy/guiding-principles`
- * (`module.ts`, reached via this phase's new "Guiding Principle" nav-rail
- * entry — the fourth of Phase 0 Q7's five planned top-level entries).
+ * (`module.ts`, reached via the "Guiding Principle" nav-rail
+ * entry — one of the five top-level entries).
  * Mirrors `ProjectStrategiesPage.tsx`'s exact `DirectoryTable` + `FilterPanel`
  * + "New X" `Modal` shape, minus the quick-view `SidePanel` tier, for the
  * same reasons that page's own docstring gives.

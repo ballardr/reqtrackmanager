@@ -7,8 +7,8 @@ import { API_BASE_URL, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 3c's exit criteria — stakeholders can be classified into a tree of
+ * Job to be done:
+ * Stakeholders can be classified into a tree of
  * groups (several at once, nested, "one branch per stakeholder" where a group
  * behaves like a single column), managed from the organisation overview and
  * from a project, and the Stakeholder list can filter and group by them.

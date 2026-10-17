@@ -5,8 +5,7 @@ import { ModuleFrame } from "../components/ModuleFrame";
 import { getInstalledModule } from "./registry";
 
 /**
- * Builds one `<Route>` per currently-enabled module (compliance-module-
- * plan.md Phase 3), to be spread directly into `<Routes>`'s children in
+ * Builds one `<Route>` per currently-enabled module, to be spread directly into `<Routes>`'s children in
  * `App.tsx` — React Router's `createRoutesFromChildren` only recognises
  * literal `<Route>`/`<Fragment>` elements in that tree, so this returns a
  * plain array of `<Route>` elements rather than a rendered wrapper

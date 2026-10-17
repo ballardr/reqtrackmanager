@@ -10,7 +10,7 @@ document.
 This document covers the module *mechanism* itself — the registry, gating,
 RBAC, frontend integration, and MCP tool contribution — not any specific
 module's own business logic. Compliance is the first real module built on top
-of this system; see [docs/plans/compliance-module-plan.md](plans/compliance-module-plan.md)
+of this system; see [docs/plans/completed/compliance-module-plan.md](plans/completed/compliance-module-plan.md)
 for its own requirements and build history. It's used below only for small,
 illustrative examples.
 
@@ -239,7 +239,7 @@ declaring `sub_components` needs no frontend edit of its own to get this.
 `GET .../subcomponents` is called for every registered module
 unconditionally (it safely returns `[]` for one with none declared, e.g.
 every module before Context & Strategy) rather than checked first. See
-`docs/plans/module-00-platform-foundations-plan.md`'s Phase 4 section.
+`docs/plans/completed/module-00-platform-foundations-plan.md`'s Phase 4 section.
 
 ### 2b. Project-level override of whole-module enablement (Module 0 — Platform Foundations — Phase 5)
 
@@ -381,7 +381,7 @@ checked against that router, not `get_router()`'s. `app.main`'s mount loop
 mounts both the same way; leave this `None` if you have no project-scoped
 endpoints of your own (most modules).
 
-**`get_global_router` (plans/compliance-module-plan.md Phase 18)** is a third,
+**`get_global_router` (plans/completed/compliance-module-plan.md Phase 18)** is a third,
 optional router for the rarer case where an endpoint has *no* single org or
 project id in its own path at all — Compliance's own example is `GET
 /api/v1/compliance/nav-visibility`, which aggregates across every org the
@@ -420,7 +420,7 @@ step, and where it happens depends on how your module is loaded:
   reviewed in a normal PR, exactly like every other first-party migration.
   Colocating it with the rest of your module's own code (models/service/
   router/tests) rather than dropping it into the flat, shared
-  `backend/alembic/versions/` directory is a plans/compliance-module-plan.md
+  `backend/alembic/versions/` directory is a plans/completed/compliance-module-plan.md
   Phase 11 follow-up: `app.modules.registry.configure_alembic_version_
   locations` adds every registered module's `migrations_dir` to Alembic's
   own multi-directory `version_locations`, so your migration still
@@ -627,7 +627,7 @@ module roles are currently offered (declared by a currently-*enabled*
 module) alongside the fixed core-role options — same checkbox, same
 accessible labelling, same component, for every role in the system.
 
-### 4a. A module-owned entity scope (plans/compliance-module-plan.md Phase 22)
+### 4a. A module-owned entity scope (plans/completed/compliance-module-plan.md Phase 22)
 
 `scope` isn't limited to the two core-recognised literals above. A module
 may declare **any other string** as `scope` — a role tied to one specific
@@ -1280,7 +1280,7 @@ hardcoded approach.
 
 ### Global nav links, global routes, and standalone workspaces
 
-Three more optional `TierAModuleDefinition` fields (plans/compliance-module-plan.md
+Three more optional `TierAModuleDefinition` fields (plans/completed/compliance-module-plan.md
 Phase 18), mirroring `orgAdminSections`' own "module hands the parent a
 render function" shape, for a module that needs a presence in `Layout.tsx`/
 `App.tsx` themselves rather than inside Org Admin or a specific project:
@@ -1400,7 +1400,7 @@ A few details that make this safe, not just convenient:
 ### Tier C — federated (a genuinely third-party module, no rebuild required)
 
 Module system follow-up, 2026-09-07 — requested directly by the repo owner,
-not part of a numbered `plans/compliance-module-plan.md` phase. Tier A requires a
+not part of a numbered `plans/completed/compliance-module-plan.md` phase. Tier A requires a
 rebuild of this frontend image (Vite bundles are static build artifacts —
 there is nothing to rescan once the image exists). Tier B can run without a
 build step, but only by giving up native component reuse for iframe
@@ -1925,7 +1925,7 @@ that way, not glossed over:
 
 For the full SOC 2 framing (which control-matrix gap this raises the stakes
 of, and the specific policy-document changes this system committed to), see
-[docs/plans/compliance-module-plan.md](plans/compliance-module-plan.md)'s "SOC2 /
+[docs/plans/completed/compliance-module-plan.md](plans/completed/compliance-module-plan.md)'s "SOC2 /
 Security Planning" section and
 [docs/soc2/policies/](soc2/policies/access-control-policy.md).
 
@@ -1936,7 +1936,7 @@ Security Planning" section and
 - [solution-architecture.md](solution-architecture.md)'s "Modular Feature
   System" section — the precise, line-referenced technical account of every
   table, class, and dependency mentioned here.
-- [plans/compliance-module-plan.md](plans/compliance-module-plan.md) — the phased build
+- [plans/completed/compliance-module-plan.md](plans/completed/compliance-module-plan.md) — the phased build
   plan this system was built under, its design history (including the
   corrections that shaped Tier A/B and module-contributed RBAC), and current
   phase status.

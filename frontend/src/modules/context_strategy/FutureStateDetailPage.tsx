@@ -1,19 +1,18 @@
 /**
  * Module: modules/context_strategy/FutureStateDetailPage
  *
- * A single Future State's full detail (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.2) — full field display (including `target_date`),
+ * A single Future State's full detail — full field display (including `target_date`),
  * current lifecycle status, version history, comments, attachments, and
  * relationships, plus every lifecycle action. Mirrors
  * `StrategyDetailPage.tsx`'s exact structure field-for-field, since Future
  * State's backend is itself "an exact structural mirror" of Strategy's
- * (Phase 2's own scope text) — same seven-state lifecycle, same lock rule
+ * — same seven-state lifecycle, same lock rule
  * (past `UNDER_REVIEW`), same owner/approver RBAC shape, same comments/
  * attachments/relationships sections.
  *
  * **Scope-aware, Decided by: Agent**, for the exact same reason
- * `StrategyDetailPage.tsx` is: a Future State is org- **or** project-scoped
- * (Phase 0 Q1's follow-on), so this one component serves both
+ * `StrategyDetailPage.tsx` is: a Future State is org- **or** project-scoped,
+ * so this one component serves both
  * `ProjectFutureStatesPage.tsx`'s row-click navigation and
  * `OrgFutureStatesPanel.tsx`'s own (`module.ts`'s `globalRoutes`, org-scoped,
  * not gated by any one project's own enabled-modules list).

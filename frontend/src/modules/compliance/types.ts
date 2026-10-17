@@ -2,18 +2,17 @@
  * Module: modules/compliance/types
  *
  * TypeScript mirrors of the Compliance Module's org-router Pydantic schemas
- * (backend/app/modules/compliance/schemas.py) that Phase 12's org-level
+ * (backend/app/modules/compliance/schemas.py) that the org-level
  * management UI needs — standards, versions, the requirement tree, required
  * actions, the two extensible vocabularies (action types, mapping
  * relationship types), cross-standard requirement mappings, and the
- * version-diff response (Phase 11, §27) — plus every enum this module's UI
+ * version-diff response (§27) — plus every enum this module's UI
  * renders and its matching `*_LABEL` map.
  *
  * Kept local to this module rather than added to `frontend/src/api/types.ts`
- * — a deliberate judgment call (see docs/compliance-module-plan.md's "Phase
- * 12 notes"): this codebase's existing convention puts every feature's
+ * — a deliberate judgment call: this codebase's existing convention puts every feature's
  * response shapes in the one central `api/types.ts` file, but Compliance is
- * the first genuine Tier A *installed module* (Phase 3), and keeping its own
+ * the first genuine Tier A *installed module*, and keeping its own
  * response-type surface, including its own enums/labels, inside its own
  * module directory matches that mechanism's actual intent ("an installed
  * module directly imports and uses real shared components... genuinely part
@@ -33,7 +32,7 @@ import type { OrgUser, Principal } from "../../api/types";
 
 /** Shared "id -> display name" lookup for the Project Compliance View's own
  * assignee/actor/owner fields — mirrors `RequirementDetailPage.tsx`'s own
- * inline `userDisplayName` helper, pulled out here since several Phase 13
+ * inline `userDisplayName` helper, pulled out here since several
  * components need the same lookup over the same `orgUsers` list fetched
  * once at `ProjectCompliancePage` and threaded down. */
 export function userDisplayName(orgUsers: OrgUser[], userId: string | null | undefined): string {
@@ -41,7 +40,7 @@ export function userDisplayName(orgUsers: OrgUser[], userId: string | null | und
   return orgUsers.find((u) => u.user_id === userId)?.display_name ?? userId;
 }
 
-// Compliance module Phase 5/6/12 (compliance-module-plan.md) —
+// Compliance module —
 // `ComplianceStandardVersion.status`'s lifecycle (backend
 // `app.modules.compliance.enums.ComplianceStandardVersionStatus`).
 export type ComplianceStandardVersionStatus = "draft" | "published" | "retired";
@@ -50,7 +49,7 @@ export const COMPLIANCE_STANDARD_VERSION_STATUS_LABEL: Record<ComplianceStandard
   published: "Published",
   retired: "Retired",
 };
-// Compliance module Phase 7/8/9/10/13 — the project-assessment-facing
+// The project-assessment-facing
 // enums (backend `app.modules.compliance.enums`).
 export type ComplianceStatus =
   | "not_started" | "in_progress" | "compliant" | "non_compliant" | "blocked" | "pending_review" | "rejected";
@@ -124,8 +123,7 @@ export const COMPLIANCE_OVERALL_STATE_LABEL: Record<ComplianceOverallState, stri
 };
 
 /** Three-state "Non-compliant" risk label shared by `ProjectCompliancePage`'s
- * list column and `ProjectComplianceDetail`'s badge (compliance-module-plan.md
- * Phase 31). Never collapses "nobody has assessed this yet" into the same
+ * list column and `ProjectComplianceDetail`'s badge. Never collapses "nobody has assessed this yet" into the same
  * reading as "assessed and found compliant" — a status with `not_yet_assessed`
  * true renders as "Unknown", not "No", even though `has_non_compliant` is
  * also false in that case. */
@@ -136,14 +134,14 @@ export function complianceRiskLabel(status: { has_non_compliant: boolean; not_ye
   return "No";
 }
 
-// Compliance module Phase 20 — `ComplianceStandard.applicability_default`
+// `ComplianceStandard.applicability_default`
 // (backend `app.modules.compliance.enums.ComplianceStandardApplicabilityDefault`).
 // Kept in this module-local file rather than `frontend/src/api/types.ts`,
 // same deliberate judgment call as every other Compliance enum/label map
 // above (see this file's own module docstring) — flagged here explicitly
 // since CLAUDE.md's general label-map rule names `api/types.ts` as the
 // default location, but this module's own established self-containment
-// convention (Phase 12 notes) is the more specific, already-recorded rule
+// convention is the more specific, already-recorded rule
 // that applies to Compliance's own enums.
 export type ComplianceStandardApplicabilityDefault = "opt_in" | "applies_to_all_projects";
 export const COMPLIANCE_STANDARD_APPLICABILITY_DEFAULT_LABEL: Record<ComplianceStandardApplicabilityDefault, string> = {
@@ -169,7 +167,7 @@ export interface ComplianceStandard {
   updated_at: string;
 }
 
-// Compliance module Phase 21 — outcome of `POST .../standards/import`
+// Outcome of `POST .../standards/import`
 // (backend `StandardImportResult`). `standard` is `null` only when
 // `skipped` is true (the caller chose "skip" on a reference collision).
 export interface StandardImportResult {
@@ -178,7 +176,7 @@ export interface StandardImportResult {
   warnings: string[];
 }
 
-// Compliance module Phase 20 — a project excepted out of a standard's
+// A project excepted out of a standard's
 // `applies_to_all_projects` default (backend
 // `ComplianceStandardDefaultExclusionOut`).
 export interface ComplianceStandardDefaultExclusion {
@@ -192,7 +190,7 @@ export interface ComplianceStandardDefaultExclusion {
   updated_at: string;
 }
 
-// Compliance module Phase 22 — standard-scoped RBAC (backend
+// Standard-scoped RBAC (backend
 // `ComplianceOrgSettingsOut`/`ComplianceStandardMembersOut`/
 // `ComplianceStandardMemberOut`).
 export type ComplianceStandardRoleKey = "standards_manager" | "standards_contributor";
@@ -213,8 +211,8 @@ export interface ComplianceStandardMember {
   role_keys: ComplianceStandardRoleKey[];
 }
 
-// Compliance module Phase 30 — a group-based grant on a standard
-// (`GroupModuleRole`, module system Phase 30's generic group-grant
+// A group-based grant on a standard
+// (`GroupModuleRole`, the generic group-grant
 // mechanism), the group-grant sibling of `ComplianceStandardMember`.
 // `member_count` is resolved live by the backend, not stored.
 export interface ComplianceStandardGroupMember {
@@ -238,7 +236,7 @@ export interface ComplianceStandardVersion {
   status: ComplianceStandardVersionStatus;
   effective_date: string | null;
   change_note: string;
-  /** Phase 24 — the version's own current standing, distinct from
+  /** The version's own current standing, distinct from
    * `change_note` (what changed *relative to the previous version*).
    * Editable at any lifecycle stage — see `VersionWorkspace.tsx`. */
   summary: string;
@@ -261,7 +259,7 @@ export interface ComplianceRequirement {
   reasoning: string;
   sort_order: number;
   created_by: string;
-  /** Phase 24 — post-publish clarification tracking (see
+  /** Post-publish clarification tracking (see
    * `RequirementTree.tsx`'s "Clarify" action). `clarification_count` is 0
    * and the rest `null`/`""` for a requirement never clarified. */
   clarification_count: number;
@@ -372,9 +370,9 @@ export interface ComplianceRequirementNode extends ComplianceRequirement {
   children: ComplianceRequirementNode[];
 }
 
-// --- Phase 13: Project Compliance View (project_router.py) -----------------------
+// --- Project Compliance View (project_router.py) -----------------------
 //
-// Mirrors of the Phase 7-11 project-scoped Pydantic schemas
+// Mirrors of the project-scoped Pydantic schemas
 // (backend/app/modules/compliance/schemas.py) that the Project Compliance
 // View needs — assignment, per-requirement assessment/applicability,
 // required-action assessments, §20 status summaries, evidence, approvals,
@@ -435,7 +433,7 @@ export interface ComplianceRequiredActionAssessment {
 export interface ProjectComplianceStatus {
   project_compliance_id: string;
   project_id: string;
-  /** Added Phase 14 — see `schemas.py::ProjectComplianceStatusOut`'s own
+  /** See `schemas.py::ProjectComplianceStatusOut`'s own
    * docstring for why this schema (uniquely among this module's
    * cross-assignment schemas) is shared unmodified between project and
    * org scope rather than getting a separate `Org*` variant. */
@@ -458,7 +456,7 @@ export interface ProjectComplianceStatus {
    * binary "non-compliant?" affordance from `has_non_compliant` alone
    * must check this first, so "nobody has assessed this yet" is never
    * displayed the same way as "assessed and found compliant"
-   * (compliance-module-plan.md Phase 31). */
+   *. */
   not_yet_assessed: boolean;
   overall_compliance_state: ComplianceOverallState;
   overall_approval_state: ComplianceApprovalState;
@@ -547,7 +545,7 @@ export interface ComplianceAuditEvent {
 
 export interface ComplianceReview {
   id: string;
-  /** Resolved owning standard (Phase 40) regardless of whether this review
+  /** Resolved owning standard regardless of whether this review
    * is scoped directly to a standard or through one project's assignment —
    * see `schemas.py::ComplianceReviewOut`'s own docstring. */
   standard_id: string | null;
@@ -572,17 +570,17 @@ export interface ComplianceReview {
   linked_evidence_ids: string[];
 }
 
-// --- Phase 14: Org Compliance View + Dashboard (router.py's org-wide
+// --- Org Compliance View + Dashboard (router.py's org-wide
 // aggregation endpoints) ---------------------------------------------------------
 //
-// `OutstandingRequiredAction` is new in Phase 14 and used unmodified at both
+// `OutstandingRequiredAction` is used unmodified at both
 // project and org scope (it carries `project_id`/`project_name` from the
 // start — see `schemas.py::OutstandingRequiredActionOut`'s own docstring).
 // `OrgNonCompliantRequirement`/`OrgPendingApproval`/`OrgExpiringEvidence`
 // extend their pre-existing project-scoped counterparts with the same two
 // fields, mirroring the backend's `Org*Out` subclasses rather than
 // retrofitting `NonCompliantRequirement`/`PendingApproval`/`ComplianceEvidence`
-// (which Phase 12/13 UI already consumes unchanged). `OrgReviewDue` wraps
+// (which the project-scoped UI already consumes unchanged). `OrgReviewDue` wraps
 // `ComplianceReview` rather than extending it flat, since one standard-level
 // review can legitimately be "due" for more than one project at once.
 

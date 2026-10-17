@@ -22,8 +22,7 @@ const CUSTOM_FIELD_COLUMN_PREFIX = "cf_";
 
 /**
  * Fields that can be set to one fixed value applied to every imported row,
- * instead of always being mapped from a CSV column (roadmap item 507 — see
- * docs/ux-audit-2026-08.md "CSV bulk import: no per-field fixed values").
+ * instead of always being mapped from a CSV column.
  * Deliberately narrow, matching the audit's own reasoning: component/
  * category/level/target_version are the fields a batch is genuinely likely
  * to share one value across every row (e.g. "this whole CSV is one
@@ -155,12 +154,12 @@ export interface CsvImportWizardHandle {
  * (it's already canonically headed and directly re-importable).
  *
  * Once a file is picked, the column-mapping/preview step (everything past
- * the trigger row) opens in a `Modal` (`size="lg"`, roadmap item 506) —
+ * the trigger row) opens in a `Modal` —
  * previously an always-inline `<div className="card stack">` block. This
  * is a container move only; the mapping/preview logic and both backend
  * endpoints are otherwise unchanged. `component_prefix`/`category_prefix`/
  * `level`/`target_version` additionally support a per-field "same value for
- * every row" toggle (roadmap item 507, `FIXED_VALUE_FIELDS` above) —
+ * every row" toggle —
  * `name`/`reasoning`/`clarification`/`description` stay column-only, since
  * a batch import is never uniform on those.
  */

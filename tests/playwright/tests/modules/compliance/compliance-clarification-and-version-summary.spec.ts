@@ -4,8 +4,7 @@ import { loginAs, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
- * Job to be done: Compliance Module Phase 24 (docs/compliance-module-plan.md)
- * — post-publish clarification edits to a requirement, and a standard
+ * Job to be done: post-publish clarification edits to a requirement, and a standard
  * version's always-editable `summary` field.
  *
  * `orgAdminAlphaBeta` is used for the same reason
@@ -16,7 +15,7 @@ import { createStandardWithVersion } from "./helpers";
  * named with a per-run timestamp suffix, per this repo's standing test-
  * idempotency rule.
  */
-test.describe("Compliance Module: post-publish clarification + version summary (Phase 24)", () => {
+test.describe("Compliance Module: post-publish clarification + version summary", () => {
   test("clarify a requirement on a published version, and edit the version summary at every lifecycle stage", async ({ page }) => {
     const suffix = Date.now();
     const reference = `E2E-24-${suffix}`;

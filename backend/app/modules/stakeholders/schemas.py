@@ -2,10 +2,10 @@
 Module: modules.stakeholders.schemas
 
 Pydantic request/response schemas for the Stakeholders & Personas module's
-org- and project-scoped routers (Phase 1.1: Persona, persona types, weight
-overrides, comments; Phase 1.2: Stakeholder, its representation links and the
-cadence hint; Phase 2: Stakeholder Need and its links; Phase 3c: Stakeholder
-Groups; Phase 4: Engagements and the research extras). Type-vocabulary and file schemas are shared by both artefacts.
+org- and project-scoped routers (Persona, persona types, weight
+overrides, comments; Stakeholder, its representation links and the
+cadence hint: Stakeholder Need and its links: Stakeholder
+Groups: Engagements and the research extras). Type-vocabulary and file schemas are shared by both artefacts.
 
 `PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the
 request body change, so a nullable field (weight, owner, champion, type,
@@ -182,7 +182,7 @@ class PersonaCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Stakeholder (Phase 1.2) --------------------------------------------------
+# --- Stakeholder --------------------------------------------------
 
 
 class StakeholderCreate(BaseModel):
@@ -207,7 +207,7 @@ class StakeholderCreate(BaseModel):
 
 
 class StakeholderFromUserCreate(BaseModel):
-    """"Create stakeholder from org user" (resolution 13): name and contact
+    """"Create stakeholder from org user": name and contact
     info are prefilled from the user; the rest is optional."""
 
     user_id: UUID
@@ -295,7 +295,7 @@ class StakeholderOut(BaseModel):
     hidden_override: bool | None = None
     hidden_source: str | None = None
     groups: list[StakeholderGroupRefOut] = Field(default_factory=list)
-    # Project router only: the date of the project's latest engagement the stakeholder took part in (Phase 4).
+    # Project router only: the date of the project's latest engagement the stakeholder took part in.
     last_engaged: date | None = None
 
 
@@ -343,7 +343,7 @@ class StakeholderCommentOut(BaseModel):
 
 
 class CadenceHintOut(BaseModel):
-    """The power/interest read-out for a pair of levels (resolution 21):
+    """The power/interest read-out for a pair of levels:
     `quadrant` is `None` unless both levels are set; `suggested_cadence` is a
     hint only and never applied automatically."""
 
@@ -373,7 +373,7 @@ StakeholderCommentCreate = PersonaCommentCreate
 StakeholderCommentUpdate = PersonaCommentUpdate
 
 
-# --- Stakeholder Need (Phase 2) -----------------------------------------------
+# --- Stakeholder Need -----------------------------------------------
 
 
 class NeedCreate(BaseModel):
@@ -484,7 +484,7 @@ NeedCommentCreate = PersonaCommentCreate
 NeedCommentUpdate = PersonaCommentUpdate
 
 
-# --- Relationships (Phase 3) -------------------------------------------------
+# --- Relationships -------------------------------------------------
 
 
 class RelationshipKindOut(BaseModel):
@@ -538,7 +538,7 @@ class IncomingRelationshipOut(BaseModel):
     scope: str
 
 
-# --- Stakeholder Groups (Phase 3c) --------------------------------------------
+# --- Stakeholder Groups --------------------------------------------
 
 
 class StakeholderGroupCreate(BaseModel):
@@ -610,7 +610,7 @@ class GroupFromTextOut(BaseModel):
     memberships_added: int
 
 
-# --- Engagements (Phase 4) ------------------------------------------------------
+# --- Engagements ------------------------------------------------------
 
 
 class EngagementCreate(BaseModel):

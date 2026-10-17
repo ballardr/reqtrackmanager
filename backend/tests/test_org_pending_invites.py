@@ -1,5 +1,4 @@
-"""Tests for the org-level pending-invite endpoints (Phase A, follow-up UX
-batch — docs/decisions.md's "Org-level invites" entry):
+"""Tests for the org-level pending-invite endpoints (docs/decisions.md's "Org-level invites" entry):
 
   - `GET /orgs/{id}/pending-invites` — org-only (`project_id IS NULL`)
     unaccepted `PendingInvite`s.
@@ -8,8 +7,8 @@ batch — docs/decisions.md's "Org-level invites" entry):
 
 Mirrors `test_invites_and_external_users.py`'s coverage of the equivalent
 project-level endpoints (`routers/projects.py`'s `list_pending_project_
-invites`/`resend_pending_project_invite`), which this batch's Phase A used
-as its template.
+invites`/`resend_pending_project_invite`), which these used
+as their template.
 
 Also covers `GET /orgs/{id}/users`'s `org_role` filter (already implemented
 server-side but previously unwired from the frontend and untested)."""
@@ -281,8 +280,7 @@ def test_org_pending_invite_endpoints_are_gated_at_org_admin_tier(client, admin_
 
 
 def test_org_pending_invite_endpoints_reject_a_server_admin_with_no_role_in_the_org(client, admin_token):
-    """Hardening-pass regression test (docs/decisions.md's I-M-05 entry
-    addendum): these three endpoints previously reused
+    """Hardening-pass regression test (docs/decisions.md's I-M-05 entry): these three endpoints previously reused
     `require_org_admin_or_server_admin` — the single, narrow carve-out
     documented for `create_org_user` only (bootstrapping the first user of
     a brand-new org). A server admin with no genuine role in an
@@ -321,8 +319,8 @@ def test_org_pending_invite_endpoints_reject_a_server_admin_with_no_role_in_the_
 
 def test_list_org_users_filters_by_org_role(client, admin_token):
     """`GET /orgs/{id}/users?org_role=...` already existed server-side but
-    had no frontend control wired up to it and no test pinning it — Phase A
-    both wires it up (Org Users' new role `FilterField`) and pins the
+    had no frontend control wired up to it and no test pinning it — the org-level
+    work both wires it up (Org Users' new role `FilterField`) and pins the
     server-side behaviour here."""
     org, org_admin_token = create_org_admin_in(client, admin_token, "RoleFilterOrg")
     create_org_user(client, org_admin_token, org["id"], "creator@rolefilter.example.com", role="project_creator")

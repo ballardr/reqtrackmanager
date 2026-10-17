@@ -2,7 +2,7 @@
 (docs/decisions.md) — `tests/conftest.py` must always route this test suite
 at its own dedicated `reqtrack_pytest_test` database (or, under
 `pytest-xdist`, a `reqtrack_pytest_test_gw*` database per worker — see
-Phase 1 of docs/platform-review-2026-09-plan.md), never at `reqtrack_test`
+), never at `reqtrack_test`
 (the database `tests/container/docker-compose.yml`'s `backend` service —
 the dev/demo stack and Playwright's target backend — uses), regardless of
 what DATABASE_URL the process inherited from the environment.

@@ -1,5 +1,4 @@
-"""Tests for the artefact link graph (docs/plans/platform-enhancements-2026-10-plan.md
-Phase 5): link-type `flow`, `services.link_graph` and
+"""Tests for the artefact link graph: link-type `flow`, `services.link_graph` and
 `GET /projects/{id}/artefacts/{type}/{id}/link-graph`.
 
 Covers flow resolution for each `flow` value from both ends of a link, untyped

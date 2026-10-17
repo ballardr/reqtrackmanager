@@ -7,8 +7,8 @@ import { API_BASE_URL, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 6's exit criteria — Playwright e2e coverage for the Stakeholders &
+ * Job to be done:
+ * Playwright e2e coverage for the Stakeholders &
  * Personas reports S1-S5 in the shared Reports UI: the project report picker
  * lists all five, the S1 power/interest grid places each Stakeholder in its
  * quadrant and links to it, the S1/S4 group controls re-run the report, and

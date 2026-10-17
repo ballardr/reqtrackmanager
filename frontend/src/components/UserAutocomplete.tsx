@@ -33,8 +33,7 @@ type Option =
  *   that specific project (not just org admins) — see the backend
  *   endpoint's own docstring for why that fact is gated at all.
  *
- * Optional third match kind (PR5 of the members/groups directory rework
- * plan): pass `groups` (and `onSelectGroup`) to also match org groups by
+ * Optional third match kind: pass `groups` (and `onSelectGroup`) to also match org groups by
  * name, always client-side against the passed-in array — mirroring the
  * default (no-`organizationId`) user-matching logic exactly, regardless of
  * whether user matching itself is running client- or server-side in this
@@ -49,7 +48,7 @@ type Option =
  * reasonable stand-in for "a group of users," and isn't already claimed by
  * another concept in this codebase's icon usage.
  *
- * Optional fourth match kind (PR7): pass `projectGroups` (and
+ * Optional fourth match kind: pass `projectGroups` (and
  * `onSelectProjectGroup`) to also match this project's own `ProjectGroup`s
  * by name, same client-side substring match. A project group is a
  * genuinely different concept from an org group — local to this one
@@ -79,13 +78,13 @@ export function UserAutocomplete({
   users: OrgUser[];
   onSelect: (userId: string) => void;
   onSelectExternal?: (email: string) => void;
-  /** Org groups to also match by name (PR5 — see module docstring). Omit to
+  /** Org groups to also match by name (see module docstring). Omit to
    * keep this instance user-only, unchanged from before this prop existed. */
   groups?: OrgGroup[];
   /** Required alongside `groups` — called with the matched group's id
    * instead of `onSelect` when a group option is chosen. */
   onSelectGroup?: (groupId: string) => void;
-  /** This project's own `ProjectGroup`s to also match by name (PR7 — see
+  /** This project's own `ProjectGroup`s to also match by name (see
    * module docstring). Omit to keep this instance without project-group
    * matching. */
   projectGroups?: ProjectGroup[];
@@ -162,7 +161,7 @@ export function UserAutocomplete({
           .filter((u) => u.display_name.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle))
           .slice(0, 8);
 
-  // Group matches (PR5 — see module docstring): always client-side against
+  // Group matches (see module docstring): always client-side against
   // the passed-in `groups` array, mirroring the default user-matching
   // branch above exactly (substring match on the one text field a group
   // has, `name`), regardless of whether `matches` above is running
@@ -170,7 +169,7 @@ export function UserAutocomplete({
   const groupMatches =
     groups && needle.length > 0 ? groups.filter((g) => g.name.toLowerCase().includes(needle)).slice(0, 8) : [];
 
-  // Project-group matches (PR7 — see module docstring): same client-side
+  // Project-group matches (see module docstring): same client-side
   // substring match as org groups above, against the passed-in
   // `projectGroups` array.
   const projectGroupMatches =

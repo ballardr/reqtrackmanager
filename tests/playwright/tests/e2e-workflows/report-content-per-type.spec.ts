@@ -10,7 +10,7 @@ installCleanupHook();
  * of each report type separately, at three levels (organisation defaults, a
  * report template, a project), and a project with nothing of its own inherits
  * its parent project's, then the organisation's — with the editor saying where
- * each blank field comes from (Phase 10 of the platform enhancements plan).
+ * each blank field comes from.
  *
  * Runs in a disposable organisation (nothing here edits shared seed data), with
  * a parent and a child project.

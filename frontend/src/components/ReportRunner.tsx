@@ -1,7 +1,7 @@
 /**
  * Module: components/ReportRunner
  *
- * Runs one catalogue report and shows it (Module 1 Phase 13): the generated
+ * Runs one catalogue report and shows it: the generated
  * parameter form, the on-screen result, and PDF/Word/CSV downloads. Everything
  * that is the same for every report lives here; only the result view varies,
  * and that is resolved generically (`getReportView`) so core never imports a

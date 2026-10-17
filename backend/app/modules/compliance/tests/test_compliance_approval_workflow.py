@@ -1,6 +1,5 @@
-"""Tests for the Compliance Module's Phase 9 Approval / Sign-off Workflow
-(docs/compliance-module-plan.md Phase 9; docs/Compliance_Module_
-Requirements.md §12, §16, §27): the `submit-for-approval`/`approve`/
+"""Tests for the Compliance Module's Approval / Sign-off Workflow
+(§12, §16, §27): the `submit-for-approval`/`approve`/
 `reject` state-machine actions, the automatic transitions triggered by a
 fresh assessment (`update_requirement_assessment`), an applicability change
 (`update_requirement_applicability`), and a material evidence change

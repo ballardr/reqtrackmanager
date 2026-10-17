@@ -1,26 +1,24 @@
 """
 Module: modules.risk_management.models
 
-Data model for the Risk Management module (docs/plans/module-03-risk-
-management-plan.md Phase 1):
+Data model for the Risk Management module:
 
 - `Risk` / `RiskVersion` — identity row plus temporal content snapshots, the
-  same split `StakeholderNeed`/`StakeholderNeedVersion` use (Phase 0
-  resolution 5: full history). A risk is always project-scoped. Status, the
+  same split `StakeholderNeed`/`StakeholderNeedVersion` use (full history). A risk is always project-scoped. Status, the
   inherent/residual scoring levels and the owner are versioned content, so a
   reassessment is a content change like any other.
 - `RiskTypeDefinition` / `ProjectRiskType` — the two-tier type vocabulary
-  (resolution 2): an org base list plus per-project rename/reorder/disable/add,
+  (an org base list plus per-project rename/reorder/disable/add,
   the same shape as Persona/Stakeholder types. `RiskVersion` references a
   project type row (a passthrough row is created the first time an org type is
   chosen), so it carries one type column, not two.
-- `RiskTreatmentAssessment` — the verdict on one treatment link (Phase 3,
-  resolution 3), kept here so `ArtefactLink` needs no risk-only column.
+- `RiskTreatmentAssessment` — the verdict on one treatment link,
+  kept here so `ArtefactLink` needs no risk-only column.
 - `RiskComment` / `RiskCommentFile` / `RiskFile` — module-local comment and
-  attachment tables (resolution 8), since extending the core
+  attachment tables, since extending the core
   `ReviewTargetType` enum would be a per-module edit to a core file.
 - `RiskReview` — an immutable record of one periodic review with a snapshot of
-  the ratings it was made against (Phase 4), so history survives later changes
+  the ratings it was made against, so history survives later changes
   to the matrix.
 
 The inherent and residual ratings are never stored: they are derived on read

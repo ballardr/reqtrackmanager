@@ -10,8 +10,7 @@
  * are the shared `RecordDiscussion`.
  *
  * An engagement is project-scoped, edited in place and has no lifecycle or
- * version history; the one irreversible action is "Delete permanently" (Phase 0
- * resolution 15), a tier-2 `ConfirmDialog` that requires typing the exact title
+ * version history; the one irreversible action is "Delete permanently", a tier-2 `ConfirmDialog` that requires typing the exact title
  * and says what goes with it. Every mutating control always renders regardless of
  * role; the backend enforces `engagement_owner` and a 403 surfaces as a toast.
  * The retain-until date only flags the engagement as due for review; nothing is

@@ -2,153 +2,103 @@
 Module: modules.context_strategy.module
 
 Registers the Context & Strategy module into the modular feature system's
-registry (docs/plans/module-01-context-and-strategy-plan.md Phases 1–2)
-via `MODULE_DEFINITION`, mirroring `app.modules.decisions.module`'s own
-registration shape.
+registry via `MODULE_DEFINITION`, mirroring `app.modules.decisions.module`'s
+own registration shape.
 
-Four module-contributed roles are declared, not additions to `OrgRole`/
-`ProjectRole`: `strategy_owner`/`strategy_approver` (project-scoped, for a
-project-scoped Strategy) and `org_strategy_owner`/`org_strategy_approver`
-(org-scoped, for an org-scoped Strategy) — Strategy is the first module in
-this codebase whose own artefact is scoped at *either* level (Phase 0 Q2),
-so it is also the first to need both an org- and a project-scoped flavour
-of the same conceptual "owner"/"approver" role pair, rather than one or the
-other the way every other module-with-roles so far has picked exactly one.
-Phase 2 (Future State) adds the same four-role shape a second time —
-`future_state_owner`/`future_state_approver` (project) and
-`org_future_state_owner`/`org_future_state_approver` (org) — for the
-standalone Future State artefact, per Phase 0 Q1's follow-on that Future
-State's roles mirror Strategy's in full.
+Roles (module-contributed, not additions to `OrgRole`/`ProjectRole`):
+- Strategy, Future State and Guiding Principle are scoped at *either* level,
+  so each has both an org- and a project-scoped owner/approver pair:
+  `strategy_owner`/`strategy_approver` and `org_strategy_owner`/
+  `org_strategy_approver`, `future_state_owner`/`future_state_approver` and
+  `org_future_state_owner`/`org_future_state_approver`,
+  `guiding_principle_owner`/`guiding_principle_approver` and
+  `org_guiding_principle_owner`/`org_guiding_principle_approver`. Strategy
+  is the first module whose own artefact is scoped at either level, so it is
+  also the first to need both flavours of the same conceptual role pair,
+  rather than one or the other. Future State's roles mirror Strategy's in
+  full.
+- Pain Point has no org scope (§6), so there is a single
+  project-scoped `pain_point_manager` (gating every decide-tier action) and
+  an org-scoped `pain_point_type_admin` gating `PainPointTypeDefinition`
+  CRUD only (mirroring `modules.compliance`'s `compliance_manager`
+  module-role-for-org-admin-config pattern; `PainPointTypeDefinition` is
+  module-owned, so its admin gate is a module role too, composing with
+  `OrgRole.ORG_ADMIN` automatically via `user_satisfies_module_role`). It also
+  covers the org-level scoring configuration.
+- Open Question is project-scoped only and has **two** roles —
+  `open_question_owner` (assign/prioritise/change-status/close, §9.4's
+  "Question Owner / Project Manager" tier) and `open_question_resolver` (the
+  `resolve` transition only, §9.4's separate "Decision Maker" tier) —
+  because §9.4 names three distinct permission tiers
+  (project members; "Question Owner / Project Manager"; "Decision Maker"),
+  unlike Pain Point's §6.5 two-tier split. **Decided by: Agent**; see
+  `docs/decisions.md` for the full reasoning.
+- `org_reports_viewer` (org-scoped) gates the organisation-wide reports; org
+  admins hold it by default.
 
-`get_router()` returns the org-scoped `router.py` (Decision Template-style
-CRUD for organisation-scoped Strategies); `get_project_router()` returns
-`project_router.py` (the project-scoped equivalent) — both real, working
-HTTP surfaces from day one, since this phase (unlike Decision Management's
-own Phase 1) combines what that module's plan split across its Phase 1
-(data model) and Phase 4 (backend API) into one phase's scope.
-`resolve_file_owner_project_id` tries Strategy's own resolution first, then
-Future State's, returning whichever resolves non-`None` first — this
-module now has two project-scoped artefact types whose files need owning-
-project resolution through this one shared hook. See `service.
-resolve_strategy_file_project_id`/`resolve_future_state_file_project_id`'s
-own docstrings for why the org-scoped half of either artefact doesn't need
-it (`is_org_resource=True` uploads instead).
+`get_router()` returns the org-scoped `router.py` (CRUD for
+organisation-scoped Strategies, Future States and Guiding Principles, plus
+the Pain Point type vocabulary); `get_project_router()` returns
+`project_router.py` (the project-scoped equivalents and Pain Points and Open
+Questions). `resolve_file_owner_project_id` tries each artefact type's
+resolver in sequence (Strategy, Future State, Pain Point, Guiding Principle,
+Open Question) and returns whichever resolves non-`None` first. See
+`service.resolve_strategy_file_project_id` and its siblings for why the
+org-scoped half of an artefact doesn't need it (`is_org_resource=True`
+uploads instead).
 
-`artefact_types=(STRATEGY_ARTEFACT_TYPE, FUTURE_STATE_ARTEFACT_TYPE,
-PAIN_POINT_ARTEFACT_TYPE)` is registered now even though Phase 6
-(cross-artefact relationship wiring) is out of this phase's scope — so
-Phase 6 doesn't also need a core-file edit later, following Decision
-Management's own precedent (`DECISION_ARTEFACT_TYPE`) exactly.
+All five artefact types are registered in `artefact_types` so the generic
+relationship layer needs no core-file edit, following Decision Management's
+own precedent (`DECISION_ARTEFACT_TYPE`). Five sub-components (`"strategy"`,
+`"future_state"`, `"pain_point"`, `"guiding_principle"`, `"open_question"`)
+are individually toggleable.
 
-`implemented=True` — Phase 1's own testing bar (full backend suite green,
-`ruff check` clean, endpoint coverage) is met, and a real, working API
-exists, even though no frontend does yet (Phase 7). `default_enabled`
-stays `False`: an organisation must opt in explicitly until a UI exists to
-actually use it, matching Decision Management's own Phase 4 posture.
-
-No MCP tools are declared this phase — that is explicitly Phase 6's job
-per this module's own plan (declared alongside the relationship endpoints,
-once the full REST surface across all five of this module's eventual
-artefact types is complete), not a per-phase addition the way some other
-modules' MCP tools were.
-
-Phase 3 (Pain Points) adds a third sub-component (`"pain_point"`), a
-project-scoped `pain_point_manager` role (Pain Point has no org scope of
-its own — source overview §6 — so, unlike Strategy/Future State, there is
-no `org_pain_point_manager` counterpart), and an org-scoped `pain_point_
-type_admin` role gating `PainPointTypeDefinition` CRUD only (mirroring
-`modules.compliance`'s `compliance_manager` module-role-for-org-admin-
-config pattern — checked before registering a new role, per this phase's
-own brief, rather than reusing core `OrgRole.ORG_ADMIN` directly the way
-`routers.orgs.taxonomies`' core-owned `RequirementLinkTypeDefinition`
-CRUD does; `PainPointTypeDefinition` is module-owned, so its admin gate is
-a module role too, composing with `OrgRole.ORG_ADMIN` automatically via
-`user_satisfies_module_role` the same way `compliance_manager` does).
-`resolve_file_owner_project_id` now tries all three artefact types'
-resolvers in sequence (Strategy, then Future State, then Pain Point).
 `on_org_created=_seed_org_defaults` seeds each new organisation's default
-Market/User/Operator Pain Point types (§6.2) — added only in this phase,
-since Phase 1/2 had no org-scoped default vocabulary of their own to seed;
-mirrors `modules.compliance`'s own `_seed_org_defaults`/`on_org_created`
-hook exactly (module boundary cleanup, 2026-09-08 — see that hook's own
-docstring), not a direct import of `service.seed_default_pain_point_types`
-from the core org-creation router.
+Market/User/Operator Pain Point types (§6.2); it mirrors `modules.compliance`'s
+own `_seed_org_defaults`/`on_org_created` hook exactly, not a direct import of
+`service.seed_default_pain_point_types` from the core org-creation router.
 
-Phase 4 (Guiding Principles) adds a fourth sub-component (`"guiding_
-principle"`) and a fourth four-role pair — `guiding_principle_owner`/
-`guiding_principle_approver` (project) and `org_guiding_principle_owner`/
-`org_guiding_principle_approver` (org) — back to the Strategy/Future State
-owner+approver shape (Guiding Principle is org/project dual-scoped, unlike
-Pain Point). `resolve_file_owner_project_id` now tries all four artefact
-types' resolvers in sequence (Strategy, Future State, Pain Point, then
-Guiding Principle).
+`implemented=True`; `default_enabled` stays `False`: an organisation must opt
+in explicitly.
 
-Phase 5 (Open Questions) adds a fifth sub-component (`"open_question"`) and
-**two** project-scoped-only roles — `open_question_owner` (assign/
-prioritise/change-status/close, §9.4's "Question Owner / Project Manager"
-tier) and `open_question_resolver` (the `resolve` transition only, §9.4's
-separate "Decision Maker" tier) — a genuinely different shape from both of
-this module's existing precedents: not Pain Point's single-role model
-(`pain_point_manager` gates every decide-tier action), and not Strategy/
-Future State/Guiding Principle's dual-scope owner+approver pair (Open
-Question has no organisation scope at all — see `models.OpenQuestion`'s own
-docstring). Source overview §9.4 names three distinct permission tiers
-(project members; "Question Owner / Project Manager"; "Decision Maker"),
-unlike Pain Point's §6.5 two-tier split, which is why this phase adds two
-roles rather than reusing Pain Point's one-role-plus-FGAC-fallback shape for
-its own "decide"-tier action — **Decided by: Agent**, the specific judgment
-call this phase's own brief flagged; see `docs/decisions.md`'s dated entry
-for this phase for the full reasoning. `resolve_file_owner_project_id` now
-tries all five artefact types' resolvers in sequence (Strategy, Future
-State, Pain Point, Guiding Principle, then Open Question).
-
-Phase 6 (Cross-artefact relationships) adds `mcp_tools` — this module's
-first MCP tool declarations, per this plan's own text: the whole-module
-list/get read tools it named as candidates back in Phase 1-5, plus (per the
-2026-09-22 write-enabled-MCP decision — `docs/decisions.md`'s "Compliance
-MCP write tools + generalized AI approval gate" entry, extended to this
-module the same way) create/update tools for all five artefact types,
-create-relationship/list-relationship tools, the three supersession-
-creation tools, every non-decisive lifecycle-transition tool (propose/
-submit-for-review/send-back/supersede/retire/activate, Pain Point's
+`mcp_tools` (per the 2026-09-22 write-enabled-MCP decision —
+`docs/decisions.md`'s "Compliance MCP write tools + generalized AI approval
+gate" entry, extended to this module the same way): the whole-module list/get
+read tools, create/update tools for all five artefact types,
+create-relationship/list-relationship tools, the three supersession-creation
+tools, every non-decisive lifecycle-transition tool
+(propose/submit-for-review/send-back/supersede/retire/activate, Pain Point's
 triage/reject/mark-duplicate/accept/address/close, Open Question's
 investigate/mark-ready-for-decision/withdraw), and five approve/decide-tier
-tools (`approve_strategy`/`approve_future_state`/`activate_guiding_
-principle`/`retire_guiding_principle`/`resolve_open_question`) gated by
-`app.services.rbac.require_ai_approvals_enabled` when reached through MCP
-— see `service.py`'s own Phase 6 docstring section ("MCP tools and the
-`require_ai_approvals_enabled` gate") for the full reasoning, especially
-why Guiding Principle's own gated pair is `activate`/`retire` rather than
-`approve`. File-upload and comment endpoints are not declared — comments/
-attachments are collaboration actions this module's own MCP scope has
+tools (`approve_strategy`/`approve_future_state`/`activate_guiding_principle`/
+`retire_guiding_principle`/`resolve_open_question`) gated by
+`app.services.rbac.require_ai_approvals_enabled` when reached through MCP —
+see `service.py`'s docstring section "MCP tools and the
+`require_ai_approvals_enabled` gate" for the full reasoning, especially why
+Guiding Principle's own gated pair is `activate`/`retire` rather than
+`approve`. File-upload and comment endpoints are not declared —
+comments/attachments are collaboration actions this module's MCP scope has
 never asked to expand (mirroring Decision Management's own `mcp_tools`
 posture toward its comment/file endpoints), and file upload specifically
-cannot be declared through this mechanism at all (`multipart/form-data`,
-same mechanical constraint `modules.compliance.module`'s own docstring
-documents for `upload_evidence_attachment`). Org-scoped Strategy/Future
-State/Guiding Principle endpoints (`router.py`) are also not declared —
-`get_router()`'s own prefix uses `{organization_id}`, not `{project_id}`,
-and `require_ai_approvals_enabled` needs a `Project` to check, so an
-org-scoped approve/activate/retire action has no MCP-safe way to satisfy
-that gate; rather than special-case an org-only variant of the gate this
-phase's own scope never asked for, this phase's MCP surface stays
-project-scoped only throughout, matching Decision Management's own
-project-only MCP tool set (Decision itself has no org scope either).
+cannot be declared through this mechanism at all (`multipart/form-data`, the
+same mechanical constraint `modules.compliance.module`'s docstring documents
+for `upload_evidence_attachment`). Org-scoped Strategy/Future State/Guiding
+Principle endpoints (`router.py`) are also not declared — `get_router()`'s
+own prefix uses `{organization_id}`, not `{project_id}`, and
+`require_ai_approvals_enabled` needs a `Project` to check, so an org-scoped
+approve/activate/retire action has no MCP-safe way to satisfy that gate;
+rather than special-case an org-only variant of the gate, the MCP surface is
+project-scoped only, matching Decision Management's own project-only MCP tool
+set (Decision itself has no org scope either).
 
-Phase 10 (Reporting extension) adds `scoring_schemes` — the `pain_point`
-scheme (`scoring.py`) registered into core's generic scoring-matrix
-mechanism, and widens `pain_point_type_admin` to cover its org-level
-configuration.
-
-Phase 12 (Reports) adds the org-scoped `org_reports_viewer` role (gating the
-organisation-wide reports; org admins hold it by default) and nine read-only
-`get_<slug>_report` MCP tools. Phase 12b moves the module-neutral half to
-core: `reports.REPORT_DEFINITIONS` is declared on `ModuleDefinition.reports`,
-the routes and MCP tools are generated by `services.report_framework`, and
-the report routers are mounted on the existing org and project routers, so
-`get_router()`/`get_project_router()` are unchanged. Organisation-wide
-report endpoints are not MCP tools, for the same reason as the other
-org-scoped endpoints above.
+`scoring_schemes` registers the `pain_point` scheme (`scoring.py`) into core's
+generic scoring-matrix mechanism. The module-neutral half of reporting lives
+in core: `reports.REPORT_DEFINITIONS` is declared on `ModuleDefinition.reports`
+(plus nine read-only `get_<slug>_report` MCP tools), the routes and MCP tools
+are generated by `services.report_framework`, and the report routers are
+mounted on the existing org and project routers, so `get_router()`/
+`get_project_router()` are unchanged. Organisation-wide report endpoints are
+not MCP tools, for the same reason as the other org-scoped endpoints above.
 """
 
 from __future__ import annotations
@@ -286,7 +236,7 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
 def _seed_org_defaults(db: Session, organization_id: UUID) -> None:
     """This module's `ModuleDefinition.on_org_created` hook (module
     boundary cleanup, 2026-09-08) — seeds this organisation's default
-    Market/User/Operator Pain Point types (source overview §6.2), mirroring
+    Market/User/Operator Pain Point types (§6.2), mirroring
     `modules.compliance._seed_org_defaults`'s identical hook exactly (see
     that function's own docstring). Imported lazily for the same
     import-cycle reason as `get_router()`."""
@@ -404,7 +354,7 @@ _OPEN_QUESTION_CREATE_UPDATE_PARAMS = [
 
 
 def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
-    """Builds this module's full `mcp_tools` tuple (Phase 6) — a plain
+    """Builds this module's full `mcp_tools` tuple — a plain
     function (called once, at import time, below) rather than a literal
     tuple, so the repetitive per-artefact shapes above can be assembled
     with ordinary Python rather than duplicated by hand five times over.
@@ -775,7 +725,7 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             "open_question", "resolve", "The Open Question to resolve.",
         ),
     ]
-    # --- Reports R1–R9 (Phases 12/12b): read-only JSON, generated from `REPORT_DEFINITIONS`. The
+    # --- Reports R1–R9: read-only JSON, generated from `REPORT_DEFINITIONS`. The
     # organisation-wide variants are not declared (org-scoped endpoints have no MCP-safe path, as for
     # the org-scoped artefact endpoints above).
     tools += report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PROJECT_ROUTER_PREFIX)
@@ -833,21 +783,13 @@ MODULE_DEFINITION = ModuleDefinition(
     on_org_created=_seed_org_defaults,
     models_import_path="app.modules.context_strategy.models",
     migrations_dir="app/modules/context_strategy/migrations",
-    # Phase 7.1 (Strategy frontend, 2026-09-29): this module's first
-    # frontend_manifest — only the Strategy nav entry existed at first. Phase
-    # 0 Q7 (docs/plans/module-01-context-and-strategy-plan.md) requires five
-    # separate top-level nav-rail entries, one per artefact type, not one
+    # Five separate top-level nav-rail entries, one per artefact type, not one
     # grouped entry with tabs — `ModuleFrontendManifest.additional_nav_
-    # entries` (the generic multi-entry extension point built as part of
-    # Phase 7.1, see docs/decisions.md) is where Phase 7.2-7.5 each append
-    # their own artefact type's entry as its own frontend ships. Phase 7.2
-    # (Future State, 2026-09-29) added the second entry below; Phase 7.3
-    # (Pain Point, 2026-09-29) added the third; Phase 7.4 (Guiding Principle,
-    # 2026-09-29) added the fourth; Phase 7.5 (Open Question, 2026-09-29)
-    # appends the fifth and last. `nav_path` uses each artefact's own sub-route naming
+    # entries` (the generic multi-entry extension point, see
+    # docs/decisions.md) carries every entry after the first. `nav_path` uses each artefact's own sub-route naming
     # (matching `router.py`/`project_router.py`), not the bare module mount
     # point, since each entry needs its own distinct sub-path alongside the
-    # others. Pain Point's own type-vocabulary admin surfaces (Phase 0 Q3)
+    # others. Pain Point's own type-vocabulary admin surfaces
     # are not nav-rail entries at all — they render on Org/Project Admin via
     # `orgAdminSections`/`projectAdminSections` (`frontend/src/modules/
     # context_strategy/module.ts`), which this manifest mechanism doesn't
@@ -889,11 +831,8 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,
-    # Module 0 (Platform Foundations) Phase 4: each of Context & Strategy's
-    # five artefacts declares its own sub-component key only once its own
-    # phase lands (Phase 1 registered "strategy", Phase 2 "future_state",
-    # Phase 3 "pain_point", Phase 4 "guiding_principle", this is Phase 5's
-    # own "open_question" — the last of the five).
+    # Each of Context & Strategy's five artefacts declares its own
+    # sub-component key.
     sub_components=(
         ModuleSubComponentDefinition(key="strategy", name="Strategy", default_enabled=True),
         ModuleSubComponentDefinition(key="future_state", name="Future State", default_enabled=True),
@@ -907,7 +846,7 @@ MODULE_DEFINITION = ModuleDefinition(
             name="Strategy Owner",
             description=(
                 "Creates and manages project-scoped Strategy records — the module's management-level role "
-                "for a project Strategy (docs/plans/module-01-context-and-strategy-plan.md Phase 1)."
+                "for a project Strategy."
             ),
             scope="project",
         ),
@@ -939,7 +878,7 @@ MODULE_DEFINITION = ModuleDefinition(
             name="Future State Owner",
             description=(
                 "Creates and manages project-scoped Future State records — the module's management-level role "
-                "for a project Future State (docs/plans/module-01-context-and-strategy-plan.md Phase 2)."
+                "for a project Future State."
             ),
             scope="project",
         ),
@@ -971,8 +910,8 @@ MODULE_DEFINITION = ModuleDefinition(
             name="Pain Point Manager",
             description=(
                 "Triages Pain Points, changes their classification/type, sets priority, assigns an owner, and "
-                "rejects/accepts/closes them (docs/plans/module-01-context-and-strategy-plan.md Phase 3) — a "
-                "single elevated role, unlike Strategy/Future State's owner+approver pair, since source overview "
+                "rejects/accepts/closes them — a "
+                "single elevated role, unlike Strategy/Future State's owner+approver pair, since "
                 "§6.5 names one 'Pain Point Manager / Project Manager' role rather than a two-tier split. Also "
                 "manages this project's own Pain Point type overrides/local types (§6.2). Project-scoped only — "
                 "Pain Point itself has no organisation scope."
@@ -988,7 +927,7 @@ MODULE_DEFINITION = ModuleDefinition(
             name="Pain Point Type Admin",
             description=(
                 "Manages this organisation's shared Pain Point type vocabulary (Market/User/Operator by default, "
-                "plus any org-added types) — add/rename/disable/remove, per source overview §6.2 — and its Pain "
+                "plus any org-added types) — add/rename/disable/remove, per §6.2 — and its Pain "
                 "Point scoring configuration (Severity/Frequency/Confidence levels, default model, rating bands). "
                 "Organisation-scoped; does not by itself grant any project-level Pain Point Manager capability."
             ),
@@ -1009,7 +948,7 @@ MODULE_DEFINITION = ModuleDefinition(
             name="Guiding Principle Owner",
             description=(
                 "Creates and manages project-scoped Guiding Principle records — the module's management-level "
-                "role for a project Guiding Principle (docs/plans/module-01-context-and-strategy-plan.md Phase 4)."
+                "role for a project Guiding Principle."
             ),
             scope="project",
         ),
@@ -1044,8 +983,8 @@ MODULE_DEFINITION = ModuleDefinition(
             name="Open Question Owner",
             description=(
                 "Assigns, prioritises, edits, and changes the status of Open Questions — including withdrawing "
-                "them — but does not itself resolve one through a Decision (docs/plans/module-01-context-and-"
-                "strategy-plan.md Phase 5) — source overview §9.4's 'Question Owner / Project Manager' tier. "
+                "them — but does not itself resolve one through a Decision — §9.4's "
+                "'Question Owner / Project Manager' tier. "
                 "Project-scoped only; Open Question has no organisation scope."
             ),
             scope="project",
@@ -1055,7 +994,7 @@ MODULE_DEFINITION = ModuleDefinition(
             name="Open Question Resolver",
             description=(
                 "May mark an Open Question Resolved (§9.4's 'Decision Maker: Resolve through a Decision' tier) — "
-                "deliberately a separate role from Open Question Owner, since source overview §9.4 names this as "
+                "deliberately a separate role from Open Question Owner, since §9.4 names this as "
                 "its own distinct persona rather than folding it into the Owner/Project Manager tier the way Pain "
                 "Point's single-role model does. Project-scoped only."
             ),

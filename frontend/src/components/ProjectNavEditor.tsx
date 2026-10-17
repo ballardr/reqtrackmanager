@@ -2,7 +2,7 @@
  * Module: components/ProjectNavEditor
  *
  * The "Customise navigation" modal for the Project nav section
- * (docs/plans/platform-enhancements-2026-10-plan.md Phase 4): reorder items, move them behind
+ *: reorder items, move them behind
  * "More", and choose whether the layout applies to every project or just this one.
  *
  * Responsibilities:

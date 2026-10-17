@@ -78,7 +78,7 @@ export const TilesView: Story = {
   },
 };
 
-/** Style guide "Pattern: split-button trigger" (roadmap item 505) — a
+/** Style guide "Pattern: split-button trigger" — a
  * plain click on "New requirement" performs the common-case action
  * ("Add one") directly, opening the create form as a `Modal` layer
  * (not an inline block that reflows the list underneath) with no menu
@@ -138,7 +138,7 @@ export const ListView: Story = {
   },
 };
 
-/** Column-header sorting (2026-08 UX audit roadmap) — this list is backend-
+/** Column-header sorting — this list is backend-
  * paginated (`PAGE_SIZE`/`LoadMoreButton`), so a header click refetches with
  * `sort`/`order` query params rather than reordering just the loaded page. */
 export const SortByNameRefetchesWithSortParams: Story = {
@@ -188,7 +188,7 @@ export const FilterByStatusBadge: Story = {
 };
 
 /** Filter select options render the existing `REQUIREMENT_STATUS_LABEL` map
- * (2026-08 UX audit roadmap, "Fix raw-enum filter/table text"), not the raw
+ *, not the raw
  * backend enum string — "In review", not "in_review". */
 export const StatusFilterOptionsUseLabelMap: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
@@ -202,8 +202,7 @@ export const StatusFilterOptionsUseLabelMap: Story = {
   },
 };
 
-/** The "Include archived" filter checkbox (2026-08 UX audit roadmap:
- * unarchive endpoint + Restore button) is what makes an archived
+/** The "Include archived" filter checkbox is what makes an archived
  * requirement reachable at all — the default list excludes them entirely,
  * and `RequirementDetailPage.tsx`'s new Restore button only helps once a
  * user can get to that page in the first place. Mirrors
@@ -486,7 +485,7 @@ export const CreateStepAttachFileAddLinkThenFinish: Story = {
   },
 };
 
-/** Style guide Principle 13 (roadmap item 524) — Name/Reasoning/Description
+/** Style guide Principle 13 — Name/Reasoning/Description
  * used to be the only fields on this form relying on placeholder text
  * alone, unlike every field below them (Component/Category/Target
  * version/Level), which already had a real `<label>`. All seven now do. */
@@ -510,7 +509,7 @@ export const CreateFormFieldsAllHaveVisibleLabels: Story = {
   },
 };
 
-/** Roadmap item 525 — Reasoning/Description are `AutoGrowTextarea` now, not
+/** Reasoning/Description are `AutoGrowTextarea` now, not
  * a fixed `rows={2}` `<textarea>`: typing content past two lines grows the
  * field's own height to show it, rather than scrolling inside a two-line
  * box (see `AutoGrowTextarea.stories.tsx` for the height-cap behaviour
@@ -545,8 +544,7 @@ export const MoveFailureShowsToast: Story = {
   },
 };
 
-/** Style guide "Pattern: bulk operations on a list" (2026-08 UX audit
- * roadmap: bulk operations on list pages, piloted here). Checking a row
+/** Style guide "Pattern: bulk operations on a list". Checking a row
  * checkbox in list view surfaces the contextual toolbar — "N selected",
  * "Clear selection", and the two bulk actions — right above the table;
  * unchecking back down to zero hides it again. */

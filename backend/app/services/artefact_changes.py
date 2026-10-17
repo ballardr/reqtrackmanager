@@ -2,8 +2,7 @@
 Module: services.artefact_changes
 
 Tells interested modules that an artefact changed, so something that depends on
-it can be flagged for a human to re-judge (docs/plans/module-00-platform-
-foundations-plan.md, "Invalidation": detection and notification, not automatic
+it can be flagged for a human to re-judge ("Invalidation": detection and notification, not automatic
 rewriting). Risk Management uses it to mark a treatment verdict for
 reassessment when the requirement that mitigates a risk changes.
 

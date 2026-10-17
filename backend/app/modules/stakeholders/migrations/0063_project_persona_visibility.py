@@ -1,4 +1,4 @@
-"""Project persona visibility overrides (Module 2 Phase 3b, extended to Personas)
+"""Project persona visibility overrides (extended to Personas)
 
 Revision ID: 0063
 Revises: 0062

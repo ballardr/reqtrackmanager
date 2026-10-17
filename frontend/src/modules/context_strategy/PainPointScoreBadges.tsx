@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/PainPointScoreBadges
  *
  * The two badges a Pain Point's per-persona score is shown with, shared by
- * the list page and the detail page's scoring panel (Phase 11): the rolled-up
+ * the list page and the detail page's scoring panel: the rolled-up
  * score in its rating band's tone, and the Blocker flag that stays visible
  * whichever model or roll-up is chosen (a Blocker for one low-weight persona
  * can't be averaged away). Band tones come from the generic scoring core's

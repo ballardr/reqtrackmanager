@@ -61,7 +61,7 @@ interface ModuleFrameProps {
 }
 
 /**
- * Tier B host component (compliance-module-plan.md Phase 3): renders a
+ * Tier B host component: renders a
  * remote, not-installed module in a sandboxed `<iframe>`, relaying shared
  * host chrome (toasts, confirm dialogs) over `postMessage` — the "Host UI
  * Bridge" — so a remote module's UI still feels native for what matters

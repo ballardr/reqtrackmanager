@@ -1,4 +1,4 @@
-"""Group-based grants for module-contributed roles (module system Phase 30)
+"""Group-based grants for module-contributed roles
 
 Revision ID: 0037
 Revises: 0036
@@ -6,10 +6,10 @@ Create Date: 2026-09-09
 
 Adds `group_module_roles` (`app.models.module_role.GroupModuleRole`) — the
 group-level counterpart to `user_module_roles`, reversing that table's own
-originally-documented "direct grants only" boundary (module system Phase 2)
-per docs/compliance-module-plan.md Phase 30 — **Decided by: User**, not an
+originally-documented "direct grants only" boundary
+ — **Decided by: User**, not an
 implementation-driven scope change: a human-review round of the Standards
-Manager/Contributor picker (Phase 22) found the exclusion undesirable, and
+Manager/Contributor picker found the exclusion undesirable, and
 this closes it generically for every module-contributed role, not just
 Compliance's own.
 

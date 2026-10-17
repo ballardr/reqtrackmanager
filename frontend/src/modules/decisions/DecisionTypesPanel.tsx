@@ -1,18 +1,18 @@
 /**
  * Module: modules/decisions/DecisionTypesPanel
  *
- * This project's Decision Type vocabulary (source overview §13/10.2) — a
+ * This project's Decision Type vocabulary (§13/10.2) — a
  * plain, ordered, flat "definition" list, so this reuses `DefinitionList`
  * verbatim, the same way `modules/compliance/ActionTypesPanel.tsx` reuses it
  * for its own org-scoped action-type vocabulary (style guide "one component
- * per pattern" principle). Decision Types are project-scoped (Phase 0
- * addendum item 5 — mirrors `ActionTypeDefinition` exactly, including its
- * nested-project inheritance fallback added in Phase 9, 2026-09-22 —
+ * per pattern" principle). Decision Types are project-scoped (mirrors
+ * `ActionTypeDefinition` exactly, including its
+ * nested-project inheritance fallback —
  * `listDecisionTypes` already returns the effective, possibly-inherited
  * set, so this panel just displays whatever the API gives it).
  *
  * Moved from a tab on `ProjectDecisionsPage.tsx` to Project Admin's own
- * `projectAdminSections` contribution in Phase 9 (2026-09-22) — grouped with
+ * `projectAdminSections` contribution (2026-09-22) — grouped with
  * the project's other definition-table settings (Action Types, Custom
  * Fields) rather than the module's day-to-day working page, matching where
  * Action Types themselves already live. Since `render({projectId})` hands

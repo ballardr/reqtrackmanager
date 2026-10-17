@@ -1,20 +1,17 @@
 /**
  * Module: modules/compliance/StandardListPage
  *
- * The cross-org "Compliance Standards" list (docs/compliance-module-plan.md
- * Phase 18) — the top-level `/standards` tab that promotes standards from
+ * The cross-org "Compliance Standards" list — the top-level `/standards` tab that promotes standards from
  * three clicks deep inside Org Admin to their own project-like nav entity,
  * modelled directly on `ProjectListPage.tsx`: same `.side-grid` (content
  * column first, `FilterPanel` second — `ProjectListPage.tsx`'s own order,
- * not `StandardsPanel.tsx`'s pre-Phase-18 backwards one, which this phase
- * doesn't carry forward), same `showOrgColumn` convention
+ * not the backwards order the retired `StandardsPanel.tsx` used), same `showOrgColumn` convention
  * (`orgs.length > 1 || !!user?.is_server_admin`), same Modal-based create
  * flow, same `GET /api/v1/orgs?mine=true` org-fetch pattern.
  *
  * No cross-org backend listing endpoint exists for standards — every
- * compliance route requires `organization_id` in the path (Phase 6's own
- * design). This page gets its rows via `complianceApi.listStandardsAcrossMyOrgs`,
- * the shared org-fan-out-and-collect helper (Phase 28 extracted it out of
+ * compliance route requires `organization_id` in the path (by design). This page gets its rows via `complianceApi.listStandardsAcrossMyOrgs`,
+ * the shared org-fan-out-and-collect helper (extracted out of
  * this file so `StandardWorkspacePage.tsx`'s `EntitySwitcher` loader could
  * reuse the exact same fan-out/404-drop behaviour rather than duplicating
  * it) — see that function's own docstring in `./api.ts` for the full
@@ -28,15 +25,15 @@
  * row opens `/standards/:standardId`. A "Compliance settings" link per org
  * opens `/standards/settings/:orgId` (`ComplianceSettingsPage.tsx`).
  *
- * Phase 21 (standard-level import/export) replaces the plain "New standard"
- * button with a `SplitButtonTrigger`: the default action still opens
- * `StandardFormModal` unchanged, and a new "Import standard" alternative
+ * Standard-level import/export: the "New standard"
+ * button is a `SplitButtonTrigger`: the default action opens
+ * `StandardFormModal`, and an "Import standard" alternative
  * opens `StandardImportModal` — the style guide's "one door" pattern
  * (Principle 5/11), grouping the rarer import path behind the same
  * trigger rather than a second, permanently-visible button competing with
  * "New standard".
  *
- * Phase 35a adds the `ViewToggle` tile/list split `docs/ux-style-guide.md`'s
+ * The `ViewToggle` tile/list split `docs/ux-style-guide.md`'s
  * "Pattern: view toggle" already requires of any list page like this one —
  * `ProjectListPage.tsx`'s own tile card is the direct precedent for the
  * tiles-mode render below (name + org + status, in card form).

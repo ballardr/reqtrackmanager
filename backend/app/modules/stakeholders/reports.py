@@ -1,8 +1,7 @@
 """
 Module: modules.stakeholders.reports
 
-Report data layer for Stakeholders & Personas (docs/plans/module-02-stakeholders-
-and-personas-plan.md Phase 6): five project-level reports, one `collect_*` function
+Report data layer for Stakeholders & Personas: five project-level reports, one `collect_*` function
 each, returning the core framework's `ReportResult`, plus the `REPORT_DEFINITIONS`
 that declare them to the registry. Result shapes, scope (`readable_projects`),
 PDF/CSV/Word rendering, routes, MCP tools and the catalogue all live in

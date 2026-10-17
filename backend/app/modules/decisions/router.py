@@ -1,10 +1,9 @@
 """
 Module: modules.decisions.router
 
-Decision Management's Phase 4 org-scoped API
-(docs/plans/module-04-decision-management-plan.md Phase 4) — CRUD for
+Decision Management's org-scoped API — CRUD for
 `DecisionTemplateDefinition`, the org-managed, opt-in-seeded ADR template
-packs (Phase 0 addendum items 1/6/7). Mounted at `/api/v1/orgs/
+packs. Mounted at `/api/v1/orgs/
 {organization_id}/modules/decisions`.
 
 RBAC: reads are gated by `require_org_module_enabled("decisions")`
@@ -19,12 +18,11 @@ manager` is, since a Decision itself is always project-scoped and only its
 module role solely to gate a small, low-traffic CRUD surface, this reuses
 the plain `OrgRole.ORG_ADMIN` check the same way `routers.orgs`' own
 org-scoped project-status/link-type definition endpoints do (no module
-role there either). **Decided by: Agent** — see Phase 4 notes in the plan
-for the fuller reasoning and the alternative considered (a new org-scoped
-role) and why it was rejected as premature.
+role there either). **Decided by: Agent** — the alternative considered (a new org-scoped
+role) was rejected as premature.
 
 A `DecisionTemplateDefinition` has no persistent FK from `Decision`
-(Phase 0 addendum item 6 — a template is a creation-time convenience, not
+(a template is a creation-time convenience, not
 a relationship), so `delete_template` is a plain delete: no `reassign_
 to_id`/`delete_definition_with_reassignment` machinery, and an organisation
 may have zero templates without issue, unlike the org's project-statuses/

@@ -10,16 +10,14 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
 /**
  * Module: modules/decisions/module
  *
- * The Decision Management module's frontend registration (docs/plans/
- * module-04-decision-management-plan.md Phase 5, revised Phase 9
- * 2026-09-22) — the frontend mirror of `backend/app/modules/decisions/
+ * The Decision Management module's frontend registration — the frontend mirror of `backend/app/modules/decisions/
  * module.py`'s `MODULE_DEFINITION`, same single-`moduleDefinition`-export
  * convention every other Tier A module uses. `frontend/src/modules/
  * registry.ts` auto-discovers this file; no hand-edit to that file is
  * needed.
  *
  * `routes`: `ProjectDecisionsPage` (the list) and `DecisionDetailPage` (a
- * single Decision's full management/context view, Phase 9) — `path`
+ * single Decision's full management/context view) — `path`
  * matches the `nav_path` `module.py`'s own `frontend_manifest` declares
  * (with React Router's `:projectId`/`:decisionId` syntax standing in for
  * the backend's `"{project_id}"`/`"{decision_id}"` placeholders).
@@ -29,17 +27,16 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  * `DecisionDetailPage`. See that page's own docstring and `docs/ux-style-
  * guide.md`'s "Pattern: entity detail panel" checklist for why the
  * original single-route, `SidePanel`-only shape (`DecisionDetailPanel`,
- * removed Phase 9) was replaced.
+ * removed) was replaced.
  *
- * `projectAdminSections` (Phase 9): `DecisionTypesPanel`, this project's
+ * `projectAdminSections`: `DecisionTypesPanel`, this project's
  * Decision Type vocabulary — moved off `ProjectDecisionsPage.tsx`'s own tab
  * bar to sit alongside the project's other definition-table settings
  * (Action Types, Custom Fields) on `ProjectAdminPage.tsx`, matching where
  * Action Types themselves already live, per explicit user direction.
  *
- * `orgAdminSections` (Phase 9, moved from `orgOverviewSections`):
- * `DecisionTemplatesPanel`, the org-scoped Decision Template library (Phase
- * 0 addendum items 1/2/6/7) — an org admin manages the template library on
+ * `orgAdminSections` (moved from `orgOverviewSections`):
+ * `DecisionTemplatesPanel`, the org-scoped Decision Template library — an org admin manages the template library on
  * Org Management (`OrgAdminPage.tsx`), not the Org Dashboard
  * (`OrgOverviewPage.tsx`), per explicit user direction; `render({orgId})`
  * is identical either way since both pages share `OrgAdminSectionDef`'s
@@ -50,13 +47,13 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  * Decision links are shown by the shared Links panel instead), so there is no
  * cross-module mixed list this module's own entity kind would ever need to be
  * told apart in — nothing would read `useEntityAccentColor("decisions")` yet.
- * Add it alongside whichever future phase does add such a list, not speculatively now.
+ * Add it alongside whichever change does add such a list, not speculatively now.
  *
  * No `globalNavItems`/`standaloneWorkspaces`/`globalRoutes`/
  * `projectOverviewTiles`/`orgOverviewSections` — Decision Management has no
  * cross-org standalone entity (a Decision only ever exists inside a
- * project, unlike Compliance's own Standards), and Phase 9's own scope
- * doesn't call for a project-overview summary tile or an org-dashboard
+ * project, unlike Compliance's own Standards), and nothing
+ * calls for a project-overview summary tile or an org-dashboard
  * surface of its own.
  */
 export const moduleDefinition: TierAModuleDefinition = {

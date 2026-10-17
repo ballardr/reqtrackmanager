@@ -192,8 +192,7 @@ def test_last_manager_guard_applies_to_group_based_removal(client, admin_token, 
     be blocked, the same as direct role revocation already is.
 
     A fresh project's creator now holds their initial manager role via a
-    direct grant, not group membership (C-U-10, follow-up UX batch Phase C,
-    2026-08-31 removed the auto-created default groups) — so this test
+    direct grant, not group membership (C-U-10, 2026-08-31 removed the auto-created default groups) — so this test
     first builds a manager-role group with a *different* user as its sole
     member, then revokes the creator's own direct grant, leaving that group
     membership as the project's only remaining manager source, the

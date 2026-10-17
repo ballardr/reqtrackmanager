@@ -2,7 +2,7 @@
  * Module: components/PrincipalPicker
  *
  * The one control for a field that names "who": a user, an organisation group or a project group
- * (users and groups on parity — docs/plans/users-and-groups-parity-plan.md). It shows the current
+ * (users and groups on parity —). It shows the current
  * value (a `PrincipalBadge`, or "Unassigned"), an Unassign action while one is set, and a
  * `UserAutocomplete` search that also matches groups, each option tagged with its kind. It replaces
  * the user-only `AssigneePicker`; a field that cannot name a group yet passes `kinds={["user"]}`

@@ -2,7 +2,7 @@
 Module: services.report_content_bundle
 
 Carries the images report content references through organisation and project
-export bundles (Phase 10 of docs/plans/platform-enhancements-2026-10-plan.md).
+export bundles .
 
 Report content embeds images as `![alt](attachment:<file id>)`, and the file is an
 organisation shared resource. A bundle that carried the Markdown but not the

@@ -2,7 +2,7 @@
 Module: modules.compliance.router.mapping_relationship_types
 
 This organisation's extensible cross-standard mapping-relationship-
-type vocabulary (Phase 11, §19/§27): create/list/reorder/update/delete
+type vocabulary (§19/§27): create/list/reorder/update/delete
 (delete-with-reassignment) — mirrors `action_types.py` exactly.
 """
 
@@ -40,9 +40,9 @@ def create_mapping_relationship_type(
     """Creates a new organisation-scoped cross-standard-mapping
     relationship type (§19's "configurable or extensible" relationship
     vocabulary — Equivalent/Satisfies/Derived From/Related To/Overlaps/
-    Conflicts With are examples to seed later, Phase 15, not a fixed set).
+    Conflicts With are examples to seed later, not a fixed set).
     Mirrors `create_action_type`, extended with `implies_equivalence`
-    (default `False`) — see `models.py`'s own Phase 11 notes for what this
+    (default `False`) — see `models.py`'s cross-standard mapping design decisions for what this
     flag gates (whether a `replaced` version-diff pair linked by this type
     may ever be offered for migration carry-forward)."""
     existing = db.scalar(
@@ -112,8 +112,8 @@ def update_mapping_relationship_type(
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
     """Renames a relationship type and/or sets its `implies_equivalence`
-    flag (§27's migration-carry-forward gate — see `models.py`'s own Phase
-    11 notes). Every `ComplianceRequirementMapping.relationship_type_id`
+    flag (§27's migration-carry-forward gate — see `models.py`'s cross-standard mapping
+    design decisions). Every `ComplianceRequirementMapping.relationship_type_id`
     reference points at this row's id, never its name, so renaming has
     zero effect on existing mappings; toggling `implies_equivalence`
     likewise never touches any existing mapping row, only whether *future*

@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.engagement_project_router
 
-Project-scoped Engagement API (Phase 4), mounted at
+Project-scoped Engagement API, mounted at
 `/api/v1/projects/{project_id}/modules/stakeholders` beside the other project
 routers: the engagement log (CRUD and hard delete), its participants, covered
 personas, audience groups, the Pain Points / Needs / Open Questions it raised or

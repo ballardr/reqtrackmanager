@@ -5,7 +5,7 @@ cross-cutting architecture (role/permission model, relationship model,
 auditing, module-system boundary) referenced throughout this plan rather
 than repeated here.
 
-**Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md),
+**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md),
 §13 "Module 4 — Decision Management" (the source document's own heading
 numbers repeat `10.x` for both §5 Module 1 subsections and this module —
 a pre-existing numbering slip in the overview, not something this plan
@@ -29,7 +29,7 @@ ordering, which conflates "logical reading order" with "build order" —
 they aren't the same thing): building Decision Management first is fully
 possible, with exactly one real prerequisite.
 
-- **Hard dependency: [Module 0 — Platform Foundations](module-00-platform-foundations-plan.md).**
+- **Hard dependency: [Module 0 — Platform Foundations](completed/module-00-platform-foundations-plan.md).**
   Decision ↔ Requirement and Decision ↔ Decision relationships (Phase 3
   below) need the generic cross-artefact relationship model. This used to
   be something Module 1 (Context & Strategy) would have built as a side
@@ -56,7 +56,7 @@ improvised).
 
 10 / 11 phases complete. Phase 10 (group owners and decision makers) shipped 2026-10-12. Phase 7 is blocked on Module 1/Module 6. Phase 8
 unblocked and completed 2026-09-27, once [Fine-Grained Access Control
-(core)](core-fine-grained-access-control-plan.md) reached its own Phase 7
+(core)](completed/core-fine-grained-access-control-plan.md) reached its own Phase 7
 (that plan's 10/10 completion covers this phase's consumer migration
 directly — see that plan's Phase 7 entry and `docs/decisions.md`'s
 "Fine-Grained Access Control (core) — Phase 7 complete" entry).
@@ -497,7 +497,7 @@ labelled edge appear correctly, not just that the render command exited 0.
 
 **Decided by: User** — the user asked explicitly for this module's
 docs-website pages to carry real screenshots (this repo's own
-`docs/plans/docs-website-plan.md` "Screenshots" standard already required
+`docs/plans/completed/docs-website-plan.md` "Screenshots" standard already required
 this — 1440×900 viewport, captured against the seeded demo dataset, stored
 under `docs/website/static/img/screenshots/`, real alt text plus a
 one-line caption — but Phase 6 above shipped with zero screenshots, all
@@ -805,7 +805,7 @@ whether approval authority is a column on `Decision` or a separate
 assignment table). This phase produces a confirmed, field-level spec before
 any migration is written. Unlike an earlier draft of this plan, it does
 **not** need to resolve the relationship-model fork itself — that now
-belongs to [Module 0](module-00-platform-foundations-plan.md), built once,
+belongs to [Module 0](completed/module-00-platform-foundations-plan.md), built once,
 ahead of every content module, specifically so this module (and every
 other) doesn't have to make that call independently.
 
@@ -1036,7 +1036,7 @@ project's standing testing requirements.
 ## Phase 6 — Docs website coverage
 
 **Goal:** add Decision Management's user-facing surface to `docs/website/`
-(the published docs site, `docs/plans/docs-website-plan.md`) — what a
+(the published docs site, `docs/plans/completed/docs-website-plan.md`) — what a
 Decision is, its lifecycle/approval/supersession model, Decision Types and
 Templates, and how it relates to Requirements and other Decisions —
 following the site's existing structure, tone, and Mermaid-diagram
@@ -1119,7 +1119,7 @@ deliberately built only the flat placeholder role instead, specifically
 module will likely replace outright." Building per-type restriction
 directly into this module without a general mechanism to express "which
 role can do what" would repeat exactly the mistake that decision already
-avoided once. [Fine-Grained Access Control (core platform capability, originally scoped as "Module 12")](core-fine-grained-access-control-plan.md)
+avoided once. [Fine-Grained Access Control (core platform capability, originally scoped as "Module 12")](completed/core-fine-grained-access-control-plan.md)
 (requested by the user 2026-09-21, itself partly motivated by this exact
 question; reclassified from an optional module to core infrastructure
 2026-09-23 — see that plan's own opening section) is that general
@@ -1143,7 +1143,7 @@ type through Fine-Grained Access Control's own Role Management UI, with no
 Decision-Management-specific admin surface needed at all.
 
 **Status:** [x] Complete (2026-09-27), built as [Fine-Grained Access
-Control (core)](core-fine-grained-access-control-plan.md)'s own Phase 7 —
+Control (core)](completed/core-fine-grained-access-control-plan.md)'s own Phase 7 —
 see that plan's Phase 7 entry and `docs/decisions.md`'s "Fine-Grained
 Access Control (core) — Phase 7 complete" entry for the full account. One
 correction to this section's own scope text, **Decided by: Agent**:
@@ -1176,7 +1176,7 @@ that plan's own Phase 2 note.
 
 ## Phase 10 — Groups as owners and decision makers (users and groups on parity)
 
-**Decided by: User** (2026-10-11): groups must be selectable as a Decision's owner; both organisation groups and project groups; and the other modules get the same treatment. The cross-module work is planned in [users-and-groups-parity-plan.md](users-and-groups-parity-plan.md); this phase is that plan's Phase 2 and depends on its Phase 1 (the shared principal mechanism), so it cannot start before that lands. The rule behind it is in `CLAUDE.md` ("Users and Groups on Parity").
+**Decided by: User** (2026-10-11): groups must be selectable as a Decision's owner; both organisation groups and project groups; and the other modules get the same treatment. The cross-module work is planned in [users-and-groups-parity-plan.md](completed/users-and-groups-parity-plan.md); this phase is that plan's Phase 2 and depends on its Phase 1 (the shared principal mechanism), so it cannot start before that lands. The rule behind it is in `CLAUDE.md` ("Users and Groups on Parity").
 
 **Why:** a decision is often owned by a team ("Platform Architecture"), not one person; `Decision.owner_id` is a mandatory user FK, so the team must name a nominee and the record goes stale when that person leaves. **Risk addressed:** a team-owned decision with no accountable owner. **Outcome:** an owner (and decision maker) can be a user, an organisation group or a project group, everywhere the Decision shows it, with the group's members treated as the owner for the existing gates.
 

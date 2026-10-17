@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/OrgStakeholdersPanel
  *
- * An organisation's own org-scoped Stakeholders (Phase 0 resolution 2: one
+ * An organisation's own org-scoped Stakeholders (one
  * live, shared record every project can see), rendered as an
  * `OrgOverviewPage` `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
  *

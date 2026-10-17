@@ -42,7 +42,7 @@ function mockOrgOverviewApis(
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/overview-stats")) return overrides.stats ?? fullTotalStats;
     if (path.includes("/modules")) return overrides.modules ?? [];
-    // `EntitySwitcher`'s (Phase 28) own sibling-org fetch — a single-org
+    // `EntitySwitcher`'s own sibling-org fetch — a single-org
     // default means every other story here renders no switcher chevron.
     if (path === "/api/v1/orgs?mine=true") return overrides.myOrgs ?? [org];
     throw new Error(`unmocked path: ${path}`);
@@ -73,7 +73,7 @@ installedModules.push({
       render: ({ orgId }) => <div>Fixture overview section content for org {orgId}</div>,
     },
   ],
-  // Phase 25b — a module's headline stat tile in the page's own
+  // A module's headline stat tile in the page's own
   // always-visible stats header (`orgOverviewTiles`), distinct from the
   // `orgOverviewSections` group above which only renders once a group is
   // selected.
@@ -118,16 +118,16 @@ export const StatsOnlyNoModuleSections: Story = {
     await expect(canvas.getByText("4.3 MB")).toBeInTheDocument();
     await expect(canvas.queryByText("Fixture overview section content for org org-1")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Fixture headline tile for org org-1")).not.toBeInTheDocument();
-    // Phase 27c — with no module contributing a section, "Overview" is the
+    // With no module contributing a section, "Overview" is the
     // only ResourceMenu group, so its own menu-strip chrome (the link list)
     // is hidden entirely rather than showing a single, always-active link.
     await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
   },
 };
 
-/** Phase 27b — the core project/requirement/member/file-storage stats
+/** The core project/requirement/member/file-storage stats
  * render as one compact `StatBar` row, not the older `.grid.grid-metrics`
- * of `StatCard`s (Phase 25c's grid convention stays correct for grouped/
+ * of `StatCard`s (the grid convention stays correct for grouped/
  * paged stat blocks elsewhere, e.g. `OrgComplianceDashboard.tsx`). */
 export const CoreStatsRenderAsAStatBar: Story = {
   beforeEach: () => mockOrgOverviewApis(),
@@ -150,13 +150,13 @@ export const WithModuleContributedSection: Story = {
   beforeEach: () => mockOrgOverviewApis({ modules: [fixtureOrgModule()] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Phase 27c — "Overview" is the always-present, default-selected first
+    // "Overview" is the always-present, default-selected first
     // group; a module's own section is an additional group, not the
     // default, so its content isn't shown until its link is clicked.
     await expect(canvas.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     await expect(canvas.getByRole("link", { name: "Fixture overview section" })).toBeInTheDocument();
     await expect(canvas.queryByText("Fixture overview section content for org org-1")).not.toBeInTheDocument();
-    // Phase 25b — the module's headline tile renders directly in the
+    // The module's headline tile renders directly in the
     // "Overview" group's own stats row, alongside the core Projects/
     // Requirements/Members/File storage stats, not gated behind selecting
     // a group of its own.
@@ -174,7 +174,7 @@ export const ModuleSectionHiddenWhenModuleDisabled: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("link", { name: "Fixture overview section" })).not.toBeInTheDocument();
     await expect(canvas.queryByText("Fixture headline tile for org org-1")).not.toBeInTheDocument();
-    // Phase 27c — with the module disabled, "Overview" is once again the
+    // With the module disabled, "Overview" is once again the
     // only group, so the menu-strip chrome is hidden entirely.
     await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
   },
@@ -185,7 +185,7 @@ const orgReport = buildReportCatalogueEntry({
   path: `/api/v1/orgs/${ORG_ID}/modules/fixture_report_module/reports/fixture-report`,
 });
 
-/** Module 1 Phase 13 — the core "Reports" group appears only when the
+/** The core "Reports" group appears only when the
  * organisation catalogue lists a report the caller can run, and lists it
  * generically (no module is named here). */
 export const ReportsGroupListsOrganisationReports: Story = {
@@ -209,7 +209,7 @@ export const ReportsGroupHiddenWithoutOrganisationReports: Story = {
   },
 };
 
-/** Phase 28 — with more than one organisation to switch between, a chevron
+/** With more than one organisation to switch between, a chevron
  * next to the org name opens a popover listing the others as plain links
  * to their own Organisation Overview page. */
 export const EntitySwitcherOffersSiblingOrgs: Story = {

@@ -24,8 +24,7 @@ function isBlank(entry: ReportContentEntry | undefined): boolean {
 /**
  * The one editor for the introduction, chapters and appendices a scope holds
  * per report type — used by the organisation's report defaults, a report
- * template and a project's Report Setup (Phase 10 of the platform enhancements
- * plan), so the three surfaces cannot drift. A drop-down of report types (the
+ * template and a project's Report Setup so the three surfaces cannot drift. A drop-down of report types (the
  * requirements report, each enabled module report; a dozen or more, so not
  * tabs), led by "All reports": the
  * content used by any type without its own at the same level.

@@ -7,7 +7,7 @@ router's routes would otherwise inline — the manage gate, the API shape,
 create/update/lifecycle, and the "has need" / "gives rise to" link operations.
 Comments and files go through the shared `services.module_attachments` kit.
 
-RBAC (Phase 0 resolution 6): viewing is gated by sub-component enablement
+RBAC: viewing is gated by sub-component enablement
 alone; create/edit/archive/retire/link need the project `stakeholder_need_owner`
 role or a Fine-Grained Access Control `(stakeholder_need, manage)` grant. A Need
 has no organisation scope, so there is no org-level role.

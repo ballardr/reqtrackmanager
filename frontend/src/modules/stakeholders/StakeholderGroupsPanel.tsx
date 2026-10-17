@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/StakeholderGroupsPanel
  *
- * The Stakeholder group manager (Phase 3c): the group tree with create, rename,
+ * The Stakeholder group manager: the group tree with create, rename,
  * move, reorder, "one branch per stakeholder" and delete, the selected group's
  * members, and the "create groups from Organisation / group text" action. One
  * component serves both tiers — the organisation overview (`organizationId`) and

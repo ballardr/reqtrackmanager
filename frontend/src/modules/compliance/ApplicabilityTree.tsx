@@ -3,7 +3,7 @@
  *
  * The requirement-hierarchy assessment workspace for one project's
  * standard assignment (§8-§10, §16) — a client-side-assembled tree (same
- * `buildRequirementTree` algorithm `RequirementTree.tsx`/Phase 12 already
+ * `buildRequirementTree` algorithm `RequirementTree.tsx` already
  * proved out) over the standard version's requirement definitions, each
  * node decorated with this project's own `ProjectComplianceRequirement`
  * assessment row.
@@ -52,7 +52,7 @@ interface Props {
    * approval decision) settles — `ProjectComplianceDetail` uses this to
    * refresh its own §20 overall-status summary card, which otherwise stays
    * on the snapshot fetched when the assignment list first loaded (found
-   * while verifying this phase end to end: assessing/approving a
+   * while verifying end to end: assessing/approving a
    * requirement left the "Overall compliance status" card showing stale
    * counts until the assignment was closed and reopened). */
   onAssessmentChanged?: () => void;

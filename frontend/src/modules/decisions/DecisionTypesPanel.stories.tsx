@@ -9,8 +9,8 @@ import type { DecisionTypeDefinition } from "./types";
 const PROJECT_ID = "project-1";
 
 /**
- * `DecisionTypesPanel` fetches and reloads its own list since Phase 9
- * (2026-09-22, moved to Project Admin's `projectAdminSections` — see this
+ * `DecisionTypesPanel` fetches and reloads its own list
+ * (it lives in Project Admin's `projectAdminSections` — see this
  * panel's own module docstring), so these stories mock the `api` directly
  * rather than wrapping it in a state-owning `Harness`.
  */

@@ -6,8 +6,7 @@ import { ensureExpanded, loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgA
  * Job to be done: an org admin can see what a single user actually has
  * access to — which projects, which role(s) on each, and which org groups
  * they directly belong to — without reconstructing the answer by hand
- * from every project's own membership list (2026-08 UX audit, sixth pass:
- * "No way to view a user's access").
+ * from every project's own membership list.
  *
  * Views the logged-in org admin's own row rather than a second persona's,
  * to avoid depending on exactly which orgs/projects a shared seed persona
@@ -41,7 +40,7 @@ test.describe("view a user's access", () => {
       expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
-    // PR6 of the members/groups directory rework plan (docs/decisions.md)
+    // the members/groups directory rework (docs/decisions.md)
     // consolidated the Users table's previously-bare "View {name}'s access"
     // button into the row's `ActionMenu` — reachable via its kebab trigger
     // (`${display name}'s actions`), then the `menuitem` inside the
@@ -67,8 +66,7 @@ test.describe("view a user's access", () => {
 });
 
 /**
- * Column-header sorting (2026-08 UX audit roadmap, "Column-header sorting
- * on data tables") — the Users table is backend-paginated (search + `limit`/
+ * Column-header sorting — the Users table is backend-paginated (search + `limit`/
  * `offset` shipped in an earlier roadmap pass), so a header click has to
  * refetch with `sort`/`order` query params rather than reordering just the
  * loaded page. Same "Users" section this file already reaches for the
@@ -86,8 +84,7 @@ test.describe("org admin users table sorting", () => {
     await expect(page.getByText(PERSONAS.orgAdminAlphaBeta.email)).toBeVisible();
     // `visibleEmails()` below asserts every visible row's first cell forms
     // a sorted sequence — true for real user rows (server-sorted) but not
-    // for a `kind: "invited"` row merged in ahead of them (Phase A,
-    // follow-up UX batch), which isn't part of that server-side sort.
+    // for a `kind: "invited"` row merged in ahead of them , which isn't part of that server-side sort.
     // Unchecking "Show invited" keeps this an apples-to-apples comparison
     // regardless of whether this org happens to have a pending invite.
     await page.getByRole("checkbox", { name: "Show invited" }).uncheck();

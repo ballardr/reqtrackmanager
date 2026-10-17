@@ -1,6 +1,6 @@
 # Fine-Grained Access Control (Custom Roles & Permissions) — Core Platform Capability — Implementation Plan
 
-See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
+See [future-modules-2026-09-index.md](../future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout, including the existing
 role-resolution model this plan extends rather than replaces.
 
@@ -54,7 +54,7 @@ reasoning there is about ownership, not about module-vs-core status).
 
 **This is a security-sensitive plan.** It touches authorization directly,
 so per `CLAUDE.md`'s policy-consultation rule,
-[docs/soc2/policies/access-control-policy.md](../soc2/policies/access-control-policy.md)
+[docs/soc2/policies/access-control-policy.md](../../soc2/policies/access-control-policy.md)
 was read in full before any of this was drafted, not after. That policy's
 governing principles for every existing scope (server admin, org role,
 project role, module-contributed roles) are: (1) **tenant isolation** —
@@ -987,7 +987,7 @@ pure relationship-wiring integration work does.
 - **Screenshot requirement (2026-09-22 addendum).** Making this explicit
   here rather than leaving it implicit is **Decided by: User** (the same
   instruction as the phase itself, applied specifically to screenshots this
-  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  time — `docs/plans/completed/docs-website-plan.md`'s "Screenshots" section already
   bound this page to its standard, but this phase's Scope above never said
   so in as many words). This page is subject to that standard in full:
   1440×900 viewport, captured against the seeded demo dataset, stored

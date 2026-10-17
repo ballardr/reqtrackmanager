@@ -74,14 +74,13 @@ export function ChangeRequestDetailPage() {
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
   const [showVoteComments, setShowVoteComments] = useState(false);
-  // ADD_ACTION/REMOVE_ACTION-only (item 514, extended by platform review
-  // 2026-09 Phase 8 to the remove side) — the action type list to resolve
+  // ADD_ACTION/REMOVE_ACTION-only (extended to the remove side) — the action type list to resolve
   // `proposed_action_type_id` to a name, and (link-existing/remove mode
   // only) the action itself, so a reviewer can see what they're actually
   // approving rather than a bare id.
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [linkedActionPreview, setLinkedActionPreview] = useState<RequirementAction | null>(null);
-  // REMOVE_LINK-only (Platform review 2026-09, Phase 8) — the same
+  // REMOVE_LINK-only — the same
   // "resolve the id to something a reviewer can actually read" purpose as
   // the action fields above: the existing link (its `display_name`/other-
   // requirement fields are already server-resolved the same way the Links
@@ -89,7 +88,7 @@ export function ChangeRequestDetailPage() {
   // new or modify request proposes arrive resolved on `cr.proposed_links`.
   const [linkPreview, setLinkPreview] = useState<RequirementLink | null>(null);
   // Approving a request that proposes links goes through a dialog where the approver
-  // chooses which to merge (Phase 6b); `clearCompletion` carries the second approve button.
+  // chooses which to merge; `clearCompletion` carries the second approve button.
   const [approving, setApproving] = useState<{ clearCompletion: boolean } | null>(null);
 
   async function reload() {

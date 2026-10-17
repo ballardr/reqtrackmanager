@@ -1,4 +1,4 @@
-"""Per-persona Pain Point scoring + intentional flag (Module 1 Phase 11)
+"""Per-persona Pain Point scoring + intentional flag
 
 Revision ID: 0064
 Revises: 0063

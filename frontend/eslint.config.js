@@ -73,7 +73,7 @@ export default tseslint.config(
       // exact false positive against React's own docs' example) and the
       // in-flight, unmerged fix at facebook/react#36734. Revisit once that
       // lands upstream. (Decided by: User, 2026-09-15 — see
-      // docs/react19-eslint10-upgrade-plan.md Phase 3.)
+      //)
       "react-hooks/set-state-in-effect": "warn",
     },
   }

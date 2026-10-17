@@ -1,4 +1,4 @@
-"""Links proposed on change requests (Platform Enhancements Phase 6b)
+"""Links proposed on change requests
 
 Revision ID: 0070
 Revises: 0069

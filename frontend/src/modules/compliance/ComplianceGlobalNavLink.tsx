@@ -1,8 +1,7 @@
 /**
  * Module: modules/compliance/ComplianceGlobalNavLink
  *
- * The "Compliance Standards" top-level nav-rail link (docs/compliance-
- * module-plan.md Phase 18) — registered via `module.ts`'s `globalNavItems`
+ * The "Compliance Standards" top-level nav-rail link — registered via `module.ts`'s `globalNavItems`
  * (`modules/types.ts`), never imported by `Layout.tsx` directly. Owns its
  * own visibility entirely: renders nothing at all unless
  * `useComplianceNavVisibility()` says so, since this tab is niche (unlike

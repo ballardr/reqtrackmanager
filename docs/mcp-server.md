@@ -76,9 +76,9 @@ Two optional, non-sensitive HTTP headers on the MCP connection — `X-Default-Or
 
 ## Module-contributed tools
 
-Beyond the hand-written tools above, a backend module (plans/compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
+Beyond the hand-written tools above, a backend module (plans/completed/compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
 
-**Compliance (plans/compliance-module-plan.md Phase 6, extended through Phase 22, then reversed to write-enabled 2026-09-22) is the first module to use this**, contributing 74 tools total: 10 read-only tools (unchanged since Phase 6/7/8/9/10/11) plus 64 write tools added in the 2026-09-22 reversal — see [docs/decisions.md](decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry for the full rationale for why this module's MCP surface, previously described here as "deliberately read-only," no longer is.
+**Compliance (plans/completed/compliance-module-plan.md Phase 6, extended through Phase 22, then reversed to write-enabled 2026-09-22) is the first module to use this**, contributing 74 tools total: 10 read-only tools (unchanged since Phase 6/7/8/9/10/11) plus 64 write tools added in the 2026-09-22 reversal — see [docs/decisions.md](decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry for the full rationale for why this module's MCP surface, previously described here as "deliberately read-only," no longer is.
 
 The 10 read-only tools:
 

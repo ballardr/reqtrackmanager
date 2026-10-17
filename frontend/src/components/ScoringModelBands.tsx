@@ -3,7 +3,7 @@
  *
  * The "rating bands per model" block shared by the org-level
  * `ScoringSchemeEditor` and project-level `ProjectScoringSettings`
- * (generic scoring-matrix core, Module 1 Phase 10): pick a model, edit its
+ * (generic scoring-matrix core): pick a model, edit its
  * bands (`ScoringBandsEditor`), and preview them on the model's first two
  * axes (`ScoringMatrixChart`; first axis = rows, second = columns). For a
  * two-axis model the preview becomes the cell-ratings editor

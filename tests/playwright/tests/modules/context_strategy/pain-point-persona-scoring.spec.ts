@@ -74,7 +74,7 @@ async function choose(page: Page, group: string, axis: string, level: string) {
 }
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase 11
+ * Job to be done:
  * — scoring a Pain Point per persona (Severity, Frequency, Confidence), the
  * roll-up and Blocker flag shown on its detail page, the list's Score column
  * re-ranking when a different model is chosen, and the intentional-limitation

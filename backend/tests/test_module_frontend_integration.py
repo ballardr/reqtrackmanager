@@ -1,5 +1,5 @@
-"""Tests for the module system's Phase 3 two-tier frontend integration
-(docs/compliance-module-plan.md): `ModuleFrontendManifest`'s tier/frame_url
+"""Tests for the module system's two-tier frontend integration:
+`ModuleFrontendManifest`'s tier/frame_url
 validation, `get_frontend_manifest`'s allowlist-enforcement (a Tier B
 module's declared `frame_url` must resolve to an origin in `Settings.
 module_frame_allowed_origins`, or it is excluded and logged rather than
@@ -115,7 +115,7 @@ def remote_tier_module():
 def project_scoped_installed_module():
     """Registers a Tier A module whose `nav_path` uses the `"{project_id}"`
     placeholder `ModuleFrontendManifest`'s own docstring names as an
-    example — the Compliance Module (Phase 13) is the first *real* module
+    example — the Compliance Module is the first *real* module
     to actually populate this placeholder; this fixture proves the generic
     interpolation mechanism itself (`routers/projects.py::list_project_
     enabled_modules`) rather than relying on Compliance's own real
@@ -140,7 +140,7 @@ def project_scoped_installed_module():
 @pytest.fixture
 def multi_nav_entry_installed_module():
     """Registers a Tier A module declaring `additional_nav_entries`
-    (Module 1 — Context & Strategy — Phase 7.1, 2026-09-29) — this module's
+    (Context & Strategy) — this module's
     real-world motivation: Context & Strategy needs five top-level nav-rail
     entries, not one. Uses the `"{project_id}"` placeholder on both the
     primary and an additional entry, to prove interpolation applies
@@ -185,7 +185,7 @@ def test_installed_tier_must_not_set_frame_url():
         )
 
 
-# --- ModuleNavEntry / additional_nav_entries (Module 1 — Context & Strategy — Phase 7.1) --
+# --- ModuleNavEntry / additional_nav_entries (Context & Strategy) --
 
 
 def test_remote_tier_must_not_set_additional_nav_entries():
@@ -244,7 +244,7 @@ def test_get_frontend_manifest_returns_installed_tier_manifest_unconditionally(i
 
 
 def test_get_frontend_manifest_none_for_module_without_one(installed_tier_module):
-    # A module with no frontend_manifest at all (the module system Phase 1/2
+    # A module with no frontend_manifest at all (the original module-system
     # fixture shape) must not error — just report "nothing to show."
     module_registry.INSTALLED_MODULES.append(_fake_module(key="no_manifest_fake", frontend_manifest=None))
     build_registry(force=True)
@@ -780,7 +780,7 @@ def test_project_enabled_modules_endpoint_lists_only_enabled_modules(
 def test_project_enabled_modules_interpolates_project_id_placeholder(
     client, admin_token, org_id, project_scoped_installed_module
 ):
-    """Phase 13's own fix: `nav_path`'s literal `"{project_id}"` placeholder
+    """`nav_path`'s literal `"{project_id}"` placeholder
     must be replaced with the real project id before reaching the frontend
     — otherwise `<Link to=...>` (`Layout.tsx`) would navigate to a
     nonsensical, literal `/projects/{project_id}/...` URL. See `routers/

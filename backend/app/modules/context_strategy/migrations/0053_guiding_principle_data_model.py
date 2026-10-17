@@ -1,21 +1,19 @@
-"""Guiding Principle data model (Module 1 Phase 4)
+"""Guiding Principle data model
 
 Revision ID: 0053
 Revises: 0052
 Create Date: 2026-09-28
 
-Adds the five tables backing Context & Strategy's Phase 4 data model
-(docs/plans/module-01-context-and-strategy-plan.md Phase 4 — Guiding
-Principles), a structural mirror of migration 0048's `strategies`/
+Adds the five tables backing Context & Strategy's Guiding Principle data model,
+a structural mirror of migration 0048's `strategies`/
 `strategy_versions`/`strategy_comments`/`strategy_comment_files`/
 `strategy_files` set (identity+version split, org/project `scope`
-discriminator, Phase 0 Q4's full version-history requirement) for the
+discriminator, full version-history requirement) for the
 Guiding Principle artefact:
 
 - `guiding_principles` (identity row: `scope` discriminator, exactly one of
   `organization_id`/`project_id` set, enforced by a CHECK constraint).
-- `guiding_principle_versions` (temporal content snapshot — source overview
-  §8.3's field set: `name`, `principle_statement`, `rationale`, `priority`,
+- `guiding_principle_versions` (temporal content snapshot — §8.3's field set: `name`, `principle_statement`, `rationale`, `priority`,
   `status`, `owner_id` — no `type` field, no `time_horizon`/`expected_
   outcomes`/`constraints`/`measures_of_success` the way `strategy_versions`
   has).

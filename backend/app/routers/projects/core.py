@@ -122,7 +122,7 @@ def _accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
     project_ids_via_role = set(
         db.scalars(select(UserProjectRole.project_id).where(UserProjectRole.user_id == user_id)).all()
     )
-    # PR7 (members/groups directory rework plan, docs/decisions.md): a group
+    # Members/groups directory rework (docs/decisions.md): a group
     # can now hold zero roles, so plain membership alone no longer implies
     # any access — the `join(ProjectGroupRole, ...)` below requires the
     # group to actually hold at least one role, matching `get_effective_
@@ -151,13 +151,13 @@ def _accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
         if user_org_ids
         else set()
     )
-    # Pre-existing gap fixed here, found while regression-testing PR4 (see
+    # Pre-existing gap fixed here, found while regression-testing the org-group role grants (see
     # docs/decisions.md): the two sets above only ever covered a user's
     # *direct* membership (a UserProjectRole, or being a plain user_id
     # member of a ProjectGroup) — never a role reached only via an org group
     # the user belongs to, whether nested inside a ProjectGroup
     # (`ProjectGroupMember.org_group_id`, pre-existing) or granted a role
-    # directly (`OrgGroupProjectRole`, PR4's new mechanism). Both are
+    # directly (`OrgGroupProjectRole`, the new mechanism). Both are
     # already correctly resolved by `get_effective_project_roles`/`require_
     # project_view`, so `GET /{project_id}` has always worked for such a
     # user — but `_accessible_project_ids` is the separate function behind
@@ -297,8 +297,7 @@ def _ensure_project_has_a_manager(db: Session, project: Project, fallback_user_i
     """C-U-08 fallback: guarantees `project` has at least one effective
     manager, granting `fallback_user_id` one if it doesn't.
 
-    Shared by both of `create_project`'s branches (follow-up UX batch Phase
-    C, 2026-08-31 — previously only the template-clone branch needed this
+    Shared by both of `create_project`'s branches (2026-08-31 — previously only the template-clone branch needed this
     at all, since the non-template branch always auto-created its own
     manager-role `ProjectGroup` and added the creator to it directly).
     Prefers adding `fallback_user_id` to an existing manager-role
@@ -365,7 +364,7 @@ def create_project(
     On creation, the creator is granted a direct `PROJECT_MANAGER`
     `UserProjectRole` (C-U-10) — unless a template project is used (C-E-05),
     per C-U-10's explicit "unless using a template project" clause:
-    groups/members (and, as of the follow-up UX batch's Phase C, direct role
+    groups/members (and, 2026-08-31, direct role
     grants too) are copied from the template instead, via `clone_project`.
     If that leaves the new project with no manager at all, the creator is
     still added as a fallback (the exact same
@@ -377,7 +376,7 @@ def create_project(
     creation-time C-U-08 never depends on inheritance being present or
     stable later.
 
-    Prior to the follow-up UX batch's Phase C (2026-08-31), the non-template
+    Prior to 2026-08-31 (2026-08-31), the non-template
     path instead auto-created four "standard" `ProjectGroup` rows
     (`is_default=True`) and added the creator to the manager-role one —
     see docs/decisions.md's entry on that migration for why this changed
@@ -454,8 +453,7 @@ def create_project(
         db.add(ProjectStage(project_id=project.id, name="Scoping", status=StageStatus.SCOPING, sort_order=0, is_current=True))
 
         # C-U-10: the creator becomes the project's initial manager via a
-        # direct grant — no group is auto-created any more (follow-up UX
-        # batch Phase C, 2026-08-31; see docs/decisions.md). This project
+        # direct grant — no group is auto-created any more (docs/decisions.md). This project
         # has zero groups at this point, so `_ensure_project_has_a_manager`'s
         # "existing manager-role group" branch is unreachable here and it
         # always takes the direct-grant path — the exact same fallback the
@@ -498,7 +496,7 @@ def create_project(
         detail={"template_project_id": str(template_project_id)} if template_project_id else None,
     )
     # Generic module-contributed project-creation reaction (e.g.
-    # Compliance's Phase 20 reconciliation of `applies_to_all_projects`
+    # Compliance's reconciliation of `applies_to_all_projects`
     # standards) — this core router never imports a specific module; see
     # `ModuleDefinition.on_project_created`'s own docstring for why
     # project-creation time, not a module-enable hook, is where this has to
@@ -604,8 +602,7 @@ def list_projects(
     `limit`/`offset` (U-P-06) are optional pagination — see
     `list_requirements` for the same pattern and its rationale.
 
-    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
-    2026-08 UX audit roadmap) is a second response header reporting the
+    `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory accessible-projects + default
     archived-visibility scope, before `organization_id`/`search`/`role`/
     `stage_status`/`favorite_only` narrow it further — unlike

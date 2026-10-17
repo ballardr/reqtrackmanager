@@ -14,7 +14,7 @@ by the target organisation's `sso_only` flag:
   either one first. `resend_pending_invite` rotates an existing row's
   token/`expires_at` and re-sends the same email, for when the original
   didn't arrive or already expired (`routers/projects.py`'s
-  `GET/POST .../pending-invites[/{id}/resend]`, Phase 3 — standard flow
+  `GET/POST .../pending-invites[/{id}/resend]` — standard flow
   only, not the `sso_only` path below).
 - `sso_only` orgs: `provision_sso_invite` grants access immediately by
   pre-creating the `User` row and its org/project roles up front, with no

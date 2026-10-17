@@ -1,16 +1,15 @@
 """
 Module: modules.compliance.project_router.evidence
 
-A project's own supporting evidence (Phase 8): CRUD, archive/
+A project's own supporting evidence: CRUD, archive/
 unarchive, revalidate (with the approvals-it-supported-invalidated
 side effect, `_invalidate_approvals_supported_by_evidence`, local to
 this file only), links to a requirement or a required-action
 assessment, and file attachment (upload or link an existing org
 resource).
 
-`create_evidence`/`update_evidence` are Fine-Grained Access Control Phase
-6's org/project-axis migration (`docs/plans/core-fine-grained-access-
-control-plan.md`) — `_require_evidence_manage` (below) tries the existing
+`create_evidence`/`update_evidence` are the Fine-Grained Access Control
+org/project-axis migration — `_require_evidence_manage` (below) tries the existing
 `_require_officer` (`compliance_officer`) gate first, falling back to
 `require_permission`'s `(compliance_evidence, manage)` atom only on a 403
 (never a 404 — module-disabled must propagate immediately), the same
@@ -78,7 +77,7 @@ def _require_evidence_manage(
     db: Session = Depends(get_db),
 ) -> User:
     """`create_evidence`/`update_evidence`'s gate (Fine-Grained Access
-    Control Phase 6, see this module's own docstring) — additive: a caller
+    Control, see this module's own docstring) — additive: a caller
     who already holds `compliance_officer` sees no behaviour change; a
     caller who instead holds a custom role granting `(compliance_evidence,
     manage)` (org- or project-scoped) reaches these two endpoints without
@@ -115,8 +114,8 @@ def _invalidate_approvals_supported_by_evidence(
     own docstrings; a no-op for a piece of evidence that supports nothing,
     or whose linked rows aren't currently `PENDING_APPROVAL`/`APPROVED`.
     `actor_id` is the user who performed the evidence mutation that
-    triggered this — a real human action, unlike a future Phase 10
-    passive-expiry sweep, which would log with `actor_id=None` instead.
+    triggered this — a real human action, unlike a passive-expiry sweep,
+    which logs with `actor_id=None` instead.
 
     Does not commit — callers commit as part of their own single
     transaction, same convention as every other mutation on this router.

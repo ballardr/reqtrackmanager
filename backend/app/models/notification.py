@@ -49,8 +49,7 @@ class NotificationType(str, enum.Enum):
     # Deployment health alert sent to server admins (services/storage_health.py, services/disk_monitor.py).
     SYSTEM_STORAGE_ALERT = "system_storage_alert"
 
-    # Compliance Module (docs/compliance-module-plan.md Phase 10; docs/
-    # Compliance_Module_Requirements.md §18) — every event §18 lists. These
+    # Compliance Module (§18) — every event §18 lists. These
     # predate the registry-backed mechanism below and stay here; a module added
     # since declares its kinds on `ModuleDefinition.notification_types` instead
     # of adding members to this enum.

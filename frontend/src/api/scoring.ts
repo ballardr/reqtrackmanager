@@ -1,8 +1,8 @@
 /**
  * Module: api/scoring
  *
- * Types and calls for the generic scoring-matrix API (Module 1 — Context &
- * Strategy — Phase 10). A module registers a scoring scheme (axes with
+ * Types and calls for the generic scoring-matrix API (Context &
+ * Strategy). A module registers a scoring scheme (axes with
  * weighted levels, models, default bands) on the backend; these calls read
  * a scheme's effective configuration for an org or project and edit it.
  * Core code only ever addresses a scheme by its key — the module that owns

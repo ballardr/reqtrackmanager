@@ -2,9 +2,9 @@
  * Module: components/ProjectScoringSettings
  *
  * Project-level scoring settings for one scheme (generic scoring-matrix
- * core, Module 1 Phase 10): override the default model, rating bands and per-cell ratings,
+ * core): override the default model, rating bands and per-cell ratings,
  * or inherit them (nearest ancestor project → organisation → module
- * default — Phase 9 Q3, Decided by: User). Levels are organisation-wide and
+ * default, Decided by: User). Levels are organisation-wide and
  * shown read-only here. A module embeds this in its own project-admin
  * section with its scheme key; every inherited value says where it comes
  * from (`OverridePill`), and every mutation toasts its outcome.

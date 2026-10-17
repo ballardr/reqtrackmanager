@@ -12,9 +12,8 @@ accent/wordmark/email-footer, default template, public login-info),
 (org-admin PAT incident-response actions), `taxonomies` (project
 statuses, requirement link types), `custom_roles` (Fine-Grained Access
 Control's permission vocabulary, `CustomRoleDefinition` CRUD, and its
-user/group grant endpoints — `docs/plans/core-fine-grained-access-control-
-plan.md` Phase 3), and `scoring` (generic scoring-matrix levels, default
-model and bands — Module 1 Phase 10) — into the single `/api/v1/orgs`
+user/group grant endpoints —), and `scoring` (generic scoring-matrix levels, default
+model and bands) — into the single `/api/v1/orgs`
 router `main.py` mounts.
 
 Split out from one ~3,200-line module (previously `routers/orgs.py`) so

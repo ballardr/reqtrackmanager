@@ -1,7 +1,7 @@
 """
 Module: modules.risk_management.project_router
 
-Project-scoped Risk API (Phase 1), mounted at
+Project-scoped Risk API, mounted at
 `/api/v1/projects/{project_id}/modules/risk_management`: Risk
 CRUD/archive/versions/comments/files and the project's Risk type vocabulary
 (effective list plus rename/reorder/disable/add).

@@ -40,8 +40,8 @@ export function ProjectOverviewPage() {
   const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Extra module-contributed summary tiles (module boundary cleanup,
-  // 2026-09-08) — e.g. Compliance's own per-standard status tiles (Phase
-  // 17d), only shown once this project's org has the module enabled. This
+  // 2026-09-08) — e.g. Compliance's own per-standard status tiles,
+  // only shown once this project's org has the module enabled. This
   // core page renders whatever each currently-enabled module's own
   // `projectOverviewTiles` hands it and never imports a specific module
   // itself; a module deciding it has nothing to show yet (e.g. no standards

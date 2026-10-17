@@ -2,7 +2,7 @@
  * Module: modules/stakeholders/AnonymousParticipantsPanel
  *
  * Research extras: the participants of a session who have no Stakeholder record
- * (Phase 0 addendum 2, item 19) — a label such as "Participant 3" plus,
+ * — a label such as "Participant 3" plus,
  * optionally, the Persona they represent. Data minimisation is the point, so the
  * form says plainly not to enter names, and the register stays free of one-time
  * participants. Add from a (+) popover; remove behind a tier-1 confirm. Persona names are

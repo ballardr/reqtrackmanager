@@ -60,8 +60,7 @@ export function ProjectListPage() {
   const orgLabelCap = useOrgLabelCapitalized();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
   const [total, setTotal] = useState(0);
-  // Unfiltered mandatory-scope count (`X-Total-Unfiltered-Count`, 2026-08
-  // UX audit roadmap: persistent "showing X of Y" result count) — powers
+  // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
   // is the filtered/searched count.
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
@@ -143,7 +142,7 @@ export function ProjectListPage() {
     if (stageStatusFilter) params.set("stage_status", stageStatusFilter);
     if (orgFilter) params.set("organization_id", orgFilter);
     // Same `favorite_only` param `FavouritesPage.tsx` already uses server-side
-    // (2026-08 UX audit roadmap 511) — filtering here rather than
+    // — filtering here rather than
     // client-side keeps this consistent with every other filter on this
     // page, all of which narrow the paginated result set itself rather
     // than hiding already-loaded rows.
@@ -160,7 +159,7 @@ export function ProjectListPage() {
 
   // Belt-and-suspenders request-sequencing guard, same reasoning/shape as
   // `RequirementsPage.tsx`/`ChangeRequestsPage.tsx`'s identical guards
-  // (2026-08 UX audit roadmap) — discards a response if a newer request
+  // — discards a response if a newer request
   // has since been kicked off (e.g. rapid filter changes).
   const beginLoad = useRequestSequence();
 
@@ -359,8 +358,7 @@ export function ProjectListPage() {
                 </select>
               </label>
             )}
-            {/* Small usability fix noted alongside this item in the 2026-08
-                UX audit: picking an import file below used to silently hide
+            {/* Small usability fix: picking an import file below used to silently hide
                 the template picker above with no explanation — this note
                 replaces the silent disappearance, rather than a bigger
                 redesign of the two fields' relationship. */}

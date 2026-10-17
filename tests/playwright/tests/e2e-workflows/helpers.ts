@@ -48,7 +48,7 @@ export const PROJECT_NAMES = {
    * configuration. */
   gamma3: "Gamma-3 Hierarchy Parent",
   gamma4: "Gamma-4 Hierarchy Child",
-  /** Platform review 2026-09, Phase 8 — dedicated to link-and-action-
+  /** Dedicated to link-and-action-
    * change-request-locking.spec.ts (see LINK_LOCK_PROJECT_NAME in
    * backend/scripts/seed_e2e_dataset.py): `require_change_request_for_
    * approved_links` is on; otherwise given components/categories only —
@@ -57,7 +57,7 @@ export const PROJECT_NAMES = {
    * unlink/remove/approve would make non-idempotent). No other spec may
    * depend on this project's setting. */
   epsilon1: "Epsilon-1 Link Lock Demo",
-  /** Platform Enhancements Phase 6b — holds one submitted change request proposing three links, the last
+  /** Holds one submitted change request proposing three links, the last
    * unmergeable (see PROPOSED_LINKS_PROJECT_NAME in backend/scripts/seed_e2e_dataset.py). Read-only: no spec may
    * approve or reject that request; change-request-proposed-links.spec.ts builds its own organisation for that. */
   zeta1: "Zeta-1 Proposed Links Demo",
@@ -120,8 +120,8 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 
 /**
  * Opens one org group's `SidePanel` on Org Admin's Groups section
- * (`DirectoryTable`, Phase B, follow-up UX batch, 2026-08-31 — replaces the
- * pre-Phase-B always-expanded `CollapsibleSection` accordion this helper
+ * (`DirectoryTable`, 2026-08-31 — replaces the
+ * earlier always-expanded `CollapsibleSection` accordion this helper
  * used to open a card in instead). A `SidePanel` has no expand/collapse
  * state to race, so this isn't guarded the idempotent way `ensureExpanded`
  * is — clicking the row again while its own panel is already open is a
@@ -138,12 +138,10 @@ export async function openOrgGroupPanel(page: Page, groupName: string) {
 
 /**
  * Opens one project group's `SidePanel` on `ProjectAdminPage`'s Groups
- * section — a `DirectoryTable` row (Phase B, follow-up UX batch,
- * 2026-08-31; before that, Phase 5's own `<button>`-row list, docs/
- * decisions.md). Uses `DirectoryTable`'s `onRowClick` (a real `<button>`),
- * not `rowHref` — found during Phase B verification, not assumed: at the
+ * section — a `DirectoryTable` row (docs/decisions.md). Uses `DirectoryTable`'s `onRowClick` (a real `<button>`),
+ * not `rowHref` — found during verification, not assumed: at the
  * time, every standard project auto-seeded a default group literally named
- * "Members" (`DEFAULT_GROUPS`, `routers/projects.py` — removed in Phase C,
+ * "Members" (`DEFAULT_GROUPS`, `routers/projects.py` — since removed,
  * 2026-08-31, but the finding that motivated `onRowClick` stands
  * regardless), the exact same accessible name as this page's own
  * `ResourceMenu` "Members" nav link, so a `rowHref` `<Link>` row would
@@ -164,8 +162,8 @@ export async function openOrgGroupPanel(page: Page, groupName: string) {
  * this run could plausibly match a page-wide selector for the same
  * add-member input/role text.
  *
- * Uses an exact-name match, not a `^groupName` prefix regex: PR7 of the
- * follow-up UX batch (docs/decisions.md) added a per-row role
+ * Uses an exact-name match, not a `^groupName` prefix regex: the
+ * members/groups directory rework (docs/decisions.md) added a per-row role
  * `MultiSelectDropdown` to the Groups tab's own row (`ProjectAdminPage.tsx`),
  * whose trigger button's accessible name is `"<group name>'s roles"` — a
  * prefix match against the row-trigger button's exact `<group name>` text
@@ -183,10 +181,7 @@ export async function openProjectGroupPanel(page: Page, groupName: string) {
 
 /**
  * Selects a group in any page built on the shared `ResourceMenu`
- * (`ResourceMenu.tsx`, 2026-08 UX audit "Org Admin resource-menu
- * restructure", later extended to Server Admin/Preferences/Project Admin
- * — see `docs/decisions.md`'s "Admin-tier ResourceMenu consistency"
- * entry). Each group is a real route segment (e.g.
+ *. Each group is a real route segment (e.g.
  * `/orgs/:orgId/admin/:group?`), not client-only state — the link's own
  * `aria-current="page"` says whether it's already selected, so this is
  * idempotent the same way `ensureExpanded` is: clicking an already-active
@@ -279,7 +274,7 @@ export async function selectPreferencesGroup(page: Page, groupLabel: string): Pr
 }
 
 /** `selectResourceMenuGroup` for `OrgOverviewPage`
- * (`/orgs/:orgId/overview/:group?`, compliance-module-plan.md Phase 19) —
+ * (`/orgs/:orgId/overview/:group?`) —
  * a module-contributed group only, e.g. Compliance's relocated-from-
  * `OrgAdminPage` "Compliance overview" (previously reached via
  * `selectOrgAdminGroup`). */

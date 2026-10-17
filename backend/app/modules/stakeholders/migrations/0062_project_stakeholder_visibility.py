@@ -1,12 +1,11 @@
-"""Project stakeholder visibility overrides (Module 2 Phase 3b)
+"""Project stakeholder visibility overrides
 
 Revision ID: 0062
 Revises: 0061
 Create Date: 2026-10-05
 
 Adds `project_stakeholder_visibility`: a project's override-only record of
-whether one org Stakeholder is hidden from it (docs/plans/module-02-
-stakeholders-and-personas-plan.md Phase 3b). No row means "inherit from the
+whether one org Stakeholder is hidden from it. No row means "inherit from the
 nearest ancestor project, else visible".
 """
 

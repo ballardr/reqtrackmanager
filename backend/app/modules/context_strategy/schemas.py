@@ -1,7 +1,7 @@
 """
 Module: modules.context_strategy.schemas
 
-Pydantic request/response models for Context & Strategy's Phase 1 backend
+Pydantic request/response models for Context & Strategy's backend
 API — sits alongside `models.py` (the ORM shapes these expose over HTTP),
 `service.py` (versioning/lifecycle logic), and the two routers (`router.py`
 org-scoped, `project_router.py` project-scoped).
@@ -15,12 +15,12 @@ shape for this codebase's module schemas:
 - `StrategyCommentOut` mirrors `DecisionCommentOut`'s shape (no reaction
   fields — `StrategyComment` has no reaction mechanism, same reasoning).
 
-Phase 2 (Future State) adds the same shapes (`FutureStateCreate`/`Update`/
+Future State has the same shapes (`FutureStateCreate`/`Update`/
 `Out`/`VersionOut`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/
 `CommentOut`) for the standalone Future State artefact, following every
 one of the conventions above identically.
 
-Phase 3 (Pain Points) adds `PainPointTypeOut` (a plain `PainPointTypeDefinition`
+Pain Points have `PainPointTypeOut` (a plain `PainPointTypeDefinition`
 row, org-scoped type CRUD), `EffectivePainPointTypeOut` (one row of a
 project's merged effective type list — mirrors `service.
 EffectivePainPointType` field-for-field, a Pydantic sibling of that plain
@@ -31,18 +31,18 @@ returned by its own create/override endpoints), and `PainPointCreate`/
 `CommentOut` for the artefact itself — no `PainPointVersionOut` (no version
 table; see `models.py`'s own docstring).
 
-Phase 4 (Guiding Principles) adds `GuidingPrincipleCreate`/`Update`/`Out`/
+Guiding Principles have `GuidingPrincipleCreate`/`Update`/`Out`/
 `VersionOut`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/`CommentOut`
 for the standalone Guiding Principle artefact, following every one of the
 conventions above identically (`GuidingPrincipleOut` always built explicitly
 by the router, merging identity + current version; `is_locked` computed).
 
-Phase 5 (Open Questions) adds `OpenQuestionCreate`/`Update`/`Out`/
+Open Questions have `OpenQuestionCreate`/`Update`/`Out`/
 `TransitionRequest`/`CommentCreate`/`CommentUpdate`/`CommentOut` — back to
 Pain Point's shape (no `OpenQuestionVersionOut`; no version table, see
 `models.py`'s own docstring).
 
-Phase 6 (Cross-artefact relationships) adds one shared `ContextStrategyLinkOut`
+Cross-artefact relationships use one shared `ContextStrategyLinkOut`
 (returned by every source artefact's `GET .../relationships` and `POST
 .../relationships` endpoints alike — one shape covers all five source types,
 unlike Decision Management's single `DecisionLinkOut`, since this module has
@@ -227,7 +227,7 @@ class StrategyCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Future State (Phase 2) -------------------------------------------------
+# --- Future State -------------------------------------------------
 
 
 class FutureStateCreate(BaseModel):
@@ -339,7 +339,7 @@ class FutureStateCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Pain Points (Phase 3) ---------------------------------------------------
+# --- Pain Points ---------------------------------------------------
 
 
 class PainPointTypeCreate(BaseModel):
@@ -505,7 +505,7 @@ class PainPointCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Pain Point scoring (Phase 11) -------------------------------------------
+# --- Pain Point scoring -------------------------------------------
 
 
 class PainPointScoreEntryIn(BaseModel):
@@ -589,7 +589,7 @@ class PainPointScoringListOut(BaseModel):
 class PainPointScoresOut(PainPointScoringSummaryOut):
     """One Pain Point's roll-up plus what the score grid needs: the
     model/method used and the personas available to score against
-    (empty if Module 2's personas are off — then only "all personas"
+    (empty if the Stakeholders module's personas are off — then only "all personas"
     scoring is possible)."""
 
     model_config = {"protected_namespaces": ()}
@@ -600,7 +600,7 @@ class PainPointScoresOut(PainPointScoringSummaryOut):
     available_targets: list[ScoringTargetOut]
 
 
-# --- Guiding Principles (Phase 4) --------------------------------------------
+# --- Guiding Principles --------------------------------------------
 
 
 class GuidingPrincipleCreate(BaseModel):
@@ -701,7 +701,7 @@ class GuidingPrincipleCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Open Questions (Phase 5) -------------------------------------------------
+# --- Open Questions -------------------------------------------------
 
 
 class OpenQuestionCreate(BaseModel):
@@ -779,7 +779,7 @@ class OpenQuestionCommentOut(BaseModel):
     edited_at: datetime | None = None
 
 
-# --- Phase 6: cross-artefact relationships -----------------------------------
+# --- cross-artefact relationships -----------------------------------
 
 
 class ContextStrategyLinkOut(BaseModel):
@@ -795,7 +795,7 @@ class ContextStrategyLinkOut(BaseModel):
     for an `other_type` this module doesn't know how to resolve (in
     practice, only ever `"decision"` today — a Decision-target relationship
     is reserved, not yet created by any endpoint, but a future link of that
-    shape reaching this schema, e.g. once Module 4's own Phase 7 starts
+    shape reaching this schema, e.g. once a Decision-resolution workflow starts
     writing rows this module can also read via `GET .../relationships`,
     still renders without erroring)."""
 

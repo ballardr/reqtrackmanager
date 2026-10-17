@@ -1,5 +1,4 @@
-"""Tests for the Stakeholders & Personas reports S1-S5 (docs/plans/module-02-
-stakeholders-and-personas-plan.md Phase 6), through the real HTTP endpoints.
+"""Tests for the Stakeholders & Personas reports S1-S5, through the real HTTP endpoints.
 
 Covers, per report: content, labels, filters and the gap tables. Cross-cutting:
 access (non-member, other organisation and disabled module are 404), sub-component

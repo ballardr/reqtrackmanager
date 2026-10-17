@@ -20,7 +20,7 @@ const CHILD_REQ = buildGraphNode({
 
 /**
  * The Links panel every artefact detail page shows beside its content
- * (docs/plans/platform-enhancements-2026-10-plan.md Phase 6). All calls go through an
+ *. All calls go through an
  * injected fake API.
  */
 const meta: Meta<typeof ArtefactLinksPanel> = {

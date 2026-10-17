@@ -20,7 +20,7 @@ export interface ResourceMenuGroupDef<K extends string> {
 /**
  * A shared, accessible left-hand vertical menu of route-addressable
  * groups, with a content pane on the right — the "resource menu" shape
- * named in the 2026-08 UX audit's style guide (Principle 1: resource-menu
+ * named in the style guide (Principle 1: resource-menu
  * sub-pages for more than five setting groups opened rarely as a whole).
  * First user: Org Admin's 15-way flat accordion wall, split into 6 groups
  * (`docs/ux-style-guide.md`, "Pattern: settings hierarchy").
@@ -43,8 +43,8 @@ export interface ResourceMenuGroupDef<K extends string> {
  * to place them independently.
  *
  * When `groups.length <= 1` the menu strip itself (the `<nav>`/`<ul>` of
- * group links) is skipped entirely and `children` renders directly (Phase
- * 27c) — a single-entry menu has nothing to switch between, so the chrome
+ * group links) is skipped entirely and `children` renders directly —
+ * a single-entry menu has nothing to switch between, so the chrome
  * would just be a list with one link that's always already active. This
  * lets a caller declare an always-present group unconditionally (e.g.
  * `OrgOverviewPage.tsx`'s "Overview") without that caller needing to know
@@ -82,7 +82,7 @@ export function ResourceMenu<K extends string>({
   title?: string;
   subtitle?: string;
   /** Rendered immediately after the `<h1>`, on the same row — e.g. an
-   * `EntitySwitcher` chevron (docs/compliance-module-plan.md Phase 37) for
+   * `EntitySwitcher` chevron for
    * a page whose title is rendered by this component rather than a bespoke
    * `<h1>` of its own (which can just place the switcher next to its own
    * heading directly, as `ProjectAdminPage.tsx` already does). Ignored

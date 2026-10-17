@@ -35,8 +35,7 @@ type AccessReviewConfirmKind =
   | "grantModuleAdministrator"
   | "revokeModuleAdministrator";
 
-/** Sortable columns of the Access Review `DirectoryTable` (Phase E,
- * follow-up UX batch, 2026-08-31) — mirrors `list_org_users`'s own
+/** Sortable columns of the Access Review `DirectoryTable` — mirrors `list_org_users`'s own
  * `sort`/`order` contract; `created_at` is the one addition `/system/users`
  * needed beyond that (Org Users has no "Created" column). */
 type SystemUserSortKey = "display_name" | "email" | "last_login_at" | "created_at";
@@ -47,7 +46,7 @@ function AccessReviewTab() {
   const [view, setView] = useState<ReviewView>("orphaned");
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
   const [search, setSearch] = useState("");
-  // Column-header sorting (Phase E) — this table is backend-paginated
+  // Column-header sorting — this table is backend-paginated
   // (`PAGE_SIZE`/`LoadMoreButton`), so sorting has to be honoured
   // server-side, same reasoning as Org Admin's Users table.
   const [sort, setSort] = useState<SortState<SystemUserSortKey> | null>(null);
@@ -61,7 +60,7 @@ function AccessReviewTab() {
   // "Confirmation and feedback rollout, precisely" list.
   const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
-  // Platform review 2026-09, Phase 5: the full groups list and the server-
+  // The full groups list and the server-
   // roles toggles both moved off the row (an unbounded joined string and an
   // always-visible dropdown respectively) into modals opened from the row's
   // `ActionMenu`. Tracked by id, not the `SystemUser` object itself, so the
@@ -103,7 +102,7 @@ function AccessReviewTab() {
 
   async function reload() {
     // Deliberately doesn't reset `users` to `null` first (unlike the old
-    // pre-Phase-E implementation): the search box now lives inside the
+    // implementation): the search box now lives inside the
     // same `.side-grid`/`FilterPanel` this list renders, so nulling `users`
     // on every keystroke would unmount the input mid-type (and drop focus)
     // rather than just refresh the rows — same reasoning Org Admin's Users
@@ -256,10 +255,10 @@ function AccessReviewTab() {
     },
   };
 
-  // Rebuilt on the shared `DirectoryTable` (Phase 0) inside the standard
+  // Rebuilt on the shared `DirectoryTable` inside the standard
   // `.side-grid` + `FilterPanel` layout every other directory in this app
   // now uses — replacing the old bare `<table>` + inline filter-control row
-  // (2026-08-31, Phase E, follow-up UX batch — see docs/decisions.md).
+  // (docs/decisions.md).
   // `view`/`includeDeactivated` behave identically to before, just hosted
   // as a `FilterField`/`FilterCheckbox`; `search` and column-header sorting
   // are new (see `list_system_users`'s own docstring for the backend side).
@@ -268,8 +267,8 @@ function AccessReviewTab() {
     { key: "display_name", label: strings.system.name, sortable: true, render: (u) => u.display_name },
     {
       // Comma-joined names have no natural order — not sortable, per style
-      // guide "Pattern: sortable column header". Platform review 2026-09,
-      // Phase 5: joining every org name unconditionally became unreadable
+      // guide "Pattern: sortable column header".
+      // Joining every org name unconditionally became unreadable
       // for a user in many orgs — per the user's own ask, orgs stay inline
       // (typically far fewer than groups) but gain a "show all N" toggle
       // past 2, mirroring Org Admin's "View access" panel role-expansion
@@ -304,7 +303,7 @@ function AccessReviewTab() {
       },
     },
     {
-      // Platform review 2026-09, Phase 5: groups have no cap the way orgs
+      // Groups have no cap the way orgs
       // effectively do, so instead of an inline "show all" toggle (which
       // could still push the row very wide) the full list moved to a
       // modal off this row's `ActionMenu` ("View groups") — this column
@@ -326,10 +325,10 @@ function AccessReviewTab() {
     },
     {
       // Consolidated behind one `ActionMenu` (style guide "Pattern: action
-      // menu"). Platform review 2026-09, Phase 5: the menu itself now
+      // menu"). The menu itself now
       // renders for every row, not just org-less ones — "Assign server
       // roles" (moved here from the old always-visible "Server roles"
-      // `MultiSelectDropdown` column, module system Phase 0) and "View
+      // `MultiSelectDropdown` column) and "View
       // groups" apply regardless of org membership (I-M-08: a server admin
       // can hold an organisation of their own). Deactivate/reactivate and
       // ban/unban stay scoped to org-less accounts only — that gate was
@@ -471,7 +470,7 @@ function AccessReviewTab() {
         // cell): this modal is already the "opened" state, so a second,
         // nested disclosure control (a dropdown-in-a-modal) would just add
         // an extra click with no benefit — see docs/decisions.md, Platform
-        // review 2026-09, Phase 5.
+        // review 2026-09.
         <Modal
           title={strings.system.assignServerRolesModalTitle(assignRolesUser.display_name)}
           onClose={() => setAssignRolesUserId(null)}

@@ -58,7 +58,7 @@ export const ExportMenuOffersCsvAndTemplate: Story = {
  * (case-insensitively) — `guessMapping` should auto-map them, and the
  * required fields (Name/Component/Category) end up pre-filled so nothing
  * blocks the Import button. The mapping/preview step now opens in a
- * `Modal` (roadmap item 506) — a layer portalled to `document.body`, not
+ * `Modal` — a layer portalled to `document.body`, not
  * an inline block inside `canvasElement` — so its content is queried via
  * `within(document.body)`, the same convention the pre-existing Export
  * popover stories below already use for the same reason. */
@@ -99,7 +99,7 @@ export const UploadWithUnmatchedHeadersBlocksImport: Story = {
   },
 };
 
-/** Roadmap item 506 — the mapping/preview step used to be a permanently-
+/** The mapping/preview step used to be a permanently-
  * inline `<div className="card stack">` once a file was picked; it's now a
  * `Modal` (`size="lg"`), closable via its own Cancel button (which also
  * clears the picked file, matching the pre-existing `cancel()` behaviour)
@@ -126,7 +126,7 @@ export const MappingStepOpensAsAModal: Story = {
   },
 };
 
-/** Roadmap item 507 — component/category/level/target_version can each be
+/** Component/category/level/target_version can each be
  * set to one fixed value applied to every imported row instead of mapped
  * from a CSV column, defaulting to column-mapped (the only prior
  * behaviour) so an existing CSV/workflow is unaffected. A CSV with only a

@@ -1,8 +1,7 @@
 """
 Module: modules.context_strategy.reports
 
-Report data layer for Context & Strategy (docs/plans/module-01-context-and-
-strategy-plan.md Phases 12/12b): the nine reports R1–R9 as one `collect_*`
+Report data layer for Context & Strategy: the nine reports R1–R9 as one `collect_*`
 function each, returning the core framework's `ReportResult`, plus the
 `REPORT_DEFINITIONS` that declare them to the registry. Everything
 module-neutral — result shapes, scope rule (`readable_projects`), PDF/CSV
@@ -19,20 +18,20 @@ Responsibilities:
   declared parameters per report.
 
 Design decisions (all Decided by: Agent unless stated; the report list,
-formats, model/roll-up choice and access rules are Phase 9, Decided by:
+formats, model/roll-up choice and access rules are Decided by:
 User):
 - "Open" Pain Points are Submitted, Triaged and Accepted. Addressed means
   the problem is fixed and Rejected/Duplicate/Closed are finished, so none
   of them belong in a fix ranking.
 - Org-wide reports group Pain Points by the scoring model actually applied
   (the project's resolved default unless a model is requested), never
-  ranking different models together (Phase 9 Q3).
+  ranking different models together.
 - Cross-artefact checks ("has a Requirement", "has a Strategy") count only
   artefacts inside the report's readable scope. A link to something the
   caller cannot read is treated as absent rather than leaked, so a gap list
   may over-report; it never reveals a hidden record.
 - R2, R5, R6 and R7 are project-level only; R1, R3, R4, R8 and R9 also run
-  organisation-wide (Phase 9 Q12), gated by the `org_reports_viewer` role and
+  organisation-wide, gated by the `org_reports_viewer` role and
   the framework's default `readable_projects` scope. Organisation-scoped
   Strategies, Future States and Guiding Principles appear in the project
   reports they relate to (R2 parents, R6 and R7 rows) because every org
@@ -42,11 +41,11 @@ User):
   JSON endpoints, and nothing Restricted (no file content, no secrets) is
   included.
 - R9 has no tier columns yet: `intentional_in`/`removed_by` stay reserved
-  until Product Tiers (Module 13) exists, so the report says so in a note.
+  until Product Tiers exists, so the report says so in a note.
 
 Dependencies: core `services.relationships`/`services.scoring`/
 `services.report_framework`, the `registry` artefact-summary hook (Decisions,
-without importing Module 4) and this module's own models.
+without importing Decision Management) and this module's own models.
 """
 
 from __future__ import annotations
@@ -614,7 +613,7 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
     A limitation whose worst persona is at or above
     `CHURN_RISK_SEVERITY_RATIO` of the top Severity level is flagged as a
     churn risk rather than an upsell lever. Tier columns are reserved until
-    Product Tiers (Module 13) exists.
+    Product Tiers exists.
 
     Args:
         db: Database session.
@@ -625,7 +624,7 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
     """
     groups = _score_pain_points(db, req, OPEN_PAIN_POINT_STATUSES, intentional=True)
     result = _result(req, "r9", "Upgrade drivers", eligible=len(req.eligible(db, "pain_point")), notes=[
-        "Tier columns are empty until Product Tiers (Module 13) is available; limitations are not yet linked to a tier.",
+        "Tier columns are empty until Product Tiers is available; limitations are not yet linked to a tier.",
         "Churn risk: a persona is at or near the top Severity level, so the limitation may push users away "
         "rather than towards an upgrade.",
     ])
@@ -1069,7 +1068,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
     A principle counts as applied when it is linked to at least one readable
     Requirement or Decision. Decision links are resolved through the generic
     artefact-summary hook, so they show as zero until Decision Management
-    populates them (Module 4 Phase 7).
+    populates them.
 
     Args:
         db: Database session.

@@ -1,5 +1,4 @@
-"""Tests for links proposed on change requests (docs/plans/platform-enhancements-2026-10-plan.md
-Phase 6b): proposing links on new / modify / add-link requests, the merge preview that
+"""Tests for links proposed on change requests: proposing links on new / modify / add-link requests, the merge preview that
 re-validates each link at read time, approval merging all (the default), a subset or none,
 the recorded outcome per link, the audit trail, the notification counts, the finder accepting a
 record that does not exist yet, and the migration of old ADD_LINK requests.

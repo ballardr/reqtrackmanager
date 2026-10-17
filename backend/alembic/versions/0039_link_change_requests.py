@@ -1,4 +1,4 @@
-"""Link/action-removal change requests (Platform review 2026-09, Phase 8)
+"""Link/action-removal change requests
 
 Revision ID: 0039
 Revises: 0038

@@ -152,9 +152,7 @@ test.describe("organisation rename and test-email actions", () => {
 
     await test.step("send test email is disabled until an SMTP host is configured", async () => {
       // SMTP/test-email lives in the "SMTP & email" card under its own
-      // "Email" top-level resource-menu group (2026-08 UX audit's Org
-      // Admin restructure, later split further from a combined
-      // "Integrations & security" group), open by default there — no
+      // "Email" top-level resource-menu group, open by default there — no
       // section-toggle click needed, just select the group.
       await selectOrgAdminGroup(page, "Email");
       await expect(page.getByRole("button", { name: "Send test email" })).toBeDisabled();

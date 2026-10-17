@@ -1,11 +1,11 @@
-"""Decision owner and decision maker become principals (users and groups on parity, Phase 2)
+"""Decision owner and decision maker become principals
 
 Revision ID: 0076
 Revises: 0075
 Create Date: 2026-10-12
 
 `decisions.owner_id` and `decisions.decision_maker_id` may now name a user, an
-organisation group or a project group (docs/plans/users-and-groups-parity-plan.md).
+organisation group or a project group.
 Each gets a `<name>_type` column (existing rows backfill to `user`), the foreign
 key to `users` is dropped (the id now points at one of three tables; the
 service validates it), and a check constraint keeps the pair consistent.

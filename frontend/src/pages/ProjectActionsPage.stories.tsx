@@ -157,14 +157,14 @@ export const CreateNewAction: Story = {
         expect.objectContaining({ title: "Verify audit log retention", action_type_id: "at1" })
       )
     );
-    // Principle 7 — every mutation ends with feedback. The 2026-08 UX audit
-    // named this page specifically: it got real interaction-model work
+    // Principle 7 — every mutation ends with feedback. This page
+    // got real interaction-model work
     // without picking up Toast, so create still just silently re-rendered.
     await expect(within(document.body).getByText("Action created")).toBeInTheDocument();
   },
 };
 
-/** Column-header sorting (2026-08 UX audit roadmap) — this list has no
+/** Column-header sorting — this list has no
  * backend pagination, so sorting is a client-side `useMemo` over the
  * already-loaded rows. Clicking "Title" once sorts ascending. */
 export const SortedByTitleAscending: Story = {

@@ -1,5 +1,4 @@
-"""Tests for Decision Management's Phase 4 backend API
-(docs/plans/module-04-decision-management-plan.md Phase 4) — the real HTTP
+"""Tests for Decision Management's backend API — the real HTTP
 endpoints (`project_router.py`/`router.py`), through the `client` fixture,
 mirroring `test_compliance_standards_api.py`'s own "go through the real API,
 not direct ORM manipulation" convention now that one exists for this module.
@@ -299,8 +298,8 @@ def test_approve_and_reject_require_decision_approver_role(client, admin_token):
     assert approved.json()["status"] == "approved"
 
 
-# --- Fine-Grained Access Control Phase 4: `require_permission` migration ----
-# (`docs/plans/core-fine-grained-access-control-plan.md`) — approve/reject's
+# --- `require_permission` migration ----
+# — approve/reject's
 # gate is now the `(decision, approve_baseline)` permission atom rather than
 # the flat `decision_approver` module role directly; the test above already
 # pins that a `decision_approver` grant still works unchanged (via that
@@ -373,11 +372,11 @@ def test_approve_still_404s_when_module_disabled_after_reaching_under_review(cli
     assert resp.status_code == 404
 
 
-# --- Fine-Grained Access Control Phase 7: per-decision-type approver ------
-# binding (`docs/plans/core-fine-grained-access-control-plan.md`) —
+# --- per-decision-type approver ------
+# binding —
 # approve/reject's permission check now composes the decision's own
 # Decision Type name as a permission sub-type: `(decision, approve_
-# baseline, subtype=<type name>)`. The Phase 4 tests above already pin
+# baseline, subtype=<type name>)`. The tests above already pin
 # that the wildcard (`subtype=None`) grant — the flat `decision_approver`
 # role and an unscoped custom-role grant alike — keeps satisfying every
 # specific type unchanged; the tests below pin the new, narrower
@@ -765,7 +764,7 @@ def test_decision_template_crud_requires_org_admin(client, admin_token):
     assert cross_org.status_code in (404, 405)  # no GET-by-id endpoint exists; ensures no leakage either way
 
 
-# --- resolve_file_owner_project_id hook (Phase 4) -----------------------------
+# --- resolve_file_owner_project_id hook -----------------------------
 
 
 def test_resolve_decision_file_project_id_hook(client, admin_token):

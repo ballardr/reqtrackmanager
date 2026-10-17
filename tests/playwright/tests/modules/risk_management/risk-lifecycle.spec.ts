@@ -7,7 +7,7 @@ import { API_BASE_URL, createRisk, riskLevels, setUpOrg, statusBadge } from "./h
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-03-risk-management-plan.md Phase 5's exit
+ * Job to be done: exit
  * criteria — Playwright e2e coverage of the Risk Management UI
  * (`frontend/src/modules/risk_management/`) against a real backend: record and
  * rate a risk and move it through its lifecycle with a version history; tell a

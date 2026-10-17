@@ -3,10 +3,10 @@ import { expect, type Page } from "@playwright/test";
 /**
  * Creates a compliance standard together with its mandatory first (draft)
  * version, via the top-level `/standards` page's "New standard" dialog
- * (docs/compliance-module-plan.md Phase 18 — "Compliance Standards" as a
+ * ("Compliance Standards" as a
  * first-class, cross-org, project-like nav entity). Every compliance spec
  * in this directory that needs a fixture standard now goes through this
- * one-step flow instead of the pre-Phase-18 `selectOrgAdminGroup(page,
+ * one-step flow instead of the former `selectOrgAdminGroup(page,
  * "Compliance")` + org-admin "Standards" tab setup they used to share —
  * that org-admin group no longer exists (`ComplianceAdminPanel.tsx` is
  * fully retired).
@@ -30,7 +30,7 @@ export async function createStandardWithVersion(
   // latter is a case-insensitive substring match that also matches the
   // "Issuing organisation" text input further down this same form (a real
   // bug this comment's own predecessor had for a single-org caller, found
-  // and fixed while adding Phase 20's own spec against `orgAdminGamma`
+  // and fixed while adding a spec against `orgAdminGamma`
   // — Gamma-only, so the real "Organisation" `<select>` never renders at
   // all here and `getByLabel` silently resolved to that other input
   // instead). Restricting to `combobox` excludes the text input outright,
@@ -51,7 +51,7 @@ export async function createStandardWithVersion(
 /**
  * Selects an option in one of `FilterPanel.tsx`'s `FilterField`-wrapped
  * `<select>`s (e.g. the Outstanding panels' Standard/Standard
- * version/Sub-section filters, Phase 40) — `page.getByLabel(fieldLabel,
+ * version/Sub-section filters) — `page.getByLabel(fieldLabel,
  * { exact: true })` does **not** work here: `FilterField` renders `<label
  * class="stack"><span>{label}</span>{children}</label>`, a `<label>` that
  * *wraps* its control rather than pointing at it via `for`/`id`, and

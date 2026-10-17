@@ -8,8 +8,7 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase
- * 7.5's own exit criteria — Playwright e2e coverage for Open Question's full
+ * Job to be done: Playwright e2e coverage for Open Question's full
  * lifecycle, the fifth and last artefact type this module ships. Exercises
  * the Context & Strategy frontend's own `frontend/src/modules/
  * context_strategy/{OpenQuestionFormModal,ProjectOpenQuestionsPage,
@@ -26,9 +25,9 @@ const API_BASE_URL = "http://localhost:8000";
  *   `Date.now()`-suffixed per CLAUDE.md's "tests must not depend on state
  *   left behind by another test" rule.
  * - **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
- *   (Decided by: Agent)** — matching Phase 7.1-7.4's own identical
- *   precedent exactly (see those specs' own docstrings).
- * - Open Question has **no organisation scope at all** (source overview §9),
+ * (Decided by: Agent)** — matching the other lifecycle specs' identical
+ * precedent exactly (see their docstrings).
+ * - Open Question has **no organisation scope at all** (§9),
  *   so unlike `strategy-lifecycle.spec.ts`/`future-state-lifecycle.spec.ts`/
  *   `guiding-principle-lifecycle.spec.ts` there is no "project-scoped at
  *   minimum" caveat to record here — the project-scoped flow below is this

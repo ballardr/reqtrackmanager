@@ -4,8 +4,7 @@ import { loginAs, logout, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from
 import { createStandardWithVersion } from "./helpers";
 
 /**
- * Job to be done: Compliance Module Phase 20 (docs/compliance-module-plan.md)
- * — "Standard Applicability Defaults, Exceptions, and Project-Manager
+ * Job to be done: "Standard Applicability Defaults, Exceptions, and Project-Manager
  * Assignment." Two independent scenarios:
  *
  * 1. The *default, primary* assignment path: a plain Project Manager, with
@@ -31,7 +30,7 @@ import { createStandardWithVersion } from "./helpers";
  * Every fixture standard this spec creates is dynamically named with a
  * per-run timestamp suffix, per this repo's standing test-idempotency rule.
  */
-test.describe("Compliance Module: standard applicability defaults (Phase 20)", () => {
+test.describe("Compliance Module: standard applicability defaults", () => {
   test("a plain Project Manager can self-assign a published standard without a compliance_officer grant", async ({ page }) => {
     const suffix = Date.now();
     const reference = `E2E-PM-SELF-${suffix}`;
@@ -93,7 +92,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     // --- Switch the standard's applicability default; reconciliation
     // should materialise a real assignment for every current project in
     // the org, with no manual per-project action.
-    // A `link`, not a `button`, per Phase 35a: `/standards` defaults to its
+    // A `link`, not a `button`, because `/standards` defaults to its
     // new tiles view, whose cards are `<Link>`s (`StandardListPage.tsx`'s
     // pre-35a `DirectoryTable`-only list rendered rows as `<button>`s).
     await page.goto("/standards");
@@ -136,7 +135,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     // An archived assignment's row deliberately renders "—" for its
     // Standard column (`GET .../status` excludes archived assignments by
-    // design, per `ProjectCompliancePage.tsx`'s own Phase 13 notes — there
+    // design, per `ProjectCompliancePage.tsx`'s notes — there
     // is no per-project-compliance-row reference/name join on this list
     // view once archived), so the reference text this standard's active
     // row displayed a moment ago is gone from the page entirely — the

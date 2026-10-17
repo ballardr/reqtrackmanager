@@ -50,15 +50,14 @@ function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG) {
     if (path === "/api/v1/notifications") return [];
     if (path === "/api/v1/system/version") return BACKEND_VERSION;
     if (path === "/api/v1/system/client-config") return clientConfig;
-    // `useProjectEnabledModules` (module system Phase 3) — Layout's nav
+    // `useProjectEnabledModules` — Layout's nav
     // rail calls this whenever a project route is active, independently of
     // whether any module is actually registered; found as a real,
     // pre-existing gap (an unhandled promise rejection during the full
-    // Storybook suite) while verifying Phase 13's own changes here — fixed
+    // Storybook suite) while verifying changes here — fixed
     // in passing rather than left, per this repo's "fix, don't defer" rule.
     if (path.endsWith("/enabled-modules")) return [];
-    // Compliance's own `globalNavItems` contribution (compliance-module-
-    // plan.md Phase 18, `ComplianceGlobalNavLink.tsx`) fetches this
+    // Compliance's own `globalNavItems` contribution (`ComplianceGlobalNavLink.tsx`) fetches this
     // unconditionally whenever a user is logged in, via `Layout.tsx`'s
     // generic module-nav-item mechanism — not something Layout.tsx itself
     // knows or cares about, but this mock intercepts every `api.get` call
@@ -104,8 +103,7 @@ export const LoggedInNoProject: Story = {
     await expect(canvas.getByRole("navigation")).toBeInTheDocument();
     await expect(canvas.queryByText("Project")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Administration")).not.toBeInTheDocument();
-    // The only path to org administration for a non-server-admin (2026-08
-    // UX audit finding: /orgs previously had no rail entry at all).
+    // The only path to org administration for a non-server-admin.
     await expect(canvas.getByRole("link", { name: "My organisations" })).toBeInTheDocument();
   },
 };
@@ -134,9 +132,7 @@ export const ServerAdmin: Story = {
   },
 };
 
-/** The nav rail's build-identity footer (2026-08 UX audit follow-up: "a
- * way to see the version and date of the frontend and backend in the
- * UI") — the frontend's own build constants (unset in a Storybook build,
+/** The nav rail's build-identity footer — the frontend's own build constants (unset in a Storybook build,
  * so `version.ts`'s documented "dev"/"unknown" fallback applies) plus the
  * backend's, fetched from `GET /api/v1/system/version` and rendered once
  * it resolves. Hidden entirely when the rail is collapsed to icons-only,

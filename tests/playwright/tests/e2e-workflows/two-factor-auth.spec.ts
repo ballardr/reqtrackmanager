@@ -20,8 +20,7 @@ const apiBaseUrl = "http://localhost:8000";
  * PERSONAS.orphan — rather than the orphan persona itself, so
  * enabling/disabling 2FA here can't collide with org-login-2fa-handoff.
  * spec.ts or user-directory-and-bans.spec.ts also touching orphan's
- * session/account state concurrently (Phase 1, docs/platform-review-2026-
- * 09-plan.md). The test always ends with 2FA disabled again, but that's
+ * session/account state concurrently. The test always ends with 2FA disabled again, but that's
  * now for tidiness rather than to avoid breaking a shared persona's later
  * plain `loginAs()`.
  */

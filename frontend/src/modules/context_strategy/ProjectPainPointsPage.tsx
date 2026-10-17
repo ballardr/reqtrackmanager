@@ -1,15 +1,14 @@
 /**
  * Module: modules/context_strategy/ProjectPainPointsPage
  *
- * The Context & Strategy module's project-scoped Pain Point list route
- * (docs/plans/module-01-context-and-strategy-plan.md Phase 7.3), mounted at
+ * The Context & Strategy module's project-scoped Pain Point list route,
+ * mounted at
  * `/projects/:projectId/modules/context_strategy/pain-points`, reached via
- * this module's third top-level nav-rail entry (Phase 0 Q7). Mirrors
+ * this module's third top-level nav-rail entry. Mirrors
  * `ProjectStrategiesPage.tsx`'s exact `DirectoryTable` + `FilterPanel` +
- * "New X" `Modal` shape — Pain Point is project-scoped only (source overview
- * §6), so unlike that page there is no org-scoped sibling panel.
+ * "New X" `Modal` shape — Pain Point is project-scoped only (§6), so unlike that page there is no org-scoped sibling panel.
  *
- * Phase 11 adds per-persona scoring to the list: a Score column (the
+ * Per-persona scoring shows in the list: a Score column (the
  * roll-up under the model and persona roll-up picked in the switcher above
  * the table, "chosen when viewing") and a Blocker badge that stays visible
  * whichever is chosen. The Score column is sortable, so switching model

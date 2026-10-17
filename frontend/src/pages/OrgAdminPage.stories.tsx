@@ -58,13 +58,13 @@ function mockOrgAdminApis(overrides: {
   modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
   // The organisation-tier report content; omitted = the caller is not an org admin (403), the default here.
   reportDefaults?: OrgReportDefaults;
-  // Module 0 (Platform Foundations) Phase 4 — a module's own declared
+  // A module's own declared
   // sub-components, keyed by `module_key`; defaults to `[]` per module
   // (every module except Context & Strategy today), matching the real
   // `GET .../subcomponents` endpoint's own "no sub-components declared"
   // response.
   moduleSubComponents?: Record<string, OrgModuleSubComponent[]>;
-  // Fine-Grained Access Control (core) Phase 3 — fetched unconditionally
+  // Fine-Grained Access Control (core): fetched unconditionally
   // in the main `reload()` bundle (open to any real org role, not
   // ORG_ADMIN-gated), so every story needs these mocked or `reload()`
   // fails as a whole, same "must be mocked" reasoning as `/module-roles`
@@ -73,7 +73,7 @@ function mockOrgAdminApis(overrides: {
   permissions?: Permission[]; customRoles?: CustomRoleDefinition[];
   // `GET .../custom-role-presets`, fetched when the New custom role Modal opens; defaults to none.
   customRolePresets?: CustomRolePreset[];
-  // Fine-Grained Access Control (core) Phase 5 — fetched unconditionally in
+  // Fine-Grained Access Control (core): fetched unconditionally in
   // the same `reload()` bundle as `permissions`/`customRoles` above (see
   // `OrgAdminPage.tsx`'s own comment there); left unmocked here would 500
   // the whole bundle's `Promise.all` for every story, not just Role
@@ -83,17 +83,16 @@ function mockOrgAdminApis(overrides: {
   entityScopes?: EntityScope[];
   /** Simulates a non-ORG_ADMIN caller (e.g. a plain `grant_roles` holder)
    * for whom `GET .../advanced-settings` 403s — the same signal the Role
-   * Management group's own role-*definition* half is gated on (Phase 0
-   * Q8), so this proves that half hides while the assignment half stays
+   * Management group's own role-*definition* half is gated on, so this proves that half hides while the assignment half stays
    * visible, without inventing a second "am I an admin" mock knob. */
   advancedForbidden?: boolean;
-  /** Phase 37 — the normal admin header's `EntitySwitcher` sibling-org
+  /** The normal admin header's `EntitySwitcher` sibling-org
    * list (`GET /api/v1/orgs?mine=true`). Defaults to empty rather than
    * left unmocked: unlike the other overrides above, this endpoint is
    * now genuinely called on every render of this page's normal header,
    * not just by stories that opt in to exercising it. */
   orgs?: Organization[];
-  /** Link types panel (Platform Enhancements Phase 5b): the artefact types the
+  /** Link types panel: the artefact types the
    * restriction pickers offer, and the "By artefact type" rules. */
   artefactTypes?: ArtefactTypeOption[]; artefactRules?: ArtefactLinkRule[];
 } = {}) {
@@ -110,7 +109,7 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/artefact-link-rules")) return overrides.artefactRules ?? defaultArtefactRules;
     if (path.endsWith("/project-customisation")) return { locks: [], local_link_type_count: 0, local_link_type_project_count: 0 };
     if (path.includes("/link-types")) return types;
-    // Phase A's org-only pending-invites list (follow-up UX batch).
+    // The org-only pending-invites list.
     if (path.includes("/pending-invites")) return orgPendingInvites;
     if (path.includes("/groups")) return orgGroups;
     if (path.includes("/resources")) return [];
@@ -129,11 +128,11 @@ function mockOrgAdminApis(overrides: {
       return overrides.advanced ?? advanced;
     }
     if (path.includes("/pats")) return overrides.pats ?? [];
-    // Module system Phase 1: fetched inside the same try/catch-403 block
+    // Fetched inside the same try/catch-403 block
     // as `/advanced-settings` above — must be mocked here or every story
     // that doesn't override it would otherwise throw on the "unmocked
     // path" fallback below and fail `reload()` as a whole.
-    // Module system Phase 2: same "must be mocked or reload() throws"
+    // Same "must be mocked or reload() throws"
     // reasoning as `/modules` just above — fetched in the same block.
     // Checked first since both `/modules` and `/module-roles` would
     // otherwise need careful ordering; they don't actually collide
@@ -141,7 +140,7 @@ function mockOrgAdminApis(overrides: {
     // right after "module"), but checking the more specific path first
     // keeps this robust against that changing.
     if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
-    // Module 0 (Platform Foundations) Phase 4 — checked before the generic
+    // Checked before the generic
     // "/modules" branch below, since `.../modules/{key}/subcomponents`
     // also contains that substring. `moduleKey` is parsed out of the path
     // itself so each module's own fixture module_key routes to its own
@@ -151,13 +150,13 @@ function mockOrgAdminApis(overrides: {
       return overrides.moduleSubComponents?.[moduleKey ?? ""] ?? [];
     }
     if (path.includes("/modules")) return overrides.modules ?? [];
-    // Fine-Grained Access Control (core) Phase 3 — checked before the
+    // Fine-Grained Access Control (core): checked before the
     // plain "/users" branch below since neither substring collides with
     // it, same ordering reasoning as `/module-roles`/`/modules` above.
     if (path.includes("/permissions")) return overrides.permissions ?? [];
     if (path.includes("/custom-role-presets")) return overrides.customRolePresets ?? [];
     if (path.includes("/custom-roles")) return overrides.customRoles ?? [];
-    // Fine-Grained Access Control (core) Phase 5 — checked before the
+    // Fine-Grained Access Control (core): checked before the
     // plain "/users" branch below, same ordering reasoning as the two
     // branches above.
     if (path.includes("/entity-scopes")) return overrides.entityScopes ?? [];
@@ -176,12 +175,11 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/users")) return orgUsers;
     throw new Error(`unmocked path: ${path}`);
   });
-  // Users and Groups both paginate/search (2026-08 UX audit "Directories
-  // at scale") — `api.get` above still serves the *unpaginated* groups
+  // Users and Groups both paginate/search — `api.get` above still serves the *unpaginated* groups
   // fetch (`allGroups`, used to resolve nested-group names regardless of
   // the Groups section's own search/page state); this is the paginated
   // view each section actually renders. The `/users` branch also honours
-  // an `org_role` query param (Phase A, follow-up UX batch) so a story can
+  // an `org_role` query param so a story can
   // actually exercise the new role filter narrowing results, the same way
   // the real backend does.
   spyOn(api, "getPage").mockImplementation(async (path: string) => {
@@ -265,7 +263,7 @@ export const UsersSectionAndCreateUser: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
     await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
     // Scoped to the roles dropdown trigger itself, not a page-wide
-    // `getByText` — Phase A's new role `FilterField` also has an "Org
+    // `getByText` — the new role `FilterField` also has an "Org
     // admin" `<option>` on the same page, which would otherwise make this
     // ambiguous.
     await expect(canvas.getByRole("button", { name: "Alex Morgan's roles" })).toHaveTextContent("Org admin");
@@ -419,17 +417,15 @@ export const UsersSectionGrantAndRevokeRole: Story = {
   },
 };
 
-/** Module system Phase 2: the Users table's Roles dropdown merges in
+/** The Users table's Roles dropdown merges in
  * org-scoped module-contributed role options alongside the three fixed
- * `OrgRole` ones — label is `"<role name> (<module name>)"` (the plan's
- * own worked example), resolved from the already-fetched `modules` list.
+ * `OrgRole` ones — label is `"<role name> (<module name>)"` (for example), resolved from the already-fetched `modules` list.
  * Jordan holds one grant (checked, revoke path); Alex doesn't hold the
  * other (unchecked, grant path). Every other story on this page implicitly
  * covers the opposite, real-world-default "zero available module roles"
  * case (`mockOrgAdminApis`'s `moduleRoles` override simply isn't passed,
  * so it defaults to `[]`) — that's the actual current state of a
- * deployment with no module registered yet (no module has any roles until
- * Phase 5). */
+ * deployment with no module registered. */
 export const UsersSectionModuleRoleGrantAndRevoke: Story = {
   beforeEach: () => {
     mockOrgAdminApis({
@@ -494,8 +490,7 @@ export const UsersSectionCannotRevokeOwnRole: Story = {
   },
 };
 
-/** Users table Actions column (PR6 of the members/groups directory rework
- * plan, docs/decisions.md) — the two previously-bare buttons (View access,
+/** Users table Actions column (docs/decisions.md) — the two previously-bare buttons (View access,
  * lock/unlock display name) consolidated into one `ActionMenu`, same
  * "kebab over adjacent buttons" pattern `ExportOrgBundleViaActionMenu`
  * already proved out for the Overview group. Exercised on Alex's own row
@@ -598,7 +593,7 @@ export const UsersActionsMenuAddToGroup: Story = {
   },
 };
 
-/** "Invite user" (Phase A, follow-up UX batch) — a second, distinct way to
+/** "Invite user" — a second, distinct way to
  * add a user alongside "New user": an email-only `Modal` (no password/name
  * fields, since the invitee sets those themselves at signup) calling the
  * new `POST /orgs/{id}/pending-invites`. */
@@ -730,7 +725,7 @@ export const UsersSectionRoleFilterNarrowsResults: Story = {
 };
 
 /** Migrated from three ad-hoc toggle `<button>`s to `FilterCheckbox`es
- * inside the shared `FilterPanel` (Phase A) — each now genuinely
+ * inside the shared `FilterPanel` — each now genuinely
  * independent (the old single-select state made "stale AND no 2FA"
  * inexpressible even though the backend params always were). */
 export const UsersSectionMigratedFilterCheckboxesWorkIndependently: Story = {
@@ -755,7 +750,7 @@ export const UsersSectionMigratedFilterCheckboxesWorkIndependently: Story = {
   },
 };
 
-/** Roadmap item 526's remaining "org report-template nested-accordion
+/** The "org report-template nested-accordion
  * create flow" case: "New template" now opens a `Modal` (a brand-new
  * `ReportTemplate` entity, per the revised Principle 3) instead of an
  * always-visible nested `CollapsibleSection` form. */
@@ -868,7 +863,7 @@ export const NewReportTemplateModalCancel: Story = {
   },
 };
 
-/** Column-header sorting (2026-08 UX audit roadmap) — the Users table is
+/** Column-header sorting — the Users table is
  * backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`), so a header click
  * refetches with `sort`/`order` query params rather than reordering just
  * the loaded page. */
@@ -896,8 +891,7 @@ export const UsersSectionSortByEmail: Story = {
   },
 };
 
-/** "View access" (2026-08 UX audit, sixth pass: "No way to view a user's
- * access") opens a read-only `SidePanel` summarising every project the
+/** "View access" opens a read-only `SidePanel` summarising every project the
  * user has a role on, their role(s) there, which project group granted
  * it, and which org groups they directly belong to — assembled server-
  * side (`GET /orgs/{id}/users/{id}/access`) rather than pieced together
@@ -1034,7 +1028,7 @@ export const DisabledOrgServerAdminCanReEnable: Story = {
   },
 };
 
-/** Phase 28 — the entity quick-switch chevron is also an escape hatch off
+/** The entity quick-switch chevron is also an escape hatch off
  * this degraded, dead-end page: a server admin stuck here (this org is
  * disabled) can still jump straight to a different, working org, via the
  * exact same `?mine=true` sibling-org list Organisation Overview uses. */
@@ -1062,7 +1056,7 @@ export const DisabledOrgEntitySwitcherOffersOtherOrgs: Story = {
   },
 };
 
-/** Phase 37 — the same entity quick-switch chevron, now also on the normal
+/** The same entity quick-switch chevron, now also on the normal
  * (non-degraded) admin header, whose title renders via `ResourceMenu`'s
  * own `titleAdornment` slot rather than a bespoke `<h1>`. */
 export const EntitySwitcherOffersOtherOrgs: Story = {
@@ -1118,7 +1112,7 @@ export const RenameOrganization: Story = {
 
 /** The other half of the same `ActionMenu`: "Export {org} bundle" calls
  * the existing export flow directly — no modal, it's a relocated button,
- * not a create/rename flow (roadmap item 519's own scope note). */
+ * not a create/rename flow. */
 export const ExportOrgBundleViaActionMenu: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
@@ -1160,7 +1154,7 @@ export const BrandingSectionSave: Story = {
   },
 };
 
-/** Style guide "Pattern: platform default vs. override" (2026-08 UX audit):
+/** Style guide "Pattern: platform default vs. override":
  * a field with a saved custom value shows a "Custom" pill and an explicit
  * "Reset to platform default" action, instead of the field just quietly
  * accepting an emptied-out value with no indication of what that does. */
@@ -1188,9 +1182,7 @@ export const BrandingSectionOverridePillAndReset: Story = {
  * state to revert — the reset action calls the new `DELETE` endpoints
  * directly and immediately, the same way the upload itself commits
  * immediately (no separate Save step). Login-background now lives inside
- * the same Branding card as the logo (moved there from the old SSO
- * section, since it's a branding concern, not an SSO/OIDC one — see the
- * "Org Admin resource-menu restructure" roadmap item) — both resets are
+ * the same Branding card as the logo — both resets are
  * exercised without leaving the Branding & defaults group. */
 export const BrandingSectionLogoAndLoginBackgroundReset: Story = {
   beforeEach: () => {
@@ -1255,7 +1247,7 @@ export const SelfSignupSsoConflictBlocksSave: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // "Integrations & security" later split into three top-level groups
-    // (2026-08 UX audit roadmap item 523) — self-signup now lives in its
+    // — self-signup now lives in its
     // own "Security" group, open by default there.
     await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     await waitFor(() => expect(canvas.getByRole("switch", { name: "Allow self-signup" })).toBeInTheDocument());
@@ -1292,7 +1284,7 @@ export const AdvancedSettingsAllowRelaxedChildProjectCreation: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 8 — defaults off (permissive); an org
+/** Defaults off (permissive); an org
  * admin turning it on forces every project's own
  * `require_change_request_for_approved_links` unless that project is
  * individually marked exempt (`ProjectAdminPage.stories.tsx`'s
@@ -1379,7 +1371,7 @@ export const AdvancedSettingsTestEmailNoSmtpConfigured: Story = {
     const canvas = within(canvasElement);
     // Test email lives in the "SMTP & email" card under its own "Email"
     // top-level group now, split out of the old "Integrations & security"
-    // combination (2026-08 UX audit roadmap item 523).
+    // combination.
     await userEvent.click(canvas.getByRole("link", { name: "Email" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Send test email" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Send test email" })).toBeDisabled();
@@ -1405,8 +1397,7 @@ export const AdvancedSettingsTestEmailSend: Story = {
 };
 
 /** SMTP fields are saved via the same `OrgAdvancedSettings` PUT the
- * Security group's own save button also submits (2026-08 UX audit roadmap
- * item 523) — the Email group needs its own explicit save button now that
+ * Security group's own save button also submits — the Email group needs its own explicit save button now that
  * they're on separate pages. */
 export const EmailSettingsSave: Story = {
   beforeEach: () => {
@@ -1440,7 +1431,7 @@ export const SsoSectionSaveDisabledWhenNotConfigured: Story = {
   },
 };
 
-/** Org Groups (Phase B, follow-up UX batch, 2026-08-31): the accordion is
+/** Org Groups : the accordion is
  * gone — a `DirectoryTable` row's Name cell opens a `SidePanel`, matching
  * Project Groups' own row + panel shape. */
 export const GroupsSectionOpensSidePanel: Story = {
@@ -1505,7 +1496,7 @@ export const GroupsSectionDeleteGroupRefused: Story = {
   },
 };
 
-/** SSO group→role mapping (2026-08 UX audit roadmap item 522) is a
+/** SSO group→role mapping is a
  * property of the group being synced into — set alongside its (renamed)
  * SSO group name and saved together via one button in the group's
  * `SidePanel`. The mock's `ssoConfig` already has an issuer/client id set,
@@ -1599,7 +1590,7 @@ export const GroupsSectionToggleSyncOffClearsFields: Story = {
   },
 };
 
-/** Bug-fix regression pin (2026-08-31, Phase B): without SSO configured for
+/** Bug-fix regression pin: without SSO configured for
  * the org, the *entire* sync sub-section — name input, role select, AND
  * the enable/disable toggle and Save action — is absent, not just the
  * granted-role select. Before this fix, the name input and Save button
@@ -1901,8 +1892,7 @@ export const LinkTypesDeleteDisabledAtLastRow: Story = {
   },
 };
 
-// --- "Manage users" Modal (Phase 5, docs/decisions.md; rebuilt in Phase D,
-// follow-up UX batch, 2026-08-31) --------------------------------------
+// --- "Manage users" Modal (docs/decisions.md) ---------------------------
 // Replaces the old inline expand-in-place (`expandedProjectId`/
 // `expandedProjectGroups`/...) with a `Modal` wrapping the same
 // `ProjectMembersTable` `ProjectAdminPage.tsx`'s own Members section uses —
@@ -1911,8 +1901,8 @@ export const LinkTypesDeleteDisabledAtLastRow: Story = {
 // the *org*-scoped `OrgGroup[]` fixture before it can reach a project-scoped
 // path (checked earlier in that chain, since both substrings collide) —
 // every story below needs its own full `api.get` override, the same reason
-// the pre-Phase-5 label-map regression test already did. Groups themselves
-// are no longer shown in this modal at all (Phase D) — group management
+// the earlier label-map regression test already did. Groups themselves
+// are no longer shown in this modal at all — group management
 // stays solely on the project's own Groups tab, reachable only from
 // `ProjectAdminPage.tsx` directly.
 
@@ -1928,12 +1918,12 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path === `/api/v1/orgs/${ORG_ID}`) return org;
     if (path === `/api/v1/orgs/${ORG_ID}/projects`) return [{ id: "proj-1", name: "Beta", is_archived: false }];
     if (path === "/api/v1/projects/proj-1/effective-members") return effectiveMembers;
-    // Phase 6 (docs/platform-review-2026-09-plan.md): `ProjectMembersTable`'s
+    // `ProjectMembersTable`'s
     // third data source, fetched alongside effective-members/pending-invites
     // by `openManageUsers`/`reloadManageUsersGroupRoles`.
     if (path === "/api/v1/projects/proj-1/group-roles") return groupRoles;
     if (path === "/api/v1/projects/proj-1/pending-invites") return pendingInvites;
-    // Module system Phase 2: `openManageUsers` fetches this alongside
+    // `openManageUsers` fetches this alongside
     // effective-members/pending-invites — must be mocked or that
     // `Promise.all` rejects and the modal never opens. No story here
     // exercises a non-empty module-role option list (that's covered by
@@ -1943,7 +1933,7 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path === "/api/v1/projects/proj-1/module-roles") return [];
     if (path.includes("/project-statuses")) return [];
     if (path.includes("/link-types")) return [];
-    // Phase A's org-only pending-invites list (follow-up UX batch) — no
+    // The org-only pending-invites list — no
     // invites in this scenario's fixture.
     if (path.includes("/pending-invites")) return [];
     if (path.includes("/groups")) return groups;
@@ -1953,7 +1943,7 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return advanced;
     if (path.includes("/pats")) return [];
-    // Module system Phase 2: the org-scoped page-level `reload()` also
+    // The org-scoped page-level `reload()` also
     // fetches this — must be mocked here too (this function fully
     // replaces `mockOrgAdminApis`'s own `api.get` mock via a second
     // `spyOn`, not layers on top of it), or that unrelated fetch rejects
@@ -1961,11 +1951,11 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     // itself is handled by its own exact-match branch above.
     if (path.includes("/module-roles")) return [];
     if (path.includes("/modules")) return [];
-    // Fine-Grained Access Control (core) Phase 3 — same "must be mocked or
+    // Fine-Grained Access Control (core): same "must be mocked or
     // reload() throws" reasoning as `/module-roles`/`/modules` above.
     if (path.includes("/permissions")) return [];
     if (path.includes("/custom-roles")) return [];
-    // Fine-Grained Access Control (core) Phase 5 — same reasoning; this
+    // Fine-Grained Access Control (core): same reasoning; this
     // function fully replaces `mockOrgAdminApis`'s own `api.get` mock (see
     // the comment above `/module-roles` in this same function), so its
     // `/entity-scopes` branch has to be duplicated here too, not just added
@@ -1985,8 +1975,7 @@ function mockProjectsWorkflowWithOneProject(overrides: {
 
 /** The Modal wraps the exact same `ProjectMembersTable` `ProjectAdminPage.
  * tsx`'s Members section uses — effective members with provenance render
- * identically, through `PROJECT_ROLE_LABEL` (2026-08 UX audit roadmap,
- * "Fix raw-enum filter/table text"), never the raw enum value. */
+ * identically, through `PROJECT_ROLE_LABEL`, never the raw enum value. */
 export const ManageUsersModalShowsEffectiveMembers: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
@@ -2054,8 +2043,7 @@ export const ManageUsersModalToggleDirectRole: Story = {
  * `AddMembersModal` (staged multi-add, see that component's own module
  * docstring) `ProjectAdminPage.tsx`'s Members section uses too, scoped to
  * whichever project's modal is open. Style guide "Pattern: modal dialog for
- * entity create/rename" (Principle 3) — as of PR3 of the members/groups
- * directory rework, this sub-form is no longer permanently visible inside
+ * entity create/rename" (Principle 3) — as of the members/groups directory rework, this sub-form is no longer permanently visible inside
  * the outer "Manage users" modal; "Add member" opens it in a second, nested
  * `Modal` (`useDialogA11y`'s docstring covers why nesting is already
  * handled safely: only the innermost open dialog ever actually contains
@@ -2120,7 +2108,7 @@ export const ManageUsersModalAddMemberNestedModalOpen: Story = {
   },
 };
 
-/** PR5 of the members/groups directory rework plan — the same combined
+/** the members/groups directory rework — the same combined
  * user-or-group autocomplete `ProjectAdminPage.tsx`'s own Members section
  * uses (`MembersTabAddMemberAutocompleteMatchesGroup`), reachable from here
  * too since this modal shares the identical `AddMembersModal` call site,
@@ -2166,7 +2154,7 @@ export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
   },
 };
 
-/** Phase 6 (docs/platform-review-2026-09-plan.md): the group this modal's
+/** The group this modal's
  * own add-control (`ManageUsersModalAddMemberAutocompleteMatchesGroup`
  * above) grants a role to now renders as its own row here too, not just on
  * `ProjectAdminPage.tsx`'s Members section — same shared `ProjectMembersTable`
@@ -2213,9 +2201,8 @@ export const ManageUsersModalGroupRowRoleToggleAndRemove: Story = {
   },
 };
 
-/** Module system Phase 1 (compliance-module-plan.md): the new "Modules"
- * top-level group. A deployment with no modules registered yet (the true
- * state today — no first-party module exists until Phase 5) shows the
+/** The new "Modules"
+ * top-level group. A deployment with no modules registered shows the
  * empty state rather than an empty table. */
 export const ModulesSectionEmptyState: Story = {
   beforeEach: () => mockOrgAdminApis({ modules: [] }),
@@ -2417,7 +2404,7 @@ export const ModuleContributedOrgAdminSectionHiddenWhenModuleNotReported: Story 
   },
 };
 
-// --- Fine-Grained Access Control (core) Phase 3: Role Management -------
+// --- Fine-Grained Access Control (core): Role Management ---------------
 
 const fixturePermissions: Permission[] = [
   { key: "requirement:view:", label: "requirement — view", artefact_type: "requirement", level: "view", subtype: null },
@@ -2564,11 +2551,8 @@ export const UsersSectionCustomRoleGrantAndRevoke: Story = {
   },
 };
 
-/** Fine-Grained Access Control (core) Phase 5 built the entity-scope picker
- * generically, with no real registered scope to exercise it against yet
- * (its own tests deferred Playwright/Storybook coverage to "once Phase 6
- * gives it a real workflow"); Phase 6 (Compliance's `"standard"` scope) is
- * that first real workflow. Proves: the scope dropdown's "Standard" option
+/** The entity-scope picker is built generically; Compliance's `"standard"`
+ * scope is its first real workflow. Proves: the scope dropdown's "Standard" option
  * comes from `GET .../entity-scopes` (never hardcoded), the assignment
  * card's entity picker is disabled (placeholder text, not a real search)
  * until an entity is chosen, and choosing one before granting sends
@@ -2634,7 +2618,7 @@ export const RoleManagementEntityScopedGrantAndRevoke: Story = {
   },
 };
 
-/** Phase 0 Q8's own access-split decision, proven directly: a caller for
+/** The access-split decision, proven directly: a caller for
  * whom `GET .../advanced-settings` 403s (the same signal every other
  * ORG_ADMIN-only section on this page already gates on) sees the
  * assignment half of Role Management but not the role-*definition* half —

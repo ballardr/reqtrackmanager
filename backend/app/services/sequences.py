@@ -1,7 +1,7 @@
 """
 Module: services.sequences
 
-Module 0 (Platform Foundations), Phase 2: the generic per-project,
+The generic per-project,
 per-artefact-type unique-code generator every *new* identified artefact
 type in the future-modules roadmap uses, replacing the
 `next_<type>_seq`-column-on-`Project` plus per-service `generate_unique_code`
@@ -15,7 +15,7 @@ existing two.
 `app.modules.registry.get_all_registered_artefact_types()` — the same
 merged core-plus-every-module set `services.relationships.create_link`
 already validates `ArtefactLink.source_type`/`target_type` against.
-**Corrected 2026-09-21** (Module 4, Decision Management, Phase 1) from an
+**Corrected 2026-09-21** from an
 earlier shape that took a `models.enums.ArtefactType` enum member, which
 required a core-file hand-edit for every new artefact-generating module —
 see `models.sequence.ProjectSequenceCounter`'s own docstring for the full

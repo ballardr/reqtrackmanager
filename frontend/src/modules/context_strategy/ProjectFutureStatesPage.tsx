@@ -1,11 +1,11 @@
 /**
  * Module: modules/context_strategy/ProjectFutureStatesPage
  *
- * The Context & Strategy module's project-scoped Future State list route
- * (docs/plans/module-01-context-and-strategy-plan.md Phase 7.2), mounted at
+ * The Context & Strategy module's project-scoped Future State list route,
+ * mounted at
  * `/projects/:projectId/modules/context_strategy/future-states`
- * (`module.ts`, reached via this module's second nav-rail entry — Phase 0
- * Q7's "five separate top-level entries"). Mirrors `ProjectStrategiesPage.tsx`'s
+ * (`module.ts`, reached via this module's second nav-rail entry).
+ * Mirrors `ProjectStrategiesPage.tsx`'s
  * `DirectoryTable` + `FilterPanel` + "New X" `Modal` shape exactly, minus a
  * priority filter (Future State has no `priority` field — see `types.ts`'s
  * own docstring) and minus the target-date column here (shown in the full

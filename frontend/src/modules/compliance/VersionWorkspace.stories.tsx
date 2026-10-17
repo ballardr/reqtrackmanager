@@ -154,10 +154,10 @@ export const CompareVersionsOpensDiffModal: Story = {
   },
 };
 
-// --- Phase 29b: version quick-switch -----------------------------------------
+// --- version quick-switch -----------------------------------------
 
 /** With a sibling version to switch to, a chevron next to the version
- * heading (Phase 28's `EntitySwitcher`) opens a popover listing it as a
+ * heading (the `EntitySwitcher`) opens a popover listing it as a
  * plain link straight to its own workspace URL — the sibling list is just
  * this component's own `versions` prop, no extra fetch. */
 export const EntitySwitcherOffersSiblingVersion: Story = {
@@ -189,7 +189,7 @@ export const NoSiblingVersionHidesSwitcher: Story = {
   },
 };
 
-// --- Phase 24: always-editable version summary ------------------------------
+// --- always-editable version summary ------------------------------
 
 export const EditSummaryOnRetiredVersion: Story = {
   args: { version: version({ status: "retired" }), versions: [version({ status: "retired" })] },

@@ -35,9 +35,9 @@ function mockChangeRequestDetailApis(
   extra: {
     linkedActionPreview?: RequirementAction;
     requirement?: Requirement;
-    // Platform review 2026-09, Phase 8 — REMOVE_LINK preview data.
+    // REMOVE_LINK preview data.
     links?: RequirementLink[];
-    // Phase 6b — what approving would merge (the dialog's preview).
+    // What approving would merge (the dialog's preview).
     mergePreview?: ProposedLinkPreview;
     // Review-stage tasks the request already has.
     tasks?: ChangeRequestTask[];
@@ -96,7 +96,7 @@ export const DraftShowsSubmitAndWithdraw: Story = {
   },
 };
 
-/** ADD_ACTION change requests (item 514) show the proposed action's own
+/** ADD_ACTION change requests show the proposed action's own
  * content instead of the modify/new-requirement field diff, and hide the
  * Target/Level badges (neither is meaningful for adding an action). */
 export const AddActionShowsProposedActionContent: Story = {
@@ -136,7 +136,7 @@ export const AddActionShowsLinkedActionPreview: Story = {
   },
 };
 
-/** REMOVE_ACTION (Platform review 2026-09, Phase 8 — closing the asymmetry
+/** REMOVE_ACTION (closing the asymmetry
  * `unlink_action` had with ADD_ACTION's already-gated add side) resolves
  * the same way ADD_ACTION's link-existing preview does, and also hides
  * Target/Level. */
@@ -157,9 +157,9 @@ export const RemoveActionShowsLinkedActionPreview: Story = {
   },
 };
 
-/** ADD_LINK (Platform review 2026-09, Phase 8 opt-in sibling of ADD_ACTION
- * for `RequirementLink`) is the one-link case of the proposed-links mechanism
- * (Phase 6b): the request page lists the link exactly as a modify or new
+/** ADD_LINK (an opt-in sibling of ADD_ACTION
+ * for `RequirementLink`) is the one-link case of the proposed-links mechanism:
+ * the request page lists the link exactly as a modify or new
  * request would, the relationship read from the requirement's side. */
 export const AddLinkShowsProposedLinkContent: Story = {
   beforeEach: () => {

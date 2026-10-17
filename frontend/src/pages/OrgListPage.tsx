@@ -18,7 +18,7 @@ const strings = t();
  * entirely and lands straight on that organisation's own `target` page —
  * the list only earns its keep when there's an actual choice to make.
  *
- * `target` (compliance-module-plan.md Phase 19) generalises this single-
+ * `target` generalises this single-
  * org/multi-org auto-redirect convention beyond its original "admin" use:
  * `/org-overview` reuses the exact same component (`target="overview"`)
  * for the new "Organisation Overview" page's entry point, rather than

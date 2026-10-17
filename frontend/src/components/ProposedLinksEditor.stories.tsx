@@ -20,7 +20,7 @@ function Harness({ initial = [], ...rest }: Omit<React.ComponentProps<typeof Pro
 
 /**
  * The "Proposed links" section of the form that drafts a new or modify-requirement change
- * request (docs/plans/platform-enhancements-2026-10-plan.md Phase 6b). It collects links; the
+ * request. It collects links; the
  * form sends them with the request and creates nothing here.
  */
 const meta: Meta<typeof Harness> = {

@@ -7,8 +7,7 @@ import { API_BASE_URL, setUpOrg } from "../stakeholders/helpers";
 installCleanupHook();
 
 /**
- * Job to be done: users and groups on parity, Phase 4 (docs/plans/
- * users-and-groups-parity-plan.md) — a Pain Point, a Guiding Principle and an
+ * Job to be done: users and groups on parity — a Pain Point, a Guiding Principle and an
  * Open Question can each be owned by an organisation group or a project group,
  * the Open Question register names a group owner with its kind, and deleting a
  * group that still owns them lets the admin hand them to someone else.

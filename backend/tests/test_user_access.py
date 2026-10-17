@@ -1,5 +1,4 @@
-"""Tests for `GET /orgs/{org_id}/users/{user_id}/access` (2026-08 UX audit,
-sixth pass: "No way to view a user's access") — an org admin's read-only
+"""Tests for `GET /orgs/{org_id}/users/{user_id}/access` — an org admin's read-only
 summary of what one user can actually reach: their direct org groups, and
 every project where they hold at least one effective role, with that
 role set and which of the project's own groups they directly belong to."""

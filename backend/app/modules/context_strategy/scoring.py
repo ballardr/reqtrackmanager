@@ -2,24 +2,24 @@
 Module: modules.context_strategy.scoring
 
 Context & Strategy's registration into core's generic scoring-matrix
-mechanism (Module 1 Phase 10; design from Phase 9): the `pain_point`
-scheme, scored per persona (Phase 11) on Severity, Frequency and
+mechanism: the `pain_point`
+scheme, scored per persona on Severity, Frequency and
 Confidence, combined by one of three models chosen when viewing.
 
 Design decisions:
-- Severity is the same input as Impact/consequence (Phase 9 Q2, Decided by:
-  User); its top level is "Blocker", which Phase 11's Blocker badge keys off
+- Severity is the same input as Impact/consequence (Decided by:
+  User); its top level is "Blocker", which the Blocker badge keys off
   (top level = highest weight, see `services.scoring`).
 - Confidence uses fractional weights (0.5/0.8/1.0), so it discounts a score
   rather than inflating it, RICE-style (Decided by: Agent; org-editable).
-- System default model S×F×C (Phase 9 Q3, Decided by: Agent). Default bands
+- System default model S×F×C (Decided by: Agent). Default bands
   are per model because a three-axis product sits lower on the normalised
   scale than a two-axis one (Decided by: Agent).
 - Org-level configuration is gated by the existing `pain_point_type_admin`
   role (plus org admins) — the same people who manage the Pain Point type
   vocabulary (Decided by: Agent).
 - `count_level_usage`/`reassign_level_usage` count and move `PainPointScore`
-  references (Phase 11), so deleting an in-use level forces a reassignment
+  references, so deleting an in-use level forces a reassignment
   instead of leaving a score pointing at nothing.
 """
 

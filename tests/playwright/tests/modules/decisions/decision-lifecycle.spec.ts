@@ -9,15 +9,14 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: docs/plans/module-04-decision-management-plan.md Phase 5's
- * own exit criteria — "Playwright e2e coverage for create -> propose ->
- * approve -> supersede," updated for Phase 9's (2026-09-22) quick-view +
+ * Job to be done: Playwright e2e coverage for create -> propose ->
+ * approve -> supersede, with the quick-view +
  * full-page detail split. Exercises the full Decision Management frontend
  * (`frontend/src/modules/decisions/`) against a real backend: creating a
  * Decision, moving it through its lifecycle to Approved on its own detail
  * page, then creating a second Decision that supersedes the first and
  * watching the first flip to Superseded once the second is itself Approved
- * (source overview §13/10.6 — see `service.py`'s own `_maybe_supersede`/
+ * (§13/10.6 — see `service.py`'s own `_maybe_supersede`/
  * `_supersede_predecessors`).
  *
  * A row click on the Decisions list opens `DecisionQuickViewPanel` — a
@@ -26,7 +25,7 @@ const API_BASE_URL = "http://localhost:8000";
  * `DecisionDetailPage`, a real routed page (not a dialog) carrying every
  * lifecycle action, the Links panel, comments, and attachments.
  * Locators below are scoped to `page` (not a `dialog` role) once on that
- * page, unlike the pre-Phase-9 version of this spec.
+ * page, unlike the earlier version of this spec.
  *
  * Uses a brand-new, disposable organisation + admin + project created via
  * the API, not a shared seeded org/project — mirrors `org-admin-modules
@@ -82,7 +81,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     ).json();
 
     // --- Enable Decision Management for this org (default_enabled=False —
-    // module.py's Phase 1/4 deliberate opt-in design, unchanged by Phase 9).
+    // module.py's deliberate opt-in design).
     // `OrgListPage.tsx` auto-redirects straight to `/orgs/:orgId/admin`
     // when the caller belongs to exactly one org (true here — this admin
     // was just created in this one disposable org), so there's no "org

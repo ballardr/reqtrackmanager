@@ -1,5 +1,4 @@
-"""Tests for the neutral report document model and its DOCX renderer (docs/plans/
-platform-enhancements-2026-10-plan.md Phase 9).
+"""Tests for the neutral report document model and its DOCX renderer.
 
 Covers the Markdown reader, the DOCX structure (real heading styles, real
 tables with a shaded repeating header, footer, orientation, core properties),

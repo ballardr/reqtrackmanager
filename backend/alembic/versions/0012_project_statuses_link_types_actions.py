@@ -161,7 +161,7 @@ def upgrade() -> None:
         """
     )
 
-    # Module 0 (Platform Foundations), Phase 1 (2026-09-21) removed the
+    # Platform Foundations, 2026-09-21, removed the
     # `RequirementLink` model entirely (folded into the generic
     # `ArtefactLink` table — see migration 0041) — before that, this table's
     # existence on a brand-new database relied entirely on 0001's

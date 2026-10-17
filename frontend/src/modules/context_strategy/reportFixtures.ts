@@ -1,7 +1,7 @@
 /**
  * Module: modules/context_strategy/reportFixtures
  *
- * Storybook-only builders for R1 and R4 report results (Module 1 Phase 13),
+ * Storybook-only builders for R1 and R4 report results,
  * shaped like the backend's `ReportOut` for those reports. Kept beside the
  * stories rather than in the global `testing/` helpers so core test helpers
  * never import a module's types (same convention as `painPointScoringFixtures`).

@@ -1,7 +1,7 @@
 /**
  * Module: modules/compliance/StandardImportModal
  *
- * The "Import standard" dialog (docs/compliance-module-plan.md Phase 21) —
+ * The "Import standard" dialog —
  * uploads a single standard's export document (`GET .../standards/{id}/
  * export`, `StandardWorkspacePage.tsx`'s "Export" action) into an
  * organisation, always as a brand-new, `DRAFT`-only standard (§4/§31 — see

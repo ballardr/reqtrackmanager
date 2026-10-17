@@ -4,7 +4,7 @@
  * A single Decision's full detail — management and full context — as its
  * own routed page (`/projects/:projectId/modules/decisions/:decisionId`,
  * `module.ts`), replacing the `SidePanel`-only `DecisionDetailPanel.tsx`
- * (Phase 9, 2026-09-22). `docs/ux-style-guide.md`'s "Pattern: entity detail
+ *. `docs/ux-style-guide.md`'s "Pattern: entity detail
  * panel" checklist called for a page here: a Decision's detail carries a
  * comment thread, file attachments, a Links panel, and 3+
  * lifecycle actions each with their own `ConfirmDialog` — all four of the

@@ -1,4 +1,4 @@
-"""Tests for the scoped link finder (docs/plans/platform-enhancements-2026-10-plan.md Phase 6c):
+"""Tests for the scoped link finder:
 the bounded global search, narrowing one type by its browse levels, the `link-browse` endpoint, and
 the guard that every registered artefact type declares at least one level.
 

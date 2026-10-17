@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/StrategyFormModal
  *
- * Create/edit dialog for a Strategy's content fields (docs/plans/module-01-
- * context-and-strategy-plan.md Phase 7.1) — mirrors `modules/decisions/
+ * Create/edit dialog for a Strategy's content fields — mirrors `modules/decisions/
  * DecisionFormModal.tsx`'s "shared by create and edit, distinguished by
  * whether `initial` is passed" convention, and `docs/ux-style-guide.md`'s
  * "create-as-a-layer" principle: creation happens in a `Modal` layered over

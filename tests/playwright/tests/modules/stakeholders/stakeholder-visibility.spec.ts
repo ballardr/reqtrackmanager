@@ -7,8 +7,8 @@ import { API_BASE_URL, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 3b's exit criteria — a project can hide an organisation Stakeholder
+ * Job to be done:
+ * A project can hide an organisation Stakeholder
  * from itself (and show it again) without touching the shared record, and a
  * child project inherits its parent's choice but can override it. Covers the
  * detail page's hide control (a tier-1 confirm), the list's "Show hidden"

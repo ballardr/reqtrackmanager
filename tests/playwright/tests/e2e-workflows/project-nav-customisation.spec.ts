@@ -10,7 +10,7 @@ const apiBaseUrl = "http://localhost:8000";
 /**
  * Job to be done: a user orders the Project nav section and moves rarely used items behind
  * "More"; the choice follows them across projects, can be overridden for one project, and never
- * hides the page they are on (docs/plans/platform-enhancements-2026-10-plan.md Phase 4).
+ * hides the page they are on.
  *
  * Runs against a disposable org with its own org admin and two projects, so the preferences it
  * writes belong to a throwaway user and cannot reorder anyone else's nav.

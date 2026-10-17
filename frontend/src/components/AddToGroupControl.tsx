@@ -2,8 +2,7 @@
  * Module: components/AddToGroupControl
  *
  * Small anchored quick-pick — "add this org member to one of this
- * organisation's groups" — from the member's own row (PR6 of the
- * members/groups directory rework plan, docs/decisions.md): previously
+ * organisation's groups" — from the member's own row (docs/decisions.md): previously
  * reachable only from the *group's* own `SidePanel` (a member picker
  * scoped to that one group), never from the user's own row on
  * `OrgAdminPage.tsx`'s Users table. Pure UI reachability fix — no new

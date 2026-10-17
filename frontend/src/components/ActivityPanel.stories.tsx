@@ -47,7 +47,7 @@ export const NoActivity: Story = {
 export const LightTheme: Story = { ...Entries, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...Entries, globals: { theme: "dark" } };
 
-/** `getLink`/`fullWidth` (2026-08 UX audit roadmap row 515) — what
+/** `getLink`/`fullWidth` — what
  * `ProjectHistoryPage.tsx` now passes: a project-wide list spans many
  * different requirements/change requests, so each row needs its own link
  * to say which item it's about, unlike the single-entity detail-page side
@@ -92,7 +92,7 @@ export const WithLinksToRelatedEntities: Story = {
   },
 };
 
-/** `bare` (2026-08 UX audit roadmap item 516) — skips the outer `.card`
+/** `bare` — skips the outer `.card`
  * and "Activity" heading for a caller that supplies its own, e.g.
  * `RequirementDetailPage`'s merged History/Activity card, whose heading
  * switches between "Version history" and "Activity" rather than always

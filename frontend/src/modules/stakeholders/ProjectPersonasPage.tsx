@@ -4,7 +4,7 @@
  * The project-scoped Persona list route, mounted at
  * `/projects/:projectId/modules/stakeholders/personas` (`module.ts`, reached
  * via the "Personas" nav-rail entry). Lists the project's own personas *and*
- * the organisation's live ones (Phase 0 resolution 2), each with this
+ * the organisation's live ones, each with this
  * project's effective weight; new personas created here are project-scoped.
  * The list/filter/create UI is the shared `PersonaListView`. Every row opens
  * inside this project (an org persona too), so its weight override stays

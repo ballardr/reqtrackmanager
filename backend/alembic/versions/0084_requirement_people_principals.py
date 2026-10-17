@@ -1,4 +1,4 @@
-"""Requirement owners and reviewers become principals (users and groups on parity, Phase 6c)
+"""Requirement owners and reviewers become principals
 
 Revision ID: 0084
 Revises: 0083
@@ -6,8 +6,8 @@ Create Date: 2026-10-13
 
 `requirement_versions.owner_id` (mandatory), `requirement_versions.reviewer_id`
 and `change_request_versions.proposed_reviewer_id` may now name a user, an
-organisation group or a project group
-(docs/plans/users-and-groups-parity-plan.md). Each gets a `*_type` column
+organisation group or a project group.
+Each gets a `*_type` column
 (existing rows backfill to `user`; the owner's becomes NOT NULL), the foreign
 key to `users` is dropped (the id now points at one of three tables; the
 service validates it), and a check constraint keeps the pair consistent. Every

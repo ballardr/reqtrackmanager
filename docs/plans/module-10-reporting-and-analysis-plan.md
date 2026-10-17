@@ -2,11 +2,11 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout. This module hard-depends
-on [Module 0](module-00-platform-foundations-plan.md) for relationship
+on [Module 0](completed/module-00-platform-foundations-plan.md) for relationship
 traversal, and otherwise consumes whatever of Modules 1–9 is enabled at
 generation time (see "Incremental delivery" below).
 
-**Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
+**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 §47 "Module 10 — Reporting & Analysis".
 
 **Status:** Proposed. Not started. Last in the overview's recommended
@@ -260,7 +260,7 @@ should happen close to when it's actually picked up, not speculatively now.
 ## Phase 8 — Docs website coverage
 
 **Goal:** add Reporting & Analysis's user-facing surface to
-`docs/website/` (the published docs site, `docs/plans/docs-website-plan.md`)
+`docs/website/` (the published docs site, `docs/plans/completed/docs-website-plan.md`)
 — what the reporting engine is, the provenance model, and each shipped
 report type — following the site's existing structure, tone, and
 Mermaid-diagram conventions (per this repo's Documentation Requirements:
@@ -310,7 +310,7 @@ incremental spirit as the feature it documents.
 - **Screenshot requirement (2026-09-22 addendum).** Making this explicit
   here rather than leaving it implicit is **Decided by: User** (the same
   instruction as the phase itself, applied specifically to screenshots this
-  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  time — `docs/plans/completed/docs-website-plan.md`'s "Screenshots" section already
   bound this page to its standard, but this phase's Scope above never said
   so in as many words). Each slice above is subject to that standard in
   full — 1440×900 viewport, captured against the seeded demo dataset,

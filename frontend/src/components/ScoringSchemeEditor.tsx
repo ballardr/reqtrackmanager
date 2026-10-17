@@ -2,10 +2,10 @@
  * Module: components/ScoringSchemeEditor
  *
  * Org-level configuration of one scoring scheme (generic scoring-matrix
- * core, Module 1 Phase 10): each axis's levels, the org default model, and
+ * core): each axis's levels, the org default model, and
  * each model's rating bands. A module embeds this in its own org-admin
  * section, passing its scheme key (e.g. Context & Strategy's "pain_point")
- * — core never knows which modules score what (Decided by: User, Phase 10
+ * — core never knows which modules score what (Decided by: User
  * sign-off: scoring config sits beside the feature it scores).
  *
  * Levels reuse the shared `DefinitionList` (inline edit, delete with

@@ -57,7 +57,7 @@ def link_action(
     Governed by the same creation-or-change-request-only rule as every
     other requirement content once it's locked (C-G-12) — see
     `routers.requirements.files.upload_requirement_attachment`'s docstring.
-    2026-08 UX audit roadmap item 514: this endpoint previously had no lock
+    This endpoint previously had no lock
     check at all, unlike the requirement's own fields, letting an action
     bypass the change-request-only rule entirely once approved.
     """
@@ -163,7 +163,7 @@ def unlink_action(
 
     Governed by the same creation-or-change-request-only rule as
     `link_action`/`create_and_link_action`, above (C-G-12) — Platform
-    review 2026-09, Phase 8: this endpoint previously had no lock check at
+    review 2026-09: this endpoint previously had no lock check at
     all, an asymmetry with the *add* side (which has been gated since item
     514) that let an action be silently unlinked from an approved
     requirement with no review step. Unconditional across every project —

@@ -1,13 +1,10 @@
-"""Tests for Decision Management's Phase 3 relationships (docs/plans/
-module-04-decision-management-plan.md Phase 3): Decision <-> Requirement
+"""Tests for Decision Management's relationships: Decision <-> Requirement
 (Implements/Affects) and the two plain Decision <-> Decision relationships
 (Depends on/Conflicts with) — Supersedes already has its own coverage in
 test_decisions_workflow.py.
 
-No HTTP endpoint exists yet for any of this (Phase 4 adds the API), so —
-same "data-model-only phase, test through the layer that exists" approach
-the earlier phases established — these tests call
-`app.modules.decisions.service`'s Phase 3 functions directly against a real
+These tests call
+`app.modules.decisions.service`'s relationship functions directly against a real
 database session, and assert on the resulting `ArtefactLink` rows and the
 shared, lazily-created `RequirementLinkTypeDefinition` rows.
 """

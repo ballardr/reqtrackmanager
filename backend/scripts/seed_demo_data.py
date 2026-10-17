@@ -112,15 +112,14 @@ def add_member_source(
 
 def create_project_group(headers: dict, project_id: str, name: str, role: str) -> dict:
     """Creates a project group explicitly, then grants it `role`. Projects
-    no longer auto-create any groups on creation (follow-up UX batch Phase
-    C, 2026-08-31 removed the four "standard" default groups — see
+    no longer auto-create any groups on creation (2026-08-31 removed the four "standard" default groups — see
     docs/decisions.md), so any group this script wants to demonstrate (e.g.
     a cross-project source reference below) has to be created as its own
     explicit step now, rather than reached by name via a pre-existing
     default.
 
     A group is created bare, with zero roles, and a role is a separate
-    grant since PR7 of the members/groups directory rework plan (docs/
+    grant since the members/groups directory rework (docs/
     decisions.md) — mirroring how `create_org_group` already creates an org
     group bare. This helper still takes a single `role` (every group this
     demo dataset seeds only ever needs one) and grants it via the new
@@ -283,9 +282,8 @@ def complete_requirement(headers: dict, project_id: str, requirement_id: str) ->
 def archive_requirement(headers: dict, project_id: str, requirement_id: str) -> None:
     """Archives a requirement (soft-delete, C-A-06). Left archived rather
     than restored in the demo dataset so a reviewer has a concrete example
-    to click "Restore" on — see `POST .../unarchive`, added per the 2026-08
-    UX audit roadmap ("archive was one-way for requirements, unlike
-    projects")."""
+    to click "Restore" on — see `POST .../unarchive`, added because archive was one-way for requirements, unlike
+    projects."""
     r = httpx.delete(f"{BASE}/projects/{project_id}/requirements/{requirement_id}", headers=headers, timeout=30)
     r.raise_for_status()
 
@@ -368,7 +366,7 @@ def create_add_action_change_request(
     headers: dict, project_id: str, requirement_id: str, *,
     action_title: str, action_description: str, action_type_id: str, reason: str, assignee: dict | None = None,
 ) -> dict:
-    """An ADD_ACTION change request (2026-08 UX audit roadmap item 514) —
+    """An ADD_ACTION change request —
     only valid once `requirement_id` is already locked (status APPROVED,
     completed or not — C-G-11 completion no longer changes `status`); see
     `create_change_request`'s sibling helpers, which each already require
@@ -555,8 +553,7 @@ def add_action_comment(headers: dict, project_id: str, action_id: str, body: str
 def archive_action(headers: dict, project_id: str, action_id: str) -> None:
     """Archives a requirement action. Left archived rather than restored in
     the demo dataset so a reviewer has a concrete example to click
-    "Restore" on — see `POST .../unarchive`, added per the 2026-08 UX audit
-    roadmap ("archive was one-way for actions, unlike projects")."""
+    "Restore" on — see `POST .../unarchive`, added because archive was one-way for actions, unlike projects."""
     r = httpx.post(f"{BASE}/projects/{project_id}/actions/{action_id}/archive", headers=headers, timeout=30)
     r.raise_for_status()
 
@@ -583,7 +580,7 @@ def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
     r.raise_for_status()
 
 
-# --- Compliance Module helpers (docs/compliance-module-plan.md Phase 15) -
+# --- Compliance Module helpers -
 
 
 def create_compliance_standard(
@@ -669,7 +666,7 @@ def publish_compliance_version(headers: dict, org_id: str, standard_id: str, ver
 
 
 def update_compliance_version_summary(headers: dict, org_id: str, standard_id: str, version_id: str, summary: str) -> dict:
-    """Phase 24: a version's own current-standing `summary` — editable at
+    """A version's own current-standing `summary` — editable at
     any lifecycle stage, `standards_manager`-or-override only once
     published/retired."""
     r = httpx.patch(
@@ -684,7 +681,7 @@ def clarify_compliance_requirement(
     headers: dict, org_id: str, standard_id: str, version_id: str, requirement_id: str, *,
     name: str, reference: str | None = None, description: str = "", reasoning: str = "", clarification_note: str,
 ) -> dict:
-    """Phase 24: a non-substantive correction to a requirement already on a
+    """A non-substantive correction to a requirement already on a
     `PUBLISHED` version — `standards_manager`-or-override only."""
     r = httpx.patch(
         f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/requirements/"
@@ -729,7 +726,7 @@ def grant_compliance_officer(headers: dict, project_id: str, user_id: str) -> No
 
 def grant_standard_role(headers: dict, org_id: str, standard_id: str, user_id: str, role_key: str) -> None:
     """Grants a direct, standard-scoped `standards_manager`/`standards_
-    contributor` role (compliance-module-plan.md Phase 22) — distinct from
+    contributor` role — distinct from
     `grant_compliance_officer`'s project-scoped grant above; a demo user can
     hold both at once (a project's assessor and a specific standard's own
     working-group contributor are unrelated capabilities)."""
@@ -741,7 +738,7 @@ def grant_standard_role(headers: dict, org_id: str, standard_id: str, user_id: s
 
 
 def update_standard_applicability_default(headers: dict, org_id: str, standard_id: str, applicability_default: str) -> dict:
-    """Phase 20: switches a standard between `opt_in` (default) and
+    """Switches a standard between `opt_in` (default) and
     `applies_to_all_projects`. Switching to the latter immediately
     reconciles a real `ProjectCompliance` row into existence for every
     current, non-archived, non-excluded project in the organisation
@@ -758,7 +755,7 @@ def update_standard_applicability_default(headers: dict, org_id: str, standard_i
 
 
 def exclude_project_from_standard_default(headers: dict, org_id: str, standard_id: str, project_id: str, *, reason: str) -> dict:
-    """Phase 20: excepts `project_id` out of a standard's `applies_to_all_
+    """Excepts `project_id` out of a standard's `applies_to_all_
     projects` default. `reason` is mandatory. Call before flipping the
     standard's applicability default so reconciliation skips this project
     from the start, rather than assigning and then re-archiving it."""
@@ -1017,8 +1014,7 @@ def seed_project(
     return by_name
 
 
-# --- Decision Management module helpers (docs/plans/module-04-decision-
-# management-plan.md Phase 5) --------------------------------------------
+# --- Decision Management module helpers --------------------------------------------
 #
 # `Decision.decision_type_id` is a required FK, but every *root* project
 # already has 5 default `DecisionTypeDefinition` rows seeded by
@@ -1026,7 +1022,7 @@ def seed_project(
 # Operational), not gated on this module's own `enabled` state — so
 # `list_decision_types` always has something to pick from without this
 # script creating any itself, as long as the project used here (Falcon-3
-# Inspection Drone, a root project) isn't a child (Phase 9, 2026-09-22: a
+# Inspection Drone, a root project) isn't a child (a
 # child starts with none of its own and inherits its nearest ancestor's
 # instead — see `service.resolve_effective_decision_types`).
 
@@ -1081,8 +1077,7 @@ def advance_decision_to_review(headers: dict, project_id: str, decision_id: str,
 
 def propose_and_approve_decision(headers: dict, project_id: str, decision_id: str, *, approval_comment: str = "") -> dict:
     """Walks a Decision through its full lifecycle to `Approved` in one
-    call — `Draft -> Proposed -> Under Review -> Approved` (source overview
-    §13/10.4) — for demo Decisions meant to already read as settled."""
+    call — `Draft -> Proposed -> Under Review -> Approved` (§13/10.4) — for demo Decisions meant to already read as settled."""
     httpx.post(f"{BASE}/projects/{project_id}/modules/decisions/{decision_id}/propose", headers=headers, timeout=30).raise_for_status()
     httpx.post(
         f"{BASE}/projects/{project_id}/modules/decisions/{decision_id}/submit-for-review", headers=headers, timeout=30
@@ -1097,8 +1092,7 @@ def propose_and_approve_decision(headers: dict, project_id: str, decision_id: st
 
 def create_decision_supersession(headers: dict, project_id: str, new_decision_id: str, old_decision_id: str) -> dict:
     """`new_decision_id` supersedes `old_decision_id` — both must already be
-    `Approved` for the old one to flip to `Superseded` immediately (source
-    overview §13/10.6; see `service.py`'s own `_maybe_supersede`)."""
+    `Approved` for the old one to flip to `Superseded` immediately (§13/10.6; see `service.py`'s own `_maybe_supersede`)."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/decisions/{new_decision_id}/supersessions",
         json={"old_decision_id": old_decision_id}, headers=headers, timeout=30,
@@ -1107,8 +1101,7 @@ def create_decision_supersession(headers: dict, project_id: str, new_decision_id
     return r.json()
 
 
-# --- Context & Strategy module helpers (docs/plans/module-01-context-and-
-# strategy-plan.md Phase 1) -------------------------------------------------
+# --- Context & Strategy module helpers -------------------------------------------------
 
 
 def create_org_strategy(headers: dict, org_id: str, **fields) -> dict:
@@ -1151,8 +1144,7 @@ def propose_and_approve_project_strategy(
     return r.json()
 
 
-# --- Context & Strategy module helpers, Phase 2 (docs/plans/module-01-
-# context-and-strategy-plan.md Phase 2 — Future State) -----------------------
+# --- Context & Strategy module helpers: Future State -----------------------
 
 
 def create_org_future_state(headers: dict, org_id: str, **fields) -> dict:
@@ -1200,12 +1192,11 @@ def propose_and_approve_project_future_state(
     return r.json()
 
 
-# --- Context & Strategy module helpers, Phase 3 (docs/plans/module-01-
-# context-and-strategy-plan.md Phase 3 — Pain Points) -----------------------
+# --- Context & Strategy module helpers: Pain Points -----------------------
 
 
 def list_effective_pain_point_types(headers: dict, project_id: str) -> dict[str, dict]:
-    """Returns this project's effective Pain Point type list (Phase 0 Q3)
+    """Returns this project's effective Pain Point type list
     keyed by name — mirrors `list_decision_types`'s identical shape."""
     r = httpx.get(f"{BASE}/projects/{project_id}/modules/context_strategy/pain-point-types", headers=headers, timeout=30)
     r.raise_for_status()
@@ -1277,7 +1268,7 @@ def mark_pain_point_duplicate(headers: dict, project_id: str, pain_point_id: str
 
 
 def get_pain_point_levels(headers: dict, project_id: str) -> dict[str, dict[str, str]]:
-    """Returns the org's Pain Point scoring levels as `{axis_key: {level_name: level_id}}` (Phase 10/11)."""
+    """Returns the org's Pain Point scoring levels as `{axis_key: {level_name: level_id}}`."""
     r = httpx.get(f"{BASE}/projects/{project_id}/scoring-schemes/pain_point", headers=headers, timeout=30)
     r.raise_for_status()
     return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
@@ -1294,7 +1285,7 @@ def score_entry(levels: dict[str, dict[str, str]], target_id: str | None = None,
 
 
 def set_pain_point_scores(headers: dict, project_id: str, pain_point_id: str, scores: list[dict]) -> dict:
-    """Replaces a Pain Point's per-persona scores (Module 1 Phase 11)."""
+    """Replaces a Pain Point's per-persona scores."""
     r = httpx.put(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/scores",
         json={"scores": scores}, headers=headers, timeout=30,
@@ -1305,7 +1296,7 @@ def set_pain_point_scores(headers: dict, project_id: str, pain_point_id: str, sc
 
 def set_project_scoring_default_model(headers: dict, project_id: str, scheme: str, model: str) -> dict:
     """Overrides a project's default scoring model (generic scoring-matrix
-    core, Module 1 Phase 10)."""
+    core)."""
     r = httpx.put(
         f"{BASE}/projects/{project_id}/scoring-schemes/{scheme}/default-model", json={"model": model},
         headers=headers, timeout=30,
@@ -1316,7 +1307,7 @@ def set_project_scoring_default_model(headers: dict, project_id: str, scheme: st
 
 def set_project_scoring_cell_ratings(headers: dict, project_id: str, scheme: str, model: str, cells: list[dict]) -> dict:
     """Overrides a project's per-cell ratings for a two-axis model (generic
-    scoring-matrix core, Module 3 Phase 1a)."""
+    scoring-matrix core)."""
     r = httpx.put(
         f"{BASE}/projects/{project_id}/scoring-schemes/{scheme}/models/{model}/cell-ratings", json={"cells": cells},
         headers=headers, timeout=30,
@@ -1325,8 +1316,7 @@ def set_project_scoring_cell_ratings(headers: dict, project_id: str, scheme: str
     return r.json()
 
 
-# --- Context & Strategy module helpers, Phase 4 (docs/plans/module-01-
-# context-and-strategy-plan.md Phase 4 — Guiding Principles) -----------------
+# --- Context & Strategy module helpers: Guiding Principles -----------------
 
 
 def create_org_guiding_principle(headers: dict, org_id: str, **fields) -> dict:
@@ -1374,8 +1364,7 @@ def propose_and_approve_project_guiding_principle(
     return r.json()
 
 
-# --- Context & Strategy module helpers, Phase 5 (docs/plans/module-01-
-# context-and-strategy-plan.md Phase 5 — Open Questions) --------------------
+# --- Context & Strategy module helpers: Open Questions --------------------
 
 
 def create_open_question(headers: dict, project_id: str, **fields) -> dict:
@@ -1424,7 +1413,7 @@ def withdraw_open_question(headers: dict, project_id: str, open_question_id: str
     return r.json()
 
 
-# --- Context & Strategy relationship helpers (Module 1 Phase 6) ------------
+# --- Context & Strategy relationship helpers ------------
 
 
 def create_org_strategy_relationship(headers: dict, org_id: str, strategy_id: str, *, kind: str, target_id: str) -> dict:
@@ -1491,8 +1480,7 @@ def create_project_open_question_relationship(
     return r.json()
 
 
-# --- Stakeholders & Personas helpers (docs/plans/module-02-stakeholders-and-
-# personas-plan.md Phase 1.1 — Persona) --------------------------------------
+# --- Stakeholders & Personas helpers (Persona) --------------------------------------
 
 
 def create_org_persona(headers: dict, org_id: str, **fields) -> dict:
@@ -1533,7 +1521,7 @@ def set_project_persona_weight_override(headers: dict, project_id: str, persona_
     return r.json()
 
 
-# --- Stakeholders helpers (Module 2 Phase 1.2 — Stakeholder) ------------------
+# --- Stakeholders helpers (Stakeholder) ------------------
 
 
 def get_stakeholder_levels(headers: dict, org_id: str) -> dict[str, dict[str, str]]:
@@ -1652,7 +1640,7 @@ def create_engagement(
     headers: dict, project_id: str, *, outcomes: tuple[tuple[str, str, str], ...] = (), prompts: tuple[tuple[str, str], ...] = (),
     anonymous: tuple[tuple[str, str | None], ...] = (), findings: tuple[dict, ...] = (), **fields,
 ) -> dict:
-    """Logs a project Engagement (Module 2 Phase 4). `fields` are the create payload (title, channel, engagement_date,
+    """Logs a project Engagement. `fields` are the create payload (title, channel, engagement_date,
     stakeholder_ids, persona_ids, group_ids, ...). `outcomes` are `(kind, target_type, target_id)` raised/answered links,
     `prompts` `(prompt, response_notes)`, `anonymous` `(label, persona_id)` and `findings` `{title, description,
     outcomes}` dicts; the last three need the `research_extras` sub-component."""
@@ -1681,7 +1669,7 @@ def create_engagement(
 def add_stakeholder_relationship(
     headers: dict, project_id: str, holder_kind: str, holder_id: str, kind: str, target_type: str, target_id: str,
 ) -> dict:
-    """Adds a §10.5 relationship (Module 2 Phase 3) from a Stakeholder (`holder_kind="stakeholder"`) or Persona
+    """Adds a §10.5 relationship from a Stakeholder (`holder_kind="stakeholder"`) or Persona
     (`"persona"`) to a record of `project_id`, e.g. kind `experiences_pain_point` with target type `pain_point`."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/stakeholders/{holder_kind}s/{holder_id}/relationships",
@@ -1692,7 +1680,7 @@ def add_stakeholder_relationship(
 
 
 def list_effective_risk_types(headers: dict, project_id: str) -> dict[str, dict]:
-    """Returns a project's effective Risk types, keyed by name (Module 3 Phase 1)."""
+    """Returns a project's effective Risk types, keyed by name."""
     r = httpx.get(f"{BASE}/projects/{project_id}/modules/risk_management/risk-types", headers=headers, timeout=30)
     r.raise_for_status()
     return {t["name"]: t for t in r.json()}
@@ -1722,7 +1710,7 @@ def create_risk(
 
 
 def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str) -> dict:
-    """Moves a Risk through the given lifecycle statuses in order (Module 3 Phase 2) and returns the last response."""
+    """Moves a Risk through the given lifecycle statuses in order and returns the last response."""
     out: dict = {}
     for status in statuses:
         r = httpx.post(
@@ -1865,8 +1853,7 @@ def main() -> None:
     # `remote_id_req` is seeded directly into "complete" (DRONE_REQUIREMENTS,
     # above) — approved and marked completed (C-G-11), so already locked
     # (status stays APPROVED throughout), so adding an action to it goes
-    # through an ADD_ACTION change request (2026-08 UX audit roadmap item
-    # 514) rather than the direct create-and-link call every other action
+    # through an ADD_ACTION change request rather than the direct create-and-link call every other action
     # below still uses on its still-draft target requirement.
     firmware_review_title = "Review remote-ID firmware module against FAA rule text"
     firmware_review_cr = create_add_action_change_request(
@@ -1993,7 +1980,7 @@ def main() -> None:
         reason="Obstacle-avoidance sensor payload (added post-baseline) draws an additional ~4W, "
         "reducing achievable flight time in verified bench testing from 42 to 38 minutes.",
         component_id=drone_components["PR"]["id"], category_id=drone_categories["PR"]["PERF"]["id"],
-        # Platform Enhancements Phase 6b: the request also proposes three traceability links, merged only if the
+        # The request also proposes three traceability links, merged only if the
         # approver ticks them. The third is made unmergeable below (linked directly after the request was made),
         # so the approval dialog also shows a link that "can no longer be merged" with its reason.
         proposed_links=[
@@ -2048,7 +2035,7 @@ def main() -> None:
     )
     assign_project_role(h_pm, cloud["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, cloud["id"], demo_stakeholder["user_id"], "stakeholder")
-    # Platform review 2026-09, Phase 8 — demonstrates the opt-in
+    # Demonstrates the opt-in
     # "require a change request to add/remove links on approved
     # requirements" project setting (Project Admin settings), off a
     # project with no direct-link seeding of its own so there's no
@@ -2068,7 +2055,7 @@ def main() -> None:
     add_member_source(h_pm, drone["id"], cloud["id"], mirror_mode="mirror_role", mirror_filter_role="stakeholder")
     # Project-referencing group: Solstice Cloud Platform gets its own
     # explicit "Stakeholders" group (no default group exists to reach by
-    # name any more — Phase C, follow-up UX batch, 2026-08-31), defined as
+    # name any more), defined as
     # "Falcon-3's own direct members" — the second cross-project mechanism,
     # reached from the group side rather than the project side.
     cloud_stakeholders_group = create_project_group(h_pm, cloud["id"], "Stakeholders", "stakeholder")
@@ -2093,8 +2080,7 @@ def main() -> None:
 
     print("Opening and approving a change request on Solstice Cloud Platform...")
     # A modify change request can only target an already-locked requirement
-    # (2026-08 UX audit roadmap, "No requirement approval action; change
-    # requests can target draft requirements") — already true here, since
+    # — already true here, since
     # this requirement's CLOUD_REQUIREMENTS spec sets its status to
     # "approved" directly (via `seed_project`/`set_requirement_status`), not
     # left as "draft".
@@ -2112,7 +2098,7 @@ def main() -> None:
                            note="Approved — infra team confirmed headroom for the tighter target in the latest load test.")
 
     print("Proposing an action on the now-locked latency requirement (add-action change request)...")
-    # 2026-08 UX audit roadmap item 514: once a requirement is locked
+    # Once a requirement is locked
     # (true for `latency_req` since the CR just above), adding an action to
     # it goes through an ADD_ACTION change request instead of the direct
     # create-and-link endpoint — `latency_req` is reused deliberately here
@@ -2151,7 +2137,7 @@ def main() -> None:
     # resource (§31: "A Compliance Standard is not a Project"), not another
     # requirement, but reusing the same narrative keeps the demo coherent.
     # "Document Review"/"Test" now ship as every organisation's default
-    # compliance action types (Phase 17c) rather than needing to be created
+    # compliance action types rather than needing to be created
     # here by hand — look them up instead of `create_compliance_action_type`,
     # mirroring how `drone_action_types`/`cloud_action_types` above already
     # look up the generic per-project defaults rather than recreating them.
@@ -2204,13 +2190,13 @@ def main() -> None:
         logging_compliance_req["id"], test_action_type["id"],
         name="Verify flight log retrieval from non-volatile storage on the updated firmware",
     )
-    # Phase 22: demo_engineer also holds this standard's own `standards_
+    # Demo_engineer also holds this standard's own `standards_
     # contributor` role — its own working-group grant, distinct from her
     # project-scoped `compliance_officer` grant below (demonstrated before
     # publishing, since a contributor may only edit a still-draft version).
     grant_standard_role(h_pm, org["id"], airworthiness_standard["id"], demo_engineer["user_id"], "standards_contributor")
     publish_compliance_version(h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"])
-    # Phase 24: demonstrate the always-editable version summary and a
+    # Demonstrate the always-editable version summary and a
     # post-publish clarification — both `standards_manager`-or-override
     # only (demo_admin, via her org admin override) once a version is no
     # longer a draft.
@@ -2229,10 +2215,10 @@ def main() -> None:
     drone_compliance = assign_compliance_standard(h_pm, org["id"], drone["id"], airworthiness_standard["id"], airworthiness_version["id"])
     grant_compliance_officer(h_pm, drone["id"], demo_engineer["user_id"])
     # The seeded "Link editor" preset (View + Link on every record type) lets Priya trace the Drone project's
-    # records without being a manager (Platform Enhancements Phase 6d).
+    # records without being a manager.
     grant_custom_role(h_pm, org["id"], "Link editor", demo_engineer["user_id"], drone["id"])
-    # A requirement traces to the standard clause it derives from as an ordinary link (Platform Enhancements
-    # Phase 6c): visible in the requirement's Links panel, found with the "Add a link" finder.
+    # A requirement traces to the standard clause it derives from as an ordinary link:
+    # visible in the requirement's Links panel, found with the "Add a link" finder.
     create_artefact_link(
         h_pm, drone["id"], "requirement", remote_id_req["id"], link_type_id=default_link_types["Derives from"]["id"],
         other_type="compliance_requirement", other_id=remote_id_compliance_req["id"],
@@ -2284,7 +2270,7 @@ def main() -> None:
         notes="Annual review of continued Part 107 remote-ID compliance.",
     )
 
-    print("Seeding default reference standards (Phase 26) — EN 60529 and ISO/IEC 27001...")
+    print("Seeding default reference standards — EN 60529 and ISO/IEC 27001...")
     # Realistic *labels* for demo purposes only, built around each real
     # standard's own public section structure (IEC 60529's IP-Code digits,
     # ISO 27001's Annex A control domains) — not a reproduction of either
@@ -2340,7 +2326,7 @@ def main() -> None:
         "electrical faults.", parent_requirement_id=liquids_section["id"],
     )
     publish_compliance_version(h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"])
-    # Phase 24: an edited, always-editable version summary on the first
+    # An edited, always-editable version summary on the first
     # published version.
     update_compliance_version_summary(
         h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
@@ -2396,7 +2382,7 @@ def main() -> None:
         name="Review current encryption configuration against the data processing addendum",
     )
     publish_compliance_version(h_pm, org["id"], infosec_standard["id"], infosec_version["id"])
-    # Phase 24: a post-publish clarification on an already-published
+    # A post-publish clarification on an already-published
     # requirement.
     clarify_compliance_requirement(
         h_pm, org["id"], infosec_standard["id"], infosec_version["id"], mfa_req["id"],
@@ -2405,7 +2391,7 @@ def main() -> None:
         clarification_note="Clarified to explicitly include break-glass/emergency-access accounts, which were "
         "ambiguous under the original wording; the underlying obligation is unchanged.",
     )
-    # Phase 20: exclude the avionics sub-project *before* flipping the
+    # Exclude the avionics sub-project *before* flipping the
     # standard to apply to all projects, so reconciliation skips it from
     # the start rather than assigning and then re-archiving it.
     exclude_project_from_standard_default(
@@ -2415,9 +2401,8 @@ def main() -> None:
     )
     update_standard_applicability_default(h_pm, org["id"], infosec_standard["id"], "applies_to_all_projects")
 
-    print("Seeding Decision Management (Module 4) — enabling the module, then a superseded pair on Falcon-3...")
-    # default_enabled=False (docs/plans/module-04-decision-management-plan.md
-    # Phase 1/4) — an org must opt in explicitly, same as a real admin would
+    print("Seeding Decision Management — enabling the module, then a superseded pair on Falcon-3...")
+    # default_enabled=False — an org must opt in explicitly, same as a real admin would
     # from Org Admin's Modules tab.
     enable_module(h_pm, org["id"], "decisions")
     drone_decision_types = list_decision_types(h_pm, drone["id"])
@@ -2497,9 +2482,8 @@ def main() -> None:
     )
     advance_decision_to_review(h_pm, drone["id"], gimbal_decision["id"], submit_for_review=False)
 
-    print("Seeding Context & Strategy (Module 1) — enabling the module, then an org Strategy and a project Strategy...")
-    # default_enabled=False (docs/plans/module-01-context-and-strategy-plan.md
-    # Phase 1) — an org must opt in explicitly, same as Decision Management above.
+    print("Seeding Context & Strategy — enabling the module, then an org Strategy and a project Strategy...")
+    # default_enabled=False — an org must opt in explicitly, same as Decision Management above.
     enable_module(h_pm, org["id"], "context_strategy")
     org_strategy = create_org_strategy(
         h_pm, org["id"], title="Lead the market in autonomous aerial inspection",
@@ -2536,8 +2520,8 @@ def main() -> None:
         approval_comment="Approved — directly traces to the dual-redundant flight controller Decision above.",
     )
 
-    print("Seeding Future State (Module 1 Phase 2) — an org Future State and a project Future State, each linked"
-          " to the Strategy it elaborates via a real 'Defines' relationship (Module 1 Phase 6)...")
+    print("Seeding Future State — an org Future State and a project Future State, each linked"
+          " to the Strategy it elaborates via a real 'Defines' relationship...")
     org_future_state = create_org_future_state(
         h_pm, org["id"], title="Default choice for utility-scale autonomous inspection",
         current_state="A capable but early-stage entrant with two live product lines and a small install base.",
@@ -2594,9 +2578,9 @@ def main() -> None:
         h_pm, drone["id"], drone_strategy["id"], kind="drives_requirement", target_id=remote_id_req["id"],
     )
 
-    print("Seeding Pain Points (Module 1 Phase 3) — one per branch outcome (Accepted->Addressed, Rejected,"
+    print("Seeding Pain Points — one per branch outcome (Accepted->Addressed, Rejected,"
           " Duplicate) on the Falcon-3 project, using the org's default Market/User/Operator types...")
-    # `default_enabled` sub-components (Phase 3's own `module.py`) mean no
+    # `default_enabled` sub-components mean no
     # separate enable-subcomponent call is needed beyond the whole-module
     # `enable_module` call already made above for Strategy/Future State.
     drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])
@@ -2682,7 +2666,7 @@ def main() -> None:
         other_type="decision", other_id=single_fc_decision["id"], direction="incoming",
     )
 
-    print("Linking across Falcon-3 and its Avionics sub-project (Phase 5d): the parent's dual-redundant Decision"
+    print("Linking across Falcon-3 and its Avionics sub-project: the parent's dual-redundant Decision"
           " 'Implements' an Avionics requirement, and an Avionics Decision 'Addresses' the parent's Pain Point"
           " (the seeded 'Addresses' type keeps the upstream Pain Point in the same or a parent project)...")
     avionics_requirement = next(iter(avionics_reqs.values()))
@@ -2701,7 +2685,7 @@ def main() -> None:
         other_type="pain_point", other_id=pp_accepted["id"], other_project_id=drone["id"],
     )
 
-    print("Seeding a project-level link type on Falcon-3 (Phase 5c): \"Is verified by\" (a requirement is verified by"
+    print("Seeding a project-level link type on Falcon-3: \"Is verified by\" (a requirement is verified by"
           " another), inherited by the Avionics sub-project, and Falcon-3 hides the organisation's"
           " \"Equivalent to\" (not \"Mitigates\": Risk treatment links need it)...")
     verified_by = create_project_link_type(
@@ -2713,13 +2697,13 @@ def main() -> None:
     )
     set_link_type_visibility(h_pm, drone["id"], chain_link_types["Equivalent to"]["id"], True)
 
-    print("Seeding Pain Point scoring config (Module 1 Phase 10) — org keeps the seeded Severity/Frequency/"
+    print("Seeding Pain Point scoring config — org keeps the seeded Severity/Frequency/"
           "Confidence levels and module-default model; Falcon-3 overrides its default model to S×F...")
     set_project_scoring_default_model(h_pm, drone["id"], "pain_point", "sxf")
 
-    print("Seeding Guiding Principles (Module 1 Phase 4) — an org Guiding Principle and a project Guiding"
-          " Principle, both walked to Active and linked to the Strategy they support (Module 1 Phase 6)...")
-    # `default_enabled` sub-components (Phase 4's own `module.py`) mean no
+    print("Seeding Guiding Principles — an org Guiding Principle and a project Guiding"
+          " Principle, both walked to Active and linked to the Strategy they support...")
+    # `default_enabled` sub-components mean no
     # separate enable-subcomponent call is needed beyond the whole-module
     # `enable_module` call already made above for Strategy/Future State/Pain Point.
     org_guiding_principle = create_org_guiding_principle(
@@ -2753,9 +2737,9 @@ def main() -> None:
         approval_comment="Approved — directly checked against the accepted paper-re-keying Pain Point above.",
     )
 
-    print("Seeding Open Questions (Module 1 Phase 5) — one walked partway through investigation, one withdrawn"
-          " (no ArtefactLink relationship to a Decision yet — that's Phase 6, and the actual 'Create Decision"
-          " from Open Question' workflow is Module 4's own Phase 7)...")
+    print("Seeding Open Questions — one walked partway through investigation, one withdrawn"
+          " (no ArtefactLink relationship to a Decision yet, and no 'Create Decision"
+          " from Open Question' workflow yet)...")
     oq_battery_vendor = create_open_question(
         h_pm, drone["id"], question="Should the Falcon-3 drone fleet standardise on a single battery vendor?",
         context="Falcon-3 currently qualifies battery packs from two vendors. A single-vendor policy would"
@@ -2773,8 +2757,7 @@ def main() -> None:
     )
     investigate_open_question(h_pm, drone["id"], oq_battery_vendor["id"])
     mark_open_question_ready_for_decision(h_pm, drone["id"], oq_battery_vendor["id"])
-    print(f"  Ready for Decision: {oq_battery_vendor['question']!r} (awaiting a Decision to resolve it —"
-          " Module 4's own Phase 7)")
+    print(f"  Ready for Decision: {oq_battery_vendor['question']!r} (awaiting a Decision to resolve it)")
 
     oq_offline_ui = create_open_question(
         h_pm, drone["id"], question="Should the degraded-connectivity indicator (per the org Guiding Principle"
@@ -2800,7 +2783,7 @@ def main() -> None:
     )
     print("  Open and overdue: 'Which destination markets require Remote ID broadcast at launch?'")
 
-    print("Seeding Stakeholders & Personas (Module 2 Phase 1.1) — enabling the module, then two org personas (one"
+    print("Seeding Stakeholders & Personas — enabling the module, then two org personas (one"
           " weighted, one not) and a project persona on Falcon-3, plus a Falcon-3 weight override that its"
           " Avionics sub-project inherits...")
     enable_module(h_pm, org["id"], "stakeholders")
@@ -2842,12 +2825,12 @@ def main() -> None:
           f" Draft, unweighted), {drone_operator_persona['name']!r} (Falcon-3, Active, weight 2); Falcon-3 weights"
           f" {persona_inspector['name']!r} at 5, which Falcon-3 Avionics Subsystem inherits")
 
-    print("Seeding per-persona Pain Point scoring (Module 1 Phase 11) on Falcon-3 — per-persona scores across"
+    print("Seeding per-persona Pain Point scoring on Falcon-3 — per-persona scores across"
           " personas of different weights (one persona left unscored), an all-personas Blocker, an intentional"
           " limitation, and an unscored Pain Point...")
     pp_levels = get_pain_point_levels(h_pm, drone["id"])
     print("  Falcon-3 pins the Severity × Frequency cell Blocker × Rare to High (its score alone would only earn"
-          " Medium): a blocker is never a minor problem, however rare (Module 3 Phase 1a cell ratings)...")
+          " Medium): a blocker is never a minor problem, however rare (cell ratings)...")
     set_project_scoring_cell_ratings(h_pm, drone["id"], "pain_point", "sxf", [{
         "first_level_id": pp_levels["severity"]["Blocker"], "second_level_id": pp_levels["frequency"]["Rare"],
         "band_label": "High",
@@ -2902,7 +2885,7 @@ def main() -> None:
           f" {pp_all_personas['title']!r} (all personas), {pp_intentional['title']!r} (intentional); one Pain Point"
           " left unscored.")
 
-    print("Seeding Stakeholders (Module 2 Phase 1.2) — an org Regulator stakeholder rated High influence/Medium"
+    print("Seeding Stakeholders — an org Regulator stakeholder rated High influence/Medium"
           " interest that represents the Compliance Auditor persona, and a Falcon-3 Customer stakeholder with a"
           " monthly cadence that represents the BVLOS Remote Pilot persona...")
     levels = get_stakeholder_levels(h_pm, org["id"])
@@ -2940,7 +2923,7 @@ def main() -> None:
           f" {stakeholder_fleet['name']!r} (Falcon-3, Customer, Active, Medium/High, monthly),"
           f" {stakeholder_harbour['name']!r} (org, Regulator, Active) — hidden from Falcon-3, which has no marine dealings")
 
-    print("Seeding Stakeholder groups (Module 2 Phase 3c) — an org Client taxonomy whose children are mutually exclusive,"
+    print("Seeding Stakeholder groups — an org Client taxonomy whose children are mutually exclusive,"
           " a Regulator group, and a Falcon-3 project group nested under an org group...")
     group_client = create_stakeholder_group(h_pm, org_id=org["id"], name="Client", exclusive_children=True)
     group_skyline = create_stakeholder_group(
@@ -2959,7 +2942,7 @@ def main() -> None:
     print("  Groups: Client > Skyline Logistics > (Falcon-3) Launch-site customers; Regulators > Aviation (Pat Okafor),"
           " Regulators (Lee Harbour)")
 
-    print("Seeding Stakeholder Needs (Module 2 Phase 2) — Falcon-3's fleet manager needs a trustworthy status display,"
+    print("Seeding Stakeholder Needs — Falcon-3's fleet manager needs a trustworthy status display,"
           " which gave rise to its first requirement; the BVLOS Remote Pilot persona has the same need...")
     need_status_display = create_need(
         h_pm, drone["id"], activate=True, holders=(("stakeholder", stakeholder_fleet["id"]), ("persona", drone_operator_persona["id"])),
@@ -2975,7 +2958,7 @@ def main() -> None:
     print(f"  Needs: {need_status_display['name']!r} (Active, held by Dana Whitfield and the BVLOS Remote Pilot persona,"
           f" gave rise to {flight_log_req['name']!r}), plus a Draft need held by Pat Okafor")
 
-    print("Seeding Engagements (Module 2 Phase 4) — a quick email log, a focus group with anonymous participants and"
+    print("Seeding Engagements — a quick email log, a focus group with anonymous participants and"
           " findings, and an old briefing that leaves the quarterly regulator overdue...")
     enable_research_extras(h_pm, org["id"])
     engagement_email = create_engagement(
@@ -3005,7 +2988,7 @@ def main() -> None:
           f" audience, 3 anonymous participants, 2 prompts, 1 finding), {engagement_old['title']!r} (March: Pat Okafor, whose"
           " quarterly cadence is now overdue)")
 
-    print("Seeding Stakeholder/Persona relationships (Module 2 Phase 3) — the Field Inspector persona experiences the"
+    print("Seeding Stakeholder/Persona relationships — the Field Inspector persona experiences the"
           " re-keying Pain Point, the fleet manager provides the status-display requirement and was consulted on the"
           " single flight controller Decision, the regulator reviews that requirement...")
     for holder_kind, holder_id, kind, target_type, target_id in (
@@ -3016,7 +2999,7 @@ def main() -> None:
     ):
         add_stakeholder_relationship(h_pm, drone["id"], holder_kind, holder_id, kind, target_type, target_id)
 
-    print("Seeding Risk Management (Module 3 Phase 1) — enabling the module, then a small Falcon-3 risk register."
+    print("Seeding Risk Management — enabling the module, then a small Falcon-3 risk register."
           " Falcon-3 pins the Likelihood x Consequence cell Rare x Catastrophic to High (its score alone would only earn"
           " Medium): a catastrophe is never a minor risk, however unlikely...")
     enable_module(h_pm, org["id"], "risk_management")
@@ -3059,7 +3042,7 @@ def main() -> None:
         h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Performance"]["id"], title="Gimbal vibration degrades imagery",
         statement="Rotor vibration may blur inspection imagery at the gimbal's maximum zoom.",
     )
-    # Phase 3: treatment links and their verdicts. A link alone only "proposes" a treatment; the project manager
+    # Treatment links and their verdicts. A link alone only "proposes" a treatment; the project manager
     # (a Risk Manager) attests the pre-flight diagnostics are effective, leaves the return-to-home link proposed, and
     # the modem risk is treated by a dual-sourcing action that is linked but not yet assessed.
     risk_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
@@ -3098,7 +3081,7 @@ def main() -> None:
         h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Impacts"]["id"],
         other_type="requirement", other_id=flight_log_req["id"],
     )
-    # Phase 4: the single-controller risk has been reviewed (its next review is a month out); the modem risk's
+    # The single-controller risk has been reviewed (its next review is a month out); the modem risk's
     # scheduled review date has passed, so it shows as overdue and the review-due sweep has something to notify about.
     httpx.post(
         f"{risk_url}/{risk_single_controller['id']}/reviews",
@@ -3149,14 +3132,14 @@ def main() -> None:
           " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win;"
           " 1 organisation Future State and 1 Active project Future State on Falcon-3 (plus a Draft one with a"
           " passed target date and no success measures), each Active one linked to the"
-          " Strategy it elaborates via a real 'Defines' relationship (Module 1 Phase 6); 7 Pain Points on Falcon-3"
+          " Strategy it elaborates via a real 'Defines' relationship; 7 Pain Points on Falcon-3"
           " (Accepted->Addressed, Rejected with a real 'Drives' link back to the Falcon-3 Strategy, and Duplicate"
           " with a real 'Duplicate of' link to the canonical Pain Point, plus four demonstrating per-persona"
           " scoring: scored across personas with a BVLOS-pilot Blocker, scored for all personas, an intentional"
           " limitation, and one unscored; Falcon-3 defaults to the Severity x Frequency model); 1 organisation Guiding Principle (Active,"
           " linked to the org Strategy via a real 'Supports' relationship) and 1 project Guiding Principle (Active)"
           " on Falcon-3; and 3 Open Questions on Falcon-3 (one Ready for Decision, one Withdrawn, one open and overdue — the 'resolved by"
-          " Decision' relationship stays reserved pending Module 4's own Phase 7, see docs/decisions.md)")
+          " Decision' relationship stays reserved, see docs/decisions.md)")
     print("  Stakeholders & Personas (enabled org-wide): 3 organisation Personas (Field Inspector — Active, weight 3;"
           " Compliance Auditor — Draft, unweighted; Harbour Pilot — Active, hidden from Falcon-3) and 1 project Persona on Falcon-3 (BVLOS Remote"
           " Pilot — Active, weight 2), with a Falcon-3 weight override of 5 on Field Inspector that the Avionics sub-project inherits;"

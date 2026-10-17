@@ -1,7 +1,7 @@
 """
 Module: services.report_framework
 
-The module-neutral half of reporting (Module 1 Phase 12b): everything a
+The module-neutral half of reporting: everything a
 module's reports have in common, so a module contributes only `collect_*`
 functions plus one `ReportDefinition` each (declared on
 `ModuleDefinition.reports`).

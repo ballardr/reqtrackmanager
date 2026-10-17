@@ -80,7 +80,7 @@ const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", 
 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
-// PR7 of the members/groups directory rework plan: the four project roles a
+// the members/groups directory rework: the four project roles a
 // group's per-row `MultiSelectDropdown` (Groups tab, and the group's own
 // `SidePanel`) offers — same fixed list `ProjectMembersTable.tsx`'s own Role
 // column already iterates for a user's roles.
@@ -98,24 +98,23 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * Converted from `Tabs` to `ResourceMenu` for cross-page consistency with
  * the other admin-tier pages (Org Admin, Server Admin, Preferences) —
  * a deliberate reversal of the original per-page ≤5-groups Tabs-vs-
- * ResourceMenu call recorded in the 2026-08 UX audit, since this page
+ * ResourceMenu call recorded earlier, since this page
  * never exceeded 5 tabs on its own. See `docs/ux-style-guide.md`
  * Principle 1 and `docs/decisions.md`.
  *
  * "groups" (the combined "Project groups" tab: effective-members audit
  * table, pending invites, and the groups list all on one screen) was later
- * split into "members" and "groups" (Phase 5, docs/decisions.md) — a group's
+ * split into "members" and "groups" (docs/decisions.md) — a group's
  * role being fixed at creation, with no way to add-then-assign, and an
  * org-admin membership UI duplicating a worse version of this one, were
  * both flagged directly; "groups" keeps the groups list itself, now opening
  * a `SidePanel` per group instead of an always-expanded accordion.
  *
- * "members" itself was rebuilt again in a later phase (Phase D, follow-up
- * UX batch, 2026-08-31, docs/decisions.md): once default project groups
- * were removed (Phase C) a group stopped being the common way to grant a
+ * "members" itself was rebuilt again (docs/decisions.md): once default project groups
+ * were removed a group stopped being the common way to grant a
  * role, so the "editable users-and-groups table plus a separate effective-
- * members audit table plus a separate pending-invites section" shape that
- * phase built became three sections doing one job — `ProjectMembersTable`
+ * members audit table plus a separate pending-invites section" shape
+ * became three sections doing one job — `ProjectMembersTable`
  * (`components/ProjectMembersTable.tsx`) replaces all three with a single
  * table over `GET /effective-members`'s own provenance, with pending
  * invites folded in as a per-row status. See that component's own
@@ -126,8 +125,7 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
 type CoreProjectAdminGroupKey =
   | "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup" | "modules";
 
-/** Widened to admit a module-contributed section's own key (Module 4 Phase
- * 9, 2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
+/** Widened to admit a module-contributed section's own key (2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
  * `OrgAdminPage.tsx`'s own `moduleAdminSections`. */
 type ProjectAdminGroupKey = CoreProjectAdminGroupKey | string;
 
@@ -157,7 +155,7 @@ export function ProjectAdminPage() {
   const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const { showToast } = useToast();
-  // Module 4 Phase 9 (2026-09-22): every installed module's own
+  // Every installed module's own
   // `projectAdminSections`, filtered to this project's actually-enabled
   // modules (`GET /projects/{id}/enabled-modules` already returns only the
   // enabled set) — mirrors `OrgAdminPage.tsx`'s identical `moduleAdminSections`
@@ -177,7 +175,7 @@ export function ProjectAdminPage() {
       return true;
     });
   const [project, setProject] = useState<Project | null>(null);
-  // Module 0 (Platform Foundations) Phases 4/5 — this project's own
+  // This project's own
   // Modules tab: every registered module's effective whole-module state
   // (`projectModules`) plus, for a module with sub-components, this
   // project's own per-sub-component state (`projectModuleSubComponents`,
@@ -192,8 +190,7 @@ export function ProjectAdminPage() {
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [groupsTotal, setGroupsTotal] = useState(0);
   const [groupSearch, setGroupSearch] = useState("");
-  // Groups tab `DirectoryTable` retrofit (Phase B, follow-up UX batch,
-  // 2026-08-31) — `list_project_groups` already pages via `limit`/`offset`,
+  // Groups tab `DirectoryTable` retrofit — `list_project_groups` already pages via `limit`/`offset`,
   // so Name sort is a backend-sorted refetch (its new `order` param), not a
   // client-side sort of only the loaded page — style guide "Pattern:
   // sortable column header"'s "already paginated -> backend sort/order
@@ -206,8 +203,8 @@ export function ProjectAdminPage() {
   const [sourceProjectSelections, setSourceProjectSelections] = useState<Record<string, string>>({});
   // "New group" create Modal (style guide "Pattern: modal dialog for
   // entity create/rename" — mirrors OrgAdminPage's own "New group" modal,
-  // just pointed at the project-scoped endpoint). PR7 of the members/
-  // groups directory rework plan (docs/decisions.md) dropped the role
+  // just pointed at the project-scoped endpoint). The members/
+  // groups directory rework (docs/decisions.md) dropped the role
   // picker this modal used to have: `ProjectGroupCreate` no longer accepts
   // a role at all — a group is now created bare (zero roles), symmetric
   // with the org-scoped "New group" modal, and a role is a separate,
@@ -241,7 +238,7 @@ export function ProjectAdminPage() {
   const [settingsName, setSettingsName] = useState("");
   const [settingsSummary, setSettingsSummary] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
-  // Platform review 2026-09, Phase 8 — see `Project.
+  // See `Project.
   // require_change_request_for_approved_links`/`exempt_from_org_link_lock`
   // (backend model docstrings) and `Organization.
   // force_require_change_request_for_approved_links` for the full
@@ -285,31 +282,31 @@ export function ProjectAdminPage() {
   const [addMirrorMode, setAddMirrorMode] = useState<ProjectRoleInheritanceMode>("member_only");
   const [addMirrorFilterRole, setAddMirrorFilterRole] = useState<ProjectRole>("project_manager");
   const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
-  // Phase 6 (docs/platform-review-2026-09-plan.md): organisation groups
+  // Organisation groups
   // holding a direct `OrgGroupProjectRole` grant on this project, fed into
   // `ProjectMembersTable`'s own `kind: "group"` rows — the read side the
   // existing `addProjectGroupRole` grant flow never had a way to display.
   const [groupRoles, setGroupRoles] = useState<OrgGroupProjectRoleSummary[]>([]);
   const [materializing, setMaterializing] = useState(false);
-  // Module system Phase 2: project-scoped module-contributed role
+  // Project-scoped module-contributed role
   // definitions currently available to grant on this project, fed into
   // `ProjectMembersTable`'s Role column alongside the four core
   // `ProjectRole` options. `[]` before `reload()`'s own fetch resolves,
   // which also correctly renders as "no module roles" for a deployment
-  // with none registered yet (no module has any roles until Phase 5).
+  // with none registered yet (no module has any roles registered).
   const [availableModuleRoles, setAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
 
-  // --- Members section (Phase D, follow-up UX batch, 2026-08-31) --------
+  // --- Members section --------
   // `ProjectMembersTable`'s two data sources — effective members (with
   // provenance) and pending invites, both fetched unpaginated, same
   // "small enough to load whole and let the shared table search/filter/
   // paginate client-side" precedent `MemberRoleTable`'s own two sources
   // set before it. `memberTableGroups` (unrelated to the Members section
   // any more — groups stopped being rows in this table once default
-  // groups were removed, Phase C) still exists purely as the Groups
+  // groups were removed) still exists purely as the Groups
   // section's own lookup source for a deep-linked `?openGroup=` id that
   // isn't on the currently-loaded paginated page (see `openGroupId`
-  // below) — kept as-is, untouched by this phase.
+  // below) — kept as-is.
   const [memberTableGroups, setMemberTableGroups] = useState<ProjectGroup[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
@@ -317,15 +314,15 @@ export function ProjectAdminPage() {
   // 3, "Create is a layer, not a page reflow") — the add-member form used
   // to render permanently above the table via `addControl`; it's now
   // behind this button + `Modal`, mirroring the Groups tab's own "New
-  // group" button/Modal pair below. PR3 originally planned a sibling "Add
-  // group" button here; corrected during PR5's review to a single button
+  // group" button/Modal pair below. A sibling "Add
+  // group" button was considered here and rejected in favour of a single button
   // whose `UserAutocomplete` matches both users and org groups instead —
   // see that component's own module docstring.
   const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
-  // PR7: the same modal's autocomplete also matches this project's own
+  // The same modal's autocomplete also matches this project's own
   // groups as a third kind — picking one doesn't grant a role at all (a
-  // group's roles are separate, possibly-zero, possibly-multiple grants,
-  // per PR7), it switches the modal into a second step, "add someone to
+  // group's roles are separate, possibly-zero, possibly-multiple grants),
+  // it switches the modal into a second step, "add someone to
   // this group," reusing the existing `addGroupMember`/`addOrgGroupMember`
   // handlers (the Groups tab's own SidePanel already calls the same
   // `POST /{project_id}/groups/{group_id}/members` endpoint for this) —
@@ -334,7 +331,7 @@ export function ProjectAdminPage() {
   // org-group search).
   const [addMemberTargetGroup, setAddMemberTargetGroup] = useState<ProjectGroup | null>(null);
 
-  // --- Groups section: per-group SidePanel (Phase 5) ---------------------
+  // --- Groups section: per-group SidePanel ---------------------
   // Replaces the old always-expanded `CollapsibleSection` accordion. A real
   // id, not a boolean, so at most one group's panel is open at a time.
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
@@ -492,7 +489,7 @@ export function ProjectAdminPage() {
       // page at all.
       api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`),
       api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`),
-      // Platform review 2026-09, Phase 8 — readable by any org member
+      // Readable by any org member
       // (unlike most other org policy toggles), so this reuses the same
       // "project access already implies org membership" reasoning above
       // for the unfiltered org users/groups calls.
@@ -519,11 +516,11 @@ export function ProjectAdminPage() {
       api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`),
       api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${projectId}/group-roles`),
       api.get<PendingInvite[]>(`/api/v1/projects/${projectId}/pending-invites`),
-      // Module system Phase 2 — same "fetched alongside the rest of this
+      // Same "fetched alongside the rest of this
       // page's own reload()" treatment every other Members-section data
       // source above gets.
       api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${projectId}/module-roles`),
-      // Module 0 (Platform Foundations) Phase 5 follow-up — the Modules
+      // The Modules
       // tab's own bulk discovery endpoint (every registered module, this
       // project's own effective/override state for each).
       api.get<ProjectModuleEnablement[]>(`/api/v1/projects/${projectId}/modules`),
@@ -539,7 +536,7 @@ export function ProjectAdminPage() {
     setEffectiveMembers(effectiveMembers);
     setGroupRoles(groupRoles);
     setProjectModules(projectModulesLoaded);
-    // Sub-components (Phase 4), one level below the whole-module list just
+    // Sub-components, one level below the whole-module list just
     // fetched — `GET .../subcomponents` safely returns `[]` for a module
     // with none declared (every module except Context & Strategy today),
     // so this is called for every module unconditionally, mirroring Org
@@ -571,7 +568,7 @@ export function ProjectAdminPage() {
     setProjectModuleSubComponents((prev) => ({ ...prev, [moduleKey]: subs }));
   }
 
-  // Module 0 (Platform Foundations) Phase 5 — this project's own
+  // This project's own
   // whole-module enablement override. Immediate PUT + local-state patch,
   // the same shape `toggleModuleEnabled` uses on `OrgAdminPage.tsx` one
   // tier up: a single toggle only ever changes this one module's own row.
@@ -612,7 +609,7 @@ export function ProjectAdminPage() {
     setEffectiveMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`));
   }
 
-  /** `ProjectMembersTable`'s own third data source (Phase 6) — same
+  /** `ProjectMembersTable`'s own third data source — same
    * "re-fetch just this" treatment `reloadEffectiveMembers` uses. Called
    * from `reload()` (below) and after every group-role mutation, since a
    * grant/revoke/removal changes exactly this list. */
@@ -695,7 +692,7 @@ export function ProjectAdminPage() {
       await api.patch(`/api/v1/projects/${projectId}`, {
         name: settingsName, summary: settingsSummary,
         allow_member_change_requests: allowMemberCr,
-        // Platform review 2026-09, Phase 8 — `requireCrForLinks` always
+        // `requireCrForLinks` always
         // carries this project's own stored opt-in, even while the org
         // force is active and the checkbox below renders checked-and-
         // disabled (rendering it forced doesn't rewrite the underlying
@@ -972,7 +969,7 @@ export function ProjectAdminPage() {
   }
 
   /** Creates a new project group with `newGroupName`/`newGroupRole` — the
-   * frontend gap the 2026-08 UX audit flagged (Groups tab could manage
+   * frontend gap flagged earlier (Groups tab could manage
    * membership but had no create form at all). `POST
    * /projects/{id}/groups` already existed and required no backend change. */
   function handleGroupSearchChange(value: string) {
@@ -1000,8 +997,7 @@ export function ProjectAdminPage() {
     }
   }
 
-  /** Grants/revokes one role on a project group (PR7 of the members/groups
-   * directory rework plan) — the Groups tab's per-row `MultiSelectDropdown`
+  /** Grants/revokes one role on a project group — the Groups tab's per-row `MultiSelectDropdown`
    * (mirroring `ProjectMembersTable`'s own Role column pattern) and the
    * group's own `SidePanel` role editor both call this. Replaces the old
    * `changeGroupRole` (`PATCH .../groups/{id}`, a single mutable field) now
@@ -1035,8 +1031,7 @@ export function ProjectAdminPage() {
    * `addGroupMember`. Grants a *direct* project role rather than group
    * membership (from the Groups tab's own SidePanel, one of the group's
    * currently-held roles is used as an approximation, so the effective
-   * access is close to what joining the group would have granted — PR7:
-   * since a group can now hold zero, one, or several roles, this is no
+   * access is close to what joining the group would have granted — since a group can now hold zero, one, or several roles, this is no
    * longer necessarily exact if the group holds more than one), since the
    * by-email endpoint has no notion of "this specific group" and only ever
    * grants a single role per call — see
@@ -1107,7 +1102,7 @@ export function ProjectAdminPage() {
     reload();
   }
 
-  // --- Members section handlers (Phase 5, docs/decisions.md) ------------
+  // --- Members section handlers (docs/decisions.md) ---------------------
 
   /** Toggles one direct role on an effective member (`ProjectMembersTable`'s
    * own `onToggleRole` — only ever called for an option whose sole source
@@ -1132,7 +1127,7 @@ export function ProjectAdminPage() {
     }
   }
 
-  /** `ProjectMembersTable`'s `onToggleModuleRole` (module system Phase 2)
+  /** `ProjectMembersTable`'s `onToggleModuleRole`
    * — same "re-fetch just effective-members" treatment `toggleProjectMemberRole`
    * above uses, always freely callable (no purelyDirect-style guard,
    * since module roles are direct-grant-only). */
@@ -1162,11 +1157,10 @@ export function ProjectAdminPage() {
     await api.post(`/api/v1/projects/${projectId}/roles`, { user_id: userId, role });
   }
 
-  /** The Members section's own add-control, group branch (PR5 of the
-   * members/groups directory rework plan) — `UserAutocomplete`'s combined
+  /** The Members section's own add-control, group branch — `UserAutocomplete`'s combined
    * user-or-group autocomplete calls this instead of `addProjectMember`
    * when the selected match is an org group, granting it `role` *directly*
-   * via PR4's new one-step mechanism (`OrgGroupProjectRole`), parallel to
+   * via the new one-step mechanism (`OrgGroupProjectRole`), parallel to
    * how `addProjectMember` grants a direct `UserProjectRole`. No
    * `ProjectGroup` wrapper is created by this flow, and nesting the group
    * inside another group is deliberately not offered here at all — that
@@ -1203,7 +1197,7 @@ export function ProjectAdminPage() {
     await reloadGroupRoles();
   }
 
-  /** `ProjectMembersTable`'s own `onToggleGroupRole` (Phase 6) — grants/
+  /** `ProjectMembersTable`'s own `onToggleGroupRole` — grants/
    * revokes one role on a group's `kind: "group"` row directly, the same
    * `POST`/`DELETE .../group-roles[...]` calls `addProjectGroupRole`/the
    * backend's `revoke_group_project_role` already expose, just reachable
@@ -1225,7 +1219,7 @@ export function ProjectAdminPage() {
     }
   }
 
-  /** `ProjectMembersTable`'s own "Remove group" (Actions column, Phase 6)
+  /** `ProjectMembersTable`'s own "Remove group"
    * — loops the per-role `DELETE .../group-roles/{org_group_id}/{role}`
    * over every role the group currently holds, the group-row counterpart
    * to `removeAllProjectMemberAccess`'s per-user loop. Confirmed via
@@ -1247,7 +1241,7 @@ export function ProjectAdminPage() {
   }
 
   /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
-   * PR6 of the members/groups directory rework plan) — only ever called
+   * the members/groups directory rework) — only ever called
    * for a member whose sources are entirely `direct_role` (that
    * component's own eligibility check), so looping the existing per-role
    * `DELETE /roles/{user_id}/{role}` over every role the member currently
@@ -1268,7 +1262,7 @@ export function ProjectAdminPage() {
   }
 
   /** `ProjectMembersTable`'s per-row "Convert inherited access to direct
-   * roles" (Actions column, PR6) — the per-user counterpart to
+   * roles" (Actions column) — the per-user counterpart to
    * `materializeInheritedAccess` above, calling the new `POST
    * /{project_id}/materialize-inherited-access/{user_id}` endpoint (same
    * idempotency/rank logic, filtered to this one member) rather than the
@@ -1305,14 +1299,13 @@ export function ProjectAdminPage() {
     memberTableGroups.filter((g) => g.roles.includes("project_manager")).length +
     (effectiveMembers ?? []).filter((m) => m.sources.some((s) => s.role === "project_manager" && s.kind === "direct_role")).length;
 
-  // Consolidated from 8 tabs to 5 (2026-08 UX audit roadmap — "Revisit
-  // Project Admin's 8-tab bar against the 5-tab ceiling"). Terminology's
+  // Consolidated from 8 tabs to 5. Terminology's
   // content moved into Overview (a sub-block, not its own group); Stages +
   // Components/Categories merged into Structure; Custom Fields + Action
   // Types merged into Fields & Actions; Groups and Report Setup keep their
   // own groups unchanged. See `docs/decisions.md` for the full rationale —
   // including the later reversal from `Tabs` to `ResourceMenu` recorded
-  // above `ProjectAdminGroupKey`, and Phase 5's later "groups" -> "members"
+  // above `ProjectAdminGroupKey`, and the later "groups" -> "members"
   // + "groups" split recorded there too.
   const activeGroup: ProjectAdminGroupKey =
     (PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(groupParam ?? "") ||
@@ -1321,7 +1314,7 @@ export function ProjectAdminPage() {
       : "overview";
 
   // --- Groups section: per-group SidePanel + ?openGroup= deep link -------
-  // (Phase 5, docs/decisions.md) — "click a group in Members, see its
+  // (docs/decisions.md) — "click a group in Members, see its
   // members" is a real URL, not client-only state, matching `ResourceMenu`'s
   // own bookmarkability principle one level deeper (see that component's
   // own docstring/comment for the framing this reuses). `memberTableGroups`
@@ -1383,14 +1376,13 @@ export function ProjectAdminPage() {
 
   if (!stages || !project) return <Spinner />;
 
-  // Project Groups `DirectoryTable` retrofit (Phase B, follow-up UX batch,
-  // 2026-08-31) — replaces the old `<button style={{width:"100%"}}>` per
+  // Project Groups `DirectoryTable` retrofit — replaces the old `<button style={{width:"100%"}}>` per
   // row (no `SortableHeader`, not a real `<table>`) with the same shared
   // shell Org Groups now uses too. `groups` is already sorted server-side
   // (`applyGroupSort`/`loadGroups`'s `order` param), no client-side
   // re-sort needed.
   //
-  // PR5 of the members/groups directory rework plan — this table's rows are
+  // the members/groups directory rework — this table's rows are
   // now a frontend-only `kind`-discriminated union, the same pattern
   // `ProjectMembersTable.tsx`'s own `member`/`invited` `Row` type already
   // established: a real `ProjectGroup` alongside a `ProjectMemberSource`
@@ -1427,7 +1419,7 @@ export function ProjectAdminPage() {
       key: "role", label: strings.admin.groupRole,
       render: (row) =>
         row.kind === "group" ? (
-          // PR7: a group's role is no longer a fixed badge — it's a
+          // A group's role is no longer a fixed badge — it's a
           // MultiSelectDropdown over zero-to-several independently-
           // revocable grants, same pattern ProjectMembersTable's own Role
           // column already uses for a user's roles.
@@ -1563,7 +1555,7 @@ export function ProjectAdminPage() {
           />
           {strings.admin.allowMemberChangeRequests}
         </label>
-        {/* Platform review 2026-09, Phase 8. Forced checked+disabled (the
+        {/* Forced checked+disabled (the
             same disabled+`title` "why is this checked and I can't touch
             it" convention `ProjectMembersTable.tsx` already establishes)
             once the org's own force is active and this project isn't
@@ -1817,8 +1809,7 @@ export function ProjectAdminPage() {
           </button>
         </div>
 
-        {/* Terminology (2026-08 UX audit roadmap: Project Admin's 8 tabs ->
-            5) — pure relocation of the previously-standalone Terminology
+        {/* Terminology — pure relocation of the previously-standalone Terminology
             tab's own JSX/state/handlers into Overview, unchanged. The
             architecture that would make custom terms actually take effect
             across the app is a separate, deliberately-deferred roadmap
@@ -2244,13 +2235,12 @@ export function ProjectAdminPage() {
             <button className="btn btn-primary" onClick={() => setAddMemberModalOpen(true)}>
               <Plus size={14} /> {strings.admin.addMember}
             </button>
-            {/* No sibling "Add group" button (PR5 of the members/groups
-                directory rework plan, corrected during PR5's own review):
+            {/* No sibling "Add group" button (corrected during the own review):
                 the autocomplete below is expanded to match org groups too,
                 rather than a second button/modal — see UserAutocomplete's
                 own module docstring. */}
           </div>
-          {/* PR3/PR5/PR7 of the members/groups directory rework plan
+          {/* the members/groups directory rework
               originally opened one nested Modal here, submitting one
               person at a time and switching itself into a second "add
               into this group" step on a project-group match; now the
@@ -2260,7 +2250,7 @@ export function ProjectAdminPage() {
               bespoke modal at once, and for the project-group hand-off
               design. */}
           {addMemberModalOpen && addMemberTargetGroup && (
-            // PR7: second step after picking a project-group match below —
+            // Second step after picking a project-group match below —
             // adds whoever's picked here as a member of that group
             // (existing `addGroupMember`/`addOrgGroupMember`, both
             // `POST .../groups/{group_id}/members`, no new backend call),
@@ -2345,9 +2335,7 @@ export function ProjectAdminPage() {
           // a brand-new entity (a group) opens in a Modal, not a Popover —
           // the Popover-vs-Modal decision tree reserves Popover for a
           // one/two-field quick action on something that already exists,
-          // not creating a new entity. No role picker here any more (PR7
-          // of the members/groups directory rework plan, docs/
-          // decisions.md): `ProjectGroupCreate` no longer accepts a role at
+          // not creating a new entity. No role picker here any more (docs/decisions.md): `ProjectGroupCreate` no longer accepts a role at
           // all — a freshly created group starts with zero roles, shown as
           // "No roles assigned" in the Groups tab/SidePanel until one is
           // granted via the new per-row `MultiSelectDropdown`.
@@ -2376,11 +2364,10 @@ export function ProjectAdminPage() {
           </Modal>
         )}
 
-        {/* Rebuilt on the shared `DirectoryTable` (Phase 0) inside the
+        {/* Rebuilt on the shared `DirectoryTable` inside the
             standard `.side-grid` + `FilterPanel` layout, replacing the old
             `<button style={{width:"100%"}}>` per-row list — it wasn't a
-            real `<table>` at all, no `SortableHeader` (2026-08-31, Phase B,
-            follow-up UX batch — see docs/decisions.md). `onRowClick`, not
+            real `<table>` at all, no `SortableHeader` (docs/decisions.md). `onRowClick`, not
             `rowHref`, deliberately — found during verification, not
             assumed: every standard project seeds a default group literally
             named "Members" (`DEFAULT_GROUPS`, `routers/projects.py`), the
@@ -2391,8 +2378,7 @@ export function ProjectAdminPage() {
             confusion a screen-reader user would hit navigating by link
             text), whereas `onRowClick`'s `role="button"` trigger can't
             collide with a nav `<Link>`. The existing manual `openGroupId`/
-            `useSearchParams` handling below (unchanged since before this
-            phase) already covers the `?openGroup=` deep link — `onRowClick`
+            `useSearchParams` handling below (unchanged) already covers the `?openGroup=` deep link — `onRowClick`
             just calls the same `setOpenGroupId` a URL-driven open already
             uses. */}
         <div className="side-grid">
@@ -2437,7 +2423,7 @@ export function ProjectAdminPage() {
           only" (same risk profile as visibility=org_wide), but "Mirror all
           roles"/"Mirror one role" can convey a real elevated role, same as
           the forward mechanism's own modes.
-          PR5 of the members/groups directory rework plan: this section's
+          the members/groups directory rework: this section's
           own list of entries moved into the `DirectoryTable` above as
           type-badged rows (alongside real `ProjectGroup` rows) — this card
           now holds only the "add a new one" affordance, relocated from the
@@ -2505,7 +2491,7 @@ export function ProjectAdminPage() {
               <div className="stack">
                 <label className="stack" style={{ gap: "0.25rem" }}>
                   {strings.admin.groupRoleAtTop}
-                  {/* PR7: same per-row MultiSelectDropdown as the Groups
+                  {/* Same per-row MultiSelectDropdown as the Groups
                       tab's own "role" column (groupsTabColumns) — kept in
                       sync since both read from `memberTableGroups`/`groups`
                       and both call the same `toggleProjectGroupRole`. */}
@@ -2538,7 +2524,7 @@ export function ProjectAdminPage() {
                         // elements, not a plain object field consumed by a custom
                         // component (see facebook/react#35062's own
                         // error.ref-value-in-custom-component-event-handler-wrapper.tsx
-                        // test fixture). See docs/decisions.md's Phase 4 entry (Decided
+                        // test fixture). See docs/decisions.md's React 19/ESLint 10 upgrade entry (Decided
                         // by: User, 2026-09-15) for the full investigation, including why
                         // `useEffectEvent` and the `"use no memo"` directive don't help.
                         // eslint-disable-next-line react-hooks/refs
@@ -2570,7 +2556,7 @@ export function ProjectAdminPage() {
                             // False positive (react-hooks/refs): only runs on click, not
                             // during render. facebook/react#35062 fixes this exact shape
                             // (built-in `<button onClick>`) but isn't shipped yet — see
-                            // the onToggle comment above and docs/decisions.md's Phase 4.
+                            // the onToggle comment above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                             // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeGroupMember(g.id, userId)}
                           >
@@ -2589,12 +2575,12 @@ export function ProjectAdminPage() {
                   // facebook/react#35062's exemption (even once shipped) wouldn't cover
                   // this either way — it's scoped to built-in DOM elements only, and
                   // `UserAutocomplete` is a custom component. See the onToggle comment
-                  // above and docs/decisions.md's Phase 4.
+                  // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                   // eslint-disable-next-line react-hooks/refs
                   onSelect={(userId) => addGroupMember(g.id, userId)}
                   organizationId={project?.organization_id}
                   projectId={project?.id}
-                  // PR7: `g.role` (a single, required field) is gone — a
+                  // `g.role` (a single, required field) is gone — a
                   // group may now hold zero, one, or several roles. The
                   // by-email endpoint still only grants one role at a time
                   // (see `addExternalMember`'s own docstring for why this
@@ -2607,7 +2593,7 @@ export function ProjectAdminPage() {
                   // False positive (react-hooks/refs): same as `onSelect` above —
                   // custom-component prop, out of scope even for facebook/react#35062's
                   // fix once shipped. See the onToggle comment above and
-                  // docs/decisions.md's Phase 4.
+                  // docs/decisions.md's React 19/ESLint 10 upgrade entry.
                   // eslint-disable-next-line react-hooks/refs
                   onSelectExternal={g.roles.length > 0 ? (email) => addExternalMember(email, g.roles[0]) : undefined}
                 />
@@ -2632,7 +2618,7 @@ export function ProjectAdminPage() {
                           title={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
                           aria-label={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
                           // False positive (react-hooks/refs) — see the onToggle comment
-                          // above and docs/decisions.md's Phase 4.
+                          // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                           // eslint-disable-next-line react-hooks/refs
                           onClick={() => removeOrgGroupMember(g.id, og.id)}
                         >
@@ -2663,7 +2649,7 @@ export function ProjectAdminPage() {
                       title={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                       aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                       // False positive (react-hooks/refs) — see the onToggle comment
-                      // above and docs/decisions.md's Phase 4.
+                      // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                       // eslint-disable-next-line react-hooks/refs
                       onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
                     >
@@ -2685,7 +2671,7 @@ export function ProjectAdminPage() {
                             title={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
                             aria-label={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
                             // False positive (react-hooks/refs) — see the onToggle
-                            // comment above and docs/decisions.md's Phase 4.
+                            // comment above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                             // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeProjectRefMember(g.id, p.id)}
                           >
@@ -2718,7 +2704,7 @@ export function ProjectAdminPage() {
                       title={strings.admin.addProjectReferenceToProjectGroup}
                       aria-label={strings.admin.addProjectReferenceToProjectGroup}
                       // False positive (react-hooks/refs) — see the onToggle comment
-                      // above and docs/decisions.md's Phase 4.
+                      // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                       // eslint-disable-next-line react-hooks/refs
                       onClick={() => addProjectRefMember(g.id, sourceProjectSelections[g.id])}
                     >
@@ -2805,7 +2791,7 @@ export function ProjectAdminPage() {
       </div>
       )}
 
-      {/* Module 0 (Platform Foundations) Phases 4/5 — this project's own
+      {/* This project's own
           Modules tab: override this project's effective enablement of a
           whole module, or one of its sub-components, against the
           organisation's own current default. Not to be confused with
@@ -2868,7 +2854,7 @@ export function ProjectAdminPage() {
         </div>
       )}
 
-      {/* Module 4 Phase 9 (2026-09-22): one generic lookup for every
+      {/* One generic lookup for every
           module-contributed project-admin section, mirroring
           `OrgAdminPage.tsx`'s own `moduleAdminSections` render — a future
           installed module's own `projectAdminSections` entry needs no

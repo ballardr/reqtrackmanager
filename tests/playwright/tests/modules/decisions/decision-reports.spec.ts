@@ -10,7 +10,7 @@ const MODULE = "decisions";
 const REPORTS = ["Decision register", "Approval ageing", "Decision log", "Rationale coverage"];
 
 /**
- * Job to be done: docs/plans/platform-enhancements-2026-10-plan.md Phase 8 —
+ * Job to be done: —
  * the four Decision Management reports appear in the shared Reports page
  * (rendered by the generic viewer, no custom view), show the project's
  * decisions with their display labels, narrow through the generated option

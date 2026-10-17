@@ -3,22 +3,16 @@ import { expect, test } from "@playwright/test";
 import { ensureExpanded, loginAs, ORG_NAMES, PERSONAS, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Job to be done: module system Phase 2 (docs/compliance-module-plan.md) —
- * module-contributed RBAC. Both surfaces this phase touches (`OrgAdminPage`'s
+ * Job to be done: module system module-contributed RBAC. Both surfaces
+ * covered here (`OrgAdminPage`'s
  * Users table Roles column, `ProjectMembersTable`'s own Role column) merge in
  * module-contributed role options alongside the fixed core-role ones.
  *
- * Updated for Compliance Module Phase 12 (see docs/compliance-module-plan.md's
- * Phase 12 notes): this spec originally scoped itself to "no real module yet"
- * and explicitly said to revisit once Phase 5 gave it a real module-
- * contributed role to interact with — Phase 5 shipped Compliance's
- * `compliance_manager` (org-scoped)/`compliance_officer` (project-scoped)
- * roles well before this session, but nothing had run this spec against a
- * live, freshly-rebuilt backend container since (see
- * `org-admin-modules.spec.ts`'s own updated docstring for why). This is that
- * overdue revisit: both dropdowns now assert the real fourth/fifth
- * module-contributed option alongside the fixed core-role set, not its
- * former "still exactly N core options, nothing leaked in" absence check.
+ * Compliance's `compliance_manager` (org-scoped)/`compliance_officer`
+ * (project-scoped) roles are the real module-contributed roles it
+ * interacts with: both dropdowns assert the real fourth/fifth
+ * module-contributed option alongside the fixed core-role set (see
+ * `org-admin-modules.spec.ts`'s docstring for the stale-container caveat).
  */
 test.describe("module-contributed roles: Compliance's real org/project roles", () => {
   test("org admin Users table Roles dropdown includes Compliance Manager and still grants/revokes core roles", async ({ page }) => {
@@ -34,7 +28,7 @@ test.describe("module-contributed roles: Compliance's real org/project roles", (
     const rolesGroup = page.getByRole("group", { name: `${PERSONAS.memberAlphaBeta.name}'s roles` });
 
     // The three fixed OrgRole options plus Compliance's own org-scoped
-    // module role, merged into the same dropdown per Phase 2's own design
+    // module role, merged into the same dropdown by design
     // ("Compliance Manager (Compliance)" — module.py's role name plus its
     // owning module's display name, OrgAdminPage.tsx's own worked example).
     await expect(rolesGroup.getByRole("checkbox")).toHaveCount(4);
@@ -88,8 +82,7 @@ test.describe("module-contributed roles: Compliance's real org/project roles", (
 
     // The four fixed ProjectRole options plus Compliance's own project-
     // scoped module role — `ProjectMembersTable.tsx` renders a module
-    // role's own `name` directly with no owning-module suffix (Phase 2's
-    // own deliberate difference from the org-admin surface above, since no
+    // role's own `name` directly with no owning-module suffix (a deliberate difference from the org-admin surface above, since no
     // module with roles existed yet to force a same-name collision).
     await expect(rolesGroup.getByRole("checkbox")).toHaveCount(5);
     await expect(rolesGroup.getByText("Compliance Officer", { exact: true })).toBeVisible();

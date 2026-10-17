@@ -2,7 +2,7 @@
  * Module: modules/compliance/ComplianceSettingsPage
  *
  * Org-level compliance settings at `/standards/settings/:orgId`
- * (docs/compliance-module-plan.md Phase 18) — the two extensible
+ * — the two extensible
  * vocabularies (`ActionTypesPanel`, `MappingTypesPanel`) that used to be
  * tabs inside `ComplianceAdminPanel.tsx` (now deleted, fully superseded),
  * re-hosted as their own routed page.
@@ -61,7 +61,7 @@ export function ComplianceSettingsPage() {
   const groups: ResourceMenuGroupDef<ComplianceSettingsGroupKey>[] = [
     { key: "actionTypes", label: "Action types", href: `/standards/settings/${orgId}/actionTypes` },
     { key: "mappingTypes", label: "Mapping types", href: `/standards/settings/${orgId}/mappingTypes` },
-    // Phase 22: the org-wide fallback compliance-managers group.
+    // The org-wide fallback compliance-managers group.
     { key: "standardsManagement", label: "Standards management", href: `/standards/settings/${orgId}/standardsManagement` },
   ];
 

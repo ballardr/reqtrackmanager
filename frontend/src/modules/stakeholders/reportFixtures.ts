@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/reportFixtures
  *
- * Storybook-only builders for the S1 and S4 report results (Module 2 Phase 6),
+ * Storybook-only builders for the S1 and S4 report results,
  * shaped like the backend's `ReportOut` for those reports. Kept beside the
  * stories rather than in the global `testing/` helpers so core test helpers
  * never import a module's types (the same convention as Context & Strategy's

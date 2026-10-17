@@ -16,8 +16,7 @@ const stages: ProjectStage[] = [
   { id: "s1", project_id: PROJECT_ID, name: "Build", status: "scoping", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
 ];
 // "approved" (locked): a modify change request can only target an
-// already-locked requirement (2026-08 UX audit roadmap, "No requirement
-// approval action; change requests can target draft requirements") — a
+// already-locked requirement — a
 // still-draft one wouldn't appear in the "Select a requirement" dropdown at
 // all, which would break every story below that exercises the
 // modify-requirement form.
@@ -26,7 +25,7 @@ const requirement = buildRequirement({
   target_stage_id: "s1", reasoning: "Locked-out users need a self-service recovery path.", status: "approved",
 });
 
-/** `links` also answers the Links finder's reads (Phase 6b's proposed-links section), as a user who may link would see them. */
+/** `links` also answers the Links finder's reads (the proposed-links section), as a user who may link would see them. */
 function mockChangeRequestsListApis({ links = false }: { links?: boolean } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (links && path.includes("/link-graph")) return buildGraph([], { can_link: true });
@@ -144,7 +143,7 @@ export const NewRequirementKindShowsPlainCreateForm: Story = {
   },
 };
 
-/** Column-header sorting (2026-08 UX audit roadmap) — this list is backend-
+/** Column-header sorting — this list is backend-
  * paginated (`PAGE_SIZE`/`LoadMoreButton`), so a header click has to refetch
  * with `sort`/`order` query params rather than reordering just the loaded
  * page. Switch to list view first — sorting only applies there. */
@@ -207,7 +206,7 @@ export const SubmitCreatesChangeRequest: Story = {
   },
 };
 
-/** Phase 6b: a modify request can carry proposed links. The finder reads the selected requirement; the
+/** A modify request can carry proposed links. The finder reads the selected requirement; the
  * links are sent with the request (display-only fields dropped) and nothing is created by the dialog. */
 export const ModifyRequestSendsItsProposedLinks: Story = {
   beforeEach: () => {
@@ -269,8 +268,7 @@ export const NoProposedLinksSectionWithoutTheRightToLink: Story = {
   },
 };
 
-/** Tri-state status filter (2026-08 UX audit roadmap, "Default Change
- * Requests to an active-only status filter"): the page loads with "Active"
+/** Tri-state status filter: the page loads with "Active"
  * selected and sends `active_only=true` (no `cr_status`), hiding a
  * terminal-status change request; switching to "All statuses" sends
  * neither param and reveals it. */
@@ -309,7 +307,7 @@ export const StatusFilterDefaultsToActiveAndWidensToAll: Story = {
 };
 
 /** Filter select options render the existing `CHANGE_REQUEST_STATUS_LABEL`
- * map (2026-08 UX audit roadmap, "Fix raw-enum filter/table text"), not the
+ * map, not the
  * raw backend enum string — "In review", not "in_review". */
 export const StatusFilterOptionsUseLabelMap: Story = {
   beforeEach: () => mockChangeRequestsListApis(),
@@ -325,8 +323,7 @@ export const StatusFilterOptionsUseLabelMap: Story = {
 
 /**
  * A modify change request can only target an already-locked (approved/
- * completed) requirement (2026-08 UX audit roadmap, "No requirement
- * approval action; change requests can target draft requirements") — a
+ * completed) requirement — a
  * still-draft one doesn't appear in the "Select a requirement" dropdown at
  * all, and a hint explains why rather than showing a silently empty select.
  */

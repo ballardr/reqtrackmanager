@@ -6,12 +6,11 @@ import { deleteOrgOnCleanup, installCleanupHook } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: `Pattern: resource picker dialog` (2026-08 UX audit
- * roadmap row 508) — `RequirementDetailPage.tsx`'s Attachments card can
+ * Job to be done: `Pattern: resource picker dialog` — `RequirementDetailPage.tsx`'s Attachments card can
  * reach into the organisation's shared-resource pool and link an existing
  * file onto the requirement, via `POST /{requirement_id}/files/link`
  * (already existed backend-side, but had zero frontend callers before this
- * pass — see docs/ux-audit-2026-08.md "Shared org resources have almost
+ * pass — "Shared org resources have almost
  * no way to consume them").
  *
  * Builds its own throwaway org/admin/project/component/category/

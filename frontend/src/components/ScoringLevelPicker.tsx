@@ -1,8 +1,8 @@
 /**
  * Module: components/ScoringLevelPicker
  *
- * Picks one level of a scoring axis (generic scoring-matrix core, Module 1
- * Phase 10) — e.g. a Pain Point's Severity for one persona. A labelled
+ * Picks one level of a scoring axis (generic scoring-matrix core)
+ * — e.g. a Pain Point's Severity for one persona. A labelled
  * select (shared `LabeledSelect`) with an explicit "Not scored" option,
  * because an unset input means "not scored under models that use this
  * axis", never zero. The chosen level's guidance text shows underneath so

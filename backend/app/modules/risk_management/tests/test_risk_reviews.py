@@ -1,5 +1,5 @@
-"""Tests for the Risk Management module's Phase 4 reviews and reassessment
-scheduling (docs/plans/module-03-risk-management-plan.md), through the real HTTP
+"""Tests for the Risk Management module's reviews and reassessment
+scheduling, through the real HTTP
 endpoints and the module's own sweep and hook entry points.
 
 Covers: recording a review (who may, snapshot of the ratings, the next review

@@ -7,8 +7,7 @@
  * `frontend/src/api/types.ts`, per that file's own note that a module's
  * enums/label maps are that module's own display concern (mirroring the
  * backend's identical `modules.compliance.labels` split from
- * `app.services.labels`) — see docs/plans/module-04-decision-management-
- * plan.md Phase 5.
+ * `app.services.labels`) —
  *
  * `DecisionStatus` is not one of this codebase's customisable terminology
  * keys (`ProjectAdminPage.tsx`'s `TERMINOLOGY_KEYS`), so these labels are

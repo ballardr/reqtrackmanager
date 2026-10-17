@@ -3,7 +3,7 @@
  *
  * The requirement report's configuration and generation surface (R-F-01 PDF,
  * Word, R-F-02 CSV), extracted from `pages/ReportsPage.tsx` so it can sit beside
- * the catalogue reports in the same Reports picker (Module 1 Phase 13). It
+ * the catalogue reports in the same Reports picker. It
  * carries the project's effective introduction/body chapters/appendices
  * (R-G-01, R-G-02) editable in place, a report-template picker that previews
  * the template's own content when selected (R-G-05), a chapter-per-component/

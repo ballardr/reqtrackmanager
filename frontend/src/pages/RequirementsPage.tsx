@@ -74,8 +74,7 @@ export function RequirementsPage() {
     myRoles.includes("project_manager") || myRoles.includes("project_administrator") || isOrgAdminOfProject;
   const [requirements, setRequirements] = useState<Requirement[] | null>(null);
   const [total, setTotal] = useState(0);
-  // Unfiltered mandatory-scope count (`X-Total-Unfiltered-Count`, 2026-08
-  // UX audit roadmap: persistent "showing X of Y" result count) — powers
+  // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
   // is the filtered/searched count.
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
@@ -116,14 +115,14 @@ export function RequirementsPage() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [hasCommentsOnly, setHasCommentsOnly] = useState(false);
   const [onlyWatched, setOnlyWatched] = useState(false);
-  // 2026-08 UX audit roadmap ("unarchive endpoint + Restore button"): an
+  // Unarchive endpoint + Restore button: an
   // archived requirement's detail page (`RequirementDetailPage.tsx`) is now
   // where the Restore button lives, but until this filter existed there was
   // no way to *reach* an archived requirement from this list at all — the
   // default query already excludes them, mirroring `ProjectActionsPage.tsx`'s
   // own `include_archived` checkbox.
   const [includeArchived, setIncludeArchived] = useState(false);
-  // Column-header sorting (2026-08 UX audit roadmap): this list is
+  // Column-header sorting: this list is
   // backend-paginated (`PAGE_SIZE`/`LoadMoreButton` above), so sorting has
   // to be a `sort`/`order` query param the backend honours rather than a
   // client-side sort of just the currently-loaded page — sorting only the
@@ -163,8 +162,7 @@ export function RequirementsPage() {
 
   // --- Bulk operations (list view only) ---------------------------------
   // Style guide "Pattern: bulk operations on a list" — the first pilot of
-  // this shape in the app (2026-08 UX audit roadmap: bulk operations on
-  // list pages). Selection is a plain `id` Set rather than tied to array
+  // this shape in the app. Selection is a plain `id` Set rather than tied to array
   // indices, so it survives `loadRequirements`'s append-on-"load more"
   // without extra bookkeeping, and "select all" only ever means "all
   // currently loaded rows" (U-P-06's incremental pagination makes a true
@@ -811,7 +809,7 @@ export function RequirementsPage() {
                   placeholder text alone, which disappears the moment the
                   field has real content. Reasoning/Description also swap
                   their fixed `rows={2}` textareas for `AutoGrowTextarea`
-                  (roadmap item 525) so a longer answer grows to show itself
+ so a longer answer grows to show itself
                   instead of scrolling inside a two-line box. */}
               <label className="stack" style={{ gap: "0.25rem" }}>
                 {strings.requirements.name}

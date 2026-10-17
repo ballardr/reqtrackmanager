@@ -1,8 +1,7 @@
 /**
  * Module: modules/compliance/StandardVersionsSection
  *
- * The "Versions" section of a standard's workspace (docs/compliance-module-
- * plan.md Phase 18) — extracted out of `StandardsPanel.tsx`'s old
+ * The "Versions" section of a standard's workspace — extracted out of `StandardsPanel.tsx`'s old
  * `SidePanel` content (the version list + "New version" dialog) plus its
  * full-width drill-in to `VersionWorkspace` when one is opened. Used as the
  * content of `StandardWorkspacePage.tsx`'s "Versions" nav-rail section.
@@ -11,14 +10,14 @@
  * create/publish/retire, exactly as `StandardsPanel.tsx` did — this is a
  * pure extraction, not a behavioural change, so the version-management flow
  * (create, optionally cloned from an existing version; publish/retire) is
- * unchanged from Phase 12/4's original design.
+ * unchanged.
  *
- * Phase 23 moves "which version is open" from local component state to the
+ * "Which version is open" lives in the
  * URL (`/standards/:id/versions/:versionId`, `StandardWorkspacePage.tsx`'s
- * new trailing route param, passed down here as `initialVersionId`) — the
+ * trailing route param, passed down here as `initialVersionId`) — the
  * same "a real route, not client-only state" convention this module's own
  * section switching already established — so `StandardNavSection.tsx`'s
- * new expandable Versions group can deep-link straight to one version, and
+ * expandable Versions group can deep-link straight to one version, and
  * opening/leaving a version here updates the address bar to match rather
  * than leaving it on the plain `/versions` URL the whole time.
  */

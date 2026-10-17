@@ -1,6 +1,6 @@
 # Module 0 — Platform Foundations — Implementation Plan
 
-See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
+See [future-modules-2026-09-index.md](../future-modules-2026-09-index.md) for
 cross-cutting architecture, and in particular the new "Module dependency
 graph" section — this plan is what that graph calls "Module 0," the one
 piece of infrastructure every other module in the roadmap sits on top of.
@@ -1097,7 +1097,7 @@ to make explicit, across every not-yet-built module plan in this roadmap,
 that each module should commit to (a) narrow, read-only-only MCP tools once
 its backend API phase ships, and (b) docs-website coverage once its
 frontend (or backend, if it has none) ships — the same pattern
-[Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+[Module 4 (Decision Management)](../module-04-decision-management-plan.md)'s
 shipped `mcp_tools` declarations (`backend/app/modules/decisions/module.py`)
 and its Phase 6 "Docs website coverage" now follow. Checked against this
 module's own actual shape rather than applied by rote (**Decided by:
@@ -1136,7 +1136,7 @@ this repo's docs-website-maintenance rule in `CLAUDE.md`):
   underlying table).
 
 **Screenshots note (2026-09-22):** the user asked for `docs/plans/
-docs-website-plan.md`'s screenshot standard (1440×900 viewport, seeded
+completed/docs-website-plan.md`'s screenshot standard (1440×900 viewport, seeded
 demo dataset, alt text plus a one-line caption) to be made explicit in
 every not-yet-built module plan's "Docs website coverage" phase —
 **Decided by: User**. This module's own determination above already

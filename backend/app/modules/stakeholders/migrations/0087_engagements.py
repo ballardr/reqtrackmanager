@@ -1,11 +1,10 @@
-"""Engagements and research extras (Module 2 Phase 4)
+"""Engagements and research extras
 
 Revision ID: 0087
 Revises: 0086
 Create Date: 2026-10-13
 
-Adds the project-scoped Engagement contact log (docs/plans/module-02-
-stakeholders-and-personas-plan.md Phase 4): `engagements` with module-local
+Adds the project-scoped Engagement contact log: `engagements` with module-local
 comment/attachment tables, plus the research extras' `engagement_prompts`,
 `engagement_anonymous_participants` and `research_findings`. Participants,
 personas covered, the audience group and the Pain Points / Needs / Open

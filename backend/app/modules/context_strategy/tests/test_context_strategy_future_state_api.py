@@ -1,6 +1,5 @@
-"""Tests for Context & Strategy's Phase 2 backend API
-(docs/plans/module-01-context-and-strategy-plan.md Phase 2 — Future
-State) — the real HTTP endpoints (`router.py`/`project_router.py`),
+"""Tests for Context & Strategy's Future State backend API
+— the real HTTP endpoints (`router.py`/`project_router.py`),
 through the `client` fixture, mirroring `test_context_strategy_api.py`'s
 own "go through the real API" convention for Strategy. Kept as its own
 sibling file rather than folded into that one (Decided by: Agent) — this
@@ -398,7 +397,7 @@ def test_disabled_future_state_subcomponent_is_404_project_scoped(client, admin_
     `context_strategy` (with the whole module still enabled) 404s the
     project-scoped Future State endpoints, same posture as the whole
     module being disabled — Future State's own real end-to-end consumer of
-    Module 0 Phase 4's sub-component enablement, alongside Strategy's."""
+    sub-component enablement, alongside Strategy's."""
     org, project, org_admin_token = _setup(client, admin_token, "CtxFutureState Subcomponent Disabled Co")
     resp = client.put(
         f"/api/v1/orgs/{org['id']}/modules/{MODULE_KEY}/subcomponents/future_state",

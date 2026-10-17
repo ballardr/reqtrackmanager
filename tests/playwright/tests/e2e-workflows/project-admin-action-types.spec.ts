@@ -55,7 +55,7 @@ test.describe("project admin: action types", () => {
     });
     await page.getByRole("link", { name: "Project admin", exact: true }).click();
     // Action types now lives inside the merged "Fields & actions" tab
-    // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5), alongside
+    //, alongside
     // Custom Fields — the two-select ("Name"-exact) locators below stay
     // unambiguous since Custom Fields has no "Name"-exact field itself.
     await selectProjectAdminGroup(page, "Fields & actions");

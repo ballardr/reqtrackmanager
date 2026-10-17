@@ -155,7 +155,7 @@ export const TreeViewRendersHierarchy: Story = {
   },
 };
 
-/** Favourites-only filter (2026-08 UX audit roadmap row 511) — a new
+/** Favourites-only filter — a new
  * `FilterCheckbox` in the existing `FilterPanel`, sending `favorite_only=true`
  * on the same `GET /projects` param `FavouritesPage.tsx` already used. */
 export const FavouritesOnlyFilterNarrowsTheList: Story = {
@@ -170,7 +170,7 @@ export const FavouritesOnlyFilterNarrowsTheList: Story = {
   },
 };
 
-/** `Pattern: role display` (2026-08 UX audit roadmap row 510) — a user
+/** `Pattern: role display` — a user
  * holding both `project_manager` and a lower tier for the same project (a
  * data shape the effective-role resolver can genuinely produce, via
  * different group memberships) shows only "Project manager," not every
@@ -273,9 +273,7 @@ export const CreateProjectModalCancel: Story = {
 
 /** Picking an import file replaces the (otherwise silently-disappearing)
  * template picker with an explanatory note, rather than the field simply
- * vanishing with no indication of why (2026-08 UX audit, "How things get
- * created" — a small usability fix noted alongside this item's own
- * container-swap scope). */
+ * vanishing with no indication of why. */
 export const CreateProjectImportFileHidesTemplateWithNote: Story = {
   beforeEach: () =>
     mockProjectListApis({

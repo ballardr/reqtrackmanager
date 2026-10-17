@@ -9,7 +9,7 @@ const API_BASE_URL = "http://localhost:8000";
 const CS = "context_strategy";
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase 13
+ * Job to be done:
  * — the shared Reports UI over the core report catalogue. Covers the project
  * Reports page (catalogue reports beside the requirement report), the R1 and
  * R4 custom views, PDF/CSV downloads (every catalogue report, plus branding

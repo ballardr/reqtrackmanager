@@ -2,7 +2,7 @@
 Module: routers.orgs.settings
 
 Organisation-level settings: advanced settings (SMTP override, security/
-self-signup flags), module system Phase 1 enablement + Phase 3 frame-token
+self-signup flags), module enablement, frame-token
 minting, the SMTP-override test-send action, SSO/OIDC configuration, and
 SCIM token lifecycle.
 
@@ -73,7 +73,7 @@ def get_advanced_settings(
     stored `smtp_password` is never echoed back (write-only), matching how
     the bootstrap/native-auth password is handled elsewhere. SSO group→role
     mapping used to live here (`sso_group_mappings`) — it's now managed per
-    `OrgGroup` instead (`GET .../groups`, item 522).
+    `OrgGroup` instead (`GET .../groups`).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -127,7 +127,7 @@ def update_advanced_settings(
     # ORG_ADMIN/PROJECT_CREATOR" behaviour, including for children, turning
     # off routers.projects.create_project's relaxed parent-manage-only path.
     org.allow_relaxed_child_project_creation = payload.allow_relaxed_child_project_creation
-    # Platform review 2026-09, Phase 8: org-wide force of the traceability-
+    # Org-wide force of the traceability-
     # link change-request requirement — see `services.requirements.
     # requires_change_request_for_links` and `Organization.
     # force_require_change_request_for_approved_links`'s docstring.
@@ -165,7 +165,7 @@ def list_org_modules(
     db: Session = Depends(get_db),
 ):
     """Lists every registered module with this organisation's effective
-    entitlement/enablement state (module system Phase 1).
+    entitlement/enablement state.
 
     Non-entitled modules are included, not filtered out: the Modules admin
     UI shows them greyed out with an explanatory note rather than hiding
@@ -201,8 +201,7 @@ def update_org_module_enablement(
     db: Session = Depends(get_db),
 ):
     """Sets this organisation's own explicit choices for one module
-    (module system Phase 1; `default_project_enabled` added Module 0 Phase
-    5's 2026-09-29 correction) — the hard floor (`enabled`, the org-tier
+    (`default_project_enabled` added by the 2026-09-29 correction) — the hard floor (`enabled`, the org-tier
     "day-to-day switch" among modules the organisation is entitled to) and,
     independently, the default a project of this organisation gets absent
     its own override (`default_project_enabled`).
@@ -283,8 +282,7 @@ def list_org_module_subcomponents(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Lists every sub-component `module_key` declares (Module 0 —
-    Platform Foundations — Phase 4), with this organisation's own
+    """Lists every sub-component `module_key` declares (Platform Foundations), with this organisation's own
     effective default state for each — the org-tier bookkeeping view an
     org admin uses to set per-sub-component defaults, one level below
     `list_org_modules`'s whole-module view.
@@ -414,7 +412,7 @@ def create_org_module_frame_token(
     current_user: User = Depends(require_org_module_enabled_dynamic),
 ) -> ModuleFrameTokenOut:
     """Mints a short-lived Tier B `<ModuleFrame>` token scoped to
-    `(module_key, organization_id, current_user)` (module system Phase 3).
+    `(module_key, organization_id, current_user)`.
 
     Requires `module_key` to be a real, currently-*enabled* module for this
     organisation (`require_org_module_enabled_dynamic` — 404 otherwise,

@@ -3,8 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: ProjectActionsPage's table headers (2026-08 UX audit
- * roadmap, "Column-header sorting on data tables") are clickable and cycle
+ * Job to be done: ProjectActionsPage's table headers are clickable and cycle
  * unsorted → ascending → descending → unsorted. Unlike RequirementsPage/
  * ChangeRequestsPage, this list has no backend pagination at all
  * (`routers/actions.py::list_actions` always returns every match), so

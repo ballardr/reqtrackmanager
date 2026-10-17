@@ -1,8 +1,7 @@
 """
 Module: routers.projects.scoring
 
-Project-level endpoints of the generic scoring-matrix mechanism (Module 1
-Phase 10): read a scheme's effective configuration for a project (levels
+Project-level endpoints of the generic scoring-matrix mechanism: read a scheme's effective configuration for a project (levels
 are the org's; default model and bands resolve project → nearest ancestor
 → org → system), and set or clear the project's own default-model, band and
 per-cell rating overrides.

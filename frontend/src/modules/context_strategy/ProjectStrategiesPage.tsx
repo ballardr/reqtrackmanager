@@ -1,20 +1,18 @@
 /**
  * Module: modules/context_strategy/ProjectStrategiesPage
  *
- * The Context & Strategy module's project-scoped Strategy list route
- * (docs/plans/module-01-context-and-strategy-plan.md Phase 7.1), mounted at
+ * The Context & Strategy module's project-scoped Strategy list route,
+ * mounted at
  * `/projects/:projectId/modules/context_strategy/strategies` (`module.ts`,
- * reached via this module's new nav-rail entry — Phase 0 Q7's "five
- * separate top-level entries," this is the first of the five to actually
- * ship a route). Mirrors `modules/decisions/ProjectDecisionsPage.tsx`'s
+ * reached via this module's nav-rail entry — one of the five
+ * separate top-level entries). Mirrors `modules/decisions/ProjectDecisionsPage.tsx`'s
  * `DirectoryTable` + `FilterPanel` + "New X" `Modal` shape, minus the
  * quick-view `SidePanel` tier: a row click navigates straight to
  * `StrategyDetailPage.tsx` (**Decided by: Agent** — Strategy has no
  * equivalent of Decision's `unique_code` identity shown as a clickable
  * table cell driving a *separate* quick-view panel; a direct navigation is
  * the simpler, equally style-guide-compliant choice here, and avoids
- * building a `StrategyQuickViewPanel` this phase's own brief never asked
- * for).
+ * building a `StrategyQuickViewPanel` nobody asked for).
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

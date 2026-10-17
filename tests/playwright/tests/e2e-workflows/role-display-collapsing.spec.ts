@@ -5,8 +5,7 @@ import { ensureExpanded, installCleanupHook, loginAs, logout, onCleanup, openPro
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: `Pattern: role display` (2026-08 UX audit roadmap row
- * 510) — a compact role-badge list (project list roles, favourites, "my
+ * Job to be done: `Pattern: role display` — a compact role-badge list (project list roles, favourites, "my
  * organisations") collapses a user's held `ProjectRole` set to its
  * effective highest tier, per the real precedence
  * `project_manager` > (`project_administrator` = `stakeholder`) > `member`
@@ -150,7 +149,7 @@ test.describe("role display collapses to the effective highest tier", () => {
       await selectOrgAdminGroup(page, "Users");
       await ensureExpanded(page, "Organisation users");
 
-      // PR6 of the members/groups directory rework plan (docs/decisions.md)
+      // the members/groups directory rework (docs/decisions.md)
       // consolidated the Users table's previously-bare "View {name}'s
       // access" button into the row's `ActionMenu` — reachable via its
       // kebab trigger (`${display name}'s actions`), then the `menuitem`

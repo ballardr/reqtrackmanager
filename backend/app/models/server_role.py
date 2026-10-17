@@ -2,7 +2,7 @@
 Module: models.server_role
 
 Server-tier (cross-tenant) role grants, additive to `User.is_server_admin`
-(compliance-module-plan.md Phase 0 — the module system's foundational RBAC
+(the module system's foundational RBAC
 extension). Kept as its own module rather than folded into
 `models.organization` (where `UserOrgRole` lives) since this is genuinely
 server-wide, not organisation-scoped, infrastructure.

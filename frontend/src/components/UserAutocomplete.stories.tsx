@@ -16,7 +16,7 @@ const localUsers: OrgUser[] = [
   },
 ];
 
-// PR5 of the members/groups directory rework plan — org groups the
+// the members/groups directory rework — org groups the
 // optional `groups`/`onSelectGroup` pair matches against, always
 // client-side (see the component's own module docstring). "Jamie's Team"
 // deliberately overlaps the "jamie" needle with `localUsers[1]` ("Jamie
@@ -27,7 +27,7 @@ const localGroups: OrgGroup[] = [
   { id: "g2", name: "Jamie's Team", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
 ];
 
-// PR7 of the members/groups directory rework plan — this project's own
+// the members/groups directory rework — this project's own
 // groups, the optional `projectGroups`/`onSelectProjectGroup` pair matches
 // against, same client-side substring match as `groups`/`onSelectGroup`
 // above. A genuinely different concept from an org group (local to one
@@ -60,7 +60,7 @@ export const LocalFilterMode: Story = {
   },
 };
 
-/** PR5 of the members/groups directory rework plan: passing `groups` also
+/** the members/groups directory rework: passing `groups` also
  * matches org groups by name, client-side, alongside the user matches —
  * rendered with a `Users` icon and an "Org group" badge so it's visually
  * distinct, and selecting one calls `onSelectGroup` (not `onSelect`). */
@@ -83,7 +83,7 @@ export const GroupMatchRendersAndSelects: Story = {
   },
 };
 
-/** PR7: passing `projectGroups` also matches this project's own groups by
+/** Passing `projectGroups` also matches this project's own groups by
  * name, client-side, alongside user and org-group matches — rendered with a
  * `FolderKanban` icon and a "Project group" badge, visually distinct from
  * both a user row and an "Org group" match, and selecting one calls
@@ -110,7 +110,7 @@ export const ProjectGroupMatchRendersAndSelects: Story = {
 
 /** All three group-like match kinds — org group and project group — can
  * appear in the same dropdown at once, each with its own distinct badge, so
- * a caller wiring up both (PR7's "Add member" modal) never has to guess
+ * a caller wiring up both (the "Add member" modal) never has to guess
  * which is which. */
 export const OrgGroupAndProjectGroupMatchesCoexist: Story = {
   args: {
@@ -181,7 +181,7 @@ export const KeyboardNavigationSelectsHighlightedOption: Story = {
   },
 };
 
-/** PR5: arrow-key navigation must reach group options too, not just users —
+/** Arrow-key navigation must reach group options too, not just users —
  * the regression this repo's "don't regress existing keyboard nav" note
  * calls out explicitly. Group options render after user matches in the
  * dropdown (see `UserAutocomplete`'s own `options` composition), so the

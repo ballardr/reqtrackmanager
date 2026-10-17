@@ -1,8 +1,8 @@
 """
 Module: modules.stakeholders.service
 
-Business logic for the Stakeholders & Personas module, Phase 1.1 (Persona)
-and Phase 1.2 (Stakeholder — second half of this file):
+Business logic for the Stakeholders & Personas module: Persona and
+Stakeholder (second half of this file):
 
 - Persona CRUD as an identity row plus temporal `PersonaVersion` snapshots
   (`create_persona`, `apply_persona_new_version`), archive/unarchive, and the
@@ -12,22 +12,21 @@ and Phase 1.2 (Stakeholder — second half of this file):
 - Weight resolution (`resolve_persona_weight`): the project's own override,
   then the nearest ancestor project's, then the persona's own weight, then
   `None` (equal weighting).
-- Per-project visibility of org Personas and Stakeholders (Phase 3b):
+- Per-project visibility of org Personas and Stakeholders:
   `resolve_*_visibility`/`hidden_*_ids` (nearest ancestor override wins) and the
   set/clear functions, one implementation bound per record kind.
 - `persona_scoring_targets`, this module's `scoring_target_providers` entry
-  for Module 1's per-persona Pain Point scoring.
+  for Context & Strategy's per-persona Pain Point scoring.
 - `resolve_persona_file_project_id`, the file-ownership hook.
 - Stakeholder CRUD/lifecycle with the same version-table shape, the
   Influence × Interest grid read-out (`grid_quadrant`, `suggest_cadence`),
-  the Stakeholder → Persona "represents" links, and `erase_stakeholder`
-  (hard delete of one person's data, Phase 0 resolution 15).
-- Stakeholder Need (Phase 2, last section): project-scoped CRUD/lifecycle, the
+  the Stakeholder → Persona "represents" links, and `erase_stakeholder`.
+- Stakeholder Need (last section): project-scoped CRUD/lifecycle, the
   "has need" links from Stakeholders/Personas and the "gives rise to" links to
   Requirements.
 
 Design decisions:
-- No content lock: with no approval gate (Phase 0 resolution 6) a persona
+- No content lock: with no approval gate a persona
   stays editable in every status, and each edit is a new version.
 - Only `ACTIVE` personas are offered as scoring targets, so an unvetted
   draft cannot skew a weighted roll-up (Decided by: Agent).
@@ -91,8 +90,8 @@ PERSONA_ARTEFACT_TYPE = "persona"
 STAKEHOLDER_ARTEFACT_TYPE = "stakeholder"
 NEED_ARTEFACT_TYPE = "stakeholder_need"
 
-# §10.2 names no persona categories, so these are Agent defaults (Phase 0
-# resolution 3); all are org-editable.
+# §10.2 names no persona categories, so these are Agent defaults;
+# all are org-editable.
 DEFAULT_PERSONA_TYPES: tuple[str, ...] = ("Primary", "Secondary", "Negative")
 
 PERSONA_TYPES = TypeVocabulary(
@@ -389,10 +388,10 @@ def resolve_persona_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUI
 
 
 # =============================================================================
-# Stakeholder (Phase 1.2)
+# Stakeholder
 # =============================================================================
 
-# §10.2's list (Phase 0 resolution 3); all are org-editable.
+# §10.2's list; all are org-editable.
 DEFAULT_STAKEHOLDER_TYPES: tuple[str, ...] = (
     "Customer", "End user", "Operator", "Maintainer", "Service engineer", "Business owner", "Project sponsor",
     "Regulator", "Supplier", "Internal engineering team", "Support organisation",
@@ -427,7 +426,7 @@ STAKEHOLDER_ALLOWED_TRANSITIONS: dict[StakeholderStatus, frozenset[StakeholderSt
 
 GridQuadrant = Literal["manage_closely", "keep_satisfied", "keep_informed", "monitor"]
 
-# Phase 0 addendum 2, resolution 21 (default mapping Decided by: Agent).
+# Default mapping (Decided by: Agent).
 CADENCE_HINT_BY_QUADRANT: dict[GridQuadrant, TargetCadence] = {
     "manage_closely": TargetCadence.MONTHLY,
     "keep_satisfied": TargetCadence.QUARTERLY,
@@ -565,7 +564,7 @@ def transition_stakeholder(
     return new_version
 
 
-# --- Per-project visibility (Phase 3b) ----------------------------------------
+# --- Per-project visibility ----------------------------------------
 # One implementation for the Persona and Stakeholder override tables
 # (`ProjectPersonaVisibility`, `ProjectStakeholderVisibility`), which differ
 # only in the record column; the public functions below bind each kind.
@@ -766,7 +765,7 @@ def grid_quadrant(
 
 
 def suggest_cadence(quadrant: GridQuadrant | None) -> TargetCadence | None:
-    """The cadence hint for a grid quadrant (resolution 21); a hint only, never
+    """The cadence hint for a grid quadrant; a hint only, never
     applied automatically."""
     return CADENCE_HINT_BY_QUADRANT[quadrant] if quadrant is not None else None
 
@@ -876,7 +875,7 @@ def delete_represents_link(db: Session, link: Any) -> None:
 
 def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> None:
     """Hard-deletes a stakeholder and everything that holds data about them
-    (Phase 0 resolution 15): version rows (contact info included), comments,
+: version rows (contact info included), comments,
     every file in storage (direct and comment attachments), their group
     memberships and every `ArtefactLink` touching them. Writes one audit event carrying only the id
     and the acting user, never the name or any content. The caller commits.
@@ -914,7 +913,7 @@ def resolve_stakeholder_file_project_id(db: Session, file_id: uuid.UUID) -> uuid
 
 
 # =============================================================================
-# Stakeholder Need (Phase 2)
+# Stakeholder Need
 # =============================================================================
 
 NEED_CONTENT_FIELDS: tuple[str, ...] = ("name", "description", "rationale", "status", "owner_type", "owner_id")

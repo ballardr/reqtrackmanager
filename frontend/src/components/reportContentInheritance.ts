@@ -2,7 +2,7 @@
  * Module: components/reportContentInheritance
  *
  * What a scope's blank report-content field would inherit, described for the
- * `ReportContentEditor` (Phase 10 of the platform enhancements plan): the
+ * `ReportContentEditor`: the
  * inherited-value shapes, a plain-text preview of chapters, words naming where
  * an effective value came from, and the conversion from the server's
  * effective-content response. Kept out of the component file so that file

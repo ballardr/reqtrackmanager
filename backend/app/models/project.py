@@ -129,7 +129,7 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # Whether project "members" may submit change requests (C-U-13); defaults
     # to enabled per the requirement's clarification.
     allow_member_change_requests: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Platform review 2026-09, Phase 8: opt-in per-project requirement that
+    # Opt-in per-project requirement that
     # adding/removing a requirement-to-requirement traceability `ArtefactLink`
     # on an already-approved requirement go through a change request
     # (`ChangeRequestKind.ADD_LINK`/`REMOVE_LINK`) instead of the direct
@@ -141,7 +141,7 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # `allow_member_change_requests` precedent for a permissive default that
     # doesn't retroactively break every existing project.
     require_change_request_for_approved_links: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Platform review 2026-09, Phase 8: escape hatch from
+    # Escape hatch from
     # `Organization.force_require_change_request_for_approved_links` — a
     # project marked exempt here falls back to its own
     # `require_change_request_for_approved_links` value even while the
@@ -286,10 +286,10 @@ class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
 
     A group's role used to be a single, required field fixed at creation
     (`role: Mapped[ProjectRole]`, directly on this table). The members/
-    groups directory rework plan's PR7 (docs/decisions.md) replaced that
+    groups directory rework (docs/decisions.md) replaced that
     with `ProjectGroupRole`, a separate grant table — a group can now hold
     zero, one, or several roles simultaneously, each its own independently-
-    revocable row, mirroring the shape `OrgGroupProjectRole` (PR4) already
+    revocable row, mirroring the shape `OrgGroupProjectRole` already
     established for org groups and `UserProjectRole` established for
     individual users ("one row per role," never an array/JSON column). A
     migration (`alembic/versions/0022_...py`) backfilled exactly one
@@ -297,14 +297,13 @@ class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
     dropping the column, so no group lost its role in the transition. See
     `services.rbac`'s module docstring (source 2's `direct_group`
     provenance, now resolved by joining this new table instead of reading a
-    scalar) and PR7's identify/verify/remediate entry in docs/decisions.md
+    scalar) and the identify/verify/remediate entry in docs/decisions.md
     for the full review, including every C-U-08 "must retain a manager"
     guard site updated to check `ProjectGroupRole` instead.
 
-    Every group is now an ordinary, user-created group (follow-up UX batch
-    Phase C, 2026-08-31) — there is no longer a notion of a project
-    automatically seeding "standard" groups on creation. Prior to this
-    phase, `create_project`'s non-template path auto-created four groups
+    Every group is now an ordinary, user-created group (2026-08-31) — there is no longer a notion of a project
+    automatically seeding "standard" groups on creation. Previously,
+    `create_project`'s non-template path auto-created four groups
     per project (`is_default=True`) and the creator's initial
     `PROJECT_MANAGER` grant went through membership in one of them; that
     made bulk-group scaffolding, not a direct grant, the *only* way a fresh
@@ -396,8 +395,7 @@ class OrgGroupProjectRole(UUIDPKMixin, TimestampMixin, Base):
     role; this is a genuinely separate, additive grant path added to let a
     single org group hold a role on a project directly, the same way a
     single user already can via `UserProjectRole`. See `docs/decisions.md`'s
-    identify/verify/remediate entry for this table (recorded when PR4 of
-    the members/groups directory rework plan landed) and
+    identify/verify/remediate entry for this table (recorded when the members/groups directory rework landed) and
     `services.rbac`'s module docstring (the new numbered source describing
     how this resolves into effective project roles, including forward and
     member-source inheritance cascading it the same way a user's own direct
@@ -414,13 +412,13 @@ class OrgGroupProjectRole(UUIDPKMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("org_group_id", "project_id", "role"),)
 
     # `index=True` on both FKs: pre-existing gap found while implementing
-    # PR7 (this repo's own `test_schema_migrations_match_models.py` failed
+    # the group-roles change (this repo's own `test_schema_migrations_match_models.py` failed
     # against this table too) — migration 0021 already creates
     # `ix_org_group_project_roles_org_group_id`/`_project_id` explicitly,
     # but the model classes never declared the matching `index=True`, so
     # `Base.metadata` didn't know about them and Alembic's own autogenerate
     # diff flagged both as "to be removed." Fixed here rather than left
-    # alongside PR7's own new table with the identical gap.
+    # alongside the own new table with the identical gap.
     org_group_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"), index=True
     )
@@ -438,8 +436,8 @@ class ProjectGroupRole(UUIDPKMixin, TimestampMixin, Base):
     revocable roles, one row per role here, the same "one row per role, not
     an array column" shape those other two direct-grant tables already use.
 
-    Added by the members/groups directory rework plan's PR7 (docs/
-    decisions.md) — mirrors `OrgGroupProjectRole` (PR4) almost exactly, just
+    Added by the members/groups directory rework (docs/
+    decisions.md) — mirrors `OrgGroupProjectRole` almost exactly, just
     scoped to a `ProjectGroup` instead of an `OrgGroup`. Unlike
     `OrgGroupProjectRole`, no separate `project_id` column is needed here:
     a `ProjectGroup` already belongs to exactly one project by construction
@@ -450,7 +448,7 @@ class ProjectGroupRole(UUIDPKMixin, TimestampMixin, Base):
     with it, mirroring `ProjectGroupMember.project_group_id`'s own cascade
     — a role grant has no independent meaning once the group itself is
     gone. See `docs/decisions.md`'s identify/verify/remediate entry for
-    this table (PR7) for the full security review, including every C-U-08
+    this table for the full security review, including every C-U-08
     "must retain a manager" guard site updated to check this table instead
     of the old scalar `ProjectGroup.role`, and the backfill migration
     (`alembic/versions/0022_...py`) that converted every pre-existing

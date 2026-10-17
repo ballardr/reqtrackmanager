@@ -61,10 +61,8 @@ def assign_project_role(
     db: Session = Depends(get_db),
 ):
     """Assigns a direct (non-group) project role to a user. Gated by
-    `require_project_manage_or_grant_roles` (Fine-Grained Access Control
-    Phase 0 Q6/Phase 3) — no `OrgRole.ORG_ADMIN`-equivalent carve-out is
-    needed at project-role scope (no `ProjectRole` value is non-delegable
-    per Phase 0's own resolution)."""
+    `require_project_manage_or_grant_roles` — no `OrgRole.ORG_ADMIN`-equivalent carve-out is
+    needed at project-role scope (no `ProjectRole` value is non-delegable)."""
     _require_user_in_org(db, payload.user_id, project.organization_id)  # C-U-02
     bypass = actor_bypasses_project_managers(db, current_user, project)
     existing = db.scalar(
@@ -102,9 +100,8 @@ def list_group_project_roles(
     db: Session = Depends(get_db),
 ):
     """Lists every organisation group holding at least one direct
-    `OrgGroupProjectRole` grant on this project — the read side PR4's
-    assign/revoke endpoints never got (Phase 6, docs/platform-review-2026-
-    09-plan.md). Before this endpoint, a group granted a role through the
+    `OrgGroupProjectRole` grant on this project — the read side the assign/revoke endpoints never got. Before this endpoint,
+    a group granted a role through the
     Members section's add-control (`assign_group_project_role`) had no way
     to be seen, edited, or removed again except by reaching into a
     member's own per-role Source line (`direct_org_group_role` provenance)
@@ -338,8 +335,7 @@ def list_pending_project_invites(
     recent first — including already-expired ones, since an expired invite
     is exactly the case `resend_pending_project_invite` exists to fix.
 
-    Standard (non-SSO) `PendingInvite` flow only (Phase 3 scope decision,
-    docs/decisions.md) — an `sso_only` org's by-email invites are
+    Standard (non-SSO) `PendingInvite` flow only (docs/decisions.md) — an `sso_only` org's by-email invites are
     provisioned immediately via `services.invites.provision_sso_invite`
     and never create a row here. Gated the same as
     `assign_project_role_by_email`, the only endpoint that creates these

@@ -136,7 +136,7 @@ export const AccessTabShowsOrgsAndProjects: Story = {
   },
 };
 
-/** "Leave organisation" (2026-08 UX audit roadmap item 520) moved here
+/** "Leave organisation" moved here
  * from Org Admin — it's about this user's own membership, not an org-level
  * setting. Previously fired with zero confirmation; now Tier 1
  * `ConfirmDialog` + `Toast`, matching every other ordinary/reversible
@@ -203,9 +203,7 @@ export const PatsTabCreateToken: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
-    // The create form opens in a `Modal` (2026-08 UX audit roadmap item
-    // 526 — a brand-new PAT has no "what came before it" to be contextual
-    // detail about, per the revised Principle 3), portalled to
+    // The create form opens in a `Modal`, portalled to
     // `document.body` rather than nested inside the tab panel.
     await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });

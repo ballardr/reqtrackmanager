@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.stakeholder_router
 
-Org-scoped Stakeholder API (Phase 1.2), mounted at
+Org-scoped Stakeholder API, mounted at
 `/api/v1/orgs/{organization_id}/modules/stakeholders`, alongside `router.py`'s
 Persona routes: organisation-scoped Stakeholder CRUD/lifecycle/comments/files,
 the org Stakeholder type vocabulary, "create from org user", the Influence ×
@@ -192,8 +192,8 @@ def get_cadence_hint(
     organization_id: UUID, influence_level_id: UUID | None = None, interest_level_id: UUID | None = None,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """The power/interest quadrant and suggested cadence for a pair of levels
-    (resolution 21); a hint only. Declared before `/stakeholders/{id}` so the
+    """The power/interest quadrant and suggested cadence for a pair of levels;
+    a hint only. Declared before `/stakeholders/{id}` so the
     literal path wins."""
     try:
         quadrant = grid_quadrant(
@@ -288,7 +288,7 @@ def erase_org_stakeholder(
     organization_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Permanently deletes a stakeholder and every row/file/link holding data
-    about them (Phase 0 resolution 15). Irreversible; the audit event keeps
+    about them. Irreversible; the audit event keeps
     only the id."""
     stakeholder = _get(db, organization_id, stakeholder_id)
     _require_manage(db, current_user, organization_id)

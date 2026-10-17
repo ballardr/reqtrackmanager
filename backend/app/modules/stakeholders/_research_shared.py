@@ -3,7 +3,7 @@ Module: modules.stakeholders._research_shared
 
 Handler bodies behind the research-extras routes (`research_project_router.py`):
 session prompts, anonymous participants and findings of an Engagement
-(Phase 4, Phase 0 addendum 2 item 19 and 20). The routes are gated by the
+The routes are gated by the
 `research_extras` sub-component, so a project that has it off still has the full
 engagement log.
 

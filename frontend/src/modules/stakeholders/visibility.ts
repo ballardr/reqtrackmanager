@@ -2,7 +2,7 @@
  * Module: modules/stakeholders/visibility
  *
  * The one client-side rule for showing an org Persona/Stakeholder in a project
- * again after it was hidden (Phase 3b), shared by both project list pages.
+ * again after it was hidden, shared by both project list pages.
  * Visibility is override-only (`hidden_override`/`hidden_source`), so "show"
  * is two steps at most: drop the project's own hide, then, if a parent project
  * still hides the record, override that with an explicit "shown".

@@ -56,13 +56,12 @@ def is_locked(version: RequirementVersion) -> bool:
 def requires_change_request_for_links(db: Session, project: Project) -> bool:
     """Whether `project` requires an approved change request to add/remove a
     requirement-to-requirement traceability `ArtefactLink` on an
-    already-approved requirement (Platform review 2026-09, Phase 8 — a
+    already-approved requirement (a
     deliberately narrower, opt-in sibling of C-G-12's unconditional lock on
     a requirement's own content fields; traceability links otherwise stay
     ungated by design, see `models.relationship.ArtefactLink`'s docstring).
 
-    Resolution order, per the confirmed design (docs/decisions.md's
-    "Platform review 2026-09, Phase 8" entry):
+    Resolution order, per the confirmed design (docs/decisions.md):
       1. The project's own opt-in toggle
          (`Project.require_change_request_for_approved_links`) always wins
          when set — a project may lock itself down regardless of any org

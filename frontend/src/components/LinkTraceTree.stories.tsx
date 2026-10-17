@@ -7,14 +7,14 @@ import { withRouter } from "../testing/storybook-helpers";
 import { LinkTraceTree } from "./LinkTraceTree";
 
 /**
- * The trace tree (docs/plans/platform-enhancements-2026-10-plan.md Phase 7): a record's links as
+ * The trace tree: a record's links as
  * Upstream / Downstream / Related, each branch opened on demand without a depth limit.
  */
 const meta: Meta<typeof LinkTraceTree> = {
   title: "Components/LinkTraceTree",
   component: LinkTraceTree,
   decorators: [withRouter("/")],
-  // The trace views are part of the plan's a11y acceptance: violations fail here, not just show in the UI.
+  // The trace views are part of the a11y acceptance: violations fail here, not just show in the UI.
   parameters: { a11y: { test: "error" } },
   args: { projectId: LINKS_PROJECT_ID, artefactType: "requirement", artefactId: FOCUS_ID },
 };

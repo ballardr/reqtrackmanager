@@ -13,7 +13,7 @@ const meta: Meta<typeof LinkTraceModal> = {
   title: "Components/LinkTraceModal",
   component: LinkTraceModal,
   decorators: [withRouter("/")],
-  // The trace views are part of the plan's a11y acceptance: violations fail here, not just show in the UI.
+  // The trace views are part of the a11y acceptance: violations fail here, not just show in the UI.
   parameters: { a11y: { test: "error" } },
   args: {
     projectId: LINKS_PROJECT_ID, artefactType: "requirement", artefactId: FOCUS_ID, rootLabel: "REQ-002 Store reports",

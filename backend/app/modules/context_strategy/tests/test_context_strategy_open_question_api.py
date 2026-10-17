@@ -1,12 +1,11 @@
-"""Tests for Context & Strategy's Phase 5 backend API
-(docs/plans/module-01-context-and-strategy-plan.md Phase 5 — Open
-Questions) — the real HTTP endpoints (`project_router.py`'s project-scoped
+"""Tests for Context & Strategy's Open Question backend API
+— the real HTTP endpoints (`project_router.py`'s project-scoped
 Open Question surface; there is no org-scoped Open Question resource, and
-no org-scoped `router.py` change to test — see that phase's own notes),
+no org-scoped `router.py` change to test),
 through the `client` fixture, mirroring `test_context_strategy_pain_point_
 api.py`'s own "go through the real API" convention. A new sibling file
 rather than appending to an existing one (Decided by: Agent), matching
-Phase 2-4's own precedent exactly.
+the other artefact test files' precedent.
 
 Covers: Open Question create/get (project-scoped only), the broad-creation
 permission model (any project member, §9.4), the branching lifecycle

@@ -1,4 +1,4 @@
-"""Research findings get project-scoped human codes, FND-001 (Module 2 Phase 5 follow-up)
+"""Research findings get project-scoped human codes, FND-001
 
 Revision ID: 0089
 Revises: 0088

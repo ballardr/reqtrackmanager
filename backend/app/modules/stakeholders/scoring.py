@@ -2,7 +2,7 @@
 Module: modules.stakeholders.scoring
 
 Stakeholders & Personas' registration into core's generic scoring-matrix
-mechanism (`services.scoring`; Phase 0 resolution 16): the `stakeholder`
+mechanism (`services.scoring`): the `stakeholder`
 scheme, rating each Stakeholder on Influence and Interest, which drives the
 power/interest grid and the suggested engagement cadence (`service.
 suggest_cadence`).

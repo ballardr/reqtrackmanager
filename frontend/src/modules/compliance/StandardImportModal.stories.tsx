@@ -21,7 +21,7 @@ function exportFile(): File {
 }
 
 /**
- * `StandardImportModal` (docs/compliance-module-plan.md Phase 21) — the
+ * `StandardImportModal` — the
  * "Import standard" dialog reached from `StandardListPage.tsx`'s "New
  * standard" split-button trigger. Mirrors `StandardFormModal.stories.tsx`'s
  * org-picker coverage one level down, plus the 409-conflict retry flow this

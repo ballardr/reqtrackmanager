@@ -31,7 +31,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // "New project" opens a Modal (style guide "Pattern: modal dialog for
     // entity create/rename") — scoped to it rather than a bare ".card", and
     // its Name/Summary fields are real <label>s now, not placeholder-only
-    // (2026-08 UX audit roadmap item 521).
+    //.
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     // The org picker only renders at all when the caller belongs to more
@@ -85,8 +85,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // `:not([placeholder])`: the "add component" row's own Name field
     // shares this same value transiently (not yet cleared) right after
     // creating "Web" — see golden-path.spec.ts's identical guard for the
-    // full reasoning (Structure now shares one tab panel with Stages,
-    // 2026-08 UX audit roadmap: 8 tabs -> 5).
+    // full reasoning.
     const webRow = page.locator('input[value="Web"]:not([placeholder])').locator("xpath=../../..");
     await webRow.getByPlaceholder("Name").fill("Functional");
     await webRow.getByPlaceholder("Prefix").fill("FN");
@@ -107,8 +106,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
 
   await test.step("approve the requirement so a change request can target it later", async () => {
     // A modify change request can only target an already-locked requirement
-    // (2026-08 UX audit roadmap, "No requirement approval action; change
-    // requests can target draft requirements") — this spec never baselines
+    // — this spec never baselines
     // a stage (unlike golden-path.spec.ts), so approve it directly instead.
     await page.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(page.getByText("Locked (approved)")).toBeVisible();
@@ -179,7 +177,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
 
   await test.step("the Project Overview dashboard shows status/CR charts and activity", async () => {
     // Not a bare `getByText("Overview")`: the nav rail also carries an
-    // "Organisation overview" link (Phase 19), and `getByText` matches by
+    // "Organisation overview" link, and `getByText` matches by
     // case-insensitive substring, so that link's text now resolves too —
     // scope to the project-level nav-rail link's own exact accessible
     // name, matching the existing precedent in

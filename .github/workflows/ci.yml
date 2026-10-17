@@ -19,7 +19,7 @@
 #                          largest chunks of what used to be a single ~26min
 #                          job — pytest at ~12min, Playwright at ~9min — run
 #                          on two separate runners in parallel instead of
-#                          back-to-back on one (Phase 1's CI-runtime-
+#                          back-to-back on one (an earlier CI-runtime-
 #                          reduction pass only parallelised *within* the
 #                          Playwright step and left this larger, sequential
 #                          cost untouched; see docs/decisions.md). Each job
@@ -643,11 +643,11 @@ jobs:
       #
       # `-e CI=true`: playwright.config.ts's `retries: process.env.CI ? 2 :
       # 0` is meant to retry a test on the transient client-side connection
-      # stall Phase 1 documented (docs/decisions.md) — but `docker run`
+      # stall documented in docs/decisions.md — but `docker run`
       # starts a fresh container with its own empty environment, so without
       # this flag `process.env.CI` was always undefined *inside* the
       # container regardless of the real CI run's own environment, silently
-      # disabling that retry on every CI run since Phase 1 added it (found
+      # disabling that retry on every CI run since it was added (found
       # investigating PR #20's failures: none of the 5 failing tests showed
       # a retry attempt in the log). `true` matches the truthy-string value
       # GitHub Actions itself sets on the runner.
@@ -1006,6 +1006,9 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: docs/website/package-lock.json
+      - name: Check documentation references resolve
+        working-directory: .
+        run: python3 scripts/check_doc_links.py
       - run: npm ci
       - run: npm run typecheck
       # The agent-skill downloads are built from mcp-server/skill and backend/mcp_skill_reference, not committed.

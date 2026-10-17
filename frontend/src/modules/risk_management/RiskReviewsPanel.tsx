@@ -1,7 +1,7 @@
 /**
  * Module: modules/risk_management/RiskReviewsPanel
  *
- * The review section of a risk's detail page (plan Phase 4): the next scheduled
+ * The review section of a risk's detail page: the next scheduled
  * review (flagged when overdue), a "Record review" dialog, and the history of
  * past reviews, each with the ratings and treatment count it was made against.
  * A review is immutable; a mistake is corrected by recording a newer one. The

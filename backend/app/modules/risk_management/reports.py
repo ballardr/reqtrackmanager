@@ -1,8 +1,7 @@
 """
 Module: modules.risk_management.reports
 
-Report data layer for Risk Management (docs/plans/module-03-risk-management-
-plan.md Phase 7): four project-level reports, one `collect_*` function each,
+Report data layer for Risk Management: four project-level reports, one `collect_*` function each,
 returning the core framework's `ReportResult`, plus the `REPORT_DEFINITIONS`
 that declare them to the registry. Result shapes, scope (`readable_projects`),
 PDF/CSV/Word rendering, routes, MCP tools and the catalogue all live in
@@ -24,7 +23,7 @@ Design decisions (all Decided by: Agent unless stated):
   Realised ones have left the exposure picture (one never arose, one already
   has), so counting them would flatter or distort the residual column.
 - "Expected to be treated" (RK3) are Assessed, Treatment planned, Treatment in
-  progress and Mitigated: the states where the plan says something is reducing
+  progress and Mitigated: the states where something is reducing
   the risk. Accepted and Transferred risks are deliberate non-treatment.
 - A treatment link counts toward a verdict bucket by its `RiskTreatmentAssessment`
   row; a link with none is Proposed (the module's own rule). Links whose far end

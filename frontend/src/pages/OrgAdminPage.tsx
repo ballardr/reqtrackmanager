@@ -94,8 +94,7 @@ import { useRequestSequence } from "../hooks/useRequestSequence";
 
 /**
  * The 7 resource-menu groups Org Admin's previous 15 flat accordions were
- * regrouped into (2026-08 UX audit, style guide "Pattern: settings
- * hierarchy" — see its "after" diagram). Each key is also the route
+ * regrouped into. Each key is also the route
  * segment under `/orgs/:orgId/admin/:group?` (App.tsx), so a group
  * selection is a real navigation, not client-only state: back/forward and
  * a bookmark to one specific group both work. An unrecognised or absent
@@ -116,9 +115,8 @@ import { useRequestSequence } from "../hooks/useRequestSequence";
  * Module system follow-up (2026-09-07, see `docs/decisions.md`'s "Module
  * system follow-up: dynamic org-admin panel registration" entry): this used
  * to also hardcode two more literals, `"compliance"`/`"compliance-overview"`
- * — Phase 12/14's own groups, hand-mounted here since Phase 3's routing/
- * nav-discovery mechanism is project-scoped only (see Phase 12's notes in
- * `docs/compliance-module-plan.md`). Every *installed and enabled* module's
+ * — the module's own groups, hand-mounted here since the routing/
+ * nav-discovery mechanism is project-scoped only. Every *installed and enabled* module's
  * own `orgAdminSections` (`modules/types.ts`) now contributes its own
  * group(s) dynamically instead (built into `orgAdminGroups` below), so this
  * type only names the ten groups genuinely fixed at this file's own compile
@@ -135,10 +133,9 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "email",
   "security",
   "modules",
-  // Fine-Grained Access Control (core, not a module — `docs/plans/
-  // core-fine-grained-access-control-plan.md` Phase 3): custom-role
+  // Fine-Grained Access Control (core, not a module —): custom-role
   // definition (ORG_ADMIN-only) plus the broader grant_roles-based
-  // assignment surface, named "Role Management" per Phase 0 Q8/Q9.
+  // assignment surface, named "Role Management".
   "role-management",
 ] as const;
 type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
@@ -165,10 +162,10 @@ type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
  */
 type OrgAdminGroupKey = CoreOrgAdminGroupKey | string;
 
-/** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
+/** One row of the Org Users `DirectoryTable`
  * — a real user or a not-yet-accepted org-only invite, merged client-side.
  * Same `kind`-discriminated union row-merge pattern `ProjectMembersTable`
- * (Phase D) later applied one level down, for a project's own members. */
+ * later applied one level down, for a project's own members. */
 type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: OrgPendingInvite };
 
 /**
@@ -217,13 +214,12 @@ export function OrgAdminPage() {
   const [usersTotal, setUsersTotal] = useState(0);
   const [userSearch, setUserSearch] = useState("");
   const [viewingUser, setViewingUser] = useState<OrgUser | null>(null);
-  // "Remove from {org}" (Users table Actions column, PR6) — the user
+  // "Remove from {org}" (Users table Actions column) — the user
   // pending confirmation in the `ConfirmDialog` below, or null when none.
   const [confirmRemoveUser, setConfirmRemoveUser] = useState<OrgUser | null>(null);
   const [userAccess, setUserAccess] = useState<UserAccess | null>(null);
   const [userAccessError, setUserAccessError] = useState<string | null>(null);
-  // "View access" panel (2026-08 UX audit reversal — see docs/decisions.md
-  // and docs/ux-style-guide.md's "Pattern: role display" section): each
+  // "View access" panel: each
   // project row shows `collapseProjectRoles()`'s summary by default, with
   // this per-project-id set tracking which rows the viewer has explicitly
   // expanded to the full, uncollapsed role list. Reset whenever a new
@@ -234,16 +230,15 @@ export function OrgAdminPage() {
   const [groupSearch, setGroupSearch] = useState("");
   // Every org group by id/name, unpaginated and unfiltered by
   // `groupSearch` — the paginated/searched `groups` above drives which
-  // groups render as full cards (2026-08 UX audit "Directories at
-  // scale"), but nesting a group into another needs to pick from *every*
+  // groups render as full cards, but nesting a group into another needs to pick from *every*
   // group in the org regardless of what's currently searched/paged, so
   // the nested-group name resolution and the "add nested group" dropdown
   // both read from this instead.
   const [allGroups, setAllGroups] = useState<OrgGroup[]>([]);
-  // Org Groups table (Phase B, follow-up UX batch, 2026-08-31): replaces
+  // Org Groups table : replaces
   // the old `CollapsibleSection`-of-`CollapsibleSection`s accordion with
   // `DirectoryTable` + a per-row `SidePanel`, the same shape Project
-  // Groups already used before this phase also retrofitted it onto
+  // Groups already used (and were retrofitted onto)
   // `DirectoryTable`. `list_org_groups` already pages via `limit`/`offset`,
   // so Name sort is a backend-sorted refetch (its new `order` param) like
   // Org Users' own table, not a client-side sort of only the loaded page —
@@ -256,7 +251,7 @@ export function OrgAdminPage() {
   // Org group pending deletion in its Tier 1 `ConfirmDialog`, or null.
   const [deletingOrgGroupId, setDeletingOrgGroupId] = useState<string | null>(null);
   const [inUseOrgGroup, setInUseOrgGroup] = useState<{ id: string; usage: PrincipalUsage } | null>(null);
-  // Per-group SSO-sync enable/disable toggle (Phase B bug-fix pass) —
+  // Per-group SSO-sync enable/disable toggle —
   // `undefined` means "not yet touched this session," in which case the
   // checkbox's displayed state derives from `idp_synced_group_name != null`
   // instead. Unchecking clears both synced fields immediately via the same
@@ -265,7 +260,7 @@ export function OrgAdminPage() {
   const [syncEnabledEdits, setSyncEnabledEdits] = useState<Record<string, boolean>>({});
   const [resources, setResources] = useState<FileAsset[]>([]);
   const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
-  // Fine-Grained Access Control (core) Phase 3: this org's projects the
+  // Fine-Grained Access Control (core): this org's projects the
   // *caller* has some visibility into (`GET /api/v1/projects`, already
   // fetched unconditionally for `templateProjects` above) — the Role
   // Management page's project-scoped-role grant picker's fallback source
@@ -306,14 +301,14 @@ export function OrgAdminPage() {
   const [testEmailError, setTestEmailError] = useState<string | null>(null);
   const [testEmailSuccess, setTestEmailSuccess] = useState(false);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
-  // Module system Phase 1 (compliance-module-plan.md): the org's own
+  // The org's own
   // enable/disable choice among modules it's entitled to. Fetched inside
   // the same try/catch-403-and-hide-section block as `advanced` above
   // (non-admins simply don't see the section) — `[]` before that resolves,
   // which also correctly renders as "no modules" for a deployment with
-  // none registered yet (there are zero implemented modules until Phase 5).
+  // none registered yet (there may be zero implemented modules).
   const [modules, setModules] = useState<OrgModule[]>([]);
-  // Module 0 (Platform Foundations) Phase 4 — each module's own declared
+  // Each module's own declared
   // sub-components (empty for every module except Context & Strategy
   // today), keyed by `module_key`, fetched alongside `modules` itself once
   // the module list is known. `GET .../subcomponents` safely returns `[]`
@@ -333,17 +328,15 @@ export function OrgAdminPage() {
   // panel. See `useFederatedModules`'s own docstring and `frontend/src/
   // modules/federatedLoader.ts` for the full mechanism.
   useFederatedModules(modules.filter((m) => m.enabled));
-  // Module system Phase 2: org-scoped module-contributed role definitions
+  // Org-scoped module-contributed role definitions
   // currently available to grant in this org, fed into the Users table's
   // Roles column `MultiSelectDropdown` alongside the three fixed `OrgRole`
   // options. Fetched in the same block as `modules` above (both non-admin-
   // hidden, both need this org's own module registry state) — `[]` before
   // that resolves, which also correctly renders as "no module roles" for a
-  // deployment with none registered yet (no module has any roles until
-  // Phase 5).
+  // deployment with none registered yet (no module has any roles).
   const [availableOrgModuleRoles, setAvailableOrgModuleRoles] = useState<ModuleRoleDefinition[]>([]);
-  // Fine-Grained Access Control (core, `docs/plans/core-fine-grained-
-  // access-control-plan.md` Phase 3) — Role Management group state.
+  // Fine-Grained Access Control (core) — Role Management group state.
   // `permissions`/`customRoles` are fetched in the main (non-admin-gated)
   // `reload()` bundle below: `GET .../permissions` and `GET .../
   // custom-roles` are both open to any real org role (`_VIEW_ROLES` on the
@@ -352,7 +345,7 @@ export function OrgAdminPage() {
   // like role *definition* itself.
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [customRoles, setCustomRoles] = useState<CustomRoleDefinition[]>([]);
-  // Fine-Grained Access Control (core) Phase 5 — every registered
+  // Fine-Grained Access Control (core): every registered
   // module-owned entity scope (e.g. compliance's `"standard"`), fetched
   // alongside `permissions`/`customRoles` above from the same non-admin-
   // gated `GET /orgs/{id}/entity-scopes` endpoint. Powers the scope
@@ -373,7 +366,7 @@ export function OrgAdminPage() {
   // below currently target — keyed by `CustomRoleDefinition.id`. An
   // org-scoped role needs no entry here (its grants carry no project_id).
   const [customRoleGrantProjectId, setCustomRoleGrantProjectId] = useState<Record<string, string>>({});
-  // Same, but for a role scoped to a registered entity scope (Phase 5) —
+  // Same, but for a role scoped to a registered entity scope —
   // which entity (e.g. which standard) each such role's grant/revoke
   // pickers currently target, keyed by `CustomRoleDefinition.id`.
   const [customRoleGrantEntityId, setCustomRoleGrantEntityId] = useState<Record<string, string>>({});
@@ -381,7 +374,7 @@ export function OrgAdminPage() {
   // `ProjectMembersTable`, keyed by whichever project that modal currently
   // has open (see `openManageUsers` below).
   const [manageUsersAvailableModuleRoles, setManageUsersAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
-  // Users table filters (Phase A, follow-up UX batch, 2026-08-31): the
+  // Users table filters : the
   // three access-review filters used to be a single-select "" | "stale" |
   // "no2fa" | "noaccess" toggle-button row (mutually exclusive, so e.g.
   // "stale AND no 2FA" couldn't be expressed even though the backend's
@@ -389,13 +382,13 @@ export function OrgAdminPage() {
   // independent) — migrated onto `FilterCheckbox`es inside the shared
   // `FilterPanel`, one boolean each, now genuinely independent. `roleFilter`
   // is new: `GET /orgs/{id}/users`'s existing `org_role` param had no
-  // frontend control wired up to it before this phase.
+  // frontend control wired up to it originally.
   const [userFilterStale, setUserFilterStale] = useState(false);
   const [userFilterNo2fa, setUserFilterNo2fa] = useState(false);
   const [userFilterNoAccess, setUserFilterNoAccess] = useState(false);
   const [userRoleFilter, setUserRoleFilter] = useState<OrgRole | "">("");
   // Pending (unaccepted) org-only invites, merged into the Users table as
-  // `kind: "invited"` rows (Phase A) — fetched unpaginated (there are
+  // `kind: "invited"` rows — fetched unpaginated (there are
   // never many at once) alongside the paginated `users` list, and always
   // rendered ahead of it regardless of the user rows' own sort/page state.
   const [orgInvites, setOrgInvites] = useState<OrgPendingInvite[]>([]);
@@ -403,7 +396,7 @@ export function OrgAdminPage() {
   const [resendingOrgInviteId, setResendingOrgInviteId] = useState<string | null>(null);
   const [inviteUserModalOpen, setInviteUserModalOpen] = useState(false);
   const [inviteUserEmail, setInviteUserEmail] = useState("");
-  // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
+  // Column-header sorting — backend `sort`/
   // `order`, same reasoning as the Requirements/Change Requests lists:
   // this table is backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`
   // below), so sorting has to be honoured server-side.
@@ -415,7 +408,7 @@ export function OrgAdminPage() {
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
   const [externalUserPolicy, setExternalUserPolicy] = useState<ExternalUserPolicy>("disabled");
   const [allowRelaxedChildProjectCreation, setAllowRelaxedChildProjectCreation] = useState(true);
-  // Platform review 2026-09, Phase 8 — org-wide force of `Project.
+  // Org-wide force of `Project.
   // require_change_request_for_approved_links`, minus a per-project
   // `exempt_from_org_link_lock` opt-out. See `Organization`'s own field
   // docstring for the full resolution.
@@ -450,21 +443,20 @@ export function OrgAdminPage() {
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [orgProjects, setOrgProjects] = useState<OrgProjectSummary[] | null>(null);
-  // "Manage users" (Phase 5, docs/decisions.md; rebuilt again in Phase D,
-  // follow-up UX batch, 2026-08-31): the old inline expand-in-place
+  // "Manage users" (docs/decisions.md): the old inline expand-in-place
   // (`expandedProjectId`/`expandedProjectGroups`/`toggleExpandedProject`/
   // `addExpandedProjectGroupMember`/`removeExpandedProjectGroupMember`) is
   // now a `Modal` wrapping the same `ProjectMembersTable`
   // `ProjectAdminPage.tsx`'s own Members section uses — literally the same
   // component, not a duplicate, worse reimplementation (the concrete
-  // complaint this phase fixes). `manageUsersProjectId` is which project's
+  // complaint this fixes). `manageUsersProjectId` is which project's
   // modal is open (`null` = closed); its effective-members/pending-invites
   // are fetched fresh on open, the same two endpoints `ProjectAdminPage.tsx`
   // itself uses.
   const [manageUsersProjectId, setManageUsersProjectId] = useState<string | null>(null);
   const [manageUsersProjectName, setManageUsersProjectName] = useState("");
   const [manageUsersMembers, setManageUsersMembers] = useState<EffectiveMember[]>([]);
-  // Phase 6 (docs/platform-review-2026-09-plan.md): this modal's own copy
+  // This modal's own copy
   // of `ProjectMembersTable`'s third data source — same "fetched fresh on
   // open, re-fetched after every mutation" treatment `manageUsersMembers`
   // already gets.
@@ -579,7 +571,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** Pending org-only invites (Phase A) — gated at org-admin/server-admin
+  /** Pending org-only invites — gated at org-admin/server-admin
    * tier server-side (same as `create_org_user`), so a plain member simply
    * sees none rather than an error; every other 403 still surfaces. */
   async function loadOrgInvites() {
@@ -637,14 +629,14 @@ export function OrgAdminPage() {
         api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${orgId}`),
         api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
         api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
-        // Fine-Grained Access Control Phase 3 — open to any real org role
+        // Open to any real org role
         // (backend `_VIEW_ROLES`), same tier as every other call in this
         // bundle, so it belongs here rather than the ORG_ADMIN-gated
         // catch-403 block below (a `grant_roles` holder who isn't an
         // ORG_ADMIN still needs to see what's grantable).
         api.get<Permission[]>(`/api/v1/orgs/${orgId}/permissions`),
         api.get<CustomRoleDefinition[]>(`/api/v1/orgs/${orgId}/custom-roles`),
-        // Fine-Grained Access Control (core) Phase 5 — same tier as
+        // Fine-Grained Access Control (core): same tier as
         // `permissions`/`custom-roles` above.
         api.get<EntityScope[]>(`/api/v1/orgs/${orgId}/entity-scopes`),
       ]);
@@ -793,8 +785,7 @@ export function OrgAdminPage() {
   }
 
   /** Backend-sorted refetch, same shape as `applyUserSort` — `list_org_
-   * groups` already pages via `limit`/`offset` (Phase 0/B design review:
-   * a client-side sort of only the currently-loaded page would misrepresent
+   * groups` already pages via `limit`/`offset` (a client-side sort of only the currently-loaded page would misrepresent
    * the true full-list order, style guide "Pattern: sortable column
    * header"). */
   function applyGroupSort(key: OrgGroupSortKey) {
@@ -932,9 +923,8 @@ export function OrgAdminPage() {
     reload();
   }
 
-  /** Opens the "Manage users" `Modal` for one project (Phase 5,
-   * docs/decisions.md; rebuilt in Phase D, follow-up UX batch, 2026-08-31)
-   * — fetches its effective-members + pending invites fresh every open,
+  /** Opens the "Manage users" `Modal` for one project
+   * (docs/decisions.md) — fetches its effective-members + pending invites fresh every open,
    * the same two calls `ProjectAdminPage.tsx`'s own Members section makes
    * on its own `reload()`. */
   async function openManageUsers(project: OrgProjectSummary) {
@@ -942,11 +932,11 @@ export function OrgAdminPage() {
     setManageUsersProjectName(project.name);
     const [members, groupRoles, invites, moduleRoles] = await Promise.all([
       api.get<EffectiveMember[]>(`/api/v1/projects/${project.id}/effective-members`),
-      // Phase 6: this modal's own copy of `ProjectMembersTable`'s third
+      // This modal's own copy of `ProjectMembersTable`'s third
       // data source — fetched fresh per open, same as `members` above.
       api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${project.id}/group-roles`),
       api.get<PendingInvite[]>(`/api/v1/projects/${project.id}/pending-invites`),
-      // Module system Phase 2: this project's own available project-scoped
+      // This project's own available project-scoped
       // module roles — fetched fresh per open, same as `members`/`invites`
       // above, since a different project can have a different owning org
       // (and therefore a different set of currently-enabled modules).
@@ -973,7 +963,7 @@ export function OrgAdminPage() {
     setManageUsersMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${manageUsersProjectId}/effective-members`));
   }
 
-  /** `ProjectMembersTable`'s own third data source (Phase 6), scoped to
+  /** `ProjectMembersTable`'s own third data source, scoped to
    * `manageUsersProjectId` — same "re-fetch just this" treatment
    * `reloadManageUsersMembers` uses. */
   async function reloadManageUsersGroupRoles() {
@@ -1001,7 +991,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** `ProjectMembersTable`'s `onToggleModuleRole` (module system Phase 2),
+  /** `ProjectMembersTable`'s `onToggleModuleRole`,
    * scoped to `manageUsersProjectId` — same "re-fetch just effective-
    * members" treatment `toggleManageUsersRole` above uses. */
   async function toggleManageUsersModuleRole(userId: string, moduleKey: string, roleKey: string, grant: boolean) {
@@ -1027,11 +1017,10 @@ export function OrgAdminPage() {
     await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
   }
 
-  /** The group branch of the same add-control (PR5 of the members/groups
-   * directory rework plan) — `UserAutocomplete`'s combined user-or-group
+  /** The group branch of the same add-control — `UserAutocomplete`'s combined user-or-group
    * autocomplete calls this instead of `addManageUsersMember` when the
    * selected match is an org group, granting it a role *directly* on
-   * `manageUsersProjectId` via PR4's new mechanism, the same pattern
+   * `manageUsersProjectId` via the new mechanism, the same pattern
    * `ProjectAdminPage.tsx`'s own `addProjectGroupRole` uses. No
    * `ProjectGroup` wrapper is created, and nesting stays out of scope for
    * this control — see that function's own docstring for the full
@@ -1043,7 +1032,7 @@ export function OrgAdminPage() {
     await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role });
   }
 
-  /** `ProjectMembersTable`'s own `onToggleGroupRole` (Phase 6), scoped to
+  /** `ProjectMembersTable`'s own `onToggleGroupRole`, scoped to
    * `manageUsersProjectId` — same pattern `ProjectAdminPage.tsx`'s own
    * `toggleProjectMemberOrgGroupRole` uses. */
   async function toggleManageUsersOrgGroupRole(orgGroupId: string, role: ProjectRole, checked: boolean) {
@@ -1061,7 +1050,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** `ProjectMembersTable`'s own "Remove group" (Phase 6), scoped to
+  /** `ProjectMembersTable`'s own "Remove group", scoped to
    * `manageUsersProjectId` — same pattern `ProjectAdminPage.tsx`'s own
    * `removeProjectMemberOrgGroup` uses. */
   async function removeManageUsersOrgGroup(orgGroupId: string) {
@@ -1083,7 +1072,7 @@ export function OrgAdminPage() {
   }
 
   /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
-   * PR6 of the members/groups directory rework plan) — same treatment
+   * the members/groups directory rework) — same treatment
    * `ProjectAdminPage.tsx`'s own `removeAllProjectMemberAccess` uses,
    * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
   async function removeAllManageUsersMemberAccess(userId: string) {
@@ -1103,7 +1092,7 @@ export function OrgAdminPage() {
   }
 
   /** `ProjectMembersTable`'s per-row "Convert inherited access to direct
-   * roles" (Actions column, PR6) — same treatment
+   * roles" (Actions column) — same treatment
    * `ProjectAdminPage.tsx`'s own `convertProjectMemberToDirect` uses,
    * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
   async function convertManageUsersMemberToDirect(userId: string) {
@@ -1287,7 +1276,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** "Invite user" (Phase A) — the org-level counterpart to `createUser`
+  /** "Invite user" — the org-level counterpart to `createUser`
    * above: emails a sign-up link instead of setting a password immediately.
    * Only refreshes `orgInvites` (not the whole page, matching `grantOrgRole`/
    * `revokeOrgRole`'s own reasoning above) since nothing else on the page
@@ -1351,7 +1340,7 @@ export function OrgAdminPage() {
     }
   }
 
-  // Module system Phase 2: same single-row local-state patch as
+  // Same single-row local-state patch as
   // `grantOrgRole`/`revokeOrgRole` above, for the same reasoning (a
   // single grant/revoke only ever changes this one row's own module-role
   // set, so a full `reload()` would refresh nothing else it needs).
@@ -1389,11 +1378,11 @@ export function OrgAdminPage() {
     }
   }
 
-  // --- Fine-Grained Access Control (core) Phase 3: Role Management ------
-  // Custom-role *definition* (ORG_ADMIN-only, never delegable — Phase 0
-  // Q5) and *assignment* (delegable via grant_roles — Phase 0 Q6) actions.
+  // --- Fine-Grained Access Control (core): Role Management --------------
+  // Custom-role *definition* (ORG_ADMIN-only, never delegable)
+  // and *assignment* (delegable via grant_roles) actions.
   // The backend deliberately exposes no "who currently holds this role"
-  // listing endpoint at all (Phase 3's own MCP-tools addendum: a grant
+  // listing endpoint at all (a grant
   // roster is a privilege-reconnaissance disclosure, not a safe default) —
   // so unlike the fixed/module-role checkboxes above, granting/revoking a
   // custom role to/from a user *by picking them from a directory search*
@@ -1524,8 +1513,8 @@ export function OrgAdminPage() {
     }
   }
 
-  /** Whether `scope` is a registered module-owned entity scope (Phase 5,
-   * e.g. compliance's `"standard"`) rather than the two core-recognised
+  /** Whether `scope` is a registered module-owned entity scope (e.g.
+   * compliance's `"standard"`) rather than the two core-recognised
    * `"org"`/`"project"` values — drives the entity picker below, generically,
    * for any current or future module's own entity scope. */
   function isRegisteredEntityScope(scope: string): boolean {
@@ -1745,7 +1734,7 @@ export function OrgAdminPage() {
   }
 
   const [idpSyncEdits, setIdpSyncEdits] = useState<Record<string, string>>({});
-  // Granted-role edits (2026-08 UX audit roadmap item 522), saved together
+  // Granted-role edits, saved together
   // with the sync name above via one button — a role only makes sense
   // alongside a sync name, so splitting them into separate save actions
   // would let the UI momentarily represent the invalid "role with no sync
@@ -1780,8 +1769,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** The SSO-sync enable/disable checkbox (Phase B bug-fix pass,
-   * 2026-08-31): checking it just reveals the name/role fields for editing
+  /** The SSO-sync enable/disable checkbox: checking it just reveals the name/role fields for editing
    * (no request until "Save sync settings" is clicked) — unchecking clears
    * both fields immediately via the same `PATCH` the Save button uses,
    * since there's nothing left to edit once sync is off. */
@@ -2006,7 +1994,7 @@ export function OrgAdminPage() {
     showToast(strings.orgAdmin.displayNameLockSaved(user.display_name, locked));
   }
 
-  /** Users table Actions column, "Remove from {org}" (PR6 of the members/
+  /** Users table Actions column, "Remove from {org}" (of the members/
    * groups directory rework plan, docs/decisions.md) — the new admin-
    * initiated `DELETE /{organization_id}/users/{user_id}/membership`
    * endpoint. Confirmed via `ConfirmDialog` (`confirmRemoveUser` below)
@@ -2104,7 +2092,7 @@ export function OrgAdminPage() {
       <div className="stack">
         <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
           <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
-          {/* Phase 28: an escape hatch off a dead-end degraded org page —
+          {/* An escape hatch off a dead-end degraded org page —
               this org is disabled, but a server admin can still jump
               straight to a different (working) one. */}
           {orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
@@ -2150,7 +2138,7 @@ export function OrgAdminPage() {
       <div className="stack">
         <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
           <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
-          {/* Phase 28: same escape hatch as the disabled-org case above —
+          {/* Same escape hatch as the disabled-org case above —
               a server admin isn't a member here, but can still jump
               straight to a different org they already administer. */}
           {orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
@@ -2254,7 +2242,7 @@ export function OrgAdminPage() {
     ? (groupParam as OrgAdminGroupKey)
     : "overview";
 
-  // Users table row merge (Phase A, follow-up UX batch, 2026-08-31): pending
+  // Users table row merge : pending
   // org-only invites are merged client-side into the same `DirectoryTable`
   // as real users, `kind: "user" | "invited"` — the same union-row pattern
   // `MemberRoleTable` established. Invited rows aren't part of `users`'
@@ -2272,7 +2260,7 @@ export function OrgAdminPage() {
     ...filteredOrgInvites.map((invite): UsersRow => ({ kind: "invited", invite })),
     ...users.map((u): UsersRow => ({ kind: "user", user: u })),
   ];
-  // Module system Phase 2: resolves a module role definition's own
+  // Resolves a module role definition's own
   // `module_key` to that module's display `name` (from the already-fetched
   // `modules` list), for the Roles column option label "<role name>
   // (<module name>)" — falls back to the raw key only if `modules` hasn't
@@ -2330,14 +2318,14 @@ export function OrgAdminPage() {
                   onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
                 };
               }),
-              // Module system Phase 2: merged in alongside the three core
+              // Merged in alongside the three core
               // roles above — same dropdown, never disabled (module roles
               // carry no "own row" self-targeting restriction the way
               // ORG_ADMIN does). Label renders the role definition's own
               // `name` directly (already human-readable API data, not a
               // raw closed-enum wire value), plus the owning module's
-              // display name for context, per the plan's own worked
-              // example ("Compliance Officer (Compliance)").
+              // display name for context, e.g.
+              // "Compliance Officer (Compliance)".
               ...availableOrgModuleRoles.map((d) => {
                 const checked = u.module_roles.some((g) => g.module_key === d.module_key && g.role_key === d.role_key);
                 const label = `${d.name} (${moduleDisplayNameFor(d.module_key)})`;
@@ -2352,7 +2340,7 @@ export function OrgAdminPage() {
                     checked ? revokeModuleRole(u, d.module_key, d.role_key) : grantModuleRole(u, d.module_key, d.role_key),
                 };
               }),
-              // Fine-Grained Access Control (core) Phase 3: org-scoped
+              // Fine-Grained Access Control (core): org-scoped
               // custom roles, merged in the same way module roles are
               // above — a project-scoped custom role isn't offered here
               // (see `grantOrgScopedCustomRoleToUser`'s docstring), only
@@ -2425,8 +2413,7 @@ export function OrgAdminPage() {
       render: (row) => (row.kind === "invited" ? "" : row.user.is_2fa_enabled ? strings.common.yes : strings.common.no),
     },
     {
-      // Users table Actions column (PR6 of the members/groups directory
-      // rework plan, docs/decisions.md) — the two previously-bare buttons
+      // Users table Actions column (docs/decisions.md) — the two previously-bare buttons
       // (View access, lock/unlock display name) consolidated into one
       // `ActionMenu`, plus "Remove from {org}" (new, access-mutating).
       // "Add to group" sits as its own small control next to the menu,
@@ -2472,7 +2459,7 @@ export function OrgAdminPage() {
     },
   ];
 
-  // Org Groups `DirectoryTable` (Phase B, follow-up UX batch, 2026-08-31) —
+  // Org Groups `DirectoryTable` —
   // `groups` itself is already sorted server-side (`applyGroupSort`/
   // `loadGroups`'s `order` param), no client-side re-sort needed.
   const orgGroupColumns: DirectoryColumn<OrgGroup>[] = [
@@ -2708,10 +2695,10 @@ export function OrgAdminPage() {
                 </div>
               )}
 
-              {/* Rebuilt on the shared `DirectoryTable` (Phase 0), with
+              {/* Rebuilt on the shared `DirectoryTable`, with
                   `FilterPanel` as a full-width bar ABOVE the table rather
                   than the standard `.side-grid` side layout every other
-                  list page uses (2026-08-31, Phase A, follow-up UX batch;
+                  list page uses (2026-08-31;
                   moved to `layout="top"` in a later follow-up fix — see
                   docs/decisions.md and docs/ux-style-guide.md's "Pattern:
                   filter panel placement — side vs. top"). This table has 6
@@ -2956,12 +2943,11 @@ export function OrgAdminPage() {
                 </Modal>
               )}
 
-              {/* Rebuilt on the shared `DirectoryTable` (Phase 0) inside the
+              {/* Rebuilt on the shared `DirectoryTable` inside the
                   standard `.side-grid` + `FilterPanel` layout, replacing the
                   old `CollapsibleSection`-of-`CollapsibleSection`s accordion
                   that rendered every group's full member list open and
-                  inline, unconditionally (2026-08-31, Phase B, follow-up UX
-                  batch — see docs/decisions.md). Each row now opens a
+                  inline, unconditionally (docs/decisions.md). Each row now opens a
                   `SidePanel` instead — style guide "Pattern: entity detail
                   panel." */}
               <div className="side-grid">
@@ -3006,8 +2992,7 @@ export function OrgAdminPage() {
               // unpaginated), not the paginated/searched `groups` above —
               // a nested group's name, or a candidate to nest, can easily
               // fall outside whatever page/search the Groups list itself
-              // is currently showing (2026-08 UX audit "Directories at
-              // scale").
+              // is currently showing.
               const nestedGroups = allGroups.filter((og) => nestedGroupIds.has(og.id));
               const nestableGroups = allGroups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
               // SSO-sync gating (2026-08-31 bug-fix pass): the name input,
@@ -3209,8 +3194,7 @@ export function OrgAdminPage() {
             )}
 
             {manageUsersProjectId && (
-              // Phase 5 (docs/decisions.md; rebuilt in Phase D, follow-up UX
-              // batch, 2026-08-31): the same `ProjectMembersTable`
+              // (docs/decisions.md): the same `ProjectMembersTable`
               // `ProjectAdminPage.tsx`'s own Members section renders — this
               // is the direct fix for "should show up in a similar way to
               // the project admin page," not a parallel reimplementation.
@@ -3219,14 +3203,13 @@ export function OrgAdminPage() {
                   <button className="btn btn-primary" onClick={() => setManageUsersAddMemberModalOpen(true)}>
                     <Plus size={14} /> {strings.admin.addMember}
                   </button>
-                  {/* No sibling "Add group" button (PR5 of the members/groups
-                      directory rework plan, corrected during PR5's own
+                  {/* No sibling "Add group" button (corrected during the own
                       review): the autocomplete below is expanded to match
                       org groups too — see UserAutocomplete's own module
                       docstring. */}
                 </div>
                 {manageUsersAddMemberModalOpen && (
-                  // PR3/PR5 of the members/groups directory rework plan
+                  // the members/groups directory rework
                   // originally opened a nested Modal here submitting one
                   // person at a time; now the shared staged multi-add
                   // component (`AddMembersModal`) — see that component's own
@@ -3574,7 +3557,7 @@ export function OrgAdminPage() {
                     now a property of the org group being synced into
                     instead (`OrgGroup.granted_org_role`, alongside
                     `idp_synced_group_name`), managed from the Groups
-                    section (2026-08 UX audit roadmap item 522). */}
+                    section. */}
                 <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.ssoMappingsMovedHint}</p>
 
                 {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
@@ -3698,8 +3681,7 @@ export function OrgAdminPage() {
                     previously a shared button on the same page ("saved
                     with the Security settings below"), now its own
                     explicit button now that Email and Security are
-                    separate top-level groups (2026-08 UX audit roadmap
-                    item 523). See the SSO mappings save button's own
+                    separate top-level groups. See the SSO mappings save button's own
                     comment for why calling the same `saveAdvanced()` from
                     here is still correct. */}
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
@@ -3799,7 +3781,6 @@ export function OrgAdminPage() {
                   </span>
                 </label>
 
-                {/* Platform review 2026-09, Phase 8 */}
                 <label className="row" style={{ gap: "0.6rem" }}>
                   <ToggleSwitch
                     checked={forceRequireCrForLinks}
@@ -3843,8 +3824,7 @@ export function OrgAdminPage() {
                     "OAuth/SSO" group) are all part of the same underlying
                     settings resource/PUT, just split across three separate
                     top-level resource-menu groups by what they actually
-                    govern (2026-08 UX audit roadmap item 523, splitting
-                    the earlier "Integrations & security" group further)
+                    govern
                     rather than one combined page. Each group that touches
                     a field on this object now has its own save button
                     calling the same `saveAdvanced()` — see the SSO
@@ -4008,15 +3988,14 @@ export function OrgAdminPage() {
 
         {activeGroup === "role-management" && (
           <div className="stack">
-            {/* Role *definition* — ORG_ADMIN-only, never delegable (Phase 0
-                Q5). Gated on `advanced !== null`, the same signal every
+            {/* Role *definition* — ORG_ADMIN-only, never delegable. Gated on `advanced !== null`, the same signal every
                 other ORG_ADMIN-only section on this page already uses
                 (`GET .../advanced-settings` is `require_org_role(ORG_ADMIN)`
                 with no server-admin/grant_roles bypass) — reused rather
                 than inventing a second "am I an admin" check, per style
                 guide Principle 4. A `grant_roles` holder who isn't an
                 ORG_ADMIN sees the assignment half below but not this one,
-                matching Phase 0 Q8's own "without necessarily seeing the
+                matching the "without necessarily seeing the
                 ORG_ADMIN-only role-definition half" requirement. */}
             {advanced !== null && (
               <CollapsibleSection sectionKey="orgAdmin.roleManagement.definitions" title={strings.orgAdmin.customRolesTitle}>
@@ -4124,7 +4103,7 @@ export function OrgAdminPage() {
                         >
                           <option value="org">{strings.orgAdmin.customRoleScopeOrg}</option>
                           <option value="project">{strings.orgAdmin.customRoleScopeProject}</option>
-                          {/* Fine-Grained Access Control (core) Phase 5 — every
+                          {/* Fine-Grained Access Control (core): every
                               registered module-owned entity scope, rendered
                               generically rather than a hardcoded per-module
                               option (e.g. compliance's "standard"). */}
@@ -4159,8 +4138,8 @@ export function OrgAdminPage() {
               </CollapsibleSection>
             )}
 
-            {/* Role *assignment* — ORG_ADMIN or a `grant_roles` holder
-                (Phase 0 Q6). Always shown to anyone who can reach this page
+            {/* Role *assignment* — ORG_ADMIN or a `grant_roles` holder.
+                Always shown to anyone who can reach this page
                 at all, the same convention the Users table's own fixed/
                 module-role controls above already follow: authorization is
                 enforced server-side (403 + toast on failure), not by
@@ -4206,7 +4185,7 @@ export function OrgAdminPage() {
                             </select>
                           </label>
                         )}
-                        {/* Fine-Grained Access Control (core) Phase 5 — the
+                        {/* Fine-Grained Access Control (core): the
                             generalised form of the project picker above, for
                             a role scoped to a registered module-owned entity
                             scope (e.g. compliance's "standard"): populated

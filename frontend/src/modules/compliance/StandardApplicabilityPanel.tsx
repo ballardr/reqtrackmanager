@@ -1,9 +1,9 @@
 /**
  * Module: modules/compliance/StandardApplicabilityPanel
  *
- * Phase 20's "applies to all projects by default, except..." UI —
+ * The "applies to all projects by default, except..." UI —
  * Compliance-Manager-only, rendered inside `StandardWorkspacePage.tsx`'s
- * Overview section (docs/compliance-module-plan.md Phase 20). This is
+ * Overview section. This is
  * deliberately the *secondary*, org-wide-mandate surface: the *default,
  * primary* way a project acquires a standard is `ProjectCompliancePage.
  * tsx`'s own "Assign standard" flow (now calling `createProjectCompliance

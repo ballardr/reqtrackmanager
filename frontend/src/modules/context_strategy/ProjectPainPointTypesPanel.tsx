@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/ProjectPainPointTypesPanel
  *
- * The project-scoped tier of Pain Point's type vocabulary (Phase 0 Q3,
- * source overview §6.2) — a thin wrapper over the shared
+ * The project-scoped tier of Pain Point's type vocabulary (§6.2) — a thin wrapper over the shared
  * `ProjectTypeVocabularyPanel` (`components/TypeVocabularyPanels.tsx`, which
  * documents the shared behaviour, including the client-side reorder and why
  * delete blocks instead of offering reassignment). Shows this project's

@@ -1,5 +1,4 @@
-"""Tests for project persona visibility (Module 2 Phase 3b, the Persona half of
-docs/plans/module-02-stakeholders-and-personas-plan.md): a project can hide an
+"""Tests for project persona visibility (the Persona half of it): a project can hide an
 org Persona from itself, reversibly, without touching the shared record.
 `test_stakeholder_visibility.py` covers the Stakeholder half; the shared
 resolution code is exercised by both.

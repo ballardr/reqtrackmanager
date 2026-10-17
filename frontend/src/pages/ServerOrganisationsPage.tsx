@@ -46,7 +46,7 @@ export function ServerOrganisationsPage() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
-  // Module 4 (Decision Management) Phase 1 — every registered module's
+  // Every registered module's
   // optional org-creation seeding choices (e.g. Decision Management's ADR
   // template packs), fetched once and rendered generically; this page has
   // no hardcoded knowledge of what any of them are. `null` selected keys
@@ -204,7 +204,7 @@ export function ServerOrganisationsPage() {
                 onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
               />
             </label>
-            {/* Module 4 (Decision Management) Phase 1 — every registered
+            {/* Every registered
                 module's optional org-creation seeding choices, grouped by
                 `group_label`; this page has no hardcoded knowledge of what
                 any of them are. Hidden for the import path (above), which

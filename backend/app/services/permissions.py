@@ -1,19 +1,17 @@
 """
 Module: services.permissions
 
-Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
-plan.md` Phase 1): the permission-atom vocabulary — what a permission
+Fine-Grained Access Control: the permission-atom vocabulary — what a permission
 *is* and how it's encoded/validated — derived from the existing artefact-
 type registry (`app.modules.registry.get_all_registered_artefact_types`)
 and the new sub-type-provider registry (`get_subtypes`), the same way
-Phase 0 Q1/Q3 resolved: `(artefact_type, level, subtype)` triples crossed
+as before: `(artefact_type, level, subtype)` triples crossed
 across every registered artefact type and `PermissionLevel`, plus a short,
 explicit list of non-artefact administrative permissions.
 
 This module is deliberately inert with respect to any actual authorization
 decision — it defines and validates the vocabulary, nothing more.
-`app.services.rbac.get_effective_permissions`/`require_permission` (Phase
-2) is where a caller's held permissions actually get resolved and checked
+`app.services.rbac.get_effective_permissions`/`require_permission` is where a caller's held permissions actually get resolved and checked
 against it.
 """
 
@@ -32,16 +30,14 @@ ADMINISTRATIVE_PERMISSIONS: tuple[str, ...] = (
     "manage_integrations",
     "grant_roles",
 )
-"""Short, explicit list of non-artefact administrative permissions (Phase 0
-Q1) — hand-maintained here rather than derived from any registry, since
+"""Short, explicit list of non-artefact administrative permissions — hand-maintained here rather than derived from any registry, since
 these describe fixed organisational admin actions, not a per-artefact-type
-CRUD tier. Deliberately excludes a "manage custom roles" atom (Phase 0 Q5):
+CRUD tier. Deliberately excludes a "manage custom roles" atom:
 creating/editing/deleting a `CustomRoleDefinition` stays `ORG_ADMIN`-only
 and is never delegable through any permission atom, closing off the "mint a
 new, arbitrarily powerful role" escalation path entirely. `grant_roles`
-(Phase 0 Q6) is the one atom here whose holder can affect role assignment
-at all, and even it cannot grant `ORG_ADMIN`/`MODULE_ADMINISTRATOR` — see
-`docs/plans/core-fine-grained-access-control-plan.md`'s own residual-risk
+ is the one atom here whose holder can affect role assignment
+at all, and even it cannot grant `ORG_ADMIN`/`MODULE_ADMINISTRATOR` — own residual-risk
 note for that atom's full, deliberately documented scope.
 """
 
@@ -49,8 +45,7 @@ note for that atom's full, deliberately documented scope.
 ALL_ARTEFACT_TYPES = "*"
 """The `artefact_type` of an "every record type" atom (`*:link:`): held once, it
 covers every artefact type registered now or later, so a module enabled next month
-is included without the grant being edited (Phase 6d of
-`docs/plans/platform-enhancements-2026-10-plan.md`). Resolved by
+is included without the grant being edited . Resolved by
 `app.services.rbac.permission_satisfied`; it has no sub-type form.
 """
 
@@ -60,7 +55,7 @@ def encode_permission(artefact_type: str, level: str, subtype: str | None = None
     `CustomRolePermission.permission`/`ModuleRoleDefinition.permissions`
     entries store — e.g. `encode_permission("decision", "approve_baseline",
     "Architecture")` -> `"decision:approve_baseline:Architecture"`, or with
-    `subtype=None` (the wildcard, matching every sub-type — Phase 0 Q3) ->
+    `subtype=None` (the wildcard, matching every sub-type) ->
     `"decision:approve_baseline:"`.
 
     Pure encoding only — neither `artefact_type` nor `subtype` is validated
@@ -83,7 +78,7 @@ class Permission:
             `CustomRolePermission.permission`/`ModuleRoleDefinition.
             permissions` entry actually stores.
         label: Human-readable label for the Role Management UI's
-            permission-atom picker (Phase 3), e.g. `"decision — approve_
+            permission-atom picker, e.g. `"decision — approve_
             baseline (Architecture)"` or `"Grant Roles"`.
         artefact_type: The artefact type this atom applies to, or `None`
             for an administrative permission.
@@ -111,7 +106,7 @@ def get_all_permissions(db: Session, organization_id: uuid.UUID) -> list[Permiss
     types` (a process-wide set): the sub-type dimension is per-organisation
     *data* (e.g. Decision Management's own `DecisionTypeDefinition` rows),
     so two organisations can see a different vocabulary for the same
-    artefact type. Backs `GET .../permissions` (Phase 3) and the write-time
+    artefact type. Backs `GET .../permissions` and the write-time
     validation `validate_permission_key` (below) performs.
 
     Returns:
@@ -165,7 +160,7 @@ def validate_permission_key(db: Session, organization_id: uuid.UUID, permission:
     """Raises `ValueError` if `permission` is not currently valid for
     `organization_id` (not present in `get_all_permissions`'s own result)
     — called at `CustomRolePermission`/`ModuleRoleDefinition.permissions`
-    write time (Phase 3), mirroring `app.services.relationships.create_
+    write time, mirroring `app.services.relationships.create_
     link`'s identical "validate against the live registry, fail fast"
     treatment of `ArtefactLink.source_type`.
 

@@ -56,7 +56,7 @@ test.describe("server admin manages an organisation's lifecycle", () => {
       const dialog = page.getByRole("dialog", { name: "New organisation" });
       await dialog.getByLabel("Organisation name").fill(orgName);
 
-      // Module 4 (Decision Management) Phase 1's org-creation-choices
+      // Decision Management's org-creation-choices
       // picker (`GET /orgs/creation-choices`) — this page renders it
       // generically with no hardcoded knowledge of Decision Management,
       // so exercising it here is real coverage of that mechanism, not
@@ -64,7 +64,7 @@ test.describe("server admin manages an organisation's lifecycle", () => {
       // `default_selected: true`, so pre-checked; leave Y-Statement
       // unchecked to prove an opt-out is actually respected (checked
       // indirectly — the org still creates successfully with one
-      // deselected — since no Decision Management UI exists yet, Phase 5,
+      // deselected — since no Decision Management UI exists yet,
       // to directly verify which templates a given org ended up with).
       await expect(dialog.getByText("Decision Templates")).toBeVisible();
       const nygard = dialog.getByRole("checkbox", { name: /Nygard/ });

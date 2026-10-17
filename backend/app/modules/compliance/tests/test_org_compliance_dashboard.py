@@ -1,6 +1,5 @@
-"""Tests for the Compliance Module's Phase 14 Org Compliance View +
-Dashboard backend surface (docs/compliance-module-plan.md Phase 14;
-docs/Compliance_Module_Requirements.md §22, §23): the five org-wide
+"""Tests for the Compliance Module's Org Compliance View +
+Dashboard backend surface (§22, §23): the five org-wide
 cross-assignment aggregation endpoints on the org router
 (`non-compliant-requirements`, `pending-approvals`,
 `outstanding-required-actions`, `expiring-evidence`, `reviews-due`) plus
@@ -104,7 +103,7 @@ def test_org_non_compliant_requirements_aggregates_across_projects(client, admin
     assert rows[0]["project_name"] == project_a["name"]
     assert rows[0]["requirement_id"] == child["id"]
     assert rows[0]["justification"] == "Failed thermal test."
-    # Phase 40: `standard_id`/`standard_version_id` for the frontend's
+    # `standard_id`/`standard_version_id` for the frontend's
     # Outstanding-items filters to match on.
     assert rows[0]["standard_id"] == standard["id"]
     assert rows[0]["standard_version_id"] == assignment_a["standard_version_id"]
@@ -132,7 +131,7 @@ def test_org_pending_approvals_aggregates_across_projects(client, admin_token, o
 
 def test_org_outstanding_required_actions_covers_every_project(client, admin_token, org_id):
     """Every `ComplianceRequiredActionAssessment` starts incomplete on
-    materialisation (Phase 7's own design) — so both Project A and Project
+    materialisation — so both Project A and Project
     B, despite very different assessment states, each contribute their own
     (still-incomplete) parent+child required actions with zero extra setup,
     proving this is a genuine per-project aggregation rather than an
@@ -151,7 +150,7 @@ def test_org_outstanding_required_actions_covers_every_project(client, admin_tok
     assert all(row["standard_id"] == standard["id"] for row in org_rows)
     assert all(row["standard_version_id"] == assignment_a["standard_version_id"] for row in org_rows)
 
-    # Project-level listing (new in Phase 14, alongside the org one above)
+    # Project-level listing (alongside the org one above)
     # returns just that project's own two rows.
     project_resp = client.get(
         f"{_project_base(project_a['id'])}/outstanding-required-actions", headers=auth_headers(admin_token)
@@ -255,9 +254,9 @@ def test_org_recent_activity_lists_assessment_changes(client, admin_token, org_i
 
 def test_org_dashboard_endpoints_require_compliance_manager(client, admin_token, org_id):
     """§26 lists "View compliance across projects" specifically under
-    Compliance Manager — a plain org member is forbidden from every Phase
-    14 org-wide endpoint, mirroring `list_all_project_compliance`'s own
-    existing RBAC (confirmed unaffected by this phase); a direct
+    Compliance Manager — a plain org member is forbidden from every
+    org-wide endpoint, mirroring `list_all_project_compliance`'s own
+    existing RBAC (confirmed unaffected); a direct
     `compliance_manager` grant (no org_admin) is sufficient, matching
     `require_module_role`'s existing composition."""
     _setup_two_projects(client, admin_token, org_id)

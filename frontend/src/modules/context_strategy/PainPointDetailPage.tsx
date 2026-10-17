@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/PainPointDetailPage
  *
- * A single Pain Point's full detail (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.3) — mirrors `StrategyDetailPage.tsx`'s overall
+ * A single Pain Point's full detail — mirrors `StrategyDetailPage.tsx`'s overall
  * shape (full field display, lifecycle actions, attachments, comments,
  * relationships), with three structural differences driven directly by Pain
  * Point's own backend design:
@@ -14,7 +13,7 @@
  *    Duplicate — matching `PainPointStatus`'s own three-way branch
  *    (`service._PP_ALLOWED_TRANSITIONS[TRIAGED]`). Confirmation tiers follow
  *    `docs/ux-style-guide.md`'s confirmation-tier principle the same way
- *    Phase 7.1's notes describe: `triage` is a plain click (low-risk,
+ * Strategy's does: `triage` is a plain click (low-risk,
  *    single early-lifecycle step, mirrors Strategy's `propose`/`submit-for-
  *    review`); `reject`/`mark-duplicate` require a `ConfirmDialog` with a
  *    **mandatory** comment (matching backend enforcement —
@@ -25,7 +24,7 @@
  * 3. **Evidence upload is open to any project member; only removal is
  *    manager-gated (Decided by: Agent).** Checked `upload_project_pain_
  *    point_file`'s own docstring first: unlike Strategy/Future State's
- *    owner-gated file upload, source overview §6.5 explicitly lists "Add
+ * owner-gated file upload, §6.5 explicitly lists "Add
  *    evidence" among the broad-creation-model capabilities every project
  *    member gets. In practice this needs **no different frontend wiring**
  *    from Strategy's own `FileAttachmentList` usage — this codebase's
@@ -40,7 +39,7 @@
  *    difference in *who the backend accepts* (any member for upload, manager
  *    only for removal) is real — nothing on this page needs to encode it.
  *
- * Phase 11 adds `PainPointScoringPanel` (per-persona Severity/Frequency/
+ * The page also hosts `PainPointScoringPanel` (per-persona Severity/Frequency/
  * Confidence scoring and the chosen-when-viewing roll-up) and an
  * "Intentional" badge for deliberate limitations.
  *

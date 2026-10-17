@@ -1,8 +1,7 @@
 /**
  * Module: modules/decisions/DecisionTemplateFormModal
  *
- * Create/edit dialog for an org-scoped `DecisionTemplate` (Phase 0 addendum
- * items 1/2/6/7) — nine fields (name, description, and seven per-content-
+ * Create/edit dialog for an org-scoped `DecisionTemplate` — nine fields (name, description, and seven per-content-
  * field prompt texts), too busy for `DefinitionList`'s inline-row-edit
  * shape, so this follows `modules/compliance/StandardFormModal.tsx`'s own
  * precedent: a dedicated `size="lg"` `Modal` form shared by create and edit,

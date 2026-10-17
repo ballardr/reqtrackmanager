@@ -147,8 +147,8 @@ class Settings(BaseSettings):
         allow_external_modules: Deployment-level opt-in for the modular
             feature system's third-party discovery sources
             (`app.modules.registry`'s Python entry-point scan and
-            `extra_modules_path` directory scan, compliance-module-plan.md
-            Phase 1). Off by default, mirroring `MCP_WRITES_ENABLED`'s
+            `extra_modules_path` directory scan
+            Off by default, mirroring `MCP_WRITES_ENABLED`'s
             existing off-by-default precedent in this codebase: a plugin-
             loading mechanism that auto-imports and runs third-party code
             pip-installed (or dropped on disk) into the deployment's own
@@ -189,7 +189,7 @@ class Settings(BaseSettings):
         module_frame_allowed_origins: Comma-separated list of origins the
             frontend is allowed to embed a Tier B remote module in a
             sandboxed `<ModuleFrame>` iframe (`Content-Security-Policy:
-            frame-src`, compliance-module-plan.md Phase 3). Empty by
+            frame-src`). Empty by
             default — `frame-src 'none'` is sent until a deployment operator
             explicitly lists a trusted module origin, mirroring `cors_
             origins`' own comma-separated-list shape but for the opposite
@@ -199,7 +199,7 @@ class Settings(BaseSettings):
             (`app.modules.registry.ModuleFrontendManifest`) must resolve to
             an origin in this list or `get_frontend_manifest` rejects it
             (logs and returns `None`) — mechanically enforced, not trusted
-            from the module's own declaration, mirroring Phase 4's
+            from the module's own declaration, mirroring the
             path-prefix enforcement for MCP tools.
     """
 

@@ -1,6 +1,5 @@
-"""Tests for Context & Strategy's Phase 1 backend API
-(docs/plans/module-01-context-and-strategy-plan.md Phase 1 — Organisation
-& Project Strategy) — the real HTTP endpoints (`router.py`/
+"""Tests for Context & Strategy's Strategy backend API
+(organisation & project scope) — the real HTTP endpoints (`router.py`/
 `project_router.py`), through the `client` fixture, mirroring
 `modules.decisions.tests.test_decisions_api`'s own "go through the real
 API" convention.
@@ -370,7 +369,7 @@ def test_disabled_module_is_404_not_403(client, admin_token):
 
 
 def test_disabled_strategy_subcomponent_is_404_project_scoped(client, admin_token):
-    """Module 0 (Platform Foundations) Phase 4's real end-to-end consumer:
+    """The real end-to-end consumer of sub-component enablement:
     disabling the org's default for the `"strategy"` sub-component of
     `context_strategy` (with the whole module still enabled) 404s the
     project-scoped Strategy endpoints, same posture as the whole module
@@ -524,18 +523,15 @@ def test_direct_file_attachment_upload_list_unlink_and_lock(client, admin_token)
     assert resp.status_code == 409, resp.text
 
 
-# --- Frontend manifest (Phase 7.1) -------------------------------------------
+# --- Frontend manifest -------------------------------------------
 
 
 def test_frontend_manifest_registers_the_strategy_nav_entry():
-    """Phase 7.1 (2026-09-29): this module's first `frontend_manifest` —
-    Strategy's own primary nav entry. Phase 7.2 (2026-09-29) appended Future
-    State's own entry via `additional_nav_entries`; Phase 7.3 (2026-09-29)
-    appended Pain Point's; Phase 7.4 (2026-09-29) appended Guiding
-    Principle's; Phase 7.5 (2026-09-29) appends Open Question's — the fifth
-    and last of the five planned top-level nav-rail entries (Phase 0 Q7,
-    see `module.py`'s own docstring and `docs/decisions.md`'s nav-manifest-
-    extension entry)."""
+    """This module's `frontend_manifest` — Strategy's own primary nav entry,
+    followed by Future State, Pain Point, Guiding Principle and Open
+    Question via `additional_nav_entries` — the five top-level nav-rail
+    entries (see `module.py`'s own docstring and `docs/decisions.md`'s
+    nav-manifest-extension entry)."""
     manifest = get_frontend_manifest(MODULE_KEY)
     assert manifest is not None
     assert manifest.tier == "installed"

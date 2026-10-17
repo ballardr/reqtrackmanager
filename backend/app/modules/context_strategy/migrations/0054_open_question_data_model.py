@@ -1,12 +1,11 @@
-"""Open Question data model (Module 1 Phase 5)
+"""Open Question data model
 
 Revision ID: 0054
 Revises: 0053
 Create Date: 2026-09-28
 
-Adds the four tables backing Context & Strategy's Phase 5 data model
-(docs/plans/module-01-context-and-strategy-plan.md Phase 5 — Open
-Questions), back to migration 0052's Pain Point shape (no identity+version
+Adds the four tables backing Context & Strategy's Open Question data model,
+back to migration 0052's Pain Point shape (no identity+version
 split — see `models.py`'s own docstring for the full reasoning), not
 migration 0053's Guiding Principle shape:
 

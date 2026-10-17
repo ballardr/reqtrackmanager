@@ -4,7 +4,7 @@ Revision ID: 0013
 Revises: 0012
 Create Date: 2026-08-25
 
-2026-08 UX audit roadmap item 514: actions had no draft/change-request gate
+Actions had no draft/change-request gate
 the way a requirement's own fields do (`services.requirements.
 LOCKED_STATUSES`) — once a requirement is APPROVED/COMPLETED, creating or
 linking an action still went straight through with no review step, unlike

@@ -2,7 +2,7 @@
  * Module: modules/compliance/StandardFormModal
  *
  * The create/edit dialog for a `ComplianceStandard` (§2) — extracted out of
- * `StandardsPanel.tsx` (docs/compliance-module-plan.md Phase 18, "Compliance
+ * `StandardsPanel.tsx` ("Compliance
  * Standards" as a first-class, cross-org, project-like nav entity) so both
  * the new cross-org `/standards` list page (`StandardListPage.tsx`, create)
  * and the per-standard `/standards/:standardId` workspace
@@ -11,8 +11,7 @@
  * rule (docs/ux-style-guide.md Principle 8).
  *
  * Create mode always also creates the standard's mandatory first (draft)
- * version in the same dialog (a standard is never left with zero versions —
- * Phase 12's original design decision, unchanged here). When the caller can
+ * version in the same dialog (a standard is never left with zero versions). When the caller can
  * manage standards in more than one organisation, an "Organisation" picker
  * is the dialog's first field — the exact same "org picker as the first
  * field of the same create dialog, hidden entirely when there's only one

@@ -1,5 +1,4 @@
-"""Tests for direct org-group project role grants (PR4 of the follow-up UX
-batch, 2026-09, docs/decisions.md): an org group holding a project role
+"""Tests for direct org-group project role grants (docs/decisions.md): an org group holding a project role
 *directly*, as its own independently-revocable `OrgGroupProjectRole` row
 (`POST`/`DELETE /{project_id}/group-roles/...`), parallel to how
 `UserProjectRole` already works for a single user — genuinely distinct from,
@@ -553,8 +552,7 @@ def test_nested_org_group_membership_also_appears_in_the_project_list(client, ad
     assert any(p["id"] == project["id"] for p in listing), listing
 
 
-# --- Per-group materialize (PR6 of the members/groups directory rework
-# plan, docs/decisions.md) ----------------------------------------------------
+# --- Per-group materialize (docs/decisions.md) ----------------------------------------------------
 #
 # `POST /{project_id}/materialize-inherited-access/group/{org_group_id}`
 # converts an org group's own forward-/member-source-inherited role on a
@@ -740,7 +738,7 @@ def test_materialize_for_group_audit_log_has_expected_detail(client, admin_token
     )
 
 
-# --- Listing (Phase 6, docs/platform-review-2026-09-plan.md) ----------------
+# --- Listing ----------------
 #
 # `GET /{project_id}/group-roles` — the read side the assign/revoke
 # endpoints above never got, added so a group's direct grant is visible and

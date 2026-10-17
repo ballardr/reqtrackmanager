@@ -1,4 +1,4 @@
-"""Persona, Stakeholder and Need owner/champion become principals (users and groups on parity, Phase 3)
+"""Persona, Stakeholder and Need owner/champion become principals
 
 Revision ID: 0077
 Revises: 0076
@@ -6,7 +6,7 @@ Create Date: 2026-10-12
 
 `persona_versions.owner_id` / `champion_id`, `stakeholder_versions.owner_id` and
 `stakeholder_need_versions.owner_id` may now name a user, an organisation group
-or a project group (docs/plans/users-and-groups-parity-plan.md). Each gets a
+or a project group. Each gets a
 `<name>_type` column (existing rows backfill to `user`), the foreign key to
 `users` is dropped (the id now points at one of three tables; the service
 validates it), and a check constraint keeps the pair consistent. Every version

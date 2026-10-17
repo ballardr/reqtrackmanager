@@ -1,6 +1,5 @@
 """Tests for groups as Decision owners and decision makers (users and groups
-on parity, Phase 2 — docs/plans/users-and-groups-parity-plan.md; Module 4
-Phase 10).
+on parity).
 
 Covers: each principal kind on create and update, cross-organisation and
 cross-project rejection, the owner gate for a direct owner / org-group member /

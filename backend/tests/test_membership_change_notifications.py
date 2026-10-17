@@ -1,6 +1,5 @@
 """Tests for the "project members changed by someone who is not a project
-manager" notification (docs/plans/platform-enhancements-2026-10-plan.md
-Phase 2): an org admin / `grant_roles` holder editing a project's membership
+manager" notification: an org admin / `grant_roles` holder editing a project's membership
 without holding a manager role on it tells that project's managers.
 
 Covers the trigger rule (non-manager actor only), every covered endpoint,
@@ -208,7 +207,7 @@ def test_by_email_invite_notifies_managers(client, admin_token, org_id):
 
 
 def test_org_group_membership_change_does_not_notify(client, admin_token, org_id):
-    """The intended mechanism per the plan: editing who is *inside* an org
+    """The intended mechanism: editing who is *inside* an org
     group is not a project member edit and must stay silent."""
     ctx = _managed_project_without_admin_as_manager(client, admin_token, org_id)
     group_id = _create_org_group(client, admin_token, org_id)

@@ -1,8 +1,7 @@
 /**
  * Module: components/ResourcePickerModal
  *
- * Style guide "Pattern: resource picker dialog" (2026-08 UX audit roadmap
- * row 508, "Shared org resources have almost no way to consume them"): a
+ * Style guide "Pattern: resource picker dialog": a
  * two-pane `Modal` — a source list on the left, the selected source's
  * files on the right, pickable and attachable to whatever opened the
  * dialog.

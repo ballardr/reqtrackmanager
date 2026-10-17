@@ -15,7 +15,7 @@
  * only and never changes the field. Contact info is Confidential personal
  * data, flagged as such. `change_note` only renders when editing.
  *
- * Groups (Phase 3c): when creating and `groups` is given, a `TreeSelect` picks the
+ * Groups: when creating and `groups` is given, a `TreeSelect` picks the
  * new stakeholder's groups of this `tier`; they are returned as `group_ids` and
  * applied by the caller after the create (group membership is not part of the
  * stakeholder's own versioned fields). Editing changes groups from the detail

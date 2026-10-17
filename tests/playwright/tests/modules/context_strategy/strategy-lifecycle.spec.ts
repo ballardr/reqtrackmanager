@@ -8,14 +8,12 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase
- * 7.1's own exit criteria — Playwright e2e coverage for Strategy's create
+ * Job to be done: Playwright e2e coverage for Strategy's create
  * -> propose -> approve flow. Exercises the full Context & Strategy
  * frontend (`frontend/src/modules/context_strategy/`) against a real
  * backend: creating a project-scoped Strategy, moving it through its
- * lifecycle to Active on its own detail page, reached via this phase's new
- * "Strategy" nav-rail entry (the first of Phase 0 Q7's five planned
- * top-level entries to actually ship a route).
+ * lifecycle to Active on its own detail page, reached via the
+ * "Strategy" nav-rail entry.
  *
  * Mirrors `modules/decisions/decision-lifecycle.spec.ts`'s own structure
  * and reasoning closely — the closest existing precedent (a project-scoped
@@ -31,7 +29,7 @@ const API_BASE_URL = "http://localhost:8000";
  *   depend on state left behind by another test" rule, every identifier
  *   below is suffixed with `Date.now()`.
  * - **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
- *   (Decided by: Agent) — a considered deviation from this phase's own
+ * (Decided by: Agent) — a considered deviation from the original
  *   brief, not an oversight.** The brief suggested adding fixed persona/
  *   org/project data to that script; checked the closest real precedent
  *   first (`decision-lifecycle.spec.ts`, a structurally identical

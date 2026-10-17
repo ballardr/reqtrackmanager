@@ -1,4 +1,4 @@
-"""Standard-scoped RBAC: standards_manager/standards_contributor (Phase 22)
+"""Standard-scoped RBAC: standards_manager/standards_contributor
 
 Revision ID: 0035
 Revises: 0034
@@ -8,8 +8,7 @@ Adds `compliance_org_settings` (`app.modules.compliance.models.
 ComplianceOrgSettings`) — this module's first org-level settings table,
 holding (so far) one field: the org's designated default compliance-
 managers group, the SSO-friendly fallback that keeps a standard from ever
-being left with no `standards_manager` at all (docs/compliance-module-
-plan.md Phase 22, §3). See that model's own docstring for the full design
+being left with no `standards_manager` at all (§3). See that model's own docstring for the full design
 and why this is a module-owned table rather than a new `Organization`
 column.
 

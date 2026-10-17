@@ -1,12 +1,11 @@
 """
 Module: services.scoring
 
-Core, module-agnostic logic for configurable scoring matrices (Module 1 —
-Context & Strategy — Phase 10). Modules register scoring schemes on
+Core, module-agnostic logic for configurable scoring matrices (Context & Strategy). Modules register scoring schemes on
 `ModuleDefinition.scoring_schemes`; this service seeds, edits, resolves and
 computes against them using the scheme/axis/model *keys* only, so core
 never contains module-specific code (Pain Points use it first; Risk,
-Module 3, reuses it by registering its own scheme).
+reuses it by registering its own scheme).
 
 Responsibilities:
 - Seeding each organisation's axis levels from registry defaults
@@ -20,7 +19,7 @@ Responsibilities:
   project → nearest ancestor → org → registry default, following
   `services.project_hierarchy.resolve_effective_action_types` (always on,
   independent of RBAC inheritance).
-- Per-cell rating overrides for two-axis models (Module 3 Phase 1a): an
+- Per-cell rating overrides for two-axis models: an
   explicit (level, level) -> band label mapping that takes precedence over
   the threshold bands for that cell, resolved and written like bands. Only a
   single cell's own score uses it; a blended score (a roll-up of several
@@ -33,7 +32,7 @@ Responsibilities:
 Design decisions:
 - Levels are org-only (module rows reference them by id), whereas the
   default model and bands are org defaults a project may override
-  (Phase 9 Q3 and the Phase 10 sign-off, Decided by: User).
+  (Decided by: User).
 - Levels are ordered by weight, not a separate sort order (Decided by:
   Agent): the order a scorer sees and the maths can never disagree, and
   the top level (e.g. Severity "Blocker") is simply the highest weight.

@@ -7,7 +7,7 @@
  * pair (or small group) of secondary actions that would otherwise sit on
  * screen together as separate, permanently-visible buttons competing for
  * the same row. See `docs/ux-style-guide.md`'s "Pattern: action menu" and
- * `docs/ux-audit-2026-08.md`'s "Org Admin: Users/Groups, org-level
+ * "Org Admin: Users/Groups, org-level
  * actions..." section — first call site is `OrgAdminPage.tsx`'s Overview
  * group, combining "Rename" and "Export {org} bundle" behind one trigger
  * instead of two adjacent buttons plus an always-visible rename input.
@@ -18,7 +18,7 @@
  *   the same reuse `SplitButtonTrigger` already makes for its own revealed
  *   alternatives list.
  * - `role="menu"` on the menu container and `role="menuitem"` on each
- *   action, per the roadmap item's own ask — `Popover`'s root keeps its
+ * action, as required — `Popover`'s root keeps its
  *   existing `role="dialog"`/`aria-label`, so this nests a real ARIA menu
  *   inside it rather than changing `Popover` itself, which other callers
  *   (that aren't menus at all, e.g. "New group"'s create form) shouldn't

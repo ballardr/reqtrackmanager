@@ -4,8 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { SortState } from "./sortState";
 
 /**
- * Style guide "Pattern: sortable column header" (2026-08 UX audit roadmap,
- * "Column-header sorting on data tables") — a clickable `<th>` that cycles
+ * Style guide "Pattern: sortable column header" — a clickable `<th>` that cycles
  * unsorted → ascending → descending → unsorted on click. Renders as a real
  * `<button>` inside the `<th>` (not a bare `<th onClick>`) so it's reachable
  * and operable by keyboard like every other control in the app, and sets

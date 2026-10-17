@@ -1,8 +1,8 @@
-"""Tests for the generic per-project sequence counter (Module 0 — Platform
-Foundations, Phase 2): `app.models.sequence.ProjectSequenceCounter` and
+"""Tests for the generic per-project sequence counter (Platform
+Foundations): `app.models.sequence.ProjectSequenceCounter` and
 `app.services.sequences`.
 
-Per the plan's own verification bar: confirms codes are never reused
+Confirms codes are never reused
 across artefact types sharing one project (each `(project, artefact_type)`
 pair gets its own counter, not a shared one), and that concurrent creation
 of two artefacts of the same type in the same project never produces a

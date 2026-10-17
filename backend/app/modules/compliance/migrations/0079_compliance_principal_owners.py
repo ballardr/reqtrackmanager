@@ -1,4 +1,4 @@
-"""Compliance standard owner, review owner and required-action assignee become principals (users and groups on parity, Phase 5)
+"""Compliance standard owner, review owner and required-action assignee become principals
 
 Revision ID: 0079
 Revises: 0078
@@ -6,8 +6,8 @@ Create Date: 2026-10-12
 
 `compliance_standards.owner_id` (mandatory), `compliance_reviews.owner_id` and
 `compliance_required_action_assessments.assignee_id` may now name a user, an
-organisation group or (where the record is project-scoped) a project group
-(docs/plans/users-and-groups-parity-plan.md). Each gets a `<name>_type` column
+organisation group or (where the record is project-scoped) a project group.
+Each gets a `<name>_type` column
 (existing rows backfill to `user`), the foreign key to `users` is dropped (the id
 now points at one of three tables; the service validates it), and a check
 constraint keeps the pair consistent.

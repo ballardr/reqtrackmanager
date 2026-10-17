@@ -46,7 +46,7 @@ export function ProjectActionsPage() {
   const [outcomeFilter, setOutcomeFilter] = useState<RequirementActionOutcome | "">("");
   const [typeFilter, setTypeFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
-  // Column-header sorting (2026-08 UX audit roadmap) — this list has no
+  // Column-header sorting — this list has no
   // backend pagination at all (`routers/actions.py::list_actions` always
   // returns every match), so sorting the already-loaded array client-side
   // is safe: unlike `RequirementsPage`/`ChangeRequestsPage`, there's no

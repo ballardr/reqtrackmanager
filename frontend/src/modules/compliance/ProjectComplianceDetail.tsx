@@ -13,12 +13,12 @@
  * (`ProjectCompliancePage`'s own `selected` state), mirroring
  * `StandardsPanel` -> `VersionWorkspace`'s identical "replace the tab's
  * content column in place, not a nested `SidePanel`" drill-down shape
- * (Phase 12 notes) — a requirement tree editor needs more width than a
+ * — a requirement tree editor needs more width than a
  * 420px `SidePanel` allows.
  *
  * The version-migration action (§27, `POST .../migrate-version`) is
  * deliberately not surfaced here — see `api.ts`'s own module docstring for
- * why this is a flagged Phase 13 scope trim, not an oversight.
+ * why this is a flagged scope trim, not an oversight.
  */
 import { useEffect, useState } from "react";
 

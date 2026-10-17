@@ -7,8 +7,7 @@
  * `modules/compliance/EvidencePanel.tsx`'s `EvidenceFormModal` and
  * `StandardFormModal.tsx` both already use.
  *
- * Create mode only: a Decision Template picker (Phase 0 addendum items
- * 1/2/6/7) pre-fills the seven free-text fields with that template's
+ * Create mode only: a Decision Template picker pre-fills the seven free-text fields with that template's
  * guidance prompts, editable immediately afterward — a creation-time
  * convenience only (`Decision` holds no FK back to the template used), so
  * edit mode has no template picker at all, and re-picking a template simply

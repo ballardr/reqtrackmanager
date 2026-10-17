@@ -1,5 +1,4 @@
-"""Tests for the Links panel's backend support (docs/plans/platform-enhancements-2026-10-plan.md
-Phase 6): the `link-candidates` target search, and the graph's `can_link` / per-edge
+"""Tests for the Links panel's backend support: the `link-candidates` target search, and the graph's `can_link` / per-edge
 `dedicated` flags the panel uses to hide controls that would only answer 403/400.
 
 Each test builds its own organisation (`tests.link_world.World`), so none depends on state

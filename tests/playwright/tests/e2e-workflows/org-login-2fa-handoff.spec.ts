@@ -27,7 +27,7 @@ const apiBaseUrl = "http://localhost:8000";
  * rather than mutating the shared Alpha org's sso-config/slug in place and
  * reusing the shared orphan persona. Both were previously safe only
  * because this suite ran single-worker/serial; under real concurrency
- * (Phase 1, docs/platform-review-2026-09-plan.md) either could collide
+ * either could collide
  * with another spec touching Alpha's SSO config or orphan's 2FA/session
  * state (e.g. two-factor-auth.spec.ts). Org-branded login only affects
  * which login method is offered, not which account is reached (see

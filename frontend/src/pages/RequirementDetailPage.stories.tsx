@@ -57,7 +57,7 @@ function mockRequirementDetailApis(
     orgUserSearchMembers?: OrgUser[];
     // Modules enabled for the project (`GET /enabled-modules`); none by default.
     enabledModules?: ModuleNavEntry[];
-    // Platform review 2026-09, Phase 8 — the org's own
+    // The org's own
     // `force_require_change_request_for_approved_links`, fetched via a
     // bare `GET /orgs/{id}` (readable by any org member). Defaults false,
     // matching the org-wide-permissive default.
@@ -166,8 +166,7 @@ export const StakeholderCanEditNotArchive: Story = {
 };
 
 /**
- * A still-draft requirement (2026-08 UX audit roadmap, "No requirement
- * approval action") — a project manager sees the new "Approve" action
+ * A still-draft requirement — a project manager sees the new "Approve" action
  * (`requires_approval` is true for draft/reviewed status), but not "Make
  * change request", since a change request can only target an already-locked
  * requirement; a stakeholder sees neither, since approval is PM-only.
@@ -216,8 +215,7 @@ export const ManagerCanArchiveAndComplete: Story = {
   },
 };
 
-/** Archiving opens the shared `ConfirmDialog` (2026-08 UX audit fix — this
- * used to fire with no confirmation at all, then just `window.confirm`),
+/** Archiving opens the shared `ConfirmDialog`,
  * then shows a success toast (Principle 7) before navigating back to the
  * list. */
 export const ArchivingConfirmsAndShowsToast: Story = {
@@ -264,9 +262,7 @@ export const ArchivingCanBeCancelled: Story = {
  * plus an "Archived" badge — clicking Restore calls the new `/unarchive`
  * endpoint directly with no `ConfirmDialog` (unlike Archive above — mirrors
  * `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
- * immediately) and shows a success toast (2026-08 UX audit roadmap:
- * unarchive endpoint + Restore button — archive used to be one-way for
- * requirements, unlike projects). */
+ * immediately) and shows a success toast. */
 export const ArchivedRequirementShowsRestoreButton: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { is_archived: true });
@@ -467,12 +463,12 @@ export const RemoveLinkConfirms: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 8 — once this project opts into
+/** Once this project opts into
  * `require_change_request_for_approved_links` (or an org-wide force
  * applies, minus exemption) *and* the requirement is locked, adding a link
  * requires a reason and submits an `ADD_LINK` change request instead of
  * calling the direct endpoint — the same change-request-only-once-locked
- * rule item 514 established for actions, extended here to links. */
+ * rule established for actions, extended here to links. */
 export const AddLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
@@ -588,7 +584,7 @@ export const LinkExistingAction: Story = {
 };
 
 /** Same lock rule as `CreateAndLinkActionRoutesThroughChangeRequestOnceLocked`,
- * above, for the link-existing side of the split (item 514). */
+ * above, for the link-existing side of the split. */
 export const LinkExistingActionRoutesThroughChangeRequestOnceLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { is_locked: true, status: "approved" }, {
@@ -651,7 +647,7 @@ export const CreateAndLinkAction: Story = {
   },
 };
 
-/** 2026-08 UX audit roadmap item 514: once the requirement is locked
+/** Once the requirement is locked
  * (APPROVED/COMPLETED), "Create and link a new action" no longer calls the
  * direct create-and-link endpoint — it requires a reason and submits an
  * `ADD_ACTION` change request instead, the same change-request-only-once-
@@ -717,7 +713,7 @@ export const UnlinkActionConfirms: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 8 — `unlink_action` previously had no
+/** `unlink_action` previously had no
  * lock check at all, an asymmetry with the already-gated add side (item
  * 514); once the requirement is locked, unlinking requires a reason and
  * submits a `REMOVE_ACTION` change request instead of calling `DELETE`
@@ -754,7 +750,7 @@ export const UnlinkActionRoutesThroughChangeRequestOnceLocked: Story = {
 };
 
 /**
- * C-C-03: this page was one of the 2026-08 UX audit's explicitly named
+ * C-C-03: this page was one of the explicitly named
  * terminology leak sites — "Make change request", the archive confirm
  * dialog, and every other `strings.requirements.*` string on the page used
  * to hardcode the English noun regardless of the project's own Terminology
@@ -781,8 +777,7 @@ export const TerminologyOverrideAppliesThroughoutPage: Story = {
 };
 
 /** Version-history table renders each row's status through
- * `REQUIREMENT_STATUS_LABEL` (2026-08 UX audit roadmap, "Fix raw-enum
- * filter/table text"), matching the status badge above it on the same
+ * `REQUIREMENT_STATUS_LABEL`, matching the status badge above it on the same
  * page — not the raw backend enum string. */
 export const VersionHistoryShowsLabelledStatus: Story = {
   // The meta's default `withAuth` has a no-op `setUiPreference`, so
@@ -803,8 +798,7 @@ export const VersionHistoryShowsLabelledStatus: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // History and Activity share one card with a view toggle (2026-08 UX
-    // audit roadmap item 516), defaulting to Activity — switch to Version
+    // History and Activity share one card with a view toggle, defaulting to Activity — switch to Version
     // history before the table is on screen at all.
     await userEvent.click(canvas.getByRole("button", { name: "Version history" }));
     await waitFor(() => expect(canvas.getByText("Initial submission")).toBeInTheDocument());
@@ -813,8 +807,7 @@ export const VersionHistoryShowsLabelledStatus: Story = {
   },
 };
 
-/** History and Activity merged into one card with a view toggle (2026-08
- * UX audit roadmap item 516) — both renderings are kept, the toggle just
+/** History and Activity merged into one card with a view toggle — both renderings are kept, the toggle just
  * switches which one shows. Defaults to Activity (see the page's own
  * comment on `historyViewRaw` for why); uses `withStatefulAuth` rather than
  * the meta's default `withAuth`, since a no-op `setUiPreference` couldn't
@@ -873,7 +866,7 @@ export const NoDuplicateHistoryOrActivityCard: Story = {
   },
 };
 
-/** `Pattern: resource picker dialog` (2026-08 UX audit roadmap row 508) —
+/** `Pattern: resource picker dialog` —
  * the Attachments card's new "Link from shared resources" button opens
  * `ResourcePickerModal` over the org's shared resources, and "Attach
  * selected" calls the previously frontend-uncalled `POST .../files/link`
@@ -932,7 +925,7 @@ const ORG_USERS_FOR_ASSIGNEE: OrgUser[] = [
   },
 ];
 
-/** Phase 32 (compliance-module-plan.md): "Create and link a new action"'s
+/** "Create and link a new action"'s
  * assignee field is `AssigneePicker` (a searchable `UserAutocomplete`), not
  * a plain unfiltered `<select>` — searching narrows the org's users and
  * picking one is included in the create-and-link payload. */

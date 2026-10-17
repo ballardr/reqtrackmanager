@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/OpenQuestionRegisterReportView
  *
  * The on-screen view of report R4 (Open Question register), registered as
- * `TierAModuleDefinition.reportViews.r4` (Module 1 Phase 13). The generic
+ * `TierAModuleDefinition.reportViews.r4`. The generic
  * tables list overdue and unowned questions separately from the register, so
  * a reader has to cross-reference; this view shows one ageing table with
  * overdue and unowned rows highlighted in place, then the by-priority and

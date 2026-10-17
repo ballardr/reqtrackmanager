@@ -5,7 +5,7 @@
  * nested under one standard assignment, since a single piece of evidence
  * may support requirements across more than one of a project's standard
  * assignments at once (§13's "multiple compliance requirements and/or
- * standards"; `project_router.py`'s own Phase 8 design). A `DirectoryTable`
+ * standards"; `project_router.py`'s design). A `DirectoryTable`
  * + `FilterPanel` list (style guide "Pattern: directories at scale"), a
  * `Modal` create flow (Principle 3), and a `SidePanel` detail view (edit
  * metadata, revalidate — §15's append-only history — archive/unarchive,
@@ -15,7 +15,7 @@
  *
  * Linking evidence to a specific requirement/required-action assessment is
  * done from the requirement side (`RequirementAssessmentPanel`'s own
- * "Link existing evidence" control, plus Phase 33's "Upload new evidence"
+ * "Link existing evidence" control, plus the "Upload new evidence"
  * inline create-and-link flow, which reuses this file's own exported
  * `EvidenceFormModal` and the same `FileAttachmentList`/`ResourcePickerModal`
  * files step below) — this panel is the canonical evidence CRUD surface,

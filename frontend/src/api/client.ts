@@ -121,8 +121,7 @@ async function request<T>(path: string, options: RequestInit = {}, timeoutMs?: n
 }
 
 /** A page of results from a `limit`/`offset`-paginated list endpoint (U-P-06).
- * `totalUnfiltered` (2026-08 UX audit roadmap: persistent "showing X of Y"
- * result count) is optional — only the requirements/change-requests/projects
+ * `totalUnfiltered` is optional — only the requirements/change-requests/projects
  * list endpoints send the `X-Total-Unfiltered-Count` header it comes from;
  * every other paginated endpoint (and every existing test/story mock built
  * before this field existed) simply omits it, and callers that care fall

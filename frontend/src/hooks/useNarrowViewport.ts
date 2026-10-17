@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
  * kept live via `matchMedia` (not just read once at mount) so a resize or
  * orientation change is reflected immediately.
  *
- * `FilterPanel`'s collapsible filter body (2026-08 UX audit roadmap) is the
+ * `FilterPanel`'s collapsible filter body is the
  * motivating caller: on desktop/wide viewports it must render as if always
  * expanded with no visible toggle, and only below the layout's existing
  * mobile breakpoint should it default to collapsed with a toggle to expand

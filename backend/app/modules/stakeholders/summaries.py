@@ -149,7 +149,7 @@ def _provider(
 
 def _group_provider() -> ArtefactSummaryProvider:
     """Provider for Stakeholder Groups: a project sees its organisation's groups and its own (no
-    hiding, no ancestor fallback — addendum 3, item 27); the finder narrows by scope."""
+    hiding, no ancestor fallback); the finder narrows by scope."""
     scope_labels = {"organization": "Organisation", "project": "Project"}
 
     def build(rows: Sequence[StakeholderGroup]) -> list[ArtefactSummary]:

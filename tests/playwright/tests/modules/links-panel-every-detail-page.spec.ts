@@ -7,7 +7,7 @@ import { API_BASE_URL, setUpOrg } from "./stakeholders/helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/platform-enhancements-2026-10-plan.md Phase 6 — every
+ * Job to be done: — every
  * artefact detail page shows the shared Links panel with an add control, and the
  * panel makes any two artefacts linkable from either end: a Pain Point is addressed
  * by a Decision that implements a Requirement, and the chain reads correctly from

@@ -7,10 +7,9 @@ import { API_BASE_URL, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 3's exit criteria, as delivered through the shared Links panel
- * (`frontend/src/components/ArtefactLinksPanel.tsx`, October 2026 platform
- * enhancements Phase 6) against a real backend: a Stakeholder or Persona links
+ * Job to be done:
+ * As delivered through the shared Links panel
+ * (`frontend/src/components/ArtefactLinksPanel.tsx`) against a real backend: a Stakeholder or Persona links
  * to a Pain Point, a Requirement and a Decision (other modules' records,
  * reached through the generic summary-provider hook), follows a link to the
  * target's own page, removes one behind a tier-1 confirm, and a Persona is

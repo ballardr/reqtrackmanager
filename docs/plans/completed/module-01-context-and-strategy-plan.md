@@ -1,6 +1,6 @@
 # Module 1 — Context & Strategy — Implementation Plan
 
-See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
+See [future-modules-2026-09-index.md](../future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout. **This module now depends
 on [Module 0 — Platform Foundations](module-00-platform-foundations-plan.md)**
 for the generic cross-artefact relationship model — that infrastructure was
@@ -40,7 +40,7 @@ First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
 Access Control (core) to be picked up first in practice — both now shipped;
-see [future-modules-2026-09-index.md](future-modules-2026-09-index.md)'s
+see [future-modules-2026-09-index.md](../future-modules-2026-09-index.md)'s
 resequenced table. This module remains a soft dependency for Decision
 Management's own Phase 7 (the reserved relationship targets and the
 "Create Decision from Open Question" workflow) — Phase 6 confirmed those
@@ -1229,7 +1229,7 @@ complete on Module 4's side except for this soft dependency).
 across every not-yet-built module plan (**Decided by: User**), so that
 narrow, read-only MCP-tool coverage isn't an afterthought once a module's
 API exists — see `docs/modules.md` §6 and
-[Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+[Module 4 (Decision Management)](../module-04-decision-management-plan.md)'s
 shipped `mcp_tools` (`backend/app/modules/decisions/module.py`) as the
 precedent to follow. This module has no single dedicated "backend API"
 phase the way Decision Management's later, more granular plan does — each
@@ -2704,11 +2704,11 @@ Phase 7 sub-phases have shipped, so Phase 8 is no longer gated.
 Added 2026-09-21 at the user's explicit instruction, applied across every
 not-yet-built module plan (**Decided by: User**); the specific scope and
 placement below are this session's own judgment (**Decided by: Agent**),
-modelled closely on [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+modelled closely on [Module 4 (Decision Management)](../module-04-decision-management-plan.md)'s
 docs-website phase of the same name.
 
 **Goal:** add Context & Strategy's user-facing surface to `docs/website/`
-(the published docs site, `docs/plans/docs-website-plan.md`) — what each of
+(the published docs site, `docs/plans/completed/docs-website-plan.md`) — what each of
 the five artefact types is and when to use it, how they relate to each
 other and to Requirements, and their lifecycle states — following the
 site's existing structure, tone, and Mermaid-diagram conventions (per this
@@ -2750,8 +2750,8 @@ or miss amid everything else Phase 7 ships.
   an upstream Pain Point or Strategy, if it does.
 - **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
   every not-yet-built module plan's own "Docs website coverage" phase,
-  alongside [Module 4](module-04-decision-management-plan.md)'s docs-phase
-  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  alongside [Module 4](../module-04-decision-management-plan.md)'s docs-phase
+  addendum of the same date). Follow `docs/plans/completed/docs-website-plan.md`'s
   "Screenshots" standard (1440×900 viewport, captured against the seeded
   demo dataset, stored under `docs/website/static/img/screenshots/`, real
   alt text plus a one-line caption, no surrounding "what this shows/why it
@@ -2862,7 +2862,7 @@ type) plus three cross-cutting pages, under
   `seed_demo_data.py`'s dataset), logged in as `demo.admin@example.com`
   against the "Solstice Robotics" organisation / "Falcon-3 Inspection
   Drone" project.
-- `docs/plans/module-01-context-and-strategy-plan.md` (this file) — Status
+- `docs/plans/completed/module-01-context-and-strategy-plan.md` (this file) — Status
   table, top summary line, "Status / Resume Here", this phase's own
   `**Status:**` line, and this notes section (rewritten in place to
   describe the final structure rather than left describing the
@@ -3009,7 +3009,7 @@ flowchart LR
    also add a **persona importance/weight** field for the weighted-average
    roll-up; this is noted in that plan's Phase 0.
 2. **Module 13 (Product Variants)**, a new module
-   ([module-13-product-variants-plan.md](module-13-product-variants-plan.md)).
+   ([module-13-product-variants-plan.md](../module-13-product-variants-plan.md)).
    Only the *variant link* on intentional pain points needs it. The
    `is_intentional` flag ships without it, and the link target stays
    reserved until Module 13 lands, the same way Decision targets were

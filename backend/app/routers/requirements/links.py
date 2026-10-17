@@ -3,7 +3,7 @@ Module: routers.requirements.links
 
 Requirement-to-requirement traceability links (C-G-09): create/list/delete,
 each subject to the project's opt-in "approved requirements need a change
-request to add/remove a link" rule (Platform review 2026-09, Phase 8).
+request to add/remove a link" rule.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def create_link(
     Not gated by either requirement's lock state by default — see
     `models.relationship.ArtefactLink`'s docstring for why traceability
     metadata sits outside C-G-12's change-log boundary. Platform review
-    2026-09, Phase 8
+    2026-09
     deliberately supersedes that default for a project (or org) that opts
     in: once `requirement_id`'s current version is locked (approved) *and*
     `services.requirements.requires_change_request_for_links` is true for
@@ -147,7 +147,7 @@ def delete_link(
     target is `requirement_id` — deletable from either end, not just the
     end it was created from.
 
-    Same opt-in Platform review 2026-09, Phase 8 gate as `create_link`,
+    Same opt-in gate as `create_link`,
     above — checked against `requirement_id` (the endpoint's own scoped
     requirement), not whichever end the link's other requirement happens to
     be in.

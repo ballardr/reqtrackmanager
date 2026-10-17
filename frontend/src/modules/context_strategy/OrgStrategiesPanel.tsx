@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/OrgStrategiesPanel
  *
  * The org-scoped equivalent of `ProjectStrategiesPage.tsx` — an
- * organisation's own org-scoped Strategy records (Phase 0 Q2's org/project
+ * organisation's own org-scoped Strategy records (the org/project
  * scope discriminator), rendered as an `OrgOverviewPage.tsx` `ResourceMenu`
  * group (`module.ts`'s `orgOverviewSections`).
  *
@@ -26,7 +26,7 @@
  * Org Management's administration-focused framing (roles, modules, org
  * settings) — a Strategy Owner reviewing/approving Strategy is checking on
  * organisational state, not configuring the org. Revisit if a later
- * sub-phase's own artefact type (e.g. Guiding Principle, also org/project
+ * artefact type (e.g. Guiding Principle, also org/project
  * scoped) suggests a different, more consistent placement across all of
  * Context & Strategy's org-scoped surfaces.
  */

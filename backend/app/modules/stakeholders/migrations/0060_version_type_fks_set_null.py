@@ -1,4 +1,4 @@
-"""Let persona/stakeholder type references cascade away with their org/project (Module 2 Phase 1.2)
+"""Let persona/stakeholder type references cascade away with their org/project
 
 Revision ID: 0060
 Revises: 0059
