@@ -40,6 +40,7 @@ import {
   type ComplianceRequirementNode,
   type ProjectComplianceRequirement,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 interface Props {
   orgId: string;
@@ -133,10 +134,10 @@ export function ApplicabilityTree({
               <div className="row" style={{ flexWrap: "wrap", gap: "0.3rem" }}>
                 <ApplicabilityBadge pcr={pcr} />
                 {pcr.effective_applicability === "applicable" && (
-                  <span className="badge">{COMPLIANCE_STATUS_LABEL[pcr.compliance_status]}</span>
+                  <Badge>{COMPLIANCE_STATUS_LABEL[pcr.compliance_status]}</Badge>
                 )}
                 {pcr.approval_state !== "not_assessed" && (
-                  <span className="badge">{COMPLIANCE_APPROVAL_STATE_LABEL[pcr.approval_state]}</span>
+                  <Badge>{COMPLIANCE_APPROVAL_STATE_LABEL[pcr.approval_state]}</Badge>
                 )}
               </div>
             )}

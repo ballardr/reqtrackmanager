@@ -48,6 +48,7 @@ import { DecisionFormModal } from "./DecisionFormModal";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionComment, DecisionFieldValues, DecisionTypeDefinition } from "./types";
 import type { FileAsset } from "../../api/types";
+import { Badge } from "../../components/Badge";
 
 export function DecisionDetailPage() {
   const { projectId, decisionId } = useParams<{ projectId: string; decisionId: string }>();
@@ -157,9 +158,9 @@ export function DecisionDetailPage() {
       <Link to={`/projects/${projectId}/modules/decisions`}>← Decisions</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{decision.unique_code}</h1>
-        <span className={`badge badge--${DECISION_STATUS_TONE[decision.status]}`}>
+        <Badge tone={DECISION_STATUS_TONE[decision.status]}>
           {DECISION_STATUS_LABEL[decision.status]}
-        </span>
+        </Badge>
       </div>
       <div className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>

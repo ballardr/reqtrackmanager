@@ -7,6 +7,7 @@ import {
   LINKS_ARTEFACT_ID, LINKS_PROJECT_ID,
 } from "../testing/artefactLinksFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { orphanedControlViolations } from "../testing/orphanedControls";
 import { ArtefactLinksPanel } from "./ArtefactLinksPanel";
 
 const DECISION = buildGraphNode();
@@ -515,5 +516,26 @@ export const HasNoTraceWithoutLinks: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("No links yet.")).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Trace" })).not.toBeInTheDocument();
+  },
+};
+
+/** A 200-character linked title wraps in its own box; the Remove button stays on the row, and the status and project chips follow the title. */
+export const LongLinkedTitleKeepsRemoveBesideIt: Story = {
+  decorators: [(Story) => <div style={{ width: 340 }}><Story /></div>],
+  args: {
+    api: buildLinksApi({
+      graph: fn(async () =>
+        buildGraph([
+          [buildGraphNode({
+            label: `DEC-009 ${"An exceptionally long decision title that keeps going ".repeat(4)}`, status: "draft",
+          })],
+        ])),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const remove = await waitFor(() => canvas.getByRole("button", { name: /^Remove/ }));
+    await expect(remove.getBoundingClientRect().height).toBeLessThan(40);
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
   },
 };

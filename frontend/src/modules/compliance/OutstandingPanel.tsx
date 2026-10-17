@@ -52,6 +52,7 @@ import {
   type OutstandingRequiredAction,
   type PendingApproval,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();
@@ -242,7 +243,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
               {filteredReviewsDue.map((review) => (
                 <li key={review.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                   {review.frequency_label} — due {review.next_due_date}
-                  {review.schedule_state && <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[review.schedule_state]}</span>}
+                  {review.schedule_state && <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[review.schedule_state]}</Badge>}
                 </li>
               ))}
             </ul>

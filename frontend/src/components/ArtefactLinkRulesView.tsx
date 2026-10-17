@@ -8,6 +8,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import type { LinkTypesScope } from "./LinkTypesPanel";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { OverridePill } from "./OverridePill";
+import { Badge } from "./Badge";
 
 /** A project-scope rule carries where it comes from; an organisation rule does not. */
 function isProjectRule(rule: ArtefactLinkRule | ProjectArtefactLinkRule): rule is ProjectArtefactLinkRule {
@@ -80,9 +81,9 @@ export function ArtefactLinkRulesView({
         {scope.kind === "project" ? strings.orgAdmin.artefactRuleProjectHint : strings.orgAdmin.artefactRulesHint}
       </p>
       {readOnly && (
-        <div role="status" className="badge" style={{ alignSelf: "flex-start" }}>
+        <Badge role="status">
           {strings.orgAdmin.projectLinkTypesRulesLocked}
-        </div>
+        </Badge>
       )}
       {rules.map((rule) => {
         const allowed = rule.link_type_ids;

@@ -13,6 +13,8 @@
 import type { ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import { Badge } from "./Badge";
+import { ItemRow } from "./ItemRow";
 
 /** What a row needs to draw, independent of whether it was collected, stored or previewed. */
 export interface ProposedLinkView {
@@ -29,25 +31,30 @@ export function ProposedLinkRow({
   view,
   leading,
   trailing,
+  actions,
   muted = false,
 }: {
   view: ProposedLinkView;
   /** A control before the row (the approval dialog's checkbox). */
   leading?: ReactNode;
-  /** Badges, a reason or a remove button after the row. */
+  /** Badges or a reason after the row; wraps with the text. */
   trailing?: ReactNode;
+  /** Controls (a remove button) that stay beside the row however long its text is. */
+  actions?: ReactNode;
   /** Drawn greyed out (a link that cannot be merged). */
   muted?: boolean;
 }) {
   const strings = useStrings();
   return (
-    <li className="artefact-links__row" style={muted ? { opacity: 0.75 } : undefined}>
-      {leading}
-      <span className="badge">{view.phrase ?? "—"}</span>
-      <span className="artefact-links__target">{view.label ?? strings.changeRequests.hiddenRecord}</span>
-      <span className="badge badge--muted">{view.typeLabel}</span>
-      {view.projectName && <span className="badge badge--info">{strings.artefactLinks.otherProjectBadge(view.projectName)}</span>}
-      {trailing}
-    </li>
+    <ItemRow as="li" className="artefact-links__row" style={muted ? { opacity: 0.75 } : undefined} actions={actions}>
+      <div className="artefact-links__summary" data-wrap-ok>
+        {leading}
+        <Badge>{view.phrase ?? "—"}</Badge>
+        <span className="artefact-links__target">{view.label ?? strings.changeRequests.hiddenRecord}</span>
+        <Badge tone="muted">{view.typeLabel}</Badge>
+        {view.projectName && <Badge tone="info">{strings.artefactLinks.otherProjectBadge(view.projectName)}</Badge>}
+        {trailing}
+      </div>
+    </ItemRow>
   );
 }

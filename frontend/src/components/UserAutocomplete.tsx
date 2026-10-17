@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { ExternalUserMatch, OrgGroup, OrgUser, OrgUserSearchResult, ProjectGroup } from "../api/types";
 import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
+import { Badge } from "./Badge";
 
 const strings = t();
 
@@ -326,7 +327,7 @@ export function UserAutocomplete({
                 onClick={() => pickGroup(g)}
               >
                 <Users size={14} aria-hidden="true" />
-                {g.name} <span className="badge">{strings.userAutocomplete.groupBadge}</span>
+                {g.name} <Badge>{strings.userAutocomplete.groupBadge}</Badge>
               </button>
             );
           })}
@@ -348,7 +349,7 @@ export function UserAutocomplete({
                 onClick={() => pickProjectGroup(g)}
               >
                 <FolderKanban size={14} aria-hidden="true" />
-                {g.name} <span className="badge">{strings.userAutocomplete.projectGroupBadge}</span>
+                {g.name} <Badge>{strings.userAutocomplete.projectGroupBadge}</Badge>
               </button>
             );
           })}

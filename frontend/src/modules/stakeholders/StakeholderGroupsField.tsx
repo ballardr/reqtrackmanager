@@ -17,6 +17,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { buildGroupTree, groupPath, groupSelectNodes } from "./groupTree";
 import type { StakeholderGroup, StakeholderGroupRef } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function StakeholderGroupsField({
   current,
@@ -55,7 +56,7 @@ export function StakeholderGroupsField({
       ) : (
         <span className="row" style={{ gap: "0.35rem" }}>
           {current.map((g) => (
-            <span key={g.id} className="badge" title={groupPath(groups, g.id)}>{g.name}</span>
+            <Badge key={g.id} title={groupPath(groups, g.id)}>{g.name}</Badge>
           ))}
         </span>
       )}

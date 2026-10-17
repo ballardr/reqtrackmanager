@@ -20,6 +20,7 @@ import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { SidePanel } from "../../components/SidePanel";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionTypeDefinition } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function DecisionQuickViewPanel({
   projectId,
@@ -37,9 +38,9 @@ export function DecisionQuickViewPanel({
   return (
     <SidePanel title={decision.unique_code} onClose={onClose}>
       <div className="stack">
-        <span className={`badge badge--${DECISION_STATUS_TONE[decision.status]}`}>
+        <Badge tone={DECISION_STATUS_TONE[decision.status]}>
           {DECISION_STATUS_LABEL[decision.status]}
-        </span>
+        </Badge>
         <h2 style={{ margin: 0 }}>{decision.title}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{decisionType?.name ?? "—"}</p>
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{decision.decision_statement}</p>

@@ -29,6 +29,7 @@ import { projectPainPointApi } from "./api";
 import { BlockerBadge, PainPointScoreBadge } from "./PainPointScoreBadges";
 import { PAIN_POINT_ROLLUP_LABEL, PAIN_POINT_SCORE_TARGET_STATUS_LABEL } from "./types";
 import type { PainPointRollup, PainPointScoreEntry, PainPointScoreInput, PainPointScores } from "./types";
+import { Badge } from "../../components/Badge";
 
 const SCHEME_KEY = "pain_point";
 const AXIS_KEYS = ["severity", "frequency", "confidence"] as const;
@@ -193,7 +194,7 @@ export function PainPointScoringPanel({
             <div className="row" style={{ gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
               <strong>{row.label}</strong>
               {row.note && <span className="text-muted">{row.note}</span>}
-              {row.retired && <span className="badge badge--muted">{PAIN_POINT_SCORE_TARGET_STATUS_LABEL.inactive}</span>}
+              {row.retired && <Badge tone="muted">{PAIN_POINT_SCORE_TARGET_STATUS_LABEL.inactive}</Badge>}
               {saved && <PainPointScoreBadge score={saved.score} />}
               {saved && <BlockerBadge summary={{ is_blocker: saved.is_blocker, blocker_labels: [] }} />}
             </div>

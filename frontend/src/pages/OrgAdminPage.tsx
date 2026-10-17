@@ -91,6 +91,7 @@ import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { Badge } from "../components/Badge";
 
 /**
  * The 7 resource-menu groups Org Admin's previous 15 flat accordions were
@@ -2374,7 +2375,7 @@ export function OrgAdminPage() {
           const invite = row.invite;
           return (
             <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-              <span className="badge">{PENDING_INVITE_STATUS_LABEL[invite.status]}</span>
+              <Badge>{PENDING_INVITE_STATUS_LABEL[invite.status]}</Badge>
               <button
                 className="btn"
                 disabled={resendingOrgInviteId === invite.id}
@@ -2870,7 +2871,7 @@ export function OrgAdminPage() {
                               <Link to={`/projects/${p.project_id}`}>{p.project_name}</Link>
                               <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
                                 {shownRoles.map((r) => (
-                                  <span key={r} className="badge">{PROJECT_ROLE_LABEL[r]}</span>
+                                  <Badge key={r}>{PROJECT_ROLE_LABEL[r]}</Badge>
                                 ))}
                                 {canExpand && (
                                   <button
@@ -3182,7 +3183,7 @@ export function OrgAdminPage() {
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <span className="row" style={{ gap: "0.5rem" }}>
                         {p.name}
-                        {p.is_archived && <span className="badge">{strings.projects.archived}</span>}
+                        {p.is_archived && <Badge>{strings.projects.archived}</Badge>}
                       </span>
                       <button className="btn" onClick={() => openManageUsers(p)}>
                         {strings.orgAdmin.manageUsers}
@@ -3423,7 +3424,7 @@ export function OrgAdminPage() {
               {reportTemplates.map((tpl) => (
                 <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
                   <span>
-                    {tpl.name} <span className="badge" style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</span>
+                    {tpl.name} <Badge style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</Badge>
                   </span>
                   <div className="row" style={{ gap: "0.4rem" }}>
                     <button className="btn" onClick={() => startEditTemplate(tpl)}>
@@ -4163,7 +4164,7 @@ export function OrgAdminPage() {
                       <div className="card stack" key={role.id} style={{ gap: "0.5rem" }}>
                         <div className="row" style={{ justifyContent: "space-between" }}>
                           <strong>{role.name}</strong>
-                          <span className="badge">{customRoleScopeLabel(role.scope)}</span>
+                          <Badge>{customRoleScopeLabel(role.scope)}</Badge>
                         </div>
                         {role.scope === "project" && (
                           <label className="stack" style={{ gap: "0.25rem", maxWidth: 320 }}>

@@ -55,6 +55,7 @@ import {
   type ComplianceStandardMembers,
   type ComplianceStandardRoleKey,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 const STANDARD_ROLE_KEYS: ComplianceStandardRoleKey[] = ["standards_manager", "standards_contributor"];
 
@@ -176,7 +177,7 @@ export function StandardMembersSection({
         ) : (
           <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
             <Users size={14} aria-hidden="true" />
-            {row.group.group_name} <span className="badge">Org group</span>
+            {row.group.group_name} <Badge>Org group</Badge>
           </span>
         ),
     },

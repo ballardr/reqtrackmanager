@@ -59,6 +59,7 @@ import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import * as complianceApi from "./api";
 import { RequirementMappingsModal } from "./RequirementMappingsModal";
 import type { ComplianceActionType, ComplianceRequiredAction, ComplianceRequirement, ComplianceRequirementNode } from "./types";
+import { Badge } from "../../components/Badge";
 
 interface Props {
   orgId: string;
@@ -82,12 +83,11 @@ function ClarificationBadge({ requirement }: { requirement: ComplianceRequiremen
   if (requirement.clarification_count === 0) return null;
   const times = requirement.clarification_count === 1 ? "1 time" : `${requirement.clarification_count} times`;
   return (
-    <span
-      className="badge"
-      title={`Clarified ${times}. Most recent note: ${requirement.last_clarification_note || "(no note)"}`}
-    >
-      <MessageSquareText size={12} /> Clarified
-    </span>
+    <Badge
+      icon={<MessageSquareText size={12} />}
+      title={`Clarified ${times}. Most recent note: ${requirement.last_clarification_note || "(no note)"}`}>
+      Clarified
+    </Badge>
   );
 }
 

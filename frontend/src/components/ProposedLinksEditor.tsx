@@ -84,10 +84,10 @@ export function ProposedLinksEditor({
                 phrase: link.phrase, label: link.otherLabel, typeLabel: link.otherTypeLabel,
                 projectName: link.otherProjectLabel,
               }}
-              trailing={
+              actions={
                 <button
                   type="button"
-                  className="btn btn-danger artefact-links__remove"
+                  className="btn btn-danger"
                   title={strings.common.remove}
                   aria-label={strings.changeRequests.removeProposedLinkLabel(link.phrase, link.otherLabel)}
                   onClick={() => onChange(links.filter((_, i) => i !== index))}

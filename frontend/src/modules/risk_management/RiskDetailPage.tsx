@@ -43,6 +43,7 @@ import {
 } from "./useRiskScheme";
 import { RISK_STATUS_LABEL, RISK_STATUS_TONE, TREATMENT_STRATEGY_LABEL } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus, RiskVersion } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** "Likely × Major" (and "× Undetectable" when scored), or "—" when nothing is set. */
 function levelSummary(
@@ -150,9 +151,9 @@ export function RiskDetailPage() {
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{risk.unique_code}</h1>
         <span className="row" style={{ gap: "0.5rem" }}>
-          {risk.is_review_overdue && <span className="badge badge--danger">Review overdue</span>}
-          {risk.is_archived && <span className="badge badge--muted">Archived</span>}
-          <span className={`badge badge--${RISK_STATUS_TONE[risk.status]}`}>{RISK_STATUS_LABEL[risk.status]}</span>
+          {risk.is_review_overdue && <Badge tone="danger">Review overdue</Badge>}
+          {risk.is_archived && <Badge tone="muted">Archived</Badge>}
+          <Badge tone={RISK_STATUS_TONE[risk.status]}>{RISK_STATUS_LABEL[risk.status]}</Badge>
         </span>
       </div>
       <div className="stack">
@@ -190,9 +191,9 @@ export function RiskDetailPage() {
               </span>
             </RecordFieldGroup>
             <RecordFieldGroup label="Treatment">
-              <span className={`badge badge--${risk.is_effectively_treated ? "accent" : "muted"}`}>
+              <Badge tone={risk.is_effectively_treated ? "accent" : "muted"}>
                 {risk.is_effectively_treated ? `${risk.effective_treatment_count} effective` : "No effective treatment"}
-              </span>
+              </Badge>
             </RecordFieldGroup>
           </div>
           <RiskMatrix scheme={scheme} risks={[risk]} basis="both" />

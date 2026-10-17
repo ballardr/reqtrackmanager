@@ -1,4 +1,5 @@
 import { t } from "../i18n/strings";
+import { Badge } from "./Badge";
 
 const strings = t();
 
@@ -24,11 +25,11 @@ export function OverridePill({
   custom, onReset, disabled, defaultLabel, resetLabel,
 }: { custom: boolean; onReset?: () => void; disabled?: boolean; defaultLabel?: string; resetLabel?: string }) {
   if (!custom) {
-    return <span className="badge">{defaultLabel ?? strings.common.platformDefault}</span>;
+    return <Badge>{defaultLabel ?? strings.common.platformDefault}</Badge>;
   }
   return (
     <span className="row" style={{ gap: "0.5rem", display: "inline-flex" }}>
-      <span className="badge">{strings.common.customValue}</span>
+      <Badge>{strings.common.customValue}</Badge>
       {onReset && (
         <button type="button" className="btn" onClick={onReset} disabled={disabled}>
           {resetLabel ?? strings.common.resetToPlatformDefault}

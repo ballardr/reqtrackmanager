@@ -27,6 +27,7 @@ import { projectStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function ProjectStrategiesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -80,7 +81,7 @@ export function ProjectStrategiesPage() {
     { key: "priority", label: "Priority", render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
     {
       key: "status", label: "Status",
-      render: (s) => <span className={`badge badge--${STRATEGY_STATUS_TONE[s.status]}`}>{STRATEGY_STATUS_LABEL[s.status]}</span>,
+      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
     },
     { key: "version", label: "Version", render: (s) => `v${s.version_number}` },
   ];

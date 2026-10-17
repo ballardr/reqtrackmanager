@@ -71,6 +71,7 @@ import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDI
 import type {
   GuidingPrinciple, GuidingPrincipleComment, GuidingPrincipleFieldValues, GuidingPrincipleVersion,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * same generic confirm-dialog-copy pattern as `StrategyDetailPage.tsx`'s own
@@ -248,9 +249,9 @@ export function GuidingPrincipleDetailPage() {
       <Link to={backLink}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{guidingPrinciple.name}</h1>
-        <span className={`badge badge--${GUIDING_PRINCIPLE_STATUS_TONE[guidingPrinciple.status]}`}>
+        <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[guidingPrinciple.status]}>
           {GUIDING_PRINCIPLE_STATUS_LABEL[guidingPrinciple.status]}
-        </span>
+        </Badge>
       </div>
       <div className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>

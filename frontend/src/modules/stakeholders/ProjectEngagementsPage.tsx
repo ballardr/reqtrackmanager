@@ -25,6 +25,7 @@ import { EngagementFormModal } from "./EngagementFormModal";
 import { RecordListView } from "./RecordListView";
 import type { Engagement, EngagementFieldValues } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
+import { Badge } from "../../components/Badge";
 
 type Option = { value: string; label: string };
 
@@ -118,7 +119,7 @@ export function ProjectEngagementsPage() {
           { key: "participants", label: "Participants", render: (e) => e.participant_count + e.anonymous_participant_count },
           {
             key: "retention", label: "Retention",
-            render: (e) => (e.retention_due ? <span className="badge badge--warning">Review due</span> : e.retain_until ? `Until ${e.retain_until}` : "—"),
+            render: (e) => (e.retention_due ? <Badge tone="warning">Review due</Badge> : e.retain_until ? `Until ${e.retain_until}` : "—"),
           },
         ]}
         extraFilters={

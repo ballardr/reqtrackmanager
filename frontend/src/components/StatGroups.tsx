@@ -27,6 +27,7 @@ import { needsAttention } from "../utils/needsAttention";
 import type { StatBarItem } from "./StatBar";
 import { isInteractive } from "../utils/statFigureAction";
 import { StatFigureLabel } from "./StatFigureLabel";
+import { Badge } from "./Badge";
 
 export interface StatGroup {
   key: string;
@@ -49,9 +50,9 @@ export function StatGroups({ groups }: { groups: StatGroup[] }) {
             <div className="stat-group-head">
               <h3 className="stat-group-title">{group.title}</h3>
               {group.items.some((i) => i.gap) && (
-                <span className={`badge badge--${attention > 0 ? "warning" : "muted"}`}>
+                <Badge tone={attention > 0 ? "warning" : "muted"}>
                   {attention > 0 ? `Needs attention · ${attention}` : "No gaps"}
-                </span>
+                </Badge>
               )}
             </div>
             <dl className="stat-group-rows">
@@ -62,10 +63,10 @@ export function StatGroups({ groups }: { groups: StatGroup[] }) {
                   </dt>
                   <dd className={item.gap && !needsAttention(item) ? "text-muted" : undefined}>
                     {needsAttention(item) ? (
-                      <span className="badge badge--warning">
+                      <Badge tone="warning">
                         {item.value}
                         <span className="sr-only"> needs attention</span>
-                      </span>
+                      </Badge>
                     ) : (
                       item.value
                     )}

@@ -162,6 +162,7 @@ import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { Popover } from "./Popover";
 import { cycleSort, type SortState } from "./sortState";
+import { Badge } from "./Badge";
 
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 const PAGE_SIZE = 20;
@@ -441,7 +442,7 @@ export function ProjectMembersTable({
         // column) rather than a whole extra Type column.
         return (
           <span className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-            <span className="badge">{strings.membersTable.groupRowBadge}</span>
+            <Badge>{strings.membersTable.groupRowBadge}</Badge>
             {row.group.org_group_name}
           </span>
         );
@@ -465,7 +466,7 @@ export function ProjectMembersTable({
           const invite = row.invite;
           return (
             <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-              <span className="badge">{PENDING_INVITE_STATUS_LABEL[invite.status]}</span>
+              <Badge>{PENDING_INVITE_STATUS_LABEL[invite.status]}</Badge>
               <button
                 className="btn"
                 disabled={resendingInviteId === invite.id}

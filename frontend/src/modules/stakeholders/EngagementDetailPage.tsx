@@ -43,6 +43,7 @@ import { ResearchPromptsPanel } from "./ResearchPromptsPanel";
 import type { Engagement, EngagementFieldValues, OutcomeTargetType, StakeholderGroup } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
 import { useResearchExtras } from "./useResearchExtras";
+import { Badge } from "../../components/Badge";
 
 type Option = { value: string; label: string };
 
@@ -144,8 +145,8 @@ export function EngagementDetailPage() {
           <span className="text-muted" style={{ fontSize: "0.9rem" }}>{engagement.unique_code}</span>
         </span>
         <span className="row" style={{ gap: "0.5rem" }}>
-          <span className="badge">{ENGAGEMENT_CHANNEL_LABEL[engagement.channel]}</span>
-          {engagement.retention_due && <span className="badge badge--warning">Retention review due</span>}
+          <Badge>{ENGAGEMENT_CHANNEL_LABEL[engagement.channel]}</Badge>
+          {engagement.retention_due && <Badge tone="warning">Retention review due</Badge>}
         </span>
       </div>
 

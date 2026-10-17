@@ -96,6 +96,7 @@ import {
   type OutstandingRequiredAction,
 } from "./types";
 import { useOrgComplianceStatus } from "./useOrgComplianceStatus";
+import { Badge } from "../../components/Badge";
 
 interface DashboardData {
   nonCompliant: OrgNonCompliantRequirement[];
@@ -238,7 +239,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
                   {" — "}
                   {row.review.frequency_label} — due {row.review.next_due_date}
                   {row.review.schedule_state && (
-                    <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</span>
+                    <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</Badge>
                   )}
                 </li>
               ))}

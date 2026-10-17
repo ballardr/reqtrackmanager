@@ -32,6 +32,7 @@ import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycle
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Need, NeedFieldValues, NeedHolderKind, NeedVersion } from "./types";
 import { NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
+import { Badge } from "../../components/Badge";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder Need activated.",
@@ -140,7 +141,7 @@ export function NeedDetailPage() {
       <Link to={`/projects/${projectId}/modules/stakeholders/needs`}>← Needs</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{need.name}</h1>
-        <span className={`badge badge--${NEED_STATUS_TONE[need.status]}`}>{NEED_STATUS_LABEL[need.status]}</span>
+        <Badge tone={NEED_STATUS_TONE[need.status]}>{NEED_STATUS_LABEL[need.status]}</Badge>
       </div>
 
       <div className="stack">

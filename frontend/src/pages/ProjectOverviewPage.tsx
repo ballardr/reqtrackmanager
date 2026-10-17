@@ -15,6 +15,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { getInstalledModule } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
+import { Badge } from "../components/Badge";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. Every
@@ -176,7 +177,7 @@ export function ProjectOverviewPage() {
             >
               <div className="row" style={{ justifyContent: "space-between", fontSize: "0.85rem" }}>
                 <span>
-                  {s.name} <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
+                  {s.name} <Badge>{STAGE_STATUS_LABEL[s.status]}</Badge>
                 </span>
                 <span className="text-muted">{s.completed_percent}%</span>
               </div>
@@ -206,7 +207,7 @@ export function ProjectOverviewPage() {
               style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
             >
               <span>
-                <span className="badge">{activityEntityLabel(c.entity_type, orgLabelCap)}</span> {describeActivityEntry(c)}
+                <Badge>{activityEntityLabel(c.entity_type, orgLabelCap)}</Badge> {describeActivityEntry(c)}
                 {link && (
                   <>
                     {" "}

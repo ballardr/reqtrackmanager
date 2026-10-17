@@ -42,6 +42,7 @@ import { orgFutureStateApi, projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -183,9 +184,9 @@ export function FutureStateDetailPage() {
       <Link to={backLink}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{futureState.title}</h1>
-        <span className={`badge badge--${FUTURE_STATE_STATUS_TONE[futureState.status]}`}>
+        <Badge tone={FUTURE_STATE_STATUS_TONE[futureState.status]}>
           {FUTURE_STATE_STATUS_LABEL[futureState.status]}
-        </span>
+        </Badge>
       </div>
       <div className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>

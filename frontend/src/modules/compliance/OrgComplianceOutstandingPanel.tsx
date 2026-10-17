@@ -78,6 +78,7 @@ import {
   type OrgReviewDue,
   type OutstandingRequiredAction,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 type Category = "" | "non_compliant" | "pending" | "actions" | "evidence" | "reviews";
 type EvidenceValidityFilter = "" | Extract<ComplianceEvidenceValidityState, "expired" | "expiring_soon">;
@@ -333,7 +334,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
                 {filteredEvidence.map((row) => (
                   <li key={row.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                     <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — {row.title}
-                    <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[row.validity_state]}</span>
+                    <Badge className="badge-after">{COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[row.validity_state]}</Badge>
                     {row.expiry_date && <span className="text-muted"> (expires {row.expiry_date})</span>}
                   </li>
                 ))}
@@ -352,7 +353,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
                 {filteredReviewsDue.map((row) => (
                   <li key={`${row.project_id}-${row.review.id}`} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                     <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — {row.review.frequency_label} — due {row.review.next_due_date}
-                    {row.review.schedule_state && <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</span>}
+                    {row.review.schedule_state && <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</Badge>}
                   </li>
                 ))}
               </ul>

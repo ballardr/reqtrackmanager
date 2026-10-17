@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import type { BadgeTone } from "../api/types";
+import { badgeClassName } from "./badgeClassName";
 
 /**
  * A `.badge` that also acts as a filter shortcut: clicking it applies (or,
@@ -35,7 +36,7 @@ export function FilterBadge({
   return (
     <button
       type="button"
-      className={tone ? `badge badge--${tone}` : "badge"}
+      className={badgeClassName(tone)}
       onClick={onClick}
       title={title}
       style={{

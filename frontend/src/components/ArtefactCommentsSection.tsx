@@ -18,12 +18,14 @@
  * Attachment upload/remove and edit are each opt-in via their callback; edit
  * is offered only on the current user's own comments.
  */
-import { Paperclip, Pencil, Trash2 } from "lucide-react";
+import { Paperclip, Pencil } from "lucide-react";
 import { useState } from "react";
 
 import { fileUrl } from "../api/client";
 import type { FileAsset } from "../api/types";
 import { FileUploadTrigger } from "./FileUploadTrigger";
+import { ItemRow } from "./ItemRow";
+import { RemovableChip } from "./RemovableChip";
 
 /** The structural shape of a comment this thread can render. */
 export interface ArtefactComment {
@@ -111,20 +113,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
-                      <span key={a.id} className="row badge" style={{ gap: "0.25rem" }}>
-                        {a.filename}
-                        {onRemoveAttachment && (
-                          <button
-                            className="btn"
-                            style={{ padding: "0.1rem", border: "none" }}
-                            title={`Remove ${a.filename}`}
-                            aria-label={`Remove ${a.filename}`}
-                            onClick={() => onRemoveAttachment(c.id, a.id)}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </span>
+                      <RemovableChip key={a.id} label={a.filename} removeLabel={`Remove ${a.filename}`} onRemove={onRemoveAttachment && (() => onRemoveAttachment(c.id, a.id))} />
                     ))}
                   </div>
                 )}
@@ -158,7 +147,22 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
         );
       })}
       <div className="stack">
-        <div className="row">
+        <ItemRow
+          actions={
+            <>
+              {onUploadAttachment && (
+                <FileUploadTrigger
+                  title="Attach a file"
+                  aria-label="Attach a file"
+                  onSelect={(file) => setPendingFiles((files) => [...files, file])}
+                >
+                  <Paperclip size={14} />
+                </FileUploadTrigger>
+              )}
+              <button className="btn" disabled={posting || !newComment.trim()} onClick={submit}>Add comment</button>
+            </>
+          }
+        >
           <input
             className="input"
             placeholder="Add a comment…"
@@ -166,32 +170,11 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
           />
-          {onUploadAttachment && (
-            <FileUploadTrigger
-              title="Attach a file"
-              aria-label="Attach a file"
-              onSelect={(file) => setPendingFiles((files) => [...files, file])}
-            >
-              <Paperclip size={14} />
-            </FileUploadTrigger>
-          )}
-          <button className="btn" disabled={posting || !newComment.trim()} onClick={submit}>Add comment</button>
-        </div>
+        </ItemRow>
         {pendingFiles.length > 0 && (
           <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
             {pendingFiles.map((f, idx) => (
-              <span key={idx} className="row badge" style={{ gap: "0.25rem" }}>
-                {f.name}
-                <button
-                  className="btn"
-                  style={{ padding: "0.1rem", border: "none" }}
-                  title={`Remove ${f.name}`}
-                  aria-label={`Remove ${f.name}`}
-                  onClick={() => setPendingFiles((files) => files.filter((_, i) => i !== idx))}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </span>
+              <RemovableChip key={idx} label={f.name} removeLabel={`Remove ${f.name}`} onRemove={() => setPendingFiles((files) => files.filter((_, i) => i !== idx))} />
             ))}
           </div>
         )}

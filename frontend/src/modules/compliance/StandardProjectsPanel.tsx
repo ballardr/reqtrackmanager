@@ -23,6 +23,7 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { COMPLIANCE_OVERALL_STATE_LABEL, type ComplianceOverallState, type ComplianceStandard, type ProjectComplianceStatus } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function StandardProjectsPanel({ orgId, standard }: { orgId: string; standard: ComplianceStandard }) {
   const { showToast } = useToast();
@@ -75,7 +76,7 @@ export function StandardProjectsPanel({ orgId, standard }: { orgId: string; stan
                 <span className="text-muted"> — {row.version_label}</span>
               </span>
               <span>
-                <span className="badge">{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</span>{" "}
+                <Badge>{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</Badge>{" "}
                 {row.compliance_percentage.toFixed(1)}%
               </span>
             </li>

@@ -48,6 +48,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { Badge } from "../components/Badge";
 
 const PAGE_SIZE = 30;
 
@@ -1044,9 +1045,9 @@ export function RequirementsPage() {
                           the status badge above (which stays "Approved"
                           for a completed requirement) — completion is now
                           an independent overlay, not a merged status. */}
-                      {r.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
-                      {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
-                      {r.is_archived && <span className="badge">{strings.requirements.archivedBadge}</span>}
+                      {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
+                      {r.is_locked && <Badge>{strings.requirements.locked}</Badge>}
+                      {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
                     </div>
                     <div className="row" style={{ gap: "0.5rem" }}>{badges(r)}</div>
                   </div>
@@ -1123,9 +1124,9 @@ export function RequirementsPage() {
                           >
                             {REQUIREMENT_STATUS_LABEL[r.status]}
                           </FilterBadge>
-                          {r.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
-                          {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
-                          {r.is_archived && <span className="badge">{strings.requirements.archivedBadge}</span>}
+                          {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
+                          {r.is_locked && <Badge>{strings.requirements.locked}</Badge>}
+                          {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
                           {badges(r)}
                         </div>
                       </td>

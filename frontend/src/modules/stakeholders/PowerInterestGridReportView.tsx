@@ -20,13 +20,15 @@ import type { ReportViewProps } from "../types";
 import { StakeholderReportGroupControls } from "./StakeholderReportGroupControls";
 import type { GridItem, PowerInterestGridData } from "./reportTypes";
 import { GRID_QUADRANT_LABEL, type GridQuadrant } from "./types";
+import { Badge } from "../../components/Badge";
+import type { BadgeTone } from "../../api/types";
 
 /** Rows of the grid from the top: high influence first. Within a row, interest rises left to right. */
 const GRID_LAYOUT: GridQuadrant[][] = [
   ["keep_satisfied", "manage_closely"],
   ["monitor", "keep_informed"],
 ];
-const QUADRANT_TONE: Record<GridQuadrant, string> = {
+const QUADRANT_TONE: Record<GridQuadrant, BadgeTone> = {
   manage_closely: "danger",
   keep_satisfied: "warning",
   keep_informed: "info",
@@ -38,7 +40,7 @@ function Quadrant({ quadrant, items }: { quadrant: GridQuadrant; items: GridItem
     <section className="card stack" style={{ gap: "0.5rem", minHeight: "8rem" }} aria-label={GRID_QUADRANT_LABEL[quadrant]}>
       <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
         <h3 style={{ margin: 0 }}>{GRID_QUADRANT_LABEL[quadrant]}</h3>
-        <span className={`badge badge--${QUADRANT_TONE[quadrant]}`}>{items.length}</span>
+        <Badge tone={QUADRANT_TONE[quadrant]}>{items.length}</Badge>
       </div>
       {items.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>

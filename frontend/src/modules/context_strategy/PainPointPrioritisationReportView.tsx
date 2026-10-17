@@ -26,6 +26,7 @@ import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import type { ReportViewProps } from "../types";
 import type { PainPointPrioritisationData, ReportLevel, ReportRankedPainPoint, ReportScoredGroup } from "./reportTypes";
 import { PAIN_POINT_ROLLUP_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE, type PainPointRollup } from "./types";
+import { Badge } from "../../components/Badge";
 
 const SCHEME_KEY = "pain_point";
 /** Sections drawn by this view itself (the ranking table and the matrix). */
@@ -97,22 +98,22 @@ function GroupView({ group, showProject }: { group: ReportScoredGroup; showProje
                   {showProject && <td>{item.project_name}</td>}
                   <td>{item.type_name}</td>
                   <td>
-                    <span className={`badge badge--${PAIN_POINT_STATUS_TONE[item.status]}`}>{PAIN_POINT_STATUS_LABEL[item.status]}</span>
+                    <Badge tone={PAIN_POINT_STATUS_TONE[item.status]}>{PAIN_POINT_STATUS_LABEL[item.status]}</Badge>
                   </td>
                   <td>
-                    <span className={`badge badge--${item.band_tone ?? "muted"}`}>
+                    <Badge tone={item.band_tone ?? "muted"}>
                       {item.band ? `${item.band} · ` : ""}
                       {Math.round((item.score ?? 0) * 100)}
-                    </span>
+                    </Badge>
                   </td>
                   <td>
                     <span className="row" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
                       {item.is_blocker && (
-                        <span className="badge badge--danger" title={item.blocker_personas.length ? `Unusable for: ${item.blocker_personas.join(", ")}` : "Unusable, no workaround"}>
+                        <Badge tone="danger" title={item.blocker_personas.length ? `Unusable for: ${item.blocker_personas.join(", ")}` : "Unusable, no workaround"}>
                           Blocker
-                        </span>
+                        </Badge>
                       )}
-                      {item.churn_risk && <span className="badge badge--warning">Churn risk</span>}
+                      {item.churn_risk && <Badge tone="warning">Churn risk</Badge>}
                     </span>
                   </td>
                 </tr>

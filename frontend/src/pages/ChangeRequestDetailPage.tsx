@@ -41,6 +41,7 @@ import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
+import { Badge } from "../components/Badge";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
@@ -291,13 +292,13 @@ export function ChangeRequestDetailPage() {
       <div className="stack">
       <div className="card stack">
         <div className="row">
-          <span className={`badge badge--${CHANGE_REQUEST_STATUS_TONE[cr.status]}`}>
+          <Badge tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}>
             {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
-          </span>
+          </Badge>
           {cr.kind !== "add_action" && cr.kind !== "remove_action" && cr.kind !== "add_link" && cr.kind !== "remove_link" && (
             <>
-              <span className="badge">Target: {targetLabel()}</span>
-              <span className="badge">Level: {levelLabel()}</span>
+              <Badge>Target: {targetLabel()}</Badge>
+              <Badge>Level: {levelLabel()}</Badge>
             </>
           )}
         </div>
@@ -532,12 +533,12 @@ export function ChangeRequestDetailPage() {
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.changeRequests.votingAdvisoryNotice}</p>
         {tally && (
           <div className="row">
-            <span className="badge">
+            <Badge>
               {tally.approve_count} {strings.changeRequests.voteApproveCount}
-            </span>
-            <span className="badge">
+            </Badge>
+            <Badge>
               {tally.reject_count} {strings.changeRequests.voteRejectCount}
-            </span>
+            </Badge>
             {tally.votes.some((v) => v.comment) && (
               <button className="btn" onClick={() => setShowVoteComments(true)}>
                 <MessageSquare size={14} /> {strings.changeRequests.viewComments}
@@ -587,9 +588,9 @@ export function ChangeRequestDetailPage() {
               <div key={v.id} className="card stack" style={{ gap: "0.35rem" }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <span style={{ fontWeight: 600 }}>{userDisplayName(v.user_id)}</span>
-                  <span className="badge">
+                  <Badge>
                     {v.vote === "approve" ? strings.changeRequests.voteApproveCount : strings.changeRequests.voteRejectCount}
-                  </span>
+                  </Badge>
                 </div>
                 <div>{v.comment}</div>
                 <span className="text-muted" style={{ fontSize: "0.8rem" }}>

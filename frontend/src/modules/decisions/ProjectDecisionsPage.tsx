@@ -44,6 +44,7 @@ import { DecisionFormModal } from "./DecisionFormModal";
 import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function ProjectDecisionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -110,7 +111,7 @@ export function ProjectDecisionsPage() {
     },
     {
       key: "status", label: "Status",
-      render: (d) => <span className={`badge badge--${DECISION_STATUS_TONE[d.status]}`}>{DECISION_STATUS_LABEL[d.status]}</span>,
+      render: (d) => <Badge tone={DECISION_STATUS_TONE[d.status]}>{DECISION_STATUS_LABEL[d.status]}</Badge>,
     },
     {
       key: "owner", label: "Owner",

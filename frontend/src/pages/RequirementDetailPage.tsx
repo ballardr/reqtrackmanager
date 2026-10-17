@@ -53,6 +53,7 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { getInstalledModule } from "../modules/registry";
+import { Badge } from "../components/Badge";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -649,9 +650,9 @@ export function RequirementDetailPage() {
       )}
 
       {requirement.is_archived && (
-        <div className="badge" style={{ alignSelf: "flex-start" }}>
+        <Badge>
           {strings.requirements.archivedBadge}
-        </div>
+        </Badge>
       )}
 
       {archiveDialogOpen && (
@@ -673,9 +674,9 @@ export function RequirementDetailPage() {
       {requirement.is_locked || !canEdit ? (
         <div className="card stack">
           {requirement.is_locked && (
-            <div className="badge" style={{ alignSelf: "flex-start" }}>
+            <Badge>
               {strings.requirements.locked} — {strings.requirements.lockedNotice}
-            </div>
+            </Badge>
           )}
           <div>
             <div className="text-muted">{strings.requirements.reasoning}</div>
@@ -694,25 +695,25 @@ export function RequirementDetailPage() {
             </div>
           )}
           <div className="row">
-            <span className={`badge badge--${REQUIREMENT_STATUS_TONE[requirement.status]}`}>
+            <Badge tone={REQUIREMENT_STATUS_TONE[requirement.status]}>
               {strings.requirements.status}: {REQUIREMENT_STATUS_LABEL[requirement.status]}
-            </span>
+            </Badge>
             {/* C-G-11: completion is a separate overlay marker from lifecycle
                 status — rendered as its own badge rather than merged into the
                 status badge above, since the two are now independent
                 concepts (a completed requirement's status badge still reads
                 "Approved"). */}
-            {requirement.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
-            <span className="badge">Target: {stageName(requirement.target_stage_id)}</span>
-            <span className="badge">Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</span>
-            {requirement.review_date && <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>}
-            <span className="badge">
+            {requirement.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
+            <Badge>Target: {stageName(requirement.target_stage_id)}</Badge>
+            <Badge>Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</Badge>
+            {requirement.review_date && <Badge>{strings.requirements.reviewDate}: {requirement.review_date}</Badge>}
+            <Badge>
               {strings.requirements.owner}: <PrincipalBadge principal={requirement.owner} />
-            </span>
+            </Badge>
             {requirement.keywords.map((k) => (
-              <span key={k} className="badge">
+              <Badge key={k}>
                 {k}
-              </span>
+              </Badge>
             ))}
           </div>
           <CustomFieldsForm definitions={customFieldDefs} values={customFieldValues} disabled onChange={() => {}} />
@@ -833,10 +834,10 @@ export function RequirementDetailPage() {
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.reviewSection}</h2>
           <div className="row">
-            <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>
-            <span className="badge">
+            <Badge>{strings.requirements.reviewDate}: {requirement.review_date}</Badge>
+            <Badge>
               {strings.requirements.reviewer}: <PrincipalBadge principal={requirement.reviewer} placeholder={strings.reviews.unassigned} />
-            </span>
+            </Badge>
           </div>
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.requirements.recordReviewOutcome}
@@ -1049,9 +1050,9 @@ export function RequirementDetailPage() {
           >
             <span>
               <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.unique_code} — {a.title}</Link>{" "}
-              <span className={`badge badge--${REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}`}>
+              <Badge tone={REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}>
                 {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
-              </span>
+              </Badge>
             </span>
             <button
               className="btn btn-danger"

@@ -18,6 +18,7 @@ import { useState } from "react";
 import { SCORING_BAND_TONE_LABEL, type ScoringBand } from "../api/scoring";
 import type { BadgeTone } from "../api/types";
 import { OverridePill } from "./OverridePill";
+import { Badge } from "./Badge";
 
 interface DraftBand {
   label: string;
@@ -117,7 +118,7 @@ export function ScoringBandsEditor({
             onChange={(e) => update(i, { tone: e.target.value as BadgeTone })}>
             {TONES.map((tone) => <option key={tone} value={tone}>{SCORING_BAND_TONE_LABEL[tone]}</option>)}
           </select>
-          <span className={`badge badge--${band.tone}`}>{band.label || "—"}</span>
+          <Badge tone={band.tone}>{band.label || "—"}</Badge>
           <button type="button" className="btn btn-danger" aria-label={`Remove band ${i + 1}`} title="Remove band"
             disabled={draft.length <= 1} onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}>
             <Trash2 size={14} />

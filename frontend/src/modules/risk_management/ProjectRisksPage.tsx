@@ -40,6 +40,7 @@ import { RiskRatingBadge } from "./RiskRatingBadge";
 import { CONSEQUENCE_AXIS, LIKELIHOOD_AXIS, levelName, useRiskScheme } from "./useRiskScheme";
 import { RISK_STATUS_LABEL, RISK_STATUS_TONE } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus } from "./types";
+import { Badge } from "../../components/Badge";
 
 type View = "register" | "matrix";
 
@@ -155,7 +156,7 @@ export function ProjectRisksPage() {
     {
       key: "review", label: "Next review",
       render: (r) => r.review_date
-        ? <span>{r.review_date}{r.is_review_overdue && <> <span className="badge badge--danger">Overdue</span></>}</span>
+        ? <span>{r.review_date}{r.is_review_overdue && <> <Badge tone="danger">Overdue</Badge></>}</span>
         : "—",
     },
   ];
@@ -178,11 +179,11 @@ export function ProjectRisksPage() {
         <div className="stack" {...tabPanelProps("risks-view", view)}>
           {cell && (
             <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-              <span className="badge">
+              <Badge>
                 {cell.basis === "inherent" ? "Inherent" : "Residual"}:{" "}
                 {levelName(scheme, LIKELIHOOD_AXIS, cell.likelihoodLevelId)} likelihood,{" "}
                 {levelName(scheme, CONSEQUENCE_AXIS, cell.consequenceLevelId)} consequence
-              </span>
+              </Badge>
               <button className="btn" onClick={() => setCell(null)}>Clear matrix filter</button>
             </div>
           )}

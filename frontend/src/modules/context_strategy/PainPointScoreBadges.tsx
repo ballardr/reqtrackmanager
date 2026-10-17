@@ -9,6 +9,7 @@
  * `BadgeTone`, never a per-module colour.
  */
 import type { PainPointScoreValue, PainPointScoringSummary } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** Renders `score` as `<band> · <raw>` in the band's tone, or a muted
  * "Not scored" when nothing could be scored under the chosen model.
@@ -16,12 +17,12 @@ import type { PainPointScoreValue, PainPointScoringSummary } from "./types";
  * @param score The computed score, or null for "not scored under this model".
  */
 export function PainPointScoreBadge({ score }: { score: PainPointScoreValue | null }) {
-  if (score === null) return <span className="badge badge--muted">Not scored</span>;
+  if (score === null) return <Badge tone="muted">Not scored</Badge>;
   const raw = Number.isInteger(score.raw) ? String(score.raw) : score.raw.toFixed(1);
   return (
-    <span className={`badge badge--${score.band_tone ?? "muted"}`}>
+    <Badge tone={score.band_tone ?? "muted"}>
       {score.band_label ? `${score.band_label} · ${raw}` : raw}
-    </span>
+    </Badge>
   );
 }
 
@@ -33,5 +34,5 @@ export function PainPointScoreBadge({ score }: { score: PainPointScoreValue | nu
 export function BlockerBadge({ summary }: { summary: Pick<PainPointScoringSummary, "is_blocker" | "blocker_labels"> }) {
   if (!summary.is_blocker) return null;
   const who = summary.blocker_labels.length ? `Unusable for: ${summary.blocker_labels.join(", ")}` : "Unusable, no workaround";
-  return <span className="badge badge--danger" title={who}>Blocker</span>;
+  return <Badge tone="danger" title={who}>Blocker</Badge>;
 }

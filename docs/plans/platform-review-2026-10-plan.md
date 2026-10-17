@@ -1,17 +1,17 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21). Phases 1, 2 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q24 (section 3b) carry a recommended answer and need sign-off before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21). Phases 1, 2, 3 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q24 (section 3b) carry a recommended answer and need sign-off before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-3 / 22 phases complete (Phases 1 and 2 done 2026-10-14, Phase 12 done 2026-10-18, uncommitted at hand-back). **Start with Phases 13–14** (module availability and navigation bugs: they are defects and a missing admin UI, so they go before the polish work), then Phase 3.
+4 / 22 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3 and 12 done 2026-10-18, uncommitted at hand-back). **Phase 3 was built ahead of 13–14 at the user's instruction.** Next: Phases 13–14 (module availability and navigation bugs: defects and a missing admin UI, so they go before the remaining polish work), then Phase 4.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
 | 1 | Neutral report-template label; Help becomes a configurable link; docs site image | N3, N5 | [x] |
 | 2 | Archive closed plans, rewrite links, link checker, agent rule | N6 | [x] |
-| 3 | Layout contract: `Badge`, no-wrap rule, `ItemRow`, geometry checks | N1, N2 | [ ] |
+| 3 | Layout contract: `Badge`, no-wrap rule, `ItemRow`, geometry checks | N1, N2 | [x] |
 | 4 | Icon sizes driven by CSS, sweep, check | N9 | [ ] |
 | 5 | Shared record header and one object-action menu | N8 | [ ] |
 | 6 | Codes I: project codes, org policy, qualified display | N7 | [ ] |
@@ -192,6 +192,24 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 6. **Style guide:** new "Pattern: pills" (tones, centred text, per-use width and alignment, one-line-then-two-line wrapping, what is not a pill) and a directive under "Pattern: button sizes" or its own "Pattern: text beside controls": text wraps, controls beside it do not.
 
 - **Tests:** the checks above; a Storybook story per `Badge` tone, per alignment, a shared-width column, and the two-line and truncation cases; existing specs that locate badges by class keep passing (the class stays).
+
+- **Done 2026-10-18 (notes).** Built ahead of Phases 13–14 at the user's instruction. Details and decisions in `docs/decisions.md`.
+  - **Measured first** (`orphaned-controls.spec.ts`, `ORPHAN_REPORT=1`, 200-character titles, 1280px, before any change). After the change every pill is 21.8px.
+
+    | Page | Pills | Pill heights before | Orphaned controls before |
+    |------|-------|---------------------|--------------------------|
+    | Project overview | 9 | 24.8px | 0 |
+    | Requirements list | 2 | 21.8px | 0 |
+    | Requirement detail | 1 | 24.8px | 1 (comment attach button) |
+    | Actions list | 1 | 21.8px | 0 |
+    | Action detail | 0 | – | 2 (Archive; comment attach button) |
+    | Project history | 9 | 24.8px | 0 |
+    | Change requests, project admin, files, reports, projects list, organisations list, organisation admin and overview, preferences | 0–8 | 21.8px where present | 0 |
+
+  - **Pills:** `Badge` (`components/Badge.tsx`) plus `badgeClassName`; 153 sites converted, inline colours and margin hacks removed; `RemovableChip` for the five chips that hold a button; `FilterBadge` and the other-project link use `badgeClassName`.
+  - **No-wrap:** `ItemRow`; `.btn` is `flex: none; nowrap`; applied to the Links panel, proposed links, comment composers and the action header. `.row` unchanged. Detail-page headers other than the action page are rebuilt in Phase 5 (`RecordHeader`), so they were not touched here; the long-title spec visits the requirement page and the main lists and admin pages, and found nothing else.
+  - **Check:** `frontend/src/testing/orphanedControls.ts`, run by stories (Badge, ItemRow, RemovableChip, AlignedRows, RemovableItemList, DirectoryTable, ArtefactLinksPanel) and by the Playwright spec at 1280 and 1440px.
+  - **Style guide:** "Pattern: pills" and "Pattern: text beside controls".
 
 ### Phase 4 — Icon sizes (N9)
 

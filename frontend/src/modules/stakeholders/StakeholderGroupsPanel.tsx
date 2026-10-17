@@ -32,6 +32,7 @@ import type {
   GroupTextProposal, StakeholderGroup, StakeholderGroupFieldValues, StakeholderGroupMember,
 } from "./types";
 import { STAKEHOLDER_SCOPE_LABEL } from "./types";
+import { Badge } from "../../components/Badge";
 
 type FormState = { initial?: StakeholderGroup; parentId?: string | null } | null;
 
@@ -182,8 +183,8 @@ export function StakeholderGroupsPanel({
                   {n.name}
                 </button>
                 <span className="text-muted">{n.member_count}</span>
-                {n.scope !== tier && <span className="badge">{STAKEHOLDER_SCOPE_LABEL[n.scope]}</span>}
-                {n.exclusive_children && <span className="badge" title="A stakeholder can be in only one child group.">One branch</span>}
+                {n.scope !== tier && <Badge>{STAKEHOLDER_SCOPE_LABEL[n.scope]}</Badge>}
+                {n.exclusive_children && <Badge title="A stakeholder can be in only one child group.">One branch</Badge>}
                 {editable(n) && (
                   <>
                     <button className="btn btn-sm btn-icon" title={`Add a group under ${n.name}`} aria-label={`Add a group under ${n.name}`}

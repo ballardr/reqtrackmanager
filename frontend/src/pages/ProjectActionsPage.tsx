@@ -22,6 +22,7 @@ import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { Badge } from "../components/Badge";
 
 const strings = t();
 
@@ -253,7 +254,7 @@ export function ProjectActionsPage() {
                       <td className="text-muted">{a.unique_code}</td>
                       <td>
                         <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.title}</Link>
-                        {a.is_archived && <span className="badge" style={{ marginLeft: "0.4rem" }}>{strings.actions.archived}</span>}
+                        {a.is_archived && <Badge className="badge-after">{strings.actions.archived}</Badge>}
                       </td>
                       <td className="text-muted">{actionTypeName(a.action_type_id)}</td>
                       <td>

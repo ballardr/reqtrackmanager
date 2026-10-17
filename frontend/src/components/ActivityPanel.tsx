@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import { activityEntityLabel, describeActivityEntry, type ChangeEntry } from "../api/types";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
+import { Badge } from "./Badge";
 
 /** Right-side activity timeline (mock's "Subscribed" panel): audit events
  * plus version history for one requirement/change request, newest first.
@@ -51,7 +52,7 @@ export function ActivityPanel({
         return (
           <div key={i} className="stack" style={{ gap: "0.15rem" }}>
             <div className="row" style={{ gap: "0.3rem" }}>
-              <span className="badge">{activityEntityLabel(e.entity_type, orgLabelCap)}</span>
+              <Badge>{activityEntityLabel(e.entity_type, orgLabelCap)}</Badge>
             </div>
             <div style={{ fontSize: "0.85rem" }}>
               {describeActivityEntry(e)}

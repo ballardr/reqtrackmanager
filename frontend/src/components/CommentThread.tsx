@@ -1,10 +1,12 @@
-import { Heart, Paperclip, Pencil, Trash2 } from "lucide-react";
+import { Heart, Paperclip, Pencil } from "lucide-react";
 import { useState } from "react";
 
 import { fileUrl } from "../api/client";
 import type { Comment } from "../api/types";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { t } from "../i18n/strings";
+import { ItemRow } from "./ItemRow";
+import { RemovableChip } from "./RemovableChip";
 
 const strings = t();
 
@@ -105,36 +107,14 @@ export function CommentThread({
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
-                      <span key={a.id} className="row badge" style={{ gap: "0.25rem" }}>
-                        {a.filename}
-                        <button
-                          className="btn"
-                          style={{ padding: "0.1rem", border: "none" }}
-                          title={strings.requirements.removeAttachment}
-                          aria-label={strings.requirements.removeAttachment}
-                          onClick={() => onRemoveAttachment && onRemoveAttachment(c.id, a.id)}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </span>
+                      <RemovableChip key={a.id} label={a.filename} removeLabel={strings.requirements.removeAttachment} onRemove={() => onRemoveAttachment && onRemoveAttachment(c.id, a.id)} />
                     ))}
                   </div>
                 )}
                 {editPendingFiles.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {editPendingFiles.map((f, idx) => (
-                      <span key={idx} className="row badge" style={{ gap: "0.25rem" }}>
-                        {f.name}
-                        <button
-                          className="btn"
-                          style={{ padding: "0.1rem", border: "none" }}
-                          title={strings.requirements.removeAttachment}
-                          aria-label={strings.requirements.removeAttachment}
-                          onClick={() => setEditPendingFiles((files) => files.filter((_, i) => i !== idx))}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </span>
+                      <RemovableChip key={idx} label={f.name} removeLabel={strings.requirements.removeAttachment} onRemove={() => setEditPendingFiles((files) => files.filter((_, i) => i !== idx))} />
                     ))}
                   </div>
                 )}
@@ -196,41 +176,35 @@ export function CommentThread({
         );
       })}
       <div className="stack">
-        <div className="row">
+        <ItemRow
+          actions={
+            <>
+              {onUploadAttachment && (
+                <FileUploadTrigger
+                  title={strings.requirements.attachFile}
+                  aria-label={strings.requirements.attachFile}
+                  onSelect={(file) => setPendingFiles((files) => [...files, file])}
+                >
+                  <Paperclip size={14} />
+                </FileUploadTrigger>
+              )}
+              <button className="btn" disabled={posting || !newComment.trim()} onClick={submit}>
+                {strings.requirements.addComment}
+              </button>
+            </>
+          }
+        >
           <input
             className="input"
             placeholder={strings.requirements.addComment}
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
           />
-          {onUploadAttachment && (
-            <FileUploadTrigger
-              title={strings.requirements.attachFile}
-              aria-label={strings.requirements.attachFile}
-              onSelect={(file) => setPendingFiles((files) => [...files, file])}
-            >
-              <Paperclip size={14} />
-            </FileUploadTrigger>
-          )}
-          <button className="btn" disabled={posting || !newComment.trim()} onClick={submit}>
-            {strings.requirements.addComment}
-          </button>
-        </div>
+        </ItemRow>
         {pendingFiles.length > 0 && (
           <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
             {pendingFiles.map((f, idx) => (
-              <span key={idx} className="row badge" style={{ gap: "0.25rem" }}>
-                {f.name}
-                <button
-                  className="btn"
-                  style={{ padding: "0.1rem", border: "none" }}
-                  title={strings.requirements.removeAttachment}
-                  aria-label={strings.requirements.removeAttachment}
-                  onClick={() => setPendingFiles((files) => files.filter((_, i) => i !== idx))}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </span>
+              <RemovableChip key={idx} label={f.name} removeLabel={strings.requirements.removeAttachment} onRemove={() => setPendingFiles((files) => files.filter((_, i) => i !== idx))} />
             ))}
           </div>
         )}

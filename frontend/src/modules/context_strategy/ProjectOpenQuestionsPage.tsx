@@ -34,6 +34,7 @@ import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQuestionStatus } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -95,7 +96,7 @@ export function ProjectOpenQuestionsPage() {
     { key: "priority", label: "Priority", render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
     {
       key: "status", label: "Status",
-      render: (q) => <span className={`badge badge--${OPEN_QUESTION_STATUS_TONE[q.status]}`}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</span>,
+      render: (q) => <Badge tone={OPEN_QUESTION_STATUS_TONE[q.status]}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</Badge>,
     },
     { key: "due_date", label: "Due", render: (q) => q.due_date ?? "—" },
   ];

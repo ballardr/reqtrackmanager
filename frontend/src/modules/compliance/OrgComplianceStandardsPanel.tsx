@@ -74,6 +74,7 @@ import {
   type ComplianceOverallState,
   type ProjectComplianceStatus,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 type GroupBy = "standard" | "project";
 
@@ -335,7 +336,7 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
                                                 >
                                                   <Link to={`/projects/${row.project_id}/modules/compliance`}>{row.project_name}</Link>
                                                   <span>
-                                                    <span className="badge">{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</span>{" "}
+                                                    <Badge>{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</Badge>{" "}
                                                     {row.compliance_percentage.toFixed(1)}%
                                                   </span>
                                                 </li>
@@ -370,7 +371,7 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
                                       <span className="text-muted"> — {row.version_label}</span>
                                     </span>
                                     <span>
-                                      <span className="badge">{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</span>{" "}
+                                      <Badge>{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</Badge>{" "}
                                       {row.compliance_percentage.toFixed(1)}%
                                     </span>
                                   </li>

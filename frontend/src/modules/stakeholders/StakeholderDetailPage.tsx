@@ -55,6 +55,7 @@ import {
   GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
 } from "./types";
 import { levelName, useStakeholderScheme } from "./useStakeholderScheme";
+import { Badge } from "../../components/Badge";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder activated.",
@@ -226,8 +227,8 @@ export function StakeholderDetailPage() {
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{stakeholder.name}</h1>
         <span className="row" style={{ gap: "0.5rem" }}>
-          <span className="badge">{STAKEHOLDER_SCOPE_LABEL[stakeholder.scope]}</span>
-          <span className={`badge badge--${STAKEHOLDER_STATUS_TONE[stakeholder.status]}`}>{STAKEHOLDER_STATUS_LABEL[stakeholder.status]}</span>
+          <Badge>{STAKEHOLDER_SCOPE_LABEL[stakeholder.scope]}</Badge>
+          <Badge tone={STAKEHOLDER_STATUS_TONE[stakeholder.status]}>{STAKEHOLDER_STATUS_LABEL[stakeholder.status]}</Badge>
         </span>
       </div>
 

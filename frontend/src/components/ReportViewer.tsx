@@ -19,6 +19,7 @@ import type { ReportMetric, ReportResult, ReportSection } from "../api/reports";
 import { StatBar, type StatBarItem } from "./StatBar";
 import type { StatFigureAction } from "../utils/statFigureAction";
 import { StatGroups, type StatGroup } from "./StatGroups";
+import { Badge } from "./Badge";
 
 /**
  * Decides what clicking a headline figure does: open a page (`to`), act in
@@ -94,9 +95,9 @@ export function ReportSectionTable({ section }: { section: ReportSection }) {
       <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
         <h3 style={{ margin: 0 }}>{section.title}</h3>
         {section.gap && (
-          <span className={`badge badge--${section.rows.length > 0 ? "warning" : "muted"}`}>
+          <Badge tone={section.rows.length > 0 ? "warning" : "muted"}>
             {section.rows.length > 0 ? `Needs attention · ${section.rows.length}` : "None"}
-          </span>
+          </Badge>
         )}
       </div>
       {section.note && (

@@ -50,6 +50,7 @@ import type {
   EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointRollup,
   PainPointScoringList, PainPointScoringSummary, PainPointStatus,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 const SCHEME_KEY = "pain_point";
 
@@ -154,7 +155,7 @@ export function ProjectPainPointsPage() {
       render: (p) => (
         <>
           {p.title}
-          {p.is_intentional && <span className="badge badge--info" style={{ marginLeft: "0.5rem" }}>Intentional</span>}
+          {p.is_intentional && <Badge tone="info" className="badge-after">Intentional</Badge>}
         </>
       ),
     },
@@ -162,7 +163,7 @@ export function ProjectPainPointsPage() {
     { key: "priority", label: "Priority", render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
     {
       key: "status", label: "Status",
-      render: (p) => <span className={`badge badge--${PAIN_POINT_STATUS_TONE[p.status]}`}>{PAIN_POINT_STATUS_LABEL[p.status]}</span>,
+      render: (p) => <Badge tone={PAIN_POINT_STATUS_TONE[p.status]}>{PAIN_POINT_STATUS_LABEL[p.status]}</Badge>,
     },
     {
       key: "score", label: "Score", sortable: true,

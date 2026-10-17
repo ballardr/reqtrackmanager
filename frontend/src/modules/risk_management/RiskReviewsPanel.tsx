@@ -28,6 +28,7 @@ import {
   RISK_REVIEW_OUTCOME_LABEL, RISK_REVIEW_OUTCOME_TONE, RISK_STATUS_LABEL,
 } from "./types";
 import type { Risk, RiskReview, RiskReviewOutcome } from "./types";
+import { Badge } from "../../components/Badge";
 
 /**
  * @param risk The risk being reviewed.
@@ -100,7 +101,7 @@ export function RiskReviewsPanel({
       </div>
       <p className="text-muted" style={{ margin: 0 }}>
         {risk.review_date ? <>Next review: {risk.review_date}</> : "No review scheduled."}
-        {risk.is_review_overdue && <> <span className="badge badge--danger">Overdue</span></>}
+        {risk.is_review_overdue && <> <Badge tone="danger">Overdue</Badge></>}
       </p>
       {reviews.length > 0 && (
         <table className="table" aria-label="Review history">
@@ -115,7 +116,7 @@ export function RiskReviewsPanel({
                 <td>{new Date(r.reviewed_at).toLocaleDateString()}</td>
                 <td>{userNames[r.reviewed_by] ?? "—"}</td>
                 <td>
-                  <span className={`badge badge--${RISK_REVIEW_OUTCOME_TONE[r.outcome]}`}>{RISK_REVIEW_OUTCOME_LABEL[r.outcome]}</span>
+                  <Badge tone={RISK_REVIEW_OUTCOME_TONE[r.outcome]}>{RISK_REVIEW_OUTCOME_LABEL[r.outcome]}</Badge>
                 </td>
                 <td style={{ whiteSpace: "pre-wrap" }}>{r.notes}</td>
                 <td>{RISK_STATUS_LABEL[r.risk_status]}</td>

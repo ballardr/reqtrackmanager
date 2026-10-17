@@ -35,6 +35,7 @@ import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** What the list needs of any record kind. */
 export interface ListedRecord {
@@ -158,7 +159,7 @@ export function RecordListView<R extends ListedRecord, V>({
           render: (r: R) =>
             r.project_hidden && r.hidden_source ? (
               <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                <span className="badge">{HIDDEN_SOURCE_LABEL[r.hidden_source]}</span>
+                <Badge>{HIDDEN_SOURCE_LABEL[r.hidden_source]}</Badge>
                 <button className="btn" aria-label={`Show ${r.name} in this project`} onClick={() => onShowHidden(r)}>
                   Show
                 </button>

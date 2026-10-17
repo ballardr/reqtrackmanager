@@ -14,6 +14,7 @@ import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useFavourites } from "../context/FavouritesContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { Badge } from "../components/Badge";
 
 const PAGE_SIZE = 30;
 
@@ -135,9 +136,9 @@ export function FavouritesPage() {
               <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>
               <ProjectHierarchyLabels project={p} />
               {p.current_stage_name && (
-                <span className="badge" style={{ alignSelf: "flex-start" }}>
+                <Badge>
                   {stageBadgeText(p.current_stage_name, p.current_stage_status)}
-                </span>
+                </Badge>
               )}
               <p className="text-muted" style={{ margin: 0, flex: 1 }}>
                 {p.summary || "—"}
@@ -188,7 +189,7 @@ export function FavouritesPage() {
                   <td className="text-muted">{p.organization_name}</td>
                   <td>
                     {p.current_stage_name && (
-                      <span className="badge">{stageBadgeText(p.current_stage_name, p.current_stage_status)}</span>
+                      <Badge>{stageBadgeText(p.current_stage_name, p.current_stage_status)}</Badge>
                     )}
                   </td>
                   <td className="text-muted">{collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>

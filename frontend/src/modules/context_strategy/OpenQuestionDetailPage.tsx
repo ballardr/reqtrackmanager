@@ -74,6 +74,7 @@ import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** The two optional-comment, positive/neutral-progression actions — mirrors
  * `PainPointDetailPage.tsx`'s `OptionalCommentAction`/`OPTIONAL_COMMENT_COPY`
@@ -126,7 +127,6 @@ export function OpenQuestionDetailPage() {
     projectOpenQuestionApi.get(projectId, openQuestionId).then(setOpenQuestion).catch((err) => {
       setLoadError(toErrorMessage(err, "This Open Question could not be found, or you don't have access to it."));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, openQuestionId]);
 
   async function reloadCommentsAndFiles() {
@@ -145,7 +145,6 @@ export function OpenQuestionDetailPage() {
 
   useEffect(() => {
     void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, openQuestionId]);
 
   async function runTransition(action: () => Promise<OpenQuestion>, successMessage: string) {
@@ -202,9 +201,9 @@ export function OpenQuestionDetailPage() {
       <Link to={`/projects/${projectId}/modules/context_strategy/open-questions`}>← Open Question</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{openQuestion.question}</h1>
-        <span className={`badge badge--${OPEN_QUESTION_STATUS_TONE[openQuestion.status]}`}>
+        <Badge tone={OPEN_QUESTION_STATUS_TONE[openQuestion.status]}>
           {OPEN_QUESTION_STATUS_LABEL[openQuestion.status]}
-        </span>
+        </Badge>
       </div>
       <div className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>

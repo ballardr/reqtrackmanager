@@ -71,6 +71,7 @@ import { PainPointFormModal } from "./PainPointFormModal";
 import { PainPointScoringPanel } from "./PainPointScoringPanel";
 import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
 import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFieldValues } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** The three optional-comment, positive/neutral-progression actions —
  * mirrors `StrategyDetailPage.tsx`'s `TransitionAction`/`TRANSITION_COPY`
@@ -148,7 +149,6 @@ export function PainPointDetailPage() {
     projectPainPointApi.get(projectId, painPointId).then(setPainPoint).catch((err) => {
       setLoadError(toErrorMessage(err, "This Pain Point could not be found, or you don't have access to it."));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, painPointId]);
 
   async function reloadCommentsAndFiles() {
@@ -167,7 +167,6 @@ export function PainPointDetailPage() {
 
   useEffect(() => {
     void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, painPointId]);
 
   async function runTransition(action: () => Promise<PainPoint>, successMessage: string) {
@@ -226,10 +225,10 @@ export function PainPointDetailPage() {
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{painPoint.title}</h1>
         <span className="row" style={{ gap: "0.5rem" }}>
-          {painPoint.is_intentional && <span className="badge badge--info">Intentional</span>}
-          <span className={`badge badge--${PAIN_POINT_STATUS_TONE[painPoint.status]}`}>
+          {painPoint.is_intentional && <Badge tone="info">Intentional</Badge>}
+          <Badge tone={PAIN_POINT_STATUS_TONE[painPoint.status]}>
             {PAIN_POINT_STATUS_LABEL[painPoint.status]}
-          </span>
+          </Badge>
         </span>
       </div>
       <div className="stack">

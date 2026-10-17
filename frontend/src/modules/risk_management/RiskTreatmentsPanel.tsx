@@ -26,6 +26,7 @@ import {
   TREATMENT_ASSESSMENT_STATUS_LABEL, TREATMENT_ASSESSMENT_STATUS_TONE,
 } from "./types";
 import type { RiskTreatment, RiskTreatmentList, TreatmentAssessmentStatus } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** The verdicts a person can record; "Needs reassessment" is only ever set by the system. */
 const ASSESSABLE: TreatmentAssessmentStatus[] = ["effective", "ineffective", "proposed"];
@@ -120,9 +121,9 @@ export function RiskTreatmentsPanel({
                   </td>
                   <td>{t.relationship}</td>
                   <td>
-                    <span className={`badge badge--${TREATMENT_ASSESSMENT_STATUS_TONE[t.status]}`}>
+                    <Badge tone={TREATMENT_ASSESSMENT_STATUS_TONE[t.status]}>
                       {TREATMENT_ASSESSMENT_STATUS_LABEL[t.status]}
-                    </span>
+                    </Badge>
                   </td>
                   <td>
                     {t.rationale || "—"}

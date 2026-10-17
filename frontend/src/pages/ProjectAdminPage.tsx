@@ -72,6 +72,7 @@ import type { ProjectAdminSectionDef } from "../modules/types";
 import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
+import { Badge } from "../components/Badge";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
 // MEMBER_ONLY, which caps at baseline MEMBER — parity with
@@ -1410,9 +1411,9 @@ export function ProjectAdminPage() {
     {
       key: "type", label: strings.admin.groupTypeColumn,
       render: (row) => (
-        <span className="badge">
+        <Badge>
           {row.kind === "group" ? strings.admin.groupTypeBadgeGroup : strings.admin.groupTypeBadgeMemberSource}
-        </span>
+        </Badge>
       ),
     },
     {
@@ -1443,11 +1444,11 @@ export function ProjectAdminPage() {
             })}
           />
         ) : (
-          <span className="badge">
+          <Badge>
             {row.source.mirror_mode === "mirror_role" && row.source.mirror_filter_role
               ? strings.admin.memberSourceModeRole(PROJECT_ROLE_LABEL[row.source.mirror_filter_role])
               : PROJECT_ROLE_INHERITANCE_MODE_LABEL[row.source.mirror_mode]}
-          </span>
+          </Badge>
         ),
     },
     {
@@ -1863,9 +1864,9 @@ export function ProjectAdminPage() {
                     <Pencil size={14} />
                   </button>
                 )}
-                <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
-                {s.review_deadline && <span className="badge">{strings.admin.reviewDeadline}: {new Date(s.review_deadline).toLocaleString()}</span>}
-                {s.completed_at && <span className="badge">{strings.admin.stageCompletedAt}: {new Date(s.completed_at).toLocaleDateString()}</span>}
+                <Badge>{STAGE_STATUS_LABEL[s.status]}</Badge>
+                {s.review_deadline && <Badge>{strings.admin.reviewDeadline}: {new Date(s.review_deadline).toLocaleString()}</Badge>}
+                {s.completed_at && <Badge>{strings.admin.stageCompletedAt}: {new Date(s.completed_at).toLocaleDateString()}</Badge>}
                 <button
                   className="btn btn-danger"
                   disabled={otherStages.length === 0}
@@ -2140,8 +2141,8 @@ export function ProjectAdminPage() {
         {customFields.map((f) => (
           <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
             <span>
-              {f.name} <span className="badge">{f.entity_kind === "requirement" ? strings.admin.entityKindRequirement : strings.admin.entityKindChangeRequest}</span> <span className="badge">{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</span>
-              {f.required && <span className="badge">{strings.admin.required}</span>}
+              {f.name} <Badge>{f.entity_kind === "requirement" ? strings.admin.entityKindRequirement : strings.admin.entityKindChangeRequest}</Badge> <Badge>{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</Badge>
+              {f.required && <Badge>{strings.admin.required}</Badge>}
             </span>
             <button
               className="btn btn-danger"

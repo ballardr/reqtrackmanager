@@ -29,6 +29,7 @@ import { ProjectLinkTypeRow } from "./ProjectLinkTypeRow";
 import { Spinner } from "./Spinner";
 import { Tabs, tabPanelProps, type TabDef } from "./Tabs";
 import { ToggleSwitch } from "./ToggleSwitch";
+import { Badge } from "./Badge";
 
 type PanelTab = "types" | "rules";
 
@@ -408,9 +409,9 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
             <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypesHint}</p>
           )}
           {readOnly && (
-            <div role="status" className="badge" style={{ alignSelf: "flex-start" }}>
+            <Badge role="status">
               {strings.orgAdmin.projectLinkTypesLocked}
-            </div>
+            </Badge>
           )}
           {!isProject && customisation && (
             <div className="stack" style={{ gap: "0.25rem" }}>

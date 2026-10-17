@@ -6,6 +6,8 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import type { DirectoryColumn } from "./DirectoryTable";
 import { DirectoryTable } from "./DirectoryTable";
 import type { SortState } from "./sortState";
+import { orphanedControlViolations } from "../testing/orphanedControls";
+import { Badge } from "./Badge";
 
 interface DemoRow {
   id: string;
@@ -29,7 +31,7 @@ const COLUMNS: DirectoryColumn<DemoRow>[] = [
     label: "Status",
     // Deliberately not sortable — a badge column has no natural order, per
     // style guide "Pattern: sortable column header".
-    render: (row) => <span className="badge">{row.status === "active" ? "Active" : "Invited"}</span>,
+    render: (row) => <Badge>{row.status === "active" ? "Active" : "Invited"}</Badge>,
   },
 ];
 
@@ -193,3 +195,20 @@ export const NoLoadMoreOnceFullyLoaded: Story = {
 
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+/** A 200-character name and a 40-character status name: the pill stays a pill and no control drops to a new line. */
+export const LongCellsKeepPillsAndControlsTidy: Story = {
+  args: {
+    rows: [{
+      id: "u-long", name: "An exceptionally long person name that keeps going well past any sensible single line ".repeat(2),
+      email: "long@example.com", status: "active", joined: "2026-01-01",
+    }],
+    columns: [
+      COLUMNS[0], COLUMNS[1],
+      { key: "status", label: "Status", render: () => <Badge tone="info">A forty-character status name goes here</Badge> },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+  },
+};

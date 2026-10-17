@@ -21,6 +21,8 @@ import type { LinkGraphEdge, LinkGraphNode } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { getArtefactPath, getArtefactStatusLabel } from "../modules/artefactPaths";
 import { splitArtefactCode } from "./artefactCode";
+import { badgeClassName } from "./badgeClassName";
+import { Badge } from "./Badge";
 
 /**
  * Renders the badges and link for one edge and the record at its far end.
@@ -66,29 +68,29 @@ export function LinkedRecordSummary({
           </Link>
         )}
         {!edge.nesting_permitted && (
-          <span className="badge badge--warning" title={strings.artefactLinks.notPermittedExplanation}>
+          <Badge tone="warning" title={strings.artefactLinks.notPermittedExplanation}>
             {strings.artefactLinks.notPermitted}
-          </span>
+          </Badge>
         )}
       </>
     );
   }
   return (
     <>
-      <span className="badge">{phrase}</span>
+      <Badge>{phrase}</Badge>
       <span className="artefact-links__target">{path ? <Link to={path}>{node.label}</Link> : node.label}</span>
-      {statusLabel && <span className="badge badge--muted">{statusLabel}</span>}
-      {node.is_archived && <span className="badge badge--muted">{strings.artefactLinks.archivedBadge}</span>}
+      {statusLabel && <Badge tone="muted">{statusLabel}</Badge>}
+      {node.is_archived && <Badge tone="muted">{strings.artefactLinks.archivedBadge}</Badge>}
       {elsewhere && (
-        <Link className="badge badge--info" to={`/projects/${node.project_id}`}>
+        <Link className={badgeClassName("info")} to={`/projects/${node.project_id}`}>
           {strings.artefactLinks.otherProjectBadge(node.project_name ?? "")}
         </Link>
       )}
       {via.length > 0 && <span className="text-muted link-trace__via">{strings.artefactLinks.traceVia(via.join(", "))}</span>}
       {!edge.nesting_permitted && (
-        <span className="badge badge--warning" title={strings.artefactLinks.notPermittedExplanation}>
+        <Badge tone="warning" title={strings.artefactLinks.notPermittedExplanation}>
           {strings.artefactLinks.notPermitted}
-        </span>
+        </Badge>
       )}
     </>
   );

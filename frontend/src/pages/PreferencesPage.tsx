@@ -29,6 +29,7 @@ import type {
   ProjectListItem,
 } from "../api/types";
 import { collapseProjectRoles, ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import { Badge } from "../components/Badge";
 
 type LandingMode = "auto" | "overview" | "project";
 
@@ -569,9 +570,9 @@ export function PreferencesPage() {
                 onChange={() => startEnrollment()}
                 label={strings.preferences.enable2fa}
               />
-              <span className="badge">
+              <Badge>
                 {user?.is_2fa_enabled ? strings.preferences.twoFactorEnabled : strings.preferences.twoFactorDisabled}
-              </span>
+              </Badge>
             </span>
           }
         >
@@ -632,7 +633,7 @@ export function PreferencesPage() {
                 <span>
                   <strong>{org.name}</strong>{" "}
                   {roles.map((r) => (
-                    <span key={r} className="badge">{ORG_ROLE_LABEL[r]}</span>
+                    <Badge key={r}>{ORG_ROLE_LABEL[r]}</Badge>
                   ))}
                 </span>
                 <div className="row" style={{ gap: "0.4rem" }}>

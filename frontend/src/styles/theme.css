@@ -128,6 +128,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  /* Text beside a control wraps; the control does not (style guide "Pattern: text beside controls"). */
+  flex: none;
+  white-space: nowrap;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
@@ -308,12 +311,65 @@ select.input {
 }
 
 .badge {
-  display: inline-block;
+  /* Plain text: a vertical -webkit-box so the text clamps to two lines with an ellipsis. */
+  display: -webkit-inline-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  box-sizing: border-box;
+  /* Pill contract (style guide "Pattern: pills"): never shrinks or stretches to fill its row, stays on
+     one line up to --badge-max-width, then wraps to at most two lines and is clipped after that.
+     A list sets --badge-min-width on its container so every pill in it is the same width. */
+  flex: none;
+  width: max-content;
+  min-width: var(--badge-min-width, 0);
+  max-width: var(--badge-max-width, 22ch);
+  max-height: calc(2 * 1.25em + 0.3rem + 2px);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.25;
   border-radius: 999px;
   padding: 0.15rem 0.6rem;
   font-size: 0.75rem;
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
+}
+
+.badge[data-align="start"] {
+  text-align: start;
+}
+
+.badge[data-align="end"] {
+  text-align: end;
+}
+
+/* Content that is not plain text (an icon, a nested element): laid out in a row, not clamped. */
+.badge--rich {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+}
+
+.badge--rich[data-align="start"] {
+  justify-content: flex-start;
+}
+
+.badge--rich[data-align="end"] {
+  justify-content: flex-end;
+}
+
+.badge svg {
+  flex: none;
+}
+
+/* A container that gives every pill in it one width (a status column, a list of statuses). */
+.badge-column {
+  --badge-min-width: 8rem;
 }
 
 /* Status colour, applied as a modifier
@@ -664,6 +720,31 @@ a.figure-projects-link:hover {
   flex-wrap: wrap;
 }
 
+/* `ItemRow` (components/ItemRow.tsx): text beside controls. The content wraps inside its own box;
+   the actions never move to a new line. Unlike `.row` (toolbars, filter bars: wrapping is right),
+   this never wraps, because its one job is keeping the actions beside the text. */
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.item-row__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.item-row__actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
 .text-muted {
   color: var(--color-text-muted);
 }
@@ -925,6 +1006,10 @@ a.figure-projects-link:hover {
 }
 
 .artefact-links__row {
+  min-width: 0;
+}
+
+.artefact-links__summary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -935,10 +1020,6 @@ a.figure-projects-link:hover {
 .artefact-links__target {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.artefact-links__remove {
-  margin-left: auto;
 }
 
 .artefact-links__note {
@@ -2000,3 +2081,40 @@ td:has(> .disclosure-toggle) {
 .scoring-cell--accent { background: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface)); }
 .scoring-cell--warning { background: color-mix(in srgb, var(--color-warning) 28%, var(--color-surface)); }
 .scoring-cell--danger { background: color-mix(in srgb, var(--color-danger) 28%, var(--color-surface)); }
+
+/* `RemovableChip`: a value with a remove control inside it. Text wraps; the control never moves to a new
+   line. Not a pill (`.badge`). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+}
+
+.chip__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chip__remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */
+.badge-after {
+  margin-inline-start: 0.5rem;
+}

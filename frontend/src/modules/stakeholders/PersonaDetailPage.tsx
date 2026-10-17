@@ -55,6 +55,7 @@ import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Persona, PersonaFieldValues, PersonaVersion } from "./types";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA_WEIGHT_SOURCE_LABEL } from "./types";
+import { Badge } from "../../components/Badge";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Persona activated.",
@@ -192,8 +193,8 @@ export function PersonaDetailPage() {
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{persona.name}</h1>
         <span className="row" style={{ gap: "0.5rem" }}>
-          <span className="badge">{PERSONA_SCOPE_LABEL[persona.scope]}</span>
-          <span className={`badge badge--${PERSONA_STATUS_TONE[persona.status]}`}>{PERSONA_STATUS_LABEL[persona.status]}</span>
+          <Badge>{PERSONA_SCOPE_LABEL[persona.scope]}</Badge>
+          <Badge tone={PERSONA_STATUS_TONE[persona.status]}>{PERSONA_STATUS_LABEL[persona.status]}</Badge>
         </span>
       </div>
 

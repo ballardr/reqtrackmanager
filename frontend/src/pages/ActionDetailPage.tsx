@@ -24,6 +24,8 @@ import { Spinner } from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { Badge } from "../components/Badge";
+import { ItemRow } from "../components/ItemRow";
 
 /**
  * Detail view for a single requirement action: an editable outcome-status
@@ -217,21 +219,23 @@ export function ActionDetailPage() {
         ) : null
       }
     >
-      <div className="row" style={{ justifyContent: "space-between" }}>
+      <ItemRow
+        actions={
+          action.is_archived ? (
+            <button className="btn" onClick={restore}>
+              <ArchiveRestore size={16} /> {strings.actions.restoreAction}
+            </button>
+          ) : (
+            <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
+              <Archive size={16} /> {strings.actions.archiveAction}
+            </button>
+          )
+        }
+      >
         <h1 style={{ margin: 0 }}>
           {action.unique_code} — {action.title}
         </h1>
-        {!action.is_archived && (
-          <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
-            <Archive size={14} /> {strings.actions.archiveAction}
-          </button>
-        )}
-        {action.is_archived && (
-          <button className="btn" onClick={restore}>
-            <ArchiveRestore size={14} /> {strings.actions.restoreAction}
-          </button>
-        )}
-      </div>
+      </ItemRow>
 
       {archiveDialogOpen && (
         <ConfirmDialog
@@ -245,7 +249,7 @@ export function ActionDetailPage() {
 
       <div className="stack">
           <div className="card stack">
-            {action.is_archived && <div className="badge" style={{ alignSelf: "flex-start" }}>{strings.actions.archived}</div>}
+            {action.is_archived && <Badge>{strings.actions.archived}</Badge>}
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.name}
               <input

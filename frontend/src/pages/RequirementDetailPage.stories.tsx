@@ -271,7 +271,7 @@ export const ArchivedRequirementShowsRestoreButton: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Restore" })).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
-    await expect(canvas.getByText("Archived", { selector: "div.badge" })).toBeInTheDocument();
+    await expect(canvas.getByText("Archived", { selector: ".badge" })).toBeInTheDocument();
 
     await userEvent.click(canvas.getByRole("button", { name: "Restore" }));
     await waitFor(() =>

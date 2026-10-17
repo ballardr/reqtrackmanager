@@ -37,6 +37,7 @@ import {
   type ProjectCompliance,
   type ProjectComplianceStatus,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 type DetailTabKey = "requirements" | "reviews";
 
@@ -143,21 +144,21 @@ export function ProjectComplianceDetail({
             <Stat label="Not applicable" value={String(liveStatus.not_applicable_count)} />
             <Stat label="Target date" value={liveStatus.target_compliance_date ?? "—"} />
             {liveStatus.has_non_compliant && (
-              <span className="badge" style={{ background: "var(--color-danger)", color: "white" }}>
+              <Badge tone="danger">
                 Contains non-compliant requirements
-              </span>
+              </Badge>
             )}
             {!liveStatus.has_non_compliant && liveStatus.not_yet_assessed && (
-              <span className="badge" style={{ background: "var(--color-warning)", color: "white" }}>
+              <Badge tone="warning">
                 Not yet assessed
-              </span>
+              </Badge>
             )}
           </div>
           <div className="row" style={{ flexWrap: "wrap", gap: "0.75rem" }}>
             {Object.entries(liveStatus.counts_by_status).map(([key, count]) => (
-              <span key={key} className="badge">
+              <Badge key={key}>
                 {COMPLIANCE_STATUS_LABEL[key as ComplianceStatus] ?? key}: {count}
-              </span>
+              </Badge>
             ))}
           </div>
         </div>

@@ -33,6 +33,7 @@ import {
   type ComplianceReview,
   type ComplianceReviewOutcome,
 } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function ReviewsPanel({
   projectId, projectComplianceId, organizationId, orgUsers,
@@ -73,8 +74,8 @@ export function ReviewsPanel({
               <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                 <span>
                   <strong>{r.frequency_label}</strong> — due {r.next_due_date}
-                  {r.schedule_state && <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[r.schedule_state]}</span>}
-                  <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_STATUS_LABEL[r.status]}</span>
+                  {r.schedule_state && <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[r.schedule_state]}</Badge>}
+                  <Badge className="badge-after">{COMPLIANCE_REVIEW_STATUS_LABEL[r.status]}</Badge>
                 </span>
                 {r.status === "scheduled" ? (
                   <div className="row">

@@ -53,6 +53,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { AddPopoverButton } from "./AddPopoverButton";
 import { AddArtefactLinkModal, type LinksChangeRequestMode } from "./AddArtefactLinkModal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ItemRow } from "./ItemRow";
 import { LinkedRecordSummary } from "./LinkedRecordSummary";
 import { LinkTraceModal } from "./LinkTraceModal";
 
@@ -419,11 +420,13 @@ function LinkRowView({
   const { edge, node } = row;
   const phrase = edge.phrase ?? strings.artefactLinks.untyped;
   return (
-    <li className="artefact-links__row" title={phrase}>
-      <LinkedRecordSummary edge={edge} node={node} currentProjectId={currentProjectId} layout="list" />
-      {canRemove && (
+    <ItemRow
+      as="li"
+      className="artefact-links__row"
+      title={phrase}
+      actions={canRemove && (
         <button
-          className="btn btn-danger btn-sm btn-icon artefact-links__remove"
+          className="btn btn-danger btn-sm btn-icon"
           title={strings.artefactLinks.removeAction}
           aria-label={strings.artefactLinks.removeLabel(phrase, node.label)}
           onClick={onRemove}
@@ -431,6 +434,11 @@ function LinkRowView({
           <Trash2 size={14} />
         </button>
       )}
-    </li>
+    >
+      {/* The record's own metadata (status, project, warning) may wrap below its title; the Remove action may not. */}
+      <div className="artefact-links__summary" data-wrap-ok>
+        <LinkedRecordSummary edge={edge} node={node} currentProjectId={currentProjectId} layout="list" />
+      </div>
+    </ItemRow>
   );
 }

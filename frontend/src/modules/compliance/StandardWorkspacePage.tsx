@@ -81,6 +81,7 @@ import type {
   ProjectComplianceStatus,
 } from "./types";
 import { userDisplayName } from "./types";
+import { Badge } from "../../components/Badge";
 
 type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
 
@@ -230,7 +231,7 @@ export function StandardWorkspacePage() {
           <h1 style={{ margin: 0 }}>{standard.reference} — {standard.name}</h1>
           <EntitySwitcher label="Switch standard" currentId={standard.id} loadOptions={loadStandardSwitcherOptions} />
         </div>
-        {standard.is_archived && <span className="badge">Archived</span>}
+        {standard.is_archived && <Badge>Archived</Badge>}
       </div>
 
       {section === "overview" && (

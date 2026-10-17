@@ -48,6 +48,7 @@ import { orgStrategyApi, projectStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL } from "./types";
 import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -188,9 +189,9 @@ export function StrategyDetailPage() {
       <Link to={backLink}>{backLabel}</Link>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>{strategy.title}</h1>
-        <span className={`badge badge--${STRATEGY_STATUS_TONE[strategy.status]}`}>
+        <Badge tone={STRATEGY_STATUS_TONE[strategy.status]}>
           {STRATEGY_STATUS_LABEL[strategy.status]}
-        </span>
+        </Badge>
       </div>
       <div className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>

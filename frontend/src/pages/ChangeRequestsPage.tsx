@@ -45,6 +45,7 @@ import { useStrings, useTerm } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { Badge } from "../components/Badge";
 
 const PAGE_SIZE = 30;
 
@@ -838,7 +839,7 @@ export function ChangeRequestsPage() {
                         {crTargetLabel(cr)}
                       </FilterBadge>
                     )}
-                    <span className="badge">{crLevelLabel(cr)}</span>
+                    <Badge>{crLevelLabel(cr)}</Badge>
                   </div>
                   <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                     {new Date(cr.created_at).toLocaleString()}

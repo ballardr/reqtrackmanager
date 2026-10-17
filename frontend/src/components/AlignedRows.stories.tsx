@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
+import { orphanedControlViolations } from "../testing/orphanedControls";
 import { AlignedRows } from "./AlignedRows";
 
 const buttons = (name: string) => (
@@ -44,3 +45,16 @@ export const ActionsLineUpAcrossRows: Story = {
 
 export const LightTheme: Story = { ...ActionsLineUpAcrossRows, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ActionsLineUpAcrossRows, globals: { theme: "dark" } };
+
+/** A 200-character prompt wraps in its own column; every row keeps both buttons beside it, none on a new line. */
+export const LongTextKeepsButtonsBesideIt: Story = {
+  args: {
+    rows: [
+      { id: "a", lead: "1.", main: "An exceptionally long prompt that keeps going well past any sensible single line of text ".repeat(2), actions: buttons("Long") },
+      { id: "b", lead: "2.", main: "Short", actions: buttons("Short") },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+  },
+};

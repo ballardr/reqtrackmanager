@@ -30,6 +30,7 @@ import { projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_ROADMAP_STATUSES, FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function ProjectFutureStatesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -88,7 +89,7 @@ export function ProjectFutureStatesPage() {
     { key: "title", label: "Title", render: (fs) => fs.title },
     {
       key: "status", label: "Status",
-      render: (fs) => <span className={`badge badge--${FUTURE_STATE_STATUS_TONE[fs.status]}`}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</span>,
+      render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
     },
     { key: "target_date", label: "Target date", render: (fs) => fs.target_date ?? "—" },
     { key: "version", label: "Version", render: (fs) => `v${fs.version_number}` },

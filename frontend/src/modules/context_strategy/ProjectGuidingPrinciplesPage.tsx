@@ -24,6 +24,7 @@ import { projectGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function ProjectGuidingPrinciplesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -78,7 +79,7 @@ export function ProjectGuidingPrinciplesPage() {
     { key: "priority", label: "Priority", render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
     {
       key: "status", label: "Status",
-      render: (g) => <span className={`badge badge--${GUIDING_PRINCIPLE_STATUS_TONE[g.status]}`}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</span>,
+      render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
     },
     { key: "version", label: "Version", render: (g) => `v${g.version_number}` },
   ];
