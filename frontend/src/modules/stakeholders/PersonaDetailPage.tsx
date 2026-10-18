@@ -31,7 +31,6 @@
  * `VersionHistoryTable`, and the Stakeholders that represent this persona are
  * `RepresentedByPanel`.
  */
-import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -50,7 +49,9 @@ import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { PersonaFormModal } from "./PersonaFormModal";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
-import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
+import { RecordHeader } from "../../components/RecordHeader";
+import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Persona, PersonaFieldValues, PersonaVersion } from "./types";
@@ -170,6 +171,20 @@ export function PersonaDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Persona",
+    isArchived: persona?.is_archived ?? false,
+    hidden: !persona || readOnlyInProject,
+    archiveBody: "This Persona will no longer appear in the active list or be offered when scoring. Nothing is deleted.",
+    onToggle: async () => {
+      if (!scopeId || !persona) return;
+      await run(
+        () => (persona.is_archived ? scopedApi.unarchive(scopeId, persona.id) : scopedApi.archive(scopeId, persona.id)),
+        persona.is_archived ? "Persona unarchived." : "Persona archived.",
+      );
+    },
+  });
+
   if (!scopeId || !personaId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (persona === null) return <Spinner />;
@@ -189,28 +204,37 @@ export function PersonaDetailPage() {
         />
       }
     >
-      <Link to={backLink}>{backLabel}</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{persona.name}</h1>
-        <span className="row" style={{ gap: "0.5rem" }}>
-          <Badge>{PERSONA_SCOPE_LABEL[persona.scope]}</Badge>
-          <Badge tone={PERSONA_STATUS_TONE[persona.status]}>{PERSONA_STATUS_LABEL[persona.status]}</Badge>
-        </span>
-      </div>
+      <RecordHeader
+        recordLabel="Persona"
+        title={persona.name}
+        back={{ to: backLink, label: backLabel }}
+        badges={
+          <>
+            <Badge>{PERSONA_SCOPE_LABEL[persona.scope]}</Badge>
+            <Badge tone={PERSONA_STATUS_TONE[persona.status]}>{PERSONA_STATUS_LABEL[persona.status]}</Badge>
+          </>
+        }
+        subtitle={
+          `${[persona.persona_type_name, persona.role_title].filter(Boolean).join(" · ") || "No type or role set"} · v${persona.version_number}` +
+          (persona.is_archived ? " · Archived" : "")
+        }
+        onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          readOnlyInProject ? undefined : (
+            <RecordLifecycleControls
+              noun="Persona"
+              status={persona.status}
+              activateBody="An Active persona is offered as a target when scoring. A comment is optional."
+              retireBody="A Retired persona is no longer offered when scoring, but keeps its history and can be reactivated. A comment is optional."
+              onTransition={(action, comment) => run(() => scopedApi[action](scopeId, persona.id, comment), TRANSITION_DONE[action])}
+            />
+          )
+        }
+      />
+      {archive.dialog}
 
       <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
-            {[persona.persona_type_name, persona.role_title].filter(Boolean).join(" · ") || "No type or role set"} · v{persona.version_number}
-            {persona.is_archived && " · Archived"}
-          </p>
-          {!readOnlyInProject && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-
         {readOnlyInProject && (
           <p className="text-muted" style={{ margin: 0 }}>
             This is an organisation-wide Persona shared by every project. Edit it from the{" "}
@@ -313,24 +337,6 @@ export function PersonaDetailPage() {
           subject={{ kind: "persona", id: persona.id, name: persona.name }}
           load={() => projectEngagementApi.list(projectId ?? "", { persona_id: persona.id })}
         />
-
-        {!readOnlyInProject && (
-          <RecordLifecycleControls
-            noun="Persona"
-            status={persona.status}
-            isArchived={persona.is_archived}
-            activateBody="An Active persona is offered as a target when scoring. A comment is optional."
-            retireBody="A Retired persona is no longer offered when scoring, but keeps its history and can be reactivated. A comment is optional."
-            archiveBody="This Persona will no longer appear in the active list or be offered when scoring. Nothing is deleted."
-            onTransition={(action, comment) => run(() => scopedApi[action](scopeId, persona.id, comment), TRANSITION_DONE[action])}
-            onArchiveToggle={() =>
-              run(
-                () => (persona.is_archived ? scopedApi.unarchive(scopeId, persona.id) : scopedApi.archive(scopeId, persona.id)),
-                persona.is_archived ? "Persona unarchived." : "Persona archived.",
-              )
-            }
-          />
-        )}
 
         <VersionHistoryTable
           versions={versions}

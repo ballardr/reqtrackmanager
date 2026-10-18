@@ -49,8 +49,7 @@
  * GUIDING_PRINCIPLE_LOCKED_STATUSES`).
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
@@ -71,6 +70,8 @@ import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDI
 import type {
   GuidingPrinciple, GuidingPrincipleComment, GuidingPrincipleFieldValues, GuidingPrincipleVersion,
 } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
@@ -132,7 +133,6 @@ export function GuidingPrincipleDetailPage() {
   const [sendBackComment, setSendBackComment] = useState("");
   const [transitionAction, setTransitionAction] = useState<TransitionAction | null>(null);
   const [transitionComment, setTransitionComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!scopeId || !guidingPrincipleId) return;
@@ -218,6 +218,20 @@ export function GuidingPrincipleDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Guiding Principle",
+    isArchived: guidingPrinciple?.is_archived ?? false,
+    hidden: !guidingPrinciple,
+    archiveBody: "This Guiding Principle will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!scopeId || !guidingPrinciple) return;
+      await runTransition(
+        () => (guidingPrinciple.is_archived ? scopedApi.unarchive(scopeId, guidingPrinciple.id) : scopedApi.archive(scopeId, guidingPrinciple.id)),
+        guidingPrinciple.is_archived ? "Guiding Principle unarchived." : "Guiding Principle archived.",
+      );
+    },
+  });
+
   if (!scopeId || !guidingPrincipleId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciple === null) return <Spinner />;
@@ -246,34 +260,26 @@ export function GuidingPrincipleDetailPage() {
         />
       }
     >
-      <Link to={backLink}>{backLabel}</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{guidingPrinciple.name}</h1>
-        <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[guidingPrinciple.status]}>
-          {GUIDING_PRINCIPLE_STATUS_LABEL[guidingPrinciple.status]}
-        </Badge>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
+      <RecordHeader
+        recordLabel="Guiding Principle"
+        title={guidingPrinciple.name}
+        back={{ to: backLink, label: backLabel }}
+        badges={
+          <>
+          <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[guidingPrinciple.status]}>
+            {GUIDING_PRINCIPLE_STATUS_LABEL[guidingPrinciple.status]}
+          </Badge>
+          </>
+        }
+        subtitle={
+          <>
             {GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority · v{guidingPrinciple.version_number}
-          </p>
-          {!guidingPrinciple.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-
-        <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
-        {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
-
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
-          organizationId={ownerOrgId} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          </>
+        }
+        onEdit={guidingPrinciple.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {guidingPrinciple.status === "draft" && (
             <button
               className="btn btn-primary"
@@ -287,20 +293,30 @@ export function GuidingPrincipleDetailPage() {
               <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
               <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
             </>
-          )}
-          {guidingPrinciple.status === "approved" && (
-            <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-          )}
-          {guidingPrinciple.status === "active" && (
-            <>
-              <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-              <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-            </>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {guidingPrinciple.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {guidingPrinciple.status === "approved" && (
+                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
+              )}
+              {guidingPrinciple.status === "active" && (
+                <>
+                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
+                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
+                </>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
+        {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
+
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
+          organizationId={ownerOrgId} projectId={projectId} readOnly={false} onChange={assignOwner}
+        />
 
 
         <VersionHistoryTable
@@ -420,25 +436,6 @@ export function GuidingPrincipleDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={guidingPrinciple.is_archived ? "Unarchive this Guiding Principle?" : "Archive this Guiding Principle?"}
-          message={
-            guidingPrinciple.is_archived
-              ? "This Guiding Principle will count as active again."
-              : "This Guiding Principle will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={guidingPrinciple.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (guidingPrinciple.is_archived ? scopedApi.unarchive(scopeId, guidingPrinciple.id) : scopedApi.archive(scopeId, guidingPrinciple.id)),
-              guidingPrinciple.is_archived ? "Guiding Principle unarchived." : "Guiding Principle archived.",
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

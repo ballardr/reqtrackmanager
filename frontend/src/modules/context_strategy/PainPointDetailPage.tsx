@@ -52,8 +52,7 @@
  * the current content fields plus the newly chosen `owner`.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
@@ -71,6 +70,8 @@ import { PainPointFormModal } from "./PainPointFormModal";
 import { PainPointScoringPanel } from "./PainPointScoringPanel";
 import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
 import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFieldValues } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 
 /** The three optional-comment, positive/neutral-progression actions —
@@ -133,7 +134,6 @@ export function PainPointDetailPage() {
   const [optionalComment, setOptionalComment] = useState("");
   const [mandatoryAction, setMandatoryAction] = useState<MandatoryCommentAction | null>(null);
   const [mandatoryComment, setMandatoryComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -207,6 +207,20 @@ export function PainPointDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Pain Point",
+    isArchived: painPoint?.is_archived ?? false,
+    hidden: !painPoint,
+    archiveBody: "This Pain Point will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!projectId || !painPoint) return;
+      await runTransition(
+        () => (painPoint.is_archived ? projectPainPointApi.unarchive(projectId, painPoint.id) : projectPainPointApi.archive(projectId, painPoint.id)),
+        painPoint.is_archived ? "Pain Point unarchived." : "Pain Point archived.",
+      );
+    },
+  });
+
   if (!projectId || !painPointId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (painPoint === null) return <Spinner />;
@@ -221,39 +235,27 @@ export function PainPointDetailPage() {
         />
       }
     >
-      <Link to={`/projects/${projectId}/modules/context_strategy/pain-points`}>← Pain Point</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{painPoint.title}</h1>
-        <span className="row" style={{ gap: "0.5rem" }}>
-          {painPoint.is_intentional && <Badge tone="info">Intentional</Badge>}
-          <Badge tone={PAIN_POINT_STATUS_TONE[painPoint.status]}>
-            {PAIN_POINT_STATUS_LABEL[painPoint.status]}
-          </Badge>
-        </span>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
+      <RecordHeader
+        recordLabel="Pain Point"
+        title={painPoint.title}
+        back={{ to: `/projects/${projectId}/modules/context_strategy/pain-points`, label: "← Pain Point" }}
+        badges={
+          <>
+            {painPoint.is_intentional && <Badge tone="info">Intentional</Badge>}
+            <Badge tone={PAIN_POINT_STATUS_TONE[painPoint.status]}>
+              {PAIN_POINT_STATUS_LABEL[painPoint.status]}
+            </Badge>
+          </>
+        }
+        subtitle={
+          <>
             {painPoint.pain_point_type_name} · {PAIN_POINT_PRIORITY_LABEL[painPoint.priority]} priority · identified {painPoint.date_identified}
-          </p>
-          {!painPoint.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-
-        {painPoint.description && <Field label="Description" value={painPoint.description} />}
-        {painPoint.source && <Field label="Source" value={painPoint.source} />}
-        {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
-        {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
-
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
-          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          </>
+        }
+        onEdit={painPoint.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {painPoint.status === "submitted" && (
             <button
               className="btn btn-primary"
@@ -268,17 +270,29 @@ export function PainPointDetailPage() {
               <button className="btn btn-danger" onClick={() => setMandatoryAction("reject")}>Reject</button>
               <button className="btn" onClick={() => setMandatoryAction("mark_duplicate")}>Mark duplicate</button>
             </>
-          )}
-          {painPoint.status === "accepted" && (
-            <button className="btn btn-primary" onClick={() => setOptionalAction("address")}>Address</button>
-          )}
-          {painPoint.status === "addressed" && (
-            <button className="btn btn-primary" onClick={() => setOptionalAction("close")}>Close</button>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {painPoint.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {painPoint.status === "accepted" && (
+                <button className="btn btn-primary" onClick={() => setOptionalAction("address")}>Address</button>
+              )}
+              {painPoint.status === "addressed" && (
+                <button className="btn btn-primary" onClick={() => setOptionalAction("close")}>Close</button>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        {painPoint.description && <Field label="Description" value={painPoint.description} />}
+        {painPoint.source && <Field label="Source" value={painPoint.source} />}
+        {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
+        {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
+
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
+          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
+        />
 
         <PainPointScoringPanel projectId={projectId} painPointId={painPoint.id} locked={painPoint.is_locked} />
 
@@ -398,25 +412,6 @@ export function PainPointDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={painPoint.is_archived ? "Unarchive this Pain Point?" : "Archive this Pain Point?"}
-          message={
-            painPoint.is_archived
-              ? "This Pain Point will count as active again."
-              : "This Pain Point will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={painPoint.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (painPoint.is_archived ? projectPainPointApi.unarchive(projectId, painPoint.id) : projectPainPointApi.archive(projectId, painPoint.id)),
-              painPoint.is_archived ? "Pain Point unarchived." : "Pain Point archived.",
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

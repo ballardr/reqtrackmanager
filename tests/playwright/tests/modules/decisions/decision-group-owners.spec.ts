@@ -101,7 +101,7 @@ test.describe("Decision Management: groups as owners and decision makers", () =>
       await memberPage.getByLabel("Owned by me or my groups").check();
       await memberPage.getByRole("button", { name: "DEC-001" }).click();
       await memberPage.getByRole("dialog", { name: "DEC-001" }).getByRole("link", { name: "View full details" }).click();
-      await expect(memberPage.getByRole("heading", { name: "DEC-001" })).toBeVisible();
+      await expect(memberPage.locator(".record-header").getByText("DEC-001", { exact: true })).toBeVisible();
       await memberPage.getByRole("button", { name: "Propose" }).click();
       await expect(memberPage.getByText("Proposed", { exact: true }).first()).toBeVisible();
     } finally {

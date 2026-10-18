@@ -96,7 +96,8 @@ export const ArchiveFlow: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(document.body);
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Compliance assignment actions" }));
+    await userEvent.click(body.getByRole("menuitem", { name: "Archive" }));
     const confirmDialog = await waitFor(() => body.getByRole("dialog"));
     await userEvent.click(within(confirmDialog).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(

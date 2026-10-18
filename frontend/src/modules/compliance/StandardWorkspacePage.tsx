@@ -34,8 +34,8 @@
  * entirely on `ProjectCompliancePage.tsx`, since it's a project-scoped
  * action, not a standard-governance one.
  *
- * Standard-level import/export: an "Export" action sits beside
- * Edit/Archive — downloads this standard's own portable JSON document
+ * Standard-level import/export: an "Export" action sits, with Archive, in the record header menu beside
+ * Edit — downloads this standard's own portable JSON document
  * (`complianceApi.exportStandard` + `downloadBlob`, the same shape
  * `OrgComplianceDashboard.tsx`'s report downloads already use), for backup
  * or transfer into a different organisation/deployment via
@@ -59,11 +59,12 @@ import { useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
 import type { OrgGroup, OrgUser } from "../../api/types";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { MetricTile } from "../../components/MetricTile";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
+import { RecordHeader } from "../../components/RecordHeader";
 import { Spinner } from "../../components/Spinner";
+import { useConfirmedAction } from "../../components/useConfirmedAction";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
@@ -117,7 +118,6 @@ export function StandardWorkspacePage() {
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [history, setHistory] = useState<ComplianceAuditEvent[] | null>(null);
   const [exporting, setExporting] = useState(false);
   const [versions, setVersions] = useState<ComplianceStandardVersion[] | null>(null);
@@ -201,8 +201,6 @@ export function StandardWorkspacePage() {
       refreshComplianceNavVisibility();
     } catch (err) {
       showToast(toErrorMessage(err, "Could not update standard."), "error");
-    } finally {
-      setConfirmingArchive(false);
     }
   }
 
@@ -219,6 +217,18 @@ export function StandardWorkspacePage() {
     }
   }
 
+  const archiveAction = useConfirmedAction(
+    standard && {
+      label: standard.is_archived ? "Unarchive" : "Archive",
+      danger: !standard.is_archived,
+      title: standard.is_archived ? `Unarchive "${standard.name}"?` : `Archive "${standard.name}"?`,
+      message: standard.is_archived
+        ? "This standard will reappear in the default (non-archived) list."
+        : "This standard will be hidden from the default list. Nothing referencing it is deleted.",
+      onConfirm: handleArchiveToggle,
+    },
+  );
+
   if (notFound) {
     return <p className="text-muted">This compliance standard could not be found, or you don't have access to it.</p>;
   }
@@ -226,13 +236,18 @@ export function StandardWorkspacePage() {
 
   return (
     <div className="stack">
-      <div className="stack" style={{ gap: "0.15rem" }}>
-        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
-          <h1 style={{ margin: 0 }}>{standard.reference} — {standard.name}</h1>
-          <EntitySwitcher label="Switch standard" currentId={standard.id} loadOptions={loadStandardSwitcherOptions} />
-        </div>
-        {standard.is_archived && <Badge>Archived</Badge>}
-      </div>
+      <RecordHeader
+        recordLabel="Standard"
+        title={`${standard.reference} — ${standard.name}`}
+        titleAddon={<EntitySwitcher label="Switch standard" currentId={standard.id} loadOptions={loadStandardSwitcherOptions} />}
+        badges={standard.is_archived ? <Badge>Archived</Badge> : undefined}
+        onEdit={() => setEditing(true)}
+        actions={[
+          { label: exporting ? "Exporting…" : "Export", onSelect: () => { if (!exporting) void handleExport(); } },
+          archiveAction.item,
+        ]}
+      />
+      {archiveAction.dialog}
 
       {section === "overview" && (
         <div className="stack">
@@ -256,15 +271,6 @@ export function StandardWorkspacePage() {
             <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
               <span className="text-muted">Owner:</span>
               <PrincipalBadge principal={standard.owner} />
-            </div>
-            <div className="row">
-              <button className="btn" onClick={() => setEditing(true)}>Edit</button>
-              <button className="btn" onClick={handleExport} disabled={exporting}>
-                {exporting ? "Exporting…" : "Export"}
-              </button>
-              <button className="btn btn-danger" onClick={() => setConfirmingArchive(true)}>
-                {standard.is_archived ? "Unarchive" : "Archive"}
-              </button>
             </div>
           </div>
           <StandardApplicabilityPanel standard={standard} onStandardChanged={setStandard} />
@@ -324,20 +330,6 @@ export function StandardWorkspacePage() {
               setEditError(toErrorMessage(err, "Could not update standard."));
             }
           }}
-        />
-      )}
-
-      {confirmingArchive && (
-        <ConfirmDialog
-          title={standard.is_archived ? `Unarchive "${standard.name}"?` : `Archive "${standard.name}"?`}
-          message={
-            standard.is_archived
-              ? "This standard will reappear in the default (non-archived) list."
-              : "This standard will be hidden from the default list. Nothing referencing it is deleted."
-          }
-          confirmLabel={standard.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={handleArchiveToggle}
-          onCancel={() => setConfirmingArchive(false)}
         />
       )}
     </div>

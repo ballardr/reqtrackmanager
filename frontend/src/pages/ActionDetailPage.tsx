@@ -1,4 +1,3 @@
-import { Archive, ArchiveRestore } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -15,7 +14,6 @@ import type {
 import { principalRef, REQUIREMENT_ACTION_OUTCOME_LABEL, savedPrincipalDisplay } from "../api/types";
 import { ArtefactLinksPanel } from "../components/ArtefactLinksPanel";
 import { CommentThread } from "../components/CommentThread";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DetailLayout } from "../components/DetailLayout";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { PrincipalBadge } from "../components/PrincipalBadge";
@@ -25,7 +23,8 @@ import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { Badge } from "../components/Badge";
-import { ItemRow } from "../components/ItemRow";
+import { RecordHeader } from "../components/RecordHeader";
+import { useConfirmedAction } from "../components/useConfirmedAction";
 
 /**
  * Detail view for a single requirement action: an editable outcome-status
@@ -52,7 +51,6 @@ export function ActionDetailPage() {
     title: string; description: string; actionTypeId: string; assignee: PrincipalRef | null; dueDate: string;
   }>({ title: "", description: "", actionTypeId: "", assignee: null, dueDate: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   // Guards `form` against `reload()` — called after every unrelated
   // mutation on this page (posting a comment, uploading a file, linking a
   // requirement, ...) and not awaited by its callers, so it can still be
@@ -144,7 +142,6 @@ export function ActionDetailPage() {
   }
 
   async function archive() {
-    setArchiveDialogOpen(false);
     try {
       await api.post(`/api/v1/projects/${projectId}/actions/${actionId}/archive`);
       showToast(strings.actions.archivedToast);
@@ -208,6 +205,18 @@ export function ActionDetailPage() {
     reload();
   }
 
+  const archiveAction = useConfirmedAction(
+    action && {
+      label: action.is_archived ? strings.actions.restoreAction : strings.actions.archiveAction,
+      danger: !action.is_archived,
+      immediate: action.is_archived,
+      title: strings.actions.archiveTitle,
+      message: strings.actions.archiveConfirm,
+      confirmLabel: strings.actions.archiveAction,
+      onConfirm: action.is_archived ? restore : archive,
+    },
+  );
+
   if (!action) return <Spinner />;
 
   return (
@@ -219,37 +228,17 @@ export function ActionDetailPage() {
         ) : null
       }
     >
-      <ItemRow
-        actions={
-          action.is_archived ? (
-            <button className="btn" onClick={restore}>
-              <ArchiveRestore /> {strings.actions.restoreAction}
-            </button>
-          ) : (
-            <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
-              <Archive /> {strings.actions.archiveAction}
-            </button>
-          )
-        }
-      >
-        <h1 style={{ margin: 0 }}>
-          {action.unique_code} — {action.title}
-        </h1>
-      </ItemRow>
-
-      {archiveDialogOpen && (
-        <ConfirmDialog
-          title={strings.actions.archiveTitle}
-          message={strings.actions.archiveConfirm}
-          confirmLabel={strings.actions.archiveAction}
-          onConfirm={archive}
-          onCancel={() => setArchiveDialogOpen(false)}
-        />
-      )}
+      <RecordHeader
+        recordLabel={strings.actions.recordLabel}
+        title={action.title}
+        code={action.unique_code}
+        badges={action.is_archived ? <Badge>{strings.actions.archived}</Badge> : undefined}
+        actions={[archiveAction.item]}
+      />
+      {archiveAction.dialog}
 
       <div className="stack">
           <div className="card stack">
-            {action.is_archived && <Badge>{strings.actions.archived}</Badge>}
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.name}
               <input

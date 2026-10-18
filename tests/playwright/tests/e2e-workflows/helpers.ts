@@ -335,12 +335,11 @@ export async function openRequirementByCode(page: Page, code: string): Promise<v
   // identically-worded row badge still mounted — a genuine two-element
   // strict-mode violation `expect().toBeVisible()` can't retry past, since
   // ambiguity isn't a "not ready yet" condition. The detail page's `<h1>`
-  // always renders as `"<code> — <name>"` (RequirementDetailPage.tsx) while
-  // the list page's own `<h1>` is just the (terminology-dependent) page
-  // title with no em dash, so waiting for the dash is a reliable,
-  // terminology-independent signal that the swap has actually happened.
+  // is in a `.record-header` (RecordHeader), which the requirements list page
+  // never renders, so waiting for it is a reliable, terminology-independent
+  // signal that the swap has actually happened.
   await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
-  await expect(page.locator("h1")).toContainText("—");
+  await expect(page.locator(".record-header h1")).toBeVisible();
 }
 
 /** Same idea as `ensureExpanded`, for PreferencesPage's "Two-factor
@@ -419,13 +418,13 @@ export async function clickAndAwaitSave(page: Page, control: Locator, urlPart: s
  * created row is not guaranteed to land on the first page (found
  * 2026-10-04 when Alpha-1 passed 30 active requirements and ~10 specs
  * started timing out). Must be called from the requirements list page.
- * Waits for the detail page's `<h1>` ("<code> — <name>") before returning.
+ * Waits for the detail page's record header before returning.
  */
 export async function openRequirementByName(page: Page, name: string): Promise<void> {
   await page.getByPlaceholder("Search by name or ID").fill(name);
   await page.getByText(name).click();
   await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
-  await expect(page.locator("h1")).toContainText("—");
+  await expect(page.locator(".record-header h1")).toBeVisible();
 }
 
 /**
@@ -644,4 +643,33 @@ export async function expectTidyStatBlocks(page: Page): Promise<void> {
   } finally {
     await page.setViewportSize(original);
   }
+}
+
+/**
+ * Opens a record's object-action menu in its header ("{recordLabel} actions") and picks `item`
+ * (Archive, Restore, Delete permanently, Subscribe...). Workflow transitions (Activate, Retire,
+ * Approve) are not in the menu; click those directly.
+ *
+ * Args:
+ *   page: The page showing the record detail.
+ *   recordLabel: The record's singular label as the page names it ("Persona", "Stakeholder Need").
+ *   item: Exact menu item label.
+ */
+export async function chooseRecordAction(page: Page, recordLabel: string, item: string): Promise<void> {
+  await page.getByRole("button", { name: `${recordLabel} actions` }).click();
+  await page.getByRole("menu", { name: `${recordLabel} actions` }).getByRole("menuitem", { name: item, exact: true }).click();
+}
+
+/**
+ * Item labels in a record's object-action menu, or `[]` when the page draws no menu (the
+ * user has no object actions there). Closes the menu again.
+ */
+export async function recordActionNames(page: Page, recordLabel: string): Promise<string[]> {
+  const trigger = page.getByRole("button", { name: `${recordLabel} actions` });
+  if ((await trigger.count()) === 0) return [];
+  await trigger.click();
+  const names = (await page.getByRole("menu", { name: `${recordLabel} actions` }).getByRole("menuitem").allTextContents())
+    .map((t) => t.trim());
+  await page.keyboard.press("Escape");
+  return names;
 }

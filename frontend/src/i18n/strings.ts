@@ -208,6 +208,7 @@ const en = {
   },
   requirements: {
     title: "{Requirements}",
+    recordLabel: "{Requirement}",
     newRequirement: "New {requirement}",
     importFromCsv: "Import from CSV",
     search: "Search by name or ID",
@@ -1767,6 +1768,7 @@ const en = {
   },
   actions: {
     title: "Actions",
+    recordLabel: "Action",
     newAction: "New action",
     uniqueCode: "ID",
     name: "Title",

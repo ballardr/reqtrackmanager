@@ -1,4 +1,4 @@
-import { Activity as ActivityIcon, ArchiveRestore, CheckCircle, FolderOpen, GitPullRequest, Plus, Table as TableIcon, Trash2 } from "lucide-react";
+import { Activity as ActivityIcon, Bell, BellOff, CheckCircle, FolderOpen, GitPullRequest, Plus, Table as TableIcon, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -44,7 +44,8 @@ import { Modal } from "../components/Modal";
 import { Popover } from "../components/Popover";
 import { ResourcePickerModal } from "../components/ResourcePickerModal";
 import { Spinner } from "../components/Spinner";
-import { SubscribeButton } from "../components/SubscribeButton";
+import { RecordHeader } from "../components/RecordHeader";
+import { useConfirmedAction } from "../components/useConfirmedAction";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -143,7 +144,6 @@ export function RequirementDetailPage() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   // Organisation id, needed to browse that org's shared resources (style
   // guide "Pattern: resource picker dialog") — set as soon as the project
   // itself resolves, independent of whether the org-member-only calls
@@ -468,7 +468,6 @@ export function RequirementDetailPage() {
   }
 
   async function archive() {
-    setArchiveDialogOpen(false);
     try {
       await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}`);
       showToast(strings.requirements.archived);
@@ -576,6 +575,19 @@ export function RequirementDetailPage() {
     reload();
   }
 
+  const archiveAction = useConfirmedAction(
+    requirement && {
+      label: requirement.is_archived ? strings.requirements.restore : strings.requirements.archive,
+      danger: !requirement.is_archived,
+      hidden: !canArchive,
+      immediate: requirement.is_archived,
+      title: strings.requirements.archiveTitle,
+      message: strings.requirements.archiveConfirm,
+      confirmLabel: strings.requirements.archive,
+      onConfirm: requirement.is_archived ? restore : archive,
+    },
+  );
+
   if (!requirement) return <Spinner />;
 
   return (
@@ -599,69 +611,59 @@ export function RequirementDetailPage() {
         ) : null
       }
     >
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>
-          {requirement.unique_code} — {requirement.name}
-        </h1>
-        <div className="row">
-          <SubscribeButton subscribed={requirement.is_subscribed} onToggle={toggleSubscription} />
-          {canApprove && requirement.requires_approval && (
-            <button className="btn btn-primary" onClick={approveRequirement}>
-              <CheckCircle /> {strings.requirements.approve}
-            </button>
-          )}
-          {/* Only offered once the {requirement} is actually locked — a
-              change request against a still-draft/reviewed one is rejected
-              server-side; an
-              unlocked {requirement} is edited directly instead. */}
-          {requirement.is_locked && (
-            <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
-              <GitPullRequest /> {strings.requirements.makeChangeRequest}
-            </Link>
-          )}
-          {canArchive && requirement.status === "approved" && !requirement.is_completed && (
-            <button className="btn" onClick={markCompleted}>
-              {strings.requirements.markCompleted}
-            </button>
-          )}
-          {canArchive && requirement.is_completed && (
-            <button className="btn" onClick={unmarkCompleted}>
-              {strings.requirements.unmarkCompleted}
-            </button>
-          )}
-          {canArchive && !requirement.is_archived && (
-            <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
-              {strings.requirements.archive}
-            </button>
-          )}
-          {canArchive && requirement.is_archived && (
-            <button className="btn" onClick={restore}>
-              <ArchiveRestore /> {strings.requirements.restore}
-            </button>
-          )}
-        </div>
-      </div>
+      <RecordHeader
+        recordLabel={strings.requirements.recordLabel}
+        title={requirement.name}
+        code={requirement.unique_code}
+        badges={
+          <>
+            {requirement.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
+            {requirement.is_subscribed && <Badge tone="info">{strings.requirements.subscribed}</Badge>}
+          </>
+        }
+        actions={[
+          {
+            label: requirement.is_subscribed ? strings.requirements.unsubscribe : strings.requirements.subscribe,
+            icon: requirement.is_subscribed ? <BellOff /> : <Bell />,
+            onSelect: toggleSubscription,
+          },
+          archiveAction.item,
+        ]}
+        transitions={
+          <>
+            {canApprove && requirement.requires_approval && (
+              <button className="btn btn-primary" onClick={approveRequirement}>
+                <CheckCircle /> {strings.requirements.approve}
+              </button>
+            )}
+            {/* Only offered once the {requirement} is actually locked — a
+                change request against a still-draft/reviewed one is rejected
+                server-side; an
+                unlocked {requirement} is edited directly instead. */}
+            {requirement.is_locked && (
+              <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
+                <GitPullRequest /> {strings.requirements.makeChangeRequest}
+              </Link>
+            )}
+            {canArchive && requirement.status === "approved" && !requirement.is_completed && (
+              <button className="btn" onClick={markCompleted}>
+                {strings.requirements.markCompleted}
+              </button>
+            )}
+            {canArchive && requirement.is_completed && (
+              <button className="btn" onClick={unmarkCompleted}>
+                {strings.requirements.unmarkCompleted}
+              </button>
+            )}
+          </>
+        }
+      />
+      {archiveAction.dialog}
 
       {projectId && (
         <WatchingGroupsPanel
           recordPath={`/api/v1/projects/${projectId}/requirements/${requirementId}`}
           organizationId={organizationId ?? undefined} projectId={projectId} canManage={canArchive}
-        />
-      )}
-
-      {requirement.is_archived && (
-        <Badge>
-          {strings.requirements.archivedBadge}
-        </Badge>
-      )}
-
-      {archiveDialogOpen && (
-        <ConfirmDialog
-          title={strings.requirements.archiveTitle}
-          message={strings.requirements.archiveConfirm}
-          confirmLabel={strings.requirements.archive}
-          onConfirm={archive}
-          onCancel={() => setArchiveDialogOpen(false)}
         />
       )}
 

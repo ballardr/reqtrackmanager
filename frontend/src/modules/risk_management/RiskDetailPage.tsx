@@ -16,15 +16,16 @@
  * always renders regardless of role; the backend enforces Risk Manager / Risk
  * Acceptor and a 403 surfaces as a toast or in the dialog.
  */
-import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailLayout } from "../../components/DetailLayout";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { RecordField, RecordFieldGroup, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { Spinner } from "../../components/Spinner";
@@ -127,6 +128,22 @@ export function RiskDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Risk",
+    isArchived: risk?.is_archived ?? false,
+    hidden: !risk,
+    archiveBody: "This Risk will no longer appear in the active register. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!projectId || !risk) return;
+      try {
+        setRisk(await (risk.is_archived ? riskApi.unarchive(projectId, risk.id) : riskApi.archive(projectId, risk.id)));
+        showToast(risk.is_archived ? "Risk unarchived." : "Risk archived.");
+      } catch (err) {
+        showToast(toErrorMessage(err, "Could not update this Risk."), "error");
+      }
+    },
+  });
+
   if (!projectId || !riskId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (risk === null || project === null) return <Spinner />;
@@ -147,28 +164,38 @@ export function RiskDetailPage() {
         />
       }
     >
-      <Link to={`/projects/${projectId}/modules/risk_management/risks`}>← Risks</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{risk.unique_code}</h1>
-        <span className="row" style={{ gap: "0.5rem" }}>
-          {risk.is_review_overdue && <Badge tone="danger">Review overdue</Badge>}
-          {risk.is_archived && <Badge tone="muted">Archived</Badge>}
-          <Badge tone={RISK_STATUS_TONE[risk.status]}>{RISK_STATUS_LABEL[risk.status]}</Badge>
-        </span>
-      </div>
+      <RecordHeader
+        recordLabel="Risk"
+        title={risk.title}
+        code={risk.unique_code}
+        back={{ to: `/projects/${projectId}/modules/risk_management/risks`, label: "← Risks" }}
+        badges={
+          <>
+            {risk.is_review_overdue && <Badge tone="danger">Review overdue</Badge>}
+            {risk.is_archived && <Badge tone="muted">Archived</Badge>}
+            <Badge tone={RISK_STATUS_TONE[risk.status]}>{RISK_STATUS_LABEL[risk.status]}</Badge>
+          </>
+        }
+        subtitle={
+          <>
+            {risk.risk_type_name ?? "No type"} · Owner: <PrincipalBadge principal={risk.owner} /> ·{" "}
+            {risk.treatment_strategy ? `Strategy: ${TREATMENT_STRATEGY_LABEL[risk.treatment_strategy]}` : "No treatment strategy"}
+          </>
+        }
+        onEdit={risk.is_archived ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <RiskLifecycleControls
+            risk={risk}
+            onTransition={async (status: RiskStatus, comment: string) => {
+              setRisk(await riskApi.transition(projectId, risk.id, status, comment));
+              showToast(`Risk moved to ${RISK_STATUS_LABEL[status]}.`);
+            }}
+          />
+        }
+      />
+      {archive.dialog}
       <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>{risk.title}</h2>
-          {!risk.is_archived && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-        <p className="text-muted" style={{ margin: 0 }}>
-          {risk.risk_type_name ?? "No type"} · Owner: <PrincipalBadge principal={risk.owner} /> ·{" "}
-          {risk.treatment_strategy ? `Strategy: ${TREATMENT_STRATEGY_LABEL[risk.treatment_strategy]}` : "No treatment strategy"}
-        </p>
         {risk.statement && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{risk.statement}</p>}
         {risk.cause && <RecordField label="Cause" value={risk.cause} />}
         {risk.risk_event && <RecordField label="Risk event" value={risk.risk_event} />}
@@ -198,22 +225,6 @@ export function RiskDetailPage() {
           </div>
           <RiskMatrix scheme={scheme} risks={[risk]} basis="both" />
         </section>
-
-        <RiskLifecycleControls
-          risk={risk}
-          onTransition={async (status: RiskStatus, comment: string) => {
-            setRisk(await riskApi.transition(projectId, risk.id, status, comment));
-            showToast(`Risk moved to ${RISK_STATUS_LABEL[status]}.`);
-          }}
-          onArchiveToggle={async () => {
-            try {
-              setRisk(await (risk.is_archived ? riskApi.unarchive(projectId, risk.id) : riskApi.archive(projectId, risk.id)));
-              showToast(risk.is_archived ? "Risk unarchived." : "Risk archived.");
-            } catch (err) {
-              showToast(toErrorMessage(err, "Could not update this Risk."), "error");
-            }
-          }}
-        />
 
         <RiskTreatmentsPanel projectId={projectId} riskId={risk.id} refreshToken={treatmentsRefresh} onChanged={reloadRisk} />
         <RiskReviewsPanel risk={risk} scheme={scheme} userNames={userNames} onRecorded={reloadRisk} />

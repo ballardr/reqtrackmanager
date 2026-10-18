@@ -8,6 +8,7 @@ import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
 import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder, StakeholderEngagement } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 
 const PROJECT_ID = "project-1";
 const STAKEHOLDER_ID = "stakeholder-1";
@@ -144,8 +145,8 @@ export const DeleteIsTierTwoAndNeedsTheExactName: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Delete permanently" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Delete permanently" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Stakeholder actions" }));
+    await chooseRecordAction(canvas, "Stakeholder", "Delete permanently");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Permanently delete Pat Regulator?" }));
     await expect(dialog.getByText(/This cannot be undone/)).toBeInTheDocument();
     const confirm = dialog.getByRole("button", { name: "Delete permanently" });
@@ -164,11 +165,11 @@ export const ArchiveAsksForConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Archive" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Stakeholder actions" }));
+    await chooseRecordAction(canvas, "Stakeholder", "Archive");
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Archive this Stakeholder?" })).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/archive`));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Unarchive" })).toBeInTheDocument());
+    await waitFor(async () => expect(await recordActionNames(canvas, "Stakeholder")).toContain("Unarchive"));
   },
 };
 
@@ -180,7 +181,7 @@ export const OrgStakeholderInProjectIsReadOnly: Story = {
     await expect(canvas.getByRole("link", { name: "organisation view" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Delete permanently" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Stakeholder")).not.toContain("Delete permanently");
     await expect(canvas.queryByRole("combobox", { name: "Persona to represent" })).not.toBeInTheDocument();
   },
 };

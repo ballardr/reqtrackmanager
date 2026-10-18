@@ -4,13 +4,12 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { RecordLifecycleControls } from "./RecordLifecycleControls";
 
 const meta: Meta<typeof RecordLifecycleControls> = {
-  title: "Modules/Stakeholders/RecordLifecycleControls",
+  title: "Components/RecordLifecycleControls",
   component: RecordLifecycleControls,
   args: {
-    noun: "Persona", status: "draft", isArchived: false,
+    noun: "Persona", status: "draft",
     activateBody: "An Active persona is offered when scoring.", retireBody: "A Retired persona keeps its history.",
-    archiveBody: "This Persona will no longer appear in the active list.",
-    onTransition: fn(async () => undefined), onArchiveToggle: fn(async () => undefined),
+    onTransition: fn(async () => undefined),
   },
 };
 export default meta;
@@ -24,7 +23,6 @@ export const DraftOffersActivateAndRetire: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("button", { name: "Activate" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument();
   },
 };
 
@@ -65,29 +63,6 @@ export const CancelDoesNothing: Story = {
     await userEvent.click(dialog("Retire this Persona?").getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
     await expect(args.onTransition).not.toHaveBeenCalled();
-  },
-};
-
-export const ArchiveConfirmsThenToggles: Story = {
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
-    await userEvent.click(dialog("Archive this Persona?").getByRole("button", { name: "Archive" }));
-    await waitFor(() => expect(args.onArchiveToggle).toHaveBeenCalled());
-  },
-};
-
-export const ArchivedOffersUnarchive: Story = {
-  args: { isArchived: true },
-  play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByRole("button", { name: "Unarchive" })).toBeInTheDocument();
-  },
-};
-
-export const ExtraActionsRenderInTheSameRow: Story = {
-  args: { children: <button className="btn btn-danger">Delete permanently</button> },
-  play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByRole("button", { name: "Delete permanently" })).toBeInTheDocument();
   },
 };
 

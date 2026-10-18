@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { installCleanupHook, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -120,10 +120,10 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     const need = await (await page.request.post(`${base}/needs`, { headers: adminHeaders, data: { name } })).json();
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/needs/${need.id}`);
-    await page.getByRole("button", { name: "Archive" }).click();
+    await chooseRecordAction(page, "Stakeholder Need", "Archive");
     await page.getByRole("dialog", { name: "Archive this Stakeholder Need?" }).getByRole("button", { name: "Archive" }).click();
     await expect(page.getByText("Stakeholder Need archived.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Unarchive" })).toBeVisible();
+    await expect.poll(() => recordActionNames(page, "Stakeholder Need")).toContain("Unarchive");
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/needs`);
     await expect(page.getByText("No Stakeholder Needs recorded for this project yet.")).toBeVisible();

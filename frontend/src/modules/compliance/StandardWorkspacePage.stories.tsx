@@ -6,6 +6,7 @@ import type { Organization, OrgUser } from "../../api/types";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { StandardWorkspacePage } from "./StandardWorkspacePage";
 import type { ComplianceActionType, ComplianceAuditEvent, ComplianceStandard, ComplianceStandardVersion } from "./types";
+import { chooseRecordAction } from "../../testing/recordActions";
 
 const STANDARD: ComplianceStandard = {
   id: "std-1", organization_id: "org-1", reference: "ISO-27001", name: "ISO 27001",
@@ -102,8 +103,8 @@ export const ExportsStandard: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Export" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Standard actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Standard", "Export");
     await waitFor(() =>
       expect(api.getForBlob).toHaveBeenCalledWith(
         `/api/v1/orgs/${STANDARD.organization_id}/modules/compliance/standards/${STANDARD.id}/export`

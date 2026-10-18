@@ -12,6 +12,7 @@ import type {
   AnonymousParticipant, Engagement, EngagementAudience, EngagementOutcome, EngagementParticipant, EngagementPersona,
   EngagementPrompt,
 } from "./types";
+import { chooseRecordAction } from "../../testing/recordActions";
 
 const PROJECT_ID = "project-1";
 const ENGAGEMENT_ID = "engagement-1";
@@ -242,8 +243,8 @@ export const DeletePermanentlyNeedsTheTypedTitle: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Delete permanently" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Delete permanently" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Engagement actions" }));
+    await chooseRecordAction(canvas, "Engagement", "Delete permanently");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Permanently delete Quarterly review with the regulator?" }));
     await expect(dialog.getByText(/its comments, and its attachments and files/)).toBeInTheDocument();
     const confirm = dialog.getByRole("button", { name: "Delete permanently" });

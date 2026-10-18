@@ -12,9 +12,8 @@
  * Every mutating control always renders regardless of role; the backend
  * enforces `stakeholder_need_owner` and a 403 surfaces as a toast.
  */
-import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project, Requirement } from "../../api/types";
@@ -28,7 +27,9 @@ import { projectNeedApi, projectPersonaApi, projectStakeholderApi } from "./api"
 import { NeedFormModal } from "./NeedFormModal";
 import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
-import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
+import { RecordHeader } from "../../components/RecordHeader";
+import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { Need, NeedFieldValues, NeedHolderKind, NeedVersion } from "./types";
 import { NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
@@ -107,6 +108,20 @@ export function NeedDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Stakeholder Need",
+    isArchived: need?.is_archived ?? false,
+    hidden: !need,
+    archiveBody: "This Stakeholder Need will no longer appear in the active list. Nothing is deleted.",
+    onToggle: async () => {
+      if (!projectId || !need) return;
+      await run(
+        () => (need.is_archived ? projectNeedApi.unarchive(projectId, need.id) : projectNeedApi.archive(projectId, need.id)),
+        need.is_archived ? "Stakeholder Need unarchived." : "Stakeholder Need archived.",
+      );
+    },
+  });
+
   if (!projectId || !needId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (need === null) return <Spinner />;
@@ -138,23 +153,27 @@ export function NeedDetailPage() {
         />
       }
     >
-      <Link to={`/projects/${projectId}/modules/stakeholders/needs`}>← Needs</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{need.name}</h1>
-        <Badge tone={NEED_STATUS_TONE[need.status]}>{NEED_STATUS_LABEL[need.status]}</Badge>
-      </div>
+      <RecordHeader
+        recordLabel="Stakeholder Need"
+        title={need.name}
+        back={{ to: `/projects/${projectId}/modules/stakeholders/needs`, label: "← Needs" }}
+        badges={<Badge tone={NEED_STATUS_TONE[need.status]}>{NEED_STATUS_LABEL[need.status]}</Badge>}
+        subtitle={`v${need.version_number}${need.is_archived ? " · Archived" : ""}`}
+        onEdit={() => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <RecordLifecycleControls
+            noun="Stakeholder Need"
+            status={need.status}
+            activateBody="An Active need is part of the current set of stakeholder needs. A comment is optional."
+            retireBody="A Retired need is no longer current, but keeps its history and links and can be reactivated. A comment is optional."
+            onTransition={(action, comment) => run(() => projectNeedApi[action](projectId, need.id, comment), TRANSITION_DONE[action])}
+          />
+        }
+      />
+      {archive.dialog}
 
       <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
-            v{need.version_number}
-            {need.is_archived && " · Archived"}
-          </p>
-          <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-            <Pencil />
-          </button>
-        </div>
-
         {need.description && <RecordField label="Need" value={need.description} />}
         {need.rationale && <RecordField label="Rationale" value={need.rationale} />}
 
@@ -187,22 +206,6 @@ export function NeedDetailPage() {
             },
             onRemove: (requirement) => projectNeedApi.removeRequirement(projectId, need.id, requirement.id),
           }}
-        />
-
-        <RecordLifecycleControls
-          noun="Stakeholder Need"
-          status={need.status}
-          isArchived={need.is_archived}
-          activateBody="An Active need is part of the current set of stakeholder needs. A comment is optional."
-          retireBody="A Retired need is no longer current, but keeps its history and links and can be reactivated. A comment is optional."
-          archiveBody="This Stakeholder Need will no longer appear in the active list. Nothing is deleted."
-          onTransition={(action, comment) => run(() => projectNeedApi[action](projectId, need.id, comment), TRANSITION_DONE[action])}
-          onArchiveToggle={() =>
-            run(
-              () => (need.is_archived ? projectNeedApi.unarchive(projectId, need.id) : projectNeedApi.archive(projectId, need.id)),
-              need.is_archived ? "Stakeholder Need unarchived." : "Stakeholder Need archived.",
-            )
-          }
         />
 
         <VersionHistoryTable versions={versions} columns={[

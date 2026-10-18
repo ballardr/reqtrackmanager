@@ -16,19 +16,19 @@
  * The retain-until date only flags the engagement as due for review; nothing is
  * deleted automatically.
  */
-import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FormGrid } from "../../components/FormGrid";
 import { PrincipalListField } from "../../components/PrincipalListField";
 import { RecordField, RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useConfirmedAction } from "../../components/useConfirmedAction";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -68,7 +68,6 @@ export function EngagementDetailPage() {
   const linksChanged = () => setLinksKey((k) => k + 1);
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [erasing, setErasing] = useState(false);
   const researchExtras = useResearchExtras(projectId);
 
   useEffect(() => {
@@ -119,7 +118,6 @@ export function EngagementDetailPage() {
 
   async function erase() {
     if (!projectId || !engagement) return;
-    setErasing(false);
     try {
       await projectEngagementApi.erase(projectId, engagement.id);
       showToast("Engagement permanently deleted.");
@@ -128,6 +126,19 @@ export function EngagementDetailPage() {
       showToast(toErrorMessage(err, "Could not delete this Engagement."), "error");
     }
   }
+
+  const eraseAction = useConfirmedAction({
+    label: "Delete permanently",
+    danger: true,
+    hidden: !engagement,
+    title: `Permanently delete ${engagement?.title ?? "this Engagement"}?`,
+    message:
+      "This cannot be undone. It deletes this engagement's record and notes, its participants and covered " +
+      "Personas, any session prompts, anonymous participants and findings, its comments, and its attachments and files. " +
+      "The audit trail keeps only that a deletion happened, not what was said.",
+    requireTypedText: engagement?.title,
+    onConfirm: erase,
+  });
 
   if (!projectId || !engagementId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -138,26 +149,24 @@ export function EngagementDetailPage() {
 
   return (
     <DetailLayout aside={<ArtefactLinksPanel projectId={projectId} artefactType="engagement" artefactId={engagement.id} collapsedTypes={COLLAPSED_LINK_TYPES} refreshToken={linksKey} />}>
-      <Link to={`/projects/${projectId}/modules/stakeholders/engagements`}>← Engagements</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <span className="row" style={{ alignItems: "baseline", gap: "0.6rem" }}>
-          <h1 style={{ margin: 0 }}>{engagement.title}</h1>
-          <span className="text-muted" style={{ fontSize: "0.9rem" }}>{engagement.unique_code}</span>
-        </span>
-        <span className="row" style={{ gap: "0.5rem" }}>
-          <Badge>{ENGAGEMENT_CHANNEL_LABEL[engagement.channel]}</Badge>
-          {engagement.retention_due && <Badge tone="warning">Retention review due</Badge>}
-        </span>
-      </div>
+      <RecordHeader
+        recordLabel="Engagement"
+        title={engagement.title}
+        code={engagement.unique_code}
+        back={{ to: `/projects/${projectId}/modules/stakeholders/engagements`, label: "← Engagements" }}
+        badges={
+          <>
+            <Badge>{ENGAGEMENT_CHANNEL_LABEL[engagement.channel]}</Badge>
+            {engagement.retention_due && <Badge tone="warning">Retention review due</Badge>}
+          </>
+        }
+        subtitle={engagement.engagement_date}
+        onEdit={() => setEditing(true)}
+        actions={[eraseAction.item]}
+      />
+      {eraseAction.dialog}
 
       <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>{engagement.engagement_date}</p>
-          <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-            <Pencil />
-          </button>
-        </div>
-
         {engagement.purpose && <RecordField label="Purpose" value={engagement.purpose} />}
         {engagement.summary && <RecordField label="Summary" value={engagement.summary} />}
         {engagement.notes && <RecordField label="Notes" value={engagement.notes} />}
@@ -245,10 +254,6 @@ export function EngagementDetailPage() {
 
         {researchExtras && <ResearchFindingsPanel projectId={projectId} engagementId={engagement.id} onChanged={linksChanged} />}
 
-        <div className="row" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <button className="btn btn-danger" onClick={() => setErasing(true)}>Delete permanently</button>
-        </div>
-
         <RecordDiscussion
           api={projectEngagementApi}
           scopeId={projectId}
@@ -268,20 +273,6 @@ export function EngagementDetailPage() {
         />
       )}
 
-      {erasing && (
-        <ConfirmDialog
-          title={`Permanently delete ${engagement.title}?`}
-          message={
-            "This cannot be undone. It deletes this engagement's record and notes, its participants and covered " +
-            "Personas, any session prompts, anonymous participants and findings, its comments, and its attachments and files. " +
-            "The audit trail keeps only that a deletion happened, not what was said."
-          }
-          confirmLabel="Delete permanently"
-          requireTypedText={engagement.title}
-          onConfirm={erase}
-          onCancel={() => setErasing(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { chooseRecordAction, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, recordActionNames } from "./helpers";
 
 /**
  * The `/unarchive` counterpart to `requirement-archive-confirm.spec.ts`
@@ -38,7 +38,7 @@ test.describe("requirement and action restore", () => {
 
     await test.step("archive it (Tier 1 ConfirmDialog) — it drops off the default list", async () => {
       await openRequirementByName(page, name);
-      await page.getByRole("button", { name: "Archive", exact: true }).click();
+      await chooseRecordAction(page, "Requirement", "Archive");
       const dialog = page.getByRole("dialog", { name: "Archive this requirement?" });
       await dialog.getByRole("button", { name: "Archive", exact: true }).click();
       await page.waitForURL(/\/requirements$/);
@@ -67,16 +67,16 @@ test.describe("requirement and action restore", () => {
 
     await test.step("the detail page shows Restore (not Archive) and an Archived badge", async () => {
       await expect(page.getByRole("heading", { name: new RegExp(name) })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Restore", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Archive", exact: true })).not.toBeVisible();
+      await expect.poll(() => recordActionNames(page, "Requirement")).toContain("Restore");
+      await expect.poll(() => recordActionNames(page, "Requirement")).not.toContain("Archive");
       await expect(page.getByText("Archived", { exact: true })).toBeVisible();
     });
 
     await test.step("clicking Restore (no confirmation dialog) shows a toast and flips the buttons back", async () => {
-      await page.getByRole("button", { name: "Restore", exact: true }).click();
+      await chooseRecordAction(page, "Requirement", "Restore");
       await expect(page.getByText("Requirement restored")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Archive", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Restore", exact: true })).not.toBeVisible();
+      await expect.poll(() => recordActionNames(page, "Requirement")).toContain("Archive");
+      await expect.poll(() => recordActionNames(page, "Requirement")).not.toContain("Restore");
     });
 
     await test.step("it's back in the default (active) requirements list", async () => {
@@ -104,13 +104,13 @@ test.describe("requirement and action restore", () => {
 
     await test.step("archive it (Tier 1 ConfirmDialog) — the detail page goes read-only in place", async () => {
       await page.getByRole("link", { name: title }).click();
-      await page.getByRole("button", { name: "Archive", exact: true }).click();
+      await chooseRecordAction(page, "Action", "Archive");
       const dialog = page.getByRole("dialog", { name: "Archive this action?" });
       await dialog.getByRole("button", { name: "Archive", exact: true }).click();
       await expect(page.getByText("Action archived")).toBeVisible();
       await expect(page.getByLabel("Title")).toBeDisabled();
-      await expect(page.getByRole("button", { name: "Restore", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Archive", exact: true })).not.toBeVisible();
+      await expect.poll(() => recordActionNames(page, "Action")).toContain("Restore");
+      await expect.poll(() => recordActionNames(page, "Action")).not.toContain("Archive");
     });
 
     await test.step("it drops off the default Actions list but is reachable via 'Include archived'", async () => {
@@ -123,11 +123,11 @@ test.describe("requirement and action restore", () => {
     });
 
     await test.step("clicking Restore (no confirmation dialog) shows a toast and makes the fields editable again", async () => {
-      await page.getByRole("button", { name: "Restore", exact: true }).click();
+      await chooseRecordAction(page, "Action", "Restore");
       await expect(page.getByText("Action restored")).toBeVisible();
       await expect(page.getByLabel("Title")).toBeEnabled();
-      await expect(page.getByRole("button", { name: "Archive", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Restore", exact: true })).not.toBeVisible();
+      await expect.poll(() => recordActionNames(page, "Action")).toContain("Archive");
+      await expect.poll(() => recordActionNames(page, "Action")).not.toContain("Restore");
     });
 
     await test.step("it's back in the default (active) actions list", async () => {

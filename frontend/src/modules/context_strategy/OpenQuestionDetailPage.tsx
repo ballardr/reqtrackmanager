@@ -56,8 +56,7 @@
  * directly with the current content fields plus the newly chosen `owner`.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
@@ -74,6 +73,8 @@ import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 
 /** The two optional-comment, positive/neutral-progression actions — mirrors
@@ -112,7 +113,6 @@ export function OpenQuestionDetailPage() {
   const [optionalComment, setOptionalComment] = useState("");
   const [withdrawConfirm, setWithdrawConfirm] = useState(false);
   const [withdrawComment, setWithdrawComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -184,6 +184,20 @@ export function OpenQuestionDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Open Question",
+    isArchived: openQuestion?.is_archived ?? false,
+    hidden: !openQuestion,
+    archiveBody: "This Open Question will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!projectId || !openQuestion) return;
+      await runTransition(
+        () => (openQuestion.is_archived ? projectOpenQuestionApi.unarchive(projectId, openQuestion.id) : projectOpenQuestionApi.archive(projectId, openQuestion.id)),
+        openQuestion.is_archived ? "Open Question unarchived." : "Open Question archived.",
+      );
+    },
+  });
+
   if (!projectId || !openQuestionId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestion === null) return <Spinner />;
@@ -198,35 +212,27 @@ export function OpenQuestionDetailPage() {
         />
       }
     >
-      <Link to={`/projects/${projectId}/modules/context_strategy/open-questions`}>← Open Question</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{openQuestion.question}</h1>
-        <Badge tone={OPEN_QUESTION_STATUS_TONE[openQuestion.status]}>
-          {OPEN_QUESTION_STATUS_LABEL[openQuestion.status]}
-        </Badge>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
+      <RecordHeader
+        recordLabel="Open Question"
+        title={openQuestion.question}
+        back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "← Open Question" }}
+        badges={
+          <>
+          <Badge tone={OPEN_QUESTION_STATUS_TONE[openQuestion.status]}>
+            {OPEN_QUESTION_STATUS_LABEL[openQuestion.status]}
+          </Badge>
+          </>
+        }
+        subtitle={
+          <>
             {OPEN_QUESTION_PRIORITY_LABEL[openQuestion.priority]} priority
             {openQuestion.due_date ? ` · due ${openQuestion.due_date}` : ""}
-          </p>
-          {!openQuestion.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-
-        {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
-        {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
-
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
-          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          </>
+        }
+        onEdit={openQuestion.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {openQuestion.status === "open" && (
             <button
               className="btn btn-primary"
@@ -240,17 +246,27 @@ export function OpenQuestionDetailPage() {
               <button className="btn btn-primary" onClick={() => setOptionalAction("mark_ready_for_decision")}>Mark ready for decision</button>
               <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
             </>
-          )}
-          {openQuestion.status === "ready_for_decision" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setOptionalAction("resolve")}>Resolve</button>
-              <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
-            </>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {openQuestion.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {openQuestion.status === "ready_for_decision" && (
+                <>
+                  <button className="btn btn-primary" onClick={() => setOptionalAction("resolve")}>Resolve</button>
+                  <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
+                </>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
+        {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
+
+        <RecordPrincipalField
+          label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
+          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
+        />
 
 
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
@@ -368,25 +384,6 @@ export function OpenQuestionDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={openQuestion.is_archived ? "Unarchive this Open Question?" : "Archive this Open Question?"}
-          message={
-            openQuestion.is_archived
-              ? "This Open Question will count as active again."
-              : "This Open Question will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={openQuestion.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (openQuestion.is_archived ? projectOpenQuestionApi.unarchive(projectId, openQuestion.id) : projectOpenQuestionApi.archive(projectId, openQuestion.id)),
-              openQuestion.is_archived ? "Open Question unarchived." : "Open Question archived.",
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

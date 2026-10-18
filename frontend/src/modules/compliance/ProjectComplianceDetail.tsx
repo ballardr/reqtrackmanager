@@ -23,8 +23,9 @@
 import { useEffect, useState } from "react";
 
 import type { OrgUser } from "../../api/types";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { RecordHeader } from "../../components/RecordHeader";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
+import { useConfirmedAction } from "../../components/useConfirmedAction";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { ApplicabilityTree } from "./ApplicabilityTree";
 import * as complianceApi from "./api";
@@ -60,7 +61,6 @@ export function ProjectComplianceDetail({
 }) {
   const { showToast } = useToast();
   const [tab, setTab] = useState<DetailTabKey>("requirements");
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
   // `status` already carries `standard_id` for an active assignment; an
   // archived one (excluded from `GET .../status`) needs the client-side
   // fallback resolution — see `api.ts::resolveStandardIdForVersion`'s own
@@ -106,27 +106,33 @@ export function ProjectComplianceDetail({
         ? await complianceApi.unarchiveProjectCompliance(orgId, projectId, assignment.id)
         : await complianceApi.archiveProjectCompliance(orgId, projectId, assignment.id);
       showToast(assignment.is_archived ? "Assignment unarchived." : "Assignment archived.");
-      setConfirmingArchive(false);
       onArchiveToggled(updated);
     } catch (err) {
       showToast(toErrorMessage(err, "Could not update this assignment."), "error");
     }
   }
 
+  const archiveAction = useConfirmedAction({
+    label: assignment.is_archived ? "Unarchive" : "Archive",
+    danger: !assignment.is_archived,
+    title: assignment.is_archived ? "Unarchive this assignment?" : "Archive this assignment?",
+    message: assignment.is_archived
+      ? "This assignment will count as active again and reappear in the project's overall status."
+      : "This assignment will be hidden from the active list and excluded from the project's overall status. Nothing is deleted.",
+    onConfirm: handleArchiveToggle,
+  });
+
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <button className="btn" onClick={onBack}>← Back</button>
-          <h2 style={{ margin: "0.5rem 0 0" }}>
-            {liveStatus ? `${liveStatus.standard_reference} — ${liveStatus.standard_name}` : "Compliance assignment"}
-          </h2>
-          {liveStatus && <p className="text-muted" style={{ margin: 0 }}>{liveStatus.version_label}</p>}
-        </div>
-        <button className="btn btn-danger" onClick={() => setConfirmingArchive(true)}>
-          {assignment.is_archived ? "Unarchive" : "Archive"}
-        </button>
-      </div>
+      <RecordHeader
+        recordLabel="Compliance assignment"
+        headingLevel="h2"
+        back={{ onClick: onBack, label: "← Back" }}
+        title={liveStatus ? `${liveStatus.standard_reference} — ${liveStatus.standard_name}` : "Compliance assignment"}
+        subtitle={liveStatus?.version_label}
+        actions={[archiveAction.item]}
+      />
+      {archiveAction.dialog}
 
       {assignment.is_archived && (
         <p className="text-muted">This assignment is archived. It is retained for history but no longer counted as active.</p>
@@ -194,20 +200,6 @@ export function ProjectComplianceDetail({
         <div {...tabPanelProps("project-compliance-detail", "reviews")}>
           <ReviewsPanel projectId={projectId} projectComplianceId={assignment.id} organizationId={orgId} orgUsers={orgUsers} />
         </div>
-      )}
-
-      {confirmingArchive && (
-        <ConfirmDialog
-          title={assignment.is_archived ? "Unarchive this assignment?" : "Archive this assignment?"}
-          message={
-            assignment.is_archived
-              ? "This assignment will count as active again and reappear in the project's overall status."
-              : "This assignment will be hidden from the active list and excluded from the project's overall status. Nothing is deleted."
-          }
-          confirmLabel={assignment.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={handleArchiveToggle}
-          onCancel={() => setConfirmingArchive(false)}
-        />
       )}
     </div>
   );

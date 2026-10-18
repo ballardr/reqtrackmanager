@@ -116,10 +116,10 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await quickView.getByRole("link", { name: "View full details" }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
 
-    await expect(page.getByRole("heading", { name: "DEC-001" })).toBeVisible();
+    await expect(page.locator(".record-header").getByText("DEC-001", { exact: true })).toBeVisible();
     // Scoped to the detail header: the list page's own "Draft" badges and
     // Status filter option can still be in the DOM while the route swaps.
-    await expect(page.getByRole("heading", { name: "DEC-001" }).locator("..").getByText("Draft", { exact: true })).toBeVisible();
+    await expect(page.locator(".record-header").getByText("Draft", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Propose" }).click();
     await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Submit for review" }).click();
@@ -154,7 +154,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     // window can hit a real Playwright strict-mode violation (multiple
     // matches) rather than a plain "not found yet" retry.
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
-    await expect(page.getByRole("heading", { name: "DEC-002" })).toBeVisible();
+    await expect(page.locator(".record-header").getByText("DEC-002", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Propose" }).click();
     await page.getByRole("button", { name: "Submit for review" }).click();
@@ -191,7 +191,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     // quick view (also headed "DEC-001"), table badge and status filter
     // option all match too. Wait for the list's own table to go first.
     await expect(page.getByRole("table")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "DEC-001" })).toBeVisible();
+    await expect(page.locator(".record-header").getByText("DEC-001", { exact: true })).toBeVisible();
     await expect(page.getByText("Superseded", { exact: true })).toBeVisible();
   });
 });

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook, PASSWORD, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { installCleanupHook, PASSWORD, selectOrgAdminGroup, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -146,7 +146,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     ).json();
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${stakeholder.id}`);
-    await page.getByRole("button", { name: "Delete permanently" }).click();
+    await chooseRecordAction(page, "Stakeholder", "Delete permanently");
     const dialog = page.getByRole("dialog", { name: `Permanently delete ${name}?` });
     await expect(dialog.getByText(/This cannot be undone/)).toBeVisible();
     const confirm = dialog.getByRole("button", { name: "Delete permanently" });
@@ -201,7 +201,7 @@ test.describe("Stakeholders & Personas: organisation Stakeholders, types and sco
     await page.getByRole("button", { name }).click();
     await expect(page.getByText(/organisation-wide Stakeholder/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Delete permanently" })).toHaveCount(0);
+    expect(await recordActionNames(page, "Stakeholder")).not.toContain("Delete permanently");
     await page.getByRole("link", { name: "organisation view" }).click();
     await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/modules/stakeholders/stakeholders/[^/]+$`));
 

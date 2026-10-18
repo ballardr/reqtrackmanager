@@ -8,6 +8,7 @@ import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../
 import { buildPersona } from "./fixtures";
 import { PersonaDetailPage } from "./PersonaDetailPage";
 import type { Persona } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 
 const PROJECT_ID = "project-1";
 const PERSONA_ID = "persona-1";
@@ -125,12 +126,12 @@ export const ArchiveAsksForConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Archive" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Persona actions" }));
+    await chooseRecordAction(canvas, "Persona", "Archive");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Archive this Persona?" }));
     await userEvent.click(dialog.getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}/archive`));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Unarchive" })).toBeInTheDocument());
+    await waitFor(async () => expect(await recordActionNames(canvas, "Persona")).toContain("Unarchive"));
   },
 };
 
@@ -195,7 +196,7 @@ export const OrgPersonaInProjectIsReadOnlyApartFromWeight: Story = {
     await expect(canvas.getByRole("link", { name: "organisation view" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Persona")).not.toContain("Archive");
     await expect(canvas.getByLabelText("Project weight override")).toBeInTheDocument();
   },
 };

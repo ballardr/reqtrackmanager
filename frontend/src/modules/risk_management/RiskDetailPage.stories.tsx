@@ -7,6 +7,7 @@ import { buildUser, withAuth, withRouter, withToast } from "../../testing/storyb
 import { buildReview, buildRisk, buildRiskScheme, buildTreatment, ORG_USERS, PROJECT_ID, RISK_ID, RISK_TYPES } from "./riskFixtures";
 import { RiskDetailPage } from "./RiskDetailPage";
 import type { Risk, RiskVersion } from "./types";
+import { recordActionNames } from "../../testing/recordActions";
 
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/risk_management/risks/${RISK_ID}`;
 
@@ -79,7 +80,7 @@ export const OverdueAndArchivedAreFlagged: Story = {
     await waitFor(() => expect(canvas.getByText("Review overdue")).toHaveClass("badge--danger"));
     await expect(canvas.getByText("Archived")).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Unarchive" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Risk")).toContain("Unarchive");
   },
 };
 

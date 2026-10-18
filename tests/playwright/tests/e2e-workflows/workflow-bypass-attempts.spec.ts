@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, recordActionNames } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -91,9 +91,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
     await test.step("the locked requirement offers no edit form in the UI", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.goto(`/projects/${projectId}/requirements/${target.id}`);
-      // Not exact: the requirement detail page's h1 is "{unique_code} —
-      // {name}", not the bare name.
-      await expect(page.locator("h1")).toContainText("—");
+      await expect(page.locator(".record-header h1")).toBeVisible();
       await expect(page.getByText("Locked (approved)")).toBeVisible();
       await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     });
@@ -115,7 +113,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.goto(`/projects/${projectId}`);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByName(page, targetReqName);
-      await expect(page.getByRole("button", { name: "Archive" })).toHaveCount(0);
+      expect(await recordActionNames(page, "Requirement")).not.toContain("Archive");
     });
 
     await test.step("cross-org ID guessing: a single-org user cannot open another org's project by URL", async () => {

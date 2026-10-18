@@ -17,6 +17,10 @@
  *   container (`dialogA11y.ts`) rather than reinventing anchoring —
  *   the same reuse `SplitButtonTrigger` already makes for its own revealed
  *   alternatives list.
+ * - Record detail pages put this menu in `RecordHeader`, where it holds the
+ *   record's object actions even when there is only one (style guide "Pattern:
+ *   record header and object actions"); the usual two-or-more floor is waived
+ *   there so the position never changes with permissions.
  * - `role="menu"` on the menu container and `role="menuitem"` on each
  * action, as required — `Popover`'s root keeps its
  *   existing `role="dialog"`/`aria-label`, so this nests a real ARIA menu
@@ -45,6 +49,8 @@ export interface ActionMenuItem {
   /** Decorative icon shown before `label` — not repeated in the accessible name. */
   icon?: ReactNode;
   onSelect: () => void;
+  /** Marks a destructive action (Archive, Delete permanently) with the danger outline. */
+  danger?: boolean;
   /** Stable identity when `label` isn't a plain string; defaults to the
    * string label. Never relies on position, since the item list can change
    * while the menu is open. */
@@ -84,7 +90,7 @@ export function ActionMenu({
       <button
         ref={triggerRef}
         type="button"
-        className="btn"
+        className="btn btn-icon"
         aria-label={triggerLabel}
         title={triggerLabel}
         aria-haspopup="menu"
@@ -107,7 +113,7 @@ export function ActionMenu({
                 key={item.key ?? (typeof item.label === "string" ? item.label : i)}
                 type="button"
                 role="menuitem"
-                className="btn"
+                className={item.danger ? "btn btn-danger" : "btn"}
                 style={{ justifyContent: "flex-start" }}
                 onClick={() => {
                   setOpen(false);

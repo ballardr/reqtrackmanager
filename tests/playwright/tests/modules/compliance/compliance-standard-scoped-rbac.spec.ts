@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
+import { loginAs, logout, ORG_NAMES, PERSONAS, chooseRecordAction } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
@@ -146,7 +146,7 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section", () 
     await loginAs(page, PERSONAS.memberAlphaBeta.email);
     await page.goto(`/standards/${standardId}`);
     await expect(page.getByRole("heading", { name: new RegExp(`${reference} — ${standardName}`) })).toBeVisible();
-    await page.getByRole("button", { name: "Archive" }).click();
+    await chooseRecordAction(page, "Standard", "Archive");
     await page.getByRole("dialog").getByRole("button", { name: "Archive" }).click();
     await expect(page.getByText("Archived", { exact: true })).toBeVisible();
   });

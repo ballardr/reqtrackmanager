@@ -31,8 +31,7 @@
  * once `strategy.is_locked`.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
@@ -48,6 +47,8 @@ import { orgStrategyApi, projectStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL } from "./types";
 import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
@@ -105,7 +106,6 @@ export function StrategyDetailPage() {
   const [sendBackComment, setSendBackComment] = useState("");
   const [transitionAction, setTransitionAction] = useState<TransitionAction | null>(null);
   const [transitionComment, setTransitionComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!scopeId || !strategyId) return;
@@ -158,6 +158,20 @@ export function StrategyDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Strategy",
+    isArchived: strategy?.is_archived ?? false,
+    hidden: !strategy,
+    archiveBody: "This Strategy will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!scopeId || !strategy) return;
+      await runTransition(
+        () => (strategy.is_archived ? scopedApi.unarchive(scopeId, strategy.id) : scopedApi.archive(scopeId, strategy.id)),
+        strategy.is_archived ? "Strategy unarchived." : "Strategy archived.",
+      );
+    },
+  });
+
   if (!scopeId || !strategyId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategy === null) return <Spinner />;
@@ -186,34 +200,26 @@ export function StrategyDetailPage() {
         />
       }
     >
-      <Link to={backLink}>{backLabel}</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{strategy.title}</h1>
-        <Badge tone={STRATEGY_STATUS_TONE[strategy.status]}>
-          {STRATEGY_STATUS_LABEL[strategy.status]}
-        </Badge>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
+      <RecordHeader
+        recordLabel="Strategy"
+        title={strategy.title}
+        back={{ to: backLink, label: backLabel }}
+        badges={
+          <>
+          <Badge tone={STRATEGY_STATUS_TONE[strategy.status]}>
+            {STRATEGY_STATUS_LABEL[strategy.status]}
+          </Badge>
+          </>
+        }
+        subtitle={
+          <>
             {STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · {STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]} · v{strategy.version_number}
-          </p>
-          {!strategy.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-
-        <Field label="Objective / strategic theme" value={strategy.objective} />
-        {strategy.current_state && <Field label="Current state" value={strategy.current_state} />}
-        {strategy.desired_future_state && <Field label="Desired future state" value={strategy.desired_future_state} />}
-        {strategy.rationale && <Field label="Rationale" value={strategy.rationale} />}
-        {strategy.expected_outcomes && <Field label="Expected outcomes" value={strategy.expected_outcomes} />}
-        {strategy.constraints && <Field label="Constraints" value={strategy.constraints} />}
-        {strategy.measures_of_success && <Field label="Measures of success" value={strategy.measures_of_success} />}
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          </>
+        }
+        onEdit={strategy.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {strategy.status === "draft" && (
             <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, strategy.id), "Strategy proposed.")}>
               Propose
@@ -229,26 +235,36 @@ export function StrategyDetailPage() {
               </button>
               <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
             </>
-          )}
-          {strategy.status === "under_review" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-          )}
-          {strategy.status === "approved" && (
-            <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-          )}
-          {strategy.status === "active" && (
-            <>
-              <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-              <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-            </>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {strategy.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {strategy.status === "under_review" && (
+                <>
+                  <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
+                  <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
+                </>
+              )}
+              {strategy.status === "approved" && (
+                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
+              )}
+              {strategy.status === "active" && (
+                <>
+                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
+                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
+                </>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        <Field label="Objective / strategic theme" value={strategy.objective} />
+        {strategy.current_state && <Field label="Current state" value={strategy.current_state} />}
+        {strategy.desired_future_state && <Field label="Desired future state" value={strategy.desired_future_state} />}
+        {strategy.rationale && <Field label="Rationale" value={strategy.rationale} />}
+        {strategy.expected_outcomes && <Field label="Expected outcomes" value={strategy.expected_outcomes} />}
+        {strategy.constraints && <Field label="Constraints" value={strategy.constraints} />}
+        {strategy.measures_of_success && <Field label="Measures of success" value={strategy.measures_of_success} />}
 
 
         {versions && versions.length > 1 && (
@@ -378,25 +394,6 @@ export function StrategyDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={strategy.is_archived ? "Unarchive this Strategy?" : "Archive this Strategy?"}
-          message={
-            strategy.is_archived
-              ? "This Strategy will count as active again."
-              : "This Strategy will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={strategy.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (strategy.is_archived ? scopedApi.unarchive(scopeId, strategy.id) : scopedApi.archive(scopeId, strategy.id)),
-              strategy.is_archived ? "Strategy unarchived." : "Strategy archived."
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

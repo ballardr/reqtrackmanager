@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21). Phases 1, 2, 3 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q24 (section 3b) carry a recommended answer and need sign-off before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21). Phases 1, 2, 3, 4, 5 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q24 (section 3b) carry a recommended answer and need sign-off before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-5 / 22 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4 and 12 done 2026-10-18, uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phases 13 and 14 are still open and come after Phases 4–11 now. **Next: Phase 5.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+6 / 22 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5 and 12 done 2026-10-18, uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phases 13 and 14 are still open and come after Phases 4–11 now. **Next: Phase 6.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -13,7 +13,7 @@
 | 2 | Archive closed plans, rewrite links, link checker, agent rule | N6 | [x] |
 | 3 | Layout contract: `Badge`, no-wrap rule, `ItemRow`, geometry checks | N1, N2 | [x] |
 | 4 | Icon sizes driven by CSS, sweep, check | N9 | [x] |
-| 5 | Shared record header and one object-action menu | N8 | [ ] |
+| 5 | Shared record header and one object-action menu | N8 | [x] |
 | 6 | Codes I: project codes, org policy, qualified display | N7 | [ ] |
 | 7 | Codes II: every codeless project-scoped type, change requests | N7 | [ ] |
 | 8 | Codes III: organisation-scoped types | N7 | [ ] |
@@ -116,7 +116,7 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 
 - `CLAUDE.md` and `docs/ux-style-guide.md` link to `docs/plans/completed/ux-audit-2026-08.md`; the file is `docs/plans/completed/ux-audit-2026-08.md`. Fixed by Phase 2's link checker.
 - The style guide's token table still lists `--color-entity-compliance` as a core variable; `theme.css` says it was removed (module boundary). The table is stale. Fixed in Phase 22.
-- `RecordLifecycleControls` (archive, retire) lives in `frontend/src/modules/stakeholders/` but other modules need the same control. It moves to `components/` in Phase 5 (module-boundary rule: shared code must not live in one module).
+- `RecordLifecycleControls` (archive, retire) lives in `frontend/src/modules/stakeholders/` but other modules need the same control. It moved to `components/` in Phase 5 (module-boundary rule: shared code must not live in one module).
 - The style guide's "Not yet migrated" paragraph says to migrate pages "when next touched, not as a drive-by". N7b supersedes that for forms; Phase 10 updates the paragraph.
 - Round two, module gating: `list_org_modules` returns non-entitled modules on purpose ("Non-entitled modules are included, not filtered out"); N14 reverses this for non-server-admin callers (Phase 13).
 - Round two, health: three health probes disagree on the host: frontend and backend/MCP use `localhost`, the docs image uses `127.0.0.1`. Only the frontend can fail on an IPv6-first host, because nginx binds IPv4 only (Phase 12).
@@ -241,6 +241,13 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 - **Migration:** requirement, action, change request, decision, risk, engagement, persona, stakeholder, need, strategy, future state, guiding principle, pain point, open question, plus the compliance record detail. Hoist `RecordLifecycleControls` to `components/` and delete the stakeholders-module copy (extract-and-update-all-call-sites rule). Core pages and modules both use the component; modules never import each other.
 - **Style guide:** new "Pattern: record header and object actions" with a Mermaid decision flow; record the Q5 exception to the `ActionMenu` floor (a single object action still gets the menu); update the `ActionMenu` pattern.
 - **Tests:** Storybook for the header (long title, many badges, no permissions, mobile); one Playwright spec asserting the menu is in the same position (header row, right edge) on a sample of pages at 375/1024/1440px and that Archive/Restore and Delete work through the menu. Existing specs that click the old Archive/Delete buttons are updated in the same phase (list them first with grep).
+
+- **Done 2026-10-18 (uncommitted at hand-back).** Details and decisions in `docs/decisions.md`.
+  - **Built:** `RecordHeader`, `useConfirmedAction` / `useArchiveAction`, `RecordLifecycleControls` hoisted to `components/` (transitions only), `ActionMenu` `danger` items, `testing/recordActions` (Storybook) and `chooseRecordAction` / `recordActionNames` (Playwright). `SubscribeButton` removed (Subscribe is a menu item plus a **Subscribed** pill).
+  - **Migrated:** Requirement, Action, Change Request, Decision, Risk, Engagement, Persona, Stakeholder, Need, Strategy, Future State, Guiding Principle, Pain Point, Open Question, Compliance Standard, compliance assignment. Bottom-of-page action rows and danger-styled Archive buttons are gone.
+  - **Specs updated:** the nine Playwright specs that clicked Archive, Restore, Delete permanently or Subscribe, the `openRequirementByName` / `openRequirementByCode` helpers (they waited for an em dash in the `h1`; they now wait for `.record-header h1`), and seven Storybook detail-page stories. New: `record-header.spec.ts`, `RecordHeader` and `useConfirmedAction` stories.
+  - **Style guide:** "Pattern: record header and object actions" with a decision flow; `ActionMenu` pattern points to it.
+  - **Not done, on purpose:** Change Request Approve/Reject/vote controls stay in the page body; the Evidence side panel's Archive button is a row detail, not a record page.
 
 ### Phase 6 — Codes I: project codes (N7)
 

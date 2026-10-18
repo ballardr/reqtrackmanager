@@ -23,6 +23,7 @@ import {
   withTerminology,
   withToast,
 } from "../testing/storybook-helpers";
+import { chooseRecordAction, recordActionNames } from "../testing/recordActions";
 import { RequirementDetailPage } from "./RequirementDetailPage";
 
 const PROJECT_ID = "project-1";
@@ -147,7 +148,7 @@ export const MemberSeesReadOnlyView: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText(/Users can reset a forgotten password/)).toBeInTheDocument());
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
   },
 };
 
@@ -160,7 +161,7 @@ export const StakeholderCanEditNotArchive: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByLabelText("Name")).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
     await expect(canvas.queryByRole("button", { name: "Mark completed" })).not.toBeInTheDocument();
   },
 };
@@ -208,7 +209,8 @@ export const ManagerCanArchiveAndComplete: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Requirement")).toContain("Archive");
     await expect(canvas.getByRole("button", { name: "Mark completed" })).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Make change request" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
@@ -225,8 +227,8 @@ export const ArchivingConfirmsAndShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Requirement", "Archive");
 
     const dialog = within(document.body).getByRole("dialog", { name: "Archive this requirement?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
@@ -247,8 +249,8 @@ export const ArchivingCanBeCancelled: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Requirement", "Archive");
 
     const dialog = within(document.body).getByRole("dialog", { name: "Archive this requirement?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -269,11 +271,12 @@ export const ArchivedRequirementShowsRestoreButton: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Restore" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Requirement")).toEqual(expect.arrayContaining(["Restore"]));
+    await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
     await expect(canvas.getByText("Archived", { selector: ".badge" })).toBeInTheDocument();
 
-    await userEvent.click(canvas.getByRole("button", { name: "Restore" }));
+    await chooseRecordAction(canvas, "Requirement", "Restore");
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/unarchive`)
     );
@@ -319,7 +322,7 @@ export const LockedRequirementIsReadOnlyForManager: Story = {
     );
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
     // Archive is still available to a manager even while locked.
-    await expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).toContain("Archive");
   },
 };
 
@@ -766,12 +769,12 @@ export const TerminologyOverrideAppliesThroughoutPage: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Spec actions" })).toBeInTheDocument());
     // The "Make a change request" link picks up the {changeRequest} token.
     await expect(canvas.getByRole("link", { name: "Make ECR" })).toBeInTheDocument();
 
     // The archive confirm dialog's title picks up the {requirement} token.
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await chooseRecordAction(canvas, "Spec", "Archive");
     await expect(within(document.body).getByRole("dialog", { name: "Archive this Spec?" })).toBeInTheDocument();
   },
 };

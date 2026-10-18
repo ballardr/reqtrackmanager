@@ -27,8 +27,7 @@
  * are hidden (not just toast-blocked) once `decision.is_locked`.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
@@ -39,8 +38,10 @@ import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { RecordField, RecordFieldGroup } from "../../components/RecordDetailParts";
+import { RecordHeader } from "../../components/RecordHeader";
 import { Spinner } from "../../components/Spinner";
 import { SupersedeAction } from "../../components/SupersedeAction";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
@@ -67,7 +68,6 @@ export function DecisionDetailPage() {
   const [approveComment, setApproveComment] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
   const [comments, setComments] = useState<DecisionComment[] | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
 
@@ -125,6 +125,20 @@ export function DecisionDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Decision",
+    isArchived: decision?.is_archived ?? false,
+    hidden: !decision,
+    archiveBody: "This Decision will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!projectId || !decision) return;
+      await runTransition(
+        () => (decision.is_archived ? decisionsApi.unarchiveDecision(projectId, decision.id) : decisionsApi.archiveDecision(projectId, decision.id)),
+        decision.is_archived ? "Decision unarchived." : "Decision archived.",
+      );
+    },
+  });
+
   if (!projectId || !decisionId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decision === null || project === null) return <Spinner />;
@@ -155,23 +169,45 @@ export function DecisionDetailPage() {
         />
       }
     >
-      <Link to={`/projects/${projectId}/modules/decisions`}>← Decisions</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{decision.unique_code}</h1>
-        <Badge tone={DECISION_STATUS_TONE[decision.status]}>
-          {DECISION_STATUS_LABEL[decision.status]}
-        </Badge>
-      </div>
+      <RecordHeader
+        recordLabel="Decision"
+        title={decision.title}
+        code={decision.unique_code}
+        back={{ to: `/projects/${projectId}/modules/decisions`, label: "← Decisions" }}
+        badges={
+          <Badge tone={DECISION_STATUS_TONE[decision.status]}>
+            {DECISION_STATUS_LABEL[decision.status]}
+          </Badge>
+        }
+        subtitle={decisionType?.name ?? "—"}
+        onEdit={decision.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
+            {decision.status === "draft" && (
+              <button className="btn btn-primary" onClick={() => runTransition(() => decisionsApi.proposeDecision(projectId, decision.id), "Decision proposed.")}>
+                Propose
+              </button>
+            )}
+            {decision.status === "proposed" && (
+              <button
+                className="btn btn-primary"
+                onClick={() => runTransition(() => decisionsApi.submitDecisionForReview(projectId, decision.id), "Decision submitted for review.")}
+              >
+                Submit for review
+              </button>
+            )}
+            {decision.status === "under_review" && (
+              <>
+                <button className="btn btn-primary" onClick={() => setApproving(true)}>Approve</button>
+                <button className="btn btn-danger" onClick={() => setRejecting(true)}>Reject</button>
+              </>
+            )}
+          </>
+        }
+      />
+      {archive.dialog}
       <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>{decision.title}</h2>
-          {!decision.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-        <p className="text-muted" style={{ margin: 0 }}>{decisionType?.name ?? "—"}</p>
         <p style={{ margin: 0 }}>{decision.decision_statement}</p>
         <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
           <RecordFieldGroup label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
@@ -185,31 +221,6 @@ export function DecisionDetailPage() {
         {decision.consequences && <RecordField label="Consequences" value={decision.consequences} />}
         {decision.assumptions && <RecordField label="Assumptions" value={decision.assumptions} />}
         {decision.constraints && <RecordField label="Constraints" value={decision.constraints} />}
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-          {decision.status === "draft" && (
-            <button className="btn btn-primary" onClick={() => runTransition(() => decisionsApi.proposeDecision(projectId, decision.id), "Decision proposed.")}>
-              Propose
-            </button>
-          )}
-          {decision.status === "proposed" && (
-            <button
-              className="btn btn-primary"
-              onClick={() => runTransition(() => decisionsApi.submitDecisionForReview(projectId, decision.id), "Decision submitted for review.")}
-            >
-              Submit for review
-            </button>
-          )}
-          {decision.status === "under_review" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setApproving(true)}>Approve</button>
-              <button className="btn btn-danger" onClick={() => setRejecting(true)}>Reject</button>
-            </>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {decision.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
 
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
@@ -317,26 +328,6 @@ export function DecisionDetailPage() {
             await runTransition(() => decisionsApi.rejectDecision(projectId, decision.id, comment), "Decision rejected.");
           }}
           onCancel={() => { setRejecting(false); setRejectComment(""); }}
-        />
-      )}
-
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={decision.is_archived ? "Unarchive this Decision?" : "Archive this Decision?"}
-          message={
-            decision.is_archived
-              ? "This Decision will count as active again."
-              : "This Decision will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={decision.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (decision.is_archived ? decisionsApi.unarchiveDecision(projectId, decision.id) : decisionsApi.archiveDecision(projectId, decision.id)),
-              decision.is_archived ? "Decision unarchived." : "Decision archived."
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
         />
       )}
     </DetailLayout>

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { installCleanupHook, chooseRecordAction } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -77,7 +77,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByText("Retention review due")).toBeVisible();
 
     // --- Permanent delete is a tier-2 confirm needing the exact title.
-    await page.getByRole("button", { name: "Delete permanently" }).click();
+    await chooseRecordAction(page, "Engagement", "Delete permanently");
     const confirm = page.getByRole("dialog", { name: `Permanently delete ${title}?` });
     const confirmButton = confirm.getByRole("button", { name: "Delete permanently" });
     await expect(confirmButton).toBeDisabled();

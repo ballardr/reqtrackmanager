@@ -25,8 +25,7 @@
  * once `futureState.is_locked`.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
@@ -42,6 +41,8 @@ import { orgFutureStateApi, projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
@@ -100,7 +101,6 @@ export function FutureStateDetailPage() {
   const [sendBackComment, setSendBackComment] = useState("");
   const [transitionAction, setTransitionAction] = useState<TransitionAction | null>(null);
   const [transitionComment, setTransitionComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!scopeId || !futureStateId) return;
@@ -153,6 +153,20 @@ export function FutureStateDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Future State",
+    isArchived: futureState?.is_archived ?? false,
+    hidden: !futureState,
+    archiveBody: "This Future State will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!scopeId || !futureState) return;
+      await runTransition(
+        () => (futureState.is_archived ? scopedApi.unarchive(scopeId, futureState.id) : scopedApi.archive(scopeId, futureState.id)),
+        futureState.is_archived ? "Future State unarchived." : "Future State archived.",
+      );
+    },
+  });
+
   if (!scopeId || !futureStateId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureState === null) return <Spinner />;
@@ -181,33 +195,26 @@ export function FutureStateDetailPage() {
         />
       }
     >
-      <Link to={backLink}>{backLabel}</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{futureState.title}</h1>
-        <Badge tone={FUTURE_STATE_STATUS_TONE[futureState.status]}>
-          {FUTURE_STATE_STATUS_LABEL[futureState.status]}
-        </Badge>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
+      <RecordHeader
+        recordLabel="Future State"
+        title={futureState.title}
+        back={{ to: backLink, label: backLabel }}
+        badges={
+          <>
+          <Badge tone={FUTURE_STATE_STATUS_TONE[futureState.status]}>
+            {FUTURE_STATE_STATUS_LABEL[futureState.status]}
+          </Badge>
+          </>
+        }
+        subtitle={
+          <>
             {futureState.target_date ? `Target date ${futureState.target_date} · ` : ""}v{futureState.version_number}
-          </p>
-          {!futureState.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-
-        {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
-        <Field label="Desired state" value={futureState.desired_state} />
-        {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
-        {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
-        {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
-        {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          </>
+        }
+        onEdit={futureState.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {futureState.status === "draft" && (
             <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, futureState.id), "Future State proposed.")}>
               Propose
@@ -223,26 +230,35 @@ export function FutureStateDetailPage() {
               </button>
               <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
             </>
-          )}
-          {futureState.status === "under_review" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-          )}
-          {futureState.status === "approved" && (
-            <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-          )}
-          {futureState.status === "active" && (
-            <>
-              <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-              <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-            </>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {futureState.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {futureState.status === "under_review" && (
+                <>
+                  <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
+                  <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
+                </>
+              )}
+              {futureState.status === "approved" && (
+                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
+              )}
+              {futureState.status === "active" && (
+                <>
+                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
+                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
+                </>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
+        <Field label="Desired state" value={futureState.desired_state} />
+        {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
+        {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
+        {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
+        {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
 
 
         {versions && versions.length > 1 && (
@@ -372,25 +388,6 @@ export function FutureStateDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={futureState.is_archived ? "Unarchive this Future State?" : "Archive this Future State?"}
-          message={
-            futureState.is_archived
-              ? "This Future State will count as active again."
-              : "This Future State will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={futureState.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (futureState.is_archived ? scopedApi.unarchive(scopeId, futureState.id) : scopedApi.archive(scopeId, futureState.id)),
-              futureState.is_archived ? "Future State unarchived." : "Future State archived."
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

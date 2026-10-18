@@ -8,6 +8,7 @@ import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../
 import { buildNeed, buildPersona, buildStakeholder } from "./fixtures";
 import { NeedDetailPage } from "./NeedDetailPage";
 import type { Need, NeedHolder, NeedRequirement } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 
 const PROJECT_ID = "project-1";
 const NEED_ID = "need-1";
@@ -128,11 +129,11 @@ export const ArchiveAsksForConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Archive" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Stakeholder Need actions" }));
+    await chooseRecordAction(canvas, "Stakeholder Need", "Archive");
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Archive this Stakeholder Need?" })).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}/archive`));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Unarchive" })).toBeInTheDocument());
+    await waitFor(async () => expect(await recordActionNames(canvas, "Stakeholder Need")).toContain("Unarchive"));
   },
 };
 

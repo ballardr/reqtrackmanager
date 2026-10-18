@@ -296,13 +296,41 @@ The main payoff is a *mixed* list, not a homogeneous one, where the accent lets 
 
 *(New 2026-08-25 — see [Org Admin: Users/Groups, org-level actions, and two still-inline create forms](plans/completed/ux-audit-2026-08.md#org-admin-usersgroups-org-level-actions-and-two-still-inline-create-forms), roadmap item 519.)*
 
-**Use this when a header/toolbar row has two or more secondary, non-primary actions that would otherwise sit side by side as separate, permanently-visible buttons** — the same "two blocks competing for the same job" shape Principle 5 (one door for add-one/add-many) and Principle 11 (grouped downloads) already name for creates and downloads, extended here to any small group of related actions on an existing entity (rename, export, and similar). **Don't use it for a single primary action** — a lone button stays a plain button; collapsing one action behind a menu adds a click for no reason. A rough floor: reach for `ActionMenu` at two or more secondary actions, not one.
+**Use this when a header/toolbar row has two or more secondary, non-primary actions that would otherwise sit side by side as separate, permanently-visible buttons** — the same "two blocks competing for the same job" shape Principle 5 (one door for add-one/add-many) and Principle 11 (grouped downloads) already name for creates and downloads, extended here to any small group of related actions on an existing entity (rename, export, and similar). **Don't use it for a single primary action** — a lone button stays a plain button; collapsing one action behind a menu adds a click for no reason. A rough floor: reach for `ActionMenu` at two or more secondary actions, not one. The one stated exception is a record's header, which always uses the menu (see "Pattern: record header and object actions").
 
 Built as `ActionMenu` (`frontend/src/components/ActionMenu.tsx`) — a `MoreVertical` kebab trigger (its own real accessible name via `triggerLabel`, e.g. `` `${orgLabelCap} actions` ``, per Principle 8 — never a bare, generic "More actions" once more than one `ActionMenu` could plausibly appear on the same page) that opens a `Popover` anchored to itself, reusing `Popover`'s existing positioning/focus-trap/outside-click-close logic rather than a new implementation — the same reuse `SplitButtonTrigger` already makes for its own revealed-alternatives list. Inside, `items` render as real `role="menuitem"` buttons inside a `role="menu"` container; selecting one closes the menu and then calls that item's own `onSelect` — callers don't close the menu themselves. Each item is an ordinary focusable `<button>`, so Tab/Shift+Tab already moves between them; this does not implement the full WAI-ARIA menu widget's arrow-key roving-tabindex pattern (`ResourceMenu`/`Tabs` do that for their own larger surfaces) — judged proportionate for a menu this short, not under-built, per the item's own S-M effort sizing. Revisit if a future call site needs a longer list.
 
 An item that itself opens a create/rename flow follows Principle 3 as normal — the menu is just the entry point, not a replacement for the `Modal`/`Popover` choice that flow's own content already dictates. First call site: `OrgAdminPage.tsx`'s Overview group combines "Rename" (opens a `Modal`, replacing what used to be an always-visible inline input) and "Export {org} bundle" (calls the existing export handler directly and closes the menu — not a create/rename flow, so no dialog of its own) behind one trigger. Rename is only offered to an org admin (the same gate the inline input used to carry); Export stays available to every member, matching its previous, ungated placement — collapsing two actions behind one menu doesn't collapse who can see each one.
 
 **Addendum (2026-09-22): the same threshold applies per-row inside a `DirectoryTable`, not just page-level toolbars.** Once a row has two or more actions (edit, delete, or similar), give it an `ActionMenu` in an actions column. An inline/row-click shortcut for one of those actions (e.g. click-the-row-to-edit) may still exist alongside the menu, but never *in place of* listing that same action in the menu — the menu is the row's complete, discoverable action list; an inline shortcut is a convenience layered on top of an entry that's still there, not a replacement for it. A row with exactly one action total may skip the menu and use a single inline button or `rowHref`/`onRowClick` directly, per this pattern's own two-or-more floor. See `DecisionTemplatesPanel.tsx` for the corrected precedent (`docs/decisions.md`, 2026-09-22) and "Pattern: directory table"'s own callout below.
+
+## Pattern: record header and object actions
+
+Every record detail page (requirement, action, change request, decision, risk, engagement, persona, stakeholder, need, strategy, future state, guiding principle, pain point, open question, compliance standard and assignment) opens with one `RecordHeader` (`frontend/src/components/RecordHeader.tsx`). Users learn once where a record's actions live.
+
+**Why:** each page used to build its own `<h1>` row and place Archive, Delete and Subscribe differently (a danger-styled button, a plain text button, a "Delete permanently" button at the bottom of a long page). Destructive actions far from the title were hard to find and easy to hit by accident.
+
+| Part | Where | Notes |
+|------|-------|-------|
+| Back link, title, code | Top-left | The code is a small muted suffix beside the title, not inside the heading, so the heading's name stays the title. |
+| Edit | Title row, right edge | Icon button (medium, 16px). Omitted when the user cannot edit; there is no disabled Edit. |
+| Object actions | Title row, right edge | One `ActionMenu` named "{Record} actions". Drawn even for a single action (the Q5 exception to the two-or-more floor) so its position never depends on permissions; not drawn at all when the user has none. |
+| Status pills | Line under the title | Status, scope, archived, overdue. |
+| Transitions | Line under the pills | Visible buttons that depend on status. |
+
+```mermaid
+flowchart TD
+    A["Action on the whole record"] --> B{"Depends on the record's status,<br/>or moves it through its lifecycle?"}
+    B -- Yes --> C["Transition: a visible button beside the status<br/>(Submit, Approve, Reject, Activate, Retire, Withdraw, Supersede)"]
+    B -- No --> D{"Acts on the links of this record?"}
+    D -- Yes --> E["Stays in the Links panel"]
+    D -- No --> F["Object action: item in the '{Record} actions' menu<br/>(Archive / Restore, Delete permanently, Export, Subscribe)"]
+```
+
+- **Each menu item keeps its safeguards.** Archive confirms at Tier 1, Delete permanently at Tier 2 (type the name), Restore runs at once, and every mutation ends in a Toast. `useConfirmedAction` / `useArchiveAction` (`components/useConfirmedAction.tsx`) pair an item with its dialog so a page does not hand-roll that state.
+- **No permission, no item.** Pass only what the current user may do; never a disabled item. Where the backend alone enforces a role (Activate/Retire), the control renders and a 403 surfaces as a Toast, as before.
+- **A page inside a page** (the compliance assignment drill-down) passes `headingLevel="h2"` and a `back` callback instead of a link.
+- **Do not add a bottom-of-page action row.** A new record type uses `RecordHeader`; extend its props rather than building a sibling layout.
 
 ## Pattern: resource picker dialog
 

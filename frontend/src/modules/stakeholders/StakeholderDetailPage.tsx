@@ -24,7 +24,6 @@
  * backend enforces `stakeholder_owner`/`org_stakeholder_owner` and a 403
  * surfaces as a toast.
  */
-import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -32,7 +31,6 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailLayout } from "../../components/DetailLayout";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -45,7 +43,9 @@ import { EngagementTimelinePanel } from "./EngagementTimelinePanel";
 import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
-import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
+import { RecordHeader } from "../../components/RecordHeader";
+import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
 import { StakeholderFormModal } from "./StakeholderFormModal";
@@ -88,7 +88,6 @@ export function StakeholderDetailPage() {
   const [fetchedHint, setFetchedHint] = useState<{ key: string; hint: CadenceHint } | null>(null);
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [erasing, setErasing] = useState(false);
   const scheme = useStakeholderScheme(projectId ? { projectId } : { orgId: organizationId ?? "" });
 
   // An org stakeholder opened inside a project can't be mutated through the project API.
@@ -197,7 +196,6 @@ export function StakeholderDetailPage() {
 
   async function erase() {
     if (!scopeId || !stakeholder) return;
-    setErasing(false);
     try {
       await scopedApi.erase(scopeId, stakeholder.id);
       showToast("Stakeholder permanently deleted.");
@@ -206,6 +204,32 @@ export function StakeholderDetailPage() {
       showToast(toErrorMessage(err, "Could not delete this Stakeholder."), "error");
     }
   }
+
+  const archive = useArchiveAction({
+    noun: "Stakeholder",
+    isArchived: stakeholder?.is_archived ?? false,
+    hidden: !stakeholder || readOnlyInProject,
+    archiveBody: "This Stakeholder will no longer appear in the active list. Nothing is deleted.",
+    onToggle: async () => {
+      if (!scopeId || !stakeholder) return;
+      await run(
+        () => (stakeholder.is_archived ? scopedApi.unarchive(scopeId, stakeholder.id) : scopedApi.archive(scopeId, stakeholder.id)),
+        stakeholder.is_archived ? "Stakeholder unarchived." : "Stakeholder archived.",
+      );
+    },
+  });
+  const eraseAction = useConfirmedAction({
+    label: "Delete permanently",
+    danger: true,
+    hidden: !stakeholder || readOnlyInProject,
+    title: `Permanently delete ${stakeholder?.name ?? "this Stakeholder"}?`,
+    message:
+      "This cannot be undone. It deletes this Stakeholder's record, every version of it (including contact " +
+      "information), its comments, its attachments and files, and its links to Personas. The audit trail " +
+      "keeps only that a deletion happened, not who the person was.",
+    requireTypedText: stakeholder?.name,
+    onConfirm: erase,
+  });
 
   if (!scopeId || !stakeholderId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -223,28 +247,38 @@ export function StakeholderDetailPage() {
         />
       }
     >
-      <Link to={listPath}>{backLabel}</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{stakeholder.name}</h1>
-        <span className="row" style={{ gap: "0.5rem" }}>
-          <Badge>{STAKEHOLDER_SCOPE_LABEL[stakeholder.scope]}</Badge>
-          <Badge tone={STAKEHOLDER_STATUS_TONE[stakeholder.status]}>{STAKEHOLDER_STATUS_LABEL[stakeholder.status]}</Badge>
-        </span>
-      </div>
+      <RecordHeader
+        recordLabel="Stakeholder"
+        title={stakeholder.name}
+        back={{ to: listPath, label: backLabel }}
+        badges={
+          <>
+            <Badge>{STAKEHOLDER_SCOPE_LABEL[stakeholder.scope]}</Badge>
+            <Badge tone={STAKEHOLDER_STATUS_TONE[stakeholder.status]}>{STAKEHOLDER_STATUS_LABEL[stakeholder.status]}</Badge>
+          </>
+        }
+        subtitle={
+          `${[stakeholder.stakeholder_type_name, stakeholder.role, stakeholder.organisation_group].filter(Boolean).join(" · ") || "No type or role set"} · v${stakeholder.version_number}` +
+          (stakeholder.is_archived ? " · Archived" : "")
+        }
+        onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
+        actions={[archive.item, eraseAction.item]}
+        transitions={
+          readOnlyInProject ? undefined : (
+            <RecordLifecycleControls
+              noun="Stakeholder"
+              status={stakeholder.status}
+              activateBody="An Active stakeholder is part of the current stakeholder register. A comment is optional."
+              retireBody="A Retired stakeholder is no longer part of the current register, but keeps its history and can be reactivated. A comment is optional."
+              onTransition={(action, comment) => run(() => scopedApi[action](scopeId, stakeholder.id, comment), TRANSITION_DONE[action])}
+            />
+          )
+        }
+      />
+      {archive.dialog}
+      {eraseAction.dialog}
 
       <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
-            {[stakeholder.stakeholder_type_name, stakeholder.role, stakeholder.organisation_group].filter(Boolean).join(" · ") || "No type or role set"} · v{stakeholder.version_number}
-            {stakeholder.is_archived && " · Archived"}
-          </p>
-          {!readOnlyInProject && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil />
-            </button>
-          )}
-        </div>
-
         {readOnlyInProject && (
           <p className="text-muted" style={{ margin: 0 }}>
             This is an organisation-wide Stakeholder shared by every project. Edit it from the{" "}
@@ -342,26 +376,6 @@ export function StakeholderDetailPage() {
           load={() => projectEngagementApi.listForStakeholder(projectId ?? "", stakeholder.id)}
         />
 
-        {!readOnlyInProject && (
-          <RecordLifecycleControls
-            noun="Stakeholder"
-            status={stakeholder.status}
-            isArchived={stakeholder.is_archived}
-            activateBody="An Active stakeholder is part of the current stakeholder register. A comment is optional."
-            retireBody="A Retired stakeholder is no longer part of the current register, but keeps its history and can be reactivated. A comment is optional."
-            archiveBody="This Stakeholder will no longer appear in the active list. Nothing is deleted."
-            onTransition={(action, comment) => run(() => scopedApi[action](scopeId, stakeholder.id, comment), TRANSITION_DONE[action])}
-            onArchiveToggle={() =>
-              run(
-                () => (stakeholder.is_archived ? scopedApi.unarchive(scopeId, stakeholder.id) : scopedApi.archive(scopeId, stakeholder.id)),
-                stakeholder.is_archived ? "Stakeholder unarchived." : "Stakeholder archived.",
-              )
-            }
-          >
-            <button className="btn btn-danger" onClick={() => setErasing(true)}>Delete permanently</button>
-          </RecordLifecycleControls>
-        )}
-
         <VersionHistoryTable
           versions={versions}
           columns={[
@@ -395,20 +409,6 @@ export function StakeholderDetailPage() {
         />
       )}
 
-      {erasing && (
-        <ConfirmDialog
-          title={`Permanently delete ${stakeholder.name}?`}
-          message={
-            "This cannot be undone. It deletes this Stakeholder's record, every version of it (including contact " +
-            "information), its comments, its attachments and files, and its links to Personas. The audit trail " +
-            "keeps only that a deletion happened, not who the person was."
-          }
-          confirmLabel="Delete permanently"
-          requireTypedText={stakeholder.name}
-          onConfirm={erase}
-          onCancel={() => setErasing(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

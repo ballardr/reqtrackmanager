@@ -1,4 +1,4 @@
-import { MessageSquare } from "lucide-react";
+import { Bell, BellOff, MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -36,7 +36,7 @@ import { PrincipalFormField } from "../components/PrincipalFormField";
 import { Modal } from "../components/Modal";
 import { ProposedLinksSection } from "../components/ProposedLinksSection";
 import { Spinner } from "../components/Spinner";
-import { SubscribeButton } from "../components/SubscribeButton";
+import { RecordHeader } from "../components/RecordHeader";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
@@ -278,10 +278,18 @@ export function ChangeRequestDetailPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{title}</h1>
-        <SubscribeButton subscribed={cr.is_subscribed} onToggle={toggleSubscription} />
-      </div>
+      <RecordHeader
+        recordLabel="Change request"
+        title={title}
+        badges={cr.is_subscribed ? <Badge tone="info">{strings.requirements.subscribed}</Badge> : undefined}
+        actions={[
+          {
+            label: cr.is_subscribed ? strings.requirements.unsubscribe : strings.requirements.subscribe,
+            icon: cr.is_subscribed ? <BellOff /> : <Bell />,
+            onSelect: toggleSubscription,
+          },
+        ]}
+      />
       {projectId && (
         <WatchingGroupsPanel
           recordPath={`/api/v1/projects/${projectId}/change-requests/${crId}`}
