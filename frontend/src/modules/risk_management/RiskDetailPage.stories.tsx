@@ -66,7 +66,7 @@ export const ShowsFieldsRatingsTreatmentsReviewsAndHistory: Story = {
     await expect(canvas.getByText("No effective treatment")).toBeInTheDocument();
     await expect(await canvas.findByRole("table", { name: "Treatment links" })).toBeInTheDocument();
     await expect(await canvas.findByText("Supplier confirmed the date.")).toBeInTheDocument();
-    await expect(await canvas.findByRole("heading", { name: "Version history" })).toBeInTheDocument();
+    await expect(await canvas.findByRole("heading", { name: "Versions" })).toBeInTheDocument();
     // Once in the treatments table, once in the Links panel.
     await waitFor(() => expect(canvas.getAllByRole("link", { name: "REQ-001 Dual-source the firmware" })).toHaveLength(2));
     await expect(canvas.getByText("Risk matrix: inherent and residual rating")).toBeInTheDocument();

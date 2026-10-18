@@ -57,6 +57,7 @@ import { useParams } from "react-router-dom";
 import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -227,6 +228,7 @@ export function PainPointDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}

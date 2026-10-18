@@ -4,6 +4,7 @@ completion tracking (C-P-02, C-P-03)."""
 from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
+from app.models.audit import AuditEvent
 from app.services.stages import auto_approve_overdue_stage_reviews
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
 
@@ -66,6 +67,11 @@ def test_overdue_stage_review_does_not_auto_approve_after_explicit_rejection(cli
 
     db = SessionLocal()
     try:
+        # A stakeholder's formal response is a recorded decision, so it leaves an audit event.
+        event = db.query(AuditEvent).filter_by(
+            entity_type="project_stage", entity_id=stage_id, action="review_response_submitted"
+        ).one()
+        assert event.detail == {"response": "rejected"}
         auto_approve_overdue_stage_reviews(db)
     finally:
         db.close()

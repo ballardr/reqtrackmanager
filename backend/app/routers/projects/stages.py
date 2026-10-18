@@ -286,6 +286,10 @@ def submit_stage_review_response(
             comment=payload.comment, responded_at=datetime.now(UTC),
         )
         db.add(response)
+    log_event(
+        db, entity_type="project_stage", entity_id=stage.id, action="review_response_submitted",
+        actor_id=current_user.id, project_id=project_id, detail={"response": str(getattr(payload.response, "value", payload.response))},
+    )
     db.commit()
     db.refresh(response)
     return response

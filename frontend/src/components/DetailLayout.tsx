@@ -11,6 +11,10 @@
  *   follows them across pages and devices. Default is open.
  * - Below 1280px the aside stacks under the content, always shown, with no toggle
  *   (a collapse there would only hide what the user scrolled to find).
+ * - A page that passes `activity` as well gets two tabs in the aside, Links and Activity; the
+ *   selected tab is a per-viewer preference (`detail_aside_tab`). The Links panel stays mounted
+ *   while hidden (its state survives a tab switch); the Activity tab mounts when opened, so it
+ *   loads fresh each time. Wide tables never go in the aside: a page keeps those in its body.
  *
  * Renders its own `.container` (unless `contained` is false, for a page that already
  * sits in a content wrapper), so a page replaces its root `<div className="container
@@ -22,6 +26,10 @@ import type { ReactNode } from "react";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { useStrings } from "../context/TerminologyContext";
+import { Tabs, tabPanelProps } from "./Tabs";
+
+type AsideTab = "links" | "activity";
+const ASIDE_TAB_ID_PREFIX = "detail-aside";
 
 /** Viewport width (px) below which the aside stacks under the content. */
 export const DETAIL_ASIDE_BREAKPOINT_PX = 1279;
@@ -31,17 +39,20 @@ export const DETAIL_ASIDE_BREAKPOINT_PX = 1279;
  *
  * @param children The page content (rendered in a `.stack` column).
  * @param aside The aside content; omitted or `null` renders the content alone.
+ * @param activity The record's activity timeline; when given with `aside`, the aside shows Links and Activity tabs.
  * @param asideLabel Accessible name for the aside and its toggle (default "Links").
  * @param contained Wrap in `.container` (default); false for a page already inside a wrapper.
  */
 export function DetailLayout({
   children,
   aside,
+  activity,
   asideLabel,
   contained = true,
 }: {
   children: ReactNode;
   aside?: ReactNode;
+  activity?: ReactNode;
   asideLabel?: string;
   contained?: boolean;
 }) {
@@ -49,6 +60,8 @@ export function DetailLayout({
   const narrow = useNarrowViewport(DETAIL_ASIDE_BREAKPOINT_PX);
   const [collapsed, setCollapsed] = useUiPreference<boolean>("detail_aside_collapsed", false);
   const label = asideLabel ?? strings.artefactLinks.title;
+  const [storedTab, setStoredTab] = useUiPreference<string>("detail_aside_tab", "links");
+  const tab: AsideTab = activity && storedTab === "activity" ? "activity" : "links";
 
   if (aside === undefined || aside === null) {
     return <div className={contained ? "container stack" : "stack"}>{children}</div>;
@@ -71,7 +84,31 @@ export function DetailLayout({
             {collapsed && <span>{label}</span>}
           </button>
         )}
-        {!hidden && <div className="detail-layout__aside-body stack">{aside}</div>}
+        {!hidden && (
+          <div className="detail-layout__aside-body stack">
+            {activity ? (
+              <>
+                <Tabs<AsideTab>
+                  idPrefix={ASIDE_TAB_ID_PREFIX}
+                  tabs={[
+                    { key: "links", label },
+                    { key: "activity", label: strings.recordActivity.title },
+                  ]}
+                  active={tab}
+                  onChange={setStoredTab}
+                />
+                <div {...tabPanelProps(ASIDE_TAB_ID_PREFIX, "links")} hidden={tab !== "links"}>
+                  <div className="stack">{aside}</div>
+                </div>
+                {tab === "activity" && (
+                  <div {...tabPanelProps(ASIDE_TAB_ID_PREFIX, "activity")}>{activity}</div>
+                )}
+              </>
+            ) : (
+              aside
+            )}
+          </div>
+        )}
       </aside>
     </div>
   );

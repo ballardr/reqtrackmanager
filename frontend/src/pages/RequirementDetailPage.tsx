@@ -1,4 +1,4 @@
-import { Activity as ActivityIcon, Bell, BellOff, CheckCircle, FolderOpen, GitPullRequest, Plus, Table as TableIcon, Trash2 } from "lucide-react";
+import { Bell, BellOff, CheckCircle, FolderOpen, GitPullRequest, Plus, Trash2 } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -6,7 +6,6 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
-  ChangeEntry,
   Comment,
   CustomFieldDefinition,
   FileAsset,
@@ -31,8 +30,8 @@ import {
   REQUIREMENT_STATUS_TONE,
   savedPrincipalDisplay,
 } from "../api/types";
-import { ActivityPanel } from "../components/ActivityPanel";
 import { ArtefactLinksPanel, type LinksChangeRequestMode } from "../components/ArtefactLinksPanel";
+import { RecordActivity } from "../components/RecordActivity";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
 import { PrincipalFormField } from "../components/PrincipalFormField";
@@ -53,7 +52,6 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
-import { useUiPreference } from "../hooks/useUiPreference";
 import { getInstalledModule } from "../modules/registry";
 import { Badge } from "../components/Badge";
 
@@ -132,15 +130,6 @@ export function RequirementDetailPage() {
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [stages, setStages] = useState<ProjectStage[]>([]);
-  const [activity, setActivity] = useState<ChangeEntry[]>([]);
-  // History/Activity merged into one card with a view toggle — server-synced per-user via `useUiPreference`,
-  // the same mechanism `useViewMode` (tile/list) already uses, so the
-  // user's last-selected view becomes their remembered default. Defaults to
-  // "activity" (the broader feed) rather than "versions", since Activity
-  // was the one of the two previously visible in the persistent sidebar
-  // regardless of scroll position — a judgment call, see docs/decisions.md.
-  const [historyViewRaw, setHistoryView] = useUiPreference<string>("requirement_detail_history_view", "activity");
-  const historyView: "versions" | "activity" = historyViewRaw === "versions" ? "versions" : "activity";
   const [reviewOutcome, setReviewOutcome] = useState<RequirementReviewOutcome>("met");
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -225,14 +214,13 @@ export function RequirementDetailPage() {
 
   async function reload() {
     if (!projectId || !requirementId) return;
-    const [req, hist, comm, fls, defs, stgs, act, actTypes, linkedActs, allActs] = await Promise.all([
+    const [req, hist, comm, fls, defs, stgs, actTypes, linkedActs, allActs] = await Promise.all([
       api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${requirementId}`),
       api.get<RequirementVersionEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/history`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments`),
       api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/files`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
-      api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/activity`),
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/actions`),
@@ -246,7 +234,6 @@ export function RequirementDetailPage() {
     // shares formDirtyRef's guard against the same reload() race.
     if (!formDirtyRef.current) setCustomFieldValues(req.custom_fields);
     setStages(stgs);
-    setActivity(act);
     setProjectActionTypes(actTypes);
     setLinkedActions(linkedActs);
     setProjectActions(allActs);
@@ -593,6 +580,7 @@ export function RequirementDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId && requirementId ? <RecordActivity projectId={projectId} artefactType="requirement" artefactId={requirementId} refreshToken={linksRefreshToken} /> : undefined}
       contained={false}
       aside={
         projectId && requirementId ? (
@@ -868,46 +856,11 @@ export function RequirementDetailPage() {
         </div>
       )}
 
-      {/* History and Activity merged into one card with a view toggle
- — "Version history" is
-          specifically this requirement's own approved version/status
-          transitions (the RequirementVersion ledger); "Activity" is the
-          broader audit-log feed covering everything that happened to it,
-          including but not limited to those same version changes. Both
-          renderings are kept, not one dropped in favour of the other — see
-          docs/ux-style-guide.md's "Pattern: view toggle" for the shape this
-          follows (a `useUiPreference`-backed toggle, same mechanism as
-          tile/list view elsewhere), and docs/decisions.md for why this
-          isn't literally the shared `ViewToggle` component (different
-          icon/label pair, not tile-vs-list). */}
+      {/* The requirement's own version ledger stays in the body (a wide table never goes in the
+          aside); what happened to it, links included, is the aside's Activity tab. */}
       <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
-            {historyView === "versions" ? strings.requirements.versionHistory : strings.requirements.activity}
-          </h2>
-          <div className="row" style={{ gap: "0.25rem" }}>
-            <button
-              className={`btn ${historyView === "versions" ? "btn-primary" : ""}`}
-              onClick={() => setHistoryView("versions")}
-              title={strings.requirements.versionHistory}
-              aria-label={strings.requirements.versionHistory}
-              aria-pressed={historyView === "versions"}
-            >
-              <TableIcon />
-            </button>
-            <button
-              className={`btn ${historyView === "activity" ? "btn-primary" : ""}`}
-              onClick={() => setHistoryView("activity")}
-              title={strings.requirements.activity}
-              aria-label={strings.requirements.activity}
-              aria-pressed={historyView === "activity"}
-            >
-              <ActivityIcon />
-            </button>
-          </div>
-        </div>
-        {historyView === "versions" ? (
-          <div style={{ overflowX: "auto" }}>
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.versions}</h2>
+        <div style={{ overflowX: "auto" }}>
           <table>
             <thead>
               <tr>
@@ -930,10 +883,7 @@ export function RequirementDetailPage() {
               ))}
             </tbody>
           </table>
-          </div>
-        ) : (
-          <ActivityPanel entries={activity} bare />
-        )}
+        </div>
       </div>
 
       <div className="card stack">

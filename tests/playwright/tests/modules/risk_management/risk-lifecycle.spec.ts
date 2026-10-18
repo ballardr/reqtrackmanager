@@ -69,7 +69,7 @@ test.describe("Risk Management", () => {
     await edit.getByLabel("Change note").fill("Added cause");
     await edit.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Single-source supplier with no contractual date.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Versions" })).toBeVisible();
     await expect(page.getByRole("cell", { name: "Added cause" })).toBeVisible();
   });
 

@@ -35,6 +35,7 @@ import { useParams } from "react-router-dom";
 
 import type { FileAsset } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -180,6 +181,7 @@ export function StrategyDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="strategy" artefactId={strategy.id} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -273,7 +275,7 @@ export function StrategyDetailPage() {
 
         {versions && versions.length > 1 && (
           <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Version history</h3>
+            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Versions</h3>
             <table className="table">
               <thead>
                 <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>

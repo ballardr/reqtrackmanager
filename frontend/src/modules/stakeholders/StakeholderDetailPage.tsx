@@ -30,6 +30,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
 import { DetailLayout } from "../../components/DetailLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
@@ -241,6 +242,7 @@ export function StakeholderDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="stakeholder" artefactId={stakeholder.id} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}

@@ -44,6 +44,19 @@ A project's **Project history** page is a unified timeline of everything that's 
 
 Discussion comments are excluded from the timeline by default, since they're informal discussion rather than the formal change log — tick **Include discussion comments** to bring them into view alongside everything else.
 
+## One record's timeline
+
+Every record's detail page, whatever its type, has a panel beside the content with two tabs: **Links** and **Activity**. Activity is that one record's own timeline, newest first: who created, edited, archived or moved it through its lifecycle, and which links were added or removed. It loads 25 entries at a time; **Show more** fetches the next page. Which tab you last used is remembered for you.
+
+```mermaid
+flowchart LR
+    Aside["Panel beside a record"] --> Links["Links tab:<br/>what it connects to"]
+    Aside --> Activity["Activity tab:<br/>what happened to it"]
+    Page["Page body"] --> Versions["Versions table:<br/>the record's saved versions"]
+```
+
+The timeline follows the same access rules as the record: you see it only if you can open the record, and a link entry appears only if you can also open the record at the other end. Discussion comments are not part of it (their text lives in the discussion thread). The wide **Versions** table stays in the page body.
+
 ## Where this fits
 
 See [Core Features → File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md) for organisation-wide shared resource files, and [Change requests and baselines](../concepts/change-requests-and-baselines.md) for why the version history this page surfaces exists in the first place.

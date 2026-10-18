@@ -567,5 +567,7 @@ def change_request_activity(
     cr = db.get(ChangeRequest, cr_id)
     if cr is None or cr.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
-    entries = get_project_changes(db, project_id, since=None, until=None, include_comments=False)
-    return [e for e in entries if e.entity_type == "change_request" and e.entity_id == str(cr_id)]
+    return get_project_changes(
+        db, project_id, since=None, until=None, include_comments=False,
+        entity_type="change_request", entity_id=cr_id,
+    )

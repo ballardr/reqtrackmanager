@@ -233,6 +233,7 @@ export const ENTITY_TYPE_LABEL: Record<string, string> = {
   action_type_definition: "Action type",
   requirement_action: "Action",
   requirement_action_link: "Action link",
+  artefact_link: "Link",
 };
 
 function capitalize(value: string): string {
@@ -278,6 +279,11 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   terminology_updated: "updated terminology",
   report_config_updated: "updated the report configuration",
   comment_added: "commented on",
+  comment_edited: "edited a comment on",
+  comment_file_attached: "attached a file to a comment on",
+  comment_file_removed: "removed a file from a comment on",
+  moved: "reordered",
+  review_response_submitted: "responded to the review",
 };
 
 export function activityActionLabel(action: string): string {
@@ -1657,6 +1663,12 @@ export interface ChangeEntry {
  * longer describe the same data three different, inconsistent ways. */
 export function describeActivityEntry(entry: ChangeEntry): string {
   const who = entry.actor_display_name ?? "Someone";
+  if (entry.entity_type === "artefact_link" && entry.detail && typeof entry.detail.other_label === "string") {
+    const removed = entry.action === "deleted";
+    const preposition = entry.detail.direction === "incoming" ? "from" : "to";
+    const kind = typeof entry.detail.other_type_label === "string" ? ` (${entry.detail.other_type_label})` : "";
+    return `${who} ${removed ? "removed a link" : "added a link"} ${preposition} ${entry.detail.other_label}${kind}`;
+  }
   const action = activityActionLabel(entry.action);
   const changeNote = entry.detail && typeof entry.detail.change_note === "string" ? entry.detail.change_note : "";
   // AI approval via MCP (docs/decisions.md): every approval/decision/

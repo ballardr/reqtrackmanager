@@ -37,6 +37,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
 import { DetailLayout } from "../../components/DetailLayout";
 import { OverridePill } from "../../components/OverridePill";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -198,6 +199,7 @@ export function PersonaDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="persona" artefactId={persona.id} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}

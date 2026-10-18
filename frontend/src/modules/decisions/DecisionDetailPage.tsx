@@ -33,6 +33,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
@@ -147,6 +148,7 @@ export function DecisionDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="decision" artefactId={decision.id} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}

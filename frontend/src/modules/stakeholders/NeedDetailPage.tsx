@@ -18,6 +18,7 @@ import { useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { OrgUser, Project, Requirement } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
 import { DetailLayout } from "../../components/DetailLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
@@ -145,6 +146,7 @@ export function NeedDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="stakeholder_need" artefactId={need.id} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}

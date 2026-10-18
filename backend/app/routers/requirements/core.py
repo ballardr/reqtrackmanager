@@ -809,8 +809,10 @@ def requirement_activity(
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
-    entries = get_project_changes(db, project_id, since=None, until=None, include_comments=False)
-    return [e for e in entries if e.entity_type == "requirement" and e.entity_id == str(requirement_id)]
+    return get_project_changes(
+        db, project_id, since=None, until=None, include_comments=False,
+        entity_type="requirement", entity_id=requirement_id,
+    )
 
 
 @router.post("/{requirement_id}/move", response_model=RequirementOut)
@@ -843,6 +845,10 @@ def move_requirement(
     if 0 <= swap_idx < len(siblings):
         a, b = siblings[idx], siblings[swap_idx]
         versions[a.id].sort_order, versions[b.id].sort_order = versions[b.id].sort_order, versions[a.id].sort_order
+        log_event(
+            db, entity_type="requirement", entity_id=requirement.id, action="moved", actor_id=current_user.id,
+            project_id=project_id, detail={"direction": payload.direction},
+        )
         db.commit()
     version = get_current_version(db, requirement.id)
     return _to_out(db, requirement, version, current_user.id)

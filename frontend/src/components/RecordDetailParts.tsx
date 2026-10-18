@@ -98,7 +98,7 @@ export function VersionHistoryTable<V extends { id: string; version_number: numb
   if (!versions || versions.length <= 1) return null;
   return (
     <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Version history</h3>
+      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Versions</h3>
       <table className="table">
         <thead>
           <tr>

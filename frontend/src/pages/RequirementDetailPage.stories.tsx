@@ -3,10 +3,11 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ArtefactLinkCandidate, ArtefactLinkTypeOption, LinkGraph } from "../api/artefactLinks";
-import type { ActionTypeDefinition, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, RequirementAction, RequirementVersionEntry } from "../api/types";
+import type { ActionTypeDefinition, ChangeEntry, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, RequirementAction, RequirementVersionEntry } from "../api/types";
 import {
   buildCandidate, buildGraph, buildGraphNode, buildOption,
 } from "../testing/artefactLinksFixtures";
+import { activityPage, buildActivityEntry } from "../testing/recordActivityFixtures";
 import {
   buildActionType,
   buildComment,
@@ -53,6 +54,8 @@ function mockRequirementDetailApis(
     linkedActions?: RequirementAction[];
     projectActions?: RequirementAction[];
     history?: RequirementVersionEntry[];
+    // The record's activity timeline (the aside's Activity tab).
+    activity?: ChangeEntry[];
     orgResources?: FileAsset[];
     orgUsers?: OrgUser[];
     orgUserSearchMembers?: OrgUser[];
@@ -83,7 +86,7 @@ function mockRequirementDetailApis(
     if (path.endsWith(`/requirements/${REQUIREMENT_ID}/files`)) return [];
     if (path.includes("custom-fields")) return [];
     if (path.endsWith("/stages")) return [];
-    if (path.endsWith("/activity")) return [];
+    if (path.includes("/activity")) return activityPage(extra.activity ?? []);
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-graph`)) return extra.linkGraph ?? buildGraph();
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-types`)) return extra.linkOptions ?? [];
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-browse`)) return null;
@@ -779,7 +782,7 @@ export const TerminologyOverrideAppliesThroughoutPage: Story = {
   },
 };
 
-/** Version-history table renders each row's status through
+/** The versions table renders each row's status through
  * `REQUIREMENT_STATUS_LABEL`, matching the status badge above it on the same
  * page — not the raw backend enum string. */
 export const VersionHistoryShowsLabelledStatus: Story = {
@@ -801,21 +804,15 @@ export const VersionHistoryShowsLabelledStatus: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // History and Activity share one card with a view toggle, defaulting to Activity — switch to Version
-    // history before the table is on screen at all.
-    await userEvent.click(canvas.getByRole("button", { name: "Version history" }));
     await waitFor(() => expect(canvas.getByText("Initial submission")).toBeInTheDocument());
     await expect(canvas.getByRole("cell", { name: "Reviewed" })).toBeInTheDocument();
     await expect(canvas.queryByRole("cell", { name: "reviewed" })).not.toBeInTheDocument();
   },
 };
 
-/** History and Activity merged into one card with a view toggle — both renderings are kept, the toggle just
- * switches which one shows. Defaults to Activity (see the page's own
- * comment on `historyViewRaw` for why); uses `withStatefulAuth` rather than
- * the meta's default `withAuth`, since a no-op `setUiPreference` couldn't
- * actually change the pressed toggle button or which view renders. */
-export const HistoryActivityToggleSwitchesViews: Story = {
+/** The version ledger is a body section ("Versions"); what happened to the record is the aside's
+ * Activity tab. Uses `withStatefulAuth` so the tab choice (a per-viewer preference) takes effect. */
+export const VersionsInTheBodyActivityInTheAsideTab: Story = {
   decorators: [withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" }))],
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], {}, {
@@ -827,45 +824,24 @@ export const HistoryActivityToggleSwitchesViews: Story = {
           created_at: "2026-01-01T00:00:00Z", valid_to: "2026-01-02T00:00:00Z",
         },
       ],
+      activity: [buildActivityEntry({ action: "approved", detail: { change_note: "Approved directly." } })],
     });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Defaults to Activity: the version table isn't on screen yet, and the
-    // Activity toggle button is the pressed one.
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Activity", level: 2 })).toBeInTheDocument());
-    await expect(canvas.queryByText("Initial submission")).not.toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Activity" })).toHaveAttribute("aria-pressed", "true");
-    await expect(canvas.getByRole("button", { name: "Version history" })).toHaveAttribute("aria-pressed", "false");
-
-    await userEvent.click(canvas.getByRole("button", { name: "Version history" }));
-    await expect(canvas.getByRole("heading", { name: "Version history", level: 2 })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Versions", level: 2 })).toBeInTheDocument());
     await expect(canvas.getByText("Initial submission")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Version history" })).toHaveAttribute("aria-pressed", "true");
-    await expect(canvas.getByRole("button", { name: "Activity" })).toHaveAttribute("aria-pressed", "false");
+    // Links is the default aside tab; the timeline is one click away and not shown yet.
+    await expect(canvas.getByRole("tab", { name: "Links" })).toHaveAttribute("aria-selected", "true");
+    await expect(canvas.queryByText(/Alex Morgan approved/)).not.toBeInTheDocument();
 
-    // Switching back shows the Activity feed again — neither rendering was
-    // dropped in favour of the other.
-    await userEvent.click(canvas.getByRole("button", { name: "Activity" }));
-    await expect(canvas.getByRole("heading", { name: "Activity", level: 2 })).toBeInTheDocument();
-    await expect(canvas.queryByText("Initial submission")).not.toBeInTheDocument();
-  },
-};
+    await userEvent.click(canvas.getByRole("tab", { name: "Activity" }));
+    await waitFor(() => expect(canvas.getByText(/Alex Morgan approved — Approved directly\./)).toBeInTheDocument());
+    await expect(canvas.getByRole("tab", { name: "Activity" })).toHaveAttribute("aria-selected", "true");
 
-/** The merged card no longer sits in a two-column `.side-grid` with a
- * separate narrow Activity sidebar — confirms the single-card shell by
- * checking there's exactly one "Activity"/"Version history" heading on the
- * page, not the old duplicate ("Change log" card in the main column plus a
- * standalone "Activity" sidebar panel). */
-export const NoDuplicateHistoryOrActivityCard: Story = {
-  beforeEach: () => {
-    mockRequirementDetailApis(["project_manager"]);
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Activity", level: 2 })).toBeInTheDocument());
-    await expect(canvas.getAllByRole("heading", { name: "Activity", level: 2 })).toHaveLength(1);
-    await expect(canvas.queryByRole("heading", { name: "Change log" })).not.toBeInTheDocument();
+    // Switching back keeps the Links panel as it was.
+    await userEvent.click(canvas.getByRole("tab", { name: "Links" }));
+    await expect(canvas.queryByText(/Alex Morgan approved/)).not.toBeInTheDocument();
   },
 };
 

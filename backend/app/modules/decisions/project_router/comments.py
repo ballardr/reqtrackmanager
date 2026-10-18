@@ -88,6 +88,8 @@ def edit_decision_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=decision_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _comment_to_out(db, comment)
@@ -156,4 +158,6 @@ def remove_decision_comment_attachment(
         # improvement kept local to this module rather than editing that
         # unrelated core file. **Decided by: Agent.**
         delete_file(db, asset)
+    log_event(db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=decision_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()

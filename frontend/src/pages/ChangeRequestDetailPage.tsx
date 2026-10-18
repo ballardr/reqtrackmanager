@@ -6,7 +6,6 @@ import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
   ChangeableRequirementField,
-  ChangeEntry,
   ChangeRequest,
   ChangeRequestTask,
   ChangeRequestVoteChoice,
@@ -27,7 +26,9 @@ import {
   principalText,
   REQUIREMENT_LEVEL_LABEL,
 } from "../api/types";
-import { ActivityPanel } from "../components/ActivityPanel";
+import { ArtefactLinksPanel } from "../components/ArtefactLinksPanel";
+import { DetailLayout } from "../components/DetailLayout";
+import { RecordActivity } from "../components/RecordActivity";
 import { ApproveChangeRequestDialog } from "../components/ApproveChangeRequestDialog";
 import { CommentThread } from "../components/CommentThread";
 import { PrincipalBadge } from "../components/PrincipalBadge";
@@ -67,7 +68,8 @@ export function ChangeRequestDetailPage() {
   const [decisionNote, setDecisionNote] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [stages, setStages] = useState<ProjectStage[]>([]);
-  const [activity, setActivity] = useState<ChangeEntry[]>([]);
+  // Bumped on every reload so the aside's Links and Activity tabs follow the record.
+  const [refreshToken, setRefreshToken] = useState(0);
   const [tasks, setTasks] = useState<ChangeRequestTask[]>([]);
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskAssignee, setNewTaskAssignee] = useState<PrincipalRef | null>(null);
@@ -94,18 +96,17 @@ export function ChangeRequestDetailPage() {
 
   async function reload() {
     if (!projectId || !crId) return;
-    const [crData, commentData, stageData, activityData, taskData, voteData] = await Promise.all([
+    const [crData, commentData, stageData, taskData, voteData] = await Promise.all([
       api.get<ChangeRequest>(`/api/v1/projects/${projectId}/change-requests/${crId}`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
-      api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/activity`),
       api.get<ChangeRequestTask[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`),
       api.get<ChangeRequestVoteTally>(`/api/v1/projects/${projectId}/change-requests/${crId}/votes`),
     ]);
     setCr(crData);
     setComments(commentData);
     setStages(stageData);
-    setActivity(activityData);
+    setRefreshToken((t) => t + 1);
     setTasks(taskData);
     setTally(voteData);
     if (crData.requirement_id) {
@@ -277,7 +278,11 @@ export function ChangeRequestDetailPage() {
   const title = cr.proposed_name ?? requirement?.name ?? cr.id;
 
   return (
-    <div className="stack">
+    <DetailLayout
+      contained={false}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="change_request" artefactId={cr.id} refreshToken={refreshToken} /> : undefined}
+      aside={projectId ? <ArtefactLinksPanel projectId={projectId} artefactType="change_request" artefactId={cr.id} refreshToken={refreshToken} /> : null}
+    >
       <RecordHeader
         recordLabel="Change request"
         title={title}
@@ -297,7 +302,6 @@ export function ChangeRequestDetailPage() {
           organizationId={organizationId} projectId={projectId} canManage={canManageTasks}
         />
       )}
-      <div className="side-grid">
       <div className="stack">
       <div className="card stack">
         <div className="row">
@@ -624,9 +628,6 @@ export function ChangeRequestDetailPage() {
         />
       </div>
       </div>
-
-      <ActivityPanel entries={activity} />
-      </div>
-    </div>
+    </DetailLayout>
   );
 }

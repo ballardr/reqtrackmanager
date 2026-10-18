@@ -22,6 +22,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FormGrid } from "../../components/FormGrid";
 import { PrincipalListField } from "../../components/PrincipalListField";
@@ -148,7 +149,10 @@ export function EngagementDetailPage() {
   const personaPath = (id: string) => `/projects/${projectId}/modules/stakeholders/personas/${id}`;
 
   return (
-    <DetailLayout aside={<ArtefactLinksPanel projectId={projectId} artefactType="engagement" artefactId={engagement.id} collapsedTypes={COLLAPSED_LINK_TYPES} refreshToken={linksKey} />}>
+    <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="engagement" artefactId={engagement.id} refreshToken={linksKey} /> : undefined}
+      aside={<ArtefactLinksPanel projectId={projectId} artefactType="engagement" artefactId={engagement.id} collapsedTypes={COLLAPSED_LINK_TYPES} refreshToken={linksKey} />}
+    >
       <RecordHeader
         recordLabel="Engagement"
         title={engagement.title}

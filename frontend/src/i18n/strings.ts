@@ -244,16 +244,9 @@ const en = {
     save: "Save",
     changeNote: "Reason for change",
     when: "When",
-    // The History/Activity cards merged into one, with a view toggle
-    // — "Version history" is
-    // specifically this {requirement}'s own approved version/status
-    // transitions (the `RequirementVersion` ledger); "Activity" is the
-    // broader audit-log feed covering everything that happened to it,
-    // version changes included, so the two labels need to read as
-    // genuinely distinct rather than synonyms. Card heading and the
-    // toggle's two button labels all share these two strings.
-    versionHistory: "Version history",
-    activity: "Activity",
+    // The requirement's own version ledger (a body section); what happened to it is the aside's
+    // Activity tab (`strings.recordActivity`).
+    versions: "Versions",
     discussion: "Discussion",
     addComment: "Add comment",
     links: "Traceability links",
@@ -1828,6 +1821,13 @@ const en = {
     attachSelected: (n: number) => (n === 0 ? "Attach selected" : `Attach ${n} selected`),
     linkFromSharedResources: "Link from shared resources",
     attachedToast: (n: number) => (n === 1 ? "1 file linked" : `${n} files linked`),
+  },
+  recordActivity: {
+    title: "Activity",
+    loading: "Loading activity…",
+    loadError: "Could not load activity.",
+    none: "No activity yet.",
+    showMore: "Show more",
   },
   artefactLinks: {
     title: "Links",

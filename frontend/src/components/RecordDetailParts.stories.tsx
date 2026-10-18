@@ -103,7 +103,7 @@ export const VersionHistoryNewestFirstWithKindColumns: Story = {
 export const VersionHistoryHiddenForASingleVersion: Story = {
   render: () => <VersionHistoryTable versions={VERSIONS.slice(0, 1)} columns={[]} />,
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).queryByRole("heading", { name: "Version history" })).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("heading", { name: "Versions" })).not.toBeInTheDocument();
   },
 };
 

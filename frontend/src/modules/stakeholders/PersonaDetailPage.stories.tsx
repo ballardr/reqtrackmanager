@@ -311,7 +311,7 @@ export const VersionHistoryUsesLabels: Story = {
     ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Version history" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Versions" })).toBeInTheDocument());
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
     await expect(canvas.getAllByText("Draft").length).toBeGreaterThan(0);
     // History shows who owned each version, naming a group with its kind.

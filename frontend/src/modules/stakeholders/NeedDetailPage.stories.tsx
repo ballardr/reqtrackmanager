@@ -228,7 +228,7 @@ export const VersionHistoryUsesLabels: Story = {
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Version history" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Versions" })).toBeInTheDocument());
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
     await expect(canvas.queryByText("draft")).not.toBeInTheDocument();
   },

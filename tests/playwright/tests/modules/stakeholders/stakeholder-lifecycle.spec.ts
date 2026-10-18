@@ -67,7 +67,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     await edit.getByLabel("Change note").fill("Added priorities");
     await edit.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Safety first.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Versions" })).toBeVisible();
     await expect(page.getByText("Added priorities")).toBeVisible();
   });
 

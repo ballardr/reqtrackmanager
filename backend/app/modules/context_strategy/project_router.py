@@ -649,6 +649,8 @@ def edit_project_strategy_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _comment_to_out(db, comment)
@@ -708,6 +710,8 @@ def remove_project_strategy_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -1116,6 +1120,8 @@ def edit_project_future_state_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _fs_comment_to_out(db, comment)
@@ -1176,6 +1182,8 @@ def remove_project_future_state_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -1779,6 +1787,8 @@ def edit_project_pain_point_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _pp_comment_to_out(db, comment)
@@ -1839,6 +1849,8 @@ def remove_project_pain_point_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -2287,6 +2299,8 @@ def edit_project_guiding_principle_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _gp_comment_to_out(db, comment)
@@ -2349,6 +2363,8 @@ def remove_project_guiding_principle_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -2703,6 +2719,8 @@ def edit_project_open_question_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _oq_comment_to_out(db, comment)
@@ -2764,6 +2782,8 @@ def remove_project_open_question_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 

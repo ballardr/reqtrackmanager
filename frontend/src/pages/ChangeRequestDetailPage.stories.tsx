@@ -6,6 +6,8 @@ import type {
   ChangeRequestTask, ChangeRequestVoteTally, ProjectRole, ProposedLinkPreview, Requirement, RequirementAction,
   RequirementLink,
 } from "../api/types";
+import { buildGraph, buildGraphNode } from "../testing/artefactLinksFixtures";
+import { activityPage } from "../testing/recordActivityFixtures";
 import {
   buildActionType,
   buildChangeRequest,
@@ -51,7 +53,8 @@ function mockChangeRequestDetailApis(
     if (path.endsWith(`/change-requests/${CR_ID}`)) return cr;
     if (path.endsWith("/comments")) return [];
     if (path.endsWith("/stages")) return [];
-    if (path.endsWith("/activity")) return [];
+    if (path.includes("/activity")) return activityPage([]);
+    if (path.includes("/link-graph")) return buildGraph([], { root: buildGraphNode({ type: "change_request", id: CR_ID, type_label: "Change request", label: "CR-001 Change", depth: 0 }) });
     if (path.endsWith("/tasks")) return extra.tasks ?? [];
     if (path.endsWith("/groups")) return [] as never;
     if (path.endsWith("/votes")) return emptyTally;
@@ -492,7 +495,9 @@ export const VoteCommentsModal: Story = {
           reject_count: 0,
         } satisfies ChangeRequestVoteTally;
       }
-      if (path.endsWith("/comments") || path.endsWith("/stages") || path.endsWith("/activity") || path.endsWith("/tasks")) return [];
+      if (path.includes("/link-graph")) return buildGraph();
+      if (path.includes("/activity")) return activityPage([]);
+      if (path.endsWith("/comments") || path.endsWith("/stages") || path.endsWith("/tasks")) return [];
       if (path.endsWith(`/requirements/${cr.requirement_id}`)) return null;
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
       if (path.includes("/users")) return [];

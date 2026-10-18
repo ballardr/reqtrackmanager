@@ -9,6 +9,7 @@ Links on any artefact of a project:
   bounded search over every linkable type or within one type narrowed by browse levels.
 - `GET .../{type}/{id}/link-browse`: the next browse level of a type (standard -> version
   -> requirement, component -> category, status, ...) given the choices so far.
+- `GET .../{type}/{id}/activity`: the record's activity timeline (audit events, versions, link events).
 - `POST .../{type}/{id}/links` and `DELETE .../{type}/{id}/links/{link_id}`:
   generic link authoring from either end, whatever the artefact types.
 
@@ -40,6 +41,7 @@ from app.schemas.artefact_links import (
     ArtefactLinkTypeOption,
     LinkOrientation,
 )
+from app.schemas.changes import RecordActivityOut
 from app.schemas.link_graph import LinkGraphDirection, LinkGraphOut
 from app.schemas.link_type import ArtefactTypeOut
 from app.services.link_authoring import (
@@ -53,6 +55,7 @@ from app.services.link_browse import CANDIDATE_LIMIT, next_browse_step, parse_se
 from app.services.link_graph import MAX_DEPTH, ArtefactResolver, build_link_graph
 from app.services.link_types import ensure_org_seeds
 from app.services.rbac import require_project_view
+from app.services.record_activity import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, get_record_activity
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/artefacts", tags=["artefact-links"])
 
@@ -94,6 +97,42 @@ def get_artefact_link_graph(
     if graph is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefact not found.")
     return graph
+
+
+@router.get("/{artefact_type}/{artefact_id}/activity", response_model=RecordActivityOut)
+def get_artefact_activity(
+    project_id: UUID,
+    artefact_type: str,
+    artefact_id: UUID,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Entries per page."),
+    offset: int = Query(0, ge=0, description="Entries to skip."),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+) -> RecordActivityOut:
+    """Returns one page of a record's activity timeline, newest first.
+
+    Authorised like the record itself: the viewer must be able to open it in this project, and a
+    link event is shown only when the record at its other end is also visible to them.
+
+    Args:
+        project_id: The project; the caller must be a member.
+        artefact_type: A registered artefact type.
+        artefact_id: The artefact's id.
+        limit: Page size (1-100).
+        offset: Entries to skip.
+
+    Returns:
+        The page and whether more entries follow.
+
+    Raises:
+        HTTPException: 404 if the type is unregistered or the artefact is not a visible record of
+            this project (indistinguishable by design).
+    """
+    project = _project_or_404(db, project_id)
+    return get_record_activity(
+        db, project=project, user=current_user, artefact_type=artefact_type, artefact_id=artefact_id,
+        limit=limit, offset=offset,
+    )
 
 
 def _project_or_404(db: Session, project_id: UUID) -> Project:

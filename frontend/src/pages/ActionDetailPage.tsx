@@ -13,6 +13,7 @@ import type {
 } from "../api/types";
 import { principalRef, REQUIREMENT_ACTION_OUTCOME_LABEL, savedPrincipalDisplay } from "../api/types";
 import { ArtefactLinksPanel } from "../components/ArtefactLinksPanel";
+import { RecordActivity } from "../components/RecordActivity";
 import { CommentThread } from "../components/CommentThread";
 import { DetailLayout } from "../components/DetailLayout";
 import { FileAttachmentList } from "../components/FileAttachmentList";
@@ -221,6 +222,7 @@ export function ActionDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId && actionId ? <RecordActivity projectId={projectId} artefactType="requirement_action" artefactId={actionId} /> : undefined}
       contained={false}
       aside={
         projectId && actionId ? (

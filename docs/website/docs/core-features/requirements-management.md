@@ -17,7 +17,7 @@ While the project's current stage is still in scoping, requirements within a com
 
 ## The requirement detail page
 
-Opening a requirement shows its full detail: name, reasoning, clarification, description, custom field values, an editable form (disabled once locked), its full version history — including who made each change — a discussion thread, traceability links to other requirements, and file attachments.
+Opening a requirement shows its full detail: name, reasoning, clarification, description, custom field values, an editable form (disabled once locked), its **Versions** table — including who made each change — a discussion thread, file attachments, and, beside the content, the Links and Activity tabs (see [One record's timeline](../workflows/files-comments-and-history.md#one-records-timeline)).
 
 | Requirement detail |
 | --- |

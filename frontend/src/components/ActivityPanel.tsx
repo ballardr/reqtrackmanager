@@ -4,8 +4,8 @@ import { activityEntityLabel, describeActivityEntry, type ChangeEntry } from "..
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { Badge } from "./Badge";
 
-/** Right-side activity timeline (mock's "Subscribed" panel): audit events
- * plus version history for one requirement/change request, newest first.
+/** Activity timeline: audit events, version history and link events, newest first
+ * (a record's own timeline is shown through `RecordActivity`, which feeds this).
  * Shares its entity/action labelling and actor/action text with the
  * project overview activity card and the project history page
  * (`describeActivityEntry`/`activityEntityLabel` in `api/types.ts`) —
@@ -24,6 +24,8 @@ export function ActivityPanel({
   getLink,
   fullWidth = false,
   bare = false,
+  hideEntityTypes = [],
+  emptyText = "No activity yet.",
 }: {
   entries: ChangeEntry[];
   /** Resolves the item an entry is about to a link + label. Omit when the
@@ -42,18 +44,25 @@ export function ActivityPanel({
    * heading switches between "Version history" and "Activity" depending
    * on which view is selected rather than always reading "Activity". */
   bare?: boolean;
+  /** Entity types whose badge is left out: a record's own timeline need not badge every entry
+   * with the record's own type, only the entries about something else (links). */
+  hideEntityTypes?: string[];
+  /** Shown when there are no entries. */
+  emptyText?: string;
 }) {
   const orgLabelCap = useOrgLabelCapitalized();
   const list = (
     <>
-      {entries.length === 0 && <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>No activity yet.</p>}
+      {entries.length === 0 && <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{emptyText}</p>}
       {entries.map((e, i) => {
         const link = getLink ? getLink(e) : null;
         return (
           <div key={i} className="stack" style={{ gap: "0.15rem" }}>
-            <div className="row" style={{ gap: "0.3rem" }}>
-              <Badge>{activityEntityLabel(e.entity_type, orgLabelCap)}</Badge>
-            </div>
+            {!hideEntityTypes.includes(e.entity_type) && (
+              <div className="row" style={{ gap: "0.3rem" }}>
+                <Badge>{activityEntityLabel(e.entity_type, orgLabelCap)}</Badge>
+              </div>
+            )}
             <div style={{ fontSize: "0.85rem" }}>
               {describeActivityEntry(e)}
               {link && (

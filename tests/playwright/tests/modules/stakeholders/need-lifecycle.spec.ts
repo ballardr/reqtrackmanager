@@ -58,7 +58,7 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     await edit.getByLabel("Change note").fill("Added evidence");
     await edit.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Observed on three site visits.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Versions" })).toBeVisible();
     await expect(page.getByText("Added evidence")).toBeVisible();
   });
 

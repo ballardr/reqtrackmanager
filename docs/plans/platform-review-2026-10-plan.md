@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q27 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q27 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-9 / 23 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phase 8 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phases 13 and 14 are still open and come after Phases 4–10 now. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 9.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+10 / 23 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phase 9 done 2026-10-19; Phases 8 and 9 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phases 13 and 14 are still open and come after Phases 4–10 now. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 10.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -17,7 +17,7 @@
 | 6 | Codes I: project codes, org policy, qualified display | N7 | [x] |
 | 7 | Codes II: every codeless project-scoped type, change requests | N7 | [x] |
 | 8 | Codes III: organisation-scoped types | N7 | [x] |
-| 9 | Aside tabs: Links and Activity, one activity endpoint | N10 | [ ] |
+| 9 | Aside tabs: Links and Activity, one activity endpoint | N10 | [x] |
 | 10 | Forms aligned to the style guide | N7 (forms) | [ ] |
 | 12 | Container health check reports unhealthy on a working install | N11 | [x] |
 | 13 | Module availability: new-install defaults, server admin UI, hide unavailable modules | N12, N13, N14 | [ ] |
@@ -316,6 +316,12 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 - **9c Frontend:** `DetailLayout` aside renders `Tabs` (Links, Activity) when given both; Activity is `ActivityPanel` (bare). The selected tab is a per-viewer preference; the collapse toggle, narrow-screen stacking and `asideLabel` behave as today. The requirement page's History/Activity toggle card, the module pages' bottom version tables (kept as a body section, retitled "Versions") and the change request side list are migrated to this one shape.
 - **Style guide:** extend "Pattern: detail page with a links aside" with the two tabs and the rule that wide tables never go in the aside.
 - **Tests:** backend — each type's activity includes its own events and none from another record or project, permission and cross-org isolation, hidden fields; Storybook — tabbed aside, collapsed, stacked; Playwright — tab switch and preference persistence on a requirement and a module record.
+
+- **Done 2026-10-19 (uncommitted at hand-back).** Details and decisions in `docs/decisions.md`.
+  - **9a:** a handler scan found 18 comment edit/attachment-removal handlers (Decisions, Context & Strategy), the stage review response and the requirement reorder with no audit event; all now log one. Personal preferences (reactions, subscriptions, favourites) and frame-token minting are classified as not audited, with reasons.
+  - **9b:** `GET /projects/{pid}/artefacts/{type}/{id}/activity` (paged), authorised through the Links panel's `ArtefactResolver`; no `ModuleDefinition` hook was needed because types follow the audit naming convention, which a test enforces. The old requirement and change request endpoints remain with the same payload.
+  - **9c:** `DetailLayout` `activity` prop gives Links and Activity tabs (`detail_aside_tab` preference); all detail pages migrated, the Requirement toggle card removed, version tables retitled **Versions**, and the Change Request page moved onto `DetailLayout` with a Links panel.
+  - **Not done, on purpose:** the endpoint path is `artefacts/` (beside the Links endpoints), not `records/`; legacy per-pair link events keep their raw wording; the requirement-detail website screenshot is retaken in Phase 22.
 
 ### Phase 10 — Forms aligned to the style guide (N7b)
 
