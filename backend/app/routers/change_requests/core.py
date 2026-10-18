@@ -46,12 +46,14 @@ from app.services import engagement
 from app.services.actions import get_requirement_action_in_project
 from app.services.audit import log_event
 from app.services.change_request_links import ProposedLinkProblem, check_proposed_link, describe_links
+from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.principals import principal_columns, principal_out, validate_principal
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
+from app.services.sequences import generate_unique_code
 
 router = APIRouter(tags=["change-requests-core"])
 
@@ -87,7 +89,8 @@ def _to_out(
     carries just `proposed_link_count`."""
     project = db.get(Project, cr.project_id) if with_links and version.proposed_links else None
     return ChangeRequestOut(
-        id=cr.id, project_id=cr.project_id, requirement_id=cr.requirement_id, kind=cr.kind, status=cr.status,
+        id=cr.id, project_id=cr.project_id, unique_code=cr.unique_code, requirement_id=cr.requirement_id, kind=cr.kind,
+        status=cr.status,
         creator_id=cr.creator_id, changed_fields=version.changed_fields,
         proposed_name=version.proposed_name, proposed_reasoning=version.proposed_reasoning,
         proposed_clarification=version.proposed_clarification, proposed_description=version.proposed_description,
@@ -393,7 +396,8 @@ def create_change_request(
         creator_id = payload.creator_id
 
     cr = ChangeRequest(
-        project_id=project_id, requirement_id=payload.requirement_id, kind=payload.kind,
+        project_id=project_id, unique_code=generate_unique_code(db, project, CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX),
+        requirement_id=payload.requirement_id, kind=payload.kind,
         status=ChangeRequestStatus.DRAFT, creator_id=creator_id,
     )
     db.add(cr)
@@ -474,8 +478,8 @@ def list_change_requests(
     Without `sort`, rows are newest first.
 
     `search` (2026-10-04) is a case-insensitive substring match against
-    what the list shows and what a user would type: the proposed name, the
-    reason, and the target requirement's current name and code (the list
+    what the list shows and what a user would type: the request's code, the
+    proposed name, the reason, and the target requirement's current name and code (the list
     falls back to the requirement's name when there's no proposed name). The
     requirement names are looked up in one batched query.
 
@@ -520,7 +524,7 @@ def list_change_requests(
             continue
         if needle:
             haystack = " ".join(filter(None, [
-                (version.proposed_name or "").lower(), (version.reason or "").lower(),
+                cr.unique_code.lower(), (version.proposed_name or "").lower(), (version.reason or "").lower(),
                 requirement_text.get(cr.requirement_id, "") if cr.requirement_id else "",
             ]))
             if needle not in haystack:

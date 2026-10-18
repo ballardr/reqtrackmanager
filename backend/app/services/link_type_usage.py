@@ -205,6 +205,8 @@ def _artefact_project_ids(db: Session, ends: set[tuple[str, uuid.UUID]]) -> dict
             rows = db.execute(select(Requirement.id, Requirement.project_id).where(Requirement.id.in_(ids))).all()
         elif artefact_type == ArtefactType.REQUIREMENT_ACTION.value:
             rows = db.execute(select(RequirementAction.id, RequirementAction.project_id).where(RequirementAction.id.in_(ids))).all()
+        elif artefact_type == ArtefactType.CHANGE_REQUEST.value:
+            rows = db.execute(select(ChangeRequest.id, ChangeRequest.project_id).where(ChangeRequest.id.in_(ids))).all()
         else:
             rows = []
             for artefact_id in ids:

@@ -498,6 +498,7 @@ export interface PendingApproval {
 export interface ComplianceEvidence {
   id: string;
   project_id: string;
+  unique_code: string;
   title: string;
   description: string;
   issuing_organisation: string | null;

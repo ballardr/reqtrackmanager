@@ -18,6 +18,7 @@ from sqlalchemy import update
 from app.database import SessionLocal
 from app.modules.context_strategy.enums import GuidingPrincipleStatus, StrategyStatus
 from app.modules.context_strategy.models import GuidingPrincipleVersion, StrategyVersion
+from app.services.codes import label_title
 from tests.conftest import (
     auth_headers,
     create_component_and_category,
@@ -74,8 +75,9 @@ def _section(report, key) -> dict:
 
 
 def _titles(section, column: str) -> list[str]:
+    """The column's cells with the record code the register prints in front of the title removed."""
     index = section["columns"].index(column)
-    return [row[index] for row in section["rows"]]
+    return [label_title(row[index]) for row in section["rows"]]
 
 
 def _levels(client, token, project_id) -> dict[str, dict[str, str]]:
@@ -372,7 +374,7 @@ def test_r3_coverage_matrix_uncovered_and_ageing(client, admin_token):
     assert _titles(_section(report, "uncovered"), "Age (days)") == ["30"]
     linked = _section(report, "requirements")
     assert _titles(linked, "Pain point") == ["Covered"] and linked["rows"][0][3] == "Draft"
-    assert {r[0]: r[4] for r in _section(report, "ageing")["rows"]} == {"Covered": "30", "Uncovered": "30"}
+    assert {label_title(r[0]): r[4] for r in _section(report, "ageing")["rows"]} == {"Covered": "30", "Uncovered": "30"}
 
 
 # --- R4: Open Question register -------------------------------------------------------------
@@ -653,7 +655,8 @@ def test_pdf_and_csv_outputs_and_csv_formula_neutralised(client, admin_token):
     assert "attachment; filename=" in csv_resp.headers["content-disposition"]
     lines = csv_resp.text.splitlines()
     assert lines[0].startswith("Model,Rank,Pain point")
-    assert any("'=HYPERLINK" in line for line in lines) and not any(",=HYPERLINK" in line for line in lines)
+    # The record code leads the cell, so the formula text is no longer at the start of it and is not a formula.
+    assert any("PP-" in line and " =HYPERLINK" in line for line in lines) and not any(",=HYPERLINK" in line for line in lines)
 
     for slug in ("pain-point-prioritisation", "summary", "strategy-cascade", "upgrade-drivers"):
         pdf = _report(client, token, pid, slug, format="pdf")

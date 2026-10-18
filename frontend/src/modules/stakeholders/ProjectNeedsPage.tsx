@@ -17,6 +17,7 @@ import { projectNeedApi } from "./api";
 import { NeedFormModal } from "./NeedFormModal";
 import { RecordListView } from "./RecordListView";
 import type { Need, NeedFieldValues } from "./types";
+import { RecordCode } from "../../components/RecordCode";
 import { NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
 
 export function ProjectNeedsPage() {
@@ -65,8 +66,11 @@ export function ProjectNeedsPage() {
         showScope={false}
         statusLabel={NEED_STATUS_LABEL}
         statusTone={NEED_STATUS_TONE}
-        searchText={(n) => `${n.name} ${n.description}`}
-        columnsBeforeType={[{ key: "need", label: "Need", render: (n) => n.description || "—" }]}
+        searchText={(n) => `${n.unique_code} ${n.name} ${n.description}`}
+        columnsBeforeType={[
+          { key: "code", label: "Code", render: (n) => <span className="text-muted"><RecordCode code={n.unique_code} /></span> },
+          { key: "need", label: "Need", render: (n) => n.description || "—" },
+        ]}
         columnsAfterScope={[]}
         includeArchived={includeArchived}
         onIncludeArchivedChange={setIncludeArchived}

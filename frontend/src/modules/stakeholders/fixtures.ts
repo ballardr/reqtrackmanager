@@ -77,7 +77,7 @@ export function buildStakeholderScheme(): ScoringScheme {
 /** A complete, active `Need` of project-1 with `overrides` applied. */
 export function buildNeed(overrides: Partial<Need> = {}): Need {
   return {
-    id: "need-1", project_id: "project-1", creator_id: "user-1", is_archived: false, archived_at: null,
+    id: "need-1", project_id: "project-1", unique_code: "NEED-001", creator_id: "user-1", is_archived: false, archived_at: null,
     archived_by: null, name: "Diagnose faults quickly",
     description: "I need to find out what is wrong with a unit without a laptop.",
     rationale: "Observed on site visits; each delay costs an hour.", status: "active", owner: null,

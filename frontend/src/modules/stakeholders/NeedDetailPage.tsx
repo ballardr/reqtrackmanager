@@ -156,6 +156,7 @@ export function NeedDetailPage() {
       <RecordHeader
         recordLabel="Stakeholder Need"
         title={need.name}
+        code={need.unique_code}
         back={{ to: `/projects/${projectId}/modules/stakeholders/needs`, label: "← Needs" }}
         badges={<Badge tone={NEED_STATUS_TONE[need.status]}>{NEED_STATUS_LABEL[need.status]}</Badge>}
         subtitle={`v${need.version_number}${need.is_archived ? " · Archived" : ""}`}

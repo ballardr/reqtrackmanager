@@ -50,7 +50,7 @@ def test_candidates_cover_core_and_module_types_and_exclude_the_page_artefact(wo
     labels = _labels(_candidates(world, project, (REQ, req_a), other_type=REQ))
     assert len(labels) == 1 and "Beta need" in labels[0]
     assert any("Do it" in label for label in _labels(_candidates(world, project, (REQ, req_a), other_type=ACTION)))
-    assert _labels(_candidates(world, project, (REQ, req_a), other_type=PAIN)) == ["Slow reports"]
+    assert _labels(_candidates(world, project, (REQ, req_a), other_type=PAIN)) == ["PP-001 Slow reports"]
     body = _candidates(world, project, (PAIN, pain), other_type=DEC).json()
     assert [i["id"] for i in body["items"]] == [str(dec)]
     assert body["items"][0]["type"] == DEC and body["items"][0]["type_label"] == "Decision"

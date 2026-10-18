@@ -3270,8 +3270,8 @@ def get_module_artefact_ids_in_organization(db: Session, organization_id: uuid.U
 
 
 def get_all_registered_artefact_types() -> set[str]:
-    """Every valid `ArtefactType` value — the two built-in core values
-    (`ArtefactType.REQUIREMENT`/`REQUIREMENT_ACTION`) plus every registered
+    """Every valid `ArtefactType` value — the built-in core values
+    (`CORE_ARTEFACT_TYPES`) plus every registered
     module's own declared `artefact_types` (Platform
     Foundations). `services.relationships.create_link` validates
     `source_type`/`target_type` against this set, since `ArtefactLink`'s
@@ -3283,9 +3283,9 @@ def get_all_registered_artefact_types() -> set[str]:
     Returns:
         The full set of currently-valid artefact-type string values.
     """
-    from app.models.enums import ArtefactType
+    from app.models.enums import CORE_ARTEFACT_TYPES
 
-    types = {ArtefactType.REQUIREMENT.value, ArtefactType.REQUIREMENT_ACTION.value}
+    types = set(CORE_ARTEFACT_TYPES)
     for definition in get_module_registry().values():
         types.update(definition.artefact_types)
     return types
@@ -3529,7 +3529,9 @@ def list_artefact_summaries(db: Session, project_id: uuid.UUID, artefact_type: s
     return provider.list_for_project(db, project_id)
 
 
-_CORE_ARTEFACT_TYPE_LABELS = {"requirement": "Requirement", "requirement_action": "Action"}
+_CORE_ARTEFACT_TYPE_LABELS = {
+    "requirement": "Requirement", "requirement_action": "Action", "change_request": "Change request",
+}
 
 
 def get_artefact_type_label(artefact_type: str) -> str:

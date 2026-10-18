@@ -1049,6 +1049,7 @@ def build_evidence_out(db: Session, evidence: ComplianceEvidence) -> ComplianceE
     return ComplianceEvidenceOut(
         id=evidence.id,
         project_id=evidence.project_id,
+        unique_code=evidence.unique_code,
         title=evidence.title,
         description=evidence.description,
         issuing_organisation=evidence.issuing_organisation,

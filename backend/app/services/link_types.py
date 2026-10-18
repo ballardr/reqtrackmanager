@@ -176,10 +176,10 @@ def ensure_org_seeds(db: Session, organization_id: uuid.UUID) -> None:
 def list_org_artefact_types(db: Session, organization_id: uuid.UUID) -> list[str]:
     """The artefact types that exist in the organisation: the core types plus
     those of every module enabled in it, sorted by display label."""
-    from app.models.enums import ArtefactType
+    from app.models.enums import CORE_ARTEFACT_TYPES
     from app.modules.registry import get_module_registry
 
-    types = {ArtefactType.REQUIREMENT.value, ArtefactType.REQUIREMENT_ACTION.value}
+    types = set(CORE_ARTEFACT_TYPES)
     for definition in get_module_registry().values():
         if definition.artefact_types and is_module_enabled(db, organization_id, definition.key):
             types.update(definition.artefact_types)

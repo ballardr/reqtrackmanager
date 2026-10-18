@@ -37,6 +37,7 @@ from app.modules.stakeholders.service import (
     get_current_stakeholder_version,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver
+from app.services.codes import label_title
 
 _KEY = "project_stakeholder_relationships"
 
@@ -67,7 +68,7 @@ def export_project_data(db: Session, project: Project) -> dict[str, Any]:
                 requirement = db.get(Requirement, summary.id)
                 ref = requirement.unique_code if requirement is not None else None
             else:
-                ref = summary.label
+                ref = label_title(summary.label)
             if ref is None:
                 continue
             out.append({
@@ -104,7 +105,7 @@ def import_project_data(
             if target_type not in labels:
                 by_label: dict[str, list[Any]] = {}
                 for s in rel.list_targets(db, project, target_type):
-                    by_label.setdefault(s.label, []).append(s)
+                    by_label.setdefault(label_title(s.label), []).append(s)
                 labels[target_type] = by_label
             matches = labels[target_type].get(entry["target_ref"], [])
             target = matches[0] if len(matches) == 1 else None

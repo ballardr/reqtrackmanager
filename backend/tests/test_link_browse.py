@@ -221,7 +221,7 @@ def test_a_status_level_narrows_records_by_their_facet(world):
     assert first["key"] == "pain_point_type" and len(first["options"]) == 1
     option = first["options"][0]["id"]
     assert [i["label"] for i in _items(_search(world, project, (REQ, page), other_type=PAIN, selected=f"pain_point_type:{option}"))] == [
-        "Slow reports"
+        "PP-001 Slow reports"
     ]
     assert _browse(world, project, (REQ, page), other_type=PAIN, selected=f"pain_point_type:{option}").json() is None
 

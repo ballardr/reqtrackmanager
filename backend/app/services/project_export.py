@@ -10,8 +10,8 @@ new project — same organisation or a different one.
 
 Every cross-reference inside the bundle uses a portable key instead of a
 raw database id, since ids from the source database are meaningless in the
-target one: requirements by `unique_code`, change requests by a synthetic
-per-export `ref`, components/categories by prefix, stages/custom field
+target one: requirements by `unique_code`, change requests by `ref` (their
+`unique_code`; an import numbers its change requests afresh), components/categories by prefix, stages/custom field
 definitions by name, and every user reference by email (resolved on import
 via `services.bundle_common.UserResolver`).
 
@@ -115,6 +115,7 @@ from app.services.bundle_common import (
     enforce_zip_uncompressed_size_limit,
     import_bundled_file,
 )
+from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
@@ -124,6 +125,7 @@ from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
 from app.services.report_content import bundle_entries, content_entries, replace_scope_content
 from app.services.report_content_bundle import ContentImageImporter, collect_content_images
+from app.services.sequences import generate_unique_code
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -189,7 +191,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     # itself, or every value silently fails the `k in cf_name_by_id` check.
     cf_name_by_id = {str(d.id): d.name for d in definitions}
     req_code_by_id = {r.id: r.unique_code for r in requirements}
-    cr_ref_by_id = {cr.id: f"CR-{i + 1}" for i, cr in enumerate(change_requests)}
+    cr_ref_by_id = {cr.id: cr.unique_code for cr in change_requests}
 
     versions = list(
         db.scalars(select(RequirementVersion).where(RequirementVersion.requirement_id.in_(req_ids)))
@@ -909,7 +911,9 @@ def apply_project_data(
     for cr in data.get("change_requests", []):
         requirement_id = requirement_id_by_code.get(cr["requirement_unique_code"]) if cr.get("requirement_unique_code") else None
         change_request = ChangeRequest(
-            project_id=project.id, requirement_id=requirement_id, kind=ChangeRequestKind(cr["kind"]),
+            project_id=project.id,
+            unique_code=generate_unique_code(db, project, CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX),
+            requirement_id=requirement_id, kind=ChangeRequestKind(cr["kind"]),
             status=ChangeRequestStatus(cr["status"]),
             creator_id=users.resolve(cr.get("creator_email"), required=True, context=f"Change request {cr['ref']} creator"),
             submitted_at=_dt(cr.get("submitted_at")), decided_at=_dt(cr.get("decided_at")),

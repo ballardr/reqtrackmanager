@@ -35,6 +35,7 @@ import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQuestionStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { RecordCode } from "../../components/RecordCode";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -87,12 +88,13 @@ export function ProjectOpenQuestionsPage() {
     if (unownedOnly && q.owner !== null) return false;
     if (statusFilter && q.status !== statusFilter) return false;
     if (priorityFilter && q.priority !== priorityFilter) return false;
-    if (search && !q.question.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${q.unique_code} ${q.question}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<OpenQuestion>[] = [
     { key: "question", label: "Question", render: (q) => q.question },
+    { key: "code", label: "Code", render: (q) => <RecordCode code={q.unique_code} /> },
     { key: "priority", label: "Priority", render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
     {
       key: "status", label: "Status",

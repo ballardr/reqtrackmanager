@@ -53,6 +53,7 @@ from app.modules.stakeholders.service import (
     get_current_stakeholder_version,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.codes import label_title
 from app.services.principals import principal_from_bundle, principal_to_bundle
 
 _KEY = "project_engagements"
@@ -72,7 +73,7 @@ def _outcomes_json(db: Session, project: Project, holder_type: str, holder_id: U
     for link, kind in eng.list_outcome_links(db, holder_type, holder_id, project.organization_id):
         summary = rel.resolve_target(db, project, link.target_type, link.target_id)
         if summary is not None:
-            out.append({"kind": kind.key, "target_type": link.target_type, "target_ref": summary.label})
+            out.append({"kind": kind.key, "target_type": link.target_type, "target_ref": label_title(summary.label)})
     return out
 
 
@@ -168,7 +169,7 @@ def _outcome_lookup(db: Session, project: Project) -> Any:
             by_label: dict[str, list[Any]] = {}
             if rel.target_type_available(target_type):
                 for s in rel.list_targets(db, project, target_type):
-                    by_label.setdefault(s.label, []).append(s)
+                    by_label.setdefault(label_title(s.label), []).append(s)
             cache[target_type] = by_label
         matches = cache[target_type].get(label, [])
         return matches[0] if len(matches) == 1 else None

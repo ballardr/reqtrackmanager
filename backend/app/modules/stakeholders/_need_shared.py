@@ -98,7 +98,8 @@ def need_to_out(
 ) -> NeedOut:
     """Merges a need with its current version (`labels` is a pre-resolved batch for list endpoints)."""
     return NeedOut(
-        id=need.id, project_id=need.project_id, creator_id=need.creator_id, is_archived=need.is_archived,
+        id=need.id, project_id=need.project_id, unique_code=need.unique_code, creator_id=need.creator_id,
+        is_archived=need.is_archived,
         archived_at=need.archived_at, archived_by=need.archived_by, name=version.name,
         description=version.description, rationale=version.rationale, status=version.status,
         version_number=version.version_number, created_at=need.created_at, updated_at=need.updated_at,
@@ -152,7 +153,7 @@ def create_need_from_payload(db: Session, payload: NeedCreate, creator: User, pr
     validate_principals(db, project.organization_id, project.id, owner=payload.owner)
     content = payload.model_dump(exclude=set(NEED_PRINCIPAL_FIELDS))
     content.update(columns_for_create(payload, NEED_PRINCIPAL_FIELDS))
-    need = create_need(db, project_id=project.id, creator=creator, **content)
+    need = create_need(db, project=project, creator=creator, **content)
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="created", actor_id=creator.id,
               project_id=project.id, detail={"name": payload.name})
     db.commit()
@@ -205,7 +206,7 @@ def holder_to_out(db: Session, link, kind: str, record: Stakeholder | Persona) -
 def held_need_to_out(db: Session, link, need: StakeholderNeed) -> HeldNeedOut:
     """API shape of a "has need" link seen from a Stakeholder/Persona."""
     version = get_current_need_version(db, need.id)
-    return HeldNeedOut(link_id=link.id, id=need.id, name=version.name, status=version.status)
+    return HeldNeedOut(link_id=link.id, id=need.id, unique_code=need.unique_code, name=version.name, status=version.status)
 
 
 def requirement_to_out(db: Session, link, requirement: Requirement) -> NeedRequirementOut:

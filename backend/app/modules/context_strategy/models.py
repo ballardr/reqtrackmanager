@@ -611,6 +611,8 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
 
     Attributes:
         project_id: The owning project.
+        unique_code: Project-scoped identifier (e.g. `"PP-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         pain_point_type_id: FK to `ProjectPainPointType.id` — never
             directly to `PainPointTypeDefinition` (see module docstring).
         title / description: Core identifying content.
@@ -641,12 +643,16 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "pain_points"
-    __table_args__ = (principal_check_constraint("owner", nullable=True),)
+    __table_args__ = (
+        principal_check_constraint("owner", nullable=True),
+        UniqueConstraint("project_id", "unique_code", name="uq_pain_points_project_unique_code"),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     pain_point_type_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_pain_point_types.id")
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
 
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -951,6 +957,8 @@ class OpenQuestion(UUIDPKMixin, TimestampMixin, Base):
 
     Attributes:
         project_id: The owning project.
+        unique_code: Project-scoped identifier (e.g. `"OQ-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         question: The question itself — this artefact's core content and
             natural display title (§9.2's own field name;
             no separate `title` field, mirroring `GuidingPrinciple.name`'s
@@ -975,9 +983,13 @@ class OpenQuestion(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "open_questions"
-    __table_args__ = (principal_check_constraint("owner", nullable=True),)
+    __table_args__ = (
+        principal_check_constraint("owner", nullable=True),
+        UniqueConstraint("project_id", "unique_code", name="uq_open_questions_project_unique_code"),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    unique_code: Mapped[str] = mapped_column(String(64))
 
     question: Mapped[str] = mapped_column(Text)
     context: Mapped[str] = mapped_column(Text, default="")

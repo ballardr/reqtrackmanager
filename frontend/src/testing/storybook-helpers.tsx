@@ -331,6 +331,7 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
   return {
     id: nextId("cr"),
     project_id: "project-1",
+    unique_code: "CR-001",
     requirement_id: "requirement-1",
     kind: "modify_requirement",
     status: "draft",

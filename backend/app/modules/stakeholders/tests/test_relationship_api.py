@@ -133,7 +133,7 @@ def test_stakeholder_relationships_to_each_target_type(client, admin_token):
     listed = client.get(_rels(project["id"], "stakeholder", stakeholder["id"]), headers=h).json()
     assert len(listed) == len(cases)
     by_target = {(r["kind"], r["target_type"]): r for r in listed}
-    assert by_target[("experiences_pain_point", "pain_point")]["label"] == point["title"]
+    assert by_target[("experiences_pain_point", "pain_point")]["label"] == f"{point['unique_code']} {point['title']}"
     assert by_target[("consulted_on_decision", "decision")]["label"].endswith(decision["title"])
     assert by_target[("provides_requirement", "requirement")]["label"].startswith(requirement["unique_code"])
 
@@ -400,7 +400,7 @@ def test_summary_providers_are_registered_by_their_own_modules_and_gated_by_enab
     point = _create_pain_point(client, token, org["id"], project["id"], "Hooked")
     with SessionLocal() as db:
         summary = get_artefact_summary(db, "pain_point", UUID(point["id"]))
-        assert summary is not None and summary.label == "Hooked" and summary.project_id == UUID(project["id"])
+        assert summary is not None and summary.label == "PP-001 Hooked" and summary.project_id == UUID(project["id"])
         assert [s.id for s in list_artefact_summaries(db, UUID(project["id"]), "pain_point")] == [summary.id]
         assert get_artefact_summary(db, "pain_point", UUID(project["id"])) is None  # an id of the wrong kind
         assert get_artefact_summary(db, "design", UUID(point["id"])) is None

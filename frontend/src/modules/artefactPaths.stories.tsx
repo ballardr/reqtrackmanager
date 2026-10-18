@@ -31,6 +31,7 @@ export const ResolvesCoreAndModulePaths: Story = {
   play: async () => {
     await expect(getArtefactPath("requirement", "p-1", "r-1")).toBe("/projects/p-1/requirements/r-1");
     await expect(getArtefactPath("requirement_action", "p-1", "a-1")).toBe("/projects/p-1/actions/a-1");
+    await expect(getArtefactPath("change_request", "p-1", "c-1")).toBe("/projects/p-1/change-requests/c-1");
     await expect(getArtefactPath("decision", "p-1", "d-1")).toBe("/projects/p-1/modules/decisions/d-1");
     await expect(getArtefactPath("not_a_type", "p-1", "x")).toBeNull();
   },

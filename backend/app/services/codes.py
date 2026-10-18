@@ -27,8 +27,8 @@ Dependencies: `app.code_rules`, the `Organization` and `Project` models.
 
 from __future__ import annotations
 
+import re
 import uuid
-
 from dataclasses import dataclass
 
 from fastapi import HTTPException, status
@@ -43,11 +43,14 @@ from app.code_rules import (
     normalise_code,
     policy_error,
 )
+from app.models.change_request import ChangeRequest
+from app.models.enums import CORE_ARTEFACT_TYPES
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.modules.registry import get_all_registered_artefact_types, list_artefact_summaries
+from app.services.change_request_summary import change_request_titles
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, get_effective_project_roles, permission_satisfied
 
@@ -217,6 +220,18 @@ class CodedRecord:
     label: str
 
 
+_CODE_PREFIX = re.compile(r"^[A-Z]{2,5}-\d{3,4}\s+")
+
+
+def label_title(label: str) -> str:
+    """A summary label without its leading record code (`"NEED-001 Title"` -> `"Title"`).
+
+    Bundles refer to a record by its title: a code is numbered afresh on import, so it cannot
+    identify the record in the target project.
+    """
+    return _CODE_PREFIX.sub("", label, count=1)
+
+
 def _label_code(label: str) -> str:
     """The leading code of a summary label (`"FND-001 Title"` -> `"FND-001"`)."""
     return label.split(" ", 1)[0].upper()
@@ -269,7 +284,13 @@ def find_record_by_qualified_code(
     ).first()
     if action is not None:
         return result("requirement_action", action.id, f"{unique_code} {action.title}")
-    for artefact_type in sorted(get_all_registered_artefact_types() - {"requirement", "requirement_action"}):
+    change_request = db.scalar(
+        select(ChangeRequest).where(ChangeRequest.project_id == project.id, ChangeRequest.unique_code == unique_code)
+    )
+    if change_request is not None:
+        title = change_request_titles(db, [change_request])[change_request.id]
+        return result("change_request", change_request.id, f"{unique_code} {title}")
+    for artefact_type in sorted(get_all_registered_artefact_types() - CORE_ARTEFACT_TYPES):
         for summary in list_artefact_summaries(db, project.id, artefact_type):
             if summary.project_id == project.id and _label_code(summary.label) == unique_code:
                 return result(artefact_type, summary.id, summary.label)

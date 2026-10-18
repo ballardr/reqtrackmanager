@@ -111,7 +111,8 @@ def _provider(
                 )
             out.append(ArtefactSummary(
                 id=row.id, project_id=row.project_id, organization_id=getattr(row, "organization_id", None),
-                label=version.name, status=version.status.value, is_archived=row.is_archived, facets=facets,
+                label=f"{row.unique_code} {version.name}" if getattr(row, "unique_code", None) else version.name,
+                status=version.status.value, is_archived=row.is_archived, facets=facets,
             ))
         return out
 

@@ -451,6 +451,7 @@ class PainPointUpdate(BaseModel):
 class PainPointOut(BaseModel):
     id: UUID
     project_id: UUID
+    unique_code: str
     pain_point_type_id: UUID
     pain_point_type_name: str
     creator_id: UUID
@@ -731,6 +732,7 @@ class OpenQuestionUpdate(BaseModel):
 class OpenQuestionOut(BaseModel):
     id: UUID
     project_id: UUID
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None

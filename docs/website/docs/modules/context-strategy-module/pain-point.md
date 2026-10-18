@@ -20,6 +20,7 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 
 | Field | Holds |
 | --- | --- |
+| `unique_code` | The record code, `PP-001`: numbered per project and never reused. |
 | `pain_point_type_id` | An effective type for this project — see [Pain Point type vocabulary](#pain-point-type-vocabulary) below. |
 | `title` | Short display title. |
 | `description` | Description of the problem. |

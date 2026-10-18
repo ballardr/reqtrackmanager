@@ -35,7 +35,7 @@ const SQUAD: Principal = { type: "project_group", id: "pgroup-1", label: "Releas
 
 function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
   return {
-    id: PAIN_POINT_ID, project_id: PROJECT_ID, pain_point_type_id: "type-operator", pain_point_type_name: "Operator",
+    id: PAIN_POINT_ID, project_id: PROJECT_ID, unique_code: "PP-001", pain_point_type_id: "type-operator", pain_point_type_name: "Operator",
     creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     title: "Report delays under poor connectivity", description: "Field reports queue for days before reaching HQ.",
     source: "Operator interviews", impact: "Decisions are made on stale data.", evidence: "12 reports last month.",

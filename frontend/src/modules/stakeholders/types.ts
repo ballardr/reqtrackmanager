@@ -358,6 +358,7 @@ export const NEED_STATUS_TONE: Record<NeedStatus, BadgeTone> = {
 export interface Need {
   id: string;
   project_id: string;
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;

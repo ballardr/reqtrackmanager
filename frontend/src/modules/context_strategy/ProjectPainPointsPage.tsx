@@ -51,6 +51,7 @@ import type {
   PainPointScoringList, PainPointScoringSummary, PainPointStatus,
 } from "./types";
 import { Badge } from "../../components/Badge";
+import { RecordCode } from "../../components/RecordCode";
 
 const SCHEME_KEY = "pain_point";
 
@@ -136,7 +137,7 @@ export function ProjectPainPointsPage() {
     if (scoredFilter && (scoreOf(p) !== null) !== (scoredFilter === "yes")) return false;
     if (statusFilter && p.status !== statusFilter) return false;
     if (priorityFilter && p.priority !== priorityFilter) return false;
-    if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${p.unique_code} ${p.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -159,6 +160,7 @@ export function ProjectPainPointsPage() {
         </>
       ),
     },
+    { key: "code", label: "Code", render: (p) => <RecordCode code={p.unique_code} /> },
     { key: "type", label: "Type", render: (p) => p.pain_point_type_name },
     { key: "priority", label: "Priority", render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
     {

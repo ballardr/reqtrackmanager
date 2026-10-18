@@ -39,6 +39,8 @@ export const ListsNeedsWithLabelledStatus: Story = {
     await expect(table.getByText("Draft")).toBeInTheDocument();
     await expect(table.getByText("Active")).toBeInTheDocument();
     await expect(table.queryByText("draft")).not.toBeInTheDocument();
+    await expect(table.getByRole("columnheader", { name: "Code" })).toBeInTheDocument();
+    await expect(table.getAllByText(/NEED-001/).length).toBeGreaterThan(0);
     await expect(table.queryByRole("columnheader", { name: "Type" })).not.toBeInTheDocument();
     await expect(table.queryByRole("columnheader", { name: "Scope" })).not.toBeInTheDocument();
   },

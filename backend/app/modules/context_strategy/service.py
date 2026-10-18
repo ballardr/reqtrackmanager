@@ -179,6 +179,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import ArtefactType
+from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
@@ -229,6 +230,7 @@ from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.link_types import ensure_org_link_type
 from app.services.relationships import create_link, get_link_between
+from app.services.sequences import generate_unique_code
 
 # This module's own artefact-type string, registered on `ModuleDefinition.
 # artefact_types` (module.py), so relationship wiring (`ArtefactLink`)
@@ -825,6 +827,7 @@ def resolve_future_state_file_project_id(db: Session, file_id: uuid.UUID) -> uui
 # way Strategy/Future State do), registered on `ModuleDefinition.
 # artefact_types` for the same reason `STRATEGY_ARTEFACT_TYPE` is.
 PAIN_POINT_ARTEFACT_TYPE = "pain_point"
+PAIN_POINT_CODE_PREFIX = "PP"
 
 # Source overview §6.2's own named defaults — seeded once per organisation
 # (`seed_default_pain_point_types`), the same "organisation may optionally
@@ -1142,7 +1145,7 @@ def delete_project_pain_point_type(db: Session, project_pain_point_type: Project
 def create_pain_point(
     db: Session,
     *,
-    project_id: uuid.UUID,
+    project: Project,
     pain_point_type: ProjectPainPointType,
     creator: User,
     title: str,
@@ -1155,9 +1158,11 @@ def create_pain_point(
     is_intentional: bool = False,
 ) -> PainPoint:
     """Creates a Pain Point in `SUBMITTED` status (§6.5's broad-creation
-    model — any project member, not just a `pain_point_manager`).
+    model — any project member, not just a `pain_point_manager`), with the
+    project's next `PP-nnn` code.
 
     Args:
+        project: The owning project (its sequence counter is advanced).
         pain_point_type: Already resolved via `get_or_create_project_
             pain_point_type` — this function does not resolve it itself so
             callers can validate `is_enabled` against the effective list
@@ -1168,7 +1173,8 @@ def create_pain_point(
             server-side rather than requiring explicitly.
     """
     pain_point = PainPoint(
-        project_id=project_id, pain_point_type_id=pain_point_type.id, creator_id=creator.id,
+        project_id=project.id, pain_point_type_id=pain_point_type.id, creator_id=creator.id,
+        unique_code=generate_unique_code(db, project, PAIN_POINT_ARTEFACT_TYPE, PAIN_POINT_CODE_PREFIX),
         title=title, description=description, source=source, impact=impact, evidence=evidence,
         priority=priority, status=PainPointStatus.SUBMITTED, is_intentional=is_intentional,
         date_identified=date_identified if date_identified is not None else date.today(),
@@ -1677,12 +1683,13 @@ def resolve_guiding_principle_file_project_id(db: Session, file_id: uuid.UUID) -
 # is. Open Question is project-scoped only, like Pain Point (see `models.
 # OpenQuestion`'s own docstring for the scope reasoning).
 OPEN_QUESTION_ARTEFACT_TYPE = "open_question"
+OPEN_QUESTION_CODE_PREFIX = "OQ"
 
 
 def create_open_question(
     db: Session,
     *,
-    project_id: uuid.UUID,
+    project: Project,
     creator: User,
     question: str,
     context: str = "",
@@ -1691,10 +1698,12 @@ def create_open_question(
     due_date: date | None = None,
 ) -> OpenQuestion:
     """Creates an Open Question in `OPEN` status (§9.4's broad-creation
-    model — any project member, not just an `open_question_owner`)."""
+    model — any project member, not just an `open_question_owner`), with the
+    project's next `OQ-nnn` code."""
     open_question = OpenQuestion(
-        project_id=project_id, creator_id=creator.id, question=question, context=context, evidence=evidence,
-        priority=priority, status=OpenQuestionStatus.OPEN, due_date=due_date,
+        project_id=project.id, creator_id=creator.id,
+        unique_code=generate_unique_code(db, project, OPEN_QUESTION_ARTEFACT_TYPE, OPEN_QUESTION_CODE_PREFIX),
+        question=question, context=context, evidence=evidence, priority=priority, status=OpenQuestionStatus.OPEN, due_date=due_date,
     )
     db.add(open_question)
     db.flush()

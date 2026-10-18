@@ -125,7 +125,7 @@ def _evidence_summary(row: Any) -> ArtefactSummary:
     evidence = row[0]
     state = compute_evidence_validity_state(evidence).value
     return ArtefactSummary(
-        id=evidence.id, project_id=evidence.project_id, label=evidence.title, status=None,
+        id=evidence.id, project_id=evidence.project_id, label=f"{evidence.unique_code} {evidence.title}", status=None,
         is_archived=evidence.is_archived,
         facets={"validity": (state, compliance_evidence_validity_state_label(state))},
     )

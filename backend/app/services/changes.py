@@ -109,7 +109,7 @@ def get_project_changes(
         )
 
     cr_version_query = (
-        select(ChangeRequestVersion, ChangeRequest.status)
+        select(ChangeRequestVersion, ChangeRequest.status, ChangeRequest.unique_code)
         .join(ChangeRequest, ChangeRequest.id == ChangeRequestVersion.change_request_id)
         .where(ChangeRequest.project_id == project_id)
     )
@@ -117,13 +117,13 @@ def get_project_changes(
         cr_version_query = cr_version_query.where(ChangeRequestVersion.created_at >= since)
     if until is not None:
         cr_version_query = cr_version_query.where(ChangeRequestVersion.created_at <= until)
-    for version, cr_status in db.execute(cr_version_query).all():
+    for version, cr_status, unique_code in db.execute(cr_version_query).all():
         action = "created" if version.version_number == 1 else "updated"
         entries.append(
             ChangeEntryOut(
                 timestamp=version.created_at, entity_type="change_request",
                 entity_id=str(version.change_request_id), action=action, actor_id=version.created_by,
-                detail={"proposed_name": version.proposed_name, "status": cr_status.value},
+                detail={"unique_code": unique_code, "proposed_name": version.proposed_name, "status": cr_status.value},
             )
         )
 

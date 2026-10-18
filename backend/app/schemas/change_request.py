@@ -155,6 +155,7 @@ class ChangeRequestCreate(BaseModel):
 class ChangeRequestOut(BaseModel):
     id: UUID
     project_id: UUID
+    unique_code: str
     requirement_id: UUID | None
     kind: ChangeRequestKind
     status: ChangeRequestStatus

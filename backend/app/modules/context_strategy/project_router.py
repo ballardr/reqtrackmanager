@@ -1395,7 +1395,7 @@ def create_project_pain_point(
     if not pain_point_type.is_enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This Pain Point type is disabled for this project.")
     pain_point = create_pain_point(
-        db, project_id=project_id, pain_point_type=pain_point_type, creator=current_user, title=payload.title,
+        db, project=project, pain_point_type=pain_point_type, creator=current_user, title=payload.title,
         description=payload.description, source=payload.source, impact=payload.impact, evidence=payload.evidence,
         priority=payload.priority, date_identified=payload.date_identified,
         is_intentional=payload.is_intentional,
@@ -2460,7 +2460,7 @@ def create_project_open_question(
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     open_question = create_open_question(
-        db, project_id=project_id, creator=current_user, question=payload.question, context=payload.context,
+        db, project=project, creator=current_user, question=payload.question, context=payload.context,
         evidence=payload.evidence, priority=payload.priority, due_date=payload.due_date,
     )
     log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question.id, action="created",

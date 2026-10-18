@@ -12,7 +12,7 @@ const ORG_ID = "org-1";
 
 function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEvidence {
   return {
-    id: "ev-1", project_id: PROJECT_ID, title: "IPX6 Test Certificate", description: "",
+    id: "ev-1", project_id: PROJECT_ID, unique_code: "EVD-001", title: "IPX6 Test Certificate", description: "",
     issuing_organisation: "TÜV", issued_date: "2026-01-01", expiry_date: "2026-12-31",
     provided_by: "user-1", provided_at: "2026-01-01T00:00:00Z", notes: "", validity_state: "valid",
     is_archived: false, archived_at: null, archived_by: null,
@@ -92,6 +92,8 @@ export const ListsEvidence: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("IPX6 Test Certificate")).toBeInTheDocument());
+    await expect(canvas.getByRole("columnheader", { name: "Code" })).toBeInTheDocument();
+    await expect(canvas.getByText(/EVD-001/)).toBeInTheDocument();
   },
 };
 
@@ -200,6 +202,8 @@ export const EvidenceDetailShowsLinks: Story = {
     await userEvent.click(await canvas.findByText("IPX6 Test Certificate"));
     const body = within(canvasElement.ownerDocument.body);
     await waitFor(() => expect(body.getByRole("link", { name: "SW-SEC-014 Encrypt at rest" })).toBeInTheDocument());
+    // The side panel names the evidence by its code too.
+    await expect(within(body.getByRole("dialog", { name: "IPX6 Test Certificate" })).getByText(/EVD-001/)).toBeInTheDocument();
   },
 };
 

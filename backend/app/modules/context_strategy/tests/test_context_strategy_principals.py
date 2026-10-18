@@ -291,7 +291,7 @@ def test_open_question_register_prints_and_groups_by_owner_principal(client, adm
         "Triage Team (Org group)", "Triage Team (Org group)", "Unowned",
     ]
     assert dict(_section(report, "by_owner")["rows"]) == {"Triage Team (Org group)": "2", "Unowned": "1"}
-    assert [r[0] for r in _section(report, "unowned")["rows"]] == ["Nobody?"]
+    assert [r[0] for r in _section(report, "unowned")["rows"]] == ["OQ-003 Nobody?"]
 
 
 def test_guiding_principle_usage_report_prints_a_group_owner(client, admin_token):

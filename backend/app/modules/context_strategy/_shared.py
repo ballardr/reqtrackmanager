@@ -438,7 +438,8 @@ def pain_point_to_out(db: Session, pain_point: PainPoint, labels: OwnerLabels | 
         _effective_pain_point_type_name(db, project_pain_point_type) if project_pain_point_type is not None else ""
     )
     return PainPointOut(
-        id=pain_point.id, project_id=pain_point.project_id, pain_point_type_id=pain_point.pain_point_type_id,
+        id=pain_point.id, project_id=pain_point.project_id, unique_code=pain_point.unique_code,
+        pain_point_type_id=pain_point.pain_point_type_id,
         pain_point_type_name=type_name, creator_id=pain_point.creator_id, is_archived=pain_point.is_archived,
         archived_at=pain_point.archived_at, archived_by=pain_point.archived_by,
         title=pain_point.title, description=pain_point.description, source=pain_point.source,
@@ -649,7 +650,8 @@ def open_question_to_out(db: Session, open_question: OpenQuestion, labels: Owner
     """
     labels = labels if labels is not None else owner_labels(db, [open_question])
     return OpenQuestionOut(
-        id=open_question.id, project_id=open_question.project_id, creator_id=open_question.creator_id,
+        id=open_question.id, project_id=open_question.project_id, unique_code=open_question.unique_code,
+        creator_id=open_question.creator_id,
         is_archived=open_question.is_archived, archived_at=open_question.archived_at,
         archived_by=open_question.archived_by, question=open_question.question, context=open_question.context,
         evidence=open_question.evidence, priority=open_question.priority, status=open_question.status,

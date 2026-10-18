@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installCleanupHook, chooseRecordAction } from "../../e2e-workflows/helpers";
+import { installCleanupHook, chooseRecordAction, selectOptionContaining } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -226,7 +226,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await page.getByRole("button", { name: "Add to Raised and answered" }).click();
     const addOutcome = page.getByRole("dialog", { name: "Record an outcome" });
     await addOutcome.getByLabel("Outcome type").selectOption({ label: "Stakeholder Need" });
-    await addOutcome.getByLabel("Outcome record").selectOption({ label: needName });
+    await selectOptionContaining(addOutcome.getByLabel("Outcome record"), needName);
     await addOutcome.getByRole("button", { name: "Add outcome" }).click();
     await expect(page.getByText("Outcome recorded.")).toBeVisible();
     await expect(page.getByText("Raised · Stakeholder Need:")).toBeVisible();
@@ -304,7 +304,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await card.getByRole("button", { name: "Add link" }).click();
     const linkDialog = page.getByRole("dialog", { name: "Add a link" });
     await linkDialog.getByLabel("Link to").selectOption({ label: "Stakeholder need" });
-    await linkDialog.getByLabel("Record").selectOption({ label: needName });
+    await selectOptionContaining(linkDialog.getByLabel("Record"), needName);
     await linkDialog.getByLabel("Relationship").selectOption({ label: "Raised" });
     await linkDialog.getByRole("button", { name: "Add link" }).click();
     await expect(page.getByText("Link added.").last()).toBeVisible();

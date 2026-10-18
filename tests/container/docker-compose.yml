@@ -37,6 +37,10 @@
 services:
   db:
     image: postgres:16-alpine
+    # The schema is large enough (hundreds of relations) that the pytest session fixture's
+    # `DROP SCHEMA public CASCADE`, run by four xdist workers at once, exhausts the default
+    # 64 locks per transaction ("out of shared memory") and errors every test.
+    command: ["postgres", "-c", "max_locks_per_transaction=256"]
     environment:
       POSTGRES_DB: reqtrack_test
       POSTGRES_USER: reqtrack

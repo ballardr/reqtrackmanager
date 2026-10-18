@@ -86,7 +86,7 @@ const OUTSTANDING_ACTIONS: OutstandingRequiredAction[] = [
 
 const EXPIRING_EVIDENCE: OrgExpiringEvidence[] = [
   {
-    id: "ev-1", project_id: "proj-2", project_name: "Beta Tunnel", title: "Thermal test certificate",
+    id: "ev-1", project_id: "proj-2", unique_code: "EVD-001", project_name: "Beta Tunnel", title: "Thermal test certificate",
     description: "", issuing_organisation: "Acme Labs", issued_date: "2025-01-01", expiry_date: "2026-08-01",
     provided_by: "user-1", provided_at: "2025-01-01T00:00:00Z", notes: "", validity_state: "expired",
     is_archived: false, archived_at: null, archived_by: null,

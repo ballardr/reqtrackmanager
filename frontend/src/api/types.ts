@@ -1528,6 +1528,7 @@ export const CHANGEABLE_FIELD_LABEL: Record<ChangeableRequirementField, string> 
 export interface ChangeRequest {
   id: string;
   project_id: string;
+  unique_code: string;
   requirement_id: string | null;
   kind: ChangeRequestKind;
   status: ChangeRequestStatus;

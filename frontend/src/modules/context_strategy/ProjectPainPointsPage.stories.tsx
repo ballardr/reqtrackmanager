@@ -15,7 +15,7 @@ const TYPES: EffectivePainPointType[] = [
 
 function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
   return {
-    id: "pain-point-1", project_id: PROJECT_ID, pain_point_type_id: "type-operator", pain_point_type_name: "Operator",
+    id: "pain-point-1", project_id: PROJECT_ID, unique_code: "PP-001", pain_point_type_id: "type-operator", pain_point_type_name: "Operator",
     creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     title: "Report delays under poor connectivity", description: "Field reports queue for days.",
     source: "Operator interviews", impact: "Decisions are made on stale data.", evidence: "12 reports last month.",
@@ -62,6 +62,9 @@ export const ListsPainPoints: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Report delays under poor connectivity")).toBeInTheDocument());
     await expect(canvas.getByText("Competitive pricing pressure")).toBeInTheDocument();
+    // The record code has its own column, so a Pain Point can be named in conversation.
+    await expect(canvas.getByRole("columnheader", { name: "Code" })).toBeInTheDocument();
+    await expect(canvas.getAllByText(/PP-001/).length).toBeGreaterThan(0);
   },
 };
 

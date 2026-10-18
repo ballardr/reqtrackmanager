@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook, showLinkRelationships } from "../e2e-workflows/helpers";
+import { installCleanupHook, selectOptionContaining, showLinkRelationships } from "../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -82,7 +82,7 @@ async function addLink(page: import("@playwright/test").Page, relationship: stri
   await dialog.getByLabel("Link to").selectOption({ label: record.type });
   const recordSelect = dialog.getByLabel("Record");
   await expect(recordSelect.locator("option", { hasText: record.label })).toHaveCount(1);
-  await recordSelect.selectOption({ label: record.label });
+  await selectOptionContaining(recordSelect, record.label);
   await dialog.getByLabel("Relationship").selectOption({ label: relationship });
   await dialog.getByRole("button", { name: "Add link" }).click();
   await expect(dialog).not.toBeVisible();

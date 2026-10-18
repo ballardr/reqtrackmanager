@@ -215,6 +215,7 @@ export function OpenQuestionDetailPage() {
       <RecordHeader
         recordLabel="Open Question"
         title={openQuestion.question}
+        code={openQuestion.unique_code}
         back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "← Open Question" }}
         badges={
           <>

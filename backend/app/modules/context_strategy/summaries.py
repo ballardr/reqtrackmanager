@@ -174,10 +174,10 @@ ARTEFACT_SUMMARY_PROVIDERS: dict[str, ArtefactSummaryProvider] = {
         GuidingPrinciple, GuidingPrincipleVersion, "guiding_principle_id", "name", LIFECYCLE_STATUS_LABEL
     ),
     "pain_point": _simple_provider(
-        PainPoint, lambda p: p.title, PAIN_POINT_STATUS_LABEL, (BrowseLevel("pain_point_type", "Pain point type"),),
+        PainPoint, lambda p: f"{p.unique_code} {p.title}", PAIN_POINT_STATUS_LABEL, (BrowseLevel("pain_point_type", "Pain point type"),),
         typed_by_project_type=True,
     ),
     "open_question": _simple_provider(
-        OpenQuestion, lambda q: _truncate(q.question), OPEN_QUESTION_STATUS_LABEL, _STATUS_LEVELS
+        OpenQuestion, lambda q: f"{q.unique_code} {_truncate(q.question)}", OPEN_QUESTION_STATUS_LABEL, _STATUS_LEVELS
     ),
 }

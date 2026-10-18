@@ -598,15 +598,19 @@ class StakeholderNeed(UUIDPKMixin, TimestampMixin, Base):
 
     Attributes:
         project_id: The owning project.
+        unique_code: Project-scoped identifier (e.g. `"NEED-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         creator_id: Who created the record.
         is_archived / archived_at / archived_by: Soft-delete.
     """
 
     __tablename__ = "stakeholder_needs"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_stakeholder_needs_project_unique_code"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

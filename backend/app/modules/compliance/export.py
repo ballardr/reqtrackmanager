@@ -88,6 +88,7 @@ from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
     ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
     ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
+    EVIDENCE_CODE_PREFIX,
     ComplianceActionTypeDefinition,
     ComplianceEvidence,
     ComplianceEvidenceFile,
@@ -109,6 +110,7 @@ from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
+from app.services.sequences import generate_unique_code
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -1074,7 +1076,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     """
     file_assets_by_id: dict[UUID, FileAsset] = {}
     assignments = list(db.scalars(select(ProjectCompliance).where(ProjectCompliance.project_id == project.id)).all())
-    evidence_rows = list(db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == project.id)).all())
+    evidence_rows = list(
+        db.scalars(
+            select(ComplianceEvidence).where(ComplianceEvidence.project_id == project.id).order_by(ComplianceEvidence.created_at)
+        ).all()
+    )
     evidence_ref_by_id = {e.id: f"EV-{i + 1}" for i, e in enumerate(evidence_rows)}
 
     project_compliances_json = []
@@ -1394,7 +1400,9 @@ def import_project_data(
     evidence_id_by_ref: dict[str, UUID] = {}
     for e in data.get("compliance_evidence", []):
         evidence = ComplianceEvidence(
-            project_id=project.id, title=e["title"], description=e.get("description", ""),
+            project_id=project.id,
+            unique_code=generate_unique_code(db, project, ARTEFACT_TYPE_EVIDENCE, EVIDENCE_CODE_PREFIX),
+            title=e["title"], description=e.get("description", ""),
             issuing_organisation=e.get("issuing_organisation"), issued_date=_date(e.get("issued_date")),
             expiry_date=_date(e.get("expiry_date")),
             provided_by=users.resolve(e.get("provided_by_email"), required=True, context=f"Evidence {e['title']!r} provider"),

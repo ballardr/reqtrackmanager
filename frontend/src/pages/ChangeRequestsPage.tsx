@@ -769,6 +769,7 @@ export function ChangeRequestsPage() {
               <table>
                 <thead>
                   <tr>
+                    <th>Code</th>
                     <SortableHeader
                       label="Name" sortKey="proposed_name" sort={sort}
                       onSort={(key) => setSort((s) => cycleSort(s, key))}
@@ -792,6 +793,7 @@ export function ChangeRequestsPage() {
                       className="entity-accent-row"
                       style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
                     >
+                      <td className="text-muted"><RecordCode code={cr.unique_code} /></td>
                       <td>
                         <Link to={`/projects/${projectId}/change-requests/${cr.id}`}>{crTitle(cr)}</Link>
                       </td>
@@ -824,6 +826,7 @@ export function ChangeRequestsPage() {
                   <Link to={`/projects/${projectId}/change-requests/${cr.id}`} style={{ fontWeight: 600 }}>
                     {crTitle(cr)}
                   </Link>
+                  <small className="text-muted"><RecordCode code={cr.unique_code} /></small>
                   <div className="row" style={{ gap: "0.4rem" }}>
                     <FilterBadge
                       active={statusFilter === cr.status}

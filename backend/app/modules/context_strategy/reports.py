@@ -350,6 +350,12 @@ class RankedPainPoint:
     personas: list[PersonaScoreRow]
     matrix: MatrixPoint | None
     rank: int | None = None
+    code: str = ""
+
+    @property
+    def label(self) -> str:
+        """The title with its code in front (`PP-003 Slow login`), as report tables show it."""
+        return f"{self.code} {self.title}" if self.code else self.title
 
 
 @dataclass
@@ -477,7 +483,7 @@ def _score_pain_points(
             personas = _persona_rows(ctx, summary)
             counted = [p for p in personas if p.target_status != TargetStatus.INACTIVE.value]
             group.items.append(RankedPainPoint(
-                id=pp.id, project_id=project.id, project_name=project.name, title=pp.title,
+                id=pp.id, project_id=project.id, project_name=project.name, title=pp.title, code=pp.unique_code,
                 type_name=type_names[pp.pain_point_type_id], status=pp.status.value,
                 status_label=label(PAIN_POINT_STATUS_LABEL, pp.status.value), priority=pp.priority.value,
                 date_identified=pp.date_identified, is_intentional=pp.is_intentional, model_key=model.key,
@@ -499,7 +505,7 @@ def _fmt_score(value: float | None) -> str:
 def _item_row(i: RankedPainPoint) -> list[str]:
     """The common Pain Point row used by the R1 tables."""
     return [
-        i.model_key, str(i.rank) if i.rank else "", i.title, i.project_name, i.type_name, i.status_label,
+        i.model_key, str(i.rank) if i.rank else "", i.label, i.project_name, i.type_name, i.status_label,
         label(PRIORITY_LABEL, i.priority), _fmt_score(i.score), i.band or "",
         "Blocker: " + (", ".join(i.blocker_personas) or "yes") if i.is_blocker else "",
         "Persona links degraded" if i.personas_degraded else "",
@@ -547,7 +553,7 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
             (i for i in group.items if i.is_intentional), key=lambda i: (-(i.score or 0), i.title.lower()))]
         for i in group.items:
             breakdown += [
-                [i.model_key, i.title, i.project_name, p.persona, label(SCORE_TARGET_STATUS_LABEL, p.target_status),
+                [i.model_key, i.label, i.project_name, p.persona, label(SCORE_TARGET_STATUS_LABEL, p.target_status),
                  p.severity or "", p.frequency or "", p.confidence or "", _fmt_score(p.score), p.band or "",
                  "Yes" if p.is_blocker else ""]
                 for p in i.personas
@@ -635,7 +641,7 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
         for i in sorted(group.items, key=lambda i: (-(i.score or 0), i.title.lower())):
             persona_severity = "; ".join(f"{p.persona}: {p.severity}" for p in i.personas if p.severity) or "Not scored"
             row = [
-                i.model_key, i.title, i.project_name, i.status_label, "", "", persona_severity, _fmt_score(i.score),
+                i.model_key, i.label, i.project_name, i.status_label, "", "", persona_severity, _fmt_score(i.score),
                 i.band or "", "Churn risk" if i.churn_risk else "Upsell lever",
             ]
             rows.append(row)
@@ -888,12 +894,12 @@ def collect_pain_point_coverage(db: Session, req: ReportContext) -> ReportResult
     accepted = [p for p in pain_points if p.status is PainPointStatus.ACCEPTED]
     uncovered = [p for p in accepted if not any(r in requirements for r in links.get(p.id, []))]
     linked_rows = [
-        [pp.title, names[pp.project_id], f"{requirements[r].code} {requirements[r].name}", requirements[r].status]
+        [f"{pp.unique_code} {pp.title}", names[pp.project_id], f"{requirements[r].code} {requirements[r].name}", requirements[r].status]
         for pp in pain_points for r in links.get(pp.id, []) if r in requirements
     ]
     open_pps = [p for p in pain_points if p.status in OPEN_PAIN_POINT_STATUSES]
     age_rows = [
-        [pp.title, names[pp.project_id], label(PAIN_POINT_STATUS_LABEL, pp.status.value),
+        [f"{pp.unique_code} {pp.title}", names[pp.project_id], label(PAIN_POINT_STATUS_LABEL, pp.status.value),
          _fmt_date(pp.date_identified), str((req.today - pp.date_identified).days)]
         for pp in open_pps
     ]
@@ -901,7 +907,7 @@ def collect_pain_point_coverage(db: Session, req: ReportContext) -> ReportResult
         ReportSection("matrix", "Type × status", ["Type", *(label(PAIN_POINT_STATUS_LABEL, s.value) for s in statuses), "Total"], matrix_rows),
         ReportSection("uncovered", "Accepted Pain Points with no Requirement",
                       ["Pain point", "Project", "Identified", "Age (days)"],
-                      [[p.title, names[p.project_id], _fmt_date(p.date_identified), str((req.today - p.date_identified).days)]
+                      [[f"{p.unique_code} {p.title}", names[p.project_id], _fmt_date(p.date_identified), str((req.today - p.date_identified).days)]
                        for p in uncovered], gap=True,
                       note="An Accepted Pain Point is a commitment; none of these has a Requirement that addresses it."),
         ReportSection("requirements", "Linked Requirements", ["Pain point", "Project", "Requirement", "Requirement status"], linked_rows),
@@ -936,6 +942,7 @@ class OpenQuestionRow:
     due_date: date | None
     days_open: int
     is_overdue: bool
+    code: str = ""
 
 
 def collect_open_question_register(db: Session, req: ReportContext) -> ReportResult:
@@ -961,7 +968,7 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
         OpenQuestionRow(
             q.id, q.project_id, names[q.project_id], q.question, q.priority.value, q.status.value,
             owners(q), q.due_date, (req.today - q.created_at.date()).days,
-            q.due_date is not None and q.due_date < req.today,
+            q.due_date is not None and q.due_date < req.today, q.unique_code,
         )
         for q in questions
     ]
@@ -969,8 +976,9 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
 
     def row(i: OpenQuestionRow) -> list[str]:
         return [
-            i.question, i.project_name, label(PRIORITY_LABEL, i.priority), label(OPEN_QUESTION_STATUS_LABEL, i.status),
-            i.owner or "Unowned", _fmt_date(i.due_date), "Overdue" if i.is_overdue else "", str(i.days_open),
+            f"{i.code} {i.question}", i.project_name, label(PRIORITY_LABEL, i.priority),
+            label(OPEN_QUESTION_STATUS_LABEL, i.status), i.owner or "Unowned", _fmt_date(i.due_date),
+            "Overdue" if i.is_overdue else "", str(i.days_open),
         ]
 
     columns = ["Question", "Project", "Priority", "Status", "Owner", "Due", "Overdue", "Days open"]

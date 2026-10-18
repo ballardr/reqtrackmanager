@@ -76,7 +76,7 @@ def test_stakeholders_and_needs(client, admin_token):
 
     assert set(stakeholders) == {uuid.UUID(own["id"]), uuid.UUID(org_owned["id"])}
     assert set(needs) == {uuid.UUID(need["id"])}
-    assert next(iter(needs.values())).label == need["name"]
+    assert next(iter(needs.values())).label == f"{need['unique_code']} {need['name']}"
 
 
 def test_link_graph_shows_a_need_linked_to_a_requirement(client, admin_token):
@@ -100,4 +100,4 @@ def test_link_graph_shows_a_need_linked_to_a_requirement(client, admin_token):
     ).json()
 
     node = next(n for n in graph["nodes"] if n["type"] == "stakeholder_need")
-    assert node["label"] == need["name"] and node["type_label"] == "Stakeholder need"
+    assert node["label"] == f"{need['unique_code']} {need['name']}" and node["type_label"] == "Stakeholder need"

@@ -221,7 +221,7 @@ class ReviewTargetType(str, enum.Enum):
 
 
 class ArtefactType(str, enum.Enum):
-    """The two built-in, app-owned values a polymorphic `ArtefactLink`
+    """The three built-in, app-owned values a polymorphic `ArtefactLink`
     (`models.relationship`) may hold on either its source or target end
 .
 
@@ -233,7 +233,7 @@ class ArtefactType(str, enum.Enum):
     type — a module declares its own artefact-type values on its
     `ModuleDefinition.artefact_types` (`app.modules.registry`) instead;
     `get_all_registered_artefact_types` (same module) merges every
-    registered module's own values with this enum's two built-in ones into
+    registered module's own values with this enum's built-in ones into
     the set `services.relationships.create_link` validates against. See
     `models.relationship.ArtefactLink`'s own docstring for the table this
     backs.
@@ -241,6 +241,11 @@ class ArtefactType(str, enum.Enum):
 
     REQUIREMENT = "requirement"
     REQUIREMENT_ACTION = "requirement_action"
+    CHANGE_REQUEST = "change_request"
+
+
+CORE_ARTEFACT_TYPES: frozenset[str] = frozenset(t.value for t in ArtefactType)
+"""Every core artefact type value; the base set a module's `artefact_types` extend."""
 
 
 class LinkFlow(str, enum.Enum):

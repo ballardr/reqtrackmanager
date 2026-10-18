@@ -281,6 +281,7 @@ export function ChangeRequestDetailPage() {
       <RecordHeader
         recordLabel="Change request"
         title={title}
+        code={cr.unique_code}
         badges={cr.is_subscribed ? <Badge tone="info">{strings.requirements.subscribed}</Badge> : undefined}
         actions={[
           {

@@ -398,6 +398,7 @@ class NeedOut(BaseModel):
 
     id: UUID
     project_id: UUID
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -462,6 +463,7 @@ class HeldNeedOut(BaseModel):
 
     link_id: UUID
     id: UUID
+    unique_code: str
     name: str
     status: NeedStatus
 

@@ -28,6 +28,7 @@ import type { FileAsset } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { RecordCode } from "../../components/RecordCode";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { FileUploadTrigger } from "../../components/FileUploadTrigger";
@@ -108,10 +109,11 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
 
   const filtered = evidence
     .filter((e) => includeArchived || !e.is_archived)
-    .filter((e) => !search || e.title.toLowerCase().includes(search.toLowerCase()));
+    .filter((e) => !search || `${e.unique_code} ${e.title}`.toLowerCase().includes(search.toLowerCase()));
 
   const columns: DirectoryColumn<ComplianceEvidence>[] = [
     { key: "title", label: "Title", render: (e) => e.title },
+    { key: "code", label: "Code", render: (e) => <RecordCode code={e.unique_code} /> },
     { key: "issuing_organisation", label: "Issuing organisation", render: (e) => e.issuing_organisation ?? "—" },
     { key: "expiry_date", label: "Expiry", render: (e) => e.expiry_date ?? "—" },
     { key: "validity", label: "Validity", render: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state] },
@@ -162,6 +164,7 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
       {selected && (
         <SidePanel title={selected.title} onClose={() => setSelected(null)}>
           <div className="stack">
+            <small className="text-muted"><RecordCode code={selected.unique_code} /></small>
             <p>{selected.description || <span className="text-muted">No description.</span>}</p>
             <p className="text-muted" style={{ margin: 0 }}>
               Validity: {COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[selected.validity_state]}

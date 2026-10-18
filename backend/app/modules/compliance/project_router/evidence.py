@@ -34,6 +34,7 @@ from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
     ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
     ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
+    EVIDENCE_CODE_PREFIX,
     ComplianceEvidence,
     ComplianceEvidenceFile,
     ComplianceEvidenceRevalidation,
@@ -67,6 +68,7 @@ from app.services import relationships
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.rbac import require_permission
+from app.services.sequences import generate_unique_code
 
 router = APIRouter(tags=["compliance-project-evidence"])
 
@@ -154,8 +156,11 @@ def create_evidence(
         _get_assessment_for_project_or_404(db, project_id, assessment_id)
 
     now = datetime.now(UTC)
+    project = db.get(Project, project_id)
     evidence = ComplianceEvidence(
-        project_id=project_id, title=payload.title, description=payload.description,
+        project_id=project_id,
+        unique_code=generate_unique_code(db, project, ARTEFACT_TYPE_EVIDENCE, EVIDENCE_CODE_PREFIX),
+        title=payload.title, description=payload.description,
         issuing_organisation=payload.issuing_organisation, issued_date=payload.issued_date,
         expiry_date=payload.expiry_date, provided_by=current_user.id, provided_at=now, notes=payload.notes,
     )

@@ -238,6 +238,7 @@ export function PainPointDetailPage() {
       <RecordHeader
         recordLabel="Pain Point"
         title={painPoint.title}
+        code={painPoint.unique_code}
         back={{ to: `/projects/${projectId}/modules/context_strategy/pain-points`, label: "← Pain Point" }}
         badges={
           <>

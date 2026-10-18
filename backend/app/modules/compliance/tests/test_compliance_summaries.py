@@ -35,7 +35,7 @@ def test_evidence_graph_shows_requirement_and_action_assessment(client, admin_to
     assert set(nodes) == {
         "compliance_evidence", "project_compliance_requirement", "compliance_required_action_assessment"
     }
-    assert nodes["compliance_evidence"]["label"] == "IPX9 Test Certificate"
+    assert nodes["compliance_evidence"]["label"] == "EVD-001 IPX9 Test Certificate"
     assert nodes["project_compliance_requirement"]["id"] == pcr_id
     assert nodes["project_compliance_requirement"]["type_label"] == "Compliance requirement"
     assert nodes["project_compliance_requirement"]["status"]

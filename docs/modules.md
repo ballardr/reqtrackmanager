@@ -995,7 +995,7 @@ clauses). `selected` is `{level key: option id}` for the earlier levels; the cor
 validates it against what each level offered, so compute options from it alone and
 scope them to the project's organisation. A test fails if a registered type has no
 level. An organisation-owned type (`project_id=None`) is offered only from the
-request project. Core owns only `requirement` and `requirement_action` (its levels
+request project. Core owns only `requirement`, `requirement_action` and `change_request` (its levels
 live in `services/link_browse.py`). `services.summary_facets` has helpers for status
 and two-tier type facets, and `relationships.delete_links_for_artefacts` removes
 links when a type hard-deletes records.

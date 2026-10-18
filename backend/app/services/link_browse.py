@@ -56,6 +56,10 @@ from app.modules.registry import (
     get_artefact_type_label,
     list_artefact_summaries,
 )
+from app.services.change_request_summary import (
+    CHANGE_REQUEST_STATUS_LABEL,
+    change_request_candidates,
+)
 from app.services.link_authoring import (
     linkable_types_for_project,
     related_project_or_404,
@@ -74,6 +78,7 @@ _SPARE = 2
 
 _REQUIREMENT = ArtefactType.REQUIREMENT.value
 _ACTION = ArtefactType.REQUIREMENT_ACTION.value
+_CHANGE_REQUEST = ArtefactType.CHANGE_REQUEST.value
 
 
 @dataclass(frozen=True)
@@ -138,12 +143,20 @@ def _action_type_options(
     return [(str(t.id), t.name) for t in db.scalars(stmt.order_by(ActionTypeDefinition.name))]
 
 
+def _change_request_status_options(
+    db: Session, project_id: uuid.UUID, selected: Mapping[str, str], query: str
+) -> list[tuple[str, str]]:
+    needle = query.lower()
+    return [(key, label) for key, label in CHANGE_REQUEST_STATUS_LABEL.items() if needle in label.lower()]
+
+
 _CORE_LEVELS: dict[str, tuple[BrowseLevel, ...]] = {
     _REQUIREMENT: (
         BrowseLevel("component", "Component", _requirement_component_options),
         BrowseLevel("category", "Category", _requirement_category_options),
     ),
     _ACTION: (BrowseLevel("action_type", "Action type", _action_type_options),),
+    _CHANGE_REQUEST: (BrowseLevel("status", "Status", _change_request_status_options),),
 }
 
 
@@ -390,6 +403,8 @@ def _records_of_type(
         return _requirement_candidates(db, searched.id, selected, needle, limit)
     if other_type == _ACTION:
         return _action_candidates(db, searched.id, selected, needle, limit)
+    if other_type == _CHANGE_REQUEST:
+        return change_request_candidates(db, searched.id, selected, needle, limit + _SPARE)
     from app.modules.registry import get_module_registry
 
     provider = next(

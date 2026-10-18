@@ -74,7 +74,7 @@ export const EditExistingOffersDisabledCurrentType: Story = {
   args: {
     types: [{ id: "type-legacy", name: "Legacy", display_order: 3, is_enabled: false, source: "org" }, ...TYPES],
     initial: {
-      id: "pain-point-1", project_id: "project-1", pain_point_type_id: "type-legacy", pain_point_type_name: "Legacy",
+      id: "pain-point-1", project_id: "project-1", unique_code: "PP-001", pain_point_type_id: "type-legacy", pain_point_type_name: "Legacy",
       creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
       title: "Report delays under poor connectivity", description: "Field reports queue for days.",
       source: "Operator interviews", impact: "Decisions are made on stale data.", evidence: "12 reports last month.",

@@ -34,6 +34,8 @@ class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
     """A proposal to add or modify a requirement, subject to review/approval.
 
     Attributes:
+        unique_code: Project-scoped identifier (e.g. `"CR-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         requirement_id: The requirement being modified; null when kind is
             NEW_REQUIREMENT (the requirement does not exist yet).
         creator_id: The user who authored the change request (C-G-13).
@@ -42,8 +44,10 @@ class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "change_requests"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_change_requests_project_unique_code"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    unique_code: Mapped[str] = mapped_column(String(64))
     requirement_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
     )

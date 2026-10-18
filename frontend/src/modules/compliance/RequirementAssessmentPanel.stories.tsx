@@ -88,7 +88,7 @@ function mockApis(pcrRow: ProjectComplianceRequirement, assessments: ComplianceR
 
 function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEvidence {
   return {
-    id: "ev-1", project_id: PROJECT_ID, title: "Existing Access Review", description: "",
+    id: "ev-1", project_id: PROJECT_ID, unique_code: "EVD-001", title: "Existing Access Review", description: "",
     issuing_organisation: null, issued_date: null, expiry_date: null,
     provided_by: "user-1", provided_at: "2026-01-01T00:00:00Z", notes: "", validity_state: "valid",
     is_archived: false, archived_at: null, archived_by: null,

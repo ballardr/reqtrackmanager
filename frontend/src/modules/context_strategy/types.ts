@@ -444,6 +444,7 @@ export interface ProjectPainPointType {
 export interface PainPoint {
   id: string;
   project_id: string;
+  unique_code: string;
   pain_point_type_id: string;
   pain_point_type_name: string;
   creator_id: string;
@@ -778,6 +779,7 @@ export const OPEN_QUESTION_LINK_KIND_LABEL: Record<OpenQuestionLinkKind, string>
 export interface OpenQuestion {
   id: string;
   project_id: string;
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;

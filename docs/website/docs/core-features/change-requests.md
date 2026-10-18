@@ -6,6 +6,8 @@ sidebar_position: 2
 
 ## Creating and submitting
 
+Every change request has a record code (`CR-001`) numbered per project and never reused, shown in the list, the request's header, its notifications and the Links panel. A change request is also a record other records can link to.
+
 Go to a project's **Change Requests** page to propose a new requirement or a modification to an existing one:
 
 1. **Create**: choose "new requirement" or "modify requirement." For "modify requirement," pick the requirement first, then tick a checkbox for each field to actually change — Name, Reasoning, Clarification, Description, Target version, Level, Review date, Reminder lead time, Assigned reviewer, Custom fields, Attachments. Only ticked fields become editable, each pre-filled from the requirement's current value, and only ticked fields are proposed — anything left unticked is untouched when the change request is approved. For "new requirement," fill in the proposed fields directly. Either way, a reason for the change is required.
@@ -55,7 +57,7 @@ Like a requirement, every change request also carries its own threaded **discuss
 
 ## Filtering the list
 
-Search the Change Requests list by the change's proposed name, its reason, or the target requirement's name or ID. The search runs on the server, so it finds a change request whichever page of the list it's on. As with requirements, clicking a status or target-stage badge filters to it, and clicking again clears the filter.
+Search the Change Requests list by the request's code (`CR-001`), the change's proposed name, its reason, or the target requirement's name or ID. The search runs on the server, so it finds a change request whichever page of the list it's on. As with requirements, clicking a status or target-stage badge filters to it, and clicking again clears the filter.
 
 ## Where this fits
 

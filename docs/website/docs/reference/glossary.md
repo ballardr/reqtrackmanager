@@ -114,6 +114,10 @@ A link a change request carries and an approver merges, or declines, when approv
 
 A record code with its project code in front, such as `ACME-REQ-001`. The same `REQ-001` exists in every project, so a qualified code is the unambiguous way to name a record. See [Administering an organisation → Project codes](../workflows/administering-an-organisation.md#project-codes).
 
+#### Record code
+
+The short, project-scoped name of a record, such as `REQ-001` (requirement), `PP-001` (pain point), `OQ-001` (open question), `NEED-001` (stakeholder need), `EVD-001` (compliance evidence) or `CR-001` (change request). Numbered per project and never reused. See [Qualified code](#qualified-code) for the form that is unambiguous across projects.
+
 #### Report content
 
 The introduction, chapters and appendices written for a report type at the template, project or organisation level, with `{{placeholders}}` filled at generation. See [Reports and export → Report content](../core-features/reports-and-export.md#report-content).

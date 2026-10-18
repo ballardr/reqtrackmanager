@@ -650,6 +650,7 @@ class ComplianceEvidenceOut(BaseModel):
 
     id: UUID
     project_id: UUID
+    unique_code: str
     title: str
     description: str
     issuing_organisation: str | None

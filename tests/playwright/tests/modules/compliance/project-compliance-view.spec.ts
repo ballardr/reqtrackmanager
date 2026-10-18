@@ -176,6 +176,8 @@ test.describe("Compliance Module: project compliance view", () => {
     await expect(addEvidenceDialog.getByText("evidence-file.txt")).toBeVisible();
     await addEvidenceDialog.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(evidenceTitle)).toBeVisible();
+    // The new evidence has its record code (EVD-nnn) in its row.
+    await expect(page.getByRole("row", { name: new RegExp(evidenceTitle) }).getByText(/^(?:[A-Z0-9]+-)?EVD-\d{3}$/)).toBeVisible();
 
     // The file was attached during creation, not as a separate upload step —
     // confirm it's already present on the newly-created record.

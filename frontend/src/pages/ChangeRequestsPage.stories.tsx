@@ -72,6 +72,8 @@ export const ListOfChangeRequests: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
     await expect(canvas.getByRole("link", { name: "Add SSO login" })).toBeInTheDocument();
+    // Each request leads with its record code in a Code column.
+    await expect(canvas.getAllByText(/CR-\d{3}/).length).toBeGreaterThan(0);
   },
 };
 

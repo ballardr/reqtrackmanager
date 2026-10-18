@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtefactType, LinkFlow, ProjectRole
+from app.models.enums import CORE_ARTEFACT_TYPES, ArtefactType, LinkFlow, ProjectRole
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
@@ -63,6 +63,7 @@ from app.schemas.link_graph import (
     LinkGraphNode,
     LinkGraphOut,
 )
+from app.services.change_request_summary import change_request_summaries
 from app.services.link_nesting import RelatedProject, is_link_live, nesting_violation, related_projects
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, get_effective_project_roles, permission_satisfied
@@ -73,6 +74,7 @@ MAX_NODES = 150
 
 _REQUIREMENT = ArtefactType.REQUIREMENT.value
 _ACTION = ArtefactType.REQUIREMENT_ACTION.value
+_CHANGE_REQUEST = ArtefactType.CHANGE_REQUEST.value
 
 #: Project roles that may link a record of a core type that is not approved, without holding
 #: `link` or `manage` (the roles that could edit requirements before links had their own
@@ -98,7 +100,10 @@ class _Walk:
 def _core_summaries(
     db: Session, project_ids: list[uuid.UUID], artefact_type: str, ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, ArtefactSummary]:
-    """Summaries of the requirements / actions among `ids` that belong to any of `project_ids`, in one query."""
+    """Summaries of the core-type records (requirements, actions, change requests) among `ids` that
+    belong to any of `project_ids`, in one query per type."""
+    if artefact_type == _CHANGE_REQUEST:
+        return change_request_summaries(db, project_ids, ids)
     if artefact_type == _REQUIREMENT:
         rows = db.execute(
             select(Requirement, RequirementVersion)
@@ -209,7 +214,7 @@ class ArtefactResolver:
             found: dict[uuid.UUID, ArtefactSummary] | None = {}
             if not viewable:
                 pass
-            elif artefact_type in (_REQUIREMENT, _ACTION):
+            elif artefact_type in CORE_ARTEFACT_TYPES:
                 found = _core_summaries(self._db, [p.id for p in viewable], artefact_type, todo)
             else:
                 found, remaining = {}, list(todo)

@@ -92,7 +92,7 @@ def test_project_export_import_round_trips_engagements(client, admin_token):
     assert [p["name"] for p in client.get(new_url + "/personas", headers=h).json()] == ["Shared persona"]
     assert [a["name"] for a in client.get(new_url + "/audiences", headers=h).json()] == ["Acme"]
     outcomes = client.get(new_url + "/outcomes", headers=h).json()
-    assert [(o["kind"], o["target_type"], o["label"]) for o in outcomes] == [("raised", "stakeholder_need", "Round trip need")]
+    assert [(o["kind"], o["target_type"], o["label"]) for o in outcomes] == [("raised", "stakeholder_need", "NEED-001 Round trip need")]
     prompts = client.get(new_url + "/prompts", headers=h).json()
     assert [(p["prompt"], p["response_notes"]) for p in prompts] == [("What slows you down?", "Forms"), ("Anything else?", "")]
     anonymous = client.get(new_url + "/anonymous-participants", headers=h).json()

@@ -50,7 +50,7 @@ export const SaveDisabledUntilQuestionFilled: Story = {
 export const EditExisting: Story = {
   args: {
     initial: {
-      id: "open-question-1", project_id: "project-1", creator_id: "user-1",
+      id: "open-question-1", project_id: "project-1", unique_code: "OQ-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null,
       question: "Should we standardise on a single battery vendor?",
       context: "Two vendors are currently qualified.", evidence: "",

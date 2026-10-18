@@ -81,7 +81,13 @@ def _display_title(db: Session, cr: ChangeRequest, version: ChangeRequestVersion
     silently rendering "None" (a pre-existing gap for a MODIFY_REQUIREMENT
     CR that doesn't rename anything, found while adding ADD_ACTION — item
     514's own new kind never sets `proposed_name` at all, so it would hit
-    this on every single notification without a fallback)."""
+    this on every single notification without a fallback). The request's code leads the
+    title (`CR-003 Wider doors`) so a notification can be matched to the record."""
+    return f"{cr.unique_code} {_title_text(db, cr, version)}"
+
+
+def _title_text(db: Session, cr: ChangeRequest, version: ChangeRequestVersion) -> str:
+    """The title text of `_display_title`, without the code."""
     if version.proposed_name:
         return version.proposed_name
     if cr.kind == ChangeRequestKind.ADD_ACTION:

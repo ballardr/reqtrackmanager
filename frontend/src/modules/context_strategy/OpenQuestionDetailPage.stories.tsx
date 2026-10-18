@@ -30,7 +30,7 @@ const SQUAD: Principal = { type: "project_group", id: "pgroup-1", label: "Releas
 
 function openQuestion(overrides: Partial<OpenQuestion> = {}): OpenQuestion {
   return {
-    id: OPEN_QUESTION_ID, project_id: PROJECT_ID, creator_id: "user-1",
+    id: OPEN_QUESTION_ID, project_id: PROJECT_ID, unique_code: "OQ-001", creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null,
     question: "Should we standardise on a single battery vendor?",
     context: "Two vendors are currently qualified.", evidence: "12 field reports so far.",

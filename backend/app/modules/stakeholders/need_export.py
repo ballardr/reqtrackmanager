@@ -136,7 +136,7 @@ def import_project_data(
         creator_id = users.resolve(n.get("created_by_email"), required=True, context=f"{context} creator")
         creator = db.get(User, creator_id)
         need = create_need(
-            db, project_id=project.id, creator=creator,
+            db, project=project, creator=creator,
             **principals_from_bundle(
                 db, n, NEED_PRINCIPAL_FIELDS, organization_id=organization_id, project_id=project.id, users=users,
                 warnings=warnings, context=context,

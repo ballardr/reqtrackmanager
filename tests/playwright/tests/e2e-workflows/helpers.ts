@@ -683,3 +683,12 @@ export async function recordActionNames(page: Page, recordLabel: string): Promis
   await page.keyboard.press("Escape");
   return names;
 }
+
+/**
+ * Picks the option whose label contains `text`. A record's option label leads with its record
+ * code (`PP-001 Slow reports`), which a spec cannot know, so it matches on the title alone.
+ */
+export async function selectOptionContaining(select: Locator, text: string): Promise<void> {
+  const label = await select.locator("option", { hasText: text }).first().innerText();
+  await select.selectOption({ label });
+}

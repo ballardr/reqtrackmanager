@@ -16,8 +16,9 @@ Guarded throughout: a database built from the current models already has the col
 import re
 from collections.abc import Sequence
 
-from alembic import op
 from sqlalchemy import text
+
+from alembic import op
 
 revision: str = "0092"
 down_revision: str | None = "0091"

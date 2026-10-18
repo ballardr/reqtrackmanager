@@ -83,12 +83,14 @@ from app.services.files import delete_file
 from app.services.link_types import ensure_org_link_type
 from app.services.project_hierarchy import get_ancestor_chain
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
+from app.services.sequences import generate_unique_code
 from app.services.type_vocabulary import TypeVocabulary
 
 STAKEHOLDERS_MODULE_KEY = "stakeholders"
 PERSONA_ARTEFACT_TYPE = "persona"
 STAKEHOLDER_ARTEFACT_TYPE = "stakeholder"
 NEED_ARTEFACT_TYPE = "stakeholder_need"
+NEED_CODE_PREFIX = "NEED"
 
 # §10.2 names no persona categories, so these are Agent defaults;
 # all are org-editable.
@@ -947,15 +949,18 @@ def get_current_need_version(db: Session, need_id: uuid.UUID) -> StakeholderNeed
     return version
 
 
-def create_need(db: Session, *, project_id: uuid.UUID, creator: User, **content: Any) -> StakeholderNeed:
-    """Creates a need and its version 1 in `DRAFT`.
+def create_need(db: Session, *, project: Project, creator: User, **content: Any) -> StakeholderNeed:
+    """Creates a need with the project's next `NEED-nnn` code and its version 1 in `DRAFT`.
 
     Args:
-        project_id: The owning project.
+        project: The owning project (its sequence counter is advanced).
         creator: The acting user.
         **content: Any `NEED_CONTENT_FIELDS` except `status`; `name` is required.
     """
-    need = StakeholderNeed(project_id=project_id, creator_id=creator.id)
+    need = StakeholderNeed(
+        project_id=project.id, creator_id=creator.id,
+        unique_code=generate_unique_code(db, project, NEED_ARTEFACT_TYPE, NEED_CODE_PREFIX),
+    )
     db.add(need)
     db.flush()
     now = datetime.now(UTC)

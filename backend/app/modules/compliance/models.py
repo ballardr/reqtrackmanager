@@ -1109,6 +1109,8 @@ class ComplianceEvidence(UUIDPKMixin, TimestampMixin, Base):
 
     Attributes:
         project_id: The owning project.
+        unique_code: Project-scoped identifier (e.g. `"EVD-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         title: Short display name (§13's own worked example: "IPX9 Test
             Certificate").
         description: Free-text elaboration.
@@ -1141,10 +1143,12 @@ class ComplianceEvidence(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "compliance_evidence"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_compliance_evidence_project_unique_code"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     issuing_organisation: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -1231,6 +1235,7 @@ class ComplianceEvidenceFile(UUIDPKMixin, Base):
 # documents.
 ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT = "compliance_requirement"
 ARTEFACT_TYPE_EVIDENCE = "compliance_evidence"
+EVIDENCE_CODE_PREFIX = "EVD"
 ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT = "project_compliance_requirement"
 ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT = "compliance_required_action_assessment"
 

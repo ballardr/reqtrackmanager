@@ -5,13 +5,14 @@
  * (the links panel, Stakeholders' relationship list) can link to another's
  * records (a Pain Point, a Decision) without importing that module or
  * hardcoding its URLs. Two sources, merged like `entityAccentColor.ts`: the
- * core-owned types (`requirement`, `requirement_action`), and every installed
+ * core-owned types (`requirement`, `requirement_action`, `change_request`), and every installed
  * module's own `TierAModuleDefinition.artefactPaths`. Every artefact type the
  * backend registers must resolve here, or it could be linked yet unreachable
  * (`artefactPaths.stories.tsx` guards this).
  */
 import {
-  notificationLink, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_STATUS_LABEL, type Notification,
+  CHANGE_REQUEST_STATUS_LABEL, notificationLink, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_STATUS_LABEL,
+  type Notification,
 } from "../api/types";
 import { installedModules } from "./registry";
 
@@ -29,6 +30,7 @@ function getModuleArtefactPath(artefactType: string, projectId: string, id: stri
 export function getArtefactPath(artefactType: string, projectId: string, id: string): string | null {
   if (artefactType === "requirement") return `/projects/${projectId}/requirements/${id}`;
   if (artefactType === "requirement_action") return `/projects/${projectId}/actions/${id}`;
+  if (artefactType === "change_request") return `/projects/${projectId}/change-requests/${id}`;
   return getModuleArtefactPath(artefactType, projectId, id);
 }
 
@@ -49,6 +51,7 @@ export function getNotificationLink(n: Notification): string | null {
 const CORE_STATUS_LABELS: Record<string, Record<string, string>> = {
   requirement: REQUIREMENT_STATUS_LABEL,
   requirement_action: REQUIREMENT_ACTION_OUTCOME_LABEL,
+  change_request: CHANGE_REQUEST_STATUS_LABEL,
 };
 
 /** The display label of a record's status, or `null` when no label map is registered
@@ -67,7 +70,10 @@ export function getArtefactStatusLabel(artefactType: string, status: string | nu
 
 /** Core statuses that mean a record is no longer live (modules declare theirs on
  * `TierAModuleDefinition.artefactInactiveStatuses`). */
-const CORE_INACTIVE_STATUSES: Record<string, string[]> = { requirement: ["archived"] };
+const CORE_INACTIVE_STATUSES: Record<string, string[]> = {
+  requirement: ["archived"],
+  change_request: ["rejected", "withdrawn"],
+};
 
 /**
  * Whether a record is no longer live: archived, or in a status its owning module (or core)
