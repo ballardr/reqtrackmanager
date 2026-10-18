@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { TreeView } from "../../components/TreeView";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -182,6 +183,7 @@ export function StakeholderGroupsPanel({
                 >
                   {n.name}
                 </button>
+                <span className="text-muted" style={{ fontSize: "0.85rem" }}><ScopedRecordCode record={n} /></span>
                 <span className="text-muted">{n.member_count}</span>
                 {n.scope !== tier && <Badge>{STAKEHOLDER_SCOPE_LABEL[n.scope]}</Badge>}
                 {n.exclusive_children && <Badge title="A stakeholder can be in only one child group.">One branch</Badge>}

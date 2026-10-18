@@ -129,7 +129,7 @@ export function StakeholderListView({
         statusTone={STAKEHOLDER_STATUS_TONE}
         scopeLabels={STAKEHOLDER_SCOPE_LABEL}
         typeName={(s) => s.stakeholder_type_name}
-        searchText={(s) => `${s.name} ${s.role} ${s.organisation_group}`}
+        searchText={(s) => `${s.unique_code} ${s.name} ${s.role} ${s.organisation_group}`}
         columnsBeforeType={[{ key: "role", label: "Role", render: (s) => s.role || "—" }]}
         columnsAfterScope={[
           { key: "cadence", label: "Cadence", render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },

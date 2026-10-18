@@ -37,7 +37,9 @@ class LinkGraphFlow(str, enum.Enum):
 class LinkGraphNode(BaseModel):
     """One visible record in the graph. `project_id`/`project_name` say which project
     it belongs to (always one the viewer can open; `None` for an organisation-owned
-    record), so a node from a parent or child project can be labelled."""
+    record), so a node from a parent or child project can be labelled. `project_code`
+    qualifies the record's code when it is shown outside that project; for an
+    organisation-owned record `organization_code` does (`ACME-PER-001`)."""
 
     type: str
     id: UUID
@@ -49,6 +51,7 @@ class LinkGraphNode(BaseModel):
     project_id: UUID | None = None
     project_name: str | None = None
     project_code: str | None = None
+    organization_code: str | None = None
 
 
 class LinkGraphEdge(BaseModel):

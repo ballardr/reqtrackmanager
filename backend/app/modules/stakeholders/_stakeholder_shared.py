@@ -138,7 +138,8 @@ def stakeholder_to_out(
         hidden = visibility_fields(resolve_stakeholder_visibility(db, project_id), stakeholder.id)
     return StakeholderOut(
         id=stakeholder.id, scope=stakeholder.scope, organization_id=stakeholder.organization_id,
-        project_id=stakeholder.project_id, creator_id=stakeholder.creator_id, is_archived=stakeholder.is_archived,
+        project_id=stakeholder.project_id, unique_code=stakeholder.unique_code, creator_id=stakeholder.creator_id,
+        is_archived=stakeholder.is_archived,
         archived_at=stakeholder.archived_at, archived_by=stakeholder.archived_by, name=version.name,
         description=version.description, stakeholder_type_id=version.project_type_id or version.org_type_id,
         stakeholder_type_name=STAKEHOLDER_TYPES.display_name(

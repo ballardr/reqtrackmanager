@@ -27,10 +27,15 @@ export function TerminologyProvider({ projectId, children }: { projectId: string
     let cancelled = false;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((project) => {
       if (cancelled) return;
-      setValue({ terminology: project.terminology ?? {}, projectCode: project.code, enforceCodeEverywhere: false });
-      // The enforce flag lives on the organisation; the code shows without it meanwhile.
+      setValue({
+        terminology: project.terminology ?? {}, projectCode: project.code, enforceCodeEverywhere: false,
+        organizationId: project.organization_id,
+      });
+      // The enforce flag and the organisation's code live on the organisation; codes show without them meanwhile.
       api.get<Organization>(`/api/v1/orgs/${project.organization_id}`).then((org) => {
-        if (!cancelled) setValue((v) => ({ ...v, enforceCodeEverywhere: org.enforce_code_everywhere }));
+        if (!cancelled) {
+          setValue((v) => ({ ...v, enforceCodeEverywhere: org.enforce_code_everywhere, organizationCode: org.code }));
+        }
       }).catch(() => undefined);
     });
     return () => { cancelled = true; };

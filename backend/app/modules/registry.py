@@ -1232,6 +1232,11 @@ class ArtefactSummaryProvider:
             "which of these are visible here" without knowing them. When
             omitted, callers fall back to `get` per id and keep records
             whose `project_id` equals the project.
+        list_for_organization: Optional `(db, organization_id) -> list[ArtefactSummary]` of
+            the records the *organisation itself* owns (no project), for a type that
+            exists at organisation scope. It lets core resolve an organisation-qualified
+            code (`ACME-PER-001`) to a record without knowing the module's tables; a type
+            with no organisation-scoped records leaves it unset.
         browse_levels: The ordered `BrowseLevel`s of the type's scoped finder.
 Every registered type declares at least one; a backend
             coverage test fails otherwise, so a new type cannot ship search-only.
@@ -1248,6 +1253,7 @@ Every registered type declares at least one; a backend
     get_many_in_project: Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], list[ArtefactSummary]] | None = None
     browse_levels: tuple[BrowseLevel, ...] = ()
     filter: Callable[[Session, uuid.UUID, Mapping[str, str], str, int], list[ArtefactSummary]] | None = None
+    list_for_organization: Callable[[Session, uuid.UUID], list[ArtefactSummary]] | None = None
 
 
 @dataclass(frozen=True)
@@ -3527,6 +3533,27 @@ def list_artefact_summaries(db: Session, project_id: uuid.UUID, artefact_type: s
     if not is_module_enabled_for_project(db, project_id, definition.key):
         return []
     return provider.list_for_project(db, project_id)
+
+
+def list_organization_artefact_summaries(
+    db: Session, organization_id: uuid.UUID, artefact_type: str
+) -> list[ArtefactSummary]:
+    """The records of `artefact_type` that `organization_id` itself owns (not any of
+    its projects), via the owning module's `list_for_organization`; `[]` when the type
+    has no organisation-scoped records or its module (or the type's sub-component of
+    the same name) is disabled for the organisation. Used to resolve an
+    organisation-qualified record code."""
+    found = _summary_provider_for(artefact_type)
+    if found is None or found[1].list_for_organization is None:
+        return []
+    definition, provider = found
+    if not is_module_enabled(db, organization_id, definition.key):
+        return []
+    if any(sub.key == artefact_type for sub in definition.sub_components) and not is_org_module_subcomponent_enabled(
+        db, organization_id, definition.key, artefact_type
+    ):
+        return []
+    return provider.list_for_organization(db, organization_id)
 
 
 _CORE_ARTEFACT_TYPE_LABELS = {

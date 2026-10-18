@@ -53,7 +53,7 @@ export const SaveDisabledUntilRequiredFieldsFilled: Story = {
 export const EditExisting: Story = {
   args: {
     initial: {
-      id: "strategy-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+      id: "strategy-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "STR-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null, title: "Lead the regional market",
       objective: "Become the top provider in our region.", current_state: "We are #3 in the region.",
       desired_future_state: "We are #1 in the region.", rationale: "Market analysis shows a clear opening.",

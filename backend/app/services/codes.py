@@ -17,6 +17,9 @@ Design decisions:
   project or organisation code never contains one (`code_rules.code_error`).
 - A project code is never equal to its organisation's code, so a qualified code
   for an organisation-scoped record cannot be mistaken for a project's.
+- An organisation-scoped record (a Persona shared by every project) is qualified by the
+  organisation's code, and is always shown qualified, since its bare `PER-001` would be
+  ambiguous with a project's own.
 - The organisation row is locked while a code is generated, so two projects
   created at once cannot be given the same code.
 - The stored `unique_code` of a record never changes; qualification is applied
@@ -36,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.code_rules import (
+    ABSOLUTE_MAX_CODE_LENGTH,
     CodePolicy,
     candidate_codes,
     code_error,
@@ -49,10 +53,19 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
-from app.modules.registry import get_all_registered_artefact_types, list_artefact_summaries
+from app.modules.registry import (
+    get_all_registered_artefact_types,
+    list_artefact_summaries,
+    list_organization_artefact_summaries,
+)
 from app.services.change_request_summary import change_request_titles
 from app.services.permissions import encode_permission
-from app.services.rbac import get_effective_permissions, get_effective_project_roles, permission_satisfied
+from app.services.rbac import (
+    get_effective_org_roles,
+    get_effective_permissions,
+    get_effective_project_roles,
+    permission_satisfied,
+)
 
 
 def get_policy(org: Organization) -> CodePolicy:
@@ -175,6 +188,31 @@ def change_project_code(db: Session, project: Project, requested: str) -> str:
     return validate_project_code(db, org, requested, exclude_project_id=project.id)
 
 
+def change_organization_code(db: Session, org: Organization, requested: str) -> str:
+    """Validates a new code for an organisation.
+
+    The code must use letters and digits only (no hyphen, so a qualified code still splits on
+    its first one), fit `ABSOLUTE_MAX_CODE_LENGTH`, and differ from every project code in the
+    organisation. Records already named with the old code (pasted into documents or tickets)
+    stop matching; stored record codes are unchanged.
+
+    Returns:
+        The normalised code.
+
+    Raises:
+        HTTPException: 400 if the code is not usable; 409 if a project in the organisation uses it.
+    """
+    _lock_organization(db, org.id)
+    code = normalise_code(requested)
+    message = code_error(code, CodePolicy(kind="alphanumeric", min_length=1, max_length=ABSOLUTE_MAX_CODE_LENGTH, assignment="manual"))
+    if message is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, message.replace("project code", "organisation code"))
+    clash = db.scalar(select(Project.id).where(Project.organization_id == org.id, Project.code == code))
+    if clash is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"A project in this organisation already uses the code {code}.")
+    return code
+
+
 def organization_code_for(name: str) -> str:
     """The code a new organisation called `name` gets (its initials)."""
     return default_code_for_name(name)
@@ -208,14 +246,14 @@ class CodedRecord:
     Attributes:
         artefact_type: The registered artefact type, e.g. `requirement`, `decision`.
         id: The record's id.
-        project_id: The project that owns it.
+        project_id: The project that owns it; `None` for a record the organisation itself owns.
         qualified_code: The code as displayed outside the project, e.g. `ACME-REQ-001`.
         label: The record's summary label (`REQ-001 Title`).
     """
 
     artefact_type: str
     id: uuid.UUID
-    project_id: uuid.UUID
+    project_id: uuid.UUID | None
     qualified_code: str
     label: str
 
@@ -235,6 +273,22 @@ def label_title(label: str) -> str:
 def _label_code(label: str) -> str:
     """The leading code of a summary label (`"FND-001 Title"` -> `"FND-001"`)."""
     return label.split(" ", 1)[0].upper()
+
+
+def _find_organization_record(db: Session, user_id: uuid.UUID, org: Organization, unique_code: str) -> CodedRecord | None:
+    """The record the organisation itself owns that carries `unique_code`, for a member of it.
+
+    Looks through every registered type that offers organisation-owned records. A type whose
+    module, or sub-component of the same name, is disabled for the organisation yields nothing,
+    the same gate its organisation-level pages apply.
+    """
+    if not get_effective_org_roles(db, user_id, org.id):
+        return None
+    for artefact_type in sorted(get_all_registered_artefact_types() - CORE_ARTEFACT_TYPES):
+        for summary in list_organization_artefact_summaries(db, org.id, artefact_type):
+            if _label_code(summary.label) == unique_code:
+                return CodedRecord(artefact_type, summary.id, None, qualify(org.code, unique_code), summary.label)
+    return None
 
 
 def find_record_by_qualified_code(
@@ -262,6 +316,9 @@ def find_record_by_qualified_code(
     if parts is None:
         return None
     project_code, unique_code = parts
+    org = db.get(Organization, organization_id)
+    if org is not None and project_code == org.code.upper():
+        return _find_organization_record(db, user_id, org, unique_code)
     project = find_project_by_code(db, organization_id, project_code)
     if project is None or not get_effective_project_roles(db, user_id, project.id):
         return None

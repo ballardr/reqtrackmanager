@@ -13,6 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
 from app.schemas.report import ReportContentEntry
 
@@ -99,12 +100,18 @@ class OrgCodePolicyUpdate(CodePolicyOut):
     enforce_code_everywhere: bool = False
 
 
+class OrgCodeUpdate(BaseModel):
+    """Sets the organisation's own code (the qualifier of organisation-scoped record codes)."""
+
+    code: str = Field(min_length=1, max_length=ABSOLUTE_MAX_CODE_LENGTH)
+
+
 class CodedRecordOut(BaseModel):
     """The record a qualified code names (`GET /orgs/{id}/records/by-code/{code}`)."""
 
     artefact_type: str
     id: UUID
-    project_id: UUID
+    project_id: UUID | None
     qualified_code: str
     label: str
 

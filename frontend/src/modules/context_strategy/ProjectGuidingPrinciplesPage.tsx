@@ -17,6 +17,7 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
@@ -70,12 +71,13 @@ export function ProjectGuidingPrinciplesPage() {
   const filtered = guidingPrinciples.filter((g) => {
     if (statusFilter && g.status !== statusFilter) return false;
     if (priorityFilter && g.priority !== priorityFilter) return false;
-    if (search && !g.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`{g.unique_code} {g.name}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<GuidingPrinciple>[] = [
     { key: "name", label: "Name", render: (g) => g.name },
+    { key: "code", label: "Code", render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
     { key: "priority", label: "Priority", render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
     {
       key: "status", label: "Status",

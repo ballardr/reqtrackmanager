@@ -196,7 +196,8 @@ def strategy_to_out(strategy: Strategy, version: StrategyVersion) -> StrategyOut
     `from_attributes`."""
     return StrategyOut(
         id=strategy.id, scope=strategy.scope, organization_id=strategy.organization_id,
-        project_id=strategy.project_id, creator_id=strategy.creator_id, is_archived=strategy.is_archived,
+        project_id=strategy.project_id, unique_code=strategy.unique_code, creator_id=strategy.creator_id,
+        is_archived=strategy.is_archived,
         archived_at=strategy.archived_at, archived_by=strategy.archived_by,
         title=version.title, objective=version.objective, current_state=version.current_state,
         desired_future_state=version.desired_future_state, rationale=version.rationale,
@@ -314,7 +315,7 @@ def future_state_to_out(future_state: FutureState, version: FutureStateVersion) 
     mirror of `strategy_to_out`."""
     return FutureStateOut(
         id=future_state.id, scope=future_state.scope, organization_id=future_state.organization_id,
-        project_id=future_state.project_id, creator_id=future_state.creator_id,
+        project_id=future_state.project_id, unique_code=future_state.unique_code, creator_id=future_state.creator_id,
         is_archived=future_state.is_archived, archived_at=future_state.archived_at,
         archived_by=future_state.archived_by,
         title=version.title, current_state=version.current_state, desired_state=version.desired_state,
@@ -526,7 +527,8 @@ def guiding_principle_to_out(
     labels = labels if labels is not None else owner_labels(db, [version])
     return GuidingPrincipleOut(
         id=guiding_principle.id, scope=guiding_principle.scope, organization_id=guiding_principle.organization_id,
-        project_id=guiding_principle.project_id, creator_id=guiding_principle.creator_id,
+        project_id=guiding_principle.project_id, unique_code=guiding_principle.unique_code,
+        creator_id=guiding_principle.creator_id,
         is_archived=guiding_principle.is_archived, archived_at=guiding_principle.archived_at,
         archived_by=guiding_principle.archived_by,
         name=version.name, principle_statement=version.principle_statement, rationale=version.rationale,

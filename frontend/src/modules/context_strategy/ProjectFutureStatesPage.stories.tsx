@@ -11,7 +11,7 @@ const daysFromNow = (days: number) => new Date(Date.now() + days * 86_400_000).t
 
 function futureState(overrides: Partial<FutureState> = {}): FutureState {
   return {
-    id: "fs-1", scope: "project", organization_id: null, project_id: PROJECT_ID, creator_id: "user-1",
+    id: "fs-1", scope: "project", organization_id: null, project_id: PROJECT_ID, unique_code: "FUT-001", creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, title: "Certified for populated corridors",
     current_state: "Test routes only.", desired_state: "Certified.", target_date: daysFromNow(200), outcomes: "",
     success_measures: "Certification date", constraints: "", assumptions: "", status: "active", version_number: 1,

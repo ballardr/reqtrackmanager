@@ -139,7 +139,7 @@ def _versioned_provider(
     def summary(row: Any, version: Any) -> ArtefactSummary:
         return ArtefactSummary(
             id=row.id, project_id=row.project_id, organization_id=row.organization_id,
-            label=getattr(version, label_attr), status=version.status.value, is_archived=row.is_archived,
+            label=f"{row.unique_code} {getattr(version, label_attr)}", status=version.status.value, is_archived=row.is_archived,
             facets={"status": status_facet(version.status.value, status_labels)},
         )
 
@@ -159,9 +159,12 @@ def _versioned_provider(
     def get_many_in_project(db: Session, project_id: UUID, ids: Sequence[UUID]) -> list[ArtefactSummary]:
         return [summary(*p) for p in db.execute(query(model.id.in_(ids), model.project_id == project_id)).all()]
 
+    def list_for_organization(db: Session, organization_id: UUID) -> list[ArtefactSummary]:
+        return [summary(*p) for p in db.execute(query(model.organization_id == organization_id)).all()]
+
     return ArtefactSummaryProvider(
         get=get, list_for_project=list_for_project, get_many_in_project=get_many_in_project,
-        browse_levels=_STATUS_LEVELS,
+        browse_levels=_STATUS_LEVELS, list_for_organization=list_for_organization,
     )
 
 

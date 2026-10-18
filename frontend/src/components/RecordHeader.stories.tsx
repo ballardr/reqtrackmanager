@@ -37,6 +37,14 @@ export const Default: Story = {
   },
 };
 
+/** A record the organisation owns is qualified with the organisation's code. */
+export const CodeOwnedByTheOrganisation: Story = {
+  args: { codeOwner: "ACME" },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("ACME-PER-001")).toBeInTheDocument();
+  },
+};
+
 /** A single object action still gets the menu, so its position never depends on permissions. */
 export const SingleActionStillUsesTheMenu: Story = {
   play: async ({ canvasElement }) => {

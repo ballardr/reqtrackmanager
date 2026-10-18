@@ -14,7 +14,6 @@
  * engagement is looked up and the page redirects there, so a link to a finding
  * from the Links panel never dead-ends.
  */
-import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -113,7 +112,6 @@ export function ProjectEngagementsPage() {
         typeLabel="Channel"
         searchText={(e) => `${e.unique_code} ${e.title} ${e.summary}`}
         columnsBeforeType={[
-          { key: "code", label: "Code", render: (e) => <span className="text-muted"><RecordCode code={e.unique_code} /></span> },
           { key: "date", label: "Date", render: (e) => e.engagement_date },
         ]}
         columnsAfterScope={[

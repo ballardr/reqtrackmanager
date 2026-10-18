@@ -83,7 +83,7 @@ from app.services.files import delete_file
 from app.services.link_types import ensure_org_link_type
 from app.services.project_hierarchy import get_ancestor_chain
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
-from app.services.sequences import generate_unique_code
+from app.services.sequences import code_owner, generate_unique_code
 from app.services.type_vocabulary import TypeVocabulary
 
 STAKEHOLDERS_MODULE_KEY = "stakeholders"
@@ -91,6 +91,8 @@ PERSONA_ARTEFACT_TYPE = "persona"
 STAKEHOLDER_ARTEFACT_TYPE = "stakeholder"
 NEED_ARTEFACT_TYPE = "stakeholder_need"
 NEED_CODE_PREFIX = "NEED"
+PERSONA_CODE_PREFIX = "PER"
+STAKEHOLDER_CODE_PREFIX = "STK"
 
 # §10.2 names no persona categories, so these are Agent defaults;
 # all are org-editable.
@@ -181,7 +183,7 @@ def create_persona(
     db: Session, *, scope: PersonaScope, organization_id: uuid.UUID, project_id: uuid.UUID | None, creator: User,
     **content: Any,
 ) -> Persona:
-    """Creates a persona and its version 1 in `DRAFT`.
+    """Creates a persona with the next `PER-nnn` code of its owner and its version 1 in `DRAFT`.
 
     Args:
         scope: Org or project scope.
@@ -191,10 +193,14 @@ def create_persona(
         **content: Any `PERSONA_CONTENT_FIELDS` except `status`; `name` is
             required.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == PersonaScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     persona = Persona(
         scope=scope,
         organization_id=organization_id if scope == PersonaScope.ORGANIZATION else None,
         project_id=project_id if scope == PersonaScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, PERSONA_ARTEFACT_TYPE, PERSONA_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(persona)
@@ -492,7 +498,7 @@ def create_stakeholder(
     db: Session, *, scope: StakeholderScope, organization_id: uuid.UUID, project_id: uuid.UUID | None,
     creator: User, **content: Any,
 ) -> Stakeholder:
-    """Creates a stakeholder and its version 1 in `DRAFT`.
+    """Creates a stakeholder with the next `STK-nnn` code of its owner and its version 1 in `DRAFT`.
 
     Args:
         scope: Org or project scope.
@@ -502,10 +508,14 @@ def create_stakeholder(
         **content: Any `STAKEHOLDER_CONTENT_FIELDS` except `status`; `name`
             is required.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == StakeholderScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     stakeholder = Stakeholder(
         scope=scope,
         organization_id=organization_id if scope == StakeholderScope.ORGANIZATION else None,
         project_id=project_id if scope == StakeholderScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, STAKEHOLDER_ARTEFACT_TYPE, STAKEHOLDER_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(stakeholder)

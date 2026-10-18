@@ -1,7 +1,7 @@
 """
 Module: models.sequence
 
-The generic per-project,
+The generic per-project (and, for organisation-scoped records, per-organisation),
 per-artefact-type sequence counter every *new* identified artefact type in
 the future-modules roadmap (Decision, Design, Risk, Pain Point, Strategy,
 Guiding Principle, Open Question, Stakeholder/Persona) generates its unique
@@ -72,6 +72,34 @@ class ProjectSequenceCounter(UUIDPKMixin, TimestampMixin, Base):
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    artefact_type: Mapped[str] = mapped_column(String(40))
+    next_seq: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class OrganizationSequenceCounter(UUIDPKMixin, TimestampMixin, Base):
+    """Tracks the next never-reused sequence number for one
+    `(organization, artefact_type)` pair: the counter behind the codes of
+    organisation-scoped records (`PER-001` owned by an organisation, shown
+    qualified as `ACME-PER-001`). It is the organisation-level twin of
+    `ProjectSequenceCounter`; a type that exists at both scopes keeps one
+    counter per project and one per organisation, so the two never collide.
+
+    Attributes:
+        organization_id: The organisation this counter belongs to.
+        artefact_type: Which registered artefact type it numbers.
+        next_seq: The next number to hand out; advanced under a lock on the
+            organisation row (`services.sequences._next_sequence`) so it is
+            never reused.
+    """
+
+    __tablename__ = "organization_sequence_counters"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "artefact_type", name="uq_organization_sequence_counters_org_type"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
     artefact_type: Mapped[str] = mapped_column(String(40))
     next_seq: Mapped[int] = mapped_column(Integer, default=1)

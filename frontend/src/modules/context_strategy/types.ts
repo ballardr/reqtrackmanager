@@ -132,6 +132,8 @@ export interface Strategy {
   scope: StrategyScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -275,6 +277,8 @@ export interface FutureState {
   scope: FutureStateScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -655,6 +659,8 @@ export interface GuidingPrinciple {
   scope: GuidingPrincipleScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;

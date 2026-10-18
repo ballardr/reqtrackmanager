@@ -138,12 +138,16 @@ class Persona(UUIDPKMixin, TimestampMixin, Base):
         scope: Which of `organization_id`/`project_id` is populated.
         organization_id: Set (and `project_id` null) for an org persona.
         project_id: Set (and `organization_id` null) for a project persona.
+        unique_code: Human-readable code (e.g. `"PER-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created the record.
         is_archived / archived_at / archived_by: Soft-delete.
     """
 
     __tablename__ = "personas"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_personas_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_personas_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -158,6 +162,7 @@ class Persona(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -424,12 +429,16 @@ class Stakeholder(UUIDPKMixin, TimestampMixin, Base):
         scope: Which of `organization_id`/`project_id` is populated.
         organization_id: Set (and `project_id` null) for an org stakeholder.
         project_id: Set (and `organization_id` null) for a project stakeholder.
+        unique_code: Human-readable code (e.g. `"STK-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created the record.
         is_archived / archived_at / archived_by: Soft-delete.
     """
 
     __tablename__ = "stakeholders"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_stakeholders_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_stakeholders_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -444,6 +453,7 @@ class Stakeholder(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -722,6 +732,8 @@ class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
     Attributes:
         scope: Which of `organization_id`/`project_id` is populated.
         organization_id / project_id: The owner.
+        unique_code: Human-readable code (e.g. `"SGP-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         parent_group_id: The parent group, or `None` for a root. A project
             group may sit under an org group; an org group only under an org
             group (`service.stakeholder_groups` enforces this, plus cycles and depth).
@@ -735,6 +747,8 @@ class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "stakeholder_groups"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_stakeholder_groups_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_stakeholder_groups_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -750,6 +764,7 @@ class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     # SET NULL is only a backstop: deleting a group promotes its children to its parent first.
     parent_group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("stakeholder_groups.id", ondelete="SET NULL"), nullable=True, index=True

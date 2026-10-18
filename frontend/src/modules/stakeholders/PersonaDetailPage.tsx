@@ -50,6 +50,7 @@ import { PersonaFormModal } from "./PersonaFormModal";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
+import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
@@ -185,6 +186,7 @@ export function PersonaDetailPage() {
     },
   });
 
+  const codeOwner = useRecordOwnerCode(persona ?? {});
   if (!scopeId || !personaId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (persona === null) return <Spinner />;
@@ -207,6 +209,8 @@ export function PersonaDetailPage() {
       <RecordHeader
         recordLabel="Persona"
         title={persona.name}
+        code={persona.unique_code}
+        codeOwner={codeOwner}
         back={{ to: backLink, label: backLabel }}
         badges={
           <>

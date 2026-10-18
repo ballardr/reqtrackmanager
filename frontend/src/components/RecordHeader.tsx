@@ -30,6 +30,7 @@ import { ItemRow } from "./ItemRow";
  * @param title The record's title (heading text).
  * @param titleAddon Small control shown right after the title (an `EntitySwitcher`).
  * @param code Human-readable code (`REQ-001`), shown as a small muted suffix.
+ * @param codeOwner The owning organisation's code for a record the organisation owns (`PER-001` becomes `ACME-PER-001`).
  * @param subtitle Secondary line under the title (type, owner, version).
  * @param badges Status and scope pills, shown on the line under the title.
  * @param back Link back to the list: `{ to, label }`, or `{ onClick, label }` inside a page that switches views itself.
@@ -43,6 +44,7 @@ export function RecordHeader({
   title,
   titleAddon,
   code,
+  codeOwner,
   subtitle,
   badges,
   back,
@@ -55,6 +57,7 @@ export function RecordHeader({
   title: ReactNode;
   titleAddon?: ReactNode;
   code?: string;
+  codeOwner?: string | null;
   subtitle?: ReactNode;
   badges?: ReactNode;
   back?: { to: string; label: string } | { onClick: () => void; label: string };
@@ -90,7 +93,7 @@ export function RecordHeader({
         <span className="row" style={{ gap: "0.6rem", alignItems: "baseline", flexWrap: "nowrap", minWidth: 0 }}>
           <Heading style={{ margin: 0, minWidth: 0 }}>{title}</Heading>
           {code && (
-            <span className="text-muted" style={{ fontSize: "0.9rem", flex: "none" }}><RecordCode code={code} /></span>
+            <span className="text-muted" style={{ fontSize: "0.9rem", flex: "none" }}><RecordCode code={code} ownerProjectCode={codeOwner} /></span>
           )}
           {titleAddon}
         </span>

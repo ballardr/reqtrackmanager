@@ -111,7 +111,7 @@ def _provider(
                 )
             out.append(ArtefactSummary(
                 id=row.id, project_id=row.project_id, organization_id=getattr(row, "organization_id", None),
-                label=f"{row.unique_code} {version.name}" if getattr(row, "unique_code", None) else version.name,
+                label=f"{row.unique_code} {version.name}",
                 status=version.status.value, is_archived=row.is_archived, facets=facets,
             ))
         return out
@@ -143,8 +143,12 @@ def _provider(
         pairs = db.execute(query(model.id.in_(ids), visible_conditions(db, project_id))).all()
         return visible(db, project_id, pairs)
 
+    def list_for_organization(db: Session, organization_id: UUID) -> list[ArtefactSummary]:
+        return build(db, db.execute(query(model.organization_id == organization_id)).all())
+
     return ArtefactSummaryProvider(
         get=get, list_for_project=list_for_project, get_many_in_project=get_many_in_project, browse_levels=levels,
+        list_for_organization=list_for_organization if org_owned else None,
     )
 
 
@@ -156,7 +160,7 @@ def _group_provider() -> ArtefactSummaryProvider:
     def build(rows: Sequence[StakeholderGroup]) -> list[ArtefactSummary]:
         return [
             ArtefactSummary(
-                id=g.id, project_id=g.project_id, organization_id=g.organization_id, label=g.name,
+                id=g.id, project_id=g.project_id, organization_id=g.organization_id, label=f"{g.unique_code} {g.name}",
                 facets={"scope": (g.scope.value, scope_labels[g.scope.value])},
             )
             for g in rows
@@ -177,9 +181,12 @@ def _group_provider() -> ArtefactSummaryProvider:
     def get_many_in_project(db: Session, project_id: UUID, ids: Sequence[UUID]) -> list[ArtefactSummary]:
         return build(db.scalars(select(StakeholderGroup).where(StakeholderGroup.id.in_(ids), conditions(db, project_id))).all())
 
+    def list_for_organization(db: Session, organization_id: UUID) -> list[ArtefactSummary]:
+        return build(db.scalars(select(StakeholderGroup).where(StakeholderGroup.organization_id == organization_id)).all())
+
     return ArtefactSummaryProvider(
         get=get, list_for_project=list_for_project, get_many_in_project=get_many_in_project,
-        browse_levels=(BrowseLevel("scope", "Scope"),),
+        browse_levels=(BrowseLevel("scope", "Scope"),), list_for_organization=list_for_organization,
     )
 
 

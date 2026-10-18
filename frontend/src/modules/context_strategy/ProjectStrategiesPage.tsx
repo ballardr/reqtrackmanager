@@ -21,6 +21,7 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectStrategyApi } from "./api";
@@ -72,12 +73,13 @@ export function ProjectStrategiesPage() {
   const filtered = strategies.filter((s) => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (priorityFilter && s.priority !== priorityFilter) return false;
-    if (search && !s.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`{s.unique_code} {s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<Strategy>[] = [
     { key: "title", label: "Title", render: (s) => s.title },
+    { key: "code", label: "Code", render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
     { key: "priority", label: "Priority", render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
     {
       key: "status", label: "Status",

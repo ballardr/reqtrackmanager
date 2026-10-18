@@ -117,7 +117,7 @@ def persona_to_out(
         )
     return PersonaOut(
         id=persona.id, scope=persona.scope, organization_id=persona.organization_id, project_id=persona.project_id,
-        creator_id=persona.creator_id, is_archived=persona.is_archived, archived_at=persona.archived_at,
+        unique_code=persona.unique_code, creator_id=persona.creator_id, is_archived=persona.is_archived, archived_at=persona.archived_at,
         archived_by=persona.archived_by, name=version.name, description=version.description,
         persona_type_id=type_ref,
         persona_type_name=PERSONA_TYPES.display_name(

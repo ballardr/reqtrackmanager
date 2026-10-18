@@ -46,6 +46,7 @@ from app.schemas.org import (
     OrgAdvancedSettingsUpdate,
     OrganizationOut,
     OrgCodePolicyUpdate,
+    OrgCodeUpdate,
     OrgModuleEnablementUpdate,
     OrgModuleOut,
     OrgSsoConfigOut,
@@ -55,7 +56,7 @@ from app.schemas.org import (
 )
 from app.security import create_module_frame_token, generate_scim_token
 from app.services.audit import log_event
-from app.services.codes import set_policy
+from app.services.codes import change_organization_code, set_policy
 from app.services.email import SmtpOverride, send_email
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
@@ -181,6 +182,30 @@ def update_code_policy(
         actor_id=current_user.id, organization_id=organization_id,
         detail={**org.project_code_policy, "enforce_code_everywhere": org.enforce_code_everywhere},
     )
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+@router.put("/{organization_id}/code", response_model=OrganizationOut)
+def update_organization_code(
+    organization_id: UUID, payload: OrgCodeUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sets the organisation's code, which qualifies the codes of records the organisation
+    owns (`ACME-PER-001`). Stored record codes are unchanged, but a qualified code written
+    down under the old one stops resolving."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    previous = org.code
+    org.code = change_organization_code(db, org, payload.code)
+    if org.code != previous:
+        log_event(
+            db, entity_type="organization", entity_id=organization_id, action="code_updated",
+            actor_id=current_user.id, organization_id=organization_id, detail={"previous": previous, "code": org.code},
+        )
     db.commit()
     db.refresh(org)
     return org

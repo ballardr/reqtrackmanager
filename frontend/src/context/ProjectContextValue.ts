@@ -18,6 +18,9 @@ export interface ProjectContextValue {
   projectCode?: string | null;
   /** Whether the project's organisation shows the project code on every record code. */
   enforceCodeEverywhere?: boolean;
+  /** The current project's organisation, and its code (qualifies the codes of records the organisation owns). */
+  organizationId?: string | null;
+  organizationCode?: string | null;
 }
 
 export const ProjectContext = createContext<ProjectContextValue>({ terminology: {} });

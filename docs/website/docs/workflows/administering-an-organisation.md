@@ -52,6 +52,12 @@ flowchart TD
     D -- no --> R["REQ-001"]
 ```
 
+### Organisation code
+
+Records the organisation itself owns and every project shares (Personas, Stakeholders, Stakeholder groups, Strategies, Future states and Guiding principles that you created at organisation level) are numbered within the organisation and qualified by the **organisation's** code: `ACME-PER-001`. They always show qualified, because a bare `PER-001` could equally be a project's own Persona. A project's own records of the same type follow the project-code rule above.
+
+Under **Projects & workflow → Organisation code**, change the organisation's code (letters and digits only, no hyphen, and different from every project code). You are asked to confirm: a qualified code already written down under the old code (in a document or a ticket) stops finding its record, though the records keep their own codes. The change is recorded in the audit log.
+
 A qualified code can be looked up from the API (`GET /api/v1/orgs/{id}/records/by-code/{code}`) and by AI assistants through the `get_record_by_code` MCP tool; both return only records the caller may see.
 
 ## Single sign-on

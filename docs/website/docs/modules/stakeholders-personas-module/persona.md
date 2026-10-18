@@ -15,6 +15,7 @@ A Persona is a representative user archetype — a "Field Inspector", a "Complia
 
 | Field | What it holds |
 | --- | --- |
+| Code | The record code, `PER-001`: numbered within the organisation for one the organisation owns and within the project for a project's own, and never reused. Where it is shown outside its own project, an organisation-owned Persona reads `ACME-PER-001` (the organisation's code in front), so it is never mistaken for a project's `PER-001`. |
 | Name, description | Who the Persona is, in a sentence or two. |
 | Type | Primary, Secondary or Negative (an anti-persona: someone the product must *not* be designed for) by default; see [Types](#persona-types). |
 | Role / job title | The role the Persona represents. |

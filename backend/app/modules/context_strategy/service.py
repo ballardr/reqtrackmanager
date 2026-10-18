@@ -230,13 +230,14 @@ from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.link_types import ensure_org_link_type
 from app.services.relationships import create_link, get_link_between
-from app.services.sequences import generate_unique_code
+from app.services.sequences import code_owner, generate_unique_code
 
 # This module's own artefact-type string, registered on `ModuleDefinition.
 # artefact_types` (module.py), so relationship wiring (`ArtefactLink`)
 # needs no core-file edit, following Decision Management's own precedent
 # exactly (see module.py).
 STRATEGY_ARTEFACT_TYPE = "strategy"
+STRATEGY_CODE_PREFIX = "STR"
 
 
 def get_current_version(db: Session, strategy_id: uuid.UUID) -> StrategyVersion:
@@ -286,10 +287,14 @@ def create_strategy(
             unless `scope` is `ORGANIZATION`).
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == StrategyScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     strategy = Strategy(
         scope=scope,
         organization_id=organization_id if scope == StrategyScope.ORGANIZATION else None,
         project_id=project_id if scope == StrategyScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, STRATEGY_ARTEFACT_TYPE, STRATEGY_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(strategy)
@@ -538,6 +543,7 @@ def resolve_strategy_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
 # `ModuleDefinition.artefact_types` (module.py) for the same reason
 # `STRATEGY_ARTEFACT_TYPE` is.
 FUTURE_STATE_ARTEFACT_TYPE = "future_state"
+FUTURE_STATE_CODE_PREFIX = "FUT"
 
 
 def get_current_future_state_version(db: Session, future_state_id: uuid.UUID) -> FutureStateVersion:
@@ -585,10 +591,14 @@ def create_future_state(
             to populate when `scope` is `ORGANIZATION`.
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == FutureStateScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     future_state = FutureState(
         scope=scope,
         organization_id=organization_id if scope == FutureStateScope.ORGANIZATION else None,
         project_id=project_id if scope == FutureStateScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, FUTURE_STATE_ARTEFACT_TYPE, FUTURE_STATE_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(future_state)
@@ -1376,6 +1386,7 @@ def resolve_pain_point_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.
 # This module's fourth artefact-type string, registered on `ModuleDefinition.
 # artefact_types` (module.py) for the same reason `STRATEGY_ARTEFACT_TYPE` is.
 GUIDING_PRINCIPLE_ARTEFACT_TYPE = "guiding_principle"
+GUIDING_PRINCIPLE_CODE_PREFIX = "GP"
 
 
 def get_current_guiding_principle_version(db: Session, guiding_principle_id: uuid.UUID) -> GuidingPrincipleVersion:
@@ -1423,10 +1434,14 @@ def create_guiding_principle(
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
         owner: The principal responsible (the caller has validated it), or None.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == GuidingPrincipleScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     guiding_principle = GuidingPrinciple(
         scope=scope,
         organization_id=organization_id if scope == GuidingPrincipleScope.ORGANIZATION else None,
         project_id=project_id if scope == GuidingPrincipleScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, GUIDING_PRINCIPLE_ARTEFACT_TYPE, GUIDING_PRINCIPLE_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(guiding_principle)

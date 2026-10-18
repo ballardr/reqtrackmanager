@@ -63,7 +63,7 @@ export function PersonaListView({
       statusTone={PERSONA_STATUS_TONE}
       scopeLabels={PERSONA_SCOPE_LABEL}
       typeName={(p) => p.persona_type_name}
-      searchText={(p) => `${p.name} ${p.role_title}`}
+      searchText={(p) => `${p.unique_code} ${p.name} ${p.role_title}`}
       columnsBeforeType={[{ key: "role", label: "Role", render: (p) => p.role_title || "—" }]}
       columnsAfterScope={[
         {

@@ -71,6 +71,7 @@ import type {
   GuidingPrinciple, GuidingPrincipleComment, GuidingPrincipleFieldValues, GuidingPrincipleVersion,
 } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 
@@ -232,6 +233,7 @@ export function GuidingPrincipleDetailPage() {
     },
   });
 
+  const codeOwner = useRecordOwnerCode(guidingPrinciple ?? {});
   if (!scopeId || !guidingPrincipleId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciple === null) return <Spinner />;
@@ -263,6 +265,8 @@ export function GuidingPrincipleDetailPage() {
       <RecordHeader
         recordLabel="Guiding Principle"
         title={guidingPrinciple.name}
+        code={guidingPrinciple.unique_code}
+        codeOwner={codeOwner}
         back={{ to: backLink, label: backLabel }}
         badges={
           <>

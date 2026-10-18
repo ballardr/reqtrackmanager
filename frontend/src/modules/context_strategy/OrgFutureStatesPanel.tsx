@@ -19,6 +19,7 @@ import { useNavigate } from "react-router-dom";
 
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgFutureStateApi } from "./api";
@@ -59,12 +60,13 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
 
   const filtered = futureStates.filter((fs) => {
     if (statusFilter && fs.status !== statusFilter) return false;
-    if (search && !fs.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`{fs.unique_code} {fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<FutureState>[] = [
     { key: "title", label: "Title", render: (fs) => fs.title },
+    { key: "code", label: "Code", render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
     {
       key: "status", label: "Status",
       render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,

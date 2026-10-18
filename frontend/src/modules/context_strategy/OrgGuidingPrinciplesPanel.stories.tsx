@@ -10,7 +10,7 @@ const ORG_ID = "org-1";
 
 function guidingPrinciple(overrides: Partial<GuidingPrinciple> = {}): GuidingPrinciple {
   return {
-    id: "gp-1", scope: "organization", organization_id: ORG_ID, project_id: null, creator_id: "user-1",
+    id: "gp-1", scope: "organization", organization_id: ORG_ID, project_id: null, unique_code: "GP-001", creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, name: "Operate safely under degraded connectivity",
     principle_statement: "Field operations must degrade gracefully, never silently, when connectivity is lost.",
     rationale: "", priority: "high", status: "active", owner: null, version_number: 3, is_locked: true,

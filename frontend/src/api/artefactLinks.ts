@@ -30,6 +30,8 @@ export interface LinkGraphNode {
   project_name: string | null;
   /** The owning project's code, which qualifies `label`'s record code outside the page's own project. */
   project_code?: string | null;
+  /** Set for a record the organisation owns (no project): qualifies its code as `ACME-PER-001`. */
+  organization_code?: string | null;
 }
 
 export interface LinkGraphEdge {

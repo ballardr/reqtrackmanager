@@ -66,7 +66,7 @@ export const SubmitsWithTargetDate: Story = {
 export const EditExisting: Story = {
   args: {
     initial: {
-      id: "future-state-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+      id: "future-state-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "FUT-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null, title: "Regional #1 by 2028",
       current_state: "We are #3 in the region.", desired_state: "We are #1 in the region.", target_date: "2028-06-30",
       outcomes: "Revenue up 20%.", success_measures: "Market share.", constraints: "Limited hiring budget.",
@@ -86,7 +86,7 @@ export const EditExisting: Story = {
 export const ClearingTargetDateSendsNull: Story = {
   args: {
     initial: {
-      id: "future-state-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+      id: "future-state-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "FUT-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null, title: "Regional #1 by 2028",
       current_state: "", desired_state: "We are #1 in the region.", target_date: "2028-06-30",
       outcomes: "", success_measures: "", constraints: "", assumptions: "",

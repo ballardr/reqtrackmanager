@@ -23,6 +23,7 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
@@ -81,12 +82,13 @@ export function ProjectFutureStatesPage() {
     if (targetPassedOnly && !(fs.target_date !== null && fs.target_date < today && fs.status !== "active")) return false;
     if (noMeasuresOnly && fs.success_measures.trim() !== "") return false;
     if (statusFilter && fs.status !== statusFilter) return false;
-    if (search && !fs.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`{fs.unique_code} {fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<FutureState>[] = [
     { key: "title", label: "Title", render: (fs) => fs.title },
+    { key: "code", label: "Code", render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
     {
       key: "status", label: "Status",
       render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,

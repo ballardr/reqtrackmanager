@@ -105,7 +105,8 @@ test.describe("project codes", () => {
       if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
       await page.getByLabel("Assignment").selectOption("manual");
       await page.getByLabel("Characters").selectOption("letters");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      // The page has other sections with their own Save (the organisation code): press this section's.
+      await page.locator(".card", { has: page.getByLabel("Assignment") }).getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Project code policy saved")).toBeVisible();
     });
 

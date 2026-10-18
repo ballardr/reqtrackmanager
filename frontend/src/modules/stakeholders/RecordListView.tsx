@@ -32,6 +32,7 @@ import { useState, type ReactNode } from "react";
 import type { BadgeTone } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
@@ -41,6 +42,10 @@ import { Badge } from "../../components/Badge";
 export interface ListedRecord {
   id: string;
   name: string;
+  /** The record's code (`PER-001`), shown as the Code column. */
+  unique_code: string;
+  /** Set for a record an organisation can own: qualifies the code of an organisation-owned one. */
+  organization_id?: string | null;
   /** Omit for a kind with no lifecycle. */
   status?: string;
   scope?: string;
@@ -135,6 +140,7 @@ export function RecordListView<R extends ListedRecord, V>({
 
   const columns: DirectoryColumn<R>[] = [
     { key: "name", label: "Name", render: (r) => r.name },
+    { key: "code", label: "Code", render: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span> },
     ...columnsBeforeType,
     ...(typeName
       ? [{

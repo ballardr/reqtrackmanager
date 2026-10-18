@@ -57,6 +57,8 @@ export interface Persona {
   scope: PersonaScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -244,6 +246,8 @@ export interface Stakeholder {
   scope: StakeholderScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -448,6 +452,8 @@ export interface StakeholderGroupRef {
 export interface StakeholderGroup extends StakeholderGroupRef {
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`SGP-003`), numbered per owner. */
+  unique_code: string;
   description: string;
   exclusive_children: boolean;
   sort_order: number;

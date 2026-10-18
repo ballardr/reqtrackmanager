@@ -45,6 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import CORE_ARTEFACT_TYPES, ArtefactType, LinkFlow, ProjectRole
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
@@ -187,6 +188,9 @@ class ArtefactResolver:
         self._names.setdefault(project.id, project.name)
         self._codes: dict[uuid.UUID, str] = {r.project.id: r.project.code for r in self.related}
         self._codes.setdefault(project.id, project.code)
+        self._organization_code: str | None = db.scalar(
+            select(Organization.code).where(Organization.id == project.organization_id)
+        )
 
     def _held_in(self, project_id: uuid.UUID) -> set[str]:
         """The user's effective permissions in one scope project (cached)."""
@@ -201,6 +205,11 @@ class ArtefactResolver:
     def project_code(self, project_id: uuid.UUID | None) -> str | None:
         """The code of a scope project, else `None`; qualifies the record codes shown for it."""
         return None if project_id is None else self._codes.get(project_id)
+
+    def organization_code(self, summary: ArtefactSummary) -> str | None:
+        """The request project's organisation's code for an organisation-owned record
+        (resolved only from the request project), else `None`; qualifies its record code."""
+        return self._organization_code if summary.organization_id is not None else None
 
     def resolve(self, wanted: dict[str, set[uuid.UUID]]) -> None:
         """Looks up every not-yet-known id in `wanted` (grouped by type), one query per type
@@ -288,6 +297,7 @@ def _node(resolver: ArtefactResolver, summary: ArtefactSummary, artefact_type: s
         status=summary.status, is_archived=summary.is_archived, depth=depth, project_id=summary.project_id,
         project_name=resolver.project_name(summary.project_id),
         project_code=resolver.project_code(summary.project_id),
+        organization_code=resolver.organization_code(summary),
     )
 
 

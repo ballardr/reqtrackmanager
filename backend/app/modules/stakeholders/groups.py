@@ -40,8 +40,10 @@ from sqlalchemy.orm import Session
 from app.modules.stakeholders.enums import StakeholderScope
 from app.modules.stakeholders.models import Stakeholder, StakeholderGroup, StakeholderGroupMember, StakeholderVersion
 from app.services.relationships import delete_link, get_all_links
+from app.services.sequences import code_owner, generate_unique_code
 
 GROUP_ARTEFACT_TYPE = "stakeholder_group"
+GROUP_CODE_PREFIX = "SGP"
 MAX_GROUP_DEPTH = 10
 TEXT_ROOT_NAME = "Organisation / group"
 
@@ -256,10 +258,14 @@ def create_group(
     last = db.scalar(select(func.max(StakeholderGroup.sort_order)).where(
         *sibling_filters(scope, organization_id, project_id, parent_group_id)
     ))
+    code_scope = code_owner(
+        db, is_org_scope=scope == StakeholderScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     group = StakeholderGroup(
         scope=scope, organization_id=organization_id if scope == StakeholderScope.ORGANIZATION else None,
-        project_id=project_id if scope == StakeholderScope.PROJECT else None, parent_group_id=parent_group_id,
-        name=name, description=description or "", exclusive_children=exclusive_children,
+        project_id=project_id if scope == StakeholderScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, GROUP_ARTEFACT_TYPE, GROUP_CODE_PREFIX),
+        parent_group_id=parent_group_id, name=name, description=description or "", exclusive_children=exclusive_children,
         sort_order=0 if last is None else last + 1,
     )
     db.add(group)

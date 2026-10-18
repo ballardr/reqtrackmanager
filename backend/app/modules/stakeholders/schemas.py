@@ -91,6 +91,7 @@ class PersonaOut(BaseModel):
     scope: PersonaScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -261,6 +262,7 @@ class StakeholderOut(BaseModel):
     scope: StakeholderScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -566,6 +568,7 @@ class StakeholderGroupOut(BaseModel):
     scope: StakeholderScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     parent_group_id: UUID | None
     name: str
     description: str

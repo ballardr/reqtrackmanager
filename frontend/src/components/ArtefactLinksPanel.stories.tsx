@@ -566,3 +566,34 @@ export const OtherProjectRecordCodeIsQualified: Story = {
     await expect(canvas.getByText("ACME-DEC-001")).toBeInTheDocument();
   },
 };
+
+/** A record the organisation owns (no project) shows the organisation's code in front of its own code. */
+export const OrganisationOwnedRecordCodeIsQualified: Story = {
+  decorators: [
+    (Story) => (
+      <ProjectContext.Provider value={{ terminology: {}, projectCode: "ACME", enforceCodeEverywhere: false }}>
+        <Story />
+      </ProjectContext.Provider>
+    ),
+  ],
+  args: {
+    api: buildLinksApi({
+      graph: fn(async () =>
+        buildGraph([
+          [buildGraphNode({ label: "DEC-001 Use Postgres" })],
+          [
+            buildGraphNode({
+              type: "persona", id: "persona-1", type_label: "Persona", label: "PER-004 Field technician", status: "active",
+              project_id: null, project_name: null, organization_code: "GLOBEX",
+            }),
+            { phrase: "Is informed by" },
+          ],
+        ])),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("GLOBEX-PER-004")).toBeInTheDocument());
+    await expect(canvas.getByText("ACME-DEC-001")).toBeInTheDocument();
+  },
+};

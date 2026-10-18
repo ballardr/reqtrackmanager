@@ -164,7 +164,7 @@ def groups_out(db: Session, ctx: GroupContext, groups: list[StakeholderGroup]) -
             children[g.parent_group_id] = children.get(g.parent_group_id, 0) + 1
     return [
         StakeholderGroupOut(
-            id=g.id, scope=g.scope, organization_id=g.organization_id, project_id=g.project_id,
+            id=g.id, scope=g.scope, organization_id=g.organization_id, project_id=g.project_id, unique_code=g.unique_code,
             parent_group_id=g.parent_group_id, name=g.name, description=g.description,
             exclusive_children=g.exclusive_children, sort_order=g.sort_order,
             member_count=members.get(g.id, 0), child_count=children.get(g.id, 0),

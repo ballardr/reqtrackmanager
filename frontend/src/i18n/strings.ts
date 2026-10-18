@@ -968,6 +968,13 @@ const en = {
   },
   orgAdmin: {
     projectCodes: "Project codes",
+    organizationCode: "Organisation code",
+    organizationCodeHint: "Goes in front of the codes of records the organisation itself owns (shared Personas, Stakeholders, Strategies...), for example ACME-PER-001. Letters and digits only, and different from every project code.",
+    organizationCodeLabel: "Code",
+    organizationCodeSaved: "Organisation code saved",
+    organizationCodeConfirmTitle: "Change the organisation code?",
+    organizationCodeConfirmBody: (from: string, to: string) => `${from} becomes ${to}. Codes already written down as ${from}-PER-001 and similar will no longer find their record; the records themselves keep their own codes.`,
+    organizationCodeConfirm: "Change code",
     codePolicyHint: "A project's code goes in front of its record codes where records from several {projects} appear together, for example ACME-REQ-001. Changes apply to codes created from now on; existing codes are never rewritten.",
     codeKind: "Characters",
     codeMinLength: "Shortest",

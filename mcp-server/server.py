@@ -435,7 +435,9 @@ async def get_record_by_code(qualified_code: str, organization_id: str | None = 
     """Finds the record a qualified code names, such as `ACME-REQ-001`.
 
     A qualified code is the project's `code` (from `list_projects` / `get_project`), a hyphen,
-    then the record's own code. Use it when a person quotes a code and you need the record's
+    then the record's own code. A record the organisation itself owns (a shared Persona,
+    Stakeholder, Stakeholder Group, Strategy, Future State or Guiding Principle) is qualified
+    by the organisation's code instead (`ACME-PER-001`). Use it when a person quotes a code and you need the record's
     type, id and project; then call the tool for that type with the returned `id`.
 
     Args:
@@ -444,7 +446,7 @@ async def get_record_by_code(qualified_code: str, organization_id: str | None = 
 
     Returns:
         `artefact_type` (e.g. "requirement", "requirement_action", "decision"), `id`,
-        `project_id`, `qualified_code` and `label`. A code naming no record you may see is an
+        `project_id` (null for an organisation-owned record), `qualified_code` and `label`. A code naming no record you may see is an
         error, the same as one that does not exist.
     """
     oid = _require_organization_id(organization_id)

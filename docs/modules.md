@@ -969,7 +969,7 @@ A module that relates its records to another module's (a Stakeholder
 module, but must still validate the target belongs to the same project, label it
 and offer a picker. The owner declares
 `artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project, get_many_in_project, browse_levels, filter)`
-(the batch lookup and `filter` are optional; `browse_levels` is required, see below) and a display name in
+(the batch lookup and `filter` are optional; `browse_levels` is required, see below; `list_for_organization(db, organization_id)` is optional too and lists the records the *organisation* owns, so core can resolve an organisation-qualified code such as `ACME-PER-001` through `registry.list_organization_artefact_summaries` without naming the module) and a display name in
 `artefact_type_labels[artefact_type]`; callers use `registry.get_artefact_summary` /
 `list_artefact_summaries` / `has_artefact_summary_provider` /
 `get_artefact_summaries_in_project` / `get_artefact_type_label`. On the frontend the owner's

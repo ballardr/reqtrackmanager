@@ -19,6 +19,7 @@ Exactly one of `organization_id`/`project_id` is set — `scope` is `organizatio
 
 | Field | Holds |
 | --- | --- |
+| `unique_code` | The record code, `FUT-001`: numbered within the organisation for one the organisation owns and within the project for a project's own, and never reused. Where it is shown outside its own project, an organisation-owned Future State reads `ACME-FUT-001` (the organisation's code in front), so it is never mistaken for a project's `FUT-001`. |
 | `title` | Short display title. |
 | `current_state` / `desired_state` | The state being moved from and to. |
 | `target_date` | When this Future State is targeted for, if known. |

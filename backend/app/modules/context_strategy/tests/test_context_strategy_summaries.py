@@ -46,8 +46,8 @@ def test_every_type_is_summarised_with_label_status_and_owner(client, admin_toke
         "open_question": _create_open_question(client, token, pid, question="Which battery vendor?"),
     }
     expected_labels = {
-        "strategy": "Lead the market", "future_state": "Automated inspections", "pain_point": "PP-001 Report delays",
-        "guiding_principle": "Safety first", "open_question": "OQ-001 Which battery vendor?",
+        "strategy": "STR-001 Lead the market", "future_state": "FUT-001 Automated inspections", "pain_point": "PP-001 Report delays",
+        "guiding_principle": "GP-001 Safety first", "open_question": "OQ-001 Which battery vendor?",
     }
 
     for artefact_type in _TYPES:

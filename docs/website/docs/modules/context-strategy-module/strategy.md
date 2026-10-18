@@ -19,6 +19,7 @@ Exactly one of `organization_id`/`project_id` is set on a Strategy — `scope` i
 
 | Field | Holds |
 | --- | --- |
+| `unique_code` | The record code, `STR-001`: numbered within the organisation for one the organisation owns and within the project for a project's own, and never reused. Where it is shown outside its own project, an organisation-owned Strategy reads `ACME-STR-001` (the organisation's code in front), so it is never mistaken for a project's `STR-001`. |
 | `title` | Short display title. |
 | `objective` | The Strategy's objective/strategic theme. |
 | `current_state` / `desired_future_state` | Short current- and desired-future-state text (see [Future State](./future-state.md) for the fuller elaboration of the latter). |

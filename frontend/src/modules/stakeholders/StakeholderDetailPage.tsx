@@ -44,6 +44,7 @@ import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
+import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
@@ -231,6 +232,7 @@ export function StakeholderDetailPage() {
     onConfirm: erase,
   });
 
+  const codeOwner = useRecordOwnerCode(stakeholder ?? {});
   if (!scopeId || !stakeholderId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (stakeholder === null) return <Spinner />;
@@ -250,6 +252,8 @@ export function StakeholderDetailPage() {
       <RecordHeader
         recordLabel="Stakeholder"
         title={stakeholder.name}
+        code={stakeholder.unique_code}
+        codeOwner={codeOwner}
         back={{ to: listPath, label: backLabel }}
         badges={
           <>

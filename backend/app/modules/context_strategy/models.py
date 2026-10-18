@@ -201,6 +201,8 @@ class Strategy(UUIDPKMixin, TimestampMixin, Base):
             Strategy.
         project_id: Set (and `organization_id` null) for a project-scoped
             Strategy.
+        unique_code: Human-readable code (e.g. `"STR-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created this record.
         is_archived / archived_at / archived_by: Soft-delete, matching
             `Requirement`/`Decision`'s own convention.
@@ -208,6 +210,8 @@ class Strategy(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "strategies"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_strategies_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_strategies_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -222,6 +226,7 @@ class Strategy(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -364,6 +369,8 @@ class FutureState(UUIDPKMixin, TimestampMixin, Base):
             Future State.
         project_id: Set (and `organization_id` null) for a project-scoped
             Future State.
+        unique_code: Human-readable code (e.g. `"FUT-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created this record.
         is_archived / archived_at / archived_by: Soft-delete, matching
             `Strategy`'s own convention.
@@ -371,6 +378,8 @@ class FutureState(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "future_states"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_future_states_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_future_states_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -385,6 +394,7 @@ class FutureState(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -795,6 +805,8 @@ class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
             Guiding Principle.
         project_id: Set (and `organization_id` null) for a project-scoped
             Guiding Principle.
+        unique_code: Human-readable code (e.g. `"GP-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created this record.
         is_archived / archived_at / archived_by: Soft-delete, matching
             `Strategy`/`FutureState`'s own convention.
@@ -802,6 +814,8 @@ class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "guiding_principles"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_guiding_principles_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_guiding_principles_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -816,6 +830,7 @@ class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

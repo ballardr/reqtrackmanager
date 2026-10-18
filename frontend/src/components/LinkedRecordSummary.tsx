@@ -54,7 +54,8 @@ export function LinkedRecordSummary({
   const path = getArtefactPath(node.type, node.project_id ?? currentProjectId, node.id);
   const statusLabel = getArtefactStatusLabel(node.type, node.status);
   const elsewhere = node.project_id !== null && node.project_id !== currentProjectId;
-  const ownerCode = elsewhere ? node.project_code : undefined;
+  // A record the organisation owns is qualified by the organisation's code; one in another project by that project's.
+  const ownerCode = node.organization_code ?? (elsewhere ? node.project_code : undefined);
   if (layout === "list") {
     const { code, title } = splitArtefactCode(node.label);
     return (

@@ -42,6 +42,7 @@ import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 
@@ -167,6 +168,7 @@ export function FutureStateDetailPage() {
     },
   });
 
+  const codeOwner = useRecordOwnerCode(futureState ?? {});
   if (!scopeId || !futureStateId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureState === null) return <Spinner />;
@@ -198,6 +200,8 @@ export function FutureStateDetailPage() {
       <RecordHeader
         recordLabel="Future State"
         title={futureState.title}
+        code={futureState.unique_code}
+        codeOwner={codeOwner}
         back={{ to: backLink, label: backLabel }}
         badges={
           <>

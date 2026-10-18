@@ -40,7 +40,7 @@ def test_own_org_and_foreign_personas(client, admin_token):
 
     found = _summaries(project["id"], "persona", [mine["id"], theirs["id"], shared["id"]])
 
-    assert {s.label for s in found.values()} == {"Mine", "Shared"}
+    assert {s.label for s in found.values()} == {"PER-001 Mine", "PER-001 Shared"}
     org_summary = found[uuid.UUID(shared["id"])]
     assert org_summary.project_id is None and org_summary.organization_id == uuid.UUID(org["id"])
     assert org_summary.status == "draft"

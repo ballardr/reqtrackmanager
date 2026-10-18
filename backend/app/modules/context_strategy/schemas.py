@@ -141,6 +141,7 @@ class StrategyOut(BaseModel):
     scope: StrategyScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -265,6 +266,7 @@ class FutureStateOut(BaseModel):
     scope: FutureStateScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -634,6 +636,7 @@ class GuidingPrincipleOut(BaseModel):
     scope: GuidingPrincipleScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None

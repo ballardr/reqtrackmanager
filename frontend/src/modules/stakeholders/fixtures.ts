@@ -11,7 +11,8 @@ import type { Engagement, Need, Persona, ResearchFinding, Stakeholder, Stakehold
 /** A complete project-scoped, active `Persona` with `overrides` applied. */
 export function buildPersona(overrides: Partial<Persona> = {}): Persona {
   return {
-    id: "persona-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+    id: "persona-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "PER-001",
+    creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, name: "Field Technician",
     description: "Inspects equipment on site.", persona_type_id: "type-primary", persona_type_name: "Primary",
     role_title: "Senior technician", goals: "Finish inspections without rework.", needs: "Offline access.",
@@ -28,7 +29,8 @@ export function buildPersona(overrides: Partial<Persona> = {}): Persona {
 /** A complete project-scoped, active `Stakeholder` with `overrides` applied. */
 export function buildStakeholder(overrides: Partial<Stakeholder> = {}): Stakeholder {
   return {
-    id: "stakeholder-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+    id: "stakeholder-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "STK-001",
+    creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, name: "Pat Regulator",
     description: "Audits safety compliance.", stakeholder_type_id: "stype-regulator", stakeholder_type_name: "Regulator",
     role: "Compliance auditor", organisation_group: "Safety Authority", interests: "Evidence of compliance.",
@@ -45,7 +47,8 @@ export function buildStakeholder(overrides: Partial<Stakeholder> = {}): Stakehol
 /** A complete org-scoped `StakeholderGroup` with `overrides` applied. */
 export function buildStakeholderGroup(overrides: Partial<StakeholderGroup> = {}): StakeholderGroup {
   return {
-    id: "group-1", scope: "organization", organization_id: "org-1", project_id: null, parent_group_id: null,
+    id: "group-1", scope: "organization", organization_id: "org-1", project_id: null, unique_code: "SGP-001",
+    parent_group_id: null,
     name: "Client", description: "", exclusive_children: false, sort_order: 0, member_count: 0, child_count: 0,
     ...overrides,
   };

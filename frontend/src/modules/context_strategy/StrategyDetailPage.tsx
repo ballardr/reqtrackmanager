@@ -48,6 +48,7 @@ import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE, STRATEGY_TIME_HORIZON_LABEL } from "./types";
 import type { Strategy, StrategyComment, StrategyFieldValues, StrategyVersion } from "./types";
 import { RecordHeader } from "../../components/RecordHeader";
+import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 
@@ -172,6 +173,7 @@ export function StrategyDetailPage() {
     },
   });
 
+  const codeOwner = useRecordOwnerCode(strategy ?? {});
   if (!scopeId || !strategyId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategy === null) return <Spinner />;
@@ -203,6 +205,8 @@ export function StrategyDetailPage() {
       <RecordHeader
         recordLabel="Strategy"
         title={strategy.title}
+        code={strategy.unique_code}
+        codeOwner={codeOwner}
         back={{ to: backLink, label: backLabel }}
         badges={
           <>
