@@ -28,6 +28,7 @@
  * edited in the shared Links panel on `DecisionDetailPage.tsx`, and a Decision's links appear on
  * the other record's own page the same way — nothing here is Decision-specific.
  */
+import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -103,7 +104,7 @@ export function ProjectDecisionsPage() {
   if (decisions === null || project === null) return <Spinner />;
 
   const columns: DirectoryColumn<Decision>[] = [
-    { key: "unique_code", label: "Code", render: (d) => d.unique_code },
+    { key: "unique_code", label: "Code", render: (d) => <RecordCode code={d.unique_code} /> },
     { key: "title", label: "Title", render: (d) => d.title },
     {
       key: "type", label: "Type",

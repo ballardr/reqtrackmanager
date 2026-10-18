@@ -7,7 +7,7 @@ import { ProjectHierarchyLabels } from "./ProjectHierarchyLabels";
 
 function project(overrides: Partial<ProjectListItem>): ProjectListItem {
   return {
-    id: "p1", organization_id: "org-1", name: "Project", summary: "", created_at: "", updated_at: "",
+    id: "p1", organization_id: "org-1", name: "Project", code: "PRJ", summary: "", created_at: "", updated_at: "",
     is_archived: false, is_template: false, allow_member_change_requests: true,
     require_change_request_for_approved_links: false, exempt_from_org_link_lock: false,
     allow_ai_approvals: false,

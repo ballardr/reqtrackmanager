@@ -28,6 +28,8 @@ export interface LinkGraphNode {
   depth: number;
   project_id: string | null;
   project_name: string | null;
+  /** The owning project's code, which qualifies `label`'s record code outside the page's own project. */
+  project_code?: string | null;
 }
 
 export interface LinkGraphEdge {

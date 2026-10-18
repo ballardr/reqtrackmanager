@@ -5,7 +5,7 @@ Aggregates the `orgs` package's per-concern routers — `core` (creation,
 import/export/merge, disable/enable/delete, listing, overview stats),
 `membership` (users, pending invites, access summaries, org-role and
 module-role grants, leave/remove/deactivate/archive), `groups`,
-`resources` (shared file resources), `branding` (logo/login-background,
+`resources` (shared file resources), `records` (lookup by qualified code), `branding` (logo/login-background,
 accent/wordmark/email-footer, default template, public login-info),
 `settings` (advanced settings, module enablement, SSO/OIDC, SCIM),
 `reports` (report templates and org-level report defaults), `org_pats`
@@ -34,6 +34,7 @@ from app.routers.orgs import (
     groups,
     membership,
     org_pats,
+    records,
     reports,
     resources,
     scoring,
@@ -53,6 +54,7 @@ router.include_router(core.router, prefix=_PREFIX)
 router.include_router(membership.router, prefix=_PREFIX)
 router.include_router(groups.router, prefix=_PREFIX)
 router.include_router(resources.router, prefix=_PREFIX)
+router.include_router(records.router, prefix=_PREFIX)
 router.include_router(branding.router, prefix=_PREFIX)
 router.include_router(settings.router, prefix=_PREFIX)
 router.include_router(reports.router, prefix=_PREFIX)

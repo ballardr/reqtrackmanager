@@ -1,7 +1,7 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { api } from "../api/client";
-import type { Project } from "../api/types";
+import type { Organization, Project } from "../api/types";
 import { DEFAULT_TERMS, pluralize, resolveTerminologyDeep, type TerminologyKey } from "../i18n/terminology";
 import { t, type Strings } from "../i18n/strings";
 import { ProjectContext, type ProjectContextValue } from "./ProjectContextValue";
@@ -24,9 +24,16 @@ export function TerminologyProvider({ projectId, children }: { projectId: string
       setValue({ terminology: {} });
       return;
     }
+    let cancelled = false;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((project) => {
-      setValue({ terminology: project.terminology ?? {} });
+      if (cancelled) return;
+      setValue({ terminology: project.terminology ?? {}, projectCode: project.code, enforceCodeEverywhere: false });
+      // The enforce flag lives on the organisation; the code shows without it meanwhile.
+      api.get<Organization>(`/api/v1/orgs/${project.organization_id}`).then((org) => {
+        if (!cancelled) setValue((v) => ({ ...v, enforceCodeEverywhere: org.enforce_code_everywhere }));
+      }).catch(() => undefined);
     });
+    return () => { cancelled = true; };
   }, [projectId]);
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

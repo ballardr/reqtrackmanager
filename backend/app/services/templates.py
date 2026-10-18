@@ -54,12 +54,14 @@ from app.models.project import (
 )
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
+from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
 from app.services.requirements import get_current_version
 
 
 def clone_project(
-    db: Session, source: Project, *, name: str, summary: str, creator: User, parent_project_id: UUID | None = None
+    db: Session, source: Project, *, name: str, summary: str, creator: User, parent_project_id: UUID | None = None,
+    code: str | None = None,
 ) -> Project:
     """Creates a new project by copying a template project's configuration.
 
@@ -77,12 +79,16 @@ def clone_project(
             manages the parent) is the caller's responsibility
             (`routers.projects.create_project`), same as every other field
             here.
+        code: The new project's code, already validated by the caller; when omitted one is
+            generated from `name` under the organisation's policy. The template's own code
+            is never copied.
 
     Returns:
         The newly created Project.
     """
     new_project = Project(
         organization_id=source.organization_id, name=name, summary=summary,
+        code=code or generate_project_code(db, source.organization_id, name),
         allow_member_change_requests=source.allow_member_change_requests,
         require_change_request_for_approved_links=source.require_change_request_for_approved_links,
         exempt_from_org_link_lock=source.exempt_from_org_link_lock,

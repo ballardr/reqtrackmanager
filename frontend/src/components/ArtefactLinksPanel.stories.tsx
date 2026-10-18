@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import type { ArtefactLinkFinderParams } from "../api/artefactLinks";
+import { ProjectContext } from "../context/ProjectContextValue";
 import {
   buildBrowseStep, buildCandidate, buildGraph, buildGraphNode, buildLinksApi, buildOption, buildRelatedProject,
   LINKS_ARTEFACT_ID, LINKS_PROJECT_ID,
@@ -537,5 +538,31 @@ export const LongLinkedTitleKeepsRemoveBesideIt: Story = {
     const remove = await waitFor(() => canvas.getByRole("button", { name: /^Remove/ }));
     await expect(remove.getBoundingClientRect().height).toBeLessThan(40);
     await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** A record in another project shows that project's code in front of its own code; one in this project follows the viewer's preference. */
+export const OtherProjectRecordCodeIsQualified: Story = {
+  decorators: [
+    (Story) => (
+      <ProjectContext.Provider value={{ terminology: {}, projectCode: "ACME", enforceCodeEverywhere: false }}>
+        <Story />
+      </ProjectContext.Provider>
+    ),
+  ],
+  args: {
+    api: buildLinksApi({
+      graph: fn(async () =>
+        buildGraph([
+          [buildGraphNode({ label: "DEC-001 Use Postgres" })],
+          [{ ...CHILD_REQ, project_code: "SWM" }, { phrase: "Is refined by", cross_project: true }],
+        ])),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "REQ-007 Handle disconnect" })).toBeInTheDocument());
+    await expect(canvas.getByText("SWM-REQ-007")).toBeInTheDocument();
+    await expect(canvas.getByText("ACME-DEC-001")).toBeInTheDocument();
   },
 };

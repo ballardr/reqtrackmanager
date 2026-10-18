@@ -818,6 +818,10 @@ A **pill** is a read-only label: a status, type, role, scope or warning. Every p
 - **Metadata may wrap, actions may not.** A title followed by status or project pills may let the pills fall below the title; mark that container `data-wrap-ok`. The control column never moves.
 - **Checked** by the same `orphanedControlViolations`: a `.btn` or `.badge` that is the first item on a second line of a flex container, after a line that holds text, is a violation. Worst-case stories use 200-character titles.
 
+## Pattern: record codes
+
+A record code (`REQ-001`) is shown through `<RecordCode>` or `useRecordCode()`, never as the raw `unique_code`. One rule decides whether the project code goes in front (`ACME-REQ-001`): always for a record in another project; inside its own project when the organisation enforces it, else per the person's `show_project_code` preference (default on). Pass the owning project's code (`project_code` on a link-graph node) for a record that may be elsewhere. A label that starts with a code (`REQ-001 Title`) goes through `useRecordCode().label()`. Reason: a page that formats its own code ignores the organisation's switch and the person's choice, which is the inconsistency this pattern removes. Show the code as a small muted suffix, not a prominent label (record header, Links panel).
+
 ## Tokens
 
 `frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and spacing/radii used consistently even though not yet named as tokens. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.

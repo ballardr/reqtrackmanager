@@ -10,6 +10,7 @@
  * tier-1 confirm; it has no comments or files of its own and is deleted with its
  * engagement, because it can quote participants.
  */
+import { RecordCode } from "../../components/RecordCode";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -124,7 +125,7 @@ export function ResearchFindingsPanel({
         <div key={f.id} id={`finding-${f.id}`} className="card stack" style={{ gap: "0.35rem" }} aria-label={`Finding ${f.title}`}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <span className="row" style={{ gap: "0.5rem", alignItems: "baseline" }}>
-              <span className="text-muted" style={{ fontSize: "0.85rem" }}>{f.unique_code}</span>
+              <span className="text-muted" style={{ fontSize: "0.85rem" }}><RecordCode code={f.unique_code} /></span>
               <strong>{f.title}</strong>
             </span>
             <span className="row" style={{ gap: "0.35rem" }}>

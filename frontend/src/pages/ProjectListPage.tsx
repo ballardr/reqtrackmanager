@@ -30,6 +30,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
 // MEMBER_ONLY, which caps at baseline MEMBER — parity with
@@ -74,6 +75,7 @@ export function ProjectListPage() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newSummary, setNewSummary] = useState("");
+  const [newCode, setNewCode] = useState("");
   const [newOrgId, setNewOrgId] = useState("");
   const [templateProjectId, setTemplateProjectId] = useState("");
   const [newVisibility, setNewVisibility] = useState<"only_specified" | "org_wide">("only_specified");
@@ -223,6 +225,7 @@ export function ProjectListPage() {
     }
   }
 
+  const newOrg = orgs.find((o) => o.id === newOrgId);
   const templateOptions = allProjects.filter((p) => p.is_template && p.organization_id === newOrgId);
   const showOrgColumn = orgs.length > 1 || !!user?.is_server_admin;
 
@@ -252,6 +255,7 @@ export function ProjectListPage() {
         organization_id: newOrgId,
         name: newName,
         summary: newSummary,
+        code: newOrg?.project_code_policy.assignment === "manual" ? normaliseProjectCode(newCode) : null,
         template_project_id: templateProjectId || null,
         visibility: newVisibility,
         parent_project_id: parentProjectId || null,
@@ -267,6 +271,7 @@ export function ProjectListPage() {
 
   function closeNewForm() {
     setShowNewForm(false);
+    setNewCode("");
     setParentProjectId("");
     setRoleInheritanceMode("none");
   }
@@ -336,6 +341,26 @@ export function ProjectListPage() {
                 onChange={(e) => setNewName(e.target.value)}
               />
             </label>
+            {newOrg?.project_code_policy.assignment === "manual" && !importFile && (
+              <>
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.projects.code}
+                  <input
+                    className="input"
+                    value={newCode}
+                    maxLength={newOrg.project_code_policy.max_length}
+                    onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                    aria-describedby="new-project-code-hint"
+                  />
+                </label>
+                <p id="new-project-code-hint" className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+                  {strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
+                </p>
+              </>
+            )}
+            {newOrg?.project_code_policy.assignment === "auto" && (
+              <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.codeAutomatic}</p>
+            )}
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.projects.summary}
               <textarea
@@ -447,7 +472,7 @@ export function ProjectListPage() {
               <button className="btn" onClick={closeNewForm}>
                 {strings.common.cancel}
               </button>
-              <button className="btn btn-primary" onClick={createProject} disabled={!newName || !newOrgId}>
+              <button className="btn btn-primary" onClick={createProject} disabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !importFile && !newCode)}>
                 {strings.common.create}
               </button>
             </div>

@@ -16,6 +16,7 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, In
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH, DEFAULT_POLICY, default_code_for_name
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.encrypted_type import EncryptedString
@@ -169,11 +170,29 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             keys rather than a boolean per vocabulary so a later vocabulary
             needs no new column; locking hides project-level rows, never
             deletes them.
+        code: Short upper-case code (letters and digits, no hyphen) that qualifies
+            organisation-scoped record codes (`ACME-PER-001`). Never equal to a
+            project code in this organisation. Defaults to the name's initials.
+        project_code_policy: How this organisation's project codes are formed:
+            `kind`, `min_length`, `max_length` and `assignment` (`code_rules.CodePolicy`).
+            A structured column so a later format option needs no migration. Applies
+            to codes created from now on; existing codes are never rewritten.
+        enforce_code_everywhere: When set, a record code is shown with its project
+            code even inside its own project, overriding each user's preference.
     """
 
     __tablename__ = "organizations"
 
     name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[str] = mapped_column(
+        String(ABSOLUTE_MAX_CODE_LENGTH), default=lambda ctx: default_code_for_name(ctx.get_current_parameters()["name"])
+    )
+    project_code_policy: Mapped[dict] = mapped_column(
+        JSONB, default=lambda: DEFAULT_POLICY.as_dict(), server_default=text(
+            "'{\"kind\": \"alphanumeric\", \"min_length\": 2, \"max_length\": 6, \"assignment\": \"auto\"}'::jsonb"
+        ),
+    )
+    enforce_code_everywhere: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     require_2fa: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_self_signup: Mapped[bool] = mapped_column(Boolean, default=False)

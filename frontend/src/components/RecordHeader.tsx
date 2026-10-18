@@ -17,6 +17,7 @@
  *
  * External dependencies: `ActionMenu`, `ItemRow`, react-router `Link`.
  */
+import { RecordCode } from "./RecordCode";
 import { Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -89,7 +90,7 @@ export function RecordHeader({
         <span className="row" style={{ gap: "0.6rem", alignItems: "baseline", flexWrap: "nowrap", minWidth: 0 }}>
           <Heading style={{ margin: 0, minWidth: 0 }}>{title}</Heading>
           {code && (
-            <span className="text-muted" style={{ fontSize: "0.9rem", flex: "none" }}>{code}</span>
+            <span className="text-muted" style={{ fontSize: "0.9rem", flex: "none" }}><RecordCode code={code} /></span>
           )}
           {titleAddon}
         </span>

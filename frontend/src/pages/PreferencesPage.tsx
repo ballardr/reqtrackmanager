@@ -15,6 +15,7 @@ import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { SHOW_PROJECT_CODE_PREFERENCE } from "../hooks/useRecordCode";
 import { useUiPreference } from "../hooks/useUiPreference";
 import type {
   DigestMode,
@@ -78,6 +79,7 @@ export function PreferencesPage() {
   const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [contentBoxed, setContentBoxed] = useUiPreference<boolean>("content_boxed", false);
+  const [showProjectCode, setShowProjectCode] = useUiPreference<boolean>(SHOW_PROJECT_CODE_PREFERENCE, true);
   const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
   const [landingProjectId, setLandingProjectId] = useState(
     landingModeFor(user?.landing_preference) === "project" ? user?.landing_preference ?? "" : ""
@@ -490,6 +492,11 @@ export function PreferencesPage() {
             <option value="boxed">{strings.preferences.contentWidthBoxed}</option>
           </select>
         </label>
+        <label className="row">
+          <input type="checkbox" checked={showProjectCode} onChange={(e) => setShowProjectCode(e.target.checked)} />
+          {strings.preferences.showProjectCode}
+        </label>
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.preferences.showProjectCodeHint}</p>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.preferences.landing}
           <select

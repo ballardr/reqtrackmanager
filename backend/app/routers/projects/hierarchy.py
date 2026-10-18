@@ -135,7 +135,7 @@ def get_project_children(
         roles = sorted(get_effective_project_roles(db, current_user.id, c.id), key=lambda r: r.value)
         out.append(
             ProjectListItemOut(
-                id=c.id, organization_id=c.organization_id, name=c.name, summary=c.summary,
+                id=c.id, organization_id=c.organization_id, name=c.name, code=c.code, summary=c.summary,
                 created_at=c.created_at, updated_at=c.updated_at,
                 is_archived=c.is_archived, is_template=c.is_template,
                 allow_member_change_requests=c.allow_member_change_requests,

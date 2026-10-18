@@ -290,6 +290,16 @@ export async function selectProjectAdminGroup(page: Page, groupLabel: string): P
 }
 
 /**
+ * Matches a record code as the UI may show it: bare (`DEC-001`) or with the project code in
+ * front (`ACME-DEC-001`). The display rule depends on the organisation's switch and the
+ * person's preference, so a spec must not depend on which form it gets. Use with
+ * `getByText(recordCodeText("DEC-001"))`.
+ */
+export function recordCodeText(code: string): RegExp {
+  return new RegExp(`^(?:[A-Z0-9]+-)?${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+}
+
+/**
  * Opens a requirement's detail page by its stable `unique_code` (e.g.
  * "HW-FN-001") rather than its `name` — a requirement's name can be
  * changed by an approved change request (see
@@ -320,7 +330,7 @@ export async function openRequirementByCode(page: Page, code: string): Promise<v
   // same fix role-display-collapsing.spec.ts got for the groups table.
   await page.getByPlaceholder("Search by name or ID").fill(code);
   await page
-    .getByText(code, { exact: true })
+    .getByText(recordCodeText(code))
     .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
     .getByRole("link")
     .click();

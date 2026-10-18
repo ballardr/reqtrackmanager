@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21). Phases 1, 2, 3, 4, 5 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q14 are answered (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q24 (section 3b) carry a recommended answer and need sign-off before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q24 (section 3b) carry a recommended answer and need sign-off before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-6 / 22 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5 and 12 done 2026-10-18, uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phases 13 and 14 are still open and come after Phases 4–11 now. **Next: Phase 6.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+7 / 21 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6 and 12 done 2026-10-18, uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phases 13 and 14 are still open and come after Phases 4–10 now. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 7.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -14,12 +14,11 @@
 | 3 | Layout contract: `Badge`, no-wrap rule, `ItemRow`, geometry checks | N1, N2 | [x] |
 | 4 | Icon sizes driven by CSS, sweep, check | N9 | [x] |
 | 5 | Shared record header and one object-action menu | N8 | [x] |
-| 6 | Codes I: project codes, org policy, qualified display | N7 | [ ] |
+| 6 | Codes I: project codes, org policy, qualified display | N7 | [x] |
 | 7 | Codes II: every codeless project-scoped type, change requests | N7 | [ ] |
 | 8 | Codes III: organisation-scoped types | N7 | [ ] |
 | 9 | Aside tabs: Links and Activity, one activity endpoint | N10 | [ ] |
 | 10 | Forms aligned to the style guide | N7 (forms) | [ ] |
-| 11 | Ontology: pull Module 15 Phase 1 forward, module-contributed concept map | N4 | [ ] |
 | 12 | Container health check reports unhealthy on a working install | N11 | [x] |
 | 13 | Module availability: new-install defaults, server admin UI, hide unavailable modules | N12, N13, N14 | [ ] |
 | 14 | Navigation: ordering, scrollbar, sub-component hiding | N15, N16, N17 | [ ] |
@@ -40,12 +39,10 @@ flowchart LR
     P5 --> P9["9 Aside tabs"]
     P5 --> P6["6 Project codes"]
     P6 --> P7["7 Codes: project types"] --> P8["8 Codes: org types"]
-    P7 --> P11["11 Ontology"]
     P4 --> P10["10 Forms sweep"]
     P5 --> P10
     P9 --> P22["22 Close-out"]
     P10 --> P22
-    P11 --> P22
     P8 --> P22
     P12["12 Health check"] --> P13["13 Module availability"] --> P14["14 Navigation"] --> P3
     P13 --> P15["15 Org-default hide/restore"]
@@ -65,7 +62,7 @@ flowchart LR
 
 Codes (6–8) and layout (3–5) touch the same pages for different reasons, so they run one after the other, not in parallel; layout goes first because codes then land in the new shared header once.
 
-**Suggested delivery (Decided by: Agent; superseded for ordering by the user's 2026-10-18 instruction to work the table sequentially, so branch 0 now comes after A–E's earlier phases):** six branches, each reviewable and shippable alone, in this order. **0** phases 12–14 (defects and the missing module admin UI: ship first, they affect real deployments today). **A** phases 1–5 (polish and consistency). **B** phases 6–8 (codes), then phase 20 (the scope filter shows qualified codes, so it follows phase 6). **C** phases 15–17 and 19 (create/edit conventions: org-default hide/restore, People page, quick-link, create parity). **D** phases 18 and 21 (tags, field help). **E** phases 9–11 and 22 (activity tab, forms, ontology, close-out). Phases 17 and 21 build components the Phase 10 forms sweep then applies everywhere, so they precede it. Twenty-two phases in one branch is the kind of size that stalls review.
+**Suggested delivery (Decided by: Agent; superseded for ordering by the user's 2026-10-18 instruction to work the table sequentially, so branch 0 now comes after A–E's earlier phases):** six branches, each reviewable and shippable alone, in this order. **0** phases 12–14 (defects and the missing module admin UI: ship first, they affect real deployments today). **A** phases 1–5 (polish and consistency). **B** phases 6–8 (codes), then phase 20 (the scope filter shows qualified codes, so it follows phase 6). **C** phases 15–17 and 19 (create/edit conventions: org-default hide/restore, People page, quick-link, create parity). **D** phases 18 and 21 (tags, field help). **E** phases 9, 10 and 22 (activity tab, forms, close-out). Phases 17 and 21 build components the Phase 10 forms sweep then applies everywhere, so they precede it. Twenty-one phases in one branch is the kind of size that stalls review.
 
 ## 1. Summary of the review (read this first)
 
@@ -75,7 +72,7 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 | N1b "Pills should also have the text entered" | Answered (Q1) | Meant "centered". Text is centred; width is consistent within one use (for example a status column) and each use chooses left, centre or right justification. |
 | N2 Buttons slipping to a new line | Do it; root cause is one CSS default | `.row` is `flex-wrap: wrap` and is used in hundreds of places, and `.artefact-links__row` wraps too. A long title therefore pushes the delete button to line two. Fixing the Links table alone repeats the bug elsewhere. Needs a primitive (`ItemRow`) plus a measured check, plus the directive in the style guide. |
 | N3 Report label | Do it; trivial | Also search for other labels that name PDF/Word (one found in `ReportRunner`, its stories and one website page). |
-| N4 Ontology | **Already planned** | `module-15-workflows-plan.md` Phase 1 specifies a registry-derived ontology (API, MCP tool, generated `docs/ontology.md`, staleness test). Building a second one by hand would rot. Pull that phase forward, standalone, add the human-facing concept map it lacks, and let modules contribute to both (Q14). See Phase 11. |
+| N4 Ontology | **Left for Module 15** (user, 2026-10-18) | `module-15-workflows-plan.md` Phase 1 already specifies a registry-derived ontology; it stays there rather than being pulled forward. No hand-written concept map or module-contributed ontology fields are built here (Q14 is superseded). |
 | N5 Remove Help, redirect | Do it, with one addition | The product is self-hosted, so a hard-coded GitHub Pages URL breaks air-gapped installs and always shows `main`'s docs, not the deployed version. Make the URL one server setting, default to the site, with an off switch, and ship the docs site as an image so it can be hosted internally (Q3, Phase 1). Also: removing the page lets us drop the `mermaid` dependency if nothing else uses it (to verify). |
 | N6 Completed plans | Do it; the cost is the links | Ten closed plans are referenced from 156, 41, 38, 26, 24, 22, 20, 19, 17 and 3 files (including backend docstrings and migration comments). A plain `git mv` breaks about 785 references. Move, rewrite mechanically, and add a link checker so it cannot rot. `CLAUDE.md` already points at a wrong path for the UX audit (`docs/plans/completed/ux-audit-2026-08.md`; the file is under `docs/plans/`). |
 | N7 Codes everywhere | Do it; larger than it looks | (a) Ten types have no code: change request, persona, stakeholder, need, stakeholder group, strategy, future state, guiding principle, pain point, open question (compliance types to be classified in Phase 6). Change requests are not even a registered artefact type, and `project_export.py` invents `CR-1…` per export that match nothing stored. (b) Org-scoped types cannot use a per-project counter. (c) **Do not store project codes inside item codes and do not build them from the parent chain** (Q7, Q8): answered as own-code-only, derived at display time. |
@@ -138,7 +135,7 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 | Q11 | Codes for organisation-scoped records | **Org code prefix too** (for example `ACME-PER-001`), so organisations need a code as well as projects. |
 | Q12 | Activity tab content | **Timeline of audit events, versions and link changes.** The full version table stays in the page body. |
 | Q13 | Forms in scope | **Every form**, including one- and two-field forms. |
-| Q14 | Ontology | **Pull Module 15 Phase 1 forward, with a hand-written concept map, and make both contributable by modules** so future modules extend them without core edits. |
+| Q14 | Ontology | ~~Pull Module 15 Phase 1 forward~~ **Superseded 2026-10-18 (Decided by: User): left for Module 15.** Phase 11 removed; its number is not reused so references elsewhere stay valid. |
 
 ### 3b. Round-two questions (2026-10-18; recommended answer given, **sign-off needed** before the phase named)
 
@@ -260,6 +257,13 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 - **Nested-project check (CLAUDE.md):** `Project.code` is per-project, not a definition table; the org policy is org-level. Not applicable, recorded.
 - **Tests:** policy validation (every kind, length bounds, case, hyphen rejected), uniqueness, org-code/project-code distinctness, backfill, qualified round trip, import conflict, cross-organisation isolation, MCP lookup by qualified code, the enforce/preference matrix (enforced on; not enforced with preference on and off) in Storybook and one Playwright spec.
 
+- **Done 2026-10-18 (uncommitted at hand-back).** Details, the type inventory and decisions in `docs/decisions.md`.
+  - **Built:** migration `0092` (`projects.code`, `organizations.code`, `project_code_policy`, `enforce_code_everywhere`; backfilled from name initials); `code_rules.py` and `services/codes.py`; automatic and manual assignment on create, clone and import; `PUT /orgs/{id}/code-policy` (Org Admin, audited); lookup `GET /orgs/{id}/records/by-code/{code}` and MCP `get_record_by_code` (skill updated); `project_code` on link-graph nodes and the reviews-due list; frontend `RecordCode` / `useRecordCode` (one display rule) applied in `RecordHeader`, the Links panel and the main list code columns; code field on the New project form and project settings; `ProjectCodePolicyPanel` in Org Admin; "Show the project code" preference.
+  - **Inventory (exemptions need user sign-off):** has a code: requirement, action, decision, risk, engagement, research finding. Phase 7: pain point, open question, stakeholder need, compliance evidence, change request. Phase 8: persona, stakeholder, stakeholder group, strategy, future state, guiding principle. Proposed exempt: compliance requirement (carries the standard's own reference), project compliance requirement and required-action assessment (1:1 children of a mapping).
+  - **Not done, flagged:** reports, CSV and project exports do not honour the organisation's "always show project code" switch (single-project outputs, need a shared formatter across 85 files first); no edit UI for the organisation code until Phase 8.
+  - **Found and fixed:** `Tooltip` kept a hidden duplicate of its label in the page, breaking two specs that matched a long pill's text.
+  - **Tests:** backend `test_project_codes.py`; Storybook for `RecordCode`, `ProjectCodePolicyPanel`, project form, project settings, preferences, Links panel; Playwright `project-codes.spec.ts`. Full backend suite (`-n 4`) and full Storybook suite pass; Playwright full suite below.
+
 ### Phase 7 — Codes II: every codeless project-scoped type (N7)
 
 **Why:** the rule in `CLAUDE.md`; a user cannot name a pain point or a change request in conversation. **Outcome:** every project-scoped type ships `PREFIX-nnn`.
@@ -292,15 +296,6 @@ Every phase also carries the standing checklist (section 5); only phase-specific
 - **Per-form checklist:** `FormGrid`/`FormGridFull`; `PrincipalPicker compact` for single owners and `PrincipalListField` for lists; add control on the heading line; `AlignedRows` for repeating rows; `RemovableItemList` and Tier-1 confirm on removal; `CappedList` for unbounded lists; Modal vs Popover (no nested popovers); button sizes and icon sizes (phases 3–4); enum values through label maps; Toast on every mutation; accessible names; Storybook worst-case story; `help` text on every non-obvious field (Phase 21); `QuickLinkField` on create forms of linkable types (Phase 17); create form field parity with edit (Phase 19); organisation-default hide/restore where the form edits a definition with an org version (Phase 15).
 - **Already known gaps to close:** Persona, Stakeholder and Need edit modals (single column), owner/assignee fields on six module detail pages still using the always-open picker, "other modules' link lists and per-row Remove buttons".
 - **Batching:** by area, about eight forms per batch (org admin, project admin, requirements and actions, each module). Each batch ships with its stories and updated specs; the user can stop between batches.
-
-### Phase 11 — Ontology (N4)
-
-**Why:** types, fields, lifecycles and links are spread across registry fields, schemas, enums and seeds; nobody can see how it fits together. **Risk addressed:** a hand-drawn model that drifts. **Outcome:** a generated, current model plus a short map people can read.
-
-- **Reuse, do not redo:** deliver `module-15-workflows-plan.md` Phase 1 (registry-derived service, `GET /api/orgs/{id}/ontology` and project variant, MCP tool `get_ontology`, generated `docs/ontology.md` with Mermaid, staleness test, MCP skill reference). Mark that phase as moved in the module-15 plan, with the date and who decided. Add each type's code prefix and scope (phases 6–8) to the registration so the ontology states them.
-- **Module contribution (Q14):** the registration gets generic optional fields (for example an ontology `description`, `lifecycle` and `concept_map` fragment: a short Mermaid snippet plus prose naming the module's place in the whole). Core collects them through the registry; no core file names a module. The generated ontology and the concept map's "modules" section both read them, so installing a module (including a third-party or federated one) extends both automatically. A module that declares an artefact type but no description fails the staleness test, as the MCP-skill rule does for tools. Document the fields in `docs/modules.md` and `building-your-own-module.md`.
-- **Concept map (new, small):** the core of it is hand-written; a page in `docs/website/docs/reference/` — organisation, project nesting, the core chain (requirement, change request, action, stage and baseline), the modules by purpose, how links connect any pair, where reports and MCP read from. Mermaid, with the explanatory sentence before each diagram. The generated tables link to it; a test confirms every registered type appears in the generated tables, not in the hand-written map.
-- **Out of scope:** OWL/JSON-LD, the workflow designer.
 
 ### Phase 12 — Container health check reports unhealthy on a working install (N11)
 
@@ -417,11 +412,11 @@ Reading the diagram: a module is checked at three levels from the server down. A
 
 ### Phase 22 — Close-out
 
-- Docs website audit for every user-visible change (the label, Help, header and menu, codes, activity tab, forms, Server Management modules page, hide/restore of org defaults, People page, Save and activate, quick-link, tags, scope filter, field help, nav order), retake affected screenshots, README, `docs/solution-architecture.md` (project codes, activity endpoint, ontology), `docs/modules.md` (any new registration fields), `docs/decisions.md` entries with Decided-by tags, style guide updates (list below), memory index.
+- Docs website audit for every user-visible change (the label, Help, header and menu, codes, activity tab, forms, Server Management modules page, hide/restore of org defaults, People page, Save and activate, quick-link, tags, scope filter, field help, nav order), retake affected screenshots, README, `docs/solution-architecture.md` (project codes, activity endpoint), `docs/modules.md` (any new registration fields), `docs/decisions.md` entries with Decided-by tags, style guide updates (list below), memory index.
 - Seeds: both seed scripts get organisation and project codes under the org policy, tags (free and restricted projects, one nested tree for the scope filter), a hidden org default in one project, server module defaults, all modules on, a long-titled record per type for the layout check, and no codeless record.
 - `CLAUDE.md` agent rules added by their phases are confirmed present: org-default hide/restore (15), quick-link on create (17), field help (21), module-visibility (13), plus the save-and-activate review (16).
 - Style guide sections added or changed: organisation defaults in a project, quick-link, field help, People list and New menu, scope filter, tags, pills, text beside controls, icon scale, record header and object actions, links aside tabs, form checklist, the stale token-table row.
-- Move this plan to `docs/plans/completed/` (Phase 2's rule) when 22/22.
+- Move this plan to `docs/plans/completed/` (Phase 2's rule) when 21/21.
 
 ## 5. Standing checklist per phase
 

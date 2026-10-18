@@ -86,6 +86,10 @@ A long-lived, org/project-scoped bearer credential for non-interactive use, such
 
 Belongs to exactly one organisation, and can optionally have a parent project, modelling a larger programme as a tree of related projects. See [Organisations and projects](../concepts/organisations-and-projects.md).
 
+#### Project code
+
+A short upper-case code (letters and digits, no hyphen) that identifies a project and goes in front of its record codes where records from several projects appear together. See [Administering an organisation → Project codes](../workflows/administering-an-organisation.md#project-codes).
+
 #### Project group
 
 A named group within a project that a role can be granted to as a whole, so onboarding/offboarding is a matter of group membership rather than individual grants. See [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md).
@@ -105,6 +109,10 @@ A project marked usable as a template; creating a new project from it copies its
 #### Proposed link
 
 A link a change request carries and an approver merges, or declines, when approving it. See [Change requests → Proposing links](../core-features/change-requests.md#proposing-links).
+
+#### Qualified code
+
+A record code with its project code in front, such as `ACME-REQ-001`. The same `REQ-001` exists in every project, so a qualified code is the unambiguous way to name a record. See [Administering an organisation → Project codes](../workflows/administering-an-organisation.md#project-codes).
 
 #### Report content
 

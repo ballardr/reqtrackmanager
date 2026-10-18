@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { RecordCode } from "../components/RecordCode";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -600,7 +601,7 @@ export function ChangeRequestsPage() {
                 <select className="input" value={requirementId} onChange={(e) => setRequirementId(e.target.value)}>
                   {lockableRequirements.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.unique_code} — {r.name}
+                      <RecordCode code={r.unique_code} /> — {r.name}
                     </option>
                   ))}
                 </select>

@@ -423,10 +423,35 @@ async def get_project(project_id: str | None = None) -> dict:
         project_id: The project's UUID (from `list_projects`).
 
     Returns:
-        The project's `id`, `organization_id`, `name`, `summary`, and status flags.
+        The project's `id`, `organization_id`, `name`, `code`, `summary`, and status flags.
     """
     pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}")
+    return response.json()
+
+
+@mcp.tool
+async def get_record_by_code(qualified_code: str, organization_id: str | None = None) -> dict:
+    """Finds the record a qualified code names, such as `ACME-REQ-001`.
+
+    A qualified code is the project's `code` (from `list_projects` / `get_project`), a hyphen,
+    then the record's own code. Use it when a person quotes a code and you need the record's
+    type, id and project; then call the tool for that type with the returned `id`.
+
+    Args:
+        qualified_code: The code, in any case, e.g. "ACME-REQ-001".
+        organization_id: The organisation to search (from `list_organizations`).
+
+    Returns:
+        `artefact_type` (e.g. "requirement", "requirement_action", "decision"), `id`,
+        `project_id`, `qualified_code` and `label`. A code naming no record you may see is an
+        error, the same as one that does not exist.
+    """
+    oid = _require_organization_id(organization_id)
+    code = qualified_code.strip()
+    if not code or "/" in code:
+        raise ValueError("qualified_code must look like PROJECT-REQ-001.")
+    response = await _call_backend("GET", f"/api/v1/orgs/{oid}/records/by-code/{code}")
     return response.json()
 
 

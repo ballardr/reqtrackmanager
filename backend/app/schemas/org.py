@@ -83,11 +83,42 @@ class OrganizationDeleteConfirm(BaseModel):
     confirm_name: str
 
 
+class CodePolicyOut(BaseModel):
+    """How the organisation's project codes are formed (`code_rules.CodePolicy`)."""
+
+    kind: Literal["letters", "digits", "alphanumeric"]
+    min_length: int
+    max_length: int
+    assignment: Literal["auto", "manual"]
+
+
+class OrgCodePolicyUpdate(CodePolicyOut):
+    """Replaces the organisation's project-code policy and the enforce-everywhere switch.
+    Existing project codes are never rewritten."""
+
+    enforce_code_everywhere: bool = False
+
+
+class CodedRecordOut(BaseModel):
+    """The record a qualified code names (`GET /orgs/{id}/records/by-code/{code}`)."""
+
+    artefact_type: str
+    id: UUID
+    project_id: UUID
+    qualified_code: str
+    label: str
+
+
 class OrganizationOut(BaseModel):
     model_config = {"from_attributes": True}
 
     id: UUID
     name: str
+    # Readable by every org member: the project form and the record-code display rule need
+    # them (`services.codes`, `Organization.project_code_policy`).
+    code: str = ""
+    project_code_policy: CodePolicyOut | None = None
+    enforce_code_everywhere: bool = False
     created_at: datetime
     logo_file_id: UUID | None = None
     default_template_project_id: UUID | None = None

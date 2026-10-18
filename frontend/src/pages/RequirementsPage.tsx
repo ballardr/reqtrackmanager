@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
+import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -688,7 +689,7 @@ export function RequirementsPage() {
                                 <option value="">{strings.requirements.selectARequirementToLink}</option>
                                 {eligibleLinkTargets.map((r) => (
                                   <option key={r.id} value={r.id}>
-                                    {r.unique_code} — {r.name}
+                                    <RecordCode code={r.unique_code} /> — {r.name}
                                   </option>
                                 ))}
                               </select>
@@ -725,7 +726,7 @@ export function RequirementsPage() {
                 {createdLinks.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinks}</p>}
                 {createdLinks.map((l) => (
                   <div key={l.id} className="row" style={{ justifyContent: "space-between" }}>
-                    <span>{l.display_name}: {l.other_requirement_unique_code} — {l.other_requirement_name}</span>
+                    <span>{l.display_name}: <RecordCode code={l.other_requirement_unique_code} /> — {l.other_requirement_name}</span>
                   </div>
                 ))}
               </div>
@@ -1013,7 +1014,7 @@ export function RequirementsPage() {
                 >
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                      {r.unique_code}
+                      <RecordCode code={r.unique_code} />
                     </span>
                     <div className="row" style={{ gap: "0.25rem" }}>
                       <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
@@ -1111,7 +1112,7 @@ export function RequirementsPage() {
                           />
                         </td>
                       )}
-                      <td className="text-muted">{r.unique_code}</td>
+                      <td className="text-muted"><RecordCode code={r.unique_code} /></td>
                       <td>
                         <Link to={`/projects/${projectId}/requirements/${r.id}`}>{r.name}</Link>
                       </td>

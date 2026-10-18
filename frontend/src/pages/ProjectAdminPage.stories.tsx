@@ -99,6 +99,7 @@ function mockProjectAdminApis(
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
     disabled_at: null, accent_color_hex: null, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+    code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: false,
     allow_ai_approvals: false,
   };
@@ -222,6 +223,53 @@ export const OverviewTabSaveSettings: Story = {
   },
 };
 
+/** Under automatic assignment the code is shown but cannot be edited, and is not sent on save. */
+export const OverviewTabCodeIsReadOnlyUnderAutomaticAssignment: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({ project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", code: "ATL", status_id: "st1" }) });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const code = await waitFor(() => {
+      const el = canvas.getByLabelText("Code");
+      expect(el).toHaveValue("ATL");
+      return el;
+    });
+    await expect(code).toHaveAttribute("readonly");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    await expect((api.patch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][1]).not.toHaveProperty("code");
+  },
+};
+
+/** Under manual assignment the code is editable and a changed value is sent upper-cased. */
+export const OverviewTabCodeEditableUnderManualAssignment: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", code: "ATL", status_id: "st1" }),
+      organization: { ...buildForcedOrg(), force_require_change_request_for_approved_links: false,
+        project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "manual" } },
+    });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const code = await waitFor(() => {
+      const el = canvas.getByLabelText("Code");
+      expect(el).toHaveValue("ATL");
+      expect(el).not.toHaveAttribute("readonly");
+      return el;
+    });
+    await userEvent.clear(code);
+    await userEvent.type(code, "atlas");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ code: "ATLAS" }))
+    );
+  },
+};
+
 export const OverviewTabSetOrgWideVisibility: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -338,6 +386,7 @@ function buildForcedOrg(): Organization {
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
     disabled_at: null, accent_color_hex: null, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+    code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: true,
     allow_ai_approvals: false,
   };

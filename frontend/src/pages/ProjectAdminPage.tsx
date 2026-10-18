@@ -20,6 +20,7 @@ import type {
   OrgUser,
   PendingInvite,
   Project,
+  ProjectCodePolicy,
   ProjectGroup,
   ProjectListItem,
   ProjectMemberSource,
@@ -71,6 +72,7 @@ import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import type { ProjectAdminSectionDef } from "../modules/types";
 import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
+import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { downloadBlob } from "../utils/download";
 import { Badge } from "../components/Badge";
 
@@ -237,6 +239,8 @@ export function ProjectAdminPage() {
   const [structureError, setStructureError] = useState<string | null>(null);
 
   const [settingsName, setSettingsName] = useState("");
+  const [settingsCode, setSettingsCode] = useState("");
+  const [codePolicy, setCodePolicy] = useState<ProjectCodePolicy | null>(null);
   const [settingsSummary, setSettingsSummary] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
   // See `Project.
@@ -439,6 +443,7 @@ export function ProjectAdminPage() {
     setProject(p);
     if (!settingsDirtyRef.current) {
       setSettingsName(p.name);
+      setSettingsCode(p.code);
       setSettingsSummary(p.summary);
       setAllowMemberCr(p.allow_member_change_requests);
       setRequireCrForLinks(p.require_change_request_for_approved_links);
@@ -529,6 +534,7 @@ export function ProjectAdminPage() {
     setOrgUsers(orgUsers);
     setOrgGroups(orgGroups);
     setOrgForceLinksLocked(orgForOrgSettings.force_require_change_request_for_approved_links);
+    setCodePolicy(orgForOrgSettings.project_code_policy);
     setReportTemplates(reportTemplates);
     setOrgProjectStatuses(orgProjectStatuses);
     setOrgProjects(orgProjects);
@@ -692,6 +698,7 @@ export function ProjectAdminPage() {
     try {
       await api.patch(`/api/v1/projects/${projectId}`, {
         name: settingsName, summary: settingsSummary,
+        ...(codePolicy?.assignment === "manual" && settingsCode !== project?.code ? { code: normaliseProjectCode(settingsCode) } : {}),
         allow_member_change_requests: allowMemberCr,
         // `requireCrForLinks` always
         // carries this project's own stored opt-in, even while the org
@@ -1533,6 +1540,25 @@ export function ProjectAdminPage() {
             }}
           />
         </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.projects.code}
+          <input
+            className="input"
+            value={settingsCode}
+            readOnly={codePolicy?.assignment !== "manual"}
+            maxLength={codePolicy?.max_length}
+            aria-describedby="project-code-hint"
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setSettingsCode(e.target.value.toUpperCase());
+            }}
+          />
+        </label>
+        <p id="project-code-hint" className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+          {codePolicy?.assignment === "manual"
+            ? strings.projects.codeEditHint(describeCodePolicy(codePolicy))
+            : strings.projects.codeFixedHint}
+        </p>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.admin.summary}
           <textarea

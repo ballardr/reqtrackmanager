@@ -113,7 +113,7 @@ export function Tooltip({
       onBlur={() => setVisible(false)}
     >
       {children}
-      {createPortal(
+      {visible && createPortal(
         <span
           ref={bubbleRef}
           role="tooltip"
@@ -121,8 +121,8 @@ export function Tooltip({
           style={{
             top: position?.top ?? 0,
             left: position?.left ?? 0,
-            opacity: visible && position ? 1 : 0,
-            visibility: visible && position ? "visible" : "hidden",
+            opacity: position ? 1 : 0,
+            visibility: position ? "visible" : "hidden",
           }}
         >
           {label}

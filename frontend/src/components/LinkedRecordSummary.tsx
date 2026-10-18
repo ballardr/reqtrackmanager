@@ -15,6 +15,7 @@
  * Responsibilities: presentation only. It renders a fragment, so the caller
  * owns the row container (and any controls beside it, such as Remove).
  */
+import { useRecordCode } from "../hooks/useRecordCode";
 import { Link } from "react-router-dom";
 
 import type { LinkGraphEdge, LinkGraphNode } from "../api/artefactLinks";
@@ -48,17 +49,19 @@ export function LinkedRecordSummary({
   layout?: "inline" | "list";
 }) {
   const strings = useStrings();
+  const recordCode = useRecordCode();
   const phrase = edge.phrase ?? strings.artefactLinks.untyped;
   const path = getArtefactPath(node.type, node.project_id ?? currentProjectId, node.id);
   const statusLabel = getArtefactStatusLabel(node.type, node.status);
   const elsewhere = node.project_id !== null && node.project_id !== currentProjectId;
+  const ownerCode = elsewhere ? node.project_code : undefined;
   if (layout === "list") {
     const { code, title } = splitArtefactCode(node.label);
     return (
       <>
         <span className="artefact-links__target">
           {path ? <Link to={path} aria-label={node.label}>{title}</Link> : title}
-          {code && <span className="artefact-links__code" title={node.label}>{code}</span>}
+          {code && <span className="artefact-links__code" title={node.label}>{recordCode.code(code, ownerCode)}</span>}
         </span>
         {statusLabel && <span className="artefact-links__meta">{statusLabel}</span>}
         {node.is_archived && <span className="artefact-links__meta">{strings.artefactLinks.archivedBadge}</span>}
@@ -78,7 +81,7 @@ export function LinkedRecordSummary({
   return (
     <>
       <Badge>{phrase}</Badge>
-      <span className="artefact-links__target">{path ? <Link to={path}>{node.label}</Link> : node.label}</span>
+      <span className="artefact-links__target">{path ? <Link to={path}>{recordCode.label(node.label, ownerCode)}</Link> : recordCode.label(node.label, ownerCode)}</span>
       {statusLabel && <Badge tone="muted">{statusLabel}</Badge>}
       {node.is_archived && <Badge tone="muted">{strings.artefactLinks.archivedBadge}</Badge>}
       {elsewhere && (

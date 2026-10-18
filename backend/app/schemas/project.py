@@ -58,6 +58,9 @@ class ProjectCreate(BaseModel):
     name: str
     summary: str = ""
     template_project_id: UUID | None = None  # C-E-05: create from an existing template project
+    # The project's short code. Required when the organisation's policy is manual assignment,
+    # rejected when it is automatic (`services.codes.assign_project_code`).
+    code: str | None = None
     terminology: dict[str, str] = {}
     is_template: bool = False
     # Always explicit, never inherited from a cloned template (see
@@ -99,6 +102,7 @@ class ProjectOut(BaseModel):
     id: UUID
     organization_id: UUID
     name: str
+    code: str
     summary: str
     created_at: datetime
     updated_at: datetime
@@ -162,6 +166,9 @@ class ProjectUpdate(BaseModel):
     """
 
     name: str | None = None
+    # Changing the code is only allowed under manual assignment; references pasted elsewhere
+    # with the old code stop matching (`services.codes.change_project_code`).
+    code: str | None = None
     summary: str | None = None
     allow_member_change_requests: bool | None = None
     require_change_request_for_approved_links: bool | None = None

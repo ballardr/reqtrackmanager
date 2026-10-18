@@ -62,13 +62,15 @@ Migrations run automatically on startup. To run them manually, or to create a ne
 ```bash
 cd tests/container && docker compose up -d db   # provides both reqtrack_test and (auto-created) reqtrack_pytest_test
 cd ../../backend && source .venv/bin/activate
-DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test pytest -q   # actually runs against reqtrack_pytest_test
+DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test pytest -n 4 -q   # actually runs against reqtrack_pytest_test_gw0..gw3
 ```
+
+Run the full suite with `-n 4`, as CI does (`pytest-xdist`, in `requirements.txt`): each worker gets its own database (`reqtrack_pytest_test_gw0`, `_gw1`, ...), so they never interfere. The full suite takes about 15 to 25 minutes that way and about 95 minutes without `-n`. Use plain `pytest -q` for a single file or test, and never start a second pytest run while one is going: two runs share the same databases.
 
 Or run them inside the dev/test stack's own backend container:
 
 ```bash
-cd tests/container && docker compose exec backend pytest -q
+cd tests/container && docker compose exec backend pytest -n 4 -q
 ```
 
 Because pytest never touches `reqtrack_test`, running it doesn't disturb the dev/test stack's own manually-seeded data, demo data, or bootstrap admin user — no restart or reseed needed afterward, and it's safe to run pytest and use the UI/Playwright against the same running stack at the same time.

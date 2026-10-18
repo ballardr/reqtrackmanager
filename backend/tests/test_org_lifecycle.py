@@ -446,6 +446,8 @@ def test_reviews_due_excludes_requirements_from_a_disabled_org(client, admin_tok
 
     due = client.get("/api/v1/me/reviews/due", headers=auth_headers(org_admin_token)).json()
     assert any(r["requirement_id"] == requirement_id for r in due)
+    # The cross-project listing carries each project's code so the requirement code can be qualified.
+    assert all(r["project_code"] for r in due if r["requirement_id"] == requirement_id)
 
     client.post(f"/api/v1/orgs/{org['id']}/disable", headers=auth_headers(admin_token))
     # /me/reviews/due has no org_id/project_id path param to gate behind

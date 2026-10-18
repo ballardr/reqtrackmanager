@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.code_rules import CodePolicy
 from app.config import get_settings
 from app.database import get_db
 from app.models.enums import OrgRole
@@ -41,7 +42,9 @@ from app.schemas.org import (
     ModuleFrontendManifestOut,
     ModuleSubComponentDefaultUpdate,
     ModuleSubComponentOut,
+    OrganizationOut,
     OrgAdvancedSettingsOut,
+    OrgCodePolicyUpdate,
     OrgAdvancedSettingsUpdate,
     OrgModuleEnablementUpdate,
     OrgModuleOut,
@@ -52,6 +55,7 @@ from app.schemas.org import (
 )
 from app.security import create_module_frame_token, generate_scim_token
 from app.services.audit import log_event
+from app.services.codes import set_policy
 from app.services.email import SmtpOverride, send_email
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
@@ -156,6 +160,30 @@ def update_advanced_settings(
         force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
         allow_ai_approvals=org.allow_ai_approvals,
     )
+
+
+@router.put("/{organization_id}/code-policy", response_model=OrganizationOut)
+def update_code_policy(
+    organization_id: UUID, payload: OrgCodePolicyUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sets how project codes are formed (kind, length, auto/manual) and whether a record
+    code always shows its project code. Applies to codes created from now on; existing
+    project codes are never rewritten."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    set_policy(org, CodePolicy(**payload.model_dump(exclude={"enforce_code_everywhere"})))
+    org.enforce_code_everywhere = payload.enforce_code_everywhere
+    log_event(
+        db, entity_type="organization", entity_id=organization_id, action="code_policy_updated",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={**org.project_code_policy, "enforce_code_everywhere": org.enforce_code_everywhere},
+    )
+    db.commit()
+    db.refresh(org)
+    return org
 
 
 @router.get("/{organization_id}/modules", response_model=list[OrgModuleOut])

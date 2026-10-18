@@ -79,6 +79,7 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     id: nextId("project"),
     organization_id: nextId("org"),
     name: "Atlas Platform",
+    code: "ATLAS",
     summary: "Core platform requirements for the Atlas programme.",
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-03-01T14:30:00Z",

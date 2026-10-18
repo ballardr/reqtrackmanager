@@ -208,6 +208,8 @@ class RequirementDueForReviewOut(BaseModel):
     # already has the project in context (it's in the URL), so showing its
     # own name back to the caller would be redundant there.
     project_name: str | None = None
+    # Qualifies `unique_code` in that cross-project listing (`services.codes`).
+    project_code: str | None = None
     unique_code: str
     name: str
     review_date: date

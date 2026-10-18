@@ -78,6 +78,7 @@ import { OverridePill } from "../components/OverridePill";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { ReportContentEditor } from "../components/ReportContentEditor";
+import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { SidePanel } from "../components/SidePanel";
@@ -3244,6 +3245,10 @@ export function OrgAdminPage() {
                 />
               </Modal>
             )}
+
+            <CollapsibleSection sectionKey="orgAdmin.projectCodes" title={strings.orgAdmin.projectCodes}>
+              <ProjectCodePolicyPanel org={org} onSaved={setOrg} />
+            </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses}>
               <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectStatusesHint}</p>

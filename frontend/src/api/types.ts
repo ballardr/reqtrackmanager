@@ -373,9 +373,46 @@ export interface TwoFactorChallenge {
   challenge_token: string;
 }
 
+/** How an organisation's project codes are formed (`code_rules.CodePolicy` on the backend). */
+export type ProjectCodeKind = "letters" | "digits" | "alphanumeric";
+export type ProjectCodeAssignment = "auto" | "manual";
+
+export interface ProjectCodePolicy {
+  kind: ProjectCodeKind;
+  min_length: number;
+  max_length: number;
+  assignment: ProjectCodeAssignment;
+}
+
+export const PROJECT_CODE_KIND_LABEL: Record<ProjectCodeKind, string> = {
+  letters: "Letters only",
+  digits: "Digits only",
+  alphanumeric: "Letters and digits",
+};
+
+export const PROJECT_CODE_ASSIGNMENT_LABEL: Record<ProjectCodeAssignment, string> = {
+  auto: "Assigned automatically",
+  manual: "Chosen by the project's creator",
+};
+
+/** A record found by its qualified code (`GET /orgs/{id}/records/by-code/{code}`). */
+export interface CodedRecord {
+  artefact_type: string;
+  id: string;
+  project_id: string;
+  qualified_code: string;
+  label: string;
+}
+
 export interface Organization {
   id: string;
   name: string;
+  // Short code that qualifies organisation-scoped record codes (`ACME-PER-001`).
+  code: string;
+  // How project codes are formed, and whether a record code always shows its project
+  // code. Readable by every member: the project form and the display rule need them.
+  project_code_policy: ProjectCodePolicy;
+  enforce_code_everywhere: boolean;
   created_at: string;
   logo_file_id: string | null;
   default_template_project_id: string | null;
@@ -781,6 +818,8 @@ export interface Project {
   id: string;
   organization_id: string;
   name: string;
+  // Short upper-case code that qualifies this project's record codes (`ACME-REQ-001`).
+  code: string;
   summary: string;
   created_at: string;
   updated_at: string;
@@ -1357,6 +1396,8 @@ export interface RequirementDueForReview {
   // (`MyReviewsDuePage`) — its project-scoped sibling has the project in
   // context already (it's in the URL) and never sets this.
   project_name?: string | null;
+  // Qualifies `unique_code` in that cross-project listing.
+  project_code?: string | null;
   unique_code: string;
   name: string;
   review_date: string;

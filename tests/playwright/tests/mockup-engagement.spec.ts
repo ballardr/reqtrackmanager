@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { chooseRecordAction, clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { chooseRecordAction, clickAndAwaitSave, selectProjectAdminGroup, recordCodeText } from "./e2e-workflows/helpers";
 
 /**
  * Coverage for the mockup-driven engagement features added on top of the
@@ -101,7 +101,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     await expect(page.getByText("WEB-FN-001")).toBeVisible();
 
     await page.getByText("Users can export their data").click();
-    await expect(page.locator(".record-header").getByText("WEB-FN-001", { exact: true })).toBeVisible();
+    await expect(page.locator(".record-header").getByText(recordCodeText("WEB-FN-001"))).toBeVisible();
   });
 
   await test.step("approve the requirement so a change request can target it later", async () => {

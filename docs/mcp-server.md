@@ -12,7 +12,8 @@ Twenty-two read tools, always available:
 | --- | --- |
 | `list_organizations` | Organisations the caller's account belongs to or administers |
 | `list_projects` | Projects the caller has a role on, optionally filtered by organisation or a name/summary search |
-| `get_project` | A single project's detail |
+| `get_project` | A single project's detail, including its short code |
+| `get_record_by_code` | The record a qualified code names (`ACME-REQ-001`): its type, id and project, if the caller may see it |
 | `list_permissions` | An organisation's full Fine-Grained Access Control permission-atom vocabulary (artefact types x levels, plus the fixed administrative permissions) |
 | `list_custom_roles` | An organisation's custom roles (Fine-Grained Access Control) — each role's own definition, never who holds it |
 | `get_custom_role` | A single custom role's own definition (name, description, scope, permission-atom set) |

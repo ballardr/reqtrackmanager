@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { RecordCode } from "../components/RecordCode";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -52,7 +53,7 @@ export function MyReviewsDuePage() {
             <tbody>
               {items.map((item) => (
                 <tr key={item.requirement_id}>
-                  <td>{item.unique_code}</td>
+                  <td><RecordCode code={item.unique_code} ownerProjectCode={item.project_code} /></td>
                   <td>
                     <Link to={`/projects/${item.project_id}/requirements/${item.requirement_id}`}>{item.name}</Link>
                   </td>

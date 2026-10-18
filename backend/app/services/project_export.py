@@ -115,6 +115,7 @@ from app.services.bundle_common import (
     enforce_zip_uncompressed_size_limit,
     import_bundled_file,
 )
+from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
 from app.services.link_type_scope import resolve_link_type_scope
@@ -626,7 +627,8 @@ def new_project_from_bundle_data(
     not portable structural configuration, matching `clone_project`'s same
     choice for template-based creation (see its module docstring)."""
     return Project(
-        organization_id=organization_id, name=name, summary=summary if summary is not None else data.get("summary", ""),
+        organization_id=organization_id, name=name, code=generate_project_code(db, organization_id, name),
+        summary=summary if summary is not None else data.get("summary", ""),
         allow_member_change_requests=data.get("allow_member_change_requests", True),
         require_change_request_for_approved_links=data.get("require_change_request_for_approved_links", False),
         exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),

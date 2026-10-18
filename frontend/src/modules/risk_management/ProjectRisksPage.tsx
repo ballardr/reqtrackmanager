@@ -18,6 +18,7 @@
  * backend. The project, org users, types, scheme and risks are fetched here
  * (no `ProjectContext` provider, as `ProjectDecisionsPage` does).
  */
+import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -136,7 +137,7 @@ export function ProjectRisksPage() {
 
 
   const columns: DirectoryColumn<Risk>[] = [
-    { key: "code", label: "Code", render: (r) => r.unique_code },
+    { key: "code", label: "Code", render: (r) => <RecordCode code={r.unique_code} /> },
     { key: "title", label: "Title", render: (r) => r.title },
     { key: "type", label: "Type", render: (r) => r.risk_type_name ?? "—" },
     { key: "inherent", label: "Inherent", render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },

@@ -68,6 +68,12 @@ Gets a single project's details by id.
 
 Parameters: `project_id` (string)
 
+## `get_record_by_code` (read)
+
+Finds the record a qualified code names, such as `ACME-REQ-001`.
+
+Parameters: `qualified_code*` (string), `organization_id` (string)
+
 ## `get_requirement` (read)
 
 Gets a single requirement's full current detail.

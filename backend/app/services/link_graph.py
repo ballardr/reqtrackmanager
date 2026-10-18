@@ -180,6 +180,8 @@ class ArtefactResolver:
         self._scope: list[Project] = [project] + [r.project for r in self.related if r.project.id != project.id]
         self._names: dict[uuid.UUID, str] = {r.project.id: r.project.name for r in self.related}
         self._names.setdefault(project.id, project.name)
+        self._codes: dict[uuid.UUID, str] = {r.project.id: r.project.code for r in self.related}
+        self._codes.setdefault(project.id, project.code)
 
     def _held_in(self, project_id: uuid.UUID) -> set[str]:
         """The user's effective permissions in one scope project (cached)."""
@@ -190,6 +192,10 @@ class ArtefactResolver:
     def project_name(self, project_id: uuid.UUID | None) -> str | None:
         """The name of a scope project (every one is a project the user can open), else `None`."""
         return None if project_id is None else self._names.get(project_id)
+
+    def project_code(self, project_id: uuid.UUID | None) -> str | None:
+        """The code of a scope project, else `None`; qualifies the record codes shown for it."""
+        return None if project_id is None else self._codes.get(project_id)
 
     def resolve(self, wanted: dict[str, set[uuid.UUID]]) -> None:
         """Looks up every not-yet-known id in `wanted` (grouped by type), one query per type
@@ -276,6 +282,7 @@ def _node(resolver: ArtefactResolver, summary: ArtefactSummary, artefact_type: s
         type=artefact_type, id=summary.id, type_label=get_artefact_type_label(artefact_type), label=summary.label,
         status=summary.status, is_archived=summary.is_archived, depth=depth, project_id=summary.project_id,
         project_name=resolver.project_name(summary.project_id),
+        project_code=resolver.project_code(summary.project_id),
     )
 
 

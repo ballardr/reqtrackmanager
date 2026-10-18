@@ -68,6 +68,7 @@ from app.schemas.project import (
 )
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
+from app.services.codes import assign_project_code, change_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.downloads import filename_safe
 from app.services.project_export import build_project_bundle, import_project_bundle
@@ -427,6 +428,8 @@ def create_project(
         # user can still explicitly override it before submitting.
         template_project_id = org.default_template_project_id
 
+    project_code = assign_project_code(db, payload.organization_id, payload.name, payload.code)
+
     if template_project_id is not None:
         template = db.get(Project, template_project_id)
         if (
@@ -437,13 +440,13 @@ def create_project(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "template_project_id must be a template project in this organisation.")
         project = clone_project(
             db, template, name=payload.name, summary=payload.summary, creator=current_user,
-            parent_project_id=payload.parent_project_id,
+            parent_project_id=payload.parent_project_id, code=project_code,
         )
         db.flush()
         _ensure_project_has_a_manager(db, project, current_user.id)
     else:
         project = Project(
-            organization_id=payload.organization_id, name=payload.name, summary=payload.summary,
+            organization_id=payload.organization_id, name=payload.name, summary=payload.summary, code=project_code,
             status_id=get_default_project_status_id(db, payload.organization_id),
             parent_project_id=payload.parent_project_id,
         )
@@ -747,7 +750,7 @@ def list_projects(
             parent_visible = p.parent_project_id is not None and p.parent_project_id in parent_names
             out.append(
                 ProjectListItemOut(
-                    id=p.id, organization_id=p.organization_id, name=p.name, summary=p.summary,
+                    id=p.id, organization_id=p.organization_id, name=p.name, code=p.code, summary=p.summary,
                     created_at=p.created_at, updated_at=p.updated_at,
                     is_archived=p.is_archived, is_template=p.is_template,
                     allow_member_change_requests=p.allow_member_change_requests,
@@ -1020,6 +1023,15 @@ def update_project(
     """
     if payload.name is not None:
         project.name = payload.name
+    if payload.code is not None:
+        new_code = change_project_code(db, project, payload.code)
+        if new_code != project.code:
+            log_event(
+                db, entity_type="project", entity_id=project.id, action="code_changed", actor_id=current_user.id,
+                organization_id=project.organization_id, project_id=project.id,
+                detail={"from": project.code, "to": new_code},
+            )
+            project.code = new_code
     if payload.summary is not None:
         project.summary = payload.summary
     if payload.allow_member_change_requests is not None:

@@ -156,6 +156,11 @@ const en = {
     useTemplate: "Create from template",
     noTemplate: "None (blank {project})",
     name: "Name",
+    code: "Code",
+    codeHint: (rule: string) => `Qualifies record codes, for example ${"ACME"}-REQ-001. ${rule}.`,
+    codeEditHint: (rule: string) => `${rule}. Changing it breaks references that quote the old code.`,
+    codeFixedHint: "Assigned automatically; your organisation administrator can change how codes are assigned.",
+    codeAutomatic: "The code is assigned automatically from the name.",
     summary: "Summary",
     stage: "Current {stage}",
     roles: "Your roles",
@@ -962,6 +967,16 @@ const en = {
     actionsFor: (name: string) => `${name} actions`,
   },
   orgAdmin: {
+    projectCodes: "Project codes",
+    codePolicyHint: "A project's code goes in front of its record codes where records from several {projects} appear together, for example ACME-REQ-001. Changes apply to codes created from now on; existing codes are never rewritten.",
+    codeKind: "Characters",
+    codeMinLength: "Shortest",
+    codeMaxLength: "Longest",
+    codeAssignment: "Assignment",
+    codePolicyPreview: (rule: string) => `Codes are ${rule}.`,
+    codePolicySaved: "Project code policy saved",
+    enforceCodeEverywhere: "Always show the project code",
+    enforceCodeEverywhereHint: "Shows ACME-REQ-001 instead of REQ-001 inside a {project} too, for everyone. Otherwise each person chooses in Preferences.",
     // Resource-menu group labels — Org Admin's 15 flat accordions regrouped into
     // 6 route-addressable groups. Static text, not org-dependent, matching
     // the style guide's own "after" diagram exactly.
@@ -1691,6 +1706,8 @@ const en = {
     landingOverview: "{Project} overview list",
     landingProject: "A specific {project}",
     landingProjectSelect: "Which {project}",
+    showProjectCode: "Show the project code on record codes",
+    showProjectCodeHint: "Shows ACME-REQ-001 instead of REQ-001 inside a {project}. Records from another {project} always show it, and so does everything when your organisation requires it.",
     contentWidth: "Content width",
     contentWidthFull: "Full width",
     contentWidthBoxed: "Boxed (centred, capped)",

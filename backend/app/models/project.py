@@ -17,6 +17,7 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, 
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum, utcnow
 from app.models.enums import (
@@ -35,6 +36,11 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
         next_requirement_seq: Monotonically increasing counter used to
             generate unique requirement identifiers (C-G-06). Never reused,
             including for archived requirements.
+        code: Short upper-case code (letters and digits, no hyphen) that qualifies
+            the project's record codes (`ACME-REQ-001`). Unique per organisation,
+            shaped by `Organization.project_code_policy`, and distinct from the
+            organisation's own code. Own code only: a child project does not
+            inherit or concatenate its parent's. See `services.codes`.
         status_id: The project's current org-defined status (e.g.
             "Proposed", "Active" — see `ProjectStatusDefinition`). NOT NULL
             with no `ondelete` action (implicit RESTRICT): every project
@@ -102,11 +108,13 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("organization_id", "code"),)
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
     name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[str] = mapped_column(String(ABSOLUTE_MAX_CODE_LENGTH))
     summary: Mapped[str] = mapped_column(String(2000), default="")
     parent_project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True

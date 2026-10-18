@@ -14,6 +14,10 @@ import { createContext } from "react";
 
 export interface ProjectContextValue {
   terminology: Record<string, string>;
+  /** The current project's code (qualifies record codes); `null` outside a project. */
+  projectCode?: string | null;
+  /** Whether the project's organisation shows the project code on every record code. */
+  enforceCodeEverywhere?: boolean;
 }
 
 export const ProjectContext = createContext<ProjectContextValue>({ terminology: {} });

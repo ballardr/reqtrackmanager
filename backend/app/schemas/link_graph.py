@@ -48,6 +48,7 @@ class LinkGraphNode(BaseModel):
     depth: int
     project_id: UUID | None = None
     project_name: str | None = None
+    project_code: str | None = None
 
 
 class LinkGraphEdge(BaseModel):

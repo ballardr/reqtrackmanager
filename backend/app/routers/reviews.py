@@ -49,14 +49,17 @@ def list_my_due_reviews(
         else {}
     )
     project_ids = {req.project_id for _, req in due}
-    project_names = (
-        dict(db.execute(select(Project.id, Project.name).where(Project.id.in_(project_ids))).all())
+    project_rows = (
+        db.execute(select(Project.id, Project.name, Project.code).where(Project.id.in_(project_ids))).all()
         if project_ids
-        else {}
+        else []
     )
+    project_names = {pid: name for pid, name, _ in project_rows}
+    project_codes = {pid: code for pid, _, code in project_rows}
     out = [
         RequirementDueForReviewOut(
             requirement_id=req.id, project_id=req.project_id, project_name=project_names.get(req.project_id),
+            project_code=project_codes.get(req.project_id),
             unique_code=req.unique_code, name=version.name, review_date=version.review_date,
             reviewer=reviewers[(version.reviewer_type, version.reviewer_id)] if version.reviewer_id else None,
             component_id=req.component_id, component_name=component_names.get(req.component_id, ""),

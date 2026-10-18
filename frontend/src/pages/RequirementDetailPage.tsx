@@ -1,4 +1,5 @@
 import { Activity as ActivityIcon, Bell, BellOff, CheckCircle, FolderOpen, GitPullRequest, Plus, Table as TableIcon, Trash2 } from "lucide-react";
+import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -1008,7 +1009,7 @@ export function RequirementDetailPage() {
                     .filter((a) => !linkedActions.some((la) => la.id === a.id))
                     .map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.unique_code} — {a.title}
+                        <RecordCode code={a.unique_code} /> — {a.title}
                       </option>
                     ))}
                 </select>
@@ -1051,7 +1052,7 @@ export function RequirementDetailPage() {
             }}
           >
             <span>
-              <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.unique_code} — {a.title}</Link>{" "}
+              <Link to={`/projects/${projectId}/actions/${a.id}`}><RecordCode code={a.unique_code} /> — {a.title}</Link>{" "}
               <Badge tone={REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}>
                 {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
               </Badge>

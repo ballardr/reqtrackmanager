@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { RecordCode } from "../components/RecordCode";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -251,7 +252,7 @@ export function ProjectActionsPage() {
                       className="entity-accent-row"
                       style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.action }}
                     >
-                      <td className="text-muted">{a.unique_code}</td>
+                      <td className="text-muted"><RecordCode code={a.unique_code} /></td>
                       <td>
                         <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.title}</Link>
                         {a.is_archived && <Badge className="badge-after">{strings.actions.archived}</Badge>}
