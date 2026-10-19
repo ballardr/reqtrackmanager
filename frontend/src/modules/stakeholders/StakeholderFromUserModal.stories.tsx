@@ -44,6 +44,16 @@ export const SavesThePickedUser: Story = {
   },
 };
 
+export const SaveAndActivateAddsTheUserAsActive: Story = {
+  play: async ({ args }) => {
+    await userEvent.type(dialog().getByLabelText("Organisation user"), "Jamie");
+    await waitFor(() => dialog().getByText(/Jamie Lee/));
+    await userEvent.click(dialog().getByText(/Jamie Lee/));
+    await userEvent.click(dialog().getByRole("button", { name: "Save and activate" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ user_id: "user-2", activate: true }));
+  },
+};
+
 export const ShowsError: Story = {
   args: { error: "A Stakeholder already represents this user." },
   play: async () => {

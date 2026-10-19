@@ -288,7 +288,11 @@ def create_persona_from_payload(
     project_id: uuid.UUID | None,
 ) -> PersonaOut:
     """Validates a create payload (type reference, owner/champion tenancy),
-    creates the persona, audit-logs, commits and returns the API shape."""
+    creates the persona, audit-logs, commits and returns the API shape.
+
+    With `payload.activate` the persona is also moved to `ACTIVE` before the single commit, so both audit
+    events carry the same actor and either both are stored or neither. Activation has the same gate as
+    creation (`require_persona_manage`, checked by every caller), so this grants nothing extra."""
     validate_principals(db, organization_id, project_id, owner=payload.owner, champion=payload.champion)
     try:
         org_type_id, project_type_id = resolve_persona_type_refs(
@@ -296,7 +300,7 @@ def create_persona_from_payload(
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    content = payload.model_dump(exclude={"persona_type_id", *PERSONA_PRINCIPAL_FIELDS})
+    content = payload.model_dump(exclude={"persona_type_id", "activate", *PERSONA_PRINCIPAL_FIELDS})
     content.update(columns_for_create(payload, PERSONA_PRINCIPAL_FIELDS))
     persona = create_persona(
         db, scope=scope, organization_id=organization_id, project_id=project_id, creator=creator,
@@ -304,6 +308,10 @@ def create_persona_from_payload(
     )
     log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="created", actor_id=creator.id,
               organization_id=persona.organization_id, project_id=persona.project_id, detail={"name": payload.name})
+    if payload.activate:
+        transition_persona(
+            db, persona, get_current_persona_version(db, persona.id), PersonaStatus.ACTIVE, creator, action="activated",
+        )
     db.commit()
     db.refresh(persona)
     return persona_to_out(db, persona, get_current_persona_version(db, persona.id), project_id=project_id)

@@ -45,9 +45,10 @@ export function ConfirmDialog({
   return (
     <Modal title={title} onClose={onCancel}>
       <div className="stack">
-        <p className="text-muted" style={{ margin: 0 }}>
+        {/* A div, not a p: a message may embed block content (a checkbox field) and a p cannot hold a div. */}
+        <div className="text-muted" style={{ margin: 0 }}>
           {message}
-        </p>
+        </div>
         {requireTypedText !== undefined && (
           <input
             className="input"

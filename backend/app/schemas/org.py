@@ -294,6 +294,7 @@ class ManifestNavEntryOut(BaseModel):
     nav_path: str
     nav_icon: str = "puzzle"
     sub_component: str | None = None
+    sub_components_any: list[str] = []
 
 
 class ModuleFrontendManifestOut(BaseModel):
@@ -316,6 +317,7 @@ class ModuleFrontendManifestOut(BaseModel):
     additional_nav_entries: list[ManifestNavEntryOut] = []
     nav_icon: str = "puzzle"
     nav_sub_component: str | None = None
+    nav_sub_components_any: list[str] = []
 
 
 class OrgModuleOut(BaseModel):

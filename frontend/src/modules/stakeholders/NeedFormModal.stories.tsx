@@ -38,6 +38,22 @@ export const SavesEnteredValues: Story = {
   },
 };
 
+export const SaveAndActivateSendsTheActivateFlag: Story = {
+  play: async ({ args }) => {
+    await userEvent.type(dialog().getByLabelText("Need name"), "Diagnose faults quickly");
+    await expect(dialog().getByRole("button", { name: "Save and activate" })).toBeEnabled();
+    await userEvent.click(dialog().getByRole("button", { name: "Save and activate" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Diagnose faults quickly", activate: true }));
+  },
+};
+
+export const EditDoesNotOfferSaveAndActivate: Story = {
+  args: { initial: buildNeed() },
+  play: async () => {
+    await expect(dialog().queryByRole("button", { name: "Save and activate" })).not.toBeInTheDocument();
+  },
+};
+
 export const EditPrefillsAndOffersAChangeNote: Story = {
   args: { initial: buildNeed() },
   play: async ({ args }) => {

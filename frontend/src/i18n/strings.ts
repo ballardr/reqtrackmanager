@@ -2009,6 +2009,7 @@ const en = {
     delete: "Delete",
     edit: "Edit",
     save: "Save",
+    saveAndActivate: "Save and activate",
     up: "Move up",
     down: "Move down",
     yes: "Yes",

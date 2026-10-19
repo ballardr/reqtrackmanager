@@ -115,7 +115,7 @@ export function StakeholderFormModal({
       ? [...typeOptions, { value: initial.stakeholder_type_id, label: `${initial.stakeholder_type_name ?? "Current type"} (disabled)` }]
       : typeOptions;
 
-  function save() {
+  function save(activate = false) {
     onSave({
       name: name.trim(),
       stakeholder_type_id: typeId || null,
@@ -127,6 +127,7 @@ export function StakeholderFormModal({
       influence_level_id: influence,
       interest_level_id: interest,
       change_note: changeNote,
+      ...(activate ? { activate: true } : {}),
       ...(!initial && groups ? { group_ids: groupIds } : {}),
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
     } as StakeholderFieldValues);
@@ -190,7 +191,10 @@ export function StakeholderFormModal({
           </FormGridFull>
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
         </FormGrid>
-        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
+        <FormActions
+          error={error} onCancel={onCancel} onSave={() => save()} saveDisabled={!valid}
+          onSaveAndActivate={initial ? undefined : () => save(true)}
+        />
       </div>
     </Modal>
   );

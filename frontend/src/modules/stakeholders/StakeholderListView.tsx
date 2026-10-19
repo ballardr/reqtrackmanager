@@ -89,10 +89,10 @@ export function StakeholderListView({
   /** Re-shows a hidden stakeholder in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (stakeholder: Stakeholder) => void;
   onOpen: (stakeholder: Stakeholder) => void;
-  /** Resolves on success; a rejection keeps the modal open and shows its message. `groupIds` are the groups chosen on the form. */
-  onCreate: (values: StakeholderFieldValues, groupIds: string[]) => Promise<void>;
-  /** Same contract, for the "Add from org user" modal. */
-  onCreateFromUser: (values: { user_id: string; stakeholder_type_id: string | null; role: string }) => Promise<void>;
+  /** Resolves on success; a rejection keeps the modal open and shows its message. `groupIds` are the groups chosen on the form. Omit when stakeholders are created elsewhere. */
+  onCreate?: (values: StakeholderFieldValues, groupIds: string[]) => Promise<void>;
+  /** Same contract, for the "Add from org user" modal; omit to leave that button out. */
+  onCreateFromUser?: (values: { user_id: string; stakeholder_type_id: string | null; role: string; activate?: boolean }) => Promise<void>;
 }) {
   const [fromUserOpen, setFromUserOpen] = useState(false);
   const [fromUserError, setFromUserError] = useState<string | null>(null);
@@ -171,9 +171,11 @@ export function StakeholderListView({
           />
         }
         toolbar={
-          <button className="btn" onClick={() => setFromUserOpen(true)}>
-            Add from org user
-          </button>
+          onCreateFromUser && (
+            <button className="btn" onClick={() => setFromUserOpen(true)}>
+              Add from org user
+            </button>
+          )
         }
         includeArchived={includeArchived}
         onIncludeArchivedChange={onIncludeArchivedChange}
@@ -181,15 +183,15 @@ export function StakeholderListView({
         onIncludeHiddenChange={onIncludeHiddenChange}
         onShowHidden={onShowHidden}
         onOpen={onOpen}
-        onCreate={({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds)}
-        renderCreateModal={(props) => (
+        onCreate={onCreate && (({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds))}
+        renderCreateModal={onCreate ? (props) => (
           <StakeholderFormModal
             {...props} typeOptions={typeOptions} scheme={scheme} loadHint={loadHint}
             groups={groups} groupTier={groupTier}
           />
-        )}
+        ) : undefined}
       />
-      {fromUserOpen && (
+      {fromUserOpen && onCreateFromUser && (
         <StakeholderFromUserModal
           scopeLabel={scopeLabel}
           orgUsers={orgUsers}

@@ -11035,3 +11035,39 @@ Plan: [platform-review-2026-10-plan.md](plans/platform-review-2026-10-plan.md). 
 - **Stale test fixed:** `module-enablement-overrides.spec.ts` still expected the greyed "Turned off for your organisation" row and the disabled sub-component switch that the module-visibility change (Phase 13, N14) removed; it now asserts they are not listed. It was failing before this change.
 - **Tests:** Storybook stories for both hooks; full Storybook suite (263 files) and full Playwright suite pass; four reports and project-code specs that failed in the full run passed alone (the known load sensitivity).
 
+
+
+## Platform review (October 2026) Phase 16: one People page and "Save and activate" (2026-10-19)
+
+Plan: [platform-review-2026-10-plan.md](plans/platform-review-2026-10-plan.md). N19 and N20 are **Decided by: User**; Q19 was a recommendation the user had not answered, so everything below that is not N19/N20 is **Decided by: Agent** and can be revisited.
+
+- **People page.** One `PeoplePage` (module `stakeholders`, `/projects/:id/modules/stakeholders/people`) lists Personas, Stakeholders, Needs and Groups (Q19, as recommended) with kind chips and one **New** menu. Detail pages are unchanged. The old `.../personas`, `.../stakeholders`, `.../needs` list routes redirect to `people?kind=<kind>` (`PeopleRedirect`); the group manager route stays, because relationships deep-link to it. The nav shows one "People" entry (plus "Engagements"); the separate Groups entry is gone because the group manager is reachable from People.
+- **Challenge to the plan: one shape for every kind would have lost features.** A single table with the shared columns cannot carry Stakeholders' Influence, Interest, Cadence, Last engaged and Groups columns or the group filters and Group by (the answer to "custom column" for categorical data). So several kinds share one table (`PeopleListView`, `RecordListView` over a `PeopleRow` model with a Kind column) and **one kind alone shows that kind's own list** (`PersonaListView`, `StakeholderListView`, the extracted `NeedListView`, the group manager). The kind choice is in the URL. The last chip cannot be turned off. Decided by: Agent.
+- **"Reuse the existing list shell; do not fork a second one" was kept:** `RecordListView` gained only "omit `onCreate`/`renderCreateModal` for a list whose records are created elsewhere". The page owns the create forms.
+- **New shared components (extract, not per-page):** `MenuButton` (labelled button with a chevron; `ActionMenu` now shares its `ActionMenuList`), `ToggleChips` (`FilterBadge` with the new `pressed` prop), `FormActions` `onSaveAndActivate`.
+- **Nav, generic extension point (module boundary).** The People entry serves three sub-components, so `ModuleNavEntry.sub_components_any` and `ModuleFrontendManifest.nav_sub_components_any` (wire: `sub_components_any`, `nav_sub_components_any`) hide an entry only when **all** listed sub-components are off. `Layout.tsx` consumes it generically; it names no module. Existing single-`sub_component` behaviour is unchanged.
+- **Save and activate, mechanism.** `PersonaCreate`, `StakeholderCreate`, `StakeholderFromUserCreate` and `NeedCreate` take `activate: bool = false`. `create_persona_from_payload`, `create_stakeholder_from_payload` and `create_need_from_payload` then call the type's own `transition_*` to `ACTIVE` before their single commit. One request: both audit events (`created`, `activated`) carry the same actor, the record has versions draft then active, and a failure in the activation step stores neither the record nor either event (tested by forcing the transition to fail). No new endpoint, no new permission.
+- **Review of every draft-to-active type (N20).** Applies only where activating needs nothing beyond permission to create, and no second person's approval is skipped.
+
+  | Type | Lifecycle | Gate to activate | Verdict |
+  |------|-----------|------------------|---------|
+  | Persona | draft, active, retired | `persona_owner` / FGAC `(persona, manage)`: the same as create | **Applies** |
+  | Stakeholder (also from a user) | draft, active, retired | `stakeholder_owner` / FGAC: the same as create | **Applies** |
+  | Stakeholder Need | draft, active, retired | `stakeholder_need_owner` / FGAC: the same as create | **Applies** |
+  | Requirement | draft, reviewed, approved | approving needs a project manager (the approval authority); approval locks the record | No: approval gate |
+  | Change request | draft, submitted, in review, approved/rejected | decided by approvers or a vote | No: approval gate |
+  | Decision | draft, proposed, under review, approved | separate `decision_approver` role | No: approval gate |
+  | Strategy, Future State | draft, proposed, under review, approved, active | separate `*_approver` role; four transitions | No: approval gate |
+  | Guiding Principle | draft, proposed, approved, active | separate `guiding_principle_approver` role | No: approval gate |
+  | Pain Point | submitted, triaged, accepted... | `pain_point_manager` triages; no active state | No: not a draft-to-active lifecycle |
+  | Open Question | open, investigating, ready for decision, resolved | `open_question_resolver`; no active state | No: not a draft-to-active lifecycle |
+  | Risk | identified, assessed, ... | no draft state; acceptance needs `risk_acceptor` | No: no draft |
+  | Action | an outcome status, no draft | not applicable | No: no draft |
+  | Engagement | none | not applicable | No: no lifecycle |
+
+  The button is therefore on the Persona, Stakeholder, Stakeholder-from-user and Need create forms only. Never a bypass: the create endpoints already run `require_*_manage` before the transition, and that is the same function the `/activate` endpoints run (verified in all five routers: org persona, project persona, org stakeholder, project stakeholder, project need).
+- **Not done, on purpose.** The MCP `create_*` tools take no `activate` (an assistant calls `activate_*` as a second tool); adding it would widen the tool surface and the generated skill reference for no stated need. Group membership is set after a Stakeholder is created (a separate call, already so), so "all or nothing" covers the record and its activation, not its groups.
+- **SOC 2 (change-management, access-control).** Identify: could `activate: true` activate for someone who cannot activate? Verify: both endpoints use the same manage gate in the same router, and a test proves a plain member gets 403 with `activate: true` and nothing is stored. Could a half-applied create leak a draft? Verify: failure test per type. Remediate: none needed. No Restricted data is logged (the audit detail is the name, as before). No existing gap changes.
+- **Users and groups parity.** No person field added. **Nested projects:** no new project-scoped definition table, not applicable.
+- **Incidental defects fixed.** `ConfirmDialog` wrapped its message in a `<p>`, so a message holding a checkbox field (Org Admin "Allow AI approvals") produced a React "`<p>` cannot contain a nested `<div>`" error; it is a `<div>` now. `getByRole("button", { name: "Save" })` in Playwright is a substring match, so the create-form specs now use `exact: true` once Save and activate sits beside Save.
+- **Tests.** Backend `test_save_and_activate.py` (10) and `test_people_nav_entry.py` (2), plus the nav wire shape in `test_module_frontend_integration.py`. Storybook: `PeoplePage` (22), `MenuButton`, `ToggleChips`, `FormActions`, the four create forms, `Layout` (any-of nav). Playwright `people-page.spec.ts` (5) plus the persona, stakeholder, need and visibility specs updated for the New menu, the People link and the `?kind=` back links.

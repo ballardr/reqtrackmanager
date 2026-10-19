@@ -13,11 +13,10 @@ import { OrgStakeholdersPanel } from "./OrgStakeholdersPanel";
 import { OrgStakeholderTypesPanel } from "./OrgStakeholderTypesPanel";
 import { PersonaDetailPage } from "./PersonaDetailPage";
 import { PowerInterestGridReportView } from "./PowerInterestGridReportView";
+import { PeoplePage } from "./PeoplePage";
+import { PeopleRedirect } from "./PeopleRedirect";
 import { ProjectEngagementsPage } from "./ProjectEngagementsPage";
-import { ProjectNeedsPage } from "./ProjectNeedsPage";
-import { ProjectPersonasPage } from "./ProjectPersonasPage";
 import { ProjectPersonaTypesPanel } from "./ProjectPersonaTypesPanel";
-import { ProjectStakeholdersPage } from "./ProjectStakeholdersPage";
 import { ProjectStakeholderTypesPanel } from "./ProjectStakeholderTypesPanel";
 import { ProjectStakeholderGroupsPage } from "./ProjectStakeholderGroupsPage";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
@@ -33,7 +32,8 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  * so no core file is edited to add it.
  *
  * - `routes` (project-scoped, gated on the project's enabled-modules list):
- *   the Persona, Stakeholder, Need and Engagement list and detail pages (a Need and an
+ *   the People page (one list and New menu for Personas, Stakeholders, Needs and Groups; the old per-type list
+ *   routes redirect to it), the Engagement list, and every record's detail page (a Need and an
  *   Engagement are project-scoped only, so they have no global route or org panel). A detail route is also
  *   used for an org record opened from a project, so a persona's weight
  *   override stays reachable.
@@ -69,15 +69,20 @@ export const moduleDefinition: TierAModuleDefinition = {
   },
   artefactInactiveStatuses: { persona: ["retired"], stakeholder: ["retired"], stakeholder_need: ["retired"] },
   routes: [
-    { path: "/projects/:projectId/modules/stakeholders/personas", element: createElement(ProjectPersonasPage) },
+    { path: "/projects/:projectId/modules/stakeholders/people", element: createElement(PeoplePage) },
+    // The per-type lists were merged into People; these keep old bookmarks working.
+    { path: "/projects/:projectId/modules/stakeholders/personas", element: createElement(PeopleRedirect, { kind: "persona" }) },
     { path: "/projects/:projectId/modules/stakeholders/personas/:personaId", element: createElement(PersonaDetailPage) },
-    { path: "/projects/:projectId/modules/stakeholders/stakeholders", element: createElement(ProjectStakeholdersPage) },
+    {
+      path: "/projects/:projectId/modules/stakeholders/stakeholders",
+      element: createElement(PeopleRedirect, { kind: "stakeholder" }),
+    },
     {
       path: "/projects/:projectId/modules/stakeholders/stakeholders/:stakeholderId",
       element: createElement(StakeholderDetailPage),
     },
     { path: "/projects/:projectId/modules/stakeholders/groups", element: createElement(ProjectStakeholderGroupsPage) },
-    { path: "/projects/:projectId/modules/stakeholders/needs", element: createElement(ProjectNeedsPage) },
+    { path: "/projects/:projectId/modules/stakeholders/needs", element: createElement(PeopleRedirect, { kind: "need" }) },
     { path: "/projects/:projectId/modules/stakeholders/needs/:needId", element: createElement(NeedDetailPage) },
     { path: "/projects/:projectId/modules/stakeholders/engagements", element: createElement(ProjectEngagementsPage) },
     {

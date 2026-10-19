@@ -1265,8 +1265,10 @@ entry: `ModuleFrontendManifest.nav_sub_component`) to that sub-component's key.
 `GET /projects/{id}/enabled-modules` returns each module's
 `disabled_sub_components`, and the nav rail hides the entries listed there — the
 same state that makes the sub-component's API routes 404, so a link never leads
-to a page that cannot load. `Layout.tsx` filters generically on the field; it
-names no module. A module-admin toggle calls `refreshProjectEnabledModules`
+to a page that cannot load. A page that serves several sub-components (a combined
+list) sets `sub_components_any` (primary entry: `nav_sub_components_any`) instead:
+the entry goes only when every listed sub-component is off. `Layout.tsx` filters
+generically on both fields; it names no module. A module-admin toggle calls `refreshProjectEnabledModules`
 (`hooks/useProjectEnabledModules.ts`) so the rail follows without a reload.
 
 For a **project-scoped** route, `nav_path` may contain a literal

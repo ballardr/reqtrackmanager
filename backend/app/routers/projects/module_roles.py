@@ -170,11 +170,13 @@ def list_project_enabled_modules(
                         nav_path=entry.nav_path.replace("{project_id}", str(project_id)),
                         nav_icon=entry.nav_icon,
                         sub_component=entry.sub_component,
+                        sub_components_any=list(entry.sub_components_any),
                     )
                     for entry in manifest.additional_nav_entries
                 ],
                 nav_icon=manifest.nav_icon,
                 nav_sub_component=manifest.nav_sub_component,
+                nav_sub_components_any=list(manifest.nav_sub_components_any),
             )
         disabled_sub_components = [
             sub.key for sub in definition.sub_components

@@ -35,4 +35,23 @@ export const ShowsTheSaveErrorAndACustomLabel: Story = {
   },
 };
 
+export const SaveAndActivateIsASeparateButtonBesideSave: Story = {
+  args: { onCancel: fn(), onSave: fn(), onSaveAndActivate: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Save and activate" }));
+    await expect(args.onSaveAndActivate).toHaveBeenCalledTimes(1);
+    await expect(args.onSave).not.toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledTimes(1);
+  },
+};
+
+export const InvalidFormDisablesSaveAndActivateToo: Story = {
+  args: { onCancel: fn(), onSave: fn(), onSaveAndActivate: fn(), saveDisabled: true },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByRole("button", { name: "Save and activate" })).toBeDisabled();
+  },
+};
+
 export const DarkTheme: Story = { ...ShowsTheSaveErrorAndACustomLabel, globals: { theme: "dark" } };

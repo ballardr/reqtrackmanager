@@ -33,7 +33,7 @@ export function StakeholderFromUserModal({
   typeOptions: { value: string; label: string }[];
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: { user_id: string; stakeholder_type_id: string | null; role: string }) => void;
+  onSave: (values: { user_id: string; stakeholder_type_id: string | null; role: string; activate?: boolean }) => void;
 }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [typeId, setTypeId] = useState("");
@@ -59,6 +59,7 @@ export function StakeholderFromUserModal({
           error={error}
           onCancel={onCancel}
           onSave={() => userId && onSave({ user_id: userId, stakeholder_type_id: typeId || null, role })}
+          onSaveAndActivate={() => userId && onSave({ user_id: userId, stakeholder_type_id: typeId || null, role, activate: true })}
           saveLabel="Add Stakeholder"
           saveDisabled={!userId}
         />

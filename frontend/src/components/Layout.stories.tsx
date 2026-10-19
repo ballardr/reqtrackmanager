@@ -291,6 +291,43 @@ export const HidesPrimaryNavEntryOfDisabledSubComponent: Story = {
   },
 };
 
+/** One page serving several sub-components (`nav_sub_components_any`), as the People page does. */
+function anyOfModule(disabled: string[]): ModuleNavEntry {
+  return {
+    module_key: "demo", name: "Demo module", disabled_sub_components: disabled,
+    frontend_manifest: {
+      tier: "installed", nav_label: "People", nav_path: `/projects/${PROJECT.id}/modules/demo/people`, nav_icon: "users",
+      nav_sub_components_any: ["alpha", "beta", "gamma"], frame_url: null, remote_entry_url: null, exposed_module: null,
+      additional_nav_entries: [],
+    },
+  };
+}
+
+/** A combined entry stays while any one of the sub-components it serves is on. */
+export const KeepsCombinedNavEntryWhileAnySubComponentIsOn: Story = {
+  ...HidesNavEntriesOfDisabledSubComponents,
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [anyOfModule(["alpha", "beta"])]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("link", { name: "People" })).toBeInTheDocument();
+  },
+};
+
+/** ...and goes only when every one of them is off. */
+export const HidesCombinedNavEntryWhenAllSubComponentsAreOff: Story = {
+  ...HidesNavEntriesOfDisabledSubComponents,
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [anyOfModule(["alpha", "beta", "gamma"])]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Project history" });
+    await expect(canvas.queryByRole("link", { name: "People" })).not.toBeInTheDocument();
+  },
+};
+
 /** 40 modules' worth of entries: the item list scrolls inside the rail, below the collapse toggle, so the
  * scrollbar and the toggle never overlap (the collapsed rail is covered by the Playwright spec). */
 function longRailModules(): ModuleNavEntry[] {

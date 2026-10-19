@@ -256,8 +256,11 @@ def create_stakeholder_from_payload(
     project_id: uuid.UUID | None,
 ) -> StakeholderOut:
     """Validates a create payload, creates the stakeholder, audit-logs (no
-    personal data), commits and returns the API shape."""
-    content = payload.model_dump(exclude={"stakeholder_type_id"})
+    personal data), commits and returns the API shape.
+
+    With `payload.activate` the stakeholder is also moved to `ACTIVE` before the single commit (both audit
+    events, same actor, all or nothing). Activation has the same gate as creation, checked by every caller."""
+    content = payload.model_dump(exclude={"stakeholder_type_id", "activate"})
     _validate_refs(db, organization_id, project_id, content, payload)
     expand_sent(payload, content, STAKEHOLDER_PRINCIPAL_FIELDS)
     try:
@@ -272,6 +275,11 @@ def create_stakeholder_from_payload(
     )
     log_event(db, entity_type=STAKEHOLDER_ARTEFACT_TYPE, entity_id=stakeholder.id, action="created",
               actor_id=creator.id, organization_id=stakeholder.organization_id, project_id=stakeholder.project_id)
+    if payload.activate:
+        transition_stakeholder(
+            db, stakeholder, get_current_stakeholder_version(db, stakeholder.id), StakeholderStatus.ACTIVE, creator,
+            action="activated",
+        )
     db.commit()
     db.refresh(stakeholder)
     return stakeholder_to_out(db, stakeholder, get_current_stakeholder_version(db, stakeholder.id))
@@ -301,6 +309,7 @@ def create_stakeholder_from_user(
             name=user.display_name, contact_info=user.email, user_id=user.id,
             stakeholder_type_id=payload.stakeholder_type_id, role=payload.role,
             organisation_group=payload.organisation_group, target_cadence=payload.target_cadence,
+            activate=payload.activate,
         ),
         creator, organization_id=organization_id, project_id=project_id,
     )

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installCleanupHook, PASSWORD, selectOrgAdminGroup, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
-import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
+import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -23,12 +23,10 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     const { suffix, project } = await setUpOrg(page, "Stakeholder");
     const name = `Pat Regulator ${suffix}`;
 
-    await page.goto(`/projects/${project.id}`);
-    await page.getByRole("link", { name: "Stakeholders", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/stakeholders$`));
+    await openPeople(page, project.id, "stakeholder");
 
     // --- Create (a Modal layer): the hint appears once both levels are set, and never sets the cadence.
-    await page.getByRole("button", { name: "New Stakeholder" }).click();
+    await openNew(page, "Stakeholder");
     const dialog = page.getByRole("dialog", { name: "New Stakeholder (project)" });
     await dialog.getByLabel("Stakeholder name").fill(name);
     await dialog.getByLabel("Type").selectOption({ label: "Regulator" });
@@ -39,7 +37,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     await expect(dialog.getByTestId("cadence-hint")).toContainText("Suggested: Monthly (Manage closely)");
     await expect(dialog.getByLabel("Target engagement cadence")).toHaveValue("");
     await dialog.getByLabel("Target engagement cadence").selectOption({ label: "Quarterly" });
-    await dialog.getByRole("button", { name: "Save" }).click();
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
 
     // --- The list renders label-mapped values, not wire values.
     const row = page.locator("tr", { hasText: name });
@@ -114,7 +112,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     expect(created.ok()).toBeTruthy();
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders`);
-    await page.getByRole("button", { name: "Add from org user" }).click();
+    await openNew(page, "Stakeholder from organisation user");
     const dialog = page.getByRole("dialog", { name: "Add Stakeholder from organisation user (project)" });
     await dialog.getByLabel("Organisation user").fill(`Casey Colleague ${suffix}`);
     await dialog.getByText(`Casey Colleague ${suffix}`).first().click();
@@ -128,8 +126,8 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     await expect(page.getByText("Platform user", { exact: true })).toBeVisible();
 
     // A second attempt for the same user is refused with a visible message.
-    await page.getByRole("link", { name: "← Stakeholders" }).click();
-    await page.getByRole("button", { name: "Add from org user" }).click();
+    await page.getByRole("link", { name: "← People" }).click();
+    await openNew(page, "Stakeholder from organisation user");
     const again = page.getByRole("dialog", { name: "Add Stakeholder from organisation user (project)" });
     await again.getByLabel("Organisation user").fill(`Casey Colleague ${suffix}`);
     await again.getByText(`Casey Colleague ${suffix}`).first().click();
@@ -157,7 +155,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     await confirm.click();
 
     await expect(page.getByText("Stakeholder permanently deleted.")).toBeVisible();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/stakeholders$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/people\\?kind=stakeholder$`));
     await expect(page.getByRole("button", { name })).toHaveCount(0);
     expect((await page.request.get(`${base}/stakeholders/${stakeholder.id}`, { headers: adminHeaders })).status()).toBe(404);
   });

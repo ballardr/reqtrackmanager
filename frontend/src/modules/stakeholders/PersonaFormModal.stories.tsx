@@ -61,6 +61,29 @@ export const NonPositiveWeightBlocksSave: Story = {
   },
 };
 
+export const SaveAndActivateSendsTheActivateFlag: Story = {
+  play: async ({ args }) => {
+    await userEvent.type(dialog().getByLabelText("Persona name"), "Safety Officer");
+    await userEvent.click(dialog().getByRole("button", { name: "Save and activate" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Safety Officer", activate: true }));
+  },
+};
+
+export const PlainSaveDoesNotActivate: Story = {
+  play: async ({ args }) => {
+    await userEvent.type(dialog().getByLabelText("Persona name"), "Safety Officer");
+    await userEvent.click(dialog().getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.not.objectContaining({ activate: true }));
+  },
+};
+
+export const EditDoesNotOfferSaveAndActivate: Story = {
+  args: { initial: buildPersona() },
+  play: async () => {
+    await expect(dialog().queryByRole("button", { name: "Save and activate" })).not.toBeInTheDocument();
+  },
+};
+
 export const EditPrefillsAndShowsChangeNote: Story = {
   args: { initial: buildPersona() },
   play: async () => {

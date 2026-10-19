@@ -19,7 +19,8 @@
  * `columnsAfterScope` slot the kind's own columns around them.
  *
  * A kind can add its own filters (`extraFilters`) and narrow `records` before
- * passing them in.
+ * passing them in. A list whose records are created elsewhere (the People page's "New" menu) omits
+ * `onCreate`/`renderCreateModal`: it then shows no New button and no create form.
  *
  * Per-project visibility: a page that lets the project hide org
  * records passes `onIncludeHiddenChange` for a "Show hidden" filter and
@@ -119,16 +120,17 @@ export function RecordListView<R extends ListedRecord, V>({
   /** Re-shows a hidden record in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (record: R) => void;
   onOpen: (record: R) => void;
-  /** Resolves on success; a rejection keeps the modal open and shows its message. */
-  onCreate: (values: V) => Promise<void>;
+  /** Resolves on success; a rejection keeps the modal open and shows its message. Omit (with `renderCreateModal`) when records are created elsewhere. */
+  onCreate?: (values: V) => Promise<void>;
   /** Renders the create form; `onSave` is already wired to `onCreate` and the error state. */
-  renderCreateModal: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V) => void }) => ReactNode;
+  renderCreateModal?: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V) => void }) => ReactNode;
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const canCreate = !!onCreate && !!renderCreateModal;
 
   const typeNames = typeName ? Array.from(new Set(records.map(typeName).filter((n): n is string => !!n))).sort() : [];
   const filtered = records.filter((r) => {
@@ -188,12 +190,16 @@ export function RecordListView<R extends ListedRecord, V>({
 
   return (
     <div className="stack">
-      <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>
-          {newLabel ?? `New ${noun}`}
-        </button>
-        {toolbar}
-      </div>
+      {(canCreate || toolbar) && (
+        <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
+          {canCreate && (
+            <button className="btn btn-primary" onClick={() => setCreating(true)}>
+              {newLabel ?? `New ${noun}`}
+            </button>
+          )}
+          {toolbar}
+        </div>
+      )}
       <div className="side-grid">
         <DirectoryTable
           ariaLabel={ariaLabel}
@@ -237,7 +243,7 @@ export function RecordListView<R extends ListedRecord, V>({
         </FilterPanel>
       </div>
 
-      {creating &&
+      {creating && onCreate && renderCreateModal &&
         renderCreateModal({
           scopeLabel,
           error: createError,

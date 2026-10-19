@@ -9,7 +9,7 @@
  * `owner`/`champion` are not fields here — `PersonaDetailPage` assigns
  * them through `RecordPrincipalField`. `weight` is optional: blank means "no
  * weight", which scoring treats as equal weighting. `change_note` only
- * renders when editing. Every field has a visible label (principle 13).
+ * renders when editing; "Save and activate" only when creating. Every field has a visible label (principle 13).
  */
 import { useState } from "react";
 
@@ -66,13 +66,14 @@ export function PersonaFormModal({
       ? [...typeOptions, { value: initial.persona_type_id, label: `${initial.persona_type_name ?? "Current type"} (disabled)` }]
       : typeOptions;
 
-  function save() {
+  function save(activate = false) {
     onSave({
       name: name.trim(),
       persona_type_id: typeId || null,
       role_title: roleTitle,
       weight: weightNumber,
       change_note: changeNote,
+      ...(activate ? { activate: true } : {}),
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
     } as PersonaFieldValues);
   }
@@ -102,7 +103,10 @@ export function PersonaFormModal({
           ))}
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
         </FormGrid>
-        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
+        <FormActions
+          error={error} onCancel={onCancel} onSave={() => save()} saveDisabled={!valid}
+          onSaveAndActivate={initial ? undefined : () => save(true)}
+        />
       </div>
     </Modal>
   );

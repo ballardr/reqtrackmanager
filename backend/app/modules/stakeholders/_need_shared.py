@@ -149,13 +149,18 @@ def require_need_manage(db: Session, current_user: User, project: Project) -> No
 
 def create_need_from_payload(db: Session, payload: NeedCreate, creator: User, project: Project) -> NeedOut:
     """Validates a create payload, creates the need, audit-logs, commits and
-    returns the API shape."""
+    returns the API shape.
+
+    With `payload.activate` the need is also moved to `ACTIVE` before the single commit (both audit events,
+    same actor, all or nothing). Activation has the same gate as creation, checked by the caller."""
     validate_principals(db, project.organization_id, project.id, owner=payload.owner)
-    content = payload.model_dump(exclude=set(NEED_PRINCIPAL_FIELDS))
+    content = payload.model_dump(exclude={"activate", *NEED_PRINCIPAL_FIELDS})
     content.update(columns_for_create(payload, NEED_PRINCIPAL_FIELDS))
     need = create_need(db, project=project, creator=creator, **content)
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="created", actor_id=creator.id,
               project_id=project.id, detail={"name": payload.name})
+    if payload.activate:
+        transition_need(db, need, get_current_need_version(db, need.id), NeedStatus.ACTIVE, creator, action="activated")
     db.commit()
     db.refresh(need)
     return need_to_out(db, need, get_current_need_version(db, need.id))

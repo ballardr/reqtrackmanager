@@ -65,7 +65,7 @@ The **Owner** and **Champion** of a Persona, the **Owner** of a [Stakeholder](./
 
 ## Lifecycle
 
-A Persona moves **Draft → Active → Retired**, and a Retired Persona can be reactivated. There is no approval step: the Persona Owner makes each change directly, with an optional comment. Every edit creates a new version, so the full history of a Persona is kept. **Archive** is separate from Retired: it hides a Persona from the default list without changing its status, and is reversible.
+A Persona moves **Draft → Active → Retired**, and a Retired Persona can be reactivated. There is no approval step: the Persona Owner makes each change directly, with an optional comment, and can create a Persona already Active with [**Save and activate**](./people-page.md#save-and-activate). Every edit creates a new version, so the full history of a Persona is kept. **Archive** is separate from Retired: it hides a Persona from the default list without changing its status, and is reversible.
 
 ## Persona types
 

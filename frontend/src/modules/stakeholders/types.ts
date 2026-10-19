@@ -121,6 +121,8 @@ export interface PersonaFieldValues {
   constraints: string;
   weight: number | null;
   change_note: string;
+  /** Create only ("Save and activate"): the server also moves the new record from draft to active in the same transaction. */
+  activate?: boolean;
 }
 
 export interface PersonaComment {
@@ -319,6 +321,8 @@ export interface StakeholderFieldValues {
   influence_level_id: string | null;
   interest_level_id: string | null;
   change_note: string;
+  /** Create only ("Save and activate"): the server also moves the new record from draft to active in the same transaction. */
+  activate?: boolean;
 }
 
 export interface StakeholderComment {
@@ -396,6 +400,8 @@ export interface NeedFieldValues {
   description: string;
   rationale: string;
   change_note: string;
+  /** Create only ("Save and activate"): the server also moves the new record from draft to active in the same transaction. */
+  activate?: boolean;
 }
 
 export interface NeedComment {

@@ -47,8 +47,8 @@ export function PersonaListView({
   /** Re-shows a hidden persona in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (persona: Persona) => void;
   onOpen: (persona: Persona) => void;
-  /** Resolves on success; a rejection keeps the modal open and shows its message. */
-  onCreate: (values: PersonaFieldValues) => Promise<void>;
+  /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when personas are created elsewhere. */
+  onCreate?: (values: PersonaFieldValues) => Promise<void>;
 }) {
   return (
     <RecordListView<Persona, PersonaFieldValues>
@@ -81,7 +81,7 @@ export function PersonaListView({
       onShowHidden={onShowHidden}
       onOpen={onOpen}
       onCreate={onCreate}
-      renderCreateModal={(props) => <PersonaFormModal {...props} typeOptions={typeOptions} />}
+      renderCreateModal={onCreate ? (props) => <PersonaFormModal {...props} typeOptions={typeOptions} /> : undefined}
     />
   );
 }

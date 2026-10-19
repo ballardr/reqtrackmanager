@@ -145,13 +145,20 @@ function LayoutShell({ children }: { children: ReactNode }) {
           const manifest = moduleEntry.frontend_manifest;
           if (!manifest) return [];
           const entries = [
-            { nav_label: manifest.nav_label, nav_path: manifest.nav_path, nav_icon: manifest.nav_icon, sub_component: manifest.nav_sub_component },
+            {
+              nav_label: manifest.nav_label, nav_path: manifest.nav_path, nav_icon: manifest.nav_icon,
+              sub_component: manifest.nav_sub_component, sub_components_any: manifest.nav_sub_components_any,
+            },
             ...(manifest.additional_nav_entries ?? []),
           ];
           // An entry whose sub-component is off for this project is hidden: its API routes 404, so the
-          // link would lead to a page that cannot load. Generic over `sub_component`; no module is named here.
+          // link would lead to a page that cannot load. A page serving several sub-components
+          // (`sub_components_any`) goes only when all of them are off. Generic; no module is named here.
           const disabled = moduleEntry.disabled_sub_components ?? [];
-          return entries.filter((entry) => !entry.sub_component || !disabled.includes(entry.sub_component)).map((entry) => {
+          const visible = (entry: (typeof entries)[number]) =>
+            (!entry.sub_component || !disabled.includes(entry.sub_component)) &&
+            (!entry.sub_components_any?.length || entry.sub_components_any.some((key) => !disabled.includes(key)));
+          return entries.filter(visible).map((entry) => {
             const EntryIcon = resolveNavIcon(entry.nav_icon);
             return {
               key: `${moduleEntry.module_key}:${entry.nav_path}`,

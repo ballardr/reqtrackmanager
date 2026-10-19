@@ -55,6 +55,21 @@ export const SavesEnteredValues: Story = {
   },
 };
 
+export const SaveAndActivateSendsTheActivateFlag: Story = {
+  play: async ({ args }) => {
+    await userEvent.type(dialog().getByLabelText("Stakeholder name"), "Pat Regulator");
+    await userEvent.click(dialog().getByRole("button", { name: "Save and activate" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Pat Regulator", activate: true }));
+  },
+};
+
+export const EditDoesNotOfferSaveAndActivate: Story = {
+  args: { initial: buildStakeholder() },
+  play: async () => {
+    await expect(dialog().queryByRole("button", { name: "Save and activate" })).not.toBeInTheDocument();
+  },
+};
+
 export const BlankOptionalsSaveAsNull: Story = {
   play: async ({ args }) => {
     await userEvent.type(dialog().getByLabelText("Stakeholder name"), "Pat Regulator");

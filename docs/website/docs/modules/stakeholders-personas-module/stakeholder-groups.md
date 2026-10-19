@@ -53,7 +53,7 @@ When creating a Stakeholder, choose its groups in the **Groups** picker. On a St
 
 ## Using groups in the list
 
-The Stakeholders list gains:
+The Stakeholders list (on the [People page](./people-page.md), with only Stakeholders selected) gains:
 
 - a **Groups** column — click a group badge to filter to it;
 - a **Group** filter, which includes Stakeholders in that group's descendants unless **Directly in the group only** is ticked;

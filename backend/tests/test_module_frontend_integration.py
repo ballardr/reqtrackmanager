@@ -729,7 +729,7 @@ def test_org_modules_endpoint_includes_frontend_manifest(client, admin_token, or
     assert manifest == {
         "tier": "installed", "nav_label": "Fake Frontend", "nav_path": "/fake-frontend", "frame_url": None,
         "remote_entry_url": None, "exposed_module": None, "additional_nav_entries": [], "nav_icon": "puzzle",
-        "nav_sub_component": None,
+        "nav_sub_component": None, "nav_sub_components_any": [],
     }
 
 
@@ -845,12 +845,14 @@ def test_org_modules_endpoint_carries_additional_nav_entries_uninterpolated(
             "nav_path": "/projects/{project_id}/modules/fake-multi-nav/secondary",
             "nav_icon": "puzzle",
             "sub_component": None,
+            "sub_components_any": [],
         },
         {
             "nav_label": "Fake Tertiary",
             "nav_path": "/projects/{project_id}/modules/fake-multi-nav/tertiary",
             "nav_icon": "puzzle",
             "sub_component": None,
+            "sub_components_any": [],
         },
     ]
 
@@ -876,12 +878,14 @@ def test_project_enabled_modules_endpoint_interpolates_every_additional_nav_entr
             "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/secondary",
             "nav_icon": "puzzle",
             "sub_component": None,
+            "sub_components_any": [],
         },
         {
             "nav_label": "Fake Tertiary",
             "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/tertiary",
             "nav_icon": "puzzle",
             "sub_component": None,
+            "sub_components_any": [],
         },
     ]
 
@@ -916,3 +920,4 @@ def test_every_nav_entry_sub_component_is_one_its_module_declares():
         declared = {s.key for s in definition.sub_components}
         for entry in manifest.all_nav_entries():
             assert entry.sub_component is None or entry.sub_component in declared, (definition.key, entry.nav_label)
+            assert set(entry.sub_components_any) <= declared, (definition.key, entry.nav_label)

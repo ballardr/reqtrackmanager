@@ -318,6 +318,8 @@ The main payoff is a *mixed* list, not a homogeneous one, where the accent lets 
 
 **Use this when a header/toolbar row has two or more secondary, non-primary actions that would otherwise sit side by side as separate, permanently-visible buttons** — the same "two blocks competing for the same job" shape Principle 5 (one door for add-one/add-many) and Principle 11 (grouped downloads) already name for creates and downloads, extended here to any small group of related actions on an existing entity (rename, export, and similar). **Don't use it for a single primary action** — a lone button stays a plain button; collapsing one action behind a menu adds a click for no reason. A rough floor: reach for `ActionMenu` at two or more secondary actions, not one. The one stated exception is a record's header, which always uses the menu (see "Pattern: record header and object actions").
 
+A menu of *choices for one primary action* (several kinds of "New") is `MenuButton` (`frontend/src/components/MenuButton.tsx`): a labelled button with a chevron, the same `Popover` and menu list as `ActionMenu` (`ActionMenuList`), because the choice itself is the point of the button and not a hidden extra.
+
 Built as `ActionMenu` (`frontend/src/components/ActionMenu.tsx`) — a `MoreVertical` kebab trigger (its own real accessible name via `triggerLabel`, e.g. `` `${orgLabelCap} actions` ``, per Principle 8 — never a bare, generic "More actions" once more than one `ActionMenu` could plausibly appear on the same page) that opens a `Popover` anchored to itself, reusing `Popover`'s existing positioning/focus-trap/outside-click-close logic rather than a new implementation — the same reuse `SplitButtonTrigger` already makes for its own revealed-alternatives list. Inside, `items` render as real `role="menuitem"` buttons inside a `role="menu"` container; selecting one closes the menu and then calls that item's own `onSelect` — callers don't close the menu themselves. Each item is an ordinary focusable `<button>`, so Tab/Shift+Tab already moves between them; this does not implement the full WAI-ARIA menu widget's arrow-key roving-tabindex pattern (`ResourceMenu`/`Tabs` do that for their own larger surfaces) — judged proportionate for a menu this short, not under-built, per the item's own S-M effort sizing. Revisit if a future call site needs a longer list.
 
 An item that itself opens a create/rename flow follows Principle 3 as normal — the menu is just the entry point, not a replacement for the `Modal`/`Popover` choice that flow's own content already dictates. First call site: `OrgAdminPage.tsx`'s Overview group combines "Rename" (opens a `Modal`, replacing what used to be an always-visible inline input) and "Export {org} bundle" (calls the existing export handler directly and closes the menu — not a create/rename flow, so no dialog of its own) behind one trigger. Rename is only offered to an org admin (the same gate the inline input used to carry); Export stays available to every member, matching its previous, ungated placement — collapsing two actions behind one menu doesn't collapse who can see each one.
@@ -860,6 +862,31 @@ A **pill** is a read-only label: a status, type, role, scope or warning. Every p
 ## Pattern: record codes
 
 A record code (`REQ-001`) is shown through `<RecordCode>` or `useRecordCode()`, never as the raw `unique_code`. One rule decides whether the project code goes in front (`ACME-REQ-001`): always for a record in another project; inside its own project when the organisation enforces it, else per the person's `show_project_code` preference (default on). Pass the owning project's code (`project_code` on a link-graph node) for a record that may be elsewhere. A label that starts with a code (`REQ-001 Title`) goes through `useRecordCode().label()`. Reason: a page that formats its own code ignores the organisation's switch and the person's choice, which is the inconsistency this pattern removes. Show the code as a small muted suffix, not a prominent label (record header, Links panel). A record the organisation owns (not a project) is always qualified by the organisation's code (`ACME-PER-001`): use `<ScopedRecordCode record={...}>` in lists, `useRecordOwnerCode(record)` for the `RecordHeader`'s `codeOwner`, and `organization_code` from a link-graph node; reason: its bare `PER-001` would be ambiguous with a project's own.
+
+## Pattern: one list for related kinds, with a New menu
+
+Records a person thinks of together (Personas, Stakeholders, Needs and Groups on the People page) are one page with one list and one **New** menu, not a page and a New button each. Reason: separate pages make people hunt, and a fifth copy of the list shell is the debt "one component per pattern" exists to stop.
+
+```mermaid
+flowchart LR
+  K["ToggleChips: kinds on"] --> Q{"how many?"}
+  Q -->|"several"| A["Combined list: the columns the kinds share + a Kind column"]
+  Q -->|"one"| B["That kind's own list: its columns and filters"]
+  N["MenuButton: New"] --> F["The create form of the chosen kind"]
+```
+
+- **Kinds are chips** (`ToggleChips`, a `FilterBadge` per kind with `aria-pressed`), kept in the page address (`?kind=`) so a link reopens the same view. All enabled kinds are on to begin with; the last one cannot be turned off. A kind whose sub-component is off is absent from the chips and the menu; a nav entry serving several sub-components (`sub_components_any`) goes only when all are off.
+- **Several kinds share one table** (`RecordListView` over a row model with a `kind`); **one kind shows its own list**, so a kind's own columns and filters (Stakeholders' groups and influence) are never lost to the shared shape.
+- **One New menu** (`MenuButton`, a labelled button with a chevron, the labelled sibling of the kebab `ActionMenu`) offers each creatable kind. The lists are shown without their own New button (`RecordListView` with no `onCreate`); the page owns the create forms.
+- **Old per-type routes redirect** to the page with the kind selected, so bookmarks keep working. Detail pages are not merged: the kinds have different fields and lifecycles.
+
+## Pattern: Save and activate
+
+A create form for a record that starts as a draft offers **Save and activate** beside **Save** (`FormActions` `onSaveAndActivate`) **only where activation needs nothing beyond the permission to create**. Reason: a person who may create and then activate gains nothing by doing it in two steps, but a record whose approval needs a second person must not be activatable by its author, so the button is absent there, not disabled.
+
+- It is **one request**: the create endpoint takes `activate: true` and moves the record to its active state in the same transaction, so both audit events carry one actor and a failure keeps neither. Never two client calls.
+- The **gate is the same permission** as the transition endpoint (checked before either), so it grants nothing.
+- Edit forms never show it. A type with an approval step (Requirement, Change Request, Decision, Strategy, Future State, Guiding Principle) or with no draft state (Risk, Action, Pain Point, Open Question, Engagement) does not get it. Where it applies is recorded in `docs/decisions.md`; a new draft-to-active type adds its verdict there.
 
 ## Tokens
 

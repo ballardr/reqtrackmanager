@@ -336,12 +336,16 @@ class ModuleNavEntry:
             a whole. The nav rail hides an entry whose sub-component is
             disabled for the project (the same state that makes its API
             routes 404), so a link never leads to a page that cannot load.
+        sub_components_any: For one page that serves several sub-components (a combined list): the entry is
+            hidden only while *every* key listed here is disabled, and shown while at least one is enabled.
+            Combined with `sub_component` it needs both conditions; normally only one of the two is set.
     """
 
     nav_label: str
     nav_path: str
     nav_icon: str = "puzzle"
     sub_component: str | None = None
+    sub_components_any: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -448,6 +452,7 @@ class ModuleFrontendManifest:
             Defaults to `"puzzle"` for the same backward-compatibility reason.
         nav_sub_component: `ModuleNavEntry.sub_component` for this manifest's
             own primary entry.
+        nav_sub_components_any: `ModuleNavEntry.sub_components_any` for this manifest's own primary entry.
     """
 
     tier: Literal["installed", "remote", "federated"]
@@ -459,6 +464,7 @@ class ModuleFrontendManifest:
     additional_nav_entries: tuple[ModuleNavEntry, ...] = ()
     nav_icon: str = "puzzle"
     nav_sub_component: str | None = None
+    nav_sub_components_any: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.tier == "remote":
@@ -506,7 +512,7 @@ class ModuleFrontendManifest:
         return (
             ModuleNavEntry(
                 nav_label=self.nav_label, nav_path=self.nav_path, nav_icon=self.nav_icon,
-                sub_component=self.nav_sub_component,
+                sub_component=self.nav_sub_component, sub_components_any=self.nav_sub_components_any,
             ),
             *self.additional_nav_entries,
         )

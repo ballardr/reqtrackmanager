@@ -38,6 +38,8 @@ Registered contributions:
   `research_extras` (session prompts, anonymous participants and findings; off by
   default), so a project can switch any off without disabling the whole module. The
   Engagement log itself is always on with the module.
+- Nav: one "People" entry (Personas, Stakeholders, Needs and Groups on one page, shown while any of the
+  three sub-components is on, `nav_sub_components_any`) and "Engagements".
 - `reports`: five project-level reports (`reports.py`: S1 power/interest grid,
   S2 Persona validation, S3 Need coverage, S4 Engagement staleness, S5 Engagement &
   research yield); the framework generates their routes, catalogue entries and
@@ -878,33 +880,16 @@ MODULE_DEFINITION = ModuleDefinition(
     migrations_dir="app/modules/stakeholders/migrations",
     frontend_manifest=ModuleFrontendManifest(
         tier="installed",
-        nav_label="Personas",
-        nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/personas",
+        nav_label="People",
+        nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/people",
         nav_icon="users",
-        nav_sub_component="persona",
+        # One page lists Personas, Stakeholders, Needs and Groups: it stays while any of them is enabled.
+        nav_sub_components_any=("persona", "stakeholder", "stakeholder_need"),
         additional_nav_entries=(
-            ModuleNavEntry(
-                nav_label="Stakeholders",
-                nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/stakeholders",
-                nav_icon="user-round",
-                sub_component="stakeholder",
-            ),
-            ModuleNavEntry(
-                nav_label="Needs",
-                nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/needs",
-                nav_icon="target",
-                sub_component="stakeholder_need",
-            ),
             ModuleNavEntry(
                 nav_label="Engagements",
                 nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/engagements",
                 nav_icon="messages-square",
-            ),
-            ModuleNavEntry(
-                nav_label="Groups",
-                nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/groups",
-                nav_icon="network",
-                sub_component="stakeholder",
             ),
         ),
     ),

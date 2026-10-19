@@ -1845,6 +1845,9 @@ export interface ManifestNavEntry {
   /** Key of the module sub-component this entry leads to; the entry is hidden while that
    * sub-component is in `ModuleNavEntry.disabled_sub_components`. `null`/absent: the whole module. */
   sub_component?: string | null;
+  /** For one page serving several sub-components: the entry is hidden only while every key listed
+   * here is disabled. Absent/empty: no such condition. */
+  sub_components_any?: string[];
 }
 
 export interface ModuleFrontendManifest {
@@ -1869,6 +1872,8 @@ export interface ModuleFrontendManifest {
   nav_icon?: string;
   /** `ManifestNavEntry.sub_component` for this manifest's own primary entry. */
   nav_sub_component?: string | null;
+  /** `ManifestNavEntry.sub_components_any` for this manifest's own primary entry. */
+  nav_sub_components_any?: string[];
 }
 
 /** `enabled` is the hard floor (corrected 2026-09-29):

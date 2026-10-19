@@ -44,7 +44,7 @@ test.describe("Stakeholders & Personas: project persona visibility", () => {
     await expect(page.getByText(`${name} is hidden from this project.`)).toBeVisible();
 
     // --- It returns to the list, where the Persona is gone...
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/personas$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/people\\?kind=persona$`));
     await expect(page.getByRole("button", { name })).toHaveCount(0);
 
     // --- ...but another project in the org still sees it.
@@ -97,7 +97,7 @@ test.describe("Stakeholders & Personas: project persona visibility", () => {
     await page.getByRole("button", { name }).click();
     await page.getByRole("button", { name: "Use inherited value" }).click();
     await expect(page.getByText("Visibility reverted to the inherited setting.")).toBeVisible();
-    await expect(page).toHaveURL(new RegExp(`/projects/${child.id}/modules/stakeholders/personas$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${child.id}/modules/stakeholders/people\\?kind=persona$`));
     await expect(page.getByRole("button", { name })).toHaveCount(0);
   });
 });

@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 and 15 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15 and 16 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-14 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14 and 15 done 2026-10-19; Phases 8, 9, 10, 13, 14 and 15 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 16.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+15 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15 and 16 done 2026-10-19; Phases 8, 9, 10, 13, 14, 15 and 16 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 17.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -23,7 +23,7 @@
 | 13 | Module availability: new-install defaults, server admin UI, hide unavailable modules | N12, N13, N14 | [x] |
 | 14 | Navigation: ordering, scrollbar, sub-component hiding | N15, N16, N17 | [x] |
 | 15 | Org defaults can be hidden per project and restored (delete plus "add org defaults") | N18 | [x] |
-| 16 | One People page (Personas and Stakeholders) and "Save and activate" | N19, N20 | [ ] |
+| 16 | One People page (Personas and Stakeholders) and "Save and activate" | N19, N20 | [x] |
 | 17 | Quick-link on create | N21 | [ ] |
 | 18 | Tags on every item type | N22 | [ ] |
 | 19 | Create forms accept every field the edit form does (pain point first) | N23 | [ ] |
@@ -422,6 +422,11 @@ Reading the diagram: a module is checked at three levels from the server down. A
 - **Save and activate (N20):** a review table first (every type with a draft/active lifecycle: persona, stakeholder, need, requirement, decision, risk, strategy, future state, guiding principle, pain point, open question, engagement, action, change request) giving: lifecycle states, the permission that governs activation, whether a separation-of-duties rule applies, and a verdict (applies / does not apply, with reason). Where it applies, the create form shows **Save and activate** beside **Save**, only to a user who holds the transition permission for that type *and* would pass any self-approval rule; it performs create then the real transition in one request so the audit trail shows both events with the same actor, and one failing means neither is applied. Never a bypass of a gate: if the review finds a type whose transition requires a second person, it is listed as "not applicable" with that reason.
 - **Users and groups parity:** no new person field; if activation is gated on a group, the gate uses effective membership.
 - **Tests:** backend: atomic create+activate, permission and self-approval refusal, both audit events; Storybook for People page (types on/off, no create permission) and the dual button; Playwright: filter, New ▾ for each type, redirect from an old route, and Save and activate for a persona.
+
+- **Done 2026-10-19 (uncommitted at hand-back).** Details, the review table and decisions in `docs/decisions.md`.
+  - **People page:** `PeoplePage` with kind chips (`ToggleChips`) and one New menu (`MenuButton`); several kinds share `PeopleListView`, exactly one kind shows its own list (so Stakeholders keep Influence, Interest, Last engaged and the group filters). Q19 as recommended: Persona, Stakeholder (and from an organisation user), Need, Group. Old list routes redirect to `people?kind=`; detail pages unchanged. One "People" nav entry through the new generic `sub_components_any`.
+  - **Save and activate:** `activate: true` on the Persona, Stakeholder, Stakeholder-from-user and Need create endpoints, one transaction and one gate. The review found it applies to these three types only; every other draft-to-active type has an approval step or no draft state, so it is absent there.
+  - **Tests:** backend 12 new, Storybook (`PeoplePage` 22 and the shared components), Playwright `people-page.spec.ts` (5) and the existing stakeholder specs updated. Reports specs failed intermittently in the long run and passed alone (the known load sensitivity).
 
 ### Phase 17 — Quick-link on create (N21)
 

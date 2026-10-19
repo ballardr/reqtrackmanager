@@ -55,6 +55,9 @@ export function NeedFormModal({
           error={error}
           onCancel={onCancel}
           onSave={() => onSave({ name: name.trim(), description, rationale, change_note: changeNote })}
+          onSaveAndActivate={
+            initial ? undefined : () => onSave({ name: name.trim(), description, rationale, change_note: changeNote, activate: true })
+          }
           saveDisabled={name.trim() === ""}
         />
       </div>

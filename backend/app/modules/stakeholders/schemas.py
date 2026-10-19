@@ -55,6 +55,11 @@ class PersonaCreate(BaseModel):
     weight: Weight | None = None
     owner: PrincipalRef | None = None
     champion: PrincipalRef | None = None
+    activate: bool = Field(
+        default=False,
+        description="Also move the new record from draft to active in the same transaction (\"Save and activate\"). "
+        "Needs no extra permission: activation has the same gate as creation.",
+    )
 
 
 class PersonaUpdate(BaseModel):
@@ -205,6 +210,11 @@ class StakeholderCreate(BaseModel):
     interest_level_id: UUID | None = None
     owner: PrincipalRef | None = None
     user_id: UUID | None = None
+    activate: bool = Field(
+        default=False,
+        description="Also move the new record from draft to active in the same transaction (\"Save and activate\"). "
+        "Needs no extra permission: activation has the same gate as creation.",
+    )
 
 
 class StakeholderFromUserCreate(BaseModel):
@@ -216,6 +226,11 @@ class StakeholderFromUserCreate(BaseModel):
     role: str = Field(default="", max_length=300)
     organisation_group: str = Field(default="", max_length=300)
     target_cadence: TargetCadence | None = None
+    activate: bool = Field(
+        default=False,
+        description="Also move the new record from draft to active in the same transaction (\"Save and activate\"). "
+        "Needs no extra permission: activation has the same gate as creation.",
+    )
 
 
 class StakeholderUpdate(BaseModel):
@@ -383,6 +398,11 @@ class NeedCreate(BaseModel):
     description: str = ""
     rationale: str = ""
     owner: PrincipalRef | None = None
+    activate: bool = Field(
+        default=False,
+        description="Also move the new record from draft to active in the same transaction (\"Save and activate\"). "
+        "Needs no extra permission: activation has the same gate as creation.",
+    )
 
 
 class NeedUpdate(BaseModel):

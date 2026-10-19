@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installCleanupHook, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
-import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
+import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -22,18 +22,16 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     const { suffix, project } = await setUpOrg(page, "Need");
     const name = `Diagnose faults ${suffix}`;
 
-    await page.goto(`/projects/${project.id}`);
-    await page.getByRole("link", { name: "Needs", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/needs$`));
+    await openPeople(page, project.id, "need");
     await expect(page.getByText("No Stakeholder Needs recorded for this project yet.")).toBeVisible();
 
     // --- Create (a Modal layer).
-    await page.getByRole("button", { name: "New Need" }).click();
+    await openNew(page, "Stakeholder Need");
     const dialog = page.getByRole("dialog", { name: "New Stakeholder Need" });
     await dialog.getByLabel("Need name").fill(name);
     await dialog.getByLabel("Need", { exact: true }).fill("Find out what is wrong without a laptop.");
     await dialog.getByLabel("Rationale").fill("Each delay costs an hour.");
-    await dialog.getByRole("button", { name: "Save" }).click();
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Stakeholder Need created.")).toBeVisible();
 
     // --- The list renders the label-mapped status.

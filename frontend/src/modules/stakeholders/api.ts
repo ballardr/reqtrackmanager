@@ -210,7 +210,10 @@ function buildStakeholderApi(base: (id: string) => string) {
     ),
     createFromUser: (
       id: string,
-      values: { user_id: string; stakeholder_type_id?: string | null; role?: string; organisation_group?: string; target_cadence?: TargetCadence | null },
+      values: {
+        user_id: string; stakeholder_type_id?: string | null; role?: string; organisation_group?: string;
+        target_cadence?: TargetCadence | null; activate?: boolean;
+      },
     ) => api.post<Stakeholder>(`${base(id)}/stakeholders/from-user`, values),
     /** Permanently deletes the stakeholder and everything held about them. */
     erase: (id: string, stakeholderId: string) => api.delete<void>(url(id, stakeholderId)),
