@@ -52,6 +52,7 @@ import type {
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 const SCHEME_KEY = "pain_point";
@@ -60,6 +61,7 @@ export function ProjectPainPointsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "pain_point");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [painPoints, setPainPoints] = useState<PainPoint[] | null>(null);
@@ -250,15 +252,17 @@ export function ProjectPainPointsPage() {
 
       {creating && (
         <PainPointFormModal
+          projectId={projectId}
           types={types}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: PainPointFieldValues) => {
+          onSave={async (values: PainPointFieldValues, quickLinks) => {
             setCreateError(null);
             try {
-              await projectPainPointApi.create(projectId, values);
+              const created = await projectPainPointApi.create(projectId, values);
               showToast("Pain Point created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
               await reloadPainPoints();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Pain Point."));

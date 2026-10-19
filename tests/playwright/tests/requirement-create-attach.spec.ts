@@ -3,16 +3,17 @@ import { expect, test } from "@playwright/test";
 import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 /**
- * UX review: files and links could previously only be attached to a
- * requirement after closing the create form and opening the detail page.
+ * UX review: files could previously only be attached to a requirement
+ * after closing the create form and opening the detail page (links are
+ * chosen in the create form's "Link to" field).
  * The create modal's "Create" button behaves exactly as before (closes
- * immediately); a new, separate "Create & attach files/links" action
+ * immediately); a separate "Create & attach files" action
  * advances the same modal to a second step against the just-created
  * requirement's real id before closing — opt-in, since most creates don't
  * need it and every other workflow (the golden path included) depends on
  * a plain "Create" staying a single, modal-closing action.
  */
-test("Create & attach files/links advances to an attach-files-and-links step, then finishes", async ({ page }) => {
+test("Create & attach files advances to an attach-files step, then finishes", async ({ page }) => {
   const ADMIN_EMAIL = "admin@example.com";
   const ADMIN_PASSWORD = "ChangeMe123!";
   const projectName = `Attach Flow ${Date.now()}`;
@@ -60,18 +61,14 @@ test("Create & attach files/links advances to an attach-files-and-links step, th
   await page.getByRole("button", { name: "New requirement" }).click();
   const createDialog = page.getByRole("dialog", { name: "New requirement" });
   await createDialog.getByPlaceholder("Name", { exact: true }).fill("Password reset");
-  await createDialog.getByRole("button", { name: "Create & attach files/links" }).click();
+  await createDialog.getByRole("button", { name: "Create & attach files" }).click();
 
-  const step2 = page.getByRole("dialog", { name: /Attach files & links/ });
+  const step2 = page.getByRole("dialog", { name: /Attach files/ });
   await expect(step2).toBeVisible();
   await expect(step2.getByText("Attachments")).toBeVisible();
-  await expect(step2.getByText("Traceability links")).toBeVisible();
-  // A brand-new project has exactly this one requirement — nothing else to
-  // link to yet, so Add Link is greyed out.
-  await expect(step2.getByRole("button", { name: "Add link" })).toBeDisabled();
 
   await step2.getByRole("button", { name: "Finish" }).click();
-  await expect(page.getByRole("dialog", { name: /Attach files & links/ })).not.toBeVisible();
+  await expect(page.getByRole("dialog", { name: /Attach files/ })).not.toBeVisible();
   await expect(page.getByText("Password reset")).toBeVisible();
 });
 

@@ -36,7 +36,7 @@ export const SubmitsNewGuidingPrinciple: Story = {
       expect.objectContaining({
         name: "Field data is captured once",
         principle_statement: "Every field observation is recorded exactly once, at the point of inspection.",
-      })
+      }), []
     ));
   },
 };

@@ -10,6 +10,7 @@ Links on any artefact of a project:
 - `GET .../{type}/{id}/link-browse`: the next browse level of a type (standard -> version
   -> requirement, component -> category, status, ...) given the choices so far.
 - `GET .../{type}/{id}/activity`: the record's activity timeline (audit events, versions, link events).
+- `POST .../{type}/{id}/links/bulk`: several links in one all-or-nothing call (create forms' quick-link field).
 - `POST .../{type}/{id}/links` and `DELETE .../{type}/{id}/links/{link_id}`:
   generic link authoring from either end, whatever the artefact types.
 
@@ -33,6 +34,8 @@ from app.modules.registry import get_artefact_type_label
 from app.schemas.artefact_links import (
     ArtefactLinkBrowseOption,
     ArtefactLinkBrowseStepOut,
+    ArtefactLinkBulkCreate,
+    ArtefactLinkBulkOut,
     ArtefactLinkCandidate,
     ArtefactLinkCandidatesOut,
     ArtefactLinkCreate,
@@ -45,6 +48,7 @@ from app.schemas.changes import RecordActivityOut
 from app.schemas.link_graph import LinkGraphDirection, LinkGraphOut
 from app.schemas.link_type import ArtefactTypeOut
 from app.services.link_authoring import (
+    CreatedLink,
     create_link_for_artefact,
     delete_link_for_artefact,
     related_project_or_404,
@@ -302,6 +306,54 @@ def create_artefact_link(
         other_type=payload.other_type, other_id=payload.other_id, other_project_id=payload.other_project_id,
     )
     db.commit()
+    return _link_out(created)
+
+
+@router.post(
+    "/{artefact_type}/{artefact_id}/links/bulk", response_model=ArtefactLinkBulkOut, status_code=status.HTTP_201_CREATED
+)
+def create_artefact_links_bulk(
+    project_id: UUID,
+    artefact_type: str,
+    artefact_id: UUID,
+    payload: ArtefactLinkBulkCreate,
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+) -> ArtefactLinkBulkOut:
+    """Links this artefact to several records in one all-or-nothing call.
+
+    Each link goes through exactly the checks of the single-link endpoint (visibility of both
+    ends, `link`/`manage` or default role, link-type rules, nesting scope, change-request gate,
+    duplicates), in request order, so a pair repeated within the request is a duplicate too. If
+    any link is refused nothing is created and the error names which one (`Link 2 of 3: ...`),
+    with the status the single-link endpoint would give.
+
+    Raises:
+        HTTPException: as `create_artefact_link`, for the first link refused.
+    """
+    project = _project_or_404(db, project_id)
+    total = len(payload.links)
+    created: list[CreatedLink] = []
+    try:
+        for index, link in enumerate(payload.links, start=1):
+            try:
+                created.append(create_link_for_artefact(
+                    db, project=project, user_id=current_user.id, artefact_type=artefact_type,
+                    artefact_id=artefact_id, link_type_id=link.link_type_id,
+                    outgoing=link.direction is LinkOrientation.OUTGOING, other_type=link.other_type,
+                    other_id=link.other_id, other_project_id=link.other_project_id,
+                ))
+            except HTTPException as exc:
+                raise HTTPException(exc.status_code, f"Link {index} of {total}: {exc.detail}") from exc
+    except HTTPException:
+        db.rollback()
+        raise
+    db.commit()
+    return ArtefactLinkBulkOut(items=[_link_out(c) for c in created])
+
+
+def _link_out(created: CreatedLink) -> ArtefactLinkOut:
+    """A created link read from the page artefact's side."""
     return ArtefactLinkOut(
         id=created.link.id, link_type_id=created.link_type.id,
         phrase=created.link_type.forward_name if created.outgoing else created.link_type.reverse_name,

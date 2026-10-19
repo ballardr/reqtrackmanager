@@ -23,6 +23,7 @@ import { MenuButton } from "../../components/MenuButton";
 import { Spinner } from "../../components/Spinner";
 import { ToggleChips } from "../../components/ToggleChips";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useProjectEnabledModules } from "../../hooks/useProjectEnabledModules";
 import { projectNeedApi, projectPersonaApi, projectStakeholderApi, projectStakeholderGroupApi } from "./api";
@@ -60,6 +61,9 @@ export function PeoplePage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const { showToast } = useToast();
+  const commitNeedLinks = useCommitQuickLinks(projectId ?? "", "stakeholder_need");
+  const commitPersonaLinks = useCommitQuickLinks(projectId ?? "", "persona");
+  const commitStakeholderLinks = useCommitQuickLinks(projectId ?? "", "stakeholder");
   const { modules, loaded } = useProjectEnabledModules(projectId ?? null);
   const disabled = modules.find((m) => m.module_key === MODULE_KEY)?.disabled_sub_components;
   const enabled = useMemo(() => enabledKinds(disabled ?? []), [disabled]);
@@ -294,20 +298,28 @@ export function PeoplePage() {
 
       {creating === "persona" && (
         <PersonaFormModal
-          scopeLabel="project" typeOptions={typeOptions(personaTypes)} error={createError} onCancel={cancelCreate}
-          onSave={(values: PersonaFieldValues) =>
-            create(async () => { await projectPersonaApi.create(projectId, values); }, "Persona created.")}
+          scopeLabel="project" projectId={projectId} typeOptions={typeOptions(personaTypes)} error={createError}
+          onCancel={cancelCreate}
+          onSave={(values: PersonaFieldValues, quickLinks) =>
+            create(async () => {
+              const created = await projectPersonaApi.create(projectId, values);
+              await commitPersonaLinks(created.id, quickLinks);
+            }, "Persona created.")}
         />
       )}
       {creating === "stakeholder" && (
         <StakeholderFormModal
-          scopeLabel="project" typeOptions={typeOptions(stakeholderTypes)} scheme={scheme} groups={groups} groupTier="project"
+          scopeLabel="project" projectId={projectId} typeOptions={typeOptions(stakeholderTypes)} scheme={scheme} groups={groups} groupTier="project"
           loadHint={(influence, interest) => projectStakeholderApi.cadenceHint(projectId, influence, interest)}
           error={createError} onCancel={cancelCreate}
-          onSave={({ group_ids: groupIds = [], ...values }: StakeholderFieldValues & { group_ids?: string[] }) =>
+          onSave={({ group_ids: groupIds = [], ...values }: StakeholderFieldValues & { group_ids?: string[] }, quickLinks) =>
             create(
               () => createStakeholderWithGroups(
-                (v) => projectStakeholderApi.create(projectId, v),
+                async (v) => {
+                  const created = await projectStakeholderApi.create(projectId, v);
+                  await commitStakeholderLinks(created.id, quickLinks);
+                  return created;
+                },
                 (id, ids) => projectStakeholderGroupApi.setStakeholderGroups(projectId, id, ids),
                 values, groupIds,
               ).then((warning) => warning ?? undefined),
@@ -325,9 +337,12 @@ export function PeoplePage() {
       )}
       {creating === "need" && (
         <NeedFormModal
-          error={createError} onCancel={cancelCreate}
-          onSave={(values: NeedFieldValues) =>
-            create(async () => { await projectNeedApi.create(projectId, values); }, "Stakeholder Need created.")}
+          projectId={projectId} error={createError} onCancel={cancelCreate}
+          onSave={(values: NeedFieldValues, quickLinks) =>
+            create(async () => {
+              const created = await projectNeedApi.create(projectId, values);
+              await commitNeedLinks(created.id, quickLinks);
+            }, "Stakeholder Need created.")}
         />
       )}
       {creating === "group" && (

@@ -19,11 +19,13 @@ import { useState } from "react";
 
 import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay, userPrincipal } from "../../api/types";
+import type { CollectedLink } from "../../api/artefactLinks";
 import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import type { Decision, DecisionFieldValues, DecisionTemplate, DecisionTypeDefinition } from "./types";
 
@@ -66,9 +68,10 @@ export function DecisionFormModal({
   currentUserId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: DecisionFieldValues) => void;
+  onSave: (values: DecisionFieldValues, quickLinks: CollectedLink[]) => void;
 }) {
   const [templateId, setTemplateId] = useState("");
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [title, setTitle] = useState(initial?.title ?? "");
   const [statement, setStatement] = useState(initial?.decision_statement ?? "");
   const [decisionTypeId, setDecisionTypeId] = useState(initial?.decision_type_id ?? decisionTypes[0]?.id ?? "");
@@ -100,7 +103,7 @@ export function DecisionFormModal({
       decision_maker: decisionMaker,
       owner,
       ...(Object.fromEntries(PROMPT_TO_FIELD.map((f) => [f.fieldKey, fields[f.fieldKey] || null])) as Record<string, string | null>),
-    } as DecisionFieldValues);
+    } as DecisionFieldValues, quickLinks);
   }
 
   const valid = title.trim() !== "" && statement.trim() !== "" && decisionTypeId !== "" && owner !== null;
@@ -164,6 +167,13 @@ export function DecisionFormModal({
               />
             </FormGridFull>
           ))}
+          {!initial && (
+            <FormGridFull>
+              <QuickLinkField
+                projectId={projectId} artefactType="decision" preferredType="requirement" value={quickLinks} onChange={setQuickLinks}
+              />
+            </FormGridFull>
+          )}
         </FormGrid>
         <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>

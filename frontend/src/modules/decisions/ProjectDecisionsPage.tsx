@@ -47,11 +47,13 @@ import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 
 export function ProjectDecisionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "decision");
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [decisionTypes, setDecisionTypes] = useState<DecisionTypeDefinition[]>([]);
@@ -168,12 +170,13 @@ export function ProjectDecisionsPage() {
           currentUserId={user?.id}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: DecisionFieldValues) => {
+          onSave={async (values: DecisionFieldValues, quickLinks) => {
             setCreateError(null);
             try {
-              await decisionsApi.createDecision(projectId, values);
+              const created = await decisionsApi.createDecision(projectId, values);
               showToast("Decision created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
               await reloadDecisions();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create decision."));

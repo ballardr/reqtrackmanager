@@ -21,7 +21,9 @@ import { useState } from "react";
 import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
 import type { FutureState, FutureStateFieldValues } from "./types";
 
 const TEXT_FIELDS: { key: keyof FutureStateFieldValues; label: string; rows: number }[] = [
@@ -36,6 +38,7 @@ const TEXT_FIELDS: { key: keyof FutureStateFieldValues; label: string; rows: num
 export function FutureStateFormModal({
   initial,
   scopeLabel,
+  projectId,
   error,
   onCancel,
   onSave,
@@ -45,9 +48,11 @@ export function FutureStateFormModal({
    * clear which scope a new Future State is being created in, since this
    * same modal serves both the org-scoped and project-scoped pages. */
   scopeLabel: string;
+  /** The project a new record is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: FutureStateFieldValues) => void;
+  onSave: (values: FutureStateFieldValues, quickLinks: CollectedLink[]) => void;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [targetDate, setTargetDate] = useState(initial?.target_date ?? "");
@@ -56,13 +61,15 @@ export function FutureStateFormModal({
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof FutureState] as string | undefined) ?? ""]))
   );
 
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+
   function save() {
     onSave({
       title,
       target_date: targetDate.trim() === "" ? null : targetDate,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as FutureStateFieldValues);
+    } as FutureStateFieldValues, quickLinks);
   }
 
   const valid = title.trim() !== "" && (fields.desired_state ?? "").trim() !== "";
@@ -86,6 +93,11 @@ export function FutureStateFormModal({
           {initial && (
             <FormGridFull>
               <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+            </FormGridFull>
+          )}
+          {!initial && projectId && (
+            <FormGridFull>
+              <QuickLinkField projectId={projectId} artefactType="future_state" value={quickLinks} onChange={setQuickLinks} />
             </FormGridFull>
           )}
         </FormGrid>

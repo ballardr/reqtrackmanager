@@ -10,7 +10,7 @@ from __future__ import annotations
 import enum
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.enums import LinkFlow, LinkNestingScope
 from app.schemas.link_type import ArtefactTypeOut
@@ -48,6 +48,16 @@ class ArtefactLinkCreate(BaseModel):
     other_type: str
     other_id: UUID
     other_project_id: UUID | None = None
+
+
+#: Most links one bulk request may create (a create form's quick-link chips).
+MAX_BULK_LINKS = 25
+
+
+class ArtefactLinkBulkCreate(BaseModel):
+    """Payload to link the page's artefact to several records at once, all or nothing."""
+
+    links: list[ArtefactLinkCreate] = Field(min_length=1, max_length=MAX_BULK_LINKS)
 
 
 class ArtefactLinkOtherEnd(BaseModel):
@@ -90,6 +100,12 @@ class ArtefactLinkOut(BaseModel):
     phrase: str
     direction: LinkOrientation
     other: ArtefactLinkOtherEnd
+
+
+class ArtefactLinkBulkOut(BaseModel):
+    """The links a bulk request created, in request order."""
+
+    items: list[ArtefactLinkOut]
 
 
 class ArtefactLinkCandidate(BaseModel):

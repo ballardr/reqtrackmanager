@@ -37,11 +37,13 @@ import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQ
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "open_question");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [openQuestions, setOpenQuestions] = useState<OpenQuestion[] | null>(null);
@@ -145,14 +147,16 @@ export function ProjectOpenQuestionsPage() {
 
       {creating && (
         <OpenQuestionFormModal
+          projectId={projectId}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: OpenQuestionFieldValues) => {
+          onSave={async (values: OpenQuestionFieldValues, quickLinks) => {
             setCreateError(null);
             try {
-              await projectOpenQuestionApi.create(projectId, values);
+              const created = await projectOpenQuestionApi.create(projectId, values);
               showToast("Open Question created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
               await reloadOpenQuestions();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Open Question."));

@@ -26,6 +26,7 @@ import { RecordListView } from "./RecordListView";
 import type { Engagement, EngagementFieldValues } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 
 type Option = { value: string; label: string };
 
@@ -38,6 +39,7 @@ export function ProjectEngagementsPage() {
   const findingId = searchParams.get("finding");
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "engagement");
   const [engagements, setEngagements] = useState<EngagementRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<EngagementListFilters>({});
@@ -135,12 +137,15 @@ export function ProjectEngagementsPage() {
           </>
         }
         onOpen={(e) => navigate(`/projects/${projectId}/modules/stakeholders/engagements/${e.id}`)}
-        onCreate={async (values) => {
-          await projectEngagementApi.create(projectId, values);
+        onCreate={async (values, quickLinks) => {
+          const created = await projectEngagementApi.create(projectId, values);
           showToast("Engagement logged.");
           reload();
+          await commitQuickLinks(created.id, quickLinks);
         }}
-        renderCreateModal={(props) => <EngagementFormModal error={props.error} onCancel={props.onCancel} onSave={props.onSave} />}
+        renderCreateModal={(props) => (
+          <EngagementFormModal projectId={projectId} error={props.error} onCancel={props.onCancel} onSave={props.onSave} />
+        )}
       />
     </div>
   );

@@ -249,12 +249,6 @@ const en = {
     versions: "Versions",
     discussion: "Discussion",
     addComment: "Add comment",
-    links: "Traceability links",
-    addLink: "Add link",
-    linkType: "Link type",
-    targetRequirement: "Target {requirement}",
-    selectARequirementToLink: "Select a {requirement}…",
-    noLinks: "No links yet.",
     actionsSection: "Actions",
     linkExistingAction: "Link existing action",
     selectAnActionToLink: "Select an action…",
@@ -313,11 +307,10 @@ const en = {
     level: "Level",
     attachmentsLockedNotice: "This {requirement} is approved — new attachments must be added via a {changeRequest}.",
     created: "{Requirement} created",
-    // Create-modal step 2 (UX review: attach files / add links during
-    // creation, not only afterwards from the detail page).
-    attachFilesAndLinks: "Attach files & links",
-    createAndAttach: "Create & attach files/links",
-    noEligibleLinkTargets: "No other {requirements} available to link to yet.",
+    // Create-modal step 2 (UX review: attach files during creation, not only
+    // afterwards from the detail page). Links are chosen in step 1.
+    attachFilesAndLinks: "Attach files",
+    createAndAttach: "Create & attach files",
     finish: "Finish",
     // Bulk operations (list/table view only) — style guide "Pattern: bulk
     // operations on a list". `bulkSelectRow`/`bulkSelectAll` label the
@@ -1901,6 +1894,19 @@ const en = {
     addFailed: "Could not add this link.",
     removeFailed: "Could not remove this link.",
     removeLabel: (phrase: string, target: string) => `Remove link: ${phrase} ${target}`,
+    quick: {
+      label: "Link to",
+      placeholder: "Search for a record to link…",
+      hint: "Optional. Links are added when the record is saved.",
+      noMatches: "No matching records.",
+      listLabel: "Matching records",
+      chosenLabel: "Records to link",
+      relationshipLabel: (target: string) => `Relationship to ${target}`,
+      removeLabel: (target: string) => `Do not link ${target}`,
+      added: (count: number) => `Linked to ${count} ${count === 1 ? "record" : "records"}.`,
+      failed: (message: string) =>
+        `The record was saved, but its links were not added: ${message} Add them from its Links panel.`,
+    },
     groupCount: (count: number) => `${count} ${count === 1 ? "link" : "links"}`,
     removeTitle: "Remove this link?",
     removeConfirm: "The link is removed from both records; the records themselves are unaffected.",

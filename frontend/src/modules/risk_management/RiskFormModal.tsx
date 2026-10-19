@@ -19,12 +19,14 @@ import { useState } from "react";
 import type { ScoringScheme } from "../../api/scoring";
 import type { OrgUser } from "../../api/types";
 import { savedPrincipalDisplay, userPrincipal } from "../../api/types";
+import type { CollectedLink } from "../../api/artefactLinks";
 import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
 import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
 import { blankRiskValues, valuesFromRisk } from "./riskFields";
 import { CONSEQUENCE_AXIS, DETECTABILITY_AXIS, findAxis, LIKELIHOOD_AXIS } from "./useRiskScheme";
@@ -48,7 +50,8 @@ const AXES = [
  * @param projectId The risk's project, for project groups.
  * @param currentUserId Default owner (a user) for a new risk.
  * @param error A save error to show.
- * @param onSave Called with the form values and the change note (edit mode only).
+ * @param onSave Called with the form values, the change note (edit mode only) and the records chosen in the
+ *   quick-link field (create mode only; empty when editing).
  */
 export function RiskFormModal({
   initial, scheme, riskTypes, orgUsers, organizationId, projectId, currentUserId, error, onCancel, onSave,
@@ -62,11 +65,12 @@ export function RiskFormModal({
   currentUserId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: RiskFieldValues, changeNote: string) => void;
+  onSave: (values: RiskFieldValues, changeNote: string, quickLinks: CollectedLink[]) => void;
 }) {
   const [values, setValues] = useState<RiskFieldValues>(() =>
     initial ? valuesFromRisk(initial) : blankRiskValues(userPrincipal(currentUserId)));
   const [changeNote, setChangeNote] = useState("");
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const set = <K extends keyof RiskFieldValues>(key: K, value: RiskFieldValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
 
@@ -165,8 +169,15 @@ export function RiskFormModal({
               <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
             </FormGridFull>
           )}
+          {!initial && (
+            <FormGridFull>
+              <QuickLinkField
+                projectId={projectId} artefactType="risk" value={quickLinks} onChange={setQuickLinks}
+              />
+            </FormGridFull>
+          )}
         </FormGrid>
-        <FormActions error={error} onCancel={onCancel} onSave={() => onSave(values, changeNote)} saveDisabled={!valid} />
+        <FormActions error={error} onCancel={onCancel} onSave={() => onSave(values, changeNote, quickLinks)} saveDisabled={!valid} />
       </div>
     </Modal>
   );

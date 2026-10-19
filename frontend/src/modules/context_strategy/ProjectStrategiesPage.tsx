@@ -29,12 +29,14 @@ import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function ProjectStrategiesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "strategy");
   const [project, setProject] = useState<Project | null>(null);
   const [strategies, setStrategies] = useState<Strategy[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -128,14 +130,16 @@ export function ProjectStrategiesPage() {
       {creating && (
         <StrategyFormModal
           scopeLabel="project"
+          projectId={projectId}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: StrategyFieldValues) => {
+          onSave={async (values: StrategyFieldValues, quickLinks) => {
             setCreateError(null);
             try {
-              await projectStrategyApi.create(projectId, values);
+              const created = await projectStrategyApi.create(projectId, values);
               showToast("Strategy created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
               await reloadStrategies();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Strategy."));

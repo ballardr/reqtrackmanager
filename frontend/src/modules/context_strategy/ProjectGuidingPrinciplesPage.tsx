@@ -26,12 +26,14 @@ import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function ProjectGuidingPrinciplesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "guiding_principle");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [guidingPrinciples, setGuidingPrinciples] = useState<GuidingPrinciple[] | null>(null);
@@ -126,14 +128,16 @@ export function ProjectGuidingPrinciplesPage() {
       {creating && (
         <GuidingPrincipleFormModal
           scopeLabel="project"
+          projectId={projectId}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: GuidingPrincipleFieldValues) => {
+          onSave={async (values: GuidingPrincipleFieldValues, quickLinks) => {
             setCreateError(null);
             try {
-              await projectGuidingPrincipleApi.create(projectId, values);
+              const created = await projectGuidingPrincipleApi.create(projectId, values);
               showToast("Guiding Principle created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
               await reloadGuidingPrinciples();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Guiding Principle."));

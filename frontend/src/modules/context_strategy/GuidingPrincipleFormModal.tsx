@@ -15,7 +15,9 @@
  */
 import { useState } from "react";
 
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
 import { FormActions } from "../../components/FormActions";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
@@ -31,6 +33,7 @@ const TEXT_FIELDS: { key: keyof GuidingPrincipleFieldValues; label: string; rows
 export function GuidingPrincipleFormModal({
   initial,
   scopeLabel,
+  projectId,
   error,
   onCancel,
   onSave,
@@ -40,9 +43,11 @@ export function GuidingPrincipleFormModal({
    * clear which scope a new Guiding Principle is being created in, since
    * this same modal serves both the org-scoped and project-scoped pages. */
   scopeLabel: string;
+  /** The project a new record is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: GuidingPrincipleFieldValues) => void;
+  onSave: (values: GuidingPrincipleFieldValues, quickLinks: CollectedLink[]) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [priority, setPriority] = useState<GuidingPrinciplePriority>(initial?.priority ?? "medium");
@@ -53,13 +58,15 @@ export function GuidingPrincipleFormModal({
     )
   );
 
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+
   function save() {
     onSave({
       name,
       priority,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as GuidingPrincipleFieldValues);
+    } as GuidingPrincipleFieldValues, quickLinks);
   }
 
   const valid = name.trim() !== "" && (fields.principle_statement ?? "").trim() !== "";
@@ -88,6 +95,11 @@ export function GuidingPrincipleFormModal({
           {initial && (
             <FormGridFull>
               <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+            </FormGridFull>
+          )}
+          {!initial && projectId && (
+            <FormGridFull>
+              <QuickLinkField projectId={projectId} artefactType="guiding_principle" value={quickLinks} onChange={setQuickLinks} />
             </FormGridFull>
           )}
         </FormGrid>

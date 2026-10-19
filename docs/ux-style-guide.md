@@ -888,6 +888,16 @@ A create form for a record that starts as a draft offers **Save and activate** b
 - The **gate is the same permission** as the transition endpoint (checked before either), so it grants nothing.
 - Edit forms never show it. A type with an approval step (Requirement, Change Request, Decision, Strategy, Future State, Guiding Principle) or with no draft state (Risk, Action, Pain Point, Open Question, Engagement) does not get it. Where it applies is recorded in `docs/decisions.md`; a new draft-to-active type adds its verdict there.
 
+## Pattern: quick-link on create
+
+A create form for a linkable record includes **`QuickLinkField`** ("Link to"), so the record is related to others in the same trip instead of through the Links panel afterwards. Reason: records are rarely meaningful alone, and a separate trip leaves orphans and a different linking widget per form.
+
+- One search box finds records across every type the registry allows (two characters or more); a form may name a **`preferredType`** (a pain point offers personas), which is listed as soon as the box is focused and sorted first. Chosen records appear as rows with the relationship preselected (the symmetric "Related to" when offered) and a select to change it when several apply.
+- The field only **collects** links. The form creates the record, then calls `useCommitQuickLinks`, which makes one all-or-nothing `POST .../links/bulk` and toasts the outcome. A refused link set never undoes the record: the toast names what failed and points to the new record's Links panel.
+- The finder asks the server about a record that does not exist yet (`DRAFT_ARTEFACT_ID`), so visibility, enabled modules, link-type rules and the caller's link authority are the Links panel's. A caller who cannot link the type sees no field.
+- **Same project only.** Linking to an ancestor or descendant project stays in the Links panel's dialog, which has the project selector.
+- Create forms only: the edit form never shows it. A form that already collects its own links, or that creates something that cannot take links, omits it with the reason recorded in `docs/decisions.md` (Change Request: its Proposed links are the requirement's links, applied on approval; organisation-scoped records: links are managed within a project).
+
 ## Tokens
 
 `frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and spacing/radii used consistently even though not yet named as tokens. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.

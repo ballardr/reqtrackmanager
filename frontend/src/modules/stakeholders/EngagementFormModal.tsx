@@ -14,7 +14,9 @@ import { useState } from "react";
 
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
 import { CheckboxField, DateField, TextAreaField, TextField } from "../../components/FormFields";
 import type { Engagement, EngagementChannel, EngagementFieldValues } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
@@ -25,6 +27,7 @@ const CHANNEL_OPTIONS = Object.entries(ENGAGEMENT_CHANNEL_LABEL).map(([value, la
 
 export function EngagementFormModal({
   initial,
+  projectId,
   defaults,
   heading,
   compact = false,
@@ -33,6 +36,8 @@ export function EngagementFormModal({
   onSave,
 }: {
   initial?: Engagement;
+  /** The project a new engagement is logged in; with it a full create form offers the quick-link field (the compact quick add does not). */
+  projectId?: string;
   /** Starting values for a new engagement (e.g. the quick add's suggested title). */
   defaults?: Partial<EngagementFieldValues>;
   /** Overrides the dialog title. */
@@ -41,7 +46,7 @@ export function EngagementFormModal({
   compact?: boolean;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: EngagementFieldValues) => void;
+  onSave: (values: EngagementFieldValues, quickLinks: CollectedLink[]) => void;
 }) {
   const seed = initial ?? defaults;
   const [title, setTitle] = useState(seed?.title ?? "");
@@ -52,6 +57,7 @@ export function EngagementFormModal({
   const [notes, setNotes] = useState(seed?.notes ?? "");
   const [consent, setConsent] = useState(seed?.consent_recorded ?? false);
   const [retainUntil, setRetainUntil] = useState(seed?.retain_until ?? "");
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
 
   return (
     <Modal title={heading ?? (initial ? `Edit ${initial.title}` : "Log engagement")} onClose={onCancel} size="lg">
@@ -91,6 +97,11 @@ export function EngagementFormModal({
               />
             </>
           )}
+          {!initial && !compact && projectId && (
+            <FormGridFull>
+              <QuickLinkField projectId={projectId} artefactType="engagement" preferredType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
+            </FormGridFull>
+          )}
         </FormGrid>
         <FormActions
           error={error}
@@ -99,7 +110,7 @@ export function EngagementFormModal({
             onSave({
               title: title.trim(), channel, engagement_date: date, purpose, summary, notes,
               consent_recorded: consent, retain_until: retainUntil === "" ? null : retainUntil,
-            })}
+            }, quickLinks)}
         saveDisabled={title.trim() === "" || date === ""}
         />
       </div>

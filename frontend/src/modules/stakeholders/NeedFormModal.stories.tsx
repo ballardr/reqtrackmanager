@@ -34,7 +34,7 @@ export const SavesEnteredValues: Story = {
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith({
       name: "Diagnose faults quickly", description: "Fix it on site", rationale: "Each delay costs an hour", change_note: "",
-    });
+    }, []);
   },
 };
 
@@ -43,7 +43,7 @@ export const SaveAndActivateSendsTheActivateFlag: Story = {
     await userEvent.type(dialog().getByLabelText("Need name"), "Diagnose faults quickly");
     await expect(dialog().getByRole("button", { name: "Save and activate" })).toBeEnabled();
     await userEvent.click(dialog().getByRole("button", { name: "Save and activate" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Diagnose faults quickly", activate: true }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Diagnose faults quickly", activate: true }), []);
   },
 };
 
@@ -60,7 +60,7 @@ export const EditPrefillsAndOffersAChangeNote: Story = {
     await expect(dialog().getByLabelText("Need name")).toHaveValue("Diagnose faults quickly");
     await userEvent.type(dialog().getByLabelText("Change note"), "Clarified");
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ change_note: "Clarified" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ change_note: "Clarified" }), []);
   },
 };
 

@@ -37,6 +37,7 @@ import type {
 } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { defaultOptionKey, optionKey } from "./linkOptions";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 import { TextAreaField, TextField } from "./FormFields";
@@ -65,17 +66,6 @@ interface Level extends ArtefactLinkBrowseStep {
   value: string;
   /** Text typed into the level's own filter. */
   filter: string;
-}
-
-function optionKey(option: ArtefactLinkTypeOption): string {
-  return `${option.link_type_id}:${option.direction}`;
-}
-
-/** The relationship to preselect for a record type: the symmetric "Related to" when offered, else the first. */
-function defaultOptionKey(options: ArtefactLinkTypeOption[], otherType: string): string {
-  const usable = options.filter((o) => o.other_types.some((t) => t.type === otherType));
-  const related = usable.find((o) => o.forward_name === "Related to" && o.reverse_name === "Related to");
-  return optionKey(related ?? usable[0] ?? ({ link_type_id: "", direction: "outgoing" } as ArtefactLinkTypeOption));
 }
 
 function chosenPairs(levels: Level[]): Array<[string, string]> {

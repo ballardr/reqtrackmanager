@@ -27,7 +27,9 @@
  */
 import { useState } from "react";
 
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
 import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
@@ -43,17 +45,21 @@ const TEXT_FIELDS: { key: keyof OpenQuestionFieldValues; label: string; rows: nu
 
 export function OpenQuestionFormModal({
   initial,
+  projectId,
   error,
   onCancel,
   onSave,
 }: {
   initial?: OpenQuestion;
+  /** The project the Open Question is created in; with it a create form offers the quick-link field. */
+  projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: OpenQuestionFieldValues) => void;
+  onSave: (values: OpenQuestionFieldValues, quickLinks: CollectedLink[]) => void;
 }) {
   const [priority, setPriority] = useState<OpenQuestionPriority>(initial?.priority ?? "medium");
   const [dueDate, setDueDate] = useState(initial?.due_date ?? "");
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof OpenQuestion] as string | undefined) ?? ""])
@@ -65,7 +71,7 @@ export function OpenQuestionFormModal({
       priority,
       due_date: dueDate || null,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as OpenQuestionFieldValues);
+    } as OpenQuestionFieldValues, quickLinks);
   }
 
   const valid = (fields.question ?? "").trim() !== "";
@@ -93,6 +99,13 @@ export function OpenQuestionFormModal({
             options={Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
           <DateField label="Due / review date (optional)" ariaLabel="Due date" value={dueDate} onChange={setDueDate} />
+          {!initial && projectId && (
+            <FormGridFull>
+              <QuickLinkField
+                projectId={projectId} artefactType="open_question" value={quickLinks} onChange={setQuickLinks}
+              />
+            </FormGridFull>
+          )}
         </FormGrid>
         <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>

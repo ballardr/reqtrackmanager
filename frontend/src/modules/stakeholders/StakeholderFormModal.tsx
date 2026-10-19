@@ -26,7 +26,9 @@ import { useEffect, useState } from "react";
 import type { ScoringScheme } from "../../api/scoring";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
 import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
 import { TreeSelect } from "../../components/TreeSelect";
 import { buildGroupTree, groupSelectNodes } from "./groupTree";
@@ -50,6 +52,7 @@ const CADENCE_OPTIONS = Object.entries(TARGET_CADENCE_LABEL).map(([value, label]
 export function StakeholderFormModal({
   initial,
   scopeLabel,
+  projectId,
   typeOptions,
   scheme,
   loadHint,
@@ -62,6 +65,8 @@ export function StakeholderFormModal({
   initial?: Stakeholder;
   /** e.g. "organisation" / "project", shown in the title of a new stakeholder. */
   scopeLabel: string;
+  /** The project a new stakeholder is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   /** The enabled types this scope offers; the current type is always kept selectable. */
   typeOptions: { value: string; label: string }[];
   /** The org's `stakeholder` scoring scheme, or `null` to omit the level pickers. */
@@ -74,9 +79,10 @@ export function StakeholderFormModal({
   groupTier?: "organization" | "project";
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: StakeholderFieldValues & { group_ids?: string[] }) => void;
+  onSave: (values: StakeholderFieldValues & { group_ids?: string[] }, quickLinks: CollectedLink[]) => void;
 }) {
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [name, setName] = useState(initial?.name ?? "");
   const [typeId, setTypeId] = useState(initial?.stakeholder_type_id ?? "");
   const [role, setRole] = useState(initial?.role ?? "");
@@ -130,7 +136,7 @@ export function StakeholderFormModal({
       ...(activate ? { activate: true } : {}),
       ...(!initial && groups ? { group_ids: groupIds } : {}),
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as StakeholderFieldValues);
+    } as StakeholderFieldValues, quickLinks);
   }
 
   return (
@@ -190,6 +196,11 @@ export function StakeholderFormModal({
             />
           </FormGridFull>
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {!initial && projectId && (
+            <FormGridFull>
+              <QuickLinkField projectId={projectId} artefactType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
+            </FormGridFull>
+          )}
         </FormGrid>
         <FormActions
           error={error} onCancel={onCancel} onSave={() => save()} saveDisabled={!valid}

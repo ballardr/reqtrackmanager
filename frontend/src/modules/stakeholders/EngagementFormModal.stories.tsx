@@ -48,7 +48,7 @@ export const SavePassesTheValues: Story = {
     await expect(args.onSave).toHaveBeenCalledWith({
       title: "Workshop", channel: "workshop", engagement_date: "2026-04-02", purpose: "", summary: "Mapped the journey.",
       notes: "", consent_recorded: true, retain_until: "2027-04-02",
-    });
+    }, []);
   },
 };
 

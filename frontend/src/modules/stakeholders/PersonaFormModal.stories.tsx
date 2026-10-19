@@ -39,7 +39,7 @@ export const SavesEnteredValues: Story = {
     await userEvent.type(dialog().getByLabelText("Importance weight"), "3.5");
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Safety Officer", goals: "Zero incidents", persona_type_id: "type-secondary", weight: 3.5 }),
+      expect.objectContaining({ name: "Safety Officer", goals: "Zero incidents", persona_type_id: "type-secondary", weight: 3.5 }), []
     );
   },
 };
@@ -48,7 +48,7 @@ export const BlankWeightMeansNoWeight: Story = {
   play: async ({ args }) => {
     await userEvent.type(dialog().getByLabelText("Persona name"), "Safety Officer");
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ weight: null, persona_type_id: null }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ weight: null, persona_type_id: null }), []);
   },
 };
 
@@ -65,7 +65,7 @@ export const SaveAndActivateSendsTheActivateFlag: Story = {
   play: async ({ args }) => {
     await userEvent.type(dialog().getByLabelText("Persona name"), "Safety Officer");
     await userEvent.click(dialog().getByRole("button", { name: "Save and activate" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Safety Officer", activate: true }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Safety Officer", activate: true }), []);
   },
 };
 
@@ -73,7 +73,7 @@ export const PlainSaveDoesNotActivate: Story = {
   play: async ({ args }) => {
     await userEvent.type(dialog().getByLabelText("Persona name"), "Safety Officer");
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.not.objectContaining({ activate: true }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.not.objectContaining({ activate: true }), []);
   },
 };
 

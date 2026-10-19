@@ -42,6 +42,7 @@ import { CONSEQUENCE_AXIS, LIKELIHOOD_AXIS, levelName, useRiskScheme } from "./u
 import { RISK_STATUS_LABEL, RISK_STATUS_TONE } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 
 type View = "register" | "matrix";
 
@@ -67,6 +68,7 @@ export function ProjectRisksPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "risk");
   const scheme = useRiskScheme(projectId);
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -254,12 +256,13 @@ export function ProjectRisksPage() {
           currentUserId={user?.id}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: RiskFieldValues) => {
+          onSave={async (values: RiskFieldValues, _changeNote, quickLinks) => {
             setCreateError(null);
             try {
-              await riskApi.create(projectId, values);
+              const created = await riskApi.create(projectId, values);
               showToast("Risk created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
               setRefreshKey((k) => k + 1);
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create risk."));

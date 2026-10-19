@@ -32,12 +32,14 @@ import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_ROADMAP_STATUSES, FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function ProjectFutureStatesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "future_state");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
@@ -132,14 +134,16 @@ export function ProjectFutureStatesPage() {
       {creating && (
         <FutureStateFormModal
           scopeLabel="project"
+          projectId={projectId}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: FutureStateFieldValues) => {
+          onSave={async (values: FutureStateFieldValues, quickLinks) => {
             setCreateError(null);
             try {
-              await projectFutureStateApi.create(projectId, values);
+              const created = await projectFutureStateApi.create(projectId, values);
               showToast("Future State created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
               await reloadFutureStates();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Future State."));

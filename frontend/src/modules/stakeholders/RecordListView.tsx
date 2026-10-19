@@ -28,6 +28,7 @@
  * hid it and offering "Show". A hidden row is not openable (the project API
  * treats a hidden record as absent), so `onOpen` is skipped for it.
  */
+import type { CollectedLink } from "../../api/artefactLinks";
 import { useState, type ReactNode } from "react";
 
 import type { BadgeTone } from "../../api/types";
@@ -121,9 +122,9 @@ export function RecordListView<R extends ListedRecord, V>({
   onShowHidden?: (record: R) => void;
   onOpen: (record: R) => void;
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit (with `renderCreateModal`) when records are created elsewhere. */
-  onCreate?: (values: V) => Promise<void>;
+  onCreate?: (values: V, quickLinks: CollectedLink[]) => Promise<void>;
   /** Renders the create form; `onSave` is already wired to `onCreate` and the error state. */
-  renderCreateModal?: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V) => void }) => ReactNode;
+  renderCreateModal?: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V, quickLinks?: CollectedLink[]) => void }) => ReactNode;
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -248,10 +249,10 @@ export function RecordListView<R extends ListedRecord, V>({
           scopeLabel,
           error: createError,
           onCancel: () => { setCreating(false); setCreateError(null); },
-          onSave: async (values) => {
+          onSave: async (values, quickLinks = []) => {
             setCreateError(null);
             try {
-              await onCreate(values);
+              await onCreate(values, quickLinks);
               setCreating(false);
             } catch (err) {
               setCreateError(toErrorMessage(err, `Could not create ${noun}.`));

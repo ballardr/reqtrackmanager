@@ -13,7 +13,9 @@
  */
 import { useState } from "react";
 
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
 import { FormActions } from "../../components/FormActions";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
@@ -34,6 +36,7 @@ const TEXT_FIELDS: { key: keyof StrategyFieldValues; label: string; rows: number
 export function StrategyFormModal({
   initial,
   scopeLabel,
+  projectId,
   error,
   onCancel,
   onSave,
@@ -43,9 +46,11 @@ export function StrategyFormModal({
    * so it's clear which scope a new Strategy is being created in, since
    * this same modal serves both the org-scoped and project-scoped pages. */
   scopeLabel: string;
+  /** The project a new record is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: StrategyFieldValues) => void;
+  onSave: (values: StrategyFieldValues, quickLinks: CollectedLink[]) => void;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [priority, setPriority] = useState<StrategyPriority>(initial?.priority ?? "medium");
@@ -55,6 +60,8 @@ export function StrategyFormModal({
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof Strategy] as string | undefined) ?? ""]))
   );
 
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+
   function save() {
     onSave({
       title,
@@ -62,7 +69,7 @@ export function StrategyFormModal({
       time_horizon: timeHorizon,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as StrategyFieldValues);
+    } as StrategyFieldValues, quickLinks);
   }
 
   const valid = title.trim() !== "" && (fields.objective ?? "").trim() !== "";
@@ -97,6 +104,11 @@ export function StrategyFormModal({
           {initial && (
             <FormGridFull>
               <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+            </FormGridFull>
+          )}
+          {!initial && projectId && (
+            <FormGridFull>
+              <QuickLinkField projectId={projectId} artefactType="strategy" value={quickLinks} onChange={setQuickLinks} />
             </FormGridFull>
           )}
         </FormGrid>

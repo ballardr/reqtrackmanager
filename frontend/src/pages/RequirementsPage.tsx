@@ -1,5 +1,4 @@
 import { useMutation } from "../hooks/useMutation";
-import { useRecordCode } from "../hooks/useRecordCode";
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
@@ -11,23 +10,20 @@ import type {
   Component,
   CustomFieldDefinition,
   FileAsset,
-  LinkTypeDefinition,
   OrgUser,
   Project,
   ProjectStage,
   Requirement,
   RequirementImportResult,
   RequirementLevel,
-  RequirementLink,
   RequirementStatus,
 } from "../api/types";
-import { loadOfferedLinkTypes } from "../api/linkTypes";
+import type { CollectedLink } from "../api/artefactLinks";
 import {
   ENTITY_ACCENT_COLOR,
   REQUIREMENT_LEVEL_LABEL,
   REQUIREMENT_STATUS_LABEL,
   REQUIREMENT_STATUS_TONE,
-  linkTypesFor,
   principalRef,
 } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -39,6 +35,7 @@ import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPa
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
 import { Modal } from "../components/Modal";
+import { QuickLinkField } from "../components/QuickLinkField";
 import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort, type SortState } from "../components/sortState";
@@ -53,8 +50,8 @@ import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
 import { TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
-import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
@@ -74,11 +71,11 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "a
 export function RequirementsPage() {
   const run = useMutation();
   const strings = useStrings();
-  const recordCode = useRecordCode();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement");
   const myRoles = useMyProjectRoles(projectId);
   const [isOrgAdminOfProject, setIsOrgAdminOfProject] = useState(false);
   const canManageProject =
@@ -156,20 +153,14 @@ export function RequirementsPage() {
   const [importing, setImporting] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
 
-  // --- Create-modal step 2: attach files / add links to the just-created
-  // requirement (UX review — previously only possible after closing the
-  // modal and opening the detail page). Mirrors RequirementDetailPage's own
-  // files/links state and handlers, scoped to `createdRequirement`. -------
+  // --- Create-modal step 2: attach files to the just-created requirement
+  // (UX review — previously only possible after closing the modal and
+  // opening the detail page). Mirrors RequirementDetailPage's own files
+  // state and handlers, scoped to `createdRequirement`. Links are chosen
+  // in step 1 with the shared quick-link field and created with the record. ---
   const [createdRequirement, setCreatedRequirement] = useState<Requirement | null>(null);
   const [createdFiles, setCreatedFiles] = useState<FileAsset[]>([]);
-  const [createdLinks, setCreatedLinks] = useState<RequirementLink[]>([]);
-  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
-  const [allProjectRequirements, setAllProjectRequirements] = useState<Requirement[]>([]);
-  const [newLinkTargetId, setNewLinkTargetId] = useState("");
-  const [newLinkTypeId, setNewLinkTypeId] = useState("");
-  const [linkError, setLinkError] = useState<string | null>(null);
-  const [addLinkPopoverOpen, setAddLinkPopoverOpen] = useState(false);
-  const addLinkTriggerRef = useRef<HTMLButtonElement>(null);
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
 
   // --- Bulk operations (list view only) ---------------------------------
   // Style guide "Pattern: bulk operations on a list" — the first pilot of
@@ -358,11 +349,11 @@ export function RequirementsPage() {
   }
 
   /**
-   * `andAttach`: when true (the "Create & attach files/links" action, UX
+   * `andAttach`: when true (the "Create & attach files" action, UX
    * review — attaching should be possible during creation, not only
    * afterwards from the detail page), the modal advances to a second step
    * against the just-created requirement's real id instead of closing —
-   * the backend's file/link endpoints require an existing id, so this
+   * the backend's file endpoints require an existing id, so this
    * reuses them rather than building a pre-create staging flow. The plain
    * "Create" action keeps closing the modal immediately, unchanged — most
    * creates don't need an attachment, and every existing workflow (the
@@ -390,20 +381,14 @@ export function RequirementsPage() {
       setCustomFieldValues({});
       reload();
       showToast(strings.requirements.created);
+      await commitQuickLinks(created.id, quickLinks);
+      setQuickLinks([]);
       if (!andAttach) {
         setShowNewForm(false);
         return;
       }
       setCreatedRequirement(created);
       setCreatedFiles([]);
-      setCreatedLinks([]);
-      const [reqs, defs] = await Promise.all([
-        api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`),
-        loadOfferedLinkTypes(projectId),
-      ]);
-      setAllProjectRequirements(reqs);
-      // Only types that may join two requirements (a restricted or dedicated type would be refused).
-      setLinkTypes(linkTypesFor(defs, "requirement", "requirement"));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -419,24 +404,6 @@ export function RequirementsPage() {
     if (!projectId || !createdRequirement) return;
     if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files/${fileId}`), "remove", "file"))) return;
     setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
-  }
-
-  async function addLinkToCreatedRequirement() {
-    if (!projectId || !createdRequirement || !newLinkTargetId || !newLinkTypeId) return;
-    setLinkError(null);
-    try {
-      await api.post(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/links`, {
-        target_requirement_id: newLinkTargetId,
-        link_type_id: newLinkTypeId,
-      });
-      showToast(strings.mutation.success("link", strings.mutation.past.add));
-      setNewLinkTargetId("");
-      setNewLinkTypeId("");
-      setAddLinkPopoverOpen(false);
-      setCreatedLinks(await api.get<RequirementLink[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/links`));
-    } catch (err) {
-      setLinkError(err instanceof Error ? err.message : strings.common.error);
-    }
   }
 
   function finishCreateRequirement() {
@@ -665,64 +632,6 @@ export function RequirementsPage() {
                   onRemove={removeCreatedRequirementFile}
                 />
               </div>
-              <div className="stack">
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <h3 style={{ margin: 0, fontSize: "1rem" }}>{strings.requirements.links}</h3>
-                  {(() => {
-                    const eligibleLinkTargets = allProjectRequirements.filter(
-                      (r) => r.id !== createdRequirement.id && !createdLinks.some((l) => l.other_requirement_id === r.id)
-                    );
-                    const noEligibleTargets = eligibleLinkTargets.length === 0;
-                    return (
-                      <>
-                        <button
-                          ref={addLinkTriggerRef}
-                          className="btn btn-primary"
-                          disabled={noEligibleTargets}
-                          title={noEligibleTargets ? strings.requirements.noEligibleLinkTargets : undefined}
-                          onClick={() => {
-                            setLinkError(null);
-                            setAddLinkPopoverOpen((o) => !o);
-                          }}
-                        >
-                          <Plus /> {strings.requirements.addLink}
-                        </button>
-                        {addLinkPopoverOpen && (
-                          <Popover anchorRef={addLinkTriggerRef} title={strings.requirements.addLink} onClose={() => setAddLinkPopoverOpen(false)}>
-                            <LabeledSelect
-                              label={strings.requirements.targetRequirement}
-                              value={newLinkTargetId}
-                              onChange={setNewLinkTargetId}
-                              options={eligibleLinkTargets.map((r) => ({ value: r.id, label: `${recordCode.code(r.unique_code)} — ${r.name}` }))}
-                              placeholder={strings.requirements.selectARequirementToLink}
-                            />
-                            <LabeledSelect
-                              label={strings.requirements.linkType}
-                              value={newLinkTypeId}
-                              onChange={setNewLinkTypeId}
-                              options={linkTypes.map((lt) => ({ value: lt.id, label: lt.forward_name }))}
-                              placeholder={strings.requirements.linkType}
-                            />
-                            {linkError && <div style={{ color: "var(--color-danger)" }}>{linkError}</div>}
-                            <FormActions
-                              onCancel={() => setAddLinkPopoverOpen(false)}
-                              onSave={addLinkToCreatedRequirement}
-                              saveLabel={strings.requirements.addLink}
-                              saveDisabled={!newLinkTargetId || !newLinkTypeId}
-                            />
-                          </Popover>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-                {createdLinks.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinks}</p>}
-                {createdLinks.map((l) => (
-                  <div key={l.id} className="row" style={{ justifyContent: "space-between" }}>
-                    <span>{l.display_name}: <RecordCode code={l.other_requirement_unique_code} /> — {l.other_requirement_name}</span>
-                  </div>
-                ))}
-              </div>
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button className="btn btn-primary" onClick={finishCreateRequirement}>
                   {strings.requirements.finish}
@@ -859,6 +768,9 @@ export function RequirementsPage() {
                     values={customFieldValues}
                     onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
                   />
+                </FormGridFull>
+                <FormGridFull>
+                  <QuickLinkField projectId={projectId ?? ""} artefactType="requirement" value={quickLinks} onChange={setQuickLinks} />
                 </FormGridFull>
               </FormGrid>
               <div className="row" style={{ justifyContent: "flex-end" }}>

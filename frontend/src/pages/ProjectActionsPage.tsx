@@ -3,6 +3,7 @@ import { RecordCode } from "../components/RecordCode";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import type { CollectedLink } from "../api/artefactLinks";
 import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
@@ -16,11 +17,13 @@ import { ENTITY_ACCENT_COLOR, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_ACTI
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { PrincipalBadge } from "../components/PrincipalBadge";
+import { QuickLinkField } from "../components/QuickLinkField";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
+import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
 import { ActionFields } from "../components/ActionFields";
@@ -42,6 +45,7 @@ const OUTCOME_OPTIONS: RequirementActionOutcome[] = ["pending", "completed", "fa
 export function ProjectActionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement_action");
   const [actions, setActions] = useState<RequirementAction[] | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -63,6 +67,7 @@ export function ProjectActionsPage() {
   const [newActionTypeId, setNewActionTypeId] = useState("");
   const [newAssignee, setNewAssignee] = useState<PrincipalRef | null>(null);
   const [newDueDate, setNewDueDate] = useState("");
+  const [newQuickLinks, setNewQuickLinks] = useState<CollectedLink[]>([]);
 
   function listParams(): string {
     const params = new URLSearchParams();
@@ -116,7 +121,7 @@ export function ProjectActionsPage() {
   async function createAction() {
     if (!newTitle.trim() || !newActionTypeId) return;
     try {
-      await api.post(`/api/v1/projects/${projectId}/actions`, {
+      const created = await api.post<RequirementAction>(`/api/v1/projects/${projectId}/actions`, {
         title: newTitle,
         description: newDescription,
         action_type_id: newActionTypeId,
@@ -130,6 +135,8 @@ export function ProjectActionsPage() {
       setShowNewForm(false);
       reload();
       showToast(strings.actions.created);
+      await commitQuickLinks(created.id, newQuickLinks);
+      setNewQuickLinks([]);
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -184,6 +191,7 @@ export function ProjectActionsPage() {
             organizationId={organizationId}
             projectId={projectId}
           />
+          <QuickLinkField projectId={projectId ?? ""} artefactType="requirement_action" preferredType="requirement" value={newQuickLinks} onChange={setNewQuickLinks} />
           <button
             className="btn btn-primary" style={{ alignSelf: "flex-start" }}
             onClick={createAction} disabled={!newTitle.trim() || !newActionTypeId}

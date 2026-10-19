@@ -142,6 +142,24 @@ You need to view the record you link to, and one of these on the record you link
 
 The panel shows its add and remove controls only to people who may use them on that record. Other kinds of record (a decision, a pain point, …) need the Link or Manage permission. API clients and AI assistants use the same rules through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `search_artefact_link_candidates`, `list_artefact_link_browse`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
 
+## Linking while you create a record
+
+The form that creates a record has a **Link to** field, so you can relate it to others in the same trip instead of opening its Links panel afterwards. It is on the create forms for requirements, actions, pain points, stakeholder needs, personas, stakeholders, engagements, risks, decisions, open questions, strategies, future states and guiding principles (a project's own records; an organisation's records are linked from within a project).
+
+```mermaid
+flowchart LR
+    F["Fill in the create form"] --> S["Search in 'Link to'<br/>and pick records"]
+    S --> C["Save"]
+    C --> R["Record is created"]
+    R --> L["Links are created together,<br/>all or none"]
+```
+
+- Type two or more characters to search every kind of record you may link to. Some forms list a kind first: a pain point offers personas as soon as you click the field, and an engagement offers stakeholders.
+- Each chosen record shows the relationship that will be used ("Related to" when it fits). Change it from the list beside the record, or remove the record.
+- The links are made once the record exists, in one step: if any of them is refused, none is made, and a message says which one and why. The record itself is kept; add the links from its Links panel.
+- You see the field only if you may link that kind of record, and it links within the project. To link across a parent or child project, use **Add link** on the record afterwards.
+- A change request has no such field: its **Proposed links** are the requirement's links and are made when it is approved.
+
 ## Tracing where a record comes from
 
 The Links panel shows a record's direct links. When a record has any, **Trace** (beside **Add link**) opens a larger window that follows them further, in two views.

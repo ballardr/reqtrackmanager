@@ -33,7 +33,7 @@ export const SubmitsNewOpenQuestion: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ question: "Should we standardise on a single battery vendor?" })
+      expect.objectContaining({ question: "Should we standardise on a single battery vendor?" }), []
     ));
   },
 };

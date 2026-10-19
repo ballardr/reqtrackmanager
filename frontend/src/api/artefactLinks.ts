@@ -168,6 +168,8 @@ export interface ArtefactLinksApi {
   ): Promise<ArtefactLinkBrowseStep | null>;
   projects(projectId: string): Promise<LinkCandidateProjects>;
   create(projectId: string, type: string, id: string, link: NewArtefactLink): Promise<void>;
+  /** Creates every link or none (a create form's quick-link chips); a refusal names which link failed. */
+  createMany(projectId: string, type: string, id: string, links: NewArtefactLink[]): Promise<void>;
   remove(projectId: string, type: string, id: string, linkId: string): Promise<void>;
 }
 
@@ -212,6 +214,9 @@ export const artefactLinksApi: ArtefactLinksApi = {
   projects: (projectId) => api.get<LinkCandidateProjects>(`/api/v1/projects/${projectId}/link-candidate-projects`),
   create: async (projectId, type, id, link) => {
     await api.post(`${base(projectId, type, id)}/links`, link);
+  },
+  createMany: async (projectId, type, id, links) => {
+    await api.post(`${base(projectId, type, id)}/links/bulk`, { links });
   },
   remove: async (projectId, type, id, linkId) => {
     await api.delete(`${base(projectId, type, id)}/links/${linkId}`);
