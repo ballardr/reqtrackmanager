@@ -31,6 +31,10 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
+import { FileField, TextAreaField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormActions } from "../components/FormActions";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
 // MEMBER_ONLY, which caps at baseline MEMBER — parity with
@@ -318,102 +322,78 @@ export function ProjectListPage() {
           a brand-new entity opens in a Modal, not a permanently-visible
           inline block that reflows the list underneath it. */}
       {showNewForm && (
-        <Modal title={strings.projects.newProject} onClose={closeNewForm}>
+        <Modal title={strings.projects.newProject} onClose={closeNewForm} size="lg">
           <div className="stack">
-            {orgs.length > 1 && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {orgLabelCap}
-                <select className="input" value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)} autoFocus>
-                  {orgs.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.projects.name}
-              <input
-                className="input"
-                autoFocus={orgs.length <= 1}
+            <FormGrid minColumn="18rem">
+              {orgs.length > 1 && (
+                <LabeledSelect
+                  label={orgLabelCap}
+                  value={newOrgId}
+                  onChange={setNewOrgId}
+                  options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+                  placeholder={null}
+                  inputProps={{ autoFocus: true }}
+                />
+              )}
+              <TextField
+                label={strings.projects.name}
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                onChange={setNewName}
+                inputProps={{ autoFocus: orgs.length <= 1 }}
               />
-            </label>
-            {newOrg?.project_code_policy.assignment === "manual" && !importFile && (
-              <>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.projects.code}
-                  <input
-                    className="input"
-                    value={newCode}
-                    maxLength={newOrg.project_code_policy.max_length}
-                    onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-                    aria-describedby="new-project-code-hint"
-                  />
-                </label>
-                <p id="new-project-code-hint" className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
-                  {strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
-                </p>
-              </>
-            )}
-            {newOrg?.project_code_policy.assignment === "auto" && (
-              <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.codeAutomatic}</p>
-            )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.projects.summary}
-              <textarea
-                className="input"
-                rows={2}
-                value={newSummary}
-                onChange={(e) => setNewSummary(e.target.value)}
-              />
-            </label>
-            {!importFile && templateOptions.length > 0 && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.projects.useTemplate}
-                <select className="input" value={templateProjectId} onChange={(e) => setTemplateProjectId(e.target.value)}>
-                  <option value="">{strings.projects.noTemplate}</option>
-                  {templateOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {/* Small usability fix: picking an import file below used to silently hide
-                the template picker above with no explanation — this note
-                replaces the silent disappearance, rather than a bigger
-                redesign of the two fields' relationship. */}
-            {importFile && templateOptions.length > 0 && (
-              <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.importIgnoresTemplate}</p>
-            )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.admin.visibility}
-              <select
-                className="input"
+              {newOrg?.project_code_policy.assignment === "manual" && !importFile && (
+                <TextField
+                  label={strings.projects.code}
+                  value={newCode}
+                  onChange={(next) => setNewCode(next.toUpperCase())}
+                  hint={strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
+                  inputProps={{ maxLength: newOrg.project_code_policy.max_length }}
+                />
+              )}
+              {newOrg?.project_code_policy.assignment === "auto" && (
+                <FormGridFull>
+                  <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.codeAutomatic}</p>
+                </FormGridFull>
+              )}
+              <FormGridFull>
+                <TextAreaField label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />
+              </FormGridFull>
+              {!importFile && templateOptions.length > 0 && (
+                <LabeledSelect
+                  label={strings.projects.useTemplate}
+                  value={templateProjectId}
+                  onChange={setTemplateProjectId}
+                  options={templateOptions.map((p) => ({ value: p.id, label: p.name }))}
+                  placeholder={strings.projects.noTemplate}
+                />
+              )}
+              <LabeledSelect
+                label={strings.admin.visibility}
                 value={newVisibility}
-                onChange={(e) => setNewVisibility(e.target.value as "only_specified" | "org_wide")}
-              >
-                <option value="only_specified">{strings.admin.visibilityOnlySpecified}</option>
-                <option value="org_wide">{strings.admin.visibilityOrgWide}</option>
-              </select>
-            </label>
-            <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
-            {/* can_be_parent-gated (docs/decisions.md) — hidden entirely
-                when there's nothing eligible to pick, rather than showing a
-                picker with only "None" in it. */}
-            {showParentField && (
-              <>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.projects.parentProject}
-                  <select
-                    className="input"
+                onChange={(next) => setNewVisibility(next as "only_specified" | "org_wide")}
+                options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
+                placeholder={null}
+                hint={strings.admin.visibilityHint(orgLabel)}
+              />
+              {/* Small usability fix: picking an import file below used to silently hide
+                  the template picker above with no explanation — this note
+                  replaces the silent disappearance, rather than a bigger
+                  redesign of the two fields' relationship. */}
+              {importFile && templateOptions.length > 0 && (
+                <FormGridFull>
+                  <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.importIgnoresTemplate}</p>
+                </FormGridFull>
+              )}
+              {/* can_be_parent-gated (docs/decisions.md) — hidden entirely
+                  when there's nothing eligible to pick, rather than showing a
+                  picker with only "None" in it. */}
+              {showParentField && (
+                <>
+                  <LabeledSelect
+                    label={strings.projects.parentProject}
                     value={parentProjectId}
-                    onChange={(e) => {
-                      setParentProjectId(e.target.value);
+                    onChange={(next) => {
+                      setParentProjectId(next);
                       // Same reasoning as ProjectAdminPage.tsx's parent select:
                       // don't let a mode confirmed for one candidate parent
                       // silently carry over to a different one before submit.
@@ -421,61 +401,47 @@ export function ProjectListPage() {
                         setRoleInheritanceMode("none");
                       }
                     }}
-                  >
-                    <option value="">{strings.projects.noParent}</option>
-                    {parentOptions.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </label>
-                {parentProjectId && (
-                  <>
-                    <label className="stack" style={{ gap: "0.25rem" }}>
-                      {strings.projects.inheritFromParent}
-                      <select
-                        className="input"
+                    options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
+                    placeholder={strings.projects.noParent}
+                  />
+                  {parentProjectId && (
+                    <>
+                      <LabeledSelect
+                        label={strings.projects.inheritFromParent}
                         value={roleInheritanceMode}
-                        onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
-                      >
-                        {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
-                          <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
-                        ))}
-                      </select>
-                    </label>
-                    {roleInheritanceMode === "mirror_role" && (
-                      <label className="stack" style={{ gap: "0.25rem" }}>
-                        {strings.projects.inheritModeFilterRole}
-                        <select
-                          className="input"
+                        onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
+                        options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
+                          value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
+                        }))}
+                        placeholder={null}
+                      />
+                      {roleInheritanceMode === "mirror_role" && (
+                        <LabeledSelect
+                          label={strings.projects.inheritModeFilterRole}
                           value={roleInheritanceFilterRole}
-                          onChange={(e) => setRoleInheritanceFilterRole(e.target.value as ProjectRole)}
-                        >
-                          <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                          <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                          <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                        </select>
-                      </label>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.projects.importFromBundle}
-              <input
-                className="input" type="file" accept=".zip,application/zip"
-                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={closeNewForm}>
-                {strings.common.cancel}
-              </button>
-              <button className="btn btn-primary" onClick={createProject} disabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !importFile && !newCode)}>
-                {strings.common.create}
-              </button>
-            </div>
+                          onChange={(next) => setRoleInheritanceFilterRole(next as ProjectRole)}
+                          options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
+                          placeholder={null}
+                        />
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+              <FormGridFull>
+                <FileField
+                  label={strings.projects.importFromBundle} accept=".zip,application/zip"
+                  onChange={setImportFile}
+                />
+              </FormGridFull>
+            </FormGrid>
+            <FormActions
+              error={createError}
+              onCancel={closeNewForm}
+              onSave={createProject}
+              saveLabel={strings.common.create}
+              saveDisabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !importFile && !newCode)}
+            />
           </div>
         </Modal>
       )}
@@ -513,7 +479,7 @@ export function ProjectListPage() {
           {viewMode === "tree" && hasHierarchy && (
             <div className="stack">
               {orgsWithHierarchy.length > 1 && (
-                <select className="input" style={{ maxWidth: 280 }} value={treeOrgId} onChange={(e) => setTreeOrgId(e.target.value)}>
+                <select className="input" style={{ maxWidth: 280 }} aria-label={orgLabelCap} value={treeOrgId} onChange={(e) => setTreeOrgId(e.target.value)}>
                   {orgsWithHierarchy.map((o) => (
                     <option key={o.id} value={o.id}>{o.name}</option>
                   ))}

@@ -635,11 +635,11 @@ export const CreateAndLinkAction: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("No actions linked yet.")).toBeInTheDocument());
-    await expect(canvas.queryByPlaceholderText("Title")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Title")).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
 
     const panel = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
-    await userEvent.type(within(panel).getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(within(panel).getByLabelText("Title"), "Verify audit log retention");
     await userEvent.selectOptions(within(panel).getByLabelText("Type"), "at1");
     await userEvent.click(within(panel).getByRole("button", { name: "Create" }));
     await waitFor(() =>
@@ -669,7 +669,7 @@ export const CreateAndLinkActionRoutesThroughChangeRequestOnceLocked: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
 
     const panel = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
-    await userEvent.type(within(panel).getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(within(panel).getByLabelText("Title"), "Verify audit log retention");
     await userEvent.selectOptions(within(panel).getByLabelText("Type"), "at1");
     const createButton = within(panel).getByRole("button", { name: "Create" });
     await expect(createButton).toBeDisabled();
@@ -917,7 +917,7 @@ export const CreateActionAssigneeSearchAndAssign: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
     const dialog = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
     const panel = within(dialog);
-    await userEvent.type(panel.getByPlaceholderText("Title"), "Confirm access review");
+    await userEvent.type(panel.getByLabelText("Title"), "Confirm access review");
     await userEvent.selectOptions(panel.getByLabelText("Type"), "Review");
     await userEvent.type(panel.getByRole("combobox", { name: "Assignee" }), "jamie");
     await waitFor(() => expect(panel.getByText("Jamie Lee")).toBeInTheDocument());

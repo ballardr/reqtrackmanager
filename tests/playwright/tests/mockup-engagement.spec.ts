@@ -163,7 +163,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     const reasoningCheckbox = page.getByRole("checkbox", { name: "Reasoning", exact: true });
     await reasoningCheckbox.check();
     await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Stakeholders want a choice of format");
-    await page.getByPlaceholder("Reason for change").fill("Clarifying the export format options");
+    await page.getByLabel("Reason for change").fill("Clarifying the export format options");
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await page.getByText("Export as CSV or JSON").click();

@@ -58,6 +58,8 @@ import {
   type ProjectComplianceRequirement,
   userDisplayName,
 } from "./types";
+import { TextAreaField } from "../../components/FormFields";
+import { LabeledSelect } from "../../components/LabeledSelect";
 
 const APPLICABILITY_OPTIONS: ComplianceApplicability[] = ["applicable", "not_applicable"];
 const STATUS_OPTIONS: ComplianceStatus[] = [
@@ -311,19 +313,21 @@ export function RequirementAssessmentPanel({
             <span>Effective:</span>
             <ApplicabilityBadge pcr={pcr} />
           </div>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Set applicability</span>
-            <select className="input" value={applicability} onChange={(e) => setApplicability(e.target.value as ComplianceApplicability)} aria-label="Applicability">
-              {APPLICABILITY_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>{COMPLIANCE_APPLICABILITY_LABEL[opt]}</option>
-              ))}
-            </select>
-          </label>
+          <LabeledSelect
+            label="Set applicability"
+            ariaLabel="Applicability"
+            value={applicability}
+            onChange={(next) => setApplicability(next as ComplianceApplicability)}
+            options={APPLICABILITY_OPTIONS.map((opt) => ({ value: opt, label: COMPLIANCE_APPLICABILITY_LABEL[opt] }))}
+            placeholder={null}
+          />
           {applicability === "not_applicable" && (
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Justification (required)</span>
-              <textarea className="input" rows={2} value={applicabilityJustification} onChange={(e) => setApplicabilityJustification(e.target.value)} />
-            </label>
+            <TextAreaField
+              label="Justification (required)"
+              value={applicabilityJustification}
+              onChange={setApplicabilityJustification}
+              rows={2}
+            />
           )}
           <button
             className="btn btn-primary" style={{ alignSelf: "flex-start" }}
@@ -337,24 +341,22 @@ export function RequirementAssessmentPanel({
         {pcr.effective_applicability === "applicable" && (
           <section className="stack">
             <h3 style={{ margin: 0 }}>Assessment</h3>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Compliance status</span>
-              <select className="input" value={status} onChange={(e) => setStatus(e.target.value as ComplianceStatus)} aria-label="Compliance status">
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>{COMPLIANCE_STATUS_LABEL[opt]}</option>
-                ))}
-              </select>
-            </label>
+            <LabeledSelect
+              label="Compliance status"
+              value={status}
+              onChange={(next) => setStatus(next as ComplianceStatus)}
+              options={STATUS_OPTIONS.map((opt) => ({ value: opt, label: COMPLIANCE_STATUS_LABEL[opt] }))}
+              placeholder={null}
+            />
             {status === "non_compliant" && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                <span>Justification (required)</span>
-                <textarea className="input" rows={2} value={statusJustification} onChange={(e) => setStatusJustification(e.target.value)} />
-              </label>
+              <TextAreaField
+                label="Justification (required)"
+                value={statusJustification}
+                onChange={setStatusJustification}
+                rows={2}
+              />
             )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Notes</span>
-              <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </label>
+            <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
             <button
               className="btn btn-primary" style={{ alignSelf: "flex-start" }}
               disabled={status === "non_compliant" && !statusJustification.trim()}
@@ -477,10 +479,12 @@ export function RequirementAssessmentPanel({
           )}
           {pcr.approval_state === "pending_approval" && (
             <div className="stack">
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                <span>Decision note (optional for approval, required to reject)</span>
-                <textarea className="input" rows={2} value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} />
-              </label>
+              <TextAreaField
+                label="Decision note (optional for approval, required to reject)"
+                value={decisionNote}
+                onChange={setDecisionNote}
+                rows={2}
+              />
               <div className="row">
                 <button className="btn btn-primary" onClick={approve}>Approve</button>
                 <button className="btn btn-danger" onClick={() => setRejecting(true)}>Reject</button>
@@ -570,10 +574,7 @@ export function RequirementAssessmentPanel({
       {rejecting && (
         <Modal title="Reject this assessment?" onClose={() => setRejecting(false)}>
           <div className="stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Decision note (required)</span>
-              <textarea className="input" rows={3} value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} />
-            </label>
+            <TextAreaField label="Decision note (required)" value={decisionNote} onChange={setDecisionNote} rows={3} />
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button className="btn" onClick={() => setRejecting(false)}>Cancel</button>
               <button className="btn btn-danger" disabled={!decisionNote.trim()} onClick={reject}>Reject</button>

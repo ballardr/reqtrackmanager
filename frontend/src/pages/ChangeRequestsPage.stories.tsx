@@ -122,7 +122,7 @@ export const ModifyRequirementCreateDisabledUntilFieldSelected: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /New/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New change request" });
     await waitFor(() => expect(within(dialog).getByText("Fields to change")).toBeInTheDocument());
-    await userEvent.type(within(dialog).getByPlaceholderText("Reason for change"), "Extend the recovery window");
+    await userEvent.type(within(dialog).getByLabelText("Reason for change"), "Extend the recovery window");
     await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
     await expect(within(dialog).getByText("Select at least one field to change.")).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("checkbox", { name: "Reasoning" }));
@@ -140,7 +140,7 @@ export const NewRequirementKindShowsPlainCreateForm: Story = {
     const dialog = within(document.body).getByRole("dialog", { name: "New change request" });
     await waitFor(() => expect(within(dialog).getByText("Modify requirement")).toBeInTheDocument());
     await userEvent.click(within(dialog).getByRole("radio", { name: "New requirement" }));
-    await expect(within(dialog).getByPlaceholderText("Proposed name")).toBeInTheDocument();
+    await expect(within(dialog).getByLabelText("Proposed name")).toBeInTheDocument();
     await expect(within(dialog).queryByText("Fields to change")).not.toBeInTheDocument();
   },
 };
@@ -192,7 +192,7 @@ export const SubmitCreatesChangeRequest: Story = {
     const dialog = within(document.body).getByRole("dialog", { name: "New change request" });
     await waitFor(() => expect(within(dialog).getByText("Fields to change")).toBeInTheDocument());
     await userEvent.click(within(dialog).getByRole("checkbox", { name: "Reasoning" }));
-    await userEvent.type(within(dialog).getByPlaceholderText("Reason for change"), "Extend the recovery window");
+    await userEvent.type(within(dialog).getByLabelText("Reason for change"), "Extend the recovery window");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
@@ -226,7 +226,7 @@ export const ModifyRequestSendsItsProposedLinks: Story = {
     await userEvent.click(picker.getByRole("button", { name: "Add to the request" }));
     await waitFor(() => expect(within(dialog).getByText("DEC-002 Use Redis")).toBeInTheDocument());
     await userEvent.click(within(dialog).getByRole("checkbox", { name: "Reasoning" }));
-    await userEvent.type(within(dialog).getByPlaceholderText("Reason for change"), "Trace the decision");
+    await userEvent.type(within(dialog).getByLabelText("Reason for change"), "Trace the decision");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(

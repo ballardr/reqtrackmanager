@@ -96,7 +96,7 @@ test.describe("requirement and action restore", () => {
 
     await test.step("create a throwaway action", async () => {
       await page.getByRole("button", { name: "New action" }).click();
-      await page.getByPlaceholder("Title").fill(title);
+      await page.getByLabel("Title").fill(title);
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByText("Action created")).toBeVisible();
       await expect(page.getByRole("link", { name: title })).toBeVisible();

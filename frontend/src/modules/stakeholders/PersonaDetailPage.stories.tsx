@@ -249,10 +249,12 @@ export const OwnerCanBeAssigned: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Persona owner"));
-    await userEvent.type(canvas.getByLabelText("Persona owner"), "Jamie");
-    await waitFor(() => canvas.getByText(/Jamie Lee/));
-    await userEvent.click(canvas.getByText(/Jamie Lee/));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Persona owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Persona owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Persona owner" }));
+    await userEvent.type(picker.getByLabelText("Persona owner"), "Jamie");
+    await waitFor(() => picker.getByText(/Jamie Lee/));
+    await userEvent.click(picker.getByText(/Jamie Lee/));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}`, { owner: { type: "user", id: "user-2" } }));
   },
 };
@@ -265,9 +267,11 @@ export const OwnerCanBeAnOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Persona owner"));
-    await userEvent.type(canvas.getByLabelText("Persona owner"), "platform");
-    await userEvent.click(await canvas.findByText("Platform Architecture"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Persona owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Persona owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Persona owner" }));
+    await userEvent.type(picker.getByLabelText("Persona owner"), "platform");
+    await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}`, { owner: { type: "org_group", id: "group-1" } }));
     await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
   },
@@ -281,9 +285,11 @@ export const ChampionCanBeAProjectGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Persona champion"));
-    await userEvent.type(canvas.getByLabelText("Persona champion"), "release");
-    await userEvent.click(await canvas.findByText("Release board"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Persona champion" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Persona champion" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Persona champion" }));
+    await userEvent.type(picker.getByLabelText("Persona champion"), "release");
+    await userEvent.click(await picker.findByText("Release board"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}`, { champion: { type: "project_group", id: "pgroup-1" } }));
   },
 };

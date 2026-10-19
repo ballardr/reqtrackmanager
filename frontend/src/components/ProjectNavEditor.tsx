@@ -43,6 +43,7 @@ import {
   type ProjectNavItem,
 } from "../navigation/projectNav";
 import { Modal } from "./Modal";
+import { FormActions } from "./FormActions";
 
 type Scope = "all" | "project";
 
@@ -222,18 +223,20 @@ export function ProjectNavEditor({
           </ul>
         )}
       </section>
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-        <span className="row">
-          <button type="button" className="btn" onClick={resetToDefault}>{customise.resetToDefault}</button>
-          {hasOverride && (
-            <button type="button" className="btn" onClick={removeOverride}>{customise.removeOverride}</button>
-          )}
-        </span>
-        <span className="row">
-          <button type="button" className="btn" onClick={onClose}>{strings.common.cancel}</button>
-          <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>{customise.save}</button>
-        </span>
-      </div>
+      <FormActions
+        leading={
+          <span className="row">
+            <button type="button" className="btn" onClick={resetToDefault}>{customise.resetToDefault}</button>
+            {hasOverride && (
+              <button type="button" className="btn" onClick={removeOverride}>{customise.removeOverride}</button>
+            )}
+          </span>
+        }
+        onCancel={onClose}
+        onSave={save}
+        saveLabel={customise.save}
+        saveDisabled={saving}
+      />
     </Modal>
   );
 }

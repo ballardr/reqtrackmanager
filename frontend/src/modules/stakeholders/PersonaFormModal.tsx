@@ -16,8 +16,9 @@ import { useState } from "react";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { Persona, PersonaFieldValues } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 const TEXT_FIELDS: { key: keyof PersonaFieldValues; label: string; rows: number }[] = [
   { key: "description", label: "Description", rows: 2 },
@@ -83,22 +84,14 @@ export function PersonaFormModal({
           <TextField label="Name" ariaLabel="Persona name" value={name} onChange={setName} />
           <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
           <TextField label="Role / job title" ariaLabel="Role or job title" value={roleTitle} onChange={setRoleTitle} />
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Importance weight (optional)</span>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="any"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              aria-label="Importance weight"
-              aria-invalid={!weightValid}
-            />
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-              Used when scoring against personas. Leave blank to weight every persona equally; must be greater than zero.
-            </span>
-          </label>
+          <TextField
+            label="Importance weight (optional)"
+            ariaLabel="Importance weight"
+            value={weight}
+            onChange={setWeight}
+            hint="Used when scoring against personas. Leave blank to weight every persona equally; must be greater than zero."
+            inputProps={{ min: "0", step: "any", "aria-invalid": !weightValid, type: "number" }}
+          />
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
               <TextAreaField
@@ -109,11 +102,7 @@ export function PersonaFormModal({
           ))}
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
         </FormGrid>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

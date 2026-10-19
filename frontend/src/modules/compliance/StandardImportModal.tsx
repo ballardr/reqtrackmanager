@@ -26,6 +26,8 @@ import { Modal } from "../../components/Modal";
 import { toErrorMessage } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { StandardImportResult } from "./types";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { FileField } from "../../components/FormFields";
 
 interface StandardImportOrgOption {
   id: string;
@@ -79,36 +81,24 @@ export function StandardImportModal({
     <Modal title="Import standard" onClose={onCancel}>
       <div className="stack">
         {!orgId && orgs && orgs.length > 1 && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Organisation</span>
-            <select
-              className="input"
-              value={selectedOrgId}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
-              aria-label="Organisation"
-              autoFocus
-            >
-              <option value="" disabled>Select an organisation…</option>
-              {orgs.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Standard export file</span>
-          <input
-            className="input"
-            type="file"
-            accept=".json,application/json"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
-              setConflictMessage(null);
-              setError(null);
-            }}
-            aria-label="Standard export file"
+          <LabeledSelect
+            label="Organisation"
+            value={selectedOrgId}
+            onChange={setSelectedOrgId}
+            options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+            placeholder="Select an organisation…"
+            inputProps={{ autoFocus: true }}
           />
-        </label>
+        )}
+        <FileField
+          label="Standard export file"
+          accept=".json,application/json"
+          onChange={(next) => {
+            setFile(next);
+            setConflictMessage(null);
+            setError(null);
+          }}
+        />
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
           The imported standard is always created as a new, draft standard — nothing is published automatically.
         </p>

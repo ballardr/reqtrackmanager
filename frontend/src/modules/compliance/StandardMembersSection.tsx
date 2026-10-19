@@ -56,6 +56,7 @@ import {
   type ComplianceStandardRoleKey,
 } from "./types";
 import { Badge } from "../../components/Badge";
+import { LabeledSelect } from "../../components/LabeledSelect";
 
 const STANDARD_ROLE_KEYS: ComplianceStandardRoleKey[] = ["standards_manager", "standards_contributor"];
 
@@ -234,20 +235,13 @@ export function StandardMembersSection({
       {addOpen && (
         <Popover anchorRef={addTriggerRef} title="Add a member" onClose={() => setAddOpen(false)}>
           <div className="stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              Role
-              <select
-                className="input"
-                value={addRoleKey}
-                onChange={(e) => setAddRoleKey(e.target.value as ComplianceStandardRoleKey)}
-              >
-                {STANDARD_ROLE_KEYS.map((roleKey) => (
-                  <option key={roleKey} value={roleKey}>
-                    {COMPLIANCE_STANDARD_ROLE_LABEL[roleKey]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <LabeledSelect
+              label="Role"
+              value={addRoleKey}
+              onChange={(next) => setAddRoleKey(next as ComplianceStandardRoleKey)}
+              options={STANDARD_ROLE_KEYS.map((roleKey) => ({ value: roleKey, label: COMPLIANCE_STANDARD_ROLE_LABEL[roleKey] }))}
+              placeholder={null}
+            />
             <UserAutocomplete
               users={orgUsers}
               organizationId={orgId}

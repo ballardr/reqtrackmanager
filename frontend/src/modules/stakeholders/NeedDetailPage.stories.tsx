@@ -194,10 +194,12 @@ export const OwnerCanBeAssigned: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Need owner"));
-    await userEvent.type(canvas.getByLabelText("Need owner"), "Jamie");
-    await waitFor(() => canvas.getByText(/Jamie Lee/));
-    await userEvent.click(canvas.getByText(/Jamie Lee/));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Need owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Need owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Need owner" }));
+    await userEvent.type(picker.getByLabelText("Need owner"), "Jamie");
+    await waitFor(() => picker.getByText(/Jamie Lee/));
+    await userEvent.click(picker.getByText(/Jamie Lee/));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}`, { owner: { type: "user", id: "user-2" } }));
   },
 };
@@ -210,9 +212,11 @@ export const OwnerCanBeAnOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Need owner"));
-    await userEvent.type(canvas.getByLabelText("Need owner"), "platform");
-    await userEvent.click(await canvas.findByText("Platform Architecture"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Need owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Need owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Need owner" }));
+    await userEvent.type(picker.getByLabelText("Need owner"), "platform");
+    await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}`, { owner: { type: "org_group", id: "group-1" } }));
     await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
   },

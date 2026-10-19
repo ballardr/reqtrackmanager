@@ -62,6 +62,10 @@ import { EvidencePanel } from "./EvidencePanel";
 import { OutstandingPanel } from "./OutstandingPanel";
 import { ProjectComplianceDetail } from "./ProjectComplianceDetail";
 import { complianceRiskLabel, type ComplianceStandard, type ComplianceStandardVersion, type ProjectCompliance, type ProjectComplianceStatus } from "./types";
+import { DateField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { FormGrid } from "../../components/FormGrid";
+import { LabeledSelect } from "../../components/LabeledSelect";
 
 type ComplianceTabKey = "standards" | "evidence" | "outstanding";
 
@@ -280,55 +284,43 @@ function AssignStandardModal({
   }, [orgId, standardId]);
 
   return (
-    <Modal title="Assign compliance standard" onClose={onCancel}>
+    <Modal title="Assign compliance standard" onClose={onCancel} size="lg">
       <div className="stack">
         {standards === null ? (
           <Spinner />
         ) : standards.length === 0 ? (
           <p className="text-muted">No compliance standards exist in this organisation yet.</p>
         ) : (
-          <>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Standard</span>
-              <select className="input" value={standardId} onChange={(e) => setStandardId(e.target.value)} aria-label="Standard">
-                <option value="">Select a standard…</option>
-                {standards.filter((s) => !s.is_archived).map((s) => (
-                  <option key={s.id} value={s.id}>{s.reference} — {s.name}</option>
-                ))}
-              </select>
-            </label>
+          <FormGrid minColumn="18rem">
+            <LabeledSelect
+              label="Standard"
+              value={standardId}
+              onChange={setStandardId}
+              options={standards.filter((s) => !s.is_archived).map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+              placeholder="Select a standard…"
+            />
             {standardId && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                <span>Version</span>
-                {versions === null ? (
-                  <Spinner />
-                ) : versions.length === 0 ? (
-                  <p className="text-muted" style={{ margin: 0 }}>This standard has no published version to assign.</p>
-                ) : (
-                  <select className="input" value={versionId} onChange={(e) => setVersionId(e.target.value)} aria-label="Standard version">
-                    {versions.map((v) => (
-                      <option key={v.id} value={v.id}>{v.version_label}</option>
-                    ))}
-                  </select>
-                )}
-              </label>
+              versions === null ? (
+                <Spinner />
+              ) : versions.length === 0 ? (
+                <p className="text-muted" style={{ margin: 0 }}>This standard has no published version to assign.</p>
+              ) : (
+                <LabeledSelect
+                  label="Version" ariaLabel="Standard version"
+                  value={versionId} onChange={setVersionId}
+                  options={versions.map((v) => ({ value: v.id, label: v.version_label }))} placeholder={null}
+                />
+              )
             )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Target compliance date (optional)</span>
-              <input className="input" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
-            </label>
-          </>
+            <DateField label="Target compliance date (optional)" value={targetDate} onChange={setTargetDate} />
+          </FormGrid>
         )}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!standardId || !versionId}
-            onClick={() => onSave({ standard_id: standardId, standard_version_id: versionId, target_compliance_date: targetDate || null })}
-          >
-            Assign
-          </button>
-        </div>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ standard_id: standardId, standard_version_id: versionId, target_compliance_date: targetDate || null })}
+          saveLabel="Assign"
+          saveDisabled={!standardId || !versionId}
+        />
       </div>
     </Modal>
   );

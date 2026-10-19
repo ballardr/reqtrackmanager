@@ -56,6 +56,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { ItemRow } from "./ItemRow";
 import { LinkedRecordSummary } from "./LinkedRecordSummary";
 import { LinkTraceModal } from "./LinkTraceModal";
+import { TextAreaField } from "./FormFields";
 
 export type { LinksChangeRequestMode } from "./AddArtefactLinkModal";
 
@@ -382,13 +383,12 @@ export function ArtefactLinksPanel({
             changeRequest ? (
               <span className="stack" style={{ gap: "0.5rem" }}>
                 <span>{strings.artefactLinks.removeConfirmViaChangeRequest}</span>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.artefactLinks.reasonLabel}
-                  <textarea
-                    className="input" rows={2} aria-label={strings.artefactLinks.reasonLabel}
-                    value={removeReason} onChange={(e) => setRemoveReason(e.target.value)}
-                  />
-                </label>
+                <TextAreaField
+                  label={strings.artefactLinks.reasonLabel}
+                  value={removeReason}
+                  onChange={setRemoveReason}
+                  rows={2}
+                />
               </span>
             ) : (
               strings.artefactLinks.removeConfirm

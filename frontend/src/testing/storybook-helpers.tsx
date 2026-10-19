@@ -23,7 +23,6 @@ import type { ScoringScheme } from "../api/scoring";
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
 import { ProjectContext } from "../context/ProjectContextValue";
 import { ThemeProvider } from "../context/ThemeContext";
-import { ToastProvider } from "../context/ToastContext";
 import { StatefulAuthProvider } from "./StatefulAuthProvider";
 import type {
   ActionTypeDefinition,
@@ -503,15 +502,12 @@ export function withRouter(initialPath: string, routePath = "*"): Decorator {
   );
 }
 
-/** Wraps a story in a real `ToastProvider` — for any page/component whose
- * play function asserts a toast appears after a mutation (`useToast()`
- * throws outside a provider, same as every other context hook here). */
+/** Marks a story whose play function asserts a toast after a mutation. The real `ToastProvider` comes
+ * from the global decorator in `.storybook/preview.tsx` (every component that reports a mutation reads it,
+ * and `useToast()` throws outside a provider), so this adds nothing of its own: a second provider would
+ * render a second toast stack. */
 export function withToast(): Decorator {
-  return (Story) => (
-    <ToastProvider>
-      <Story />
-    </ToastProvider>
-  );
+  return (Story) => <Story />;
 }
 
 /** Wraps a story in a real `ThemeProvider` — for any component whose

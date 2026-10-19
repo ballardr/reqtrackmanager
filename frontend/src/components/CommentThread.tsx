@@ -2,6 +2,7 @@ import { Heart, Paperclip, Pencil } from "lucide-react";
 import { useState } from "react";
 
 import { fileUrl } from "../api/client";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import type { Comment } from "../api/types";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { t } from "../i18n/strings";
@@ -41,6 +42,7 @@ export function CommentThread({
   const [newComment, setNewComment] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [posting, setPosting] = useState(false);
+  const { showToast } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
   const [editPendingFiles, setEditPendingFiles] = useState<File[]>([]);
@@ -56,6 +58,9 @@ export function CommentThread({
       }
       setNewComment("");
       setPendingFiles([]);
+    } catch (err) {
+      // The comment stays in the box so it can be sent again.
+      showToast(toErrorMessage(err, strings.common.error), "error");
     } finally {
       setPosting(false);
     }
@@ -82,6 +87,9 @@ export function CommentThread({
         if (onUploadAttachment) await onUploadAttachment(commentId, file);
       }
       cancelEdit();
+    } catch (err) {
+      // The editor stays open with the text intact.
+      showToast(toErrorMessage(err, strings.common.error), "error");
     } finally {
       setSavingEdit(false);
     }
@@ -103,7 +111,7 @@ export function CommentThread({
 
             {isEditing ? (
               <div className="stack" style={{ gap: "0.4rem" }}>
-                <textarea className="input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} />
+                <textarea className="input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} aria-label="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -197,6 +205,7 @@ export function CommentThread({
           <input
             className="input"
             placeholder={strings.requirements.addComment}
+            aria-label={strings.requirements.addComment}
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
           />

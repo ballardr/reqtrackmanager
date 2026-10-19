@@ -1,3 +1,4 @@
+import { useMutation } from "../hooks/useMutation";
 import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -12,6 +13,7 @@ const strings = t();
 
 /** Notification centre (C-N-02): a bell icon with unread count and a dropdown list. */
 export function NotificationBell() {
+  const run = useMutation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const location = useLocation();
@@ -39,7 +41,7 @@ export function NotificationBell() {
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   async function markRead(id: string) {
-    await api.post(`/api/v1/notifications/${id}/read`);
+    if (!(await run(() => api.post(`/api/v1/notifications/${id}/read`), { failure: "Could not mark read." }))) return;
     reload();
   }
 
@@ -53,7 +55,7 @@ export function NotificationBell() {
   }
 
   async function markAllRead() {
-    await api.post("/api/v1/notifications/read-all");
+    if (!(await run(() => api.post("/api/v1/notifications/read-all"), { failure: "Could not mark all read." }))) return;
     reload();
   }
 

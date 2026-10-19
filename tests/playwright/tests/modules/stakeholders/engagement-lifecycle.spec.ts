@@ -31,7 +31,11 @@ async function post<T>(page: Page, url: string, headers: Headers, data: object):
 }
 
 const projectBase = (projectId: string) => `${API_BASE_URL}/api/v1/projects/${projectId}/modules/stakeholders`;
-const today = () => new Date().toISOString().slice(0, 10);
+/** Today as YYYY-MM-DD in the local timezone: the date the engagement form defaults to, and the day the server counts as "today" for the caller (`X-Client-Date`). */
+const today = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
 
 test.describe("Stakeholders & Personas: Engagements", () => {
   test("logs, edits and permanently deletes an engagement", async ({ page }) => {

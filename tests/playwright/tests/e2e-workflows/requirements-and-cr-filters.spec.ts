@@ -219,8 +219,8 @@ test.describe("change requests list sorting", () => {
     async function createChangeRequest(name: string) {
       await page.getByRole("button", { name: /New/ }).click();
       await page.getByRole("radio", { name: "New requirement" }).click();
-      await page.getByPlaceholder("Proposed name").fill(name);
-      await page.getByPlaceholder("Reason for change").fill("Sort test fixture.");
+      await page.getByLabel("Proposed name").fill(name);
+      await page.getByLabel("Reason for change").fill("Sort test fixture.");
       // `exact: true` — a bare "Create" substring-matches the "Created"
       // sortable column header too (`SortableHeader`'s button text).
       await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -296,8 +296,8 @@ test.describe("change requests default to an active-only status filter", () => {
     const name = `Active Filter Test CR ${Date.now()}`;
     await page.getByRole("button", { name: /New/ }).click();
     await page.getByRole("radio", { name: "New requirement" }).click();
-    await page.getByPlaceholder("Proposed name").fill(name);
-    await page.getByPlaceholder("Reason for change").fill("Active-only filter test fixture.");
+    await page.getByLabel("Proposed name").fill(name);
+    await page.getByLabel("Reason for change").fill("Active-only filter test fixture.");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await searchChangeRequests(page, name);
     const crLink = page.getByRole("link", { name, exact: true });

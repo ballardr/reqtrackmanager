@@ -8,6 +8,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
+import { CheckboxField } from "../components/FormFields";
 
 const PAGE_SIZE = 30;
 
@@ -96,10 +97,11 @@ export function ProjectHistoryPage() {
             ))}
           </select>
         </label>
-        <label className="row">
-          <input type="checkbox" checked={includeComments} onChange={(e) => setIncludeComments(e.target.checked)} />
-          {strings.history.includeComments}
-        </label>
+        <CheckboxField
+          label={strings.history.includeComments}
+          checked={includeComments}
+          onChange={setIncludeComments}
+        />
       </div>
 
       {!changes && <Spinner />}

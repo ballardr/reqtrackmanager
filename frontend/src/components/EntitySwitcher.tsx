@@ -135,6 +135,7 @@ export function EntitySwitcher({
               <input
                 className="input"
                 placeholder="Filter…"
+                aria-label="Filter"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />

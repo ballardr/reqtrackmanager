@@ -16,6 +16,7 @@ import { Modal } from "../../components/Modal";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceMappingRelationshipType, ComplianceRequirement, ComplianceRequirementMapping, ComplianceStandard, ComplianceStandardVersion } from "./types";
+import { TextField } from "../../components/FormFields";
 
 interface Props {
   orgId: string;
@@ -172,10 +173,7 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
             options={relationshipTypes.map((t) => ({ value: t.id, label: t.name }))}
           />
         </div>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Notes</span>
-          <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
+        <TextField label="Notes" value={notes} onChange={setNotes} />
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onClose}>Close</button>
           <button className="btn btn-primary" disabled={!targetRequirementId || !relationshipTypeId} onClick={handleCreate}>

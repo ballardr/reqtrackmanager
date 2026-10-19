@@ -15,6 +15,7 @@ import { Modal } from "../../components/Modal";
 import { toErrorMessage } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceStandardVersion, StandardVersionDiff } from "./types";
+import { LabeledSelect } from "../../components/LabeledSelect";
 
 interface Props {
   orgId: string;
@@ -50,15 +51,14 @@ export function VersionDiffModal({ orgId, standardId, fromVersionId, versions, o
   return (
     <Modal title="Compare versions" onClose={onClose} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Compare with</span>
-          <select className="input" value={otherVersionId} onChange={(e) => setOtherVersionId(e.target.value)} aria-label="Compare with version">
-            <option value="">Select a version…</option>
-            {otherVersions.map((v) => (
-              <option key={v.id} value={v.id}>{v.version_label}</option>
-            ))}
-          </select>
-        </label>
+        <LabeledSelect
+          label="Compare with"
+          ariaLabel="Compare with version"
+          value={otherVersionId}
+          onChange={setOtherVersionId}
+          options={otherVersions.map((v) => ({ value: v.id, label: v.version_label }))}
+          placeholder="Select a version…"
+        />
 
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
 

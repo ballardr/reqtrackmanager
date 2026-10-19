@@ -51,10 +51,10 @@ test.describe("org report templates and project report setup", () => {
       // `page`, not scoped to `reportTemplatesSection`.
       await reportTemplatesSection.getByRole("button", { name: "New template" }).click();
       const createDialog = page.getByRole("dialog", { name: "New template" });
-      await createDialog.getByPlaceholder("Name", { exact: true }).fill(templateName);
+      await createDialog.getByLabel("Name", { exact: true }).fill(templateName);
       await createDialog.getByLabel("Include cover page").check();
       await createDialog.getByLabel("Include organisation logo").check();
-      await createDialog.getByPlaceholder("Footer text").fill("Confidential — E2E Gamma Labs");
+      await createDialog.getByLabel("Footer text").fill("Confidential — E2E Gamma Labs");
       await createDialog.getByLabel("Chapter per component by default").check();
       await createDialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(createDialog).not.toBeVisible();
@@ -66,7 +66,7 @@ test.describe("org report templates and project report setup", () => {
       const row = reportTemplatesSection.locator(".row", { hasText: templateName }).first();
       await row.getByRole("button", { name: "Edit" }).click();
       const editDialog = page.getByRole("dialog", { name: "Edit template" });
-      await editDialog.getByPlaceholder("Name", { exact: true }).fill(revisedName);
+      await editDialog.getByLabel("Name", { exact: true }).fill(revisedName);
       await editDialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(editDialog).not.toBeVisible();
       await expect(reportTemplatesSection.getByText(revisedName)).toBeVisible();

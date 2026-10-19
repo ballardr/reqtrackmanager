@@ -74,6 +74,7 @@ import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFiel
 import { RecordHeader } from "../../components/RecordHeader";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
+import { TextAreaField } from "../../components/FormFields";
 
 /** The three optional-comment, positive/neutral-progression actions —
  * mirrors `StrategyDetailPage.tsx`'s `TransitionAction`/`TRANSITION_COPY`
@@ -358,13 +359,13 @@ export function PainPointDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{OPTIONAL_COMMENT_COPY[optionalAction].body}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Comment
-                <textarea
-                  className="input" rows={2} aria-label="Transition comment"
-                  value={optionalComment} onChange={(e) => setOptionalComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField
+                label="Comment"
+                ariaLabel="Transition comment"
+                value={optionalComment}
+                onChange={setOptionalComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel={OPTIONAL_COMMENT_COPY[optionalAction].confirmLabel}
@@ -388,14 +389,11 @@ export function PainPointDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{MANDATORY_COMMENT_COPY[mandatoryAction].hint}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
-                <textarea
-                  className="input" rows={2}
-                  aria-label={mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
-                  value={mandatoryComment} onChange={(e) => setMandatoryComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField
+                label={mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
+                value={mandatoryComment}
+                onChange={setMandatoryComment}
+              />
             </span>
           }
           confirmLabel={MANDATORY_COMMENT_COPY[mandatoryAction].confirmLabel}

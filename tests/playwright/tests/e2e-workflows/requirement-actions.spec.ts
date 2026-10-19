@@ -91,7 +91,7 @@ test.describe("requirement actions", () => {
       await page.goto(reqUrl[req1Name]);
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const panel = page.getByRole("dialog", { name: "Create and link a new action" });
-      await panel.getByPlaceholder("Title").fill(actionTitle);
+      await panel.getByLabel("Title").fill(actionTitle);
       await panel.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
       await panel.getByRole("button", { name: "Create", exact: true }).click();
       await expect(panel).not.toBeVisible();

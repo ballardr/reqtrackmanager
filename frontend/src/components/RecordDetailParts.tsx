@@ -52,10 +52,12 @@ export function RecordFieldGroup({
  * @param principal The field's resolved current value (the record's own `PrincipalOut`).
  * @param projectId The record's project, enabling project-group choices; omit for an organisation-level record.
  * @param onChange Called with the picked principal, or null when unassigned.
- * @param compact Use the compact picker (a (+)/pencil button instead of an always-open search box).
+ *
+ * The picker is the compact one (the value with a (+)/pencil button and an "x"), as on every detail page
+ * (docs/ux-style-guide.md, "Show the value, offer the add"); the always-open search box is for create forms.
  */
 export function RecordPrincipalField({
-  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange, compact,
+  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange,
 }: {
   label: string;
   ariaLabel: string;
@@ -65,7 +67,6 @@ export function RecordPrincipalField({
   projectId?: string;
   readOnly: boolean;
   onChange: (principal: PrincipalRef | null) => void;
-  compact?: boolean;
 }) {
   return (
     <RecordFieldGroup label={label}>
@@ -75,7 +76,7 @@ export function RecordPrincipalField({
         <PrincipalPicker
           orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
           kinds={projectId ? undefined : ["user", "org_group"]}
-          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel} compact={compact}
+          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel} compact
         />
       )}
     </RecordFieldGroup>

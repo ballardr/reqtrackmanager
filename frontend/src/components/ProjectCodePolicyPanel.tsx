@@ -20,6 +20,9 @@ import {
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { describeCodePolicy } from "../utils/codePolicy";
+import { CheckboxField, TextField } from "./FormFields";
+import { FormGrid } from "./FormGrid";
+import { LabeledSelect } from "./LabeledSelect";
 
 /**
  * @param org The organisation whose policy is edited.
@@ -57,42 +60,47 @@ export function ProjectCodePolicyPanel({ org, onSaved }: { org: Organization; on
   return (
     <div className="stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.codePolicyHint}</p>
-      <div className="row" style={{ gap: "1rem", alignItems: "flex-end" }}>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.codeKind}
-          <select className="input" value={kind} onChange={(e) => setKind(e.target.value as ProjectCodeKind)}>
-            {(Object.keys(PROJECT_CODE_KIND_LABEL) as ProjectCodeKind[]).map((k) => (
-              <option key={k} value={k}>{PROJECT_CODE_KIND_LABEL[k]}</option>
-            ))}
-          </select>
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.codeMinLength}
-          <input className="input" type="number" min={1} max={10} style={{ width: "5rem" }} value={minLength} onChange={(e) => setMinLength(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.codeMaxLength}
-          <input className="input" type="number" min={1} max={10} style={{ width: "5rem" }} value={maxLength} onChange={(e) => setMaxLength(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.codeAssignment}
-          <select className="input" value={assignment} onChange={(e) => setAssignment(e.target.value as ProjectCodeAssignment)}>
-            {(Object.keys(PROJECT_CODE_ASSIGNMENT_LABEL) as ProjectCodeAssignment[]).map((a) => (
-              <option key={a} value={a}>{PROJECT_CODE_ASSIGNMENT_LABEL[a]}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <FormGrid minColumn="10rem">
+        <LabeledSelect
+          label={strings.orgAdmin.codeKind}
+          value={kind}
+          onChange={(next) => setKind(next as ProjectCodeKind)}
+          options={(Object.keys(PROJECT_CODE_KIND_LABEL) as ProjectCodeKind[]).map((k) => ({ value: k, label: PROJECT_CODE_KIND_LABEL[k] }))}
+          placeholder={null}
+        />
+        <TextField
+          label={strings.orgAdmin.codeMinLength}
+          value={minLength}
+          onChange={setMinLength}
+          inputProps={{ min: 1, max: 10, type: "number" }}
+        />
+        <TextField
+          label={strings.orgAdmin.codeMaxLength}
+          value={maxLength}
+          onChange={setMaxLength}
+          inputProps={{ min: 1, max: 10, type: "number" }}
+        />
+        <LabeledSelect
+          label={strings.orgAdmin.codeAssignment}
+          value={assignment}
+          onChange={(next) => setAssignment(next as ProjectCodeAssignment)}
+          options={(Object.keys(PROJECT_CODE_ASSIGNMENT_LABEL) as ProjectCodeAssignment[]).map((a) => ({
+            value: a, label: PROJECT_CODE_ASSIGNMENT_LABEL[a],
+          }))}
+          placeholder={null}
+        />
+      </FormGrid>
       {valid && (
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
           {strings.orgAdmin.codePolicyPreview(describeCodePolicy({ kind, min_length: min, max_length: max, assignment }))}
         </p>
       )}
-      <label className="row">
-        <input type="checkbox" checked={enforce} onChange={(e) => setEnforce(e.target.checked)} />
-        {strings.orgAdmin.enforceCodeEverywhere}
-      </label>
-      <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.enforceCodeEverywhereHint}</p>
+      <CheckboxField
+        label={strings.orgAdmin.enforceCodeEverywhere}
+        checked={enforce}
+        onChange={setEnforce}
+        hint={strings.orgAdmin.enforceCodeEverywhereHint}
+      />
       <div className="row">
         <button type="button" className="btn btn-primary" onClick={save} disabled={!valid || saving}>
           {strings.common.save}

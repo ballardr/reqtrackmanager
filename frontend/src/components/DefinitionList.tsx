@@ -9,6 +9,7 @@ import {
   type DeleteInUseKeepOption,
   type DeleteInUseRemoveOption,
 } from "./DeleteInUseDialog";
+import { TextField } from "./FormFields";
 
 const strings = t();
 
@@ -275,16 +276,16 @@ export function DefinitionList<T extends { id: string }>({
           onClose={() => setInUse(null)}
         />
       )}
-      <div className="row">
+      <div className="row" style={{ alignItems: "flex-end" }}>
         {fields.map((f) => (
-          <input
+          <TextField
             key={f.key}
-            className="input"
-            type={f.inputType ?? "text"}
+            label={f.placeholder ?? f.ariaLabel ?? f.key}
+            ariaLabel={fields.length > 1 ? f.ariaLabel : undefined}
             placeholder={f.placeholder}
-            aria-label={fields.length > 1 ? f.ariaLabel : undefined}
             value={newDraft[f.key]}
-            onChange={(e) => setNewDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+            onChange={(next) => setNewDraft((d) => ({ ...d, [f.key]: next }))}
+            inputProps={{ type: f.inputType ?? "text" }}
           />
         ))}
         <button className="btn btn-primary" onClick={handleAdd} disabled={!isValid(newDraft)}>

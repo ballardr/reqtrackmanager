@@ -29,6 +29,9 @@ import {
 } from "./types";
 import type { Risk, RiskReview, RiskReviewOutcome } from "./types";
 import { Badge } from "../../components/Badge";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 
 /**
  * @param risk The risk being reviewed.
@@ -130,33 +133,37 @@ export function RiskReviewsPanel({
       )}
 
       {recording && (
-        <Modal title={`Record review of ${risk.unique_code}`} onClose={close}>
+        <Modal title={`Record review of ${risk.unique_code}`} onClose={close} size="lg">
           <div className="stack">
-            <LabeledSelect
-              label="Outcome"
-              value={outcome}
-              onChange={(next) => setOutcome(next as RiskReviewOutcome)}
-              options={Object.entries(RISK_REVIEW_OUTCOME_LABEL).map(([value, label]) => ({ value, label }))}
-              placeholder={null}
+            <FormGrid minColumn="18rem">
+              <LabeledSelect
+                label="Outcome"
+                value={outcome}
+                onChange={(next) => setOutcome(next as RiskReviewOutcome)}
+                options={Object.entries(RISK_REVIEW_OUTCOME_LABEL).map(([value, label]) => ({ value, label }))}
+                placeholder={null}
+              />
+              <FormGridFull>
+                <p className="text-muted" style={{ margin: 0 }}>
+                  Confirmed: the assessment and treatment still stand. Reassessed: you changed them as part of this review
+                  (edit the risk first).
+                </p>
+              </FormGridFull>
+              <FormGridFull>
+                <TextAreaField label="Review notes" value={notes} onChange={setNotes} rows={3} />
+              </FormGridFull>
+              <DateField label="Next review date" value={nextDate} onChange={setNextDate} />
+              <FormGridFull>
+                <p className="text-muted" style={{ margin: 0 }}>Leave the date empty to schedule no further review.</p>
+              </FormGridFull>
+            </FormGrid>
+            <FormActions
+              error={error}
+              onCancel={close}
+              onSave={save}
+              saveLabel="Save review"
+              saveDisabled={!notes.trim()}
             />
-            <p className="text-muted" style={{ margin: 0 }}>
-              Confirmed: the assessment and treatment still stand. Reassessed: you changed them as part of this review
-              (edit the risk first).
-            </p>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Review notes</span>
-              <textarea className="input" rows={3} aria-label="Review notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Next review date</span>
-              <input className="input" type="date" aria-label="Next review date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />
-            </label>
-            <p className="text-muted" style={{ margin: 0 }}>Leave the date empty to schedule no further review.</p>
-            {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={close}>Cancel</button>
-              <button className="btn btn-primary" disabled={!notes.trim()} onClick={save}>Save review</button>
-            </div>
           </div>
         </Modal>
       )}

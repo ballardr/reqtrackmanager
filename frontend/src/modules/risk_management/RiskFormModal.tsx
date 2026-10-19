@@ -19,6 +19,9 @@ import { useState } from "react";
 import type { ScoringScheme } from "../../api/scoring";
 import type { OrgUser } from "../../api/types";
 import { savedPrincipalDisplay, userPrincipal } from "../../api/types";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import { Modal } from "../../components/Modal";
@@ -72,105 +75,98 @@ export function RiskFormModal({
 
   function textField(key: "statement" | "cause" | "risk_event" | "consequence" | "acceptance_criteria", label: string, disabled = false) {
     return (
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        <span>{label}</span>
-        <textarea
-          className="input" rows={2} aria-label={label} disabled={disabled}
-          value={values[key]} onChange={(e) => set(key, e.target.value)}
-        />
-      </label>
+      <FormGridFull>
+        <TextAreaField label={label} value={values[key]} onChange={(value) => set(key, value)} disabled={disabled} />
+      </FormGridFull>
     );
   }
 
   function levelGroup(basis: "inherent" | "residual", heading: string) {
     return (
-      <fieldset className="stack" style={{ border: "none", padding: 0, margin: 0 }}>
-        <legend style={{ fontWeight: 600 }}>{heading}</legend>
-        <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
-          {AXES.map(({ axis, suffix }) => {
-            const found = findAxis(scheme, axis);
-            if (!found) return null;
-            const key = `${basis}_${suffix}_level_id` as LevelKey;
-            return (
-              <ScoringLevelPicker
-                key={key}
-                axis={{ ...found, label: `${heading} ${found.label.toLowerCase()}` }}
-                value={values[key]}
-                onChange={(levelId) => set(key, levelId)}
-                disabled={locked}
-              />
-            );
-          })}
-        </div>
-      </fieldset>
+      <FormGridFull>
+        <fieldset className="stack" style={{ border: "none", padding: 0, margin: 0 }}>
+          <legend style={{ fontWeight: 600 }}>{heading}</legend>
+          <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+            {AXES.map(({ axis, suffix }) => {
+              const found = findAxis(scheme, axis);
+              if (!found) return null;
+              const key = `${basis}_${suffix}_level_id` as LevelKey;
+              return (
+                <ScoringLevelPicker
+                  key={key}
+                  axis={{ ...found, label: `${heading} ${found.label.toLowerCase()}` }}
+                  value={values[key]}
+                  onChange={(levelId) => set(key, levelId)}
+                  disabled={locked}
+                />
+              );
+            })}
+          </div>
+        </fieldset>
+      </FormGridFull>
     );
   }
 
   return (
     <Modal title={initial ? `Edit ${initial.unique_code}` : "New risk"} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Risk title</span>
-          <input className="input" aria-label="Risk title" value={values.title} onChange={(e) => set("title", e.target.value)} />
-        </label>
-        {textField("statement", "Risk statement")}
-        {textField("cause", "Cause")}
-        {textField("risk_event", "Risk event")}
-        {textField("consequence", "Consequence")}
-        <LabeledSelect
-          label="Risk type"
-          value={values.risk_type_id ?? ""}
-          onChange={(next) => set("risk_type_id", next || null)}
-          options={riskTypes.map((t) => ({ value: t.id, label: t.name }))}
-          placeholder="No type"
-        />
-        <PrincipalFormField
-          label="Owner"
-          orgUsers={orgUsers}
-          organizationId={organizationId}
-          projectId={projectId}
-          value={values.owner}
-          display={savedPrincipalDisplay(values.owner, initial?.owner)}
-          onChange={(next) => set("owner", next)}
-          ariaLabel="Owner"
-          placeholder="Search users and groups…"
-          clearLabel="Clear"
-        />
-        {levelGroup("inherent", "Inherent")}
-        {levelGroup("residual", "Residual")}
-        <LabeledSelect
-          label="Treatment strategy"
-          value={values.treatment_strategy ?? ""}
-          onChange={(next) => set("treatment_strategy", (next || null) as TreatmentStrategy | null)}
-          options={Object.entries(TREATMENT_STRATEGY_LABEL).map(([value, label]) => ({ value, label }))}
-          placeholder="Not decided"
-          disabled={locked}
-        />
-        {textField("acceptance_criteria", "Acceptance criteria", locked)}
-        {locked && (
-          <p className="text-muted" style={{ margin: 0 }}>
-            This risk is Accepted, so its levels, treatment strategy and acceptance criteria are locked. Move it back to
-            Assessed to change them.
-          </p>
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Next review date (optional)</span>
-          <input
-            className="input" type="date" aria-label="Next review date"
-            value={values.review_date ?? ""} onChange={(e) => set("review_date", e.target.value || null)}
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField label="Risk title" value={values.title} onChange={(value) => set("title", value)} />
+          </FormGridFull>
+          {textField("statement", "Risk statement")}
+          {textField("cause", "Cause")}
+          {textField("risk_event", "Risk event")}
+          {textField("consequence", "Consequence")}
+          <LabeledSelect
+            label="Risk type"
+            value={values.risk_type_id ?? ""}
+            onChange={(next) => set("risk_type_id", next || null)}
+            options={riskTypes.map((t) => ({ value: t.id, label: t.name }))}
+            placeholder="No type"
           />
-        </label>
-        {initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Change note (optional)</span>
-            <input className="input" aria-label="Change note" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} />
-          </label>
-        )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={() => onSave(values, changeNote)}>Save</button>
-        </div>
+          <PrincipalFormField
+            label="Owner"
+            orgUsers={orgUsers}
+            organizationId={organizationId}
+            projectId={projectId}
+            value={values.owner}
+            display={savedPrincipalDisplay(values.owner, initial?.owner)}
+            onChange={(next) => set("owner", next)}
+            ariaLabel="Owner"
+            placeholder="Search users and groups…"
+            clearLabel="Clear"
+          />
+          {levelGroup("inherent", "Inherent")}
+          {levelGroup("residual", "Residual")}
+          <LabeledSelect
+            label="Treatment strategy"
+            value={values.treatment_strategy ?? ""}
+            onChange={(next) => set("treatment_strategy", (next || null) as TreatmentStrategy | null)}
+            options={Object.entries(TREATMENT_STRATEGY_LABEL).map(([value, label]) => ({ value, label }))}
+            placeholder="Not decided"
+            disabled={locked}
+          />
+          <DateField
+            label="Next review date (optional)" ariaLabel="Next review date"
+            value={values.review_date ?? ""} onChange={(value) => set("review_date", value || null)}
+          />
+          {textField("acceptance_criteria", "Acceptance criteria", locked)}
+          {locked && (
+            <FormGridFull>
+              <p className="text-muted" style={{ margin: 0 }}>
+                This risk is Accepted, so its levels, treatment strategy and acceptance criteria are locked. Move it back to
+                Assessed to change them.
+              </p>
+            </FormGridFull>
+          )}
+          {initial && (
+            <FormGridFull>
+              <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+            </FormGridFull>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={() => onSave(values, changeNote)} saveDisabled={!valid} />
       </div>
     </Modal>
   );

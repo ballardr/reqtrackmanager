@@ -31,6 +31,10 @@ import { principalRef, savedPrincipalDisplay } from "../../api/types";
 import { Modal } from "../../components/Modal";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import type { ComplianceStandard } from "./types";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
 
 export interface StandardFormValues {
   reference: string;
@@ -147,86 +151,59 @@ export function StandardFormModal({
   }
 
   return (
-    <Modal title={initial ? "Edit standard" : "New standard"} onClose={onCancel}>
+    <Modal title={initial ? "Edit standard" : "New standard"} onClose={onCancel} size="lg">
       <div className="stack">
-        {!initial && orgs && orgs.length > 1 && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Organisation</span>
-            <select
-              className="input"
-              value={selectedOrgId}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
-              aria-label="Organisation"
-              autoFocus
-            >
-              {orgs.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        {!initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Reference</span>
-            <input
-              className="input"
+        <FormGrid minColumn="18rem">
+          {!initial && orgs && orgs.length > 1 && (
+            <FormGridFull>
+              <LabeledSelect
+                label="Organisation" value={selectedOrgId} onChange={setSelectedOrgId}
+                options={orgs.map((o) => ({ value: o.id, label: o.name }))} placeholder={null}
+              />
+            </FormGridFull>
+          )}
+          {!initial && (
+            <TextField
+              label="Reference"
+              ariaLabel="Standard reference"
               value={reference}
-              onChange={(e) => setReference(e.target.value)}
+              onChange={setReference}
               placeholder="e.g. ISO-27001"
-              aria-label="Standard reference"
-              autoFocus={!(orgs && orgs.length > 1)}
+              inputProps={{ autoFocus: !(orgs && orgs.length > 1) }}
             />
-          </label>
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Standard name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Issuing organisation</span>
-          <input className="input" value={issuingOrganisation} onChange={(e) => setIssuingOrganisation(e.target.value)} />
-        </label>
-        {initial && (
-          <PrincipalFormField
-            label="Owner"
-            kinds={["user", "org_group"]}
-            orgUsers={orgUsers}
-            organizationId={resolvedOrgId}
-            value={owner}
-            display={savedPrincipalDisplay(owner, initial.owner)}
-            onChange={setOwner}
-            ariaLabel="Standard owner"
-            placeholder="Select an owner…"
-          />
-        )}
-        {!initial && (
-          <>
-            <h3 style={{ margin: "0.5rem 0 0" }}>Initial version</h3>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Initial version label</span>
-              <input className="input" value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. 1.0" aria-label="Initial version label" />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Effective date</span>
-              <input className="input" type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Change note</span>
-              <textarea className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} rows={2} />
-            </label>
-          </>
-        )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
-            Save
-          </button>
-        </div>
+          )}
+          <TextField label="Name" ariaLabel="Standard name" value={name} onChange={setName} />
+          <FormGridFull>
+            <TextAreaField label="Description" value={description} onChange={setDescription} rows={3} />
+          </FormGridFull>
+          <TextField label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
+          {initial && (
+            <PrincipalFormField
+              label="Owner"
+              kinds={["user", "org_group"]}
+              orgUsers={orgUsers}
+              organizationId={resolvedOrgId}
+              value={owner}
+              display={savedPrincipalDisplay(owner, initial.owner)}
+              onChange={setOwner}
+              ariaLabel="Standard owner"
+              placeholder="Select an owner…"
+            />
+          )}
+          {!initial && (
+            <>
+              <FormGridFull>
+                <h3 style={{ margin: "0.5rem 0 0" }}>Initial version</h3>
+              </FormGridFull>
+              <TextField label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
+              <DateField label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
+              <FormGridFull>
+                <TextAreaField label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
+              </FormGridFull>
+            </>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={handleSave} saveDisabled={!canSave} />
       </div>
     </Modal>
   );

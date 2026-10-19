@@ -20,8 +20,9 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { ResearchFinding } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 /** A finding sits in its engagement's page, so its link list leaves the engagement out (the trace still shows it). */
 const HIDE_ENGAGEMENT = ["engagement"] as const;
@@ -41,13 +42,12 @@ function FindingFormModal({
       <div className="stack">
         <TextField label="Title" ariaLabel="Finding title" value={title} onChange={setTitle} hint="One line, e.g. “Technicians skip the checklist when offline”." />
         <TextAreaField label="Description" rows={5} value={description} onChange={setDescription} hint="Findings can quote participants and are deleted with the engagement." />
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={title.trim() === ""} onClick={() => onSave({ title: title.trim(), description })}>
-            Save
-          </button>
-        </div>
+        <FormActions
+          error={error}
+          onCancel={onCancel}
+          onSave={() => onSave({ title: title.trim(), description })}
+          saveDisabled={title.trim() === ""}
+        />
       </div>
     </Modal>
   );

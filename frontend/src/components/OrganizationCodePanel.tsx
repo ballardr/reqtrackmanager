@@ -16,6 +16,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { rememberOrganizationCode } from "../hooks/useOrganizationCode";
 import { normaliseProjectCode } from "../utils/codePolicy";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { TextField } from "./FormFields";
 
 /** The most characters an organisation code may have (matches the server's `ABSOLUTE_MAX_CODE_LENGTH`). */
 const MAX_LENGTH = 10;
@@ -55,13 +56,12 @@ export function OrganizationCodePanel({ org, onSaved }: { org: Organization; onS
     <div className="stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.organizationCodeHint}</p>
       <div className="row" style={{ gap: "1rem", alignItems: "flex-end" }}>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.organizationCodeLabel}
-          <input
-            className="input" style={{ width: "8rem" }} value={code} maxLength={MAX_LENGTH}
-            onChange={(e) => setCode(e.target.value)}
-          />
-        </label>
+        <TextField
+          label={strings.orgAdmin.organizationCodeLabel}
+          value={code}
+          onChange={setCode}
+          inputProps={{ style: { width: "8rem" }, maxLength: MAX_LENGTH }}
+        />
         <button type="button" className="btn btn-primary" onClick={() => setConfirming(true)} disabled={!valid || !changed || saving}>
           {strings.common.save}
         </button>

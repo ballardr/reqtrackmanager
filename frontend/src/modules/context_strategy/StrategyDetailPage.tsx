@@ -52,6 +52,7 @@ import { RecordHeader } from "../../components/RecordHeader";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
+import { TextAreaField } from "../../components/FormFields";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -352,13 +353,7 @@ export function StrategyDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining what needs rework is required.</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Send-back comment
-                <textarea
-                  className="input" rows={2} aria-label="Send-back comment"
-                  value={sendBackComment} onChange={(e) => setSendBackComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField label="Send-back comment" value={sendBackComment} onChange={setSendBackComment} rows={2} />
             </span>
           }
           confirmLabel="Send back"
@@ -379,13 +374,13 @@ export function StrategyDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{TRANSITION_COPY[transitionAction].body}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Comment
-                <textarea
-                  className="input" rows={2} aria-label="Transition comment"
-                  value={transitionComment} onChange={(e) => setTransitionComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField
+                label="Comment"
+                ariaLabel="Transition comment"
+                value={transitionComment}
+                onChange={setTransitionComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel={TRANSITION_COPY[transitionAction].confirmLabel}

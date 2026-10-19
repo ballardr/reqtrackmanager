@@ -18,6 +18,8 @@ import { RemovableItemList } from "../../components/RemovableItemList";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
 import type { AnonymousParticipant } from "./types";
+import { TextField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
 
 export function AnonymousParticipantsPanel({
   projectId,
@@ -58,29 +60,23 @@ export function AnonymousParticipantsPanel({
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        <span>Participant label</span>
-        <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} aria-label="Participant label" autoFocus />
-      </label>
+      <TextField label="Participant label" value={label} onChange={setLabel} inputProps={{ autoFocus: true }} />
       <LabeledSelect label="Persona represented" value={personaId} onChange={setPersonaId} options={personaOptions} placeholder="None" />
       <span className="text-muted" style={{ fontSize: "0.8rem" }}>
         Use a label such as “Participant 3”, not a name. Anyone who needs to be traced belongs in the Stakeholder register.
       </span>
-      <div className="row" style={{ justifyContent: "flex-end" }}>
-        <button className="btn" onClick={close}>Cancel</button>
-        <button
-          className="btn btn-primary" disabled={label.trim() === ""}
-          onClick={() => {
-            const values = { label: label.trim(), persona_id: personaId || null };
-            setLabel("");
-            setPersonaId("");
-            close();
-            void mutate(() => projectResearchApi.addAnonymousParticipant(projectId, engagementId, values), "Participant added.", "Could not add the participant.");
-          }}
-        >
-          Add participant
-        </button>
-      </div>
+      <FormActions
+        onCancel={close}
+        onSave={() => {
+          const values = { label: label.trim(), persona_id: personaId || null };
+          setLabel("");
+          setPersonaId("");
+          close();
+          void mutate(() => projectResearchApi.addAnonymousParticipant(projectId, engagementId, values), "Participant added.", "Could not add the participant.");
+        }}
+        saveLabel="Add participant"
+        saveDisabled={label.trim() === ""}
+      />
     </div>
   );
 

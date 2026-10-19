@@ -1,3 +1,4 @@
+import { useMutation } from "../hooks/useMutation";
 import { Bell, BellOff, MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -43,6 +44,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { Badge } from "../components/Badge";
+import { TextField } from "../components/FormFields";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
@@ -53,6 +55,7 @@ import { Badge } from "../components/Badge";
  * possible field.
  */
 export function ChangeRequestDetailPage() {
+  const run = useMutation();
   const strings = useStrings();
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
   const { user } = useAuth();
@@ -144,21 +147,21 @@ export function ChangeRequestDetailPage() {
 
   async function addTask() {
     if (!newTaskDescription.trim()) return;
-    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`, {
       description: newTaskDescription, assignee: newTaskAssignee,
-    });
+    }), "add", "task"))) return;
     setNewTaskDescription("");
     setNewTaskAssignee(null);
     reload();
   }
 
   async function toggleTaskDone(task: ChangeRequestTask) {
-    await api.patch(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks/${task.id}`, { is_done: !task.is_done });
+    if (!(await run(() => api.patch(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks/${task.id}`, { is_done: !task.is_done }), { failure: "Could not toggle task done." }))) return;
     reload();
   }
 
   async function castVote(vote: ChangeRequestVoteChoice) {
-    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/votes`, { vote, comment: voteComment || null });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/votes`, { vote, comment: voteComment || null }), "cast", "vote"))) return;
     reload();
   }
 
@@ -245,16 +248,12 @@ export function ChangeRequestDetailPage() {
   }
 
   async function removeCommentAttachment(commentId: string, fileId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/files/${fileId}`), "remove", "comment attachment"))) return;
     reload();
   }
 
   async function toggleReaction(commentId: string, reacted: boolean) {
-    if (reacted) {
-      await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`);
-    }
+    if (!(await run(() => (reacted ? api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`) : api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`)), { failure: "Could not update the reaction." }))) return;
     reload();
   }
 
@@ -265,11 +264,7 @@ export function ChangeRequestDetailPage() {
 
   async function toggleSubscription() {
     if (!cr) return;
-    if (cr.is_subscribed) {
-      await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`);
-    }
+    if (!(await run(() => (cr.is_subscribed ? api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`) : api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`)), { failure: "Could not update the subscription." }))) return;
     reload();
   }
 
@@ -409,7 +404,7 @@ export function ChangeRequestDetailPage() {
           </p>
         )}
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-        <div className="row">
+        <div className="row" style={{ alignItems: "flex-end" }}>
           {cr.status === "draft" && (
             <button
               className="btn btn-primary"
@@ -438,12 +433,12 @@ export function ChangeRequestDetailPage() {
           )}
           {(cr.status === "submitted" || cr.status === "in_review") && canDecide && (
             <>
-              <input
-                className="input"
-                style={{ maxWidth: 240 }}
+              <TextField
+                label={strings.changeRequests.decisionNote}
                 placeholder={strings.changeRequests.decisionNote}
                 value={decisionNote}
-                onChange={(e) => setDecisionNote(e.target.value)}
+                onChange={setDecisionNote}
+                inputProps={{ style: { maxWidth: 240 } }}
               />
               <button
                 className="btn btn-primary"
@@ -525,9 +520,9 @@ export function ChangeRequestDetailPage() {
         ))}
         {canManageTasks && (
           <div className="row" style={{ alignItems: "flex-end" }}>
-            <input
-              className="input" placeholder={strings.changeRequests.taskDescription}
-              value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)}
+            <TextField
+              label={strings.changeRequests.taskDescription} placeholder={strings.changeRequests.taskDescription}
+              value={newTaskDescription} onChange={setNewTaskDescription}
             />
             <PrincipalFormField
               label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
@@ -560,10 +555,10 @@ export function ChangeRequestDetailPage() {
           </div>
         )}
         {canVote && (cr.status === "submitted" || cr.status === "in_review") && (
-          <div className="row">
-            <input
-              className="input" placeholder={strings.changeRequests.voteComment}
-              value={voteComment} onChange={(e) => setVoteComment(e.target.value)}
+          <div className="row" style={{ alignItems: "flex-end" }}>
+            <TextField
+              label={strings.changeRequests.voteComment} placeholder={strings.changeRequests.voteComment}
+              value={voteComment} onChange={setVoteComment}
             />
             <button className="btn btn-primary" onClick={() => castVote("approve")}>
               {strings.changeRequests.voteApprove}

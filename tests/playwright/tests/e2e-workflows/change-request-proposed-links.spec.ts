@@ -166,7 +166,7 @@ test.describe("change requests: proposed links", () => {
         await expect(form.getByText(new RegExp(name))).toBeVisible();
       }
       expect(await linksOf(page.request, world, target)).toEqual([]);
-      await form.getByPlaceholder("Reason for change").fill("Trace both related requirements");
+      await form.getByLabel("Reason for change").fill("Trace both related requirements");
       await form.getByRole("button", { name: "Create" }).click();
       await expect(page.getByText("Change request created")).toBeVisible();
     });
@@ -312,13 +312,13 @@ test.describe("change requests: proposed links", () => {
     await page.getByRole("button", { name: /New change request/ }).click();
     const form = page.getByRole("dialog", { name: "New change request" });
     await form.getByRole("radio", { name: /New/ }).check();
-    await form.getByPlaceholder("Proposed name").fill("Brand new requirement");
+    await form.getByLabel("Proposed name").fill("Brand new requirement");
     await form.getByRole("button", { name: "Add a link" }).click();
     const picker = page.getByRole("dialog", { name: "Add a link" });
     await pickRecord(picker, /Existing requirement/);
     await picker.getByRole("button", { name: "Add to the request" }).click();
     await expect(form.getByText(/Existing requirement/)).toBeVisible();
-    await form.getByPlaceholder("Reason for change").fill("A new requirement that builds on the existing one");
+    await form.getByLabel("Reason for change").fill("A new requirement that builds on the existing one");
     await form.getByRole("button", { name: "Create" }).click();
     await expect(page.getByText("Change request created")).toBeVisible();
 

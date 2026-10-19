@@ -191,7 +191,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
         page.getByRole("switch", { name: "Enable 2FA" }).click(),
       ]);
       ({ secret: recoverySecret } = await enrollResponse.json());
-      await page.getByPlaceholder("Confirm code").fill(generateTotpCode(recoverySecret));
+      await page.getByLabel("Confirm code").fill(generateTotpCode(recoverySecret));
       await page.getByRole("button", { name: "Confirm code" }).click();
       await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
     });
@@ -217,7 +217,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await page.goto("/preferences");
       await selectPreferencesGroup(page, "Security");
       await ensureTwoFactorSectionExpanded(page);
-      await page.getByPlaceholder("Enter a current code to disable 2FA.").fill(generateTotpCode(recoverySecret));
+      await page.getByLabel("Authenticator code").fill(generateTotpCode(recoverySecret));
       await page.getByRole("button", { name: "Disable 2FA" }).click();
       // Disabling 2FA bumps token_version server-side (same as a password
       // change) to invalidate the current session's token immediately —

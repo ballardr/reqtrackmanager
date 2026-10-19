@@ -252,10 +252,12 @@ export const OwnerCanBeAssigned: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Stakeholder owner"));
-    await userEvent.type(canvas.getByLabelText("Stakeholder owner"), "Jamie");
-    await waitFor(() => canvas.getByText(/Jamie Lee/));
-    await userEvent.click(canvas.getByText(/Jamie Lee/));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Stakeholder owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Stakeholder owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Stakeholder owner" }));
+    await userEvent.type(picker.getByLabelText("Stakeholder owner"), "Jamie");
+    await waitFor(() => picker.getByText(/Jamie Lee/));
+    await userEvent.click(picker.getByText(/Jamie Lee/));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}`, { owner: { type: "user", id: "user-2" } }));
   },
 };
@@ -268,9 +270,11 @@ export const OwnerCanBeAProjectGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Stakeholder owner"));
-    await userEvent.type(canvas.getByLabelText("Stakeholder owner"), "release");
-    await userEvent.click(await canvas.findByText("Release board"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Stakeholder owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Stakeholder owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Stakeholder owner" }));
+    await userEvent.type(picker.getByLabelText("Stakeholder owner"), "release");
+    await userEvent.click(await picker.findByText("Release board"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}`, { owner: { type: "project_group", id: "pgroup-1" } }));
   },
 };

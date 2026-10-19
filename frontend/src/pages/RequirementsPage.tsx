@@ -1,3 +1,5 @@
+import { useMutation } from "../hooks/useMutation";
+import { useRecordCode } from "../hooks/useRecordCode";
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
@@ -29,7 +31,6 @@ import {
   principalRef,
 } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FileAttachmentList } from "../components/FileAttachmentList";
@@ -50,6 +51,10 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
+import { TextAreaField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormActions } from "../components/FormActions";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
 
 const PAGE_SIZE = 30;
 
@@ -65,7 +70,9 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "a
  * incremental "load more" pagination (U-P-06) for large requirement sets.
  */
 export function RequirementsPage() {
+  const run = useMutation();
   const strings = useStrings();
+  const recordCode = useRecordCode();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
@@ -403,13 +410,13 @@ export function RequirementsPage() {
 
   async function uploadCreatedRequirementFile(file: File) {
     if (!projectId || !createdRequirement) return;
-    await api.postFile(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`, file);
+    if (!(await run(() => api.postFile(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`, file), "upload", "file"))) return;
     setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
   }
 
   async function removeCreatedRequirementFile(fileId: string) {
     if (!projectId || !createdRequirement) return;
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files/${fileId}`), "remove", "file"))) return;
     setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
   }
 
@@ -421,6 +428,7 @@ export function RequirementsPage() {
         target_requirement_id: newLinkTargetId,
         link_type_id: newLinkTypeId,
       });
+      showToast(strings.mutation.success("link", strings.mutation.past.add));
       setNewLinkTargetId("");
       setNewLinkTypeId("");
       setAddLinkPopoverOpen(false);
@@ -680,43 +688,27 @@ export function RequirementsPage() {
                         </button>
                         {addLinkPopoverOpen && (
                           <Popover anchorRef={addLinkTriggerRef} title={strings.requirements.addLink} onClose={() => setAddLinkPopoverOpen(false)}>
-                            <label className="stack" style={{ gap: "0.25rem" }}>
-                              {strings.requirements.targetRequirement}
-                              <select
-                                className="input" aria-label={strings.requirements.targetRequirement}
-                                value={newLinkTargetId} onChange={(e) => setNewLinkTargetId(e.target.value)}
-                              >
-                                <option value="">{strings.requirements.selectARequirementToLink}</option>
-                                {eligibleLinkTargets.map((r) => (
-                                  <option key={r.id} value={r.id}>
-                                    <RecordCode code={r.unique_code} /> — {r.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="stack" style={{ gap: "0.25rem" }}>
-                              {strings.requirements.linkType}
-                              <select
-                                className="input" aria-label={strings.requirements.linkType}
-                                value={newLinkTypeId} onChange={(e) => setNewLinkTypeId(e.target.value)}
-                              >
-                                <option value="">{strings.requirements.linkType}</option>
-                                {linkTypes.map((lt) => (
-                                  <option key={lt.id} value={lt.id}>
-                                    {lt.forward_name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                            <LabeledSelect
+                              label={strings.requirements.targetRequirement}
+                              value={newLinkTargetId}
+                              onChange={setNewLinkTargetId}
+                              options={eligibleLinkTargets.map((r) => ({ value: r.id, label: `${recordCode.code(r.unique_code)} — ${r.name}` }))}
+                              placeholder={strings.requirements.selectARequirementToLink}
+                            />
+                            <LabeledSelect
+                              label={strings.requirements.linkType}
+                              value={newLinkTypeId}
+                              onChange={setNewLinkTypeId}
+                              options={linkTypes.map((lt) => ({ value: lt.id, label: lt.forward_name }))}
+                              placeholder={strings.requirements.linkType}
+                            />
                             {linkError && <div style={{ color: "var(--color-danger)" }}>{linkError}</div>}
-                            <div className="row" style={{ justifyContent: "flex-end" }}>
-                              <button className="btn" onClick={() => setAddLinkPopoverOpen(false)}>
-                                {strings.common.cancel}
-                              </button>
-                              <button className="btn btn-primary" onClick={addLinkToCreatedRequirement} disabled={!newLinkTargetId || !newLinkTypeId}>
-                                {strings.requirements.addLink}
-                              </button>
-                            </div>
+                            <FormActions
+                              onCancel={() => setAddLinkPopoverOpen(false)}
+                              onSave={addLinkToCreatedRequirement}
+                              saveLabel={strings.requirements.addLink}
+                              saveDisabled={!newLinkTargetId || !newLinkTypeId}
+                            />
                           </Popover>
                         )}
                       </>
@@ -742,19 +734,13 @@ export function RequirementsPage() {
               {canManageProject ? (
                 <div className="stack">
                   {components.length === 0 && (
-                    <div className="row">
-                      <input
-                        className="input"
-                        placeholder={strings.admin.name}
-                        value={newInlineComponentName}
-                        onChange={(e) => setNewInlineComponentName(e.target.value)}
-                      />
-                      <input
-                        className="input"
-                        style={{ maxWidth: 100 }}
-                        placeholder={strings.admin.prefix}
+                    <div className="row" style={{ alignItems: "flex-end" }}>
+                      <TextField label={strings.admin.name} value={newInlineComponentName} onChange={setNewInlineComponentName} />
+                      <TextField
+                        label={strings.admin.prefix}
                         value={newInlineComponentPrefix}
-                        onChange={(e) => setNewInlineComponentPrefix(e.target.value.toUpperCase())}
+                        onChange={(next) => setNewInlineComponentPrefix(next.toUpperCase())}
+                        inputProps={{ style: { maxWidth: 100 } }}
                       />
                       <button
                         className="btn btn-primary"
@@ -766,26 +752,22 @@ export function RequirementsPage() {
                     </div>
                   )}
                   {categories.length === 0 && components.length > 0 && (
-                    <div className="row">
+                    <div className="row" style={{ alignItems: "flex-end" }}>
                       {components.length > 1 && (
-                        <select className="input" style={{ maxWidth: 200 }} value={newComponentId} onChange={(e) => setNewComponentId(e.target.value)}>
-                          {components.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
+                        <LabeledSelect
+                          label={strings.requirements.component}
+                          value={newComponentId}
+                          onChange={setNewComponentId}
+                          options={components.map((c) => ({ value: c.id, label: c.name }))}
+                          placeholder={null}
+                        />
                       )}
-                      <input
-                        className="input"
-                        placeholder={strings.admin.name}
-                        value={newInlineCategoryName}
-                        onChange={(e) => setNewInlineCategoryName(e.target.value)}
-                      />
-                      <input
-                        className="input"
-                        style={{ maxWidth: 100 }}
-                        placeholder={strings.admin.prefix}
+                      <TextField label={strings.admin.name} value={newInlineCategoryName} onChange={setNewInlineCategoryName} />
+                      <TextField
+                        label={strings.admin.prefix}
                         value={newInlineCategoryPrefix}
-                        onChange={(e) => setNewInlineCategoryPrefix(e.target.value.toUpperCase())}
+                        onChange={(next) => setNewInlineCategoryPrefix(next.toUpperCase())}
+                        inputProps={{ style: { maxWidth: 100 } }}
                       />
                       <button
                         className="btn btn-primary"
@@ -805,41 +787,38 @@ export function RequirementsPage() {
             </>
           ) : (
             <>
-              {/* Style guide Principle 13 ("every form field gets a visible
-                  label, not just placeholder text") — these three were
-                  previously the only fields on this form relying on
-                  placeholder text alone, which disappears the moment the
-                  field has real content. Reasoning/Description also swap
-                  their fixed `rows={2}` textareas for `AutoGrowTextarea`
- so a longer answer grows to show itself
-                  instead of scrolling inside a two-line box. */}
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.name}
-                <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.reasoning}
-                <AutoGrowTextarea
-                  placeholder={strings.requirements.reasoning}
-                  value={newReasoning}
-                  onChange={setNewReasoning}
-                />
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.description}
-                <AutoGrowTextarea
-                  placeholder={strings.requirements.description}
-                  value={newDescription}
-                  onChange={setNewDescription}
-                />
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.component}
-                <select
-                  className="input"
+              <FormGrid minColumn="18rem">
+                {/* Style guide Principle 13: every field has a visible label, not just placeholder text. */}
+                <FormGridFull>
+                  <TextField
+                    label={strings.requirements.name}
+                    value={newName}
+                    onChange={setNewName}
+                    placeholder={strings.requirements.name}
+                  />
+                </FormGridFull>
+                <FormGridFull>
+                  <TextAreaField
+                    label={strings.requirements.reasoning}
+                    value={newReasoning}
+                    onChange={setNewReasoning}
+                    autoGrow
+                    inputProps={{ placeholder: strings.requirements.reasoning }}
+                  />
+                </FormGridFull>
+                <FormGridFull>
+                  <TextAreaField
+                    label={strings.requirements.description}
+                    value={newDescription}
+                    onChange={setNewDescription}
+                    autoGrow
+                    inputProps={{ placeholder: strings.requirements.description }}
+                  />
+                </FormGridFull>
+                <LabeledSelect
+                  label={strings.requirements.component}
                   value={newComponentId}
-                  onChange={(e) => {
-                    const componentId = e.target.value;
+                  onChange={(componentId) => {
                     setNewComponentId(componentId);
                     // Category is nested under one component (the tree) — a
                     // category belonging to the previously-selected component
@@ -847,50 +826,40 @@ export function RequirementsPage() {
                     const firstOwnCategory = categories.find((c) => c.component_id === componentId);
                     setNewCategoryId(firstOwnCategory?.id ?? "");
                   }}
-                >
-                  {components.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.prefix})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.category}
-                <select className="input" value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)}>
-                  {categories.filter((c) => c.component_id === newComponentId).length === 0 && (
-                    <option value="">{strings.requirements.noCategoriesForComponent}</option>
-                  )}
-                  {categories.filter((c) => c.component_id === newComponentId).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.prefix})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.targetVersion}
-                <select className="input" value={newTargetStageId} onChange={(e) => setNewTargetStageId(e.target.value)}>
-                  {stages.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.level}
-                <select className="input" value={newLevel} onChange={(e) => setNewLevel(e.target.value as RequirementLevel)}>
-                  <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
-                  <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
-                  <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
-                </select>
-              </label>
-              <CustomFieldsForm
-                definitions={customFieldDefs}
-                values={customFieldValues}
-                onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
-              />
+                  options={components.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
+                  placeholder={null}
+                />
+                <LabeledSelect
+                  label={strings.requirements.category}
+                  value={newCategoryId}
+                  onChange={setNewCategoryId}
+                  options={categories
+                    .filter((c) => c.component_id === newComponentId)
+                    .map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
+                  placeholder={categories.some((c) => c.component_id === newComponentId) ? null : strings.requirements.noCategoriesForComponent}
+                />
+                <LabeledSelect
+                  label={strings.requirements.targetVersion}
+                  value={newTargetStageId}
+                  onChange={setNewTargetStageId}
+                  options={stages.map((s) => ({ value: s.id, label: s.name }))}
+                  placeholder={null}
+                />
+                <LabeledSelect
+                  label={strings.requirements.level}
+                  value={newLevel}
+                  onChange={(next) => setNewLevel(next as RequirementLevel)}
+                  options={[{ value: "requirement", label: REQUIREMENT_LEVEL_LABEL.requirement }, { value: "recommended", label: REQUIREMENT_LEVEL_LABEL.recommended }, { value: "optional", label: REQUIREMENT_LEVEL_LABEL.optional }]}
+                  placeholder={null}
+                />
+                <FormGridFull>
+                  <CustomFieldsForm
+                    definitions={customFieldDefs}
+                    values={customFieldValues}
+                    onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
+                  />
+                </FormGridFull>
+              </FormGrid>
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button
                   className="btn"

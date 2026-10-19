@@ -25,6 +25,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi } from "./api";
 import { allGroupSelectNodes, buildGroupTree, groupPath } from "./groupTree";
 import type { EngagementAudience, StakeholderGroup } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 export function EngagementAudiencePanel({
   projectId,
@@ -142,12 +143,12 @@ export function EngagementAudiencePanel({
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>
               Copies the group's current members in as participants. Later changes to the group don't change who took part.
             </span>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => { setPicking(false); setSelected([]); }}>Cancel</button>
-              <button className="btn btn-primary" disabled={selected.length === 0 || adding} onClick={addEveryone}>
-                Add everyone in group
-              </button>
-            </div>
+            <FormActions
+              onCancel={() => { setPicking(false); setSelected([]); }}
+              onSave={addEveryone}
+              saveLabel="Add everyone in group"
+              saveDisabled={selected.length === 0 || adding}
+            />
           </div>
         </Modal>
       )}

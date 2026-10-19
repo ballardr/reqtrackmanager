@@ -312,7 +312,7 @@ export const NoComponentsManagerCanCreateInline: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByText("This project has no components or categories yet.")).toBeInTheDocument());
-    await expect(within(panel).getByPlaceholderText("Prefix")).toBeInTheDocument();
+    await expect(within(panel).getByLabelText("Prefix")).toBeInTheDocument();
   },
 };
 
@@ -327,7 +327,7 @@ export const NoComponentsMemberSeesLinkToAdmin: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByRole("link", { name: "Add one in Project Admin before creating requirements." })).toBeInTheDocument());
-    await expect(within(panel).queryByPlaceholderText("Prefix")).not.toBeInTheDocument();
+    await expect(within(panel).queryByLabelText("Prefix")).not.toBeInTheDocument();
   },
 };
 

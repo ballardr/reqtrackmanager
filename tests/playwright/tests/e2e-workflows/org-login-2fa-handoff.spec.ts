@@ -106,7 +106,7 @@ test.describe("org-branded login: 2FA handoff to /login", () => {
       ({ secret } = await enrollResponse.json());
       expect(secret).toBeTruthy();
 
-      await page.getByPlaceholder("Confirm code").fill(generateTotpCode(secret));
+      await page.getByLabel("Confirm code").fill(generateTotpCode(secret));
       await page.getByRole("button", { name: "Confirm code" }).click();
       await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
 
@@ -137,7 +137,7 @@ test.describe("org-branded login: 2FA handoff to /login", () => {
       await page.goto("/preferences");
       await selectPreferencesGroup(page, "Security");
       await ensureTwoFactorSectionExpanded(page);
-      await page.getByPlaceholder("Enter a current code to disable 2FA.").fill(generateTotpCode(secret));
+      await page.getByLabel("Authenticator code").fill(generateTotpCode(secret));
       await page.getByRole("button", { name: "Disable 2FA" }).click();
       await page.waitForURL(/\/login$/);
     });

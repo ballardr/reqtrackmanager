@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 
 import type { ReportChapter } from "../api/types";
 import { RichTextEditor } from "./RichTextEditor";
+import { TextField } from "./FormFields";
 
 /**
  * An ordered list of {title, body} report chapters — used identically for
@@ -35,14 +36,14 @@ export function ReportChapterListEditor({
       <strong>{label}</strong>
       {list.map((chapter, idx) => (
         <div key={idx} className="card stack" style={{ gap: "0.4rem" }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <input
-              className="input"
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
+            <TextField
+              label="Chapter title"
               placeholder="Chapter title"
               value={chapter.title}
-              onChange={(e) => {
+              onChange={(title) => {
                 const next = [...list];
-                next[idx] = { ...next[idx], title: e.target.value };
+                next[idx] = { ...next[idx], title };
                 setList(next);
               }}
             />

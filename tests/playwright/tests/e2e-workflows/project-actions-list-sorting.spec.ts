@@ -29,7 +29,7 @@ test.describe("project actions list sorting", () => {
 
     async function createAction(title: string) {
       await page.getByRole("button", { name: "New action" }).click();
-      await page.getByPlaceholder("Title").fill(title);
+      await page.getByLabel("Title").fill(title);
       await page.getByRole("button", { name: "Create" }).click();
       await expect(page.getByRole("link", { name: title })).toBeVisible();
     }

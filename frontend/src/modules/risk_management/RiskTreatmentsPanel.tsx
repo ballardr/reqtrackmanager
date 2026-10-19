@@ -27,6 +27,8 @@ import {
 } from "./types";
 import type { RiskTreatment, RiskTreatmentList, TreatmentAssessmentStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { FormActions } from "../../components/FormActions";
+import { TextAreaField } from "../../components/FormFields";
 
 /** The verdicts a person can record; "Needs reassessment" is only ever set by the system. */
 const ASSESSABLE: TreatmentAssessmentStatus[] = ["effective", "ineffective", "proposed"];
@@ -156,16 +158,9 @@ export function RiskTreatmentsPanel({
               options={ASSESSABLE.map((s) => ({ value: s, label: TREATMENT_ASSESSMENT_STATUS_LABEL[s] }))}
               placeholder={null}
             />
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Rationale</span>
-              <textarea className="input" rows={3} aria-label="Rationale" value={rationale} onChange={(e) => setRationale(e.target.value)} />
-            </label>
+            <TextAreaField label="Rationale" value={rationale} onChange={setRationale} rows={3} />
             <p className="text-muted" style={{ margin: 0 }}>A rationale is required to mark a treatment Effective or Ineffective.</p>
-            {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setAssessing(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={save}>Save</button>
-            </div>
+            <FormActions error={error} onCancel={() => setAssessing(null)} onSave={save} />
           </div>
         </Modal>
       )}

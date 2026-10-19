@@ -524,6 +524,24 @@ def test_last_engaged_is_the_latest_past_engagement_in_this_project_only(client,
     assert all(s["last_engaged"] is None for s in org_view)
 
 
+def test_last_engaged_follows_the_callers_own_day(client, admin_token):
+    """A contact logged "today" in a timezone ahead of UTC counts at once, not only after UTC midnight."""
+    _, project, token = _setup(client, admin_token, "Engagement Client Day Co")
+    h = auth_headers(token)
+    person = _stakeholder(client, token, project["id"], "Early Riser")
+    callers_today = datetime.now(UTC).date() + timedelta(days=1)  # the day it already is east of UTC
+    _create(client, token, project["id"], engagement_date=callers_today.isoformat(), stakeholder_ids=[person["id"]])
+    url = f"{_project_base(project['id'])}/stakeholders/{person['id']}"
+
+    assert client.get(url, headers=h).json()["last_engaged"] is None  # no header: the UTC day, so still "future"
+    sent = client.get(url, headers={**h, "X-Client-Date": callers_today.isoformat()})
+    assert sent.json()["last_engaged"] == callers_today.isoformat()
+    # Implausible or malformed days are ignored rather than trusted.
+    far = (datetime.now(UTC).date() + timedelta(days=30)).isoformat()
+    assert client.get(url, headers={**h, "X-Client-Date": far}).json()["last_engaged"] is None
+    assert client.get(url, headers={**h, "X-Client-Date": "not-a-date"}).json()["last_engaged"] is None
+
+
 def test_stakeholder_timeline(client, admin_token):
     org, project, token = _setup(client, admin_token, "Engagement Timeline Co")
     h = auth_headers(token)

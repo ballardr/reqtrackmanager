@@ -13,8 +13,9 @@ import { useState } from "react";
 
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { Need, NeedFieldValues } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 export function NeedFormModal({
   initial,
@@ -50,17 +51,12 @@ export function NeedFormModal({
           </FormGridFull>
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
         </FormGrid>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={name.trim() === ""}
-            onClick={() => onSave({ name: name.trim(), description, rationale, change_note: changeNote })}
-          >
-            Save
-          </button>
-        </div>
+        <FormActions
+          error={error}
+          onCancel={onCancel}
+          onSave={() => onSave({ name: name.trim(), description, rationale, change_note: changeNote })}
+          saveDisabled={name.trim() === ""}
+        />
       </div>
     </Modal>
   );

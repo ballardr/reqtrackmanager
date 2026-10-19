@@ -1,3 +1,4 @@
+import { useMutation } from "../hooks/useMutation";
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -75,6 +76,11 @@ import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { downloadBlob } from "../utils/download";
 import { Badge } from "../components/Badge";
+import { CheckboxField, TextAreaField, TextField, ToggleField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormActions } from "../components/FormActions";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { RecordFieldGroup } from "../components/RecordDetailParts";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
 // MEMBER_ONLY, which caps at baseline MEMBER — parity with
@@ -153,6 +159,7 @@ const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
  * and project groups (C-U-11).
  */
 export function ProjectAdminPage() {
+  const run = useMutation();
   const strings = useStrings();
   const { projectId, group: groupParam } = useParams<{ projectId: string; group?: string }>();
   const navigate = useNavigate();
@@ -675,13 +682,13 @@ export function ProjectAdminPage() {
   }
 
   async function addCustomField() {
-    await api.post(`/api/v1/projects/${projectId}/custom-fields`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/custom-fields`, {
       entity_kind: newFieldKind,
       name: newFieldName,
       field_type: newFieldType,
       options: newFieldType === "list" ? newFieldOptions.split(",").map((s) => s.trim()).filter(Boolean) : null,
       required: newFieldRequired,
-    });
+    }), "add", "custom field"))) return;
     setNewFieldName("");
     setNewFieldOptions("");
     setNewFieldRequired(false);
@@ -689,7 +696,7 @@ export function ProjectAdminPage() {
   }
 
   async function deleteCustomField(fieldId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/custom-fields/${fieldId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/custom-fields/${fieldId}`), "delete", "custom field"))) return;
     reload();
   }
 
@@ -718,6 +725,7 @@ export function ProjectAdminPage() {
         can_be_parent: canBeParent,
       });
       settingsDirtyRef.current = false;
+      showToast(strings.mutation.success("{project} settings", strings.mutation.past.save));
       reload();
     } catch (err) {
       // Surfaces the C-U-08 ("only manager is inherited") and
@@ -760,17 +768,17 @@ export function ProjectAdminPage() {
 
   async function addMemberSource() {
     if (!addSourceId) return;
-    await api.post(`/api/v1/projects/${projectId}/member-sources`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/member-sources`, {
       source_project_id: addSourceId, mirror_mode: addMirrorMode,
       mirror_filter_role: addMirrorMode === "mirror_role" ? addMirrorFilterRole : null,
-    });
+    }), "add", "member source"))) return;
     setAddSourceId("");
     setAddMirrorMode("member_only");
     reload();
   }
 
   async function removeMemberSource(sourceProjectId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/member-sources/${sourceProjectId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/member-sources/${sourceProjectId}`), "remove", "member source"))) return;
     reload();
   }
 
@@ -788,14 +796,17 @@ export function ProjectAdminPage() {
   }
 
   async function saveTerminology() {
-    await api.put(`/api/v1/projects/${projectId}/terminology`, { terminology });
+    if (!(await run(() => api.put(`/api/v1/projects/${projectId}/terminology`, { terminology }), "save", "terminology"))) return;
     terminologyDirtyRef.current = false;
     reload();
   }
 
   async function toggleArchive() {
     const action = project?.is_archived ? "unarchive" : "archive";
-    await api.post(`/api/v1/projects/${projectId}/${action}`);
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/${action}`), {
+      success: action === "archive" ? "Project archived." : "Project restored.",
+      failure: `Could not ${action} the project.`,
+    }))) return;
     reload();
   }
 
@@ -823,40 +834,40 @@ export function ProjectAdminPage() {
 
   async function addStage() {
     if (!newStageName.trim()) return;
-    await api.post(`/api/v1/projects/${projectId}/stages`, { name: newStageName });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages`, { name: newStageName }), "add", "{stage}"))) return;
     setNewStageName("");
     reload();
   }
 
   async function startStageReview(stageId: string) {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=review`);
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=review`), "start", "{stage} review"))) return;
     reload();
   }
 
   async function approveStage(stageId: string) {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`);
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`), "approve", "{stage}"))) return;
     reload();
   }
 
   async function setReviewDeadline(stageId: string, isoDeadline: string) {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-deadline`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-deadline`, {
       review_deadline: isoDeadline || null,
-    });
+    }), "set", "review deadline"))) return;
     reload();
   }
 
   async function respondToStageReview(stageId: string, response: "approved" | "rejected") {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-response`, { response });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-response`, { response }), "respond", "{stage} review"))) return;
     reload();
   }
 
   async function completeStage(stageId: string, cascade: boolean) {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/complete`, { cascade_to_requirements: cascade });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/complete`, { cascade_to_requirements: cascade }), "complete", "{stage}"))) return;
     reload();
   }
 
   async function addComponent() {
-    await api.post(`/api/v1/projects/${projectId}/components`, { name: newComponentName, prefix: newComponentPrefix });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/components`, { name: newComponentName, prefix: newComponentPrefix }), "add", "{component}"))) return;
     setNewComponentName("");
     setNewComponentPrefix("");
     reload();
@@ -865,20 +876,20 @@ export function ProjectAdminPage() {
   async function addCategory(componentId: string) {
     const input = newCategoryInputs[componentId];
     if (!input?.name || !input?.prefix) return;
-    await api.post(`/api/v1/projects/${projectId}/categories`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/categories`, {
       name: input.name, prefix: input.prefix, component_id: componentId,
-    });
+    }), "add", "category"))) return;
     setNewCategoryInputs((m) => ({ ...m, [componentId]: { name: "", prefix: "" } }));
     reload();
   }
 
   async function moveComponent(id: string, direction: "up" | "down") {
-    await api.post(`/api/v1/projects/${projectId}/components/${id}/move`, { direction });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/components/${id}/move`, { direction }), { failure: "Could not move {component}." }))) return;
     reload();
   }
 
   async function moveCategory(id: string, direction: "up" | "down") {
-    await api.post(`/api/v1/projects/${projectId}/categories/${id}/move`, { direction });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/categories/${id}/move`, { direction }), { failure: "Could not move {category}." }))) return;
     reload();
   }
 
@@ -891,6 +902,7 @@ export function ProjectAdminPage() {
         delete next[stageId];
         return next;
       });
+      showToast(strings.mutation.success("{stage}", strings.mutation.past.rename));
       reload();
     } catch (err) {
       setStructureError(err instanceof Error ? err.message : strings.common.error);
@@ -901,6 +913,7 @@ export function ProjectAdminPage() {
    * `DeleteInUseDialog` can show the error in place. */
   async function deleteStage(stageId: string, reassignTo: string) {
     await api.delete(`/api/v1/projects/${projectId}/stages/${stageId}?reassign_to=${reassignTo}`);
+    showToast(strings.mutation.success("{stage}", strings.mutation.past.delete));
     reload();
   }
 
@@ -913,6 +926,7 @@ export function ProjectAdminPage() {
         delete next[componentId];
         return next;
       });
+      showToast(strings.mutation.success("{component}", strings.mutation.past.rename));
       reload();
     } catch (err) {
       setStructureError(err instanceof Error ? err.message : strings.common.error);
@@ -924,6 +938,7 @@ export function ProjectAdminPage() {
     try {
       await api.delete(`/api/v1/projects/${projectId}/components/${componentId}`);
       setDeletingComponentId(null);
+      showToast(strings.mutation.success("{component}", strings.mutation.past.delete));
       reload();
     } catch (err) {
       setStructureError(err instanceof Error ? err.message : strings.common.error);
@@ -939,6 +954,7 @@ export function ProjectAdminPage() {
         delete next[categoryId];
         return next;
       });
+      showToast(strings.mutation.success("{category}", strings.mutation.past.rename));
       reload();
     } catch (err) {
       setStructureError(err instanceof Error ? err.message : strings.common.error);
@@ -949,11 +965,13 @@ export function ProjectAdminPage() {
    * `DeleteInUseDialog` can show the error in place. */
   async function deleteCategory(categoryId: string, reassignTo: string) {
     await api.delete(`/api/v1/projects/${projectId}/categories/${categoryId}?reassign_to=${reassignTo}`);
+    showToast(strings.mutation.success("{category}", strings.mutation.past.delete));
     reload();
   }
 
   async function addActionType(name: string) {
     await api.post(`/api/v1/projects/${projectId}/action-types`, { name });
+    showToast(strings.mutation.success("action type", strings.mutation.past.add));
     reload();
   }
 
@@ -964,6 +982,7 @@ export function ProjectAdminPage() {
 
   async function renameActionType(id: string, name: string) {
     await api.patch(`/api/v1/projects/${projectId}/action-types/${id}`, { name });
+    showToast(strings.mutation.success("action type", strings.mutation.past.rename));
     reload();
   }
 
@@ -973,6 +992,7 @@ export function ProjectAdminPage() {
    * OrgAdminPage's project-statuses/link-types delete flow). */
   async function deleteActionType(id: string, reassignToId?: string) {
     await api.delete(`/api/v1/projects/${projectId}/action-types/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
+    showToast(strings.mutation.success("action type", strings.mutation.past.delete));
     reload();
   }
 
@@ -1079,7 +1099,7 @@ export function ProjectAdminPage() {
   }
 
   async function removeGroupMember(groupId: string, userId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${userId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${userId}`), "remove", "group member"))) return;
     reload();
   }
 
@@ -1090,7 +1110,7 @@ export function ProjectAdminPage() {
   }
 
   async function removeOrgGroupMember(groupId: string, orgGroupId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${orgGroupId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${orgGroupId}`), "remove", "org group member"))) return;
     reload();
   }
 
@@ -1100,13 +1120,13 @@ export function ProjectAdminPage() {
   // group-membership mutation on this page — no consent needed from the
   // referenced project, mirroring the member-source mechanism above.
   async function addProjectRefMember(groupId: string, sourceProjectId: string) {
-    await api.post(`/api/v1/projects/${projectId}/groups/${groupId}/members`, { source_project_id: sourceProjectId });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/groups/${groupId}/members`, { source_project_id: sourceProjectId }), "add", "member source"))) return;
     setSourceProjectSelections((prev) => ({ ...prev, [groupId]: "" }));
     reload();
   }
 
   async function removeProjectRefMember(groupId: string, sourceProjectId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${sourceProjectId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${sourceProjectId}`), "remove", "member source"))) return;
     reload();
   }
 
@@ -1529,78 +1549,67 @@ export function ProjectAdminPage() {
       {activeGroup === "overview" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.settings}</h2>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.admin.name}
-          <input
-            className="input"
+        <FormGrid minColumn="18rem">
+          <TextField
+            label={strings.admin.name}
             value={settingsName}
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setSettingsName(e.target.value);
+              setSettingsName(next);
             }}
           />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.projects.code}
-          <input
-            className="input"
+          <TextField
+            label={strings.projects.code}
             value={settingsCode}
-            readOnly={codePolicy?.assignment !== "manual"}
-            maxLength={codePolicy?.max_length}
-            aria-describedby="project-code-hint"
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setSettingsCode(e.target.value.toUpperCase());
+              setSettingsCode(next.toUpperCase());
             }}
+            inputProps={{ readOnly: codePolicy?.assignment !== "manual", maxLength: codePolicy?.max_length, "aria-describedby": "project-code-hint" }}
           />
-        </label>
-        <p id="project-code-hint" className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
-          {codePolicy?.assignment === "manual"
-            ? strings.projects.codeEditHint(describeCodePolicy(codePolicy))
-            : strings.projects.codeFixedHint}
-        </p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.admin.summary}
-          <textarea
-            className="input"
-            rows={2}
+          <FormGridFull>
+            <p id="project-code-hint" className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+            {codePolicy?.assignment === "manual"
+              ? strings.projects.codeEditHint(describeCodePolicy(codePolicy))
+              : strings.projects.codeFixedHint}
+            </p>
+          </FormGridFull>
+          <FormGridFull>
+          <TextAreaField
+            label={strings.admin.summary}
             value={settingsSummary}
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setSettingsSummary(e.target.value);
+              setSettingsSummary(next);
             }}
+            rows={2}
           />
-        </label>
-        <label className="row">
-          <input
-            type="checkbox"
-            checked={allowMemberCr}
-            onChange={(e) => {
-              settingsDirtyRef.current = true;
-              setAllowMemberCr(e.target.checked);
-            }}
-          />
-          {strings.admin.allowMemberChangeRequests}
-        </label>
+          </FormGridFull>
+        </FormGrid>
+        <CheckboxField
+          label={strings.admin.allowMemberChangeRequests}
+          checked={allowMemberCr}
+          onChange={(next) => {
+            settingsDirtyRef.current = true;
+            setAllowMemberCr(next);
+          }}
+        />
         {/* Forced checked+disabled (the
             same disabled+`title` "why is this checked and I can't touch
             it" convention `ProjectMembersTable.tsx` already establishes)
             once the org's own force is active and this project isn't
             exempt — see `exemptFromOrgLinkLock` below for the escape
             hatch. */}
-        <label className="row">
-          <input
-            type="checkbox"
-            checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
-            disabled={orgForceLinksLocked && !exemptFromOrgLinkLock}
-            title={orgForceLinksLocked && !exemptFromOrgLinkLock ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg : undefined}
-            onChange={(e) => {
-              settingsDirtyRef.current = true;
-              setRequireCrForLinks(e.target.checked);
-            }}
-          />
-          {strings.admin.requireChangeRequestForApprovedLinks}
-        </label>
+        <CheckboxField
+          label={strings.admin.requireChangeRequestForApprovedLinks}
+          checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
+          onChange={(next) => {
+            settingsDirtyRef.current = true;
+            setRequireCrForLinks(next);
+          }}
+          disabled={orgForceLinksLocked && !exemptFromOrgLinkLock}
+          title={orgForceLinksLocked && !exemptFromOrgLinkLock ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg : undefined}
+        />
         <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
           {orgForceLinksLocked && !exemptFromOrgLinkLock
             ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg
@@ -1608,18 +1617,15 @@ export function ProjectAdminPage() {
         </p>
         {orgForceLinksLocked && (
           <>
-            <label className="row">
-              <input
-                type="checkbox"
-                checked={exemptFromOrgLinkLock}
-                onChange={(e) => {
-                  settingsDirtyRef.current = true;
-                  setExemptFromOrgLinkLock(e.target.checked);
-                }}
-              />
-              {strings.admin.exemptFromOrgLinkLock}
-            </label>
-            <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.exemptFromOrgLinkLockHint}</p>
+            <CheckboxField
+              label={strings.admin.exemptFromOrgLinkLock}
+              checked={exemptFromOrgLinkLock}
+              onChange={(next) => {
+                settingsDirtyRef.current = true;
+                setExemptFromOrgLinkLock(next);
+              }}
+              hint={strings.admin.exemptFromOrgLinkLockHint}
+            />
           </>
         )}
         {/* AI approval via MCP (docs/decisions.md) — uses the shared
@@ -1627,86 +1633,66 @@ export function ProjectAdminPage() {
             rather than this page's own plain-checkbox convention above; a
             deliberate choice per the UX style guide's component-reuse
             principle, not an oversight. */}
-        <label className="row" style={{ gap: "0.6rem" }}>
-          <ToggleSwitch
-            checked={allowAiApprovals}
-            onChange={(next) => {
-              if (next) {
-                setAiApprovalsAckChecked(false);
-                setAiApprovalsAckPending(true);
-              } else {
-                settingsDirtyRef.current = true;
-                setAllowAiApprovals(false);
-              }
-            }}
-            label={strings.admin.allowAiApprovals}
-          />
-          <span className="stack" style={{ gap: 0 }}>
-            {strings.admin.allowAiApprovals}
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.allowAiApprovalsHint}</span>
-          </span>
-        </label>
-        <label className="row">
-          <input
-            type="checkbox"
-            checked={isTemplate}
-            onChange={(e) => {
+        <ToggleField
+          label={strings.admin.allowAiApprovals}
+          checked={allowAiApprovals}
+          onChange={(next) => {
+            if (next) {
+              setAiApprovalsAckChecked(false);
+              setAiApprovalsAckPending(true);
+            } else {
               settingsDirtyRef.current = true;
-              setIsTemplate(e.target.checked);
-            }}
-          />
-          {strings.admin.isTemplate}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.admin.visibility}
-          <select
-            className="input"
+              setAllowAiApprovals(false);
+            }
+          }}
+          hint={strings.admin.allowAiApprovalsHint}
+        />
+        <CheckboxField
+          label={strings.admin.isTemplate}
+          checked={isTemplate}
+          onChange={(next) => {
+            settingsDirtyRef.current = true;
+            setIsTemplate(next);
+          }}
+        />
+        <FormGrid minColumn="18rem">
+          <LabeledSelect
+            label={strings.admin.visibility}
             value={visibility}
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setVisibility(e.target.value as "only_specified" | "org_wide");
+              setVisibility(next as "only_specified" | "org_wide");
             }}
-          >
-            <option value="only_specified">{strings.admin.visibilityOnlySpecified}</option>
-            <option value="org_wide">{strings.admin.visibilityOrgWide}</option>
-          </select>
-        </label>
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.admin.projectStatus}
-          <select
-            className="input"
+            options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
+            placeholder={null}
+            hint={strings.admin.visibilityHint(orgLabel)}
+          />
+          <LabeledSelect
+            label={strings.admin.projectStatus}
             value={statusId}
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setStatusId(e.target.value);
+              setStatusId(next);
             }}
-          >
-            {orgProjectStatuses.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={orgProjectStatuses.map((s) => ({ value: s.id, label: s.name }))}
+            placeholder={null}
+          />
+        </FormGrid>
 
         {/* Hierarchical projects (docs/decisions.md). Always visible
             regardless of whether this project currently has (or could
             have) a parent of its own — it's the opt-in mechanism other
             projects' managers need before this project appears in *their*
             "Parent project" picker at all. */}
-        <label className="row">
-          <input
-            type="checkbox"
-            checked={canBeParent}
-            onChange={(e) => {
-              settingsDirtyRef.current = true;
-              setCanBeParent(e.target.checked);
-            }}
-          />
-          {strings.admin.canBeParent}
-        </label>
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.canBeParentHint}</p>
+        <CheckboxField
+          label={strings.admin.canBeParent}
+          checked={canBeParent}
+          onChange={(next) => {
+            settingsDirtyRef.current = true;
+            setCanBeParent(next);
+          }}
+          hint={strings.admin.canBeParentHint}
+        />
         {/* The current parent's name is always shown plainly here (unlike
             ProjectListPage's list/tile "Child of:" label, which redacts a
             parent the viewer can't see) — a project's own manager needs to
@@ -1718,14 +1704,13 @@ export function ProjectAdminPage() {
             picker with only "None" in it is confusing, not useful. */}
         {showParentField && (
           <>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.projects.parentProject}
-              <select
-                className="input"
+            <FormGrid minColumn="18rem">
+              <LabeledSelect
+                label={strings.projects.parentProject}
                 value={parentProjectId}
-                onChange={(e) => {
+                onChange={(next) => {
                   settingsDirtyRef.current = true;
-                  setParentProjectId(e.target.value);
+                  setParentProjectId(next);
                   // Changing the parent while an elevated inheritance mode is
                   // set must not silently carry that mode's confirmation over
                   // to a *different* parent's role-holders — reset to "none"
@@ -1737,46 +1722,35 @@ export function ProjectAdminPage() {
                     setRoleInheritanceMode("none");
                   }
                 }}
-              >
-                <option value="">{strings.projects.noParent}</option>
-                {parentOptions.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-            {parentProjectId && (
-              <>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.projects.inheritFromParent}
-                  <select
-                    className="input"
+                options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
+                placeholder={strings.projects.noParent}
+              />
+              {parentProjectId && (
+                <>
+                  <LabeledSelect
+                    label={strings.projects.inheritFromParent}
                     value={roleInheritanceMode}
-                    onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
-                  >
-                    {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
-                      <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
-                    ))}
-                  </select>
-                </label>
-                {roleInheritanceMode === "mirror_role" && (
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.projects.inheritModeFilterRole}
-                    <select
-                      className="input"
+                    onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
+                    options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
+                      value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
+                    }))}
+                    placeholder={null}
+                  />
+                  {roleInheritanceMode === "mirror_role" && (
+                    <LabeledSelect
+                      label={strings.projects.inheritModeFilterRole}
                       value={roleInheritanceFilterRole}
-                      onChange={(e) => {
+                      onChange={(next) => {
                         settingsDirtyRef.current = true;
-                        setRoleInheritanceFilterRole(e.target.value as ProjectRole);
+                        setRoleInheritanceFilterRole(next as ProjectRole);
                       }}
-                    >
-                      <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                      <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                      <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                    </select>
-                  </label>
-                )}
-              </>
-            )}
+                      options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
+                      placeholder={null}
+                    />
+                  )}
+                </>
+              )}
+            </FormGrid>
           </>
         )}
         {settingsError && <div style={{ color: "var(--color-danger)" }}>{settingsError}</div>}
@@ -1802,13 +1776,11 @@ export function ProjectAdminPage() {
             message={
               <span className="stack" style={{ gap: "0.5rem" }}>
                 <span>{strings.admin.allowAiApprovalsAckBody}</span>
-                <label className="row" style={{ gap: "0.4rem" }}>
-                  <input
-                    type="checkbox" checked={aiApprovalsAckChecked}
-                    onChange={(e) => setAiApprovalsAckChecked(e.target.checked)}
-                  />
-                  {strings.admin.allowAiApprovalsAckCheckbox}
-                </label>
+                <CheckboxField
+                  label={strings.admin.allowAiApprovalsAckCheckbox}
+                  checked={aiApprovalsAckChecked}
+                  onChange={setAiApprovalsAckChecked}
+                />
               </span>
             }
             confirmLabel={strings.admin.allowAiApprovalsAckConfirm}
@@ -1845,20 +1817,20 @@ export function ProjectAdminPage() {
         <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "0.25rem 0" }} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
-        {TERMINOLOGY_KEYS.map((key) => (
-          <div key={key} className="row">
-            <span style={{ minWidth: 140 }}>{strings.admin.terminologyKeyLabel[key]}</span>
-            <input
-              className="input"
+        <FormGrid minColumn="14rem">
+          {TERMINOLOGY_KEYS.map((key) => (
+            <TextField
+              key={key}
+              label={strings.admin.terminologyKeyLabel[key]}
               placeholder={key}
               value={terminology[key] ?? ""}
-              onChange={(e) => {
+              onChange={(next) => {
                 terminologyDirtyRef.current = true;
-                setTerminology((t2) => ({ ...t2, [key]: e.target.value }));
+                setTerminology((t2) => ({ ...t2, [key]: next }));
               }}
             />
-          </div>
-        ))}
+          ))}
+        </FormGrid>
         <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveTerminology}
         </button>
@@ -1877,7 +1849,7 @@ export function ProjectAdminPage() {
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="row">
                 <input
-                  className="input" style={{ maxWidth: 220 }} value={nameEdit}
+                  className="input" style={{ maxWidth: 220 }} value={nameEdit} aria-label={`${strings.admin.name}: ${s.name}`}
                   onChange={(e) => setStageNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
                 />
                 {nameEdit !== s.name && nameEdit && (
@@ -1915,13 +1887,11 @@ export function ProjectAdminPage() {
               )}
               {s.status === "approved" && (
                 <div className="row">
-                  <label className="row" style={{ gap: "0.25rem" }}>
-                    <input
-                      type="checkbox" checked={cascadeInputs[s.id] ?? false}
-                      onChange={(e) => setCascadeInputs((c) => ({ ...c, [s.id]: e.target.checked }))}
-                    />
-                    {strings.admin.cascadeToRequirements}
-                  </label>
+                  <CheckboxField
+                    label={strings.admin.cascadeToRequirements}
+                    checked={cascadeInputs[s.id] ?? false}
+                    onChange={(next) => setCascadeInputs((c) => ({ ...c, [s.id]: next }))}
+                  />
                   <button className="btn" onClick={() => completeStage(s.id, cascadeInputs[s.id] ?? false)}>
                     {strings.admin.completeStage}
                   </button>
@@ -1931,7 +1901,7 @@ export function ProjectAdminPage() {
             {s.status === "review" && (
               <div className="row">
                 <input
-                  className="input" type="datetime-local" style={{ maxWidth: 220 }}
+                  className="input" type="datetime-local" style={{ maxWidth: 220 }} aria-label={`${strings.admin.reviewDeadline}: ${s.name}`}
                   value={deadlineInputs[s.id] ?? ""}
                   onChange={(e) => setDeadlineInputs((d) => ({ ...d, [s.id]: e.target.value }))}
                 />
@@ -1956,11 +1926,8 @@ export function ProjectAdminPage() {
           </div>
           );
         })}
-        <div className="row">
-          <input
-            className="input" placeholder={strings.admin.name} value={newStageName}
-            onChange={(e) => setNewStageName(e.target.value)}
-          />
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <TextField label={strings.admin.name} placeholder={strings.admin.name} value={newStageName} onChange={setNewStageName} />
           <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
             <Plus /> {strings.admin.newStage}
           </button>
@@ -1984,11 +1951,11 @@ export function ProjectAdminPage() {
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <div className="row">
                   <input
-                    className="input" style={{ maxWidth: 180 }} value={componentEdit.name}
+                    className="input" style={{ maxWidth: 180 }} value={componentEdit.name} aria-label={`${strings.admin.name}: ${c.name}`}
                     onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, name: e.target.value } }))}
                   />
                   <input
-                    className="input" style={{ maxWidth: 80 }} value={componentEdit.prefix}
+                    className="input" style={{ maxWidth: 80 }} value={componentEdit.prefix} aria-label={`${strings.admin.prefix}: ${c.name}`}
                     onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, prefix: e.target.value.toUpperCase() } }))}
                   />
                   {componentDirty && componentEdit.name && componentEdit.prefix && (
@@ -2045,15 +2012,13 @@ export function ProjectAdminPage() {
                 </div>
               </div>
               {deletingComponentId === c.id && (
-                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
-                  <span>{strings.admin.confirmDelete}?</span>
-                  <button className="btn btn-danger" onClick={() => deleteComponent(c.id)}>
-                    {strings.admin.confirmDelete}
-                  </button>
-                  <button className="btn" onClick={() => setDeletingComponentId(null)}>
-                    {strings.common.cancel}
-                  </button>
-                </div>
+                <ConfirmDialog
+                  title={strings.admin.deleteComponent}
+                  message={strings.admin.deleteComponentConfirm(c.name)}
+                  confirmLabel={strings.admin.confirmDelete}
+                  onConfirm={() => { setDeletingComponentId(null); deleteComponent(c.id); }}
+                  onCancel={() => setDeletingComponentId(null)}
+                />
               )}
               <div className="stack" style={{ paddingLeft: "1.5rem", gap: "0.4rem" }}>
                 {ownCategories.map((cat, catIdx) => {
@@ -2065,11 +2030,11 @@ export function ProjectAdminPage() {
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <div className="row">
                         <input
-                          className="input" style={{ maxWidth: 180 }} value={categoryEdit.name}
+                          className="input" style={{ maxWidth: 180 }} value={categoryEdit.name} aria-label={`${strings.admin.name}: ${cat.name}`}
                           onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, name: e.target.value } }))}
                         />
                         <input
-                          className="input" style={{ maxWidth: 80 }} value={categoryEdit.prefix}
+                          className="input" style={{ maxWidth: 80 }} value={categoryEdit.prefix} aria-label={`${strings.admin.prefix}: ${cat.name}`}
                           onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, prefix: e.target.value.toUpperCase() } }))}
                         />
                         {categoryDirty && categoryEdit.name && categoryEdit.prefix && (
@@ -2116,21 +2081,21 @@ export function ProjectAdminPage() {
                   </div>
                   );
                 })}
-                <div className="row">
-                  <input
-                    className="input"
+                <div className="row" style={{ alignItems: "flex-end" }}>
+                  <TextField
+                    label={strings.admin.name}
                     placeholder={strings.admin.name}
                     value={categoryInput.name}
-                    onChange={(e) => setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, name: e.target.value } }))}
+                    onChange={(next) => setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, name: next } }))}
                   />
-                  <input
-                    className="input"
-                    style={{ maxWidth: 100 }}
+                  <TextField
+                    label={strings.admin.prefix}
                     placeholder={strings.admin.prefix}
                     value={categoryInput.prefix}
-                    onChange={(e) =>
-                      setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, prefix: e.target.value.toUpperCase() } }))
+                    onChange={(next) =>
+                      setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, prefix: next.toUpperCase() } }))
                     }
+                    inputProps={{ style: { maxWidth: 100 } }}
                   />
                   <button
                     className="btn"
@@ -2144,14 +2109,14 @@ export function ProjectAdminPage() {
             </div>
           );
         })}
-        <div className="row">
-          <input className="input" placeholder={strings.admin.name} value={newComponentName} onChange={(e) => setNewComponentName(e.target.value)} />
-          <input
-            className="input"
-            style={{ maxWidth: 100 }}
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <TextField label={strings.admin.name} placeholder={strings.admin.name} value={newComponentName} onChange={setNewComponentName} />
+          <TextField
+            label={strings.admin.prefix}
             placeholder={strings.admin.prefix}
             value={newComponentPrefix}
-            onChange={(e) => setNewComponentPrefix(e.target.value.toUpperCase())}
+            onChange={(next) => setNewComponentPrefix(next.toUpperCase())}
+            inputProps={{ style: { maxWidth: 100 } }}
           />
           <button className="btn btn-primary" onClick={addComponent} disabled={!newComponentName || !newComponentPrefix}>
             <Plus /> {strings.admin.newComponent}
@@ -2189,30 +2154,39 @@ export function ProjectAdminPage() {
             )}
           </div>
         ))}
-        <div className="row">
-          <select className="input" value={newFieldKind} onChange={(e) => setNewFieldKind(e.target.value as CustomFieldEntityKind)}>
-            <option value="requirement">{strings.admin.entityKindRequirement}</option>
-            <option value="change_request">{strings.admin.entityKindChangeRequest}</option>
-          </select>
-          <input className="input" placeholder={strings.admin.fieldName} value={newFieldName} onChange={(e) => setNewFieldName(e.target.value)} />
-          <select className="input" value={newFieldType} onChange={(e) => setNewFieldType(e.target.value as CustomFieldType)}>
-            <option value="short_text">{strings.admin.fieldTypeShortText}</option>
-            <option value="long_text">{strings.admin.fieldTypeLongText}</option>
-            <option value="checkbox">{strings.admin.fieldTypeCheckbox}</option>
-            <option value="list">{strings.admin.fieldTypeList}</option>
-          </select>
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <LabeledSelect
+            label={strings.admin.fieldAppliesTo}
+            value={newFieldKind}
+            onChange={(next) => setNewFieldKind(next as CustomFieldEntityKind)}
+            options={[
+              { value: "requirement", label: strings.admin.entityKindRequirement },
+              { value: "change_request", label: strings.admin.entityKindChangeRequest },
+            ]}
+            placeholder={null}
+          />
+          <TextField label={strings.admin.fieldName} placeholder={strings.admin.fieldName} value={newFieldName} onChange={setNewFieldName} />
+          <LabeledSelect
+            label={strings.admin.fieldTypeLabel}
+            value={newFieldType}
+            onChange={(next) => setNewFieldType(next as CustomFieldType)}
+            options={[
+              { value: "short_text", label: strings.admin.fieldTypeShortText },
+              { value: "long_text", label: strings.admin.fieldTypeLongText },
+              { value: "checkbox", label: strings.admin.fieldTypeCheckbox },
+              { value: "list", label: strings.admin.fieldTypeList },
+            ]}
+            placeholder={null}
+          />
           {newFieldType === "list" && (
-            <input
-              className="input"
+            <TextField
+              label={strings.admin.optionsCommaSeparated}
               placeholder={strings.admin.optionsCommaSeparated}
               value={newFieldOptions}
-              onChange={(e) => setNewFieldOptions(e.target.value)}
+              onChange={setNewFieldOptions}
             />
           )}
-          <label className="row">
-            <input type="checkbox" checked={newFieldRequired} onChange={(e) => setNewFieldRequired(e.target.checked)} />
-            {strings.admin.required}
-          </label>
+          <CheckboxField label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
           <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
             <Plus /> {strings.admin.newCustomField}
           </button>
@@ -2367,27 +2341,21 @@ export function ProjectAdminPage() {
           // "No roles assigned" in the Groups tab/SidePanel until one is
           // granted via the new per-row `MultiSelectDropdown`.
           <Modal title={strings.admin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.admin.name}
-              <input
-                className="input"
-                autoFocus
-                placeholder={strings.admin.groupNamePlaceholder}
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onKeyDown={(e) => {
+            <TextField
+              label={strings.admin.name}
+              value={newGroupName}
+              onChange={setNewGroupName}
+              placeholder={strings.admin.groupNamePlaceholder}
+              inputProps={{ autoFocus: true, onKeyDown: (e) => {
                   if (e.key === "Enter" && newGroupName) createProjectGroup();
-                }}
-              />
-            </label>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setNewGroupModalOpen(false)}>
-                {strings.common.cancel}
-              </button>
-              <button className="btn btn-primary" onClick={createProjectGroup} disabled={!newGroupName}>
-                {strings.common.create}
-              </button>
-            </div>
+                } }}
+            />
+            <FormActions
+              onCancel={() => setNewGroupModalOpen(false)}
+              onSave={createProjectGroup}
+              saveLabel={strings.common.create}
+              saveDisabled={!newGroupName}
+            />
           </Modal>
         )}
 
@@ -2516,8 +2484,7 @@ export function ProjectAdminPage() {
           return (
             <SidePanel title={strings.admin.groupDetails(g.name)} onClose={() => setOpenGroupId(null)}>
               <div className="stack">
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.admin.groupRoleAtTop}
+                <RecordFieldGroup label={strings.admin.groupRoleAtTop}>
                   {/* Same per-row MultiSelectDropdown as the Groups
                       tab's own "role" column (groupsTabColumns) — kept in
                       sync since both read from `memberTableGroups`/`groups`
@@ -2559,7 +2526,7 @@ export function ProjectAdminPage() {
                       };
                     })}
                   />
-                </label>
+                </RecordFieldGroup>
                 <button
                   className="btn btn-danger"
                   style={{ alignSelf: "flex-start" }}
@@ -2604,7 +2571,7 @@ export function ProjectAdminPage() {
                   // `UserAutocomplete` is a custom component. See the onToggle comment
                   // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                   // eslint-disable-next-line react-hooks/refs
-                  onSelect={(userId) => addGroupMember(g.id, userId)}
+                  onSelect={(userId) => run(() => addGroupMember(g.id, userId), "add", "group member")}
                   organizationId={project?.organization_id}
                   projectId={project?.id}
                   // `g.role` (a single, required field) is gone — a
@@ -2778,24 +2745,17 @@ export function ProjectAdminPage() {
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportSetupHint}</p>
         {reportTemplates.length > 0 && (
           <CollapsibleSection sectionKey="projectAdmin.reportSetup.defaultTemplate" title={strings.admin.defaultTemplateSection} defaultCollapsed={false}>
-            <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
-              {strings.admin.defaultReportTemplate}
-              <select
-                className="input" value={defaultReportTemplateId}
-                onChange={(e) => {
-                  reportConfigDirtyRef.current = true;
-                  setDefaultReportTemplateId(e.target.value);
-                }}
-              >
-                <option value="">{strings.reports.noTemplate}</option>
-                {reportTemplates.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name}
-                  </option>
-                ))}
-              </select>
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.defaultReportTemplateHint}</span>
-            </label>
+            <LabeledSelect
+              label={strings.admin.defaultReportTemplate}
+              value={defaultReportTemplateId}
+              onChange={(next) => {
+                reportConfigDirtyRef.current = true;
+                setDefaultReportTemplateId(next);
+              }}
+              options={reportTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
+              placeholder={strings.reports.noTemplate}
+              hint={strings.admin.defaultReportTemplateHint}
+            />
           </CollapsibleSection>
         )}
         <CollapsibleSection sectionKey="projectAdmin.reportSetup.content" title={strings.admin.reportContent} defaultCollapsed={false}>

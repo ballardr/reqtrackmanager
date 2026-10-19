@@ -696,6 +696,8 @@ const en = {
     userId: "User ID",
     optionsCommaSeparated: "Options (comma separated)",
     fieldName: "Field name",
+    fieldAppliesTo: "Applies to",
+    fieldTypeLabel: "Field type",
     required: "required",
     entityKindRequirement: "{Requirement}",
     entityKindChangeRequest: "{ChangeRequest}",
@@ -713,6 +715,7 @@ const en = {
     deleteComponentHasCategoriesHint: "Delete or reassign this {component}'s {categories} first.",
     reassignExistingTo: "Reassign existing items to",
     confirmDelete: "Confirm delete",
+    deleteComponentConfirm: (name: string) => `Delete the component "${name}"? This cannot be undone.`,
     deleteInUseTitle: (name: string) => `Delete “${name}”?`,
     deleteStageReassignSummary: "Every {requirement} and pending {changeRequest} targeting this {stage} moves to the one you choose, with its full history.",
     deleteCategoryReassignSummary: "Every {requirement} in this {category} moves to the one you choose.",
@@ -1258,7 +1261,8 @@ const en = {
     smtpUseTls: "Use TLS",
     testEmail: "Send test email",
     testEmailHint: (org: string) => `Sends a test email using this ${org}'s SMTP settings above, so you can confirm they actually work before relying on them.`,
-    testEmailRecipientPlaceholder: "Recipient email (defaults to your own account)",
+    testEmailRecipient: "Recipient email",
+    testEmailRecipientHint: "Defaults to your own account when left blank.",
     testEmailNoSmtp: "Set an SMTP host above first.",
     testEmailSending: "Sending…",
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
@@ -1304,6 +1308,7 @@ const en = {
     scimGenerate: "Generate SCIM token",
     scimRegenerate: "Regenerate SCIM token",
     scimRevoke: "Revoke",
+    scimTokenLabel: "SCIM token",
     scimTokenShownOnce: "Copy this token now — it won't be shown again. Configure it as the bearer token in your identity provider's SCIM app settings.",
     loginBackground: "Login page background image",
     loginBackgroundUploaded: "Background image uploaded.",
@@ -1615,7 +1620,8 @@ const en = {
     emailTab: "Email",
     testEmail: "Send test email",
     testEmailHint: "Sends a test email using the deployment's configured SMTP settings, so you can confirm outgoing mail actually works.",
-    testEmailRecipientPlaceholder: "Recipient email (defaults to your own account)",
+    testEmailRecipient: "Recipient email",
+    testEmailRecipientHint: "Defaults to your own account when left blank.",
     testEmailSending: "Sending…",
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
     // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
@@ -1751,6 +1757,7 @@ const en = {
     disable2fa: "Disable 2FA",
     scanQrCode: "Scan this QR code with an authenticator app, then enter a code to confirm.",
     confirmCode: "Confirm code",
+    authenticatorCode: "Authenticator code",
     enterCodeToDisable: "Enter a current code to disable 2FA.",
     pats: "Personal Access Tokens",
     patsHint: (org: string) => `Long-lived tokens for non-interactive tools (e.g. an MCP server) that shouldn't need re-authenticating every 12 hours. Scoped to the ${org}(s) you choose, and never grant more access than your own account already has.`,
@@ -1950,6 +1957,20 @@ const en = {
     traceMapEdgeLabel: (phrase: string, from: string, to: string) => `${from} ${phrase} ${to}`,
     traceUnclassifiedHint:
       "Most of these links have no direction, so they all appear under Related. An organisation administrator can give a link type a direction (Organisation admin, Projects and workflow, Link types) to fill the Upstream and Downstream views.",
+  },
+  /** Feedback for a mutation run through `useMutation`: "Stage added." / "Could not add the stage." from a verb and a noun. */
+  mutation: {
+    past: {
+      add: "added", save: "saved", remove: "removed", delete: "deleted", rename: "renamed", move: "moved", update: "updated",
+      upload: "uploaded", send: "sent", archive: "archived", restore: "restored", revoke: "revoked", grant: "granted",
+      create: "created", start: "started", approve: "approved", complete: "completed", respond: "recorded", reset: "reset",
+      enable: "enabled", disable: "disabled", link: "linked", unlink: "unlinked", post: "posted", edit: "edited", change: "changed",
+      confirm: "confirmed", set: "set", clear: "cleared", mark: "marked", unban: "unbanned", reactivate: "reactivated", join: "joined",
+      toggle: "updated", submit: "submitted", cast: "recorded", generate: "generated",
+    },
+    success: (noun: string, past: string) =>
+      `${noun.replace(/^\{?\w/, (head) => head.toUpperCase())} ${past}.`,
+    failure: (verb: string, noun: string) => `Could not ${verb} the ${noun}.`,
   },
   common: {
     loading: "Loading…",

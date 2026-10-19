@@ -47,12 +47,14 @@ test.describe("Context & Strategy: groups as owners", () => {
     // --- Assign the org group to the Pain Point and the project group to the Open Question.
     await page.goto(`/projects/${project.id}/modules/context_strategy/pain-points/${painPoint.id}`);
     await expect(page.getByRole("heading", { name: `Reports arrive late ${suffix}` })).toBeVisible();
+    await page.getByRole("button", { name: /^(Assign|Change): Pain Point owner$/ }).click();
     await page.getByRole("combobox", { name: "Pain Point owner" }).fill("Strategy Board");
     await page.getByRole("option", { name: new RegExp(teamName) }).click();
     await expect(page.getByText("Owner updated.")).toBeVisible();
 
     await page.goto(`/projects/${project.id}/modules/context_strategy/open-questions/${question.id}`);
     await expect(page.getByRole("heading", { name: `One vendor ${suffix}?` })).toBeVisible();
+    await page.getByRole("button", { name: /^(Assign|Change): Open Question owner$/ }).click();
     await page.getByRole("combobox", { name: "Open Question owner" }).fill("Field Squad");
     await page.getByRole("option", { name: new RegExp(squadName) }).click();
     await expect(page.getByText("Owner updated.")).toBeVisible();

@@ -32,7 +32,6 @@
  */
 import { useEffect, useState } from "react";
 
-import { AutoGrowTextarea } from "../../components/AutoGrowTextarea";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -45,6 +44,7 @@ import {
   type ComplianceStandard,
   type ComplianceStandardVersion,
 } from "./types";
+import { TextAreaField } from "../../components/FormFields";
 
 interface Props {
   orgId: string;
@@ -153,14 +153,13 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
       )}
 
       <div className="card stack" style={{ gap: "0.4rem" }}>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Version summary</span>
-          <AutoGrowTextarea
-            value={summary}
-            onChange={setSummary}
-            placeholder="This version's current standing — e.g. note that a retired version is deprecated."
-          />
-        </label>
+        <TextAreaField
+          label="Version summary"
+          value={summary}
+          onChange={setSummary}
+          autoGrow
+          inputProps={{ placeholder: "This version's current standing — e.g. note that a retired version is deprecated." }}
+        />
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn btn-primary" disabled={summary === version.summary || savingSummary} onClick={handleSaveSummary}>
             {savingSummary ? "Saving…" : "Save summary"}

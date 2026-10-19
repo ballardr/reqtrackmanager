@@ -19,6 +19,9 @@
 import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
 import { PAIN_POINT_PRIORITY_LABEL } from "./types";
@@ -77,48 +80,40 @@ export function PainPointFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.title}` : "New Pain Point"} onClose={onCancel} size="lg">
       <div className="stack">
-        <LabeledSelect label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Title</span>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Pain Point title" />
-        </label>
-        {TEXT_FIELDS.map((f) => (
-          <label key={f.key} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={f.rows}
-              value={fields[f.key] ?? ""}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              aria-label={f.label}
-            />
-          </label>
-        ))}
-        <LabeledSelect
-          label="Priority"
-          value={priority}
-          onChange={(v) => setPriority(v as PainPointPriority)}
-          options={Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
-        />
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Date identified{!initial && " (defaults to today if left blank)"}</span>
-          <input
-            className="input" type="date" value={dateIdentified}
-            onChange={(e) => setDateIdentified(e.target.value)} aria-label="Date identified"
+        <FormGrid minColumn="18rem">
+          <LabeledSelect label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
+          <LabeledSelect
+            label="Priority"
+            value={priority}
+            onChange={(v) => setPriority(v as PainPointPriority)}
+            options={Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
-        </label>
-        <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
-          <ToggleSwitch checked={isIntentional} onChange={setIsIntentional} label="Intentional limitation" />
-          <span>
-            Intentional limitation
-            <span className="text-muted"> — a deliberate restriction (e.g. in a lower tier). Scored, but kept out of fix rankings.</span>
-          </span>
-        </div>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+          <FormGridFull>
+            <TextField label="Title" ariaLabel="Pain Point title" value={title} onChange={setTitle} />
+          </FormGridFull>
+          {TEXT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField
+                label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          <DateField
+            label={`Date identified${!initial ? " (defaults to today if left blank)" : ""}`} ariaLabel="Date identified"
+            value={dateIdentified} onChange={setDateIdentified}
+          />
+          <FormGridFull>
+            <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <ToggleSwitch checked={isIntentional} onChange={setIsIntentional} label="Intentional limitation" />
+              <span>
+                Intentional limitation
+                <span className="text-muted"> — a deliberate restriction (e.g. in a lower tier). Scored, but kept out of fix rankings.</span>
+              </span>
+            </div>
+          </FormGridFull>
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

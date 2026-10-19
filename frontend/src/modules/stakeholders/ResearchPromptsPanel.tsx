@@ -19,8 +19,9 @@ import { Modal } from "../../components/Modal";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
-import { TextAreaField } from "./RecordFormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { EngagementPrompt } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 function PromptEditModal({
   prompt, onCancel, onSave,
@@ -36,12 +37,11 @@ function PromptEditModal({
       <div className="stack">
         <TextAreaField label="Prompt" rows={2} value={text} onChange={setText} />
         <TextAreaField label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={text.trim() === ""} onClick={() => onSave({ prompt: text.trim(), response_notes: notes })}>
-            Save
-          </button>
-        </div>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ prompt: text.trim(), response_notes: notes })}
+          saveDisabled={text.trim() === ""}
+        />
       </div>
     </Modal>
   );
@@ -77,24 +77,18 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        <span>New session prompt</span>
-        <input className="input" value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="New session prompt" autoFocus />
-      </label>
-      <div className="row" style={{ justifyContent: "flex-end" }}>
-        <button className="btn" onClick={close}>Cancel</button>
-        <button
-          className="btn btn-primary" disabled={draft.trim() === ""}
-          onClick={() => {
-            const text = draft.trim();
-            setDraft("");
-            close();
-            void mutate(() => projectResearchApi.addPrompt(projectId, engagementId, { prompt: text }), "Prompt added.", "Could not add the prompt.");
-          }}
-        >
-          Add prompt
-        </button>
-      </div>
+      <TextField label="New session prompt" value={draft} onChange={setDraft} inputProps={{ autoFocus: true }} />
+      <FormActions
+        onCancel={close}
+        onSave={() => {
+          const text = draft.trim();
+          setDraft("");
+          close();
+          void mutate(() => projectResearchApi.addPrompt(projectId, engagementId, { prompt: text }), "Prompt added.", "Could not add the prompt.");
+        }}
+        saveLabel="Add prompt"
+        saveDisabled={draft.trim() === ""}
+      />
     </div>
   );
 

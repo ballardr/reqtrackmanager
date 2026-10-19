@@ -14,6 +14,9 @@
 import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
+import { FormActions } from "../../components/FormActions";
+import { TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_TIME_HORIZON_LABEL } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyTimeHorizon } from "./types";
@@ -67,45 +70,37 @@ export function StrategyFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.title}` : `New Strategy (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Title</span>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Strategy title" />
-        </label>
-        {TEXT_FIELDS.map((f) => (
-          <label key={f.key} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={f.rows}
-              value={fields[f.key] ?? ""}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              aria-label={f.label}
-            />
-          </label>
-        ))}
-        <LabeledSelect
-          label="Priority"
-          value={priority}
-          onChange={(v) => setPriority(v as StrategyPriority)}
-          options={Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
-        />
-        <LabeledSelect
-          label="Time horizon"
-          value={timeHorizon}
-          onChange={(v) => setTimeHorizon(v as StrategyTimeHorizon)}
-          options={Object.entries(STRATEGY_TIME_HORIZON_LABEL).map(([value, label]) => ({ value, label }))}
-        />
-        {initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Change note (optional)</span>
-            <input className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} aria-label="Change note" />
-          </label>
-        )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField label="Title" ariaLabel="Strategy title" value={title} onChange={setTitle} />
+          </FormGridFull>
+          {TEXT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField
+                label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          <LabeledSelect
+            label="Priority"
+            value={priority}
+            onChange={(v) => setPriority(v as StrategyPriority)}
+            options={Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
+          />
+          <LabeledSelect
+            label="Time horizon"
+            value={timeHorizon}
+            onChange={(v) => setTimeHorizon(v as StrategyTimeHorizon)}
+            options={Object.entries(STRATEGY_TIME_HORIZON_LABEL).map(([value, label]) => ({ value, label }))}
+          />
+          {initial && (
+            <FormGridFull>
+              <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+            </FormGridFull>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

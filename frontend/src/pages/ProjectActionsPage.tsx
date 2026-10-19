@@ -16,7 +16,6 @@ import { ENTITY_ACCENT_COLOR, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_ACTI
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { PrincipalBadge } from "../components/PrincipalBadge";
-import { PrincipalFormField } from "../components/PrincipalFormField";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
@@ -24,6 +23,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
+import { ActionFields } from "../components/ActionFields";
 
 const strings = t();
 
@@ -172,41 +172,20 @@ export function ProjectActionsPage() {
 
       {showNewForm && (
         <div className="card stack">
-          <input className="input" placeholder={strings.actions.name} value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-          <textarea
-            className="input" rows={2} placeholder={strings.actions.description} value={newDescription}
-            onChange={(e) => setNewDescription(e.target.value)}
+          <ActionFields
+            values={{ title: newTitle, description: newDescription, actionTypeId: newActionTypeId, assignee: newAssignee, dueDate: newDueDate }}
+            onChange={(v) => {
+              setNewTitle(v.title);
+              setNewDescription(v.description);
+              setNewActionTypeId(v.actionTypeId);
+              setNewAssignee(v.assignee);
+              setNewDueDate(v.dueDate);
+            }}
+            actionTypes={actionTypes}
+            orgUsers={orgUsers}
+            organizationId={organizationId}
+            projectId={projectId}
           />
-          <div className="row">
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.actions.actionType}
-              {/* Explicit aria-label — see the equivalent select in
-                  RequirementDetailPage.tsx for why a label-wrapped
-                  <select>'s ARIA name otherwise folds in its own option
-                  text too. */}
-              <select
-                className="input" aria-label={strings.actions.actionType}
-                value={newActionTypeId} onChange={(e) => setNewActionTypeId(e.target.value)}
-              >
-                {actionTypes.map((at) => (
-                  <option key={at.id} value={at.id}>
-                    {at.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div style={{ flex: 1 }}>
-              <PrincipalFormField
-                label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
-                value={newAssignee} onChange={setNewAssignee} ariaLabel={strings.actions.assignee}
-                placeholder={strings.reviews.unassigned}
-              />
-            </div>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.actions.dueDate}
-              <input className="input" type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)} />
-            </label>
-          </div>
           <button
             className="btn btn-primary" style={{ alignSelf: "flex-start" }}
             onClick={createAction} disabled={!newTitle.trim() || !newActionTypeId}

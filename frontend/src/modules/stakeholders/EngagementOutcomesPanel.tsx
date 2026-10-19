@@ -29,6 +29,8 @@ import { getArtefactPath } from "../artefactPaths";
 import type { OutcomeApi } from "./api";
 import type { EngagementOutcome, OutcomeKind, OutcomeTarget, OutcomeTargetType } from "./types";
 import { OUTCOME_KIND_LABEL, OUTCOME_TARGET_TYPE_LABEL } from "./types";
+import { FormActions } from "../../components/FormActions";
+import { FormGrid } from "../../components/FormGrid";
 
 const KIND_OPTIONS = Object.entries(OUTCOME_KIND_LABEL).map(([value, label]) => ({ value, label }));
 const ALL_TYPE_OPTIONS = Object.entries(OUTCOME_TARGET_TYPE_LABEL).map(([value, label]) => ({ value, label }));
@@ -139,28 +141,27 @@ export function EngagementOutcomesPanel({
         />
       )}
       {adding && (
-        <Modal title="Record an outcome" onClose={() => setAdding(false)}>
+        <Modal title="Record an outcome" onClose={() => setAdding(false)} size="lg">
           <div className="stack">
-            <LabeledSelect label="Outcome kind" value={kind} placeholder={null} onChange={(v) => changeKind(v as OutcomeKind)} options={KIND_OPTIONS} />
-            <LabeledSelect
-              label="Outcome type" value={targetType} placeholder={null}
-              onChange={(v) => { setTargetType(v as OutcomeTargetType); setPicked(""); }} options={typeOptions}
+            <FormGrid minColumn="18rem">
+              <LabeledSelect label="Outcome kind" value={kind} placeholder={null} onChange={(v) => changeKind(v as OutcomeKind)} options={KIND_OPTIONS} />
+              <LabeledSelect
+                label="Outcome type" value={targetType} placeholder={null}
+                onChange={(v) => { setTargetType(v as OutcomeTargetType); setPicked(""); }} options={typeOptions}
+              />
+              <LabeledSelect label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+            </FormGrid>
+            <FormActions
+              onCancel={() => setAdding(false)}
+              onSave={() => {
+                const id = picked;
+                setPicked("");
+                setAdding(false);
+                void mutate(() => api.add(projectId, holderId, kind, targetType, id), "Outcome recorded.", "Could not record the outcome.");
+              }}
+              saveLabel="Add outcome"
+              saveDisabled={!picked}
             />
-            <LabeledSelect label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setAdding(false)}>Cancel</button>
-              <button
-                className="btn btn-primary" disabled={!picked}
-                onClick={() => {
-                  const id = picked;
-                  setPicked("");
-                  setAdding(false);
-                  void mutate(() => api.add(projectId, holderId, kind, targetType, id), "Outcome recorded.", "Could not record the outcome.");
-                }}
-              >
-                Add outcome
-              </button>
-            </div>
           </div>
         </Modal>
       )}

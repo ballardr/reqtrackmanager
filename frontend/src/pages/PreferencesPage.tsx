@@ -31,6 +31,10 @@ import type {
 } from "../api/types";
 import { collapseProjectRoles, ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { Badge } from "../components/Badge";
+import { CheckboxField, DateField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { FormActions } from "../components/FormActions";
 
 type LandingMode = "auto" | "overview" | "project";
 
@@ -380,8 +384,12 @@ export function PreferencesPage() {
 
   async function startEnrollment() {
     setTwoFactorError(null);
-    const result = await api.post<{ secret: string; qr_code_png_base64: string }>("/api/v1/auth/2fa/enroll");
-    setEnrollment({ secret: result.secret, qrCodePngBase64: result.qr_code_png_base64 });
+    try {
+      const result = await api.post<{ secret: string; qr_code_png_base64: string }>("/api/v1/auth/2fa/enroll");
+      setEnrollment({ secret: result.secret, qrCodePngBase64: result.qr_code_png_base64 });
+    } catch (err) {
+      setTwoFactorError(err instanceof ApiError ? err.message : strings.common.error);
+    }
   }
 
   async function confirmEnrollment() {
@@ -390,6 +398,7 @@ export function PreferencesPage() {
       await api.post("/api/v1/auth/2fa/status", { action: "confirm", code: confirmCode });
       setEnrollment(null);
       setConfirmCode("");
+      showToast(strings.mutation.success("two-factor authentication", strings.mutation.past.enable));
       await refreshUser();
     } catch (err) {
       setTwoFactorError(err instanceof ApiError ? err.message : strings.common.error);
@@ -459,76 +468,61 @@ export function PreferencesPage() {
           </div>
           {avatarError && <div style={{ color: "var(--color-danger)" }}>{avatarError}</div>}
         </div>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.displayName}
-          <input
-            className="input"
+        <FormGrid minColumn="18rem">
+          <TextField
+            label={strings.preferences.displayName}
             value={displayName}
+            onChange={setDisplayName}
             disabled={user?.display_name_locked}
-            onChange={(e) => setDisplayName(e.target.value)}
+            hint={user?.display_name_locked ? strings.preferences.displayNameLocked(orgLabel) : undefined}
           />
-          {user?.display_name_locked && <span className="text-muted">{strings.preferences.displayNameLocked(orgLabel)}</span>}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.pronouns}
-          <input className="input" value={pronouns} onChange={(e) => setPronouns(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.theme}
-          <select className="input" value={theme} onChange={(e) => setTheme(e.target.value as ThemePreference)}>
-            <option value="light">{strings.preferences.light}</option>
-            <option value="dark">{strings.preferences.dark}</option>
-            <option value="system">{strings.preferences.system}</option>
-          </select>
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.contentWidth}
-          <select
-            className="input"
+          <TextField label={strings.preferences.pronouns} value={pronouns} onChange={setPronouns} />
+          <LabeledSelect
+            label={strings.preferences.theme}
+            value={theme}
+            onChange={(next) => setTheme(next as ThemePreference)}
+            options={[{ value: "light", label: strings.preferences.light }, { value: "dark", label: strings.preferences.dark }, { value: "system", label: strings.preferences.system }]}
+            placeholder={null}
+          />
+          <LabeledSelect
+            label={strings.preferences.contentWidth}
             value={contentBoxed ? "boxed" : "full"}
-            onChange={(e) => setContentBoxed(e.target.value === "boxed")}
-          >
-            <option value="full">{strings.preferences.contentWidthFull}</option>
-            <option value="boxed">{strings.preferences.contentWidthBoxed}</option>
-          </select>
-        </label>
-        <label className="row">
-          <input type="checkbox" checked={showProjectCode} onChange={(e) => setShowProjectCode(e.target.checked)} />
-          {strings.preferences.showProjectCode}
-        </label>
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.preferences.showProjectCodeHint}</p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.landing}
-          <select
-            className="input"
+            onChange={(next) => setContentBoxed(next === "boxed")}
+            options={[{ value: "full", label: strings.preferences.contentWidthFull }, { value: "boxed", label: strings.preferences.contentWidthBoxed }]}
+            placeholder={null}
+          />
+          <FormGridFull>
+            <CheckboxField
+              label={strings.preferences.showProjectCode}
+              checked={showProjectCode}
+              onChange={setShowProjectCode}
+              hint={strings.preferences.showProjectCodeHint}
+            />
+          </FormGridFull>
+          <LabeledSelect
+            label={strings.preferences.landing}
             value={landingMode}
-            onChange={(e) => setLandingMode(e.target.value as LandingMode)}
-          >
-            <option value="auto">{strings.preferences.landingAuto}</option>
-            <option value="overview">{strings.preferences.landingOverview}</option>
-            <option value="project">{strings.preferences.landingProject}</option>
-          </select>
-        </label>
-        {landingMode === "project" && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.preferences.landingProjectSelect}
-            <select className="input" value={landingProjectId} onChange={(e) => setLandingProjectId(e.target.value)}>
-              {myProjects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.emailDigest}
-          <select className="input" value={digestMode} onChange={(e) => setDigestMode(e.target.value as DigestMode)}>
-            <option value="instant">{strings.preferences.digestInstant}</option>
-            <option value="daily">{strings.preferences.digestDaily}</option>
-            <option value="none">{strings.preferences.digestNone}</option>
-          </select>
-        </label>
+            onChange={(next) => setLandingMode(next as LandingMode)}
+            options={[{ value: "auto", label: strings.preferences.landingAuto }, { value: "overview", label: strings.preferences.landingOverview }, { value: "project", label: strings.preferences.landingProject }]}
+            placeholder={null}
+          />
+          {landingMode === "project" && (
+            <LabeledSelect
+              label={strings.preferences.landingProjectSelect}
+              value={landingProjectId}
+              onChange={setLandingProjectId}
+              options={myProjects.map((p) => ({ value: p.id, label: p.name }))}
+              placeholder={null}
+            />
+          )}
+          <LabeledSelect
+            label={strings.preferences.emailDigest}
+            value={digestMode}
+            onChange={(next) => setDigestMode(next as DigestMode)}
+            options={[{ value: "instant", label: strings.preferences.digestInstant }, { value: "daily", label: strings.preferences.digestDaily }, { value: "none", label: strings.preferences.digestNone }]}
+            placeholder={null}
+          />
+        </FormGrid>
         {profileError && <div style={{ color: "var(--color-danger)" }}>{profileError}</div>}
         <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
           {strings.preferences.save}
@@ -541,20 +535,20 @@ export function PreferencesPage() {
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.security}</h2>
         <CollapsibleSection sectionKey="preferences.security.change_password" variant="plain" title={strings.preferences.changePassword}>
-          <input
-            className="input"
-            type="password"
-            placeholder={strings.preferences.currentPassword}
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-          />
-          <input
-            className="input"
-            type="password"
-            placeholder={strings.preferences.newPassword}
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
+          <FormGrid minColumn="18rem">
+            <TextField
+              label={strings.preferences.currentPassword}
+              value={currentPassword}
+              onChange={setCurrentPassword}
+              inputProps={{ type: "password" }}
+            />
+            <TextField
+              label={strings.preferences.newPassword}
+              value={newPassword}
+              onChange={setNewPassword}
+              inputProps={{ type: "password" }}
+            />
+          </FormGrid>
           {passwordError && <div style={{ color: "var(--color-danger)" }}>{passwordError}</div>}
           <button className="btn" onClick={changePassword} style={{ alignSelf: "flex-start" }}>
             {strings.preferences.changePassword}
@@ -593,13 +587,12 @@ export function PreferencesPage() {
                 alt="2FA QR code"
                 style={{ width: 180, height: 180 }}
               />
-              <div className="row">
-                <input
-                  className="input"
-                  style={{ maxWidth: 160 }}
-                  placeholder={strings.preferences.confirmCode}
+              <div className="row" style={{ alignItems: "flex-end" }}>
+                <TextField
+                  label={strings.preferences.confirmCode}
                   value={confirmCode}
-                  onChange={(e) => setConfirmCode(e.target.value)}
+                  onChange={setConfirmCode}
+                  inputProps={{ style: { maxWidth: 160 } }}
                 />
                 <button className="btn btn-primary" onClick={confirmEnrollment}>
                   {strings.preferences.confirmCode}
@@ -609,13 +602,13 @@ export function PreferencesPage() {
           )}
 
           {user?.is_2fa_enabled && (
-            <div className="row">
-              <input
-                className="input"
-                style={{ maxWidth: 160 }}
-                placeholder={strings.preferences.enterCodeToDisable}
+            <div className="row" style={{ alignItems: "flex-end" }}>
+              <TextField
+                label={strings.preferences.authenticatorCode}
+                hint={strings.preferences.enterCodeToDisable}
                 value={disableCode}
-                onChange={(e) => setDisableCode(e.target.value)}
+                onChange={setDisableCode}
+                inputProps={{ style: { maxWidth: 160 } }}
               />
               <button className="btn btn-danger" onClick={disable2fa}>
                 {strings.preferences.disable2fa}
@@ -753,80 +746,75 @@ export function PreferencesPage() {
         )}
 
         {patFormOpen && (
-          <Modal title={strings.preferences.patNew} onClose={closePatForm}>
-            <input
-              className="input"
-              placeholder={strings.preferences.patNamePlaceholder}
-              value={newPatName}
-              onChange={(e) => setNewPatName(e.target.value)}
-            />
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.preferences.patOrgs(orgLabelPlural)}
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                {myOrgs.map((org) => (
-                  <label key={org.id} className="row" style={{ gap: "0.5rem" }}>
-                    <input
-                      type="checkbox"
-                      checked={newPatOrgIds.has(org.id)}
-                      onChange={() => toggleNewPatOrg(org.id)}
-                    />
-                    {org.name}
-                  </label>
-                ))}
-              </div>
-            </label>
-            {newPatOrgIds.size > 0 && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.preferences.patProjects}
-                {(() => {
-                  const scopedProjects = myProjects.filter((p) => newPatOrgIds.has(p.organization_id));
-                  return scopedProjects.length === 0 ? (
-                    <span className="text-muted">{strings.preferences.patNoProjectsInOrgs(orgLabel)}</span>
-                  ) : (
+          <Modal title={strings.preferences.patNew} onClose={closePatForm} size="lg">
+            <div className="stack">
+              <FormGrid minColumn="18rem">
+                <TextField
+                  label={strings.preferences.patName}
+                  placeholder={strings.preferences.patNamePlaceholder}
+                  value={newPatName}
+                  onChange={setNewPatName}
+                />
+                <DateField
+                  label={strings.preferences.patExpiry}
+                  value={newPatExpiry}
+                  onChange={(next) => {
+                    setExpiryAutoFilled(false);
+                    setNewPatExpiry(next);
+                  }}
+                  hint={
+                    expiryTooLong && maxExpiresAt ? (
+                      <span style={{ color: "var(--color-danger)" }}>
+                        {strings.preferences.patExpiryTooLong(orgLabelPlural).replace(
+                          "{date}", new Date(maxExpiresAt).toLocaleDateString()
+                        )}
+                      </span>
+                    ) : undefined
+                  }
+                />
+                <FormGridFull>
+                  <div className="stack" style={{ gap: "0.25rem" }}>
+                    <span>{strings.preferences.patOrgs(orgLabelPlural)}</span>
+                    {myOrgs.map((org) => (
+                      <CheckboxField
+                        key={org.id}
+                        label={org.name}
+                        checked={newPatOrgIds.has(org.id)}
+                        onChange={() => toggleNewPatOrg(org.id)}
+                      />
+                    ))}
+                  </div>
+                </FormGridFull>
+                {newPatOrgIds.size > 0 && (
+                  <FormGridFull>
                     <div className="stack" style={{ gap: "0.25rem" }}>
-                      {scopedProjects.map((project) => (
-                        <label key={project.id} className="row" style={{ gap: "0.5rem" }}>
-                          <input
-                            type="checkbox"
-                            checked={newPatProjectIds.has(project.id)}
-                            onChange={() => toggleNewPatProject(project.id)}
-                          />
-                          {project.name}
-                        </label>
-                      ))}
+                      <span>{strings.preferences.patProjects}</span>
+                      {(() => {
+                        const scopedProjects = myProjects.filter((p) => newPatOrgIds.has(p.organization_id));
+                        return scopedProjects.length === 0 ? (
+                          <span className="text-muted">{strings.preferences.patNoProjectsInOrgs(orgLabel)}</span>
+                        ) : (
+                          scopedProjects.map((project) => (
+                            <CheckboxField
+                              key={project.id}
+                              label={project.name}
+                              checked={newPatProjectIds.has(project.id)}
+                              onChange={() => toggleNewPatProject(project.id)}
+                            />
+                          ))
+                        );
+                      })()}
+                      <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.patProjectsHint(orgLabelPlural)}</span>
                     </div>
-                  );
-                })()}
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.patProjectsHint(orgLabelPlural)}</span>
-              </label>
-            )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.preferences.patExpiry}
-              <input
-                className="input"
-                type="date"
-                value={newPatExpiry}
-                onChange={(e) => {
-                  setExpiryAutoFilled(false);
-                  setNewPatExpiry(e.target.value);
-                }}
+                  </FormGridFull>
+                )}
+              </FormGrid>
+              <FormActions
+                error={patError}
+                onCancel={closePatForm}
+                onSave={createPat}
+                saveLabel={strings.preferences.patCreate}
               />
-              {expiryTooLong && maxExpiresAt && (
-                <span style={{ color: "var(--color-danger)", fontSize: "0.8rem" }}>
-                  {strings.preferences.patExpiryTooLong(orgLabelPlural).replace(
-                    "{date}", new Date(maxExpiresAt).toLocaleDateString()
-                  )}
-                </span>
-              )}
-            </label>
-            {patError && <div style={{ color: "var(--color-danger)" }}>{patError}</div>}
-            <div className="row">
-              <button className="btn btn-primary" onClick={createPat} style={{ alignSelf: "flex-start" }}>
-                {strings.preferences.patCreate}
-              </button>
-              <button className="btn" onClick={closePatForm} style={{ alignSelf: "flex-start" }}>
-                {strings.common.cancel}
-              </button>
             </div>
           </Modal>
         )}

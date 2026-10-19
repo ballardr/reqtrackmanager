@@ -109,7 +109,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             </div>
             {isEditing ? (
               <div className="stack" style={{ gap: "0.4rem" }}>
-                <textarea className="input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} />
+                <textarea className="input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} aria-label="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (

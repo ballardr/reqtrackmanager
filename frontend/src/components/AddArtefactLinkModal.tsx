@@ -39,6 +39,8 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
+import { TextAreaField, TextField } from "./FormFields";
+import { FormActions } from "./FormActions";
 
 /** Lets a page route link changes through a change request instead of the link endpoints. */
 export interface LinksChangeRequestMode {
@@ -341,19 +343,15 @@ export function AddArtefactLinkModal({
                 {level.truncated && <span className="text-muted">{strings.artefactLinks.levelTruncated}</span>}
               </div>
             ))}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.artefactLinks.searchLabel}
-              <input
-                className="input"
-                aria-label={strings.artefactLinks.searchLabel}
-                placeholder={strings.artefactLinks.searchPlaceholder}
-                value={searchText}
-                onChange={(e) => {
-                  setSearchText(e.target.value);
-                  setTargetId("");
-                }}
-              />
-            </label>
+            <TextField
+              label={strings.artefactLinks.searchLabel}
+              value={searchText}
+              onChange={(next) => {
+                setSearchText(next);
+                setTargetId("");
+              }}
+              placeholder={strings.artefactLinks.searchPlaceholder}
+            />
             {!searchable && <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.searchPrompt}</p>}
             {searchable && (
               <LabeledSelect
@@ -387,22 +385,16 @@ export function AddArtefactLinkModal({
           </>
         )}
         {changeRequest && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.artefactLinks.reasonLabel}
-            <textarea
-              className="input" rows={2} aria-label={strings.artefactLinks.reasonLabel}
-              value={reason} onChange={(e) => setReason(e.target.value)}
-            />
-          </label>
+          <TextAreaField label={strings.artefactLinks.reasonLabel} value={reason} onChange={setReason} rows={2} />
         )}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onClose}>{strings.common.cancel}</button>
-          <button className="btn btn-primary" disabled={!chosen || !target || saving || reasonMissing} onClick={submit}>
-            {collect
+        <FormActions
+          onCancel={onClose}
+          onSave={submit}
+          saveLabel={collect
               ? strings.artefactLinks.submitCollect
               : changeRequest ? strings.artefactLinks.submitAddViaChangeRequest : strings.artefactLinks.submitAdd}
-          </button>
-        </div>
+          saveDisabled={!chosen || !target || saving || reasonMissing}
+        />
       </div>
     </Modal>
   );

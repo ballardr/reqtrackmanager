@@ -143,7 +143,7 @@ test("report content is written per report type and inherited from parent projec
     await ensureExpanded(page, "Report templates");
     await page.getByRole("button", { name: "New template" }).click();
     const dialog = page.getByRole("dialog", { name: "New template" });
-    await dialog.getByPlaceholder("Name", { exact: true }).fill(`E2E Content Template ${suffix}`);
+    await dialog.getByLabel("Name", { exact: true }).fill(`E2E Content Template ${suffix}`);
     await dialog.getByLabel("Report type").selectOption("requirements");
     await dialog.locator("textarea").first().fill("Template intro");
     await dialog.getByRole("button", { name: "Create", exact: true }).click();

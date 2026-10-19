@@ -28,6 +28,9 @@
 import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { OPEN_QUESTION_PRIORITY_LABEL } from "./types";
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority } from "./types";
@@ -74,36 +77,24 @@ export function OpenQuestionFormModal({
       size="lg"
     >
       <div className="stack">
-        {TEXT_FIELDS.map((f) => (
-          <label key={f.key} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={f.rows}
-              value={fields[f.key] ?? ""}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              aria-label={f.label}
-            />
-          </label>
-        ))}
-        <LabeledSelect
-          label="Priority"
-          value={priority}
-          onChange={(v) => setPriority(v as OpenQuestionPriority)}
-          options={Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
-        />
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Due / review date (optional)</span>
-          <input
-            className="input" type="date" value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)} aria-label="Due date"
+        <FormGrid minColumn="18rem">
+          {TEXT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField
+                label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          <LabeledSelect
+            label="Priority"
+            value={priority}
+            onChange={(v) => setPriority(v as OpenQuestionPriority)}
+            options={Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
-        </label>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+          <DateField label="Due / review date (optional)" ariaLabel="Due date" value={dueDate} onChange={setDueDate} />
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

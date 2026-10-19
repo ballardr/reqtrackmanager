@@ -1,3 +1,4 @@
+import { useRecordCode } from "../hooks/useRecordCode";
 import { Plus } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
 import { useEffect, useState } from "react";
@@ -47,6 +48,9 @@ import { useToast } from "../context/ToastContext";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { CheckboxField, TextAreaField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
 
 const PAGE_SIZE = 30;
 
@@ -105,6 +109,7 @@ const BLANK_PROPOSED: ProposedFields = {
  */
 export function ChangeRequestsPage() {
   const strings = useStrings();
+  const recordCode = useRecordCode();
   const { projectId } = useParams<{ projectId: string }>();
   const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -553,10 +558,7 @@ export function ChangeRequestsPage() {
               </p>
             )}
             {orgResources.map((r) => (
-              <label key={r.id} className="row">
-                <input type="checkbox" checked={attachmentFileIds.includes(r.id)} onChange={() => toggleAttachment(r.id)} />
-                {r.filename}
-              </label>
+              <CheckboxField key={r.id} label={r.filename} checked={attachmentFileIds.includes(r.id)} onChange={() => toggleAttachment(r.id)} />
             ))}
           </div>
         );
@@ -596,16 +598,13 @@ export function ChangeRequestsPage() {
 
           {kind === "modify_requirement" ? (
             <>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.changeRequests.selectARequirement}
-                <select className="input" value={requirementId} onChange={(e) => setRequirementId(e.target.value)}>
-                  {lockableRequirements.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      <RecordCode code={r.unique_code} /> — {r.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <LabeledSelect
+                label={strings.changeRequests.selectARequirement}
+                value={requirementId}
+                onChange={setRequirementId}
+                options={lockableRequirements.map((r) => ({ value: r.id, label: `${recordCode.code(r.unique_code)} — ${r.name}` }))}
+                placeholder={null}
+              />
               {lockableRequirements.length === 0 && (
                 <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
                   {strings.changeRequests.noLockableRequirements}
@@ -628,93 +627,78 @@ export function ChangeRequestsPage() {
               </div>
             </>
           ) : (
-            <>
-              <div className="row">
-                <select
-                  className="input"
-                  value={componentId}
-                  onChange={(e) => {
-                    const nextComponentId = e.target.value;
-                    setComponentId(nextComponentId);
-                    setCategoryId(categories.find((c) => c.component_id === nextComponentId)?.id ?? "");
-                  }}
-                >
-                  {components.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                  {categories.filter((c) => c.component_id === componentId).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <input
-                className="input"
-                placeholder={strings.changeRequests.proposedName}
-                value={proposed.name}
-                onChange={(e) => setProposed((p) => ({ ...p, name: e.target.value }))}
+            <FormGrid minColumn="18rem">
+              <LabeledSelect
+                label={strings.requirements.component}
+                value={componentId}
+                onChange={(nextComponentId) => {
+                  setComponentId(nextComponentId);
+                  setCategoryId(categories.find((c) => c.component_id === nextComponentId)?.id ?? "");
+                }}
+                options={components.map((c) => ({ value: c.id, label: c.name }))}
+                placeholder={null}
               />
-              <textarea
-                className="input"
-                rows={2}
-                placeholder={strings.changeRequests.proposedReasoning}
-                value={proposed.reasoning}
-                onChange={(e) => setProposed((p) => ({ ...p, reasoning: e.target.value }))}
+              <LabeledSelect
+                label={strings.requirements.category}
+                value={categoryId}
+                onChange={setCategoryId}
+                options={categories.filter((c) => c.component_id === componentId).map((c) => ({ value: c.id, label: c.name }))}
+                placeholder={null}
               />
-              <textarea
-                className="input"
-                rows={2}
-                placeholder={strings.requirements.clarification}
-                value={proposed.clarification}
-                onChange={(e) => setProposed((p) => ({ ...p, clarification: e.target.value }))}
+              <FormGridFull>
+                <TextField
+                  label={strings.changeRequests.proposedName}
+                  value={proposed.name}
+                  onChange={(next) => setProposed((p) => ({ ...p, name: next }))}
+                />
+              </FormGridFull>
+              <FormGridFull>
+                <TextAreaField
+                  label={strings.changeRequests.proposedReasoning}
+                  value={proposed.reasoning}
+                  onChange={(next) => setProposed((p) => ({ ...p, reasoning: next }))}
+                />
+              </FormGridFull>
+              <FormGridFull>
+                <TextAreaField
+                  label={strings.requirements.clarification}
+                  value={proposed.clarification}
+                  onChange={(next) => setProposed((p) => ({ ...p, clarification: next }))}
+                />
+              </FormGridFull>
+              <FormGridFull>
+                <TextAreaField
+                  label={strings.requirements.description}
+                  value={proposed.description}
+                  onChange={(next) => setProposed((p) => ({ ...p, description: next }))}
+                />
+              </FormGridFull>
+              <LabeledSelect
+                label={strings.requirements.targetVersion}
+                value={proposed.targetStageId}
+                onChange={(next) => setProposed((p) => ({ ...p, targetStageId: next }))}
+                options={stages.map((s) => ({ value: s.id, label: s.name }))}
+                placeholder="—"
               />
-              <textarea
-                className="input"
-                rows={2}
-                placeholder={strings.requirements.description}
-                value={proposed.description}
-                onChange={(e) => setProposed((p) => ({ ...p, description: e.target.value }))}
+              <LabeledSelect
+                label={strings.requirements.level}
+                value={proposed.level}
+                onChange={(next) => setProposed((p) => ({ ...p, level: next as RequirementLevel }))}
+                options={[
+                  { value: "requirement", label: REQUIREMENT_LEVEL_LABEL.requirement },
+                  { value: "recommended", label: REQUIREMENT_LEVEL_LABEL.recommended },
+                  { value: "optional", label: REQUIREMENT_LEVEL_LABEL.optional },
+                ]}
+                placeholder={null}
               />
-              <div className="row">
-                <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-                  {strings.requirements.targetVersion}
-                  <select
-                    className="input"
-                    value={proposed.targetStageId}
-                    onChange={(e) => setProposed((p) => ({ ...p, targetStageId: e.target.value }))}
-                  >
-                    <option value="">—</option>
-                    {stages.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-                  {strings.requirements.level}
-                  <select
-                    className="input"
-                    value={proposed.level}
-                    onChange={(e) => setProposed((p) => ({ ...p, level: e.target.value as RequirementLevel }))}
-                  >
-                    <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
-                    <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
-                    <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
-                  </select>
-                </label>
-              </div>
-              <CustomFieldsForm
-                definitions={customFieldDefs}
-                values={customFieldValues}
-                onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
-              />
-            </>
+              <FormGridFull>
+                <CustomFieldsForm
+                  definitions={customFieldDefs}
+                  values={customFieldValues}
+                  onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
+                />
+              </FormGridFull>
+            </FormGrid>
           )}
 
           {projectId && linksTarget && (
@@ -726,13 +710,7 @@ export function ChangeRequestsPage() {
             />
           )}
 
-          <textarea
-            className="input"
-            rows={2}
-            placeholder={strings.changeRequests.reason}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
+          <TextAreaField label={strings.changeRequests.reason} value={reason} onChange={setReason} />
           {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
           <div className="row">
             <button

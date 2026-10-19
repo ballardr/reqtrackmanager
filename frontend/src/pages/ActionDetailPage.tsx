@@ -1,3 +1,4 @@
+import { useMutation } from "../hooks/useMutation";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -18,7 +19,6 @@ import { CommentThread } from "../components/CommentThread";
 import { DetailLayout } from "../components/DetailLayout";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { PrincipalBadge } from "../components/PrincipalBadge";
-import { PrincipalFormField } from "../components/PrincipalFormField";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -26,6 +26,8 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { Badge } from "../components/Badge";
 import { RecordHeader } from "../components/RecordHeader";
 import { useConfirmedAction } from "../components/useConfirmedAction";
+import { ActionFields } from "../components/ActionFields";
+import { LabeledSelect } from "../components/LabeledSelect";
 
 /**
  * Detail view for a single requirement action: an editable outcome-status
@@ -37,6 +39,7 @@ import { useConfirmedAction } from "../components/useConfirmedAction";
  * way a requirement does), and a reused `CommentThread` discussion.
  */
 export function ActionDetailPage() {
+  const run = useMutation();
   const strings = useStrings();
   const { projectId, actionId } = useParams<{ projectId: string; actionId: string }>();
   const { user } = useAuth();
@@ -118,6 +121,7 @@ export function ActionDetailPage() {
         due_date: form.dueDate || null,
       });
       formDirtyRef.current = false;
+      showToast(strings.mutation.success("action", strings.mutation.past.save));
       reload();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : strings.common.error);
@@ -136,6 +140,7 @@ export function ActionDetailPage() {
         outcome_status: outcome,
       });
       formDirtyRef.current = false;
+      showToast(strings.mutation.success("outcome", strings.mutation.past.update));
       reload();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : strings.common.error);
@@ -167,12 +172,12 @@ export function ActionDetailPage() {
   }
 
   async function uploadFile(file: File) {
-    await api.postFile(`/api/v1/projects/${projectId}/actions/${actionId}/files`, file);
+    if (!(await run(() => api.postFile(`/api/v1/projects/${projectId}/actions/${actionId}/files`, file), "upload", "file"))) return;
     reload();
   }
 
   async function removeFile(fileId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/actions/${actionId}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/actions/${actionId}/files/${fileId}`), "remove", "file"))) return;
     reload();
   }
 
@@ -188,11 +193,8 @@ export function ActionDetailPage() {
   }
 
   async function toggleReaction(commentId: string, reacted: boolean) {
-    if (reacted) {
-      await api.delete(`/api/v1/projects/${projectId}/actions/${actionId}/comments/${commentId}/reaction`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/actions/${actionId}/comments/${commentId}/reaction`);
-    }
+    const url = `/api/v1/projects/${projectId}/actions/${actionId}/comments/${commentId}/reaction`;
+    if (!(await run(() => (reacted ? api.delete(url) : api.put(url)), { failure: "Could not update the reaction." }))) return;
     reload();
   }
 
@@ -202,7 +204,7 @@ export function ActionDetailPage() {
   }
 
   async function removeCommentAttachment(commentId: string, fileId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/actions/${actionId}/comments/${commentId}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/actions/${actionId}/comments/${commentId}/files/${fileId}`), "remove", "comment attachment"))) return;
     reload();
   }
 
@@ -241,84 +243,33 @@ export function ActionDetailPage() {
 
       <div className="stack">
           <div className="card stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.actions.name}
-              <input
-                className="input" value={form.title} disabled={action.is_archived}
-                onChange={(e) => updateForm((f) => ({ ...f, title: e.target.value }))}
-              />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.actions.description}
-              <textarea
-                className="input" rows={3} value={form.description} disabled={action.is_archived}
-                onChange={(e) => updateForm((f) => ({ ...f, description: e.target.value }))}
-              />
-            </label>
-            <div className="row">
-              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-                {strings.actions.actionType}
-                {/* Explicit aria-label — see the equivalent select on
-                    RequirementDetailPage.tsx for why a label-wrapped
-                    <select>'s ARIA name otherwise folds in its own option
-                    text too. */}
-                <select
-                  className="input" aria-label={strings.actions.actionType}
-                  value={form.actionTypeId} disabled={action.is_archived}
-                  onChange={(e) => updateForm((f) => ({ ...f, actionTypeId: e.target.value }))}
-                >
-                  {actionTypes.map((at) => (
-                    <option key={at.id} value={at.id}>
-                      {at.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div style={{ flex: 1 }}>
-                {action.is_archived ? (
-                  <div className="stack" style={{ gap: "0.25rem" }}>
-                    <span>{strings.actions.assignee}</span>
-                    <PrincipalBadge principal={action.assignee} placeholder={strings.reviews.unassigned} />
-                  </div>
-                ) : (
-                  <PrincipalFormField
-                    label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
-                    value={form.assignee} display={savedPrincipalDisplay(form.assignee, action.assignee)}
-                    onChange={(assignee) => updateForm((f) => ({ ...f, assignee }))}
-                    ariaLabel={strings.actions.assignee} placeholder={strings.reviews.unassigned}
-                  />
-                )}
-              </div>
-              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-                {strings.actions.dueDate}
-                <input
-                  className="input" type="date" value={form.dueDate} disabled={action.is_archived}
-                  onChange={(e) => updateForm((f) => ({ ...f, dueDate: e.target.value }))}
-                />
-              </label>
-            </div>
+            <ActionFields
+              values={form}
+              onChange={(v) => updateForm(() => v)}
+              actionTypes={actionTypes}
+              orgUsers={orgUsers}
+              organizationId={organizationId}
+              projectId={projectId}
+              disabled={action.is_archived}
+              assigneeDisplay={savedPrincipalDisplay(form.assignee, action.assignee)}
+              archivedAssignee={<PrincipalBadge principal={action.assignee} placeholder={strings.reviews.unassigned} />}
+            />
             {saveError && <div style={{ color: "var(--color-danger)" }}>{saveError}</div>}
             {!action.is_archived && (
               <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
                 {strings.common.save}
               </button>
             )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.actions.outcome}
-              {/* Explicit aria-label, same reasoning as the type/assignee
-                  selects above. */}
-              <select
-                className="input" aria-label={strings.actions.outcome}
-                value={action.outcome_status} disabled={action.is_archived}
-                onChange={(e) => setOutcome(e.target.value as RequirementActionOutcome)}
-              >
-                {(["pending", "completed", "failed"] as RequirementActionOutcome[]).map((o) => (
-                  <option key={o} value={o}>
-                    {REQUIREMENT_ACTION_OUTCOME_LABEL[o]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <LabeledSelect
+              label={strings.actions.outcome}
+              value={action.outcome_status}
+              onChange={(next) => setOutcome(next as RequirementActionOutcome)}
+              options={(["pending", "completed", "failed"] as RequirementActionOutcome[]).map((o) => ({
+                value: o, label: REQUIREMENT_ACTION_OUTCOME_LABEL[o],
+              }))}
+              placeholder={null}
+              disabled={action.is_archived}
+            />
             {action.completed_at && (
               <span className="text-muted" style={{ fontSize: "0.85rem" }}>
                 {strings.actions.completedAt}: {new Date(action.completed_at).toLocaleString()}

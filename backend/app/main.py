@@ -51,6 +51,7 @@ from app.routers import (
 )
 from app.services import pubsub
 from app.services.bootstrap import run_bootstrap
+from app.services.client_date import reset_client_date, set_client_date
 from app.services.disk_monitor import run_disk_monitor_loop
 from app.services.notifications import run_digest_loop
 from app.services.process_coordination import run_leadership_loop, startup_lock
@@ -214,6 +215,20 @@ async def security_headers_middleware(request: Request, call_next):
     frame_src = " ".join(frame_src_origins) if frame_src_origins else "'none'"
     response.headers["Content-Security-Policy"] = f"frame-ancestors 'none'; frame-src {frame_src}"
     return response
+
+
+@app.middleware("http")
+async def client_date_middleware(request: Request, call_next):
+    """Records the caller's calendar day (`X-Client-Date`) for rules about whether a date has happened yet.
+
+    See `services.client_date`: the value is validated for plausibility and only affects derived,
+    display-level dates, so an absent or bad header just means the UTC day is used.
+    """
+    token = set_client_date(request.headers.get("x-client-date"))
+    try:
+        return await call_next(request)
+    finally:
+        reset_client_date(token)
 
 
 @app.middleware("http")

@@ -1,3 +1,5 @@
+import { useMutation } from "../hooks/useMutation";
+import { useRecordCode } from "../hooks/useRecordCode";
 import { Bell, BellOff, CheckCircle, FolderOpen, GitPullRequest, Plus, Trash2 } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
@@ -54,6 +56,11 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { getInstalledModule } from "../modules/registry";
 import { Badge } from "../components/Badge";
+import { DateField, TextAreaField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormActions } from "../components/FormActions";
+import { ActionFields } from "../components/ActionFields";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -78,7 +85,9 @@ import { Badge } from "../components/Badge";
  * `docs/decisions.md` for the reasoning.
  */
 export function RequirementDetailPage() {
+  const run = useMutation();
   const strings = useStrings();
+  const recordCode = useRecordCode();
   const { projectId, requirementId } = useParams<{ projectId: string; requirementId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -260,12 +269,12 @@ export function RequirementDetailPage() {
   }
 
   async function uploadFile(file: File) {
-    await api.postFile(`/api/v1/projects/${projectId}/requirements/${requirementId}/files`, file);
+    if (!(await run(() => api.postFile(`/api/v1/projects/${projectId}/requirements/${requirementId}/files`, file), "upload", "file"))) return;
     reload();
   }
 
   async function removeFile(fileId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/files/${fileId}`), "remove", "file"))) return;
     reload();
   }
 
@@ -449,6 +458,7 @@ export function RequirementDetailPage() {
         reviewer: form.reviewer,
       });
       formDirtyRef.current = false;
+      showToast(strings.mutation.success("{requirement}", strings.mutation.past.save));
       reload();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : strings.common.error);
@@ -517,6 +527,7 @@ export function RequirementDetailPage() {
         comment: reviewComment || null,
       });
       setReviewComment("");
+      showToast(strings.mutation.success("review", strings.mutation.past.submit));
       reload();
     } catch (err) {
       setReviewError(err instanceof Error ? err.message : strings.common.error);
@@ -525,11 +536,7 @@ export function RequirementDetailPage() {
 
   async function toggleSubscription() {
     if (!requirement) return;
-    if (requirement.is_subscribed) {
-      await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/subscription`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/subscription`);
-    }
+    if (!(await run(() => (requirement.is_subscribed ? api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/subscription`) : api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/subscription`)), { failure: "Could not update the subscription." }))) return;
     reload();
   }
 
@@ -545,16 +552,12 @@ export function RequirementDetailPage() {
   }
 
   async function removeCommentAttachment(commentId: string, fileId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/files/${fileId}`), "remove", "comment attachment"))) return;
     reload();
   }
 
   async function toggleReaction(commentId: string, reacted: boolean) {
-    if (reacted) {
-      await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`);
-    }
+    if (!(await run(() => (reacted ? api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`) : api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`)), { failure: "Could not update the reaction." }))) return;
     reload();
   }
 
@@ -711,109 +714,98 @@ export function RequirementDetailPage() {
         </div>
       ) : (
         <div className="card stack">
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.name}
-            <input className="input" value={form.name} onChange={(e) => updateForm((f) => ({ ...f, name: e.target.value }))} />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.reasoning}
-            <textarea
-              className="input"
-              rows={3}
-              value={form.reasoning}
-              onChange={(e) => updateForm((f) => ({ ...f, reasoning: e.target.value }))}
-            />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.clarification}
-            <textarea
-              className="input"
-              rows={2}
-              value={form.clarification}
-              onChange={(e) => updateForm((f) => ({ ...f, clarification: e.target.value }))}
-            />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.description}
-            <textarea
-              className="input"
-              rows={2}
-              value={form.description}
-              onChange={(e) => updateForm((f) => ({ ...f, description: e.target.value }))}
-            />
-          </label>
-          <div className="row">
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.targetVersion}
-              <select
-                className="input"
-                value={form.targetStageId}
-                onChange={(e) => updateForm((f) => ({ ...f, targetStageId: e.target.value }))}
-              >
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.level}
-              <select
-                className="input"
-                value={form.level}
-                onChange={(e) => updateForm((f) => ({ ...f, level: e.target.value as RequirementLevel }))}
-              >
-                <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
-                <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
-                <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
-              </select>
-            </label>
-          </div>
-          <div className="row">
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.reviewDate}
-              <input
-                className="input" type="date" value={form.reviewDate}
-                onChange={(e) => updateForm((f) => ({ ...f, reviewDate: e.target.value }))}
+          <FormGrid minColumn="18rem">
+            <FormGridFull>
+              <TextField
+                label={strings.requirements.name}
+                value={form.name}
+                onChange={(next) => updateForm((f) => ({ ...f, name: next }))}
               />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.reviewLeadDays}
-              <input
-                className="input" type="number" min={0} value={form.reviewLeadDays}
-                onChange={(e) => updateForm((f) => ({ ...f, reviewLeadDays: e.target.value }))}
+            </FormGridFull>
+            <FormGridFull>
+              <TextAreaField
+                label={strings.requirements.reasoning}
+                value={form.reasoning}
+                onChange={(next) => updateForm((f) => ({ ...f, reasoning: next }))}
+                rows={3}
               />
-            </label>
-            <div style={{ flex: 1 }}>
-              <PrincipalFormField
-                label={strings.requirements.reviewer} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
-                projectId={projectId} value={form.reviewer} display={savedPrincipalDisplay(form.reviewer, requirement.reviewer)}
-                onChange={(reviewer) => updateForm((f) => ({ ...f, reviewer }))}
-                ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
+            </FormGridFull>
+            <FormGridFull>
+              <TextAreaField
+                label={strings.requirements.clarification}
+                value={form.clarification}
+                onChange={(next) => updateForm((f) => ({ ...f, clarification: next }))}
+                rows={2}
               />
-            </div>
-          </div>
-          <PrincipalFormField
-            label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
-            projectId={projectId} value={form.owner} display={savedPrincipalDisplay(form.owner, requirement.owner)}
-            onChange={(owner) => updateForm((f) => ({ ...f, owner }))}
-            ariaLabel={strings.requirements.owner} placeholder={strings.reviews.unassigned} clearLabel="Clear"
-          />
-          <CustomFieldsForm
-            definitions={customFieldDefs}
-            values={customFieldValues}
-            onChange={(fieldId, value) => {
-              formDirtyRef.current = true;
-              setCustomFieldValues((v) => ({ ...v, [fieldId]: value }));
-            }}
-          />
-          <input
-            className="input"
-            placeholder={strings.requirements.changeNote}
-            value={form.changeNote}
-            onChange={(e) => updateForm((f) => ({ ...f, changeNote: e.target.value }))}
-          />
+            </FormGridFull>
+            <FormGridFull>
+              <TextAreaField
+                label={strings.requirements.description}
+                value={form.description}
+                onChange={(next) => updateForm((f) => ({ ...f, description: next }))}
+                rows={2}
+              />
+            </FormGridFull>
+            <LabeledSelect
+              label={strings.requirements.targetVersion}
+              value={form.targetStageId}
+              onChange={(next) => updateForm((f) => ({ ...f, targetStageId: next }))}
+              options={stages.map((s) => ({ value: s.id, label: s.name }))}
+              placeholder={null}
+            />
+            <LabeledSelect
+              label={strings.requirements.level}
+              value={form.level}
+              onChange={(next) => updateForm((f) => ({ ...f, level: next as RequirementLevel }))}
+              options={[
+                { value: "requirement", label: REQUIREMENT_LEVEL_LABEL.requirement },
+                { value: "recommended", label: REQUIREMENT_LEVEL_LABEL.recommended },
+                { value: "optional", label: REQUIREMENT_LEVEL_LABEL.optional },
+              ]}
+              placeholder={null}
+            />
+            <DateField
+              label={strings.requirements.reviewDate}
+              value={form.reviewDate}
+              onChange={(next) => updateForm((f) => ({ ...f, reviewDate: next }))}
+            />
+            <TextField
+              label={strings.requirements.reviewLeadDays}
+              value={form.reviewLeadDays}
+              onChange={(next) => updateForm((f) => ({ ...f, reviewLeadDays: next }))}
+              inputProps={{ type: "number", min: 0 }}
+            />
+            <PrincipalFormField
+              label={strings.requirements.reviewer} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
+              projectId={projectId} value={form.reviewer} display={savedPrincipalDisplay(form.reviewer, requirement.reviewer)}
+              onChange={(reviewer) => updateForm((f) => ({ ...f, reviewer }))}
+              ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
+            />
+            <PrincipalFormField
+              label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
+              projectId={projectId} value={form.owner} display={savedPrincipalDisplay(form.owner, requirement.owner)}
+              onChange={(owner) => updateForm((f) => ({ ...f, owner }))}
+              ariaLabel={strings.requirements.owner} placeholder={strings.reviews.unassigned} clearLabel="Clear"
+            />
+            <FormGridFull>
+              <CustomFieldsForm
+                definitions={customFieldDefs}
+                values={customFieldValues}
+                onChange={(fieldId, value) => {
+                  formDirtyRef.current = true;
+                  setCustomFieldValues((v) => ({ ...v, [fieldId]: value }));
+                }}
+              />
+            </FormGridFull>
+            <FormGridFull>
+              <TextField
+                label={strings.requirements.changeNote}
+                placeholder={strings.requirements.changeNote}
+                value={form.changeNote}
+                onChange={(next) => updateForm((f) => ({ ...f, changeNote: next }))}
+              />
+            </FormGridFull>
+          </FormGrid>
           {saveError && <div style={{ color: "var(--color-danger)" }}>{saveError}</div>}
           <button className="btn btn-primary" onClick={save} disabled={!form.owner} style={{ alignSelf: "flex-start" }}>
             {strings.requirements.save}
@@ -830,24 +822,20 @@ export function RequirementDetailPage() {
               {strings.requirements.reviewer}: <PrincipalBadge principal={requirement.reviewer} placeholder={strings.reviews.unassigned} />
             </Badge>
           </div>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.recordReviewOutcome}
-            <select
-              className="input" value={reviewOutcome}
-              onChange={(e) => setReviewOutcome(e.target.value as RequirementReviewOutcome)}
-            >
-              <option value="met">{strings.requirements.reviewOutcomeMet}</option>
-              <option value="failed">{strings.requirements.reviewOutcomeFailed}</option>
-            </select>
-          </label>
+          <LabeledSelect
+            label={strings.requirements.recordReviewOutcome}
+            value={reviewOutcome}
+            onChange={(next) => setReviewOutcome(next as RequirementReviewOutcome)}
+            options={[{ value: "met", label: strings.requirements.reviewOutcomeMet }, { value: "failed", label: strings.requirements.reviewOutcomeFailed }]}
+            placeholder={null}
+          />
           {reviewOutcome === "failed" && (
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.requirements.reviewComment}
-              <textarea
-                className="input" rows={2} value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-              />
-            </label>
+            <TextAreaField
+              label={strings.requirements.reviewComment}
+              value={reviewComment}
+              onChange={setReviewComment}
+              rows={2}
+            />
           )}
           {reviewError && <div style={{ color: "var(--color-danger)" }}>{reviewError}</div>}
           <button className="btn btn-primary" onClick={submitReview} style={{ alignSelf: "flex-start" }}>
@@ -948,43 +936,30 @@ export function RequirementDetailPage() {
               title={strings.requirements.linkExistingAction}
               onClose={() => setLinkExistingActionPopoverOpen(false)}
             >
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.linkExistingAction}
-                <select
-                  className="input" aria-label={strings.requirements.linkExistingAction}
-                  value={existingActionToLink} onChange={(e) => setExistingActionToLink(e.target.value)}
-                >
-                  <option value="">{strings.requirements.selectAnActionToLink}</option>
-                  {projectActions
-                    .filter((a) => !linkedActions.some((la) => la.id === a.id))
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        <RecordCode code={a.unique_code} /> — {a.title}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <LabeledSelect
+                label={strings.requirements.linkExistingAction}
+                value={existingActionToLink}
+                onChange={setExistingActionToLink}
+                options={projectActions
+                  .filter((a) => !linkedActions.some((la) => la.id === a.id))
+                  .map((a) => ({ value: a.id, label: `${recordCode.code(a.unique_code)} — ${a.title}` }))}
+                placeholder={strings.requirements.selectAnActionToLink}
+              />
               {requirement.is_locked && (
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.changeRequests.reason}
-                  <textarea
-                    className="input" rows={2} aria-label={strings.changeRequests.reason}
-                    value={addActionReason} onChange={(e) => setAddActionReason(e.target.value)}
-                  />
-                </label>
+                <TextAreaField
+                  label={strings.changeRequests.reason}
+                  value={addActionReason}
+                  onChange={setAddActionReason}
+                  rows={2}
+                />
               )}
               {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button className="btn" onClick={() => setLinkExistingActionPopoverOpen(false)}>
-                  {strings.common.cancel}
-                </button>
-                <button
-                  className="btn btn-primary" onClick={linkExistingAction}
-                  disabled={!existingActionToLink || (requirement.is_locked && !addActionReason.trim())}
-                >
-                  {strings.requirements.linkExistingAction}
-                </button>
-              </div>
+              <FormActions
+                onCancel={() => setLinkExistingActionPopoverOpen(false)}
+                onSave={linkExistingAction}
+                saveLabel={strings.requirements.linkExistingAction}
+                saveDisabled={!existingActionToLink || (requirement.is_locked && !addActionReason.trim())}
+              />
             </Popover>
           )}
         </div>
@@ -1027,13 +1002,12 @@ export function RequirementDetailPage() {
               requirement.is_locked ? (
                 <span className="stack" style={{ gap: "0.5rem" }}>
                   <span>{strings.requirements.unlinkActionViaChangeRequestConfirm}</span>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.changeRequests.reason}
-                    <textarea
-                      className="input" rows={2} aria-label={strings.changeRequests.reason}
-                      value={unlinkActionReason} onChange={(e) => setUnlinkActionReason(e.target.value)}
-                    />
-                  </label>
+                  <TextAreaField
+                    label={strings.changeRequests.reason}
+                    value={unlinkActionReason}
+                    onChange={setUnlinkActionReason}
+                    rows={2}
+                  />
                 </span>
               ) : (
                 strings.requirements.unlinkActionConfirm
@@ -1051,62 +1025,32 @@ export function RequirementDetailPage() {
           />
         )}
         {showCreateAction && (
-          <Modal title={strings.requirements.createAndLinkAction} onClose={() => setShowCreateAction(false)}>
-            <input
-              className="input" placeholder={strings.actions.name} value={newActionTitle}
-              onChange={(e) => setNewActionTitle(e.target.value)}
-            />
-            <textarea
-              className="input" rows={2} placeholder={strings.actions.description} value={newActionDescription}
-              onChange={(e) => setNewActionDescription(e.target.value)}
-            />
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.actions.actionType}
-              {/* An explicit `aria-label` (matching the visible label
-                  text) is required here, not just the wrapping <label>:
-                  a native <select>'s ARIA accessible-name computation
-                  when label-wrapped folds in every descendant <option>'s
-                  text too, not just the selected one, which would
-                  otherwise make this resolve to something like
-                  "TypeTypeReviewTest" instead of "Type" for automated
-                  (Playwright) lookups — an aria-label always wins over
-                  that content-based computation. */}
-              <select
-                className="input" aria-label={strings.actions.actionType}
-                value={newActionTypeId} onChange={(e) => setNewActionTypeId(e.target.value)}
-              >
-                <option value="">{strings.actions.actionType}</option>
-                {projectActionTypes.map((at) => (
-                  <option key={at.id} value={at.id}>
-                    {at.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <PrincipalFormField
-              label={strings.actions.assignee}
+          <Modal title={strings.requirements.createAndLinkAction} onClose={() => setShowCreateAction(false)} size="lg">
+            <ActionFields
+              values={{
+                title: newActionTitle, description: newActionDescription, actionTypeId: newActionTypeId,
+                assignee: newActionAssignee, dueDate: newActionDueDate,
+              }}
+              onChange={(v) => {
+                setNewActionTitle(v.title);
+                setNewActionDescription(v.description);
+                setNewActionTypeId(v.actionTypeId);
+                setNewActionAssignee(v.assignee);
+                setNewActionDueDate(v.dueDate);
+              }}
+              actionTypes={projectActionTypes}
+              typePlaceholder={strings.actions.actionType}
               orgUsers={orgUsers}
               organizationId={organizationId ?? undefined}
               projectId={projectId}
-              value={newActionAssignee}
-              onChange={setNewActionAssignee}
-              ariaLabel={strings.actions.assignee}
             />
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.actions.dueDate}
-              <input
-                className="input" type="date" value={newActionDueDate}
-                onChange={(e) => setNewActionDueDate(e.target.value)}
-              />
-            </label>
             {requirement.is_locked && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.changeRequests.reason}
-                <textarea
-                  className="input" rows={2} aria-label={strings.changeRequests.reason}
-                  value={addActionReason} onChange={(e) => setAddActionReason(e.target.value)}
-                />
-              </label>
+              <TextAreaField
+                label={strings.changeRequests.reason}
+                value={addActionReason}
+                onChange={setAddActionReason}
+                rows={2}
+              />
             )}
             {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
             <button

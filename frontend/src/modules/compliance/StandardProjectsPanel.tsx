@@ -24,6 +24,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { COMPLIANCE_OVERALL_STATE_LABEL, type ComplianceOverallState, type ComplianceStandard, type ProjectComplianceStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { LabeledSelect } from "../../components/LabeledSelect";
 
 export function StandardProjectsPanel({ orgId, standard }: { orgId: string; standard: ComplianceStandard }) {
   const { showToast } = useToast();
@@ -44,22 +45,15 @@ export function StandardProjectsPanel({ orgId, standard }: { orgId: string; stan
 
   return (
     <div className="stack">
-      <label className="stack" style={{ gap: "0.25rem", maxWidth: 220 }}>
-        <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Compliance state</span>
-        <select
-          className="input"
-          value={stateFilter}
-          onChange={(e) => {
-            const value = e.target.value;
-            setSearchParams(value ? { state: value } : {});
-          }}
-        >
-          <option value="">All states</option>
-          {(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => (
-            <option key={state} value={state}>{COMPLIANCE_OVERALL_STATE_LABEL[state]}</option>
-          ))}
-        </select>
-      </label>
+      <LabeledSelect
+        label="Compliance state"
+        value={stateFilter}
+        onChange={(next) => setSearchParams(next ? { state: next } : {})}
+        options={(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => ({
+          value: state, label: COMPLIANCE_OVERALL_STATE_LABEL[state],
+        }))}
+        placeholder="All states"
+      />
 
       {filtered.length === 0 ? (
         <p className="text-muted">No projects match this filter.</p>

@@ -4,6 +4,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { t } from "../i18n/strings";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ResultCount } from "./ResultCount";
+import { CheckboxField } from "./FormFields";
 
 const strings = t();
 
@@ -149,9 +150,6 @@ export function FilterCheckbox({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="row" style={{ gap: "0.4rem" }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      {label}
-    </label>
+    <CheckboxField label={label} checked={checked} onChange={onChange} />
   );
 }

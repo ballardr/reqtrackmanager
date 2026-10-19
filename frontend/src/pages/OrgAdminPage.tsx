@@ -1,3 +1,4 @@
+import { useMutation } from "../hooks/useMutation";
 import { Download, Eye, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -85,7 +86,6 @@ import { ResourceMenu } from "../components/ResourceMenu";
 import { SidePanel } from "../components/SidePanel";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
-import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useFederatedModules } from "../hooks/useFederatedModules";
 import { installedModules } from "../modules/registry";
@@ -94,6 +94,11 @@ import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
+import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
+import { FormActions } from "../components/FormActions";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { RecordFieldGroup } from "../components/RecordDetailParts";
 
 /**
  * The 7 resource-menu groups Org Admin's previous 15 flat accordions were
@@ -188,6 +193,7 @@ type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: Org
  * status/type before the delete retries.
  */
 export function OrgAdminPage() {
+  const run = useMutation();
   const strings = useStrings();
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
   const { user } = useAuth();
@@ -902,27 +908,33 @@ export function OrgAdminPage() {
   async function revokeOrgPat(patId: string) {
     if (!orgId) return;
     setPatToRevoke(null);
-    await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/revoke`);
+    if (!(await run(() => api.post(`/api/v1/orgs/${orgId}/pats/${patId}/revoke`), "revoke", "personal access token"))) return;
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function descopeOrgPat(patId: string) {
     if (!orgId) return;
     setPatToDescope(null);
-    await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`);
+    if (!(await run(() => api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`), {
+      success: "Token removed from this organisation.", failure: "Could not remove the token from this organisation.",
+    }))) return;
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function revokeAllOrgPats() {
     if (!orgId) return;
     setRevokeAllPatsOpen(false);
-    const result = await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`);
+    let revokedCount = 0;
+    const done = await run(async () => {
+      revokedCount = (await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`)).revoked_count;
+    }, { failure: "Could not revoke the tokens." });
+    if (!done) return;
     setOrgPats([]);
-    setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
+    setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(revokedCount)));
   }
 
   async function setDefaultTemplate(projectId: string) {
-    await api.put(`/api/v1/orgs/${orgId}/default-template`, { project_id: projectId || null });
+    if (!(await run(() => api.put(`/api/v1/orgs/${orgId}/default-template`, { project_id: projectId || null }), "set", "default template"))) return;
     reload();
   }
 
@@ -1177,6 +1189,7 @@ export function OrgAdminPage() {
   async function addProjectStatus(name: string) {
     if (!orgId) return;
     await api.post(`/api/v1/orgs/${orgId}/project-statuses`, { name });
+    showToast(strings.mutation.success("{project} status", strings.mutation.past.add));
     reload();
   }
 
@@ -1187,6 +1200,7 @@ export function OrgAdminPage() {
 
   async function renameProjectStatus(id: string, name: string) {
     await api.patch(`/api/v1/orgs/${orgId}/project-statuses/${id}`, { name });
+    showToast(strings.mutation.success("{project} status", strings.mutation.past.rename));
     reload();
   }
 
@@ -1196,6 +1210,7 @@ export function OrgAdminPage() {
    * server's own count message rather than a generic one. */
   async function deleteProjectStatus(id: string, reassignToId?: string) {
     await api.delete(`/api/v1/orgs/${orgId}/project-statuses/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
+    showToast(strings.mutation.success("{project} status", strings.mutation.past.delete));
     reload();
   }
 
@@ -1215,6 +1230,7 @@ export function OrgAdminPage() {
     setEnabling(true);
     try {
       await api.post(`/api/v1/orgs/${orgId}/enable`);
+      showToast(strings.mutation.success(orgLabel, strings.mutation.past.enable));
       await reload();
     } catch (err) {
       setEnableError(err instanceof ApiError ? err.message : strings.common.error);
@@ -1232,6 +1248,7 @@ export function OrgAdminPage() {
     setJoining(true);
     try {
       await api.post(`/api/v1/orgs/${orgId}/join-as-admin`);
+      showToast(strings.mutation.success("administrator access", strings.mutation.past.grant));
       await reload();
     } catch (err) {
       setJoinError(err instanceof ApiError ? err.message : strings.common.error);
@@ -1713,7 +1730,7 @@ export function OrgAdminPage() {
   }
 
   async function removeGroupMember(groupId: string, userId: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${userId}`);
+    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${userId}`), "remove", "group member"))) return;
     reload();
   }
 
@@ -1724,6 +1741,7 @@ export function OrgAdminPage() {
     setNestErrors((prev) => ({ ...prev, [groupId]: null }));
     try {
       await api.post(`/api/v1/orgs/${orgId}/groups/${groupId}/members`, { member_org_group_id: memberOrgGroupId });
+      showToast(strings.mutation.success("nested group", strings.mutation.past.add));
       setNestSelections((prev) => ({ ...prev, [groupId]: "" }));
       reload();
     } catch (err) {
@@ -1732,7 +1750,7 @@ export function OrgAdminPage() {
   }
 
   async function removeNestedGroupMember(groupId: string, memberOrgGroupId: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${memberOrgGroupId}`);
+    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${memberOrgGroupId}`), "remove", "nested group member"))) return;
     reload();
   }
 
@@ -1905,6 +1923,7 @@ export function OrgAdminPage() {
     setScimError(null);
     try {
       await api.delete(`/api/v1/orgs/${orgId}/scim-token`);
+      showToast(strings.mutation.success("SCIM token", strings.mutation.past.revoke));
       setScimGeneratedToken(null);
       setScimStatus({ enabled: false, token_prefix: null });
     } catch (err) {
@@ -1956,28 +1975,31 @@ export function OrgAdminPage() {
       content: newTemplateContent,
       chapters_per_component: newTemplateChaptersPerComponent,
     };
-    if (editingTemplateId) {
-      await api.put(`/api/v1/orgs/${orgId}/report-templates/${editingTemplateId}`, payload);
-    } else {
-      await api.post(`/api/v1/orgs/${orgId}/report-templates`, payload);
-    }
+    const editing = editingTemplateId !== null;
+    const saved = await run(
+      () => (editing
+        ? api.put(`/api/v1/orgs/${orgId}/report-templates/${editingTemplateId}`, payload)
+        : api.post(`/api/v1/orgs/${orgId}/report-templates`, payload)),
+      editing ? "save" : "create", "report template",
+    );
+    if (!saved) return;
     closeTemplateForm();
     reload();
   }
 
   async function deleteReportTemplate(templateId: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/report-templates/${templateId}`);
+    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/report-templates/${templateId}`), "delete", "report template"))) return;
     if (editingTemplateId === templateId) resetTemplateForm();
     reload();
   }
 
   async function uploadResource(file: File) {
-    await api.postFile(`/api/v1/orgs/${orgId}/resources`, file);
+    if (!(await run(() => api.postFile(`/api/v1/orgs/${orgId}/resources`, file), "upload", "resource"))) return;
     reload();
   }
 
   async function deleteResource(fileId: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/resources/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/resources/${fileId}`), "delete", "resource"))) return;
     reload();
   }
 
@@ -2156,15 +2178,16 @@ export function OrgAdminPage() {
         </div>
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.createInitialAdmin}</h2>
-          <input className="input" placeholder={strings.orgAdmin.email} value={bootstrapEmail} onChange={(e) => setBootstrapEmail(e.target.value)} />
-          <input className="input" placeholder={strings.orgAdmin.name} value={bootstrapName} onChange={(e) => setBootstrapName(e.target.value)} />
-          <input
-            className="input"
-            type="password"
-            placeholder={strings.orgAdmin.password}
-            value={bootstrapPassword}
-            onChange={(e) => setBootstrapPassword(e.target.value)}
-          />
+          <FormGrid minColumn="14rem">
+            <TextField label={strings.orgAdmin.email} value={bootstrapEmail} onChange={setBootstrapEmail} />
+            <TextField label={strings.orgAdmin.name} value={bootstrapName} onChange={setBootstrapName} />
+            <TextField
+              label={strings.orgAdmin.password}
+              value={bootstrapPassword}
+              onChange={setBootstrapPassword}
+              inputProps={{ type: "password" }}
+            />
+          </FormGrid>
           {bootstrapError && <div style={{ color: "var(--color-danger)" }}>{bootstrapError}</div>}
           {bootstrapCreated && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.initialAdminCreated(orgLabel)}</div>}
           <button
@@ -2455,7 +2478,7 @@ export function OrgAdminPage() {
                     ]),
               ]}
             />
-            <AddToGroupControl user={u} groups={allGroups} onAdd={addGroupMember} />
+            <AddToGroupControl user={u} groups={allGroups} onAdd={(groupId, userId) => run(() => addGroupMember(groupId, userId), "add", "group member")} />
           </div>
         );
       },
@@ -2525,29 +2548,19 @@ export function OrgAdminPage() {
             {renameModalOpen && (
               <Modal title={strings.orgAdmin.rename} onClose={() => setRenameModalOpen(false)}>
                 <div className="stack">
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.rename}
-                    <input
-                      className="input"
-                      autoFocus
-                      value={orgNameEdit}
-                      onChange={(e) => setOrgNameEdit(e.target.value)}
-                    />
-                  </label>
+                  <TextField
+                    label={strings.orgAdmin.rename}
+                    value={orgNameEdit}
+                    onChange={setOrgNameEdit}
+                    inputProps={{ autoFocus: true }}
+                  />
                   <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.renameHint(orgLabel)}</span>
                   {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setRenameModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      onClick={renameOrg}
-                      disabled={!orgNameEdit.trim() || orgNameEdit === org.name}
-                    >
-                      {strings.common.save}
-                    </button>
-                  </div>
+                  <FormActions
+                    onCancel={() => setRenameModalOpen(false)}
+                    onSave={renameOrg}
+                    saveDisabled={!orgNameEdit.trim() || orgNameEdit === org.name}
+                  />
                 </div>
               </Modal>
             )}
@@ -2556,13 +2569,7 @@ export function OrgAdminPage() {
               <p className="text-muted" style={{ margin: 0 }}>{strings.importMerge.hint(orgLabel)}</p>
               {!importMergeConflicts && !importMergeResult && (
                 <div className="stack">
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.importMerge.chooseFile}
-                    <input
-                      type="file" accept=".zip,application/zip"
-                      onChange={(e) => setImportMergeFile(e.target.files?.[0] ?? null)}
-                    />
-                  </label>
+                  <FileField label={strings.importMerge.chooseFile} accept=".zip,application/zip" onChange={setImportMergeFile} />
                   <button
                     className="btn btn-primary" onClick={previewImportMerge}
                     disabled={!importMergeFile || importMergePreviewing} style={{ alignSelf: "flex-start" }}
@@ -2769,47 +2776,36 @@ export function OrgAdminPage() {
             </CollapsibleSection>
 
             {newUserModalOpen && (
-              <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)}>
+              <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)} size="lg">
                 <div className="stack">
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.email}
-                    <input
-                      className="input"
-                      type="email"
-                      autoFocus
+                  <FormGrid minColumn="18rem">
+                    <TextField
+                      label={strings.orgAdmin.email}
                       value={newUserEmail}
-                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      onChange={setNewUserEmail}
+                      inputProps={{ autoFocus: true, type: "email" }}
                     />
-                  </label>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.name}
-                    <input className="input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
-                  </label>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.password}
-                    <input
-                      className="input"
-                      type="password"
+                    <TextField label={strings.orgAdmin.name} value={newUserName} onChange={setNewUserName} />
+                    <TextField
+                      label={strings.orgAdmin.password}
                       value={newUserPassword}
-                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      onChange={setNewUserPassword}
+                      inputProps={{ type: "password" }}
                     />
-                  </label>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.role}
-                    <select className="input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as OrgRole)}>
-                      <option value="member">{ORG_ROLE_LABEL.member}</option>
-                      <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
-                      <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
-                    </select>
-                  </label>
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setNewUserModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                    <button className="btn btn-primary" onClick={createUser} disabled={!newUserEmail || !newUserName || !newUserPassword}>
-                      {strings.common.create}
-                    </button>
-                  </div>
+                    <LabeledSelect
+                      label={strings.orgAdmin.role}
+                      value={newUserRole}
+                      onChange={(next) => setNewUserRole(next as OrgRole)}
+                      options={[{ value: "member", label: ORG_ROLE_LABEL.member }, { value: "project_creator", label: ORG_ROLE_LABEL.project_creator }, { value: "org_admin", label: ORG_ROLE_LABEL.org_admin }]}
+                      placeholder={null}
+                    />
+                  </FormGrid>
+                  <FormActions
+                    onCancel={() => setNewUserModalOpen(false)}
+                    onSave={createUser}
+                    saveLabel={strings.common.create}
+                    saveDisabled={!newUserEmail || !newUserName || !newUserPassword}
+                  />
                 </div>
               </Modal>
             )}
@@ -2818,24 +2814,18 @@ export function OrgAdminPage() {
               <Modal title={strings.orgAdmin.inviteUser} onClose={() => setInviteUserModalOpen(false)}>
                 <div className="stack">
                   <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.inviteUserModalHint}</p>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.email}
-                    <input
-                      className="input"
-                      type="email"
-                      autoFocus
-                      value={inviteUserEmail}
-                      onChange={(e) => setInviteUserEmail(e.target.value)}
-                    />
-                  </label>
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setInviteUserModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                    <button className="btn btn-primary" onClick={inviteOrgUser} disabled={!inviteUserEmail}>
-                      {strings.orgAdmin.sendInvite}
-                    </button>
-                  </div>
+                  <TextField
+                    label={strings.orgAdmin.email}
+                    value={inviteUserEmail}
+                    onChange={setInviteUserEmail}
+                    inputProps={{ autoFocus: true, type: "email" }}
+                  />
+                  <FormActions
+                    onCancel={() => setInviteUserModalOpen(false)}
+                    onSave={inviteOrgUser}
+                    saveLabel={strings.orgAdmin.sendInvite}
+                    saveDisabled={!inviteUserEmail}
+                  />
                 </div>
               </Modal>
             )}
@@ -2922,27 +2912,21 @@ export function OrgAdminPage() {
                 // Popover for a one/two-field quick action on something
                 // that already exists, not creating a new entity.
                 <Modal title={strings.orgAdmin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.admin.name}
-                    <input
-                      className="input"
-                      autoFocus
-                      placeholder={strings.orgAdmin.groupNamePlaceholder}
-                      value={newGroupName}
-                      onChange={(e) => setNewGroupName(e.target.value)}
-                      onKeyDown={(e) => {
+                  <TextField
+                    label={strings.admin.name}
+                    value={newGroupName}
+                    onChange={setNewGroupName}
+                    placeholder={strings.orgAdmin.groupNamePlaceholder}
+                    inputProps={{ autoFocus: true, onKeyDown: (e) => {
                         if (e.key === "Enter" && newGroupName) createGroup();
-                      }}
-                    />
-                  </label>
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setNewGroupModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                    <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
-                      {strings.common.create}
-                    </button>
-                  </div>
+                      } }}
+                  />
+                  <FormActions
+                    onCancel={() => setNewGroupModalOpen(false)}
+                    onSave={createGroup}
+                    saveLabel={strings.common.create}
+                    saveDisabled={!newGroupName}
+                  />
                 </Modal>
               )}
 
@@ -3032,7 +3016,7 @@ export function OrgAdminPage() {
                     <UserAutocomplete
                       users={nonMembers}
                       placeholder={strings.admin.addMemberPlaceholder}
-                      onSelect={(userId) => addGroupMember(g.id, userId)}
+                      onSelect={(userId) => run(() => addGroupMember(g.id, userId), "add", "group member")}
                     />
                     {nestedGroups.length > 0 && (
                       <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
@@ -3057,6 +3041,7 @@ export function OrgAdminPage() {
                       <div className="row">
                         <select
                           className="input"
+                          aria-label={strings.orgAdmin.addNestedGroup}
                           value={nestSelections[g.id] ?? ""}
                           onChange={(e) => setNestSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
                         >
@@ -3085,39 +3070,33 @@ export function OrgAdminPage() {
                         only the muted hint renders, nothing else. */}
                     {ssoConfigured ? (
                       <div className="stack" style={{ gap: "0.5rem" }}>
-                        <label className="row" style={{ gap: "0.4rem" }}>
-                          <input
-                            type="checkbox"
-                            checked={syncEnabled}
-                            onChange={(e) => toggleGroupSync(g.id, e.target.checked)}
-                          />
-                          {strings.orgAdmin.syncFromSso}
-                        </label>
+                        <CheckboxField
+                          label={strings.orgAdmin.syncFromSso}
+                          checked={syncEnabled}
+                          onChange={(next) => toggleGroupSync(g.id, next)}
+                        />
                         {syncEnabled && (
                           <>
-                            <label className="row" style={{ gap: "0.25rem" }}>
-                              {strings.orgAdmin.idpSyncedGroupName}
-                              <input
-                                className="input"
+                            <FormGrid minColumn="16rem">
+                              <TextField
+                                label={strings.orgAdmin.idpSyncedGroupName}
                                 placeholder={strings.orgAdmin.idpSyncedGroupNamePlaceholder}
                                 value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
-                                onChange={(e) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                                onChange={(next) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: next }))}
                               />
-                            </label>
-                            <label className="row" style={{ gap: "0.25rem" }}>
-                              {strings.orgAdmin.grantedOrgRole}
-                              <select
-                                className="input"
+                              <LabeledSelect
+                                label={strings.orgAdmin.grantedOrgRole}
                                 value={grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""}
-                                onChange={(e) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: e.target.value as OrgRole | "" }))}
-                              >
-                                <option value="">{strings.orgAdmin.grantedOrgRoleNone}</option>
-                                <option value="member">{ORG_ROLE_LABEL.member}</option>
-                                <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
-                                <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
-                              </select>
-                            </label>
-                            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.grantedOrgRoleHint}</span>
+                                onChange={(next) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: next as OrgRole | "" }))}
+                                options={[
+                                  { value: "member", label: ORG_ROLE_LABEL.member },
+                                  { value: "project_creator", label: ORG_ROLE_LABEL.project_creator },
+                                  { value: "org_admin", label: ORG_ROLE_LABEL.org_admin },
+                                ]}
+                                placeholder={strings.orgAdmin.grantedOrgRoleNone}
+                                hint={strings.orgAdmin.grantedOrgRoleHint}
+                              />
+                            </FormGrid>
                             <button
                               className="btn" style={{ alignSelf: "flex-start" }}
                               onClick={() =>
@@ -3279,15 +3258,16 @@ export function OrgAdminPage() {
         {activeGroup === "branding-defaults" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding}>
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-logo-input">{strings.orgAdmin.logo(orgLabel)}</label>
-                  <OverridePill custom={org.logo_file_id != null} onReset={removeLogo} disabled={logoUploading} />
-                </span>
-                <FileUploadTrigger id="org-logo-input" accept="image/*" disabled={logoUploading} onSelect={uploadLogo}>
-                  <Upload size={14} /> {strings.common.chooseFile}
-                </FileUploadTrigger>
-              </div>
+              <UploadField
+                id="org-logo-input"
+                label={strings.orgAdmin.logo(orgLabel)}
+                labelExtra={<OverridePill custom={org.logo_file_id != null} onReset={removeLogo} disabled={logoUploading} />}
+                accept="image/*"
+                disabled={logoUploading}
+                onSelect={uploadLogo}
+              >
+                <Upload size={14} /> {strings.common.chooseFile}
+              </UploadField>
               {logoUploading && <Spinner />}
               {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
               {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.logoUploaded}</div>}
@@ -3297,24 +3277,22 @@ export function OrgAdminPage() {
                   "after" diagram, G4a: "Branding — logo, colour, footer") —
                   moved here from the SSO section, where it previously sat
                   for no reason connected to SSO/OIDC itself. */}
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-login-background-input">{strings.orgAdmin.loginBackground}</label>
+              <UploadField
+                id="org-login-background-input"
+                label={strings.orgAdmin.loginBackground}
+                labelExtra={
                   <OverridePill
                     custom={org.login_background_file_id != null}
                     onReset={removeLoginBackground}
                     disabled={loginBackgroundUploading}
                   />
-                </span>
-                <FileUploadTrigger
-                  id="org-login-background-input"
-                  accept="image/*"
-                  disabled={loginBackgroundUploading}
-                  onSelect={uploadLoginBackground}
-                >
-                  <Upload size={14} /> {strings.common.chooseFile}
-                </FileUploadTrigger>
-              </div>
+                }
+                accept="image/*"
+                disabled={loginBackgroundUploading}
+                onSelect={uploadLoginBackground}
+              >
+                <Upload size={14} /> {strings.common.chooseFile}
+              </UploadField>
               {loginBackgroundUploading && <Spinner />}
               {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
               {loginBackgroundUploaded && (
@@ -3324,64 +3302,52 @@ export function OrgAdminPage() {
                 <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
               )}
 
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-header-title">{strings.orgAdmin.headerTitle}</label>
-                  <OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />
-                </span>
-                <input
-                  id="org-header-title"
-                  className="input" placeholder={strings.appName}
-                  value={headerTitleInput} onChange={(e) => setHeaderTitleInput(e.target.value)}
-                />
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.headerTitleHint}</span>
-              </div>
-              <label className="row">
-                <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
-                {strings.orgAdmin.useOwnAccentColor(orgLabel)}
-              </label>
+              <TextField
+                label={strings.orgAdmin.headerTitle}
+                labelExtra={<OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />}
+                placeholder={strings.appName}
+                value={headerTitleInput}
+                onChange={setHeaderTitleInput}
+                hint={strings.orgAdmin.headerTitleHint}
+                inputProps={{ id: "org-header-title" }}
+              />
+              <CheckboxField
+                label={strings.orgAdmin.useOwnAccentColor(orgLabel)}
+                checked={useOwnAccentColor}
+                onChange={setUseOwnAccentColor}
+              />
               {useOwnAccentColor && (
-                <input
-                  type="color" value={accentColorInput} onChange={(e) => setAccentColorInput(e.target.value)}
-                  style={{ width: 60, height: 36, padding: 2 }}
-                />
+                <ColorField label={strings.admin.accentColor} value={accentColorInput} onChange={setAccentColorInput} />
               )}
               <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
               <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
               <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-email-footer-company">{strings.orgAdmin.emailFooterCompanyName}</label>
-                  <OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />
-                </span>
-                <input
-                  id="org-email-footer-company"
-                  className="input"
-                  value={emailFooterCompanyNameInput} onChange={(e) => setEmailFooterCompanyNameInput(e.target.value)}
+              <FormGrid minColumn="18rem">
+                <TextField
+                  label={strings.orgAdmin.emailFooterCompanyName}
+                  labelExtra={<OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />}
+                  value={emailFooterCompanyNameInput}
+                  onChange={setEmailFooterCompanyNameInput}
+                  inputProps={{ id: "org-email-footer-company" }}
                 />
-              </div>
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-email-footer-website">{strings.orgAdmin.emailFooterWebsite}</label>
-                  <OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />
-                </span>
-                <input
-                  id="org-email-footer-website"
-                  className="input"
-                  value={emailFooterWebsiteInput} onChange={(e) => setEmailFooterWebsiteInput(e.target.value)}
+                <TextField
+                  label={strings.orgAdmin.emailFooterWebsite}
+                  labelExtra={<OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />}
+                  value={emailFooterWebsiteInput}
+                  onChange={setEmailFooterWebsiteInput}
+                  inputProps={{ id: "org-email-footer-website" }}
                 />
-              </div>
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-email-footer-address">{strings.orgAdmin.emailFooterAddress}</label>
-                  <OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />
-                </span>
-                <textarea
-                  id="org-email-footer-address"
-                  className="input" rows={3}
-                  value={emailFooterAddressInput} onChange={(e) => setEmailFooterAddressInput(e.target.value)}
-                />
-              </div>
+                <FormGridFull>
+                  <TextAreaField
+                    label={strings.orgAdmin.emailFooterAddress}
+                    labelExtra={<OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />}
+                    rows={3}
+                    value={emailFooterAddressInput}
+                    onChange={setEmailFooterAddressInput}
+                    inputProps={{ id: "org-email-footer-address" }}
+                  />
+                </FormGridFull>
+              </FormGrid>
               {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
               <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
                 {strings.orgAdmin.saveBranding}
@@ -3392,6 +3358,7 @@ export function OrgAdminPage() {
               <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate}>
                 <select
                   className="input"
+                  aria-label={strings.orgAdmin.defaultTemplate}
                   value={org.default_template_project_id ?? ""}
                   onChange={(e) => setDefaultTemplate(e.target.value)}
                 >
@@ -3458,62 +3425,47 @@ export function OrgAdminPage() {
                 onClose={closeTemplateForm}
                 size="lg"
               >
-                <div className="row">
-                  <input
-                    className="input" placeholder={strings.admin.templateName}
-                    value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)}
+                <div className="stack">
+                  <FormGrid minColumn="18rem">
+                    <TextField label={strings.admin.templateName} value={newTemplateName} onChange={setNewTemplateName} />
+                    <ColorField label={strings.admin.accentColor} value={newTemplateAccentColor} onChange={setNewTemplateAccentColor} />
+                    <FormGridFull>
+                      <TextField label={strings.admin.footerText} value={newTemplateFooterText} onChange={setNewTemplateFooterText} />
+                    </FormGridFull>
+                    <CheckboxField
+                      label={strings.admin.includeCoverPage} checked={newTemplateIncludeCoverPage}
+                      onChange={setNewTemplateIncludeCoverPage}
+                    />
+                    <CheckboxField
+                      label={strings.admin.includeLogo(orgLabel)} checked={newTemplateIncludeLogo}
+                      onChange={setNewTemplateIncludeLogo}
+                    />
+                    <FormGridFull>
+                      <div className="stack" style={{ gap: "0.25rem" }}>
+                        <strong>{strings.admin.templateContent}</strong>
+                        <ReportContentEditor
+                          idPrefix="template-report-content"
+                          reportTypes={reportTypes}
+                          value={newTemplateContent}
+                          onChange={setNewTemplateContent}
+                          organizationId={orgId}
+                        />
+                        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
+                      </div>
+                    </FormGridFull>
+                    <FormGridFull>
+                      <CheckboxField
+                        label={strings.admin.templateChaptersPerComponent} checked={newTemplateChaptersPerComponent}
+                        onChange={setNewTemplateChaptersPerComponent}
+                      />
+                    </FormGridFull>
+                  </FormGrid>
+                  <FormActions
+                    onCancel={closeTemplateForm}
+                    onSave={saveReportTemplate}
+                    saveLabel={editingTemplateId ? strings.common.save : strings.common.create}
+                    saveDisabled={!newTemplateName}
                   />
-                  <label className="row" style={{ gap: "0.4rem" }}>
-                    {strings.admin.accentColor}
-                    <input
-                      type="color" value={newTemplateAccentColor} onChange={(e) => setNewTemplateAccentColor(e.target.value)}
-                      style={{ width: 44, height: 32, padding: 2 }}
-                    />
-                  </label>
-                </div>
-                <div className="row">
-                  <label className="row" style={{ gap: "0.4rem" }}>
-                    <input
-                      type="checkbox" checked={newTemplateIncludeCoverPage}
-                      onChange={(e) => setNewTemplateIncludeCoverPage(e.target.checked)}
-                    />
-                    {strings.admin.includeCoverPage}
-                  </label>
-                  <label className="row" style={{ gap: "0.4rem" }}>
-                    <input
-                      type="checkbox" checked={newTemplateIncludeLogo}
-                      onChange={(e) => setNewTemplateIncludeLogo(e.target.checked)}
-                    />
-                    {strings.admin.includeLogo(orgLabel)}
-                  </label>
-                </div>
-                <input
-                  className="input" placeholder={strings.admin.footerText}
-                  value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
-                />
-                <strong>{strings.admin.templateContent}</strong>
-                <ReportContentEditor
-                  idPrefix="template-report-content"
-                  reportTypes={reportTypes}
-                  value={newTemplateContent}
-                  onChange={setNewTemplateContent}
-                  organizationId={orgId}
-                />
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
-                <label className="row" style={{ gap: "0.4rem" }}>
-                  <input
-                    type="checkbox" checked={newTemplateChaptersPerComponent}
-                    onChange={(e) => setNewTemplateChaptersPerComponent(e.target.checked)}
-                  />
-                  {strings.admin.templateChaptersPerComponent}
-                </label>
-                <div className="row">
-                  <button className="btn btn-primary" onClick={saveReportTemplate} disabled={!newTemplateName}>
-                    <Plus /> {editingTemplateId ? strings.common.save : strings.common.create}
-                  </button>
-                  <button className="btn" onClick={closeTemplateForm}>
-                    {strings.common.cancel}
-                  </button>
                 </div>
               </Modal>
             )}
@@ -3524,44 +3476,28 @@ export function OrgAdminPage() {
           <div className="stack">
             {ssoConfig && (
               <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig}>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.slug}
-                  <input className="input" value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    {strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
-                  </span>
-                </label>
-                <label className="row">
-                  <input type="checkbox" checked={ssoEnabled} onChange={(e) => setSsoEnabled(e.target.checked)} />
-                  {strings.orgAdmin.ssoEnabled}
-                </label>
-                <label className="row">
-                  <input type="checkbox" checked={ssoOnly} onChange={(e) => setSsoOnly(e.target.checked)} />
-                  {strings.orgAdmin.ssoOnly}
-                </label>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.oidcIssuerUrl}
-                  <input className="input" value={oidcIssuerUrl} onChange={(e) => setOidcIssuerUrl(e.target.value)} />
-                </label>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.oidcClientId}
-                  <input className="input" value={oidcClientId} onChange={(e) => setOidcClientId(e.target.value)} />
-                </label>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.oidcClientSecret}
-                  <input
-                    className="input" type="password" value={oidcClientSecret}
-                    onChange={(e) => setOidcClientSecret(e.target.value)}
-                  />
-                </label>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.oidcRequiredGroup}
-                  <input
-                    className="input" value={oidcRequiredGroup}
-                    onChange={(e) => setOidcRequiredGroup(e.target.value)}
-                  />
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.oidcRequiredGroupHint}</span>
-                </label>
+                <TextField
+                  label={strings.orgAdmin.slug}
+                  value={slugInput}
+                  onChange={setSlugInput}
+                  hint={strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
+                />
+                <CheckboxField label={strings.orgAdmin.ssoEnabled} checked={ssoEnabled} onChange={setSsoEnabled} />
+                <CheckboxField label={strings.orgAdmin.ssoOnly} checked={ssoOnly} onChange={setSsoOnly} />
+                <TextField label={strings.orgAdmin.oidcIssuerUrl} value={oidcIssuerUrl} onChange={setOidcIssuerUrl} />
+                <TextField label={strings.orgAdmin.oidcClientId} value={oidcClientId} onChange={setOidcClientId} />
+                <TextField
+                  label={strings.orgAdmin.oidcClientSecret}
+                  value={oidcClientSecret}
+                  onChange={setOidcClientSecret}
+                  inputProps={{ type: "password" }}
+                />
+                <TextField
+                  label={strings.orgAdmin.oidcRequiredGroup}
+                  value={oidcRequiredGroup}
+                  onChange={setOidcRequiredGroup}
+                  hint={strings.orgAdmin.oidcRequiredGroupHint}
+                />
 
                 {/* SSO group → org-role mapping used to live here, as a
                     flat, disconnected list (`sso_group_mappings`) — it's
@@ -3591,7 +3527,7 @@ export function OrgAdminPage() {
                 {scimGeneratedToken && (
                   <div className="stack" style={{ gap: "0.25rem" }}>
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.scimTokenShownOnce}</span>
-                    <input className="input" readOnly value={scimGeneratedToken} onFocus={(e) => e.target.select()} />
+                    <input className="input" readOnly value={scimGeneratedToken} aria-label={strings.orgAdmin.scimTokenLabel} onFocus={(e) => e.target.select()} />
                   </div>
                 )}
                 {scimError && <div style={{ color: "var(--color-danger)" }}>{scimError}</div>}
@@ -3614,70 +3550,62 @@ export function OrgAdminPage() {
           <div className="stack">
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.smtpEmail" title={strings.orgAdmin.smtpEmailTitle}>
-                <div className="row">
-                  <input
-                    className="input"
-                    placeholder={strings.orgAdmin.smtpHost}
+                <FormGrid minColumn="14rem">
+                  <TextField
+                    label={strings.orgAdmin.smtpHost}
                     value={smtpHost}
-                    onChange={(e) => {
+                    onChange={(next) => {
                       advancedDirtyRef.current = true;
-                      setSmtpHost(e.target.value);
+                      setSmtpHost(next);
                     }}
                   />
-                  <input
-                    className="input"
-                    style={{ maxWidth: 120 }}
-                    placeholder={strings.orgAdmin.smtpPort}
+                  <TextField
+                    label={strings.orgAdmin.smtpPort}
                     value={smtpPort}
-                    onChange={(e) => {
+                    onChange={(next) => {
                       advancedDirtyRef.current = true;
-                      setSmtpPort(e.target.value);
+                      setSmtpPort(next);
                     }}
                   />
-                </div>
-                <div className="row">
-                  <input
-                    className="input"
-                    placeholder={strings.orgAdmin.smtpUsername}
+                  <TextField
+                    label={strings.orgAdmin.smtpUsername}
                     value={smtpUsername}
-                    onChange={(e) => {
+                    onChange={(next) => {
                       advancedDirtyRef.current = true;
-                      setSmtpUsername(e.target.value);
+                      setSmtpUsername(next);
                     }}
                   />
-                  <input
-                    className="input"
-                    type="password"
-                    placeholder={strings.orgAdmin.smtpPassword}
+                  <TextField
+                    label={strings.orgAdmin.smtpPassword}
                     value={smtpPassword}
-                    onChange={(e) => {
+                    onChange={(next) => {
                       advancedDirtyRef.current = true;
-                      setSmtpPassword(e.target.value);
+                      setSmtpPassword(next);
                     }}
+                    inputProps={{ type: "password" }}
                   />
-                </div>
-                <label className="row">
-                  <input
-                    type="checkbox"
-                    checked={smtpUseTls}
-                    onChange={(e) => {
-                      advancedDirtyRef.current = true;
-                      setSmtpUseTls(e.target.checked);
-                    }}
-                  />
-                  {strings.orgAdmin.smtpUseTls}
-                </label>
+                  <FormGridFull>
+                    <CheckboxField
+                      label={strings.orgAdmin.smtpUseTls}
+                      checked={smtpUseTls}
+                      onChange={(next) => {
+                        advancedDirtyRef.current = true;
+                        setSmtpUseTls(next);
+                      }}
+                    />
+                  </FormGridFull>
+                </FormGrid>
 
                 <div className="stack" style={{ gap: "0.4rem" }}>
                   <strong>{strings.orgAdmin.testEmail}</strong>
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
-                  <div className="row">
-                    <input
-                      className="input"
-                      type="email"
-                      placeholder={strings.orgAdmin.testEmailRecipientPlaceholder}
+                  <div className="row" style={{ alignItems: "flex-end" }}>
+                    <TextField
+                      label={strings.orgAdmin.testEmailRecipient}
+                      hint={strings.orgAdmin.testEmailRecipientHint}
                       value={testEmailRecipient}
-                      onChange={(e) => setTestEmailRecipient(e.target.value)}
+                      onChange={setTestEmailRecipient}
+                      inputProps={{ type: "email" }}
                     />
                     <button className="btn" onClick={sendOrgTestEmail} disabled={!smtpHost || sendingTestEmail}>
                       {sendingTestEmail ? strings.orgAdmin.testEmailSending : strings.orgAdmin.testEmail}
@@ -3713,120 +3641,87 @@ export function OrgAdminPage() {
           <div className="stack">
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.security" title={strings.orgAdmin.securityTitle}>
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={require2fa}
-                    onChange={(next) => {
-                      advancedDirtyRef.current = true;
-                      setRequire2fa(next);
-                    }}
-                    label={strings.orgAdmin.require2fa}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.require2fa}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint(orgLabel)}</span>
-                  </span>
-                </label>
+                <ToggleField
+                  label={strings.orgAdmin.require2fa}
+                  checked={require2fa}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setRequire2fa(next);
+                  }}
+                  hint={strings.orgAdmin.require2faHint(orgLabel)}
+                />
 
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={allowSelfSignup}
-                    onChange={(next) => {
-                      advancedDirtyRef.current = true;
-                      setAllowSelfSignup(next);
-                    }}
-                    label={strings.orgAdmin.allowSelfSignup}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.allowSelfSignup}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint(orgLabel)}</span>
-                  </span>
-                </label>
+                <ToggleField
+                  label={strings.orgAdmin.allowSelfSignup}
+                  checked={allowSelfSignup}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setAllowSelfSignup(next);
+                  }}
+                  hint={strings.orgAdmin.allowSelfSignupHint(orgLabel)}
+                />
 
                 {selfSignupConflict && (
                   <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</div>
                 )}
 
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.autoAcceptEmailDomain}
-                  <input
-                    className="input"
-                    placeholder="acme.com"
-                    value={autoAcceptEmailDomain}
-                    onChange={(e) => {
-                      advancedDirtyRef.current = true;
-                      setAutoAcceptEmailDomain(e.target.value);
-                    }}
-                  />
-                  <span className="text-muted">{strings.orgAdmin.autoAcceptEmailDomainHint}</span>
-                </label>
+                <TextField
+                  label={strings.orgAdmin.autoAcceptEmailDomain}
+                  value={autoAcceptEmailDomain}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setAutoAcceptEmailDomain(next);
+                  }}
+                  placeholder="acme.com"
+                  hint={strings.orgAdmin.autoAcceptEmailDomainHint}
+                />
 
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.externalUserPolicy}
-                  <select
-                    className="input"
-                    value={externalUserPolicy}
-                    onChange={(e) => {
-                      advancedDirtyRef.current = true;
-                      setExternalUserPolicy(e.target.value as ExternalUserPolicy);
-                    }}
-                  >
-                    <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled(orgLabel)}</option>
-                    <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
-                    <option value="anyone">{strings.orgAdmin.externalUserPolicyAnyone}</option>
-                  </select>
-                </label>
+                <LabeledSelect
+                  label={strings.orgAdmin.externalUserPolicy}
+                  value={externalUserPolicy}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setExternalUserPolicy(next as ExternalUserPolicy);
+                  }}
+                  options={[{ value: "disabled", label: strings.orgAdmin.externalUserPolicyDisabled(orgLabel) }, { value: "org_domain_only", label: strings.orgAdmin.externalUserPolicyDomainOnly }, { value: "anyone", label: strings.orgAdmin.externalUserPolicyAnyone }]}
+                  placeholder={null}
+                />
 
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={allowRelaxedChildProjectCreation}
-                    onChange={(next) => {
-                      advancedDirtyRef.current = true;
-                      setAllowRelaxedChildProjectCreation(next);
-                    }}
-                    label={strings.orgAdmin.allowRelaxedChildProjectCreation}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.allowRelaxedChildProjectCreation}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowRelaxedChildProjectCreationHint}</span>
-                  </span>
-                </label>
+                <ToggleField
+                  label={strings.orgAdmin.allowRelaxedChildProjectCreation}
+                  checked={allowRelaxedChildProjectCreation}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setAllowRelaxedChildProjectCreation(next);
+                  }}
+                  hint={strings.orgAdmin.allowRelaxedChildProjectCreationHint}
+                />
 
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={forceRequireCrForLinks}
-                    onChange={(next) => {
-                      advancedDirtyRef.current = true;
-                      setForceRequireCrForLinks(next);
-                    }}
-                    label={strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.forceRequireChangeRequestForApprovedLinksHint}</span>
-                  </span>
-                </label>
+                <ToggleField
+                  label={strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
+                  checked={forceRequireCrForLinks}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setForceRequireCrForLinks(next);
+                  }}
+                  hint={strings.orgAdmin.forceRequireChangeRequestForApprovedLinksHint}
+                />
 
                 {/* AI approval via MCP (docs/decisions.md) */}
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={allowAiApprovals}
-                    onChange={(next) => {
-                      if (next) {
-                        setAiApprovalsAckChecked(false);
-                        setAiApprovalsAckPending(true);
-                      } else {
-                        advancedDirtyRef.current = true;
-                        setAllowAiApprovals(false);
-                      }
-                    }}
-                    label={strings.orgAdmin.allowAiApprovals}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.allowAiApprovals}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowAiApprovalsHint}</span>
-                  </span>
-                </label>
+                <ToggleField
+                  label={strings.orgAdmin.allowAiApprovals}
+                  checked={allowAiApprovals}
+                  onChange={(next) => {
+                    if (next) {
+                      setAiApprovalsAckChecked(false);
+                      setAiApprovalsAckPending(true);
+                    } else {
+                      advancedDirtyRef.current = true;
+                      setAllowAiApprovals(false);
+                    }
+                  }}
+                  hint={strings.orgAdmin.allowAiApprovalsHint}
+                />
 
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
                 {/* `onClick={saveAdvanced}` submits the *whole*
@@ -3862,25 +3757,22 @@ export function OrgAdminPage() {
                     Security-card button above, on this same "Security"
                     group/page, since it's one field on the same
                     OrgAdvancedSettings object. */}
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.patMaxLifetime}
-                  <input
-                    className="input"
-                    type="number"
-                    min={1}
-                    max={3650}
-                    style={{ maxWidth: 160 }}
-                    value={patMaxLifetimeDays}
-                    onChange={(e) => {
-                      advancedDirtyRef.current = true;
-                      setPatMaxLifetimeDays(e.target.value);
-                    }}
-                  />
-                  <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint(orgLabel)}</span>
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    Saved with the Security settings above.
-                  </span>
-                </label>
+                <TextField
+                  label={strings.orgAdmin.patMaxLifetime}
+                  value={patMaxLifetimeDays}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setPatMaxLifetimeDays(next);
+                  }}
+                  hint={
+                    <>
+                      {strings.orgAdmin.patMaxLifetimeHint(orgLabel)}
+                      <br />
+                      Saved with the Security settings above.
+                    </>
+                  }
+                  inputProps={{ type: "number", min: 1, max: 3650, style: { maxWidth: 160 } }}
+                />
 
                 {orgPats.length === 0 ? (
                   <p className="text-muted">{strings.orgAdmin.patNone(orgLabel)}</p>
@@ -4073,76 +3965,62 @@ export function OrgAdminPage() {
                     size="lg"
                   >
                     <div className="stack">
-                      {!editingCustomRoleId && customRolePresets.length > 0 && (
-                        <label className="stack" style={{ gap: "0.25rem" }}>
-                          {strings.orgAdmin.customRolePreset}
-                          <select
-                            className="input"
-                            value=""
-                            onChange={(e) => applyCustomRolePreset(e.target.value)}
-                          >
-                            <option value="">{strings.orgAdmin.customRolePresetNone}</option>
-                            {customRolePresets.map((p) => (
-                              <option key={p.key} value={p.key}>{p.name}</option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      <label className="stack" style={{ gap: "0.25rem" }}>
-                        {strings.orgAdmin.customRoleName}
-                        <input
-                          className="input"
-                          autoFocus
+                      <FormGrid minColumn="18rem">
+                        {!editingCustomRoleId && customRolePresets.length > 0 && (
+                          <FormGridFull>
+                            <LabeledSelect
+                              label={strings.orgAdmin.customRolePreset}
+                              value=""
+                              onChange={applyCustomRolePreset}
+                              options={customRolePresets.map((p) => ({ value: p.key, label: p.name }))}
+                              placeholder={strings.orgAdmin.customRolePresetNone}
+                            />
+                          </FormGridFull>
+                        )}
+                        <TextField
+                          label={strings.orgAdmin.customRoleName}
                           value={customRoleFormName}
-                          onChange={(e) => setCustomRoleFormName(e.target.value)}
+                          onChange={setCustomRoleFormName}
+                          inputProps={{ autoFocus: true }}
                         />
-                      </label>
-                      <label className="stack" style={{ gap: "0.25rem" }}>
-                        {strings.orgAdmin.customRoleDescription}
-                        <input
-                          className="input"
-                          value={customRoleFormDescription}
-                          onChange={(e) => setCustomRoleFormDescription(e.target.value)}
-                        />
-                      </label>
-                      <label className="stack" style={{ gap: "0.25rem" }}>
-                        {strings.orgAdmin.customRoleScope}
-                        <select
-                          className="input"
+                        <LabeledSelect
+                          label={strings.orgAdmin.customRoleScope}
                           value={customRoleFormScope}
-                          onChange={(e) => setCustomRoleFormScope(e.target.value)}
-                        >
-                          <option value="org">{strings.orgAdmin.customRoleScopeOrg}</option>
-                          <option value="project">{strings.orgAdmin.customRoleScopeProject}</option>
-                          {/* Fine-Grained Access Control (core): every
-                              registered module-owned entity scope, rendered
-                              generically rather than a hardcoded per-module
-                              option (e.g. compliance's "standard"). */}
-                          {entityScopes.map((s) => (
-                            <option key={s.key} value={s.key}>{s.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="stack" style={{ gap: "0.25rem" }}>
-                        <span>{strings.orgAdmin.customRolePermissionsLabel}</span>
-                        <PermissionPicker
-                          permissions={permissions}
-                          selected={customRoleFormPermissions}
-                          onChange={setCustomRoleFormPermissions}
-                          disabled={customRoleFormSaving}
+                          onChange={setCustomRoleFormScope}
+                          placeholder={null}
+                          options={[
+                            { value: "org", label: strings.orgAdmin.customRoleScopeOrg },
+                            { value: "project", label: strings.orgAdmin.customRoleScopeProject },
+                            // Fine-Grained Access Control (core): every registered module-owned entity scope,
+                            // rendered generically rather than a hardcoded per-module option.
+                            ...entityScopes.map((s) => ({ value: s.key, label: s.label })),
+                          ]}
                         />
-                      </div>
-                      {customRoleFormError && <div style={{ color: "var(--color-danger)" }}>{customRoleFormError}</div>}
-                      <div className="row" style={{ justifyContent: "flex-end" }}>
-                        <button className="btn" onClick={closeCustomRoleModal}>{strings.common.cancel}</button>
-                        <button
-                          className="btn btn-primary"
-                          disabled={!customRoleFormName.trim() || customRoleFormSaving}
-                          onClick={saveCustomRole}
-                        >
-                          {strings.common.save}
-                        </button>
-                      </div>
+                        <FormGridFull>
+                          <TextField
+                            label={strings.orgAdmin.customRoleDescription}
+                            value={customRoleFormDescription}
+                            onChange={setCustomRoleFormDescription}
+                          />
+                        </FormGridFull>
+                        <FormGridFull>
+                          <div className="stack" style={{ gap: "0.25rem" }}>
+                            <span>{strings.orgAdmin.customRolePermissionsLabel}</span>
+                            <PermissionPicker
+                              permissions={permissions}
+                              selected={customRoleFormPermissions}
+                              onChange={setCustomRoleFormPermissions}
+                              disabled={customRoleFormSaving}
+                            />
+                          </div>
+                        </FormGridFull>
+                      </FormGrid>
+                      <FormActions
+                        error={customRoleFormError}
+                        onCancel={closeCustomRoleModal}
+                        onSave={saveCustomRole}
+                        saveDisabled={!customRoleFormName.trim() || customRoleFormSaving}
+                      />
                     </div>
                   </Modal>
                 )}
@@ -4177,49 +4055,31 @@ export function OrgAdminPage() {
                           <Badge>{customRoleScopeLabel(role.scope)}</Badge>
                         </div>
                         {role.scope === "project" && (
-                          <label className="stack" style={{ gap: "0.25rem", maxWidth: 320 }}>
-                            {strings.orgAdmin.projects}
-                            <select
-                              className="input"
-                              value={projectId}
-                              onChange={(e) => setCustomRoleGrantProjectId((prev) => ({ ...prev, [role.id]: e.target.value }))}
-                            >
-                              <option value="">{strings.common.selectOption}</option>
-                              {/* `orgProjects` (every project in the org) when available —
-                                  ORG_ADMIN only; a `grant_roles` holder who isn't an
-                                  ORG_ADMIN falls back to `thisOrgVisibleProjects` (their
-                                  own visible projects) rather than an empty picker — see
-                                  that state's own docstring. */}
-                              {(orgProjects ?? thisOrgVisibleProjects).map((p) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
-                          </label>
+                          <LabeledSelect
+                            label={strings.orgAdmin.projects}
+                            value={projectId}
+                            onChange={(next) => setCustomRoleGrantProjectId((prev) => ({ ...prev, [role.id]: next }))}
+                            // `orgProjects` (every project in the org) when available — ORG_ADMIN only; a
+                            // `grant_roles` holder who isn't an ORG_ADMIN falls back to `thisOrgVisibleProjects`
+                            // (their own visible projects) rather than an empty picker.
+                            options={(orgProjects ?? thisOrgVisibleProjects).map((p) => ({ value: p.id, label: p.name }))}
+                            placeholder={strings.common.selectOption}
+                          />
                         )}
-                        {/* Fine-Grained Access Control (core): the
-                            generalised form of the project picker above, for
-                            a role scoped to a registered module-owned entity
-                            scope (e.g. compliance's "standard"): populated
-                            via that scope's own `entities` list rather than
-                            a hardcoded per-module fetch. */}
+                        {/* Fine-Grained Access Control (core): the generalised form of the project picker above,
+                            for a role scoped to a registered module-owned entity scope (e.g. compliance's
+                            "standard"), populated through that scope's own `entities` list. */}
                         {matchingEntityScope !== undefined && (
-                          <label className="stack" style={{ gap: "0.25rem", maxWidth: 320 }}>
-                            {matchingEntityScope.label}
-                            <select
-                              className="input"
-                              value={entityId}
-                              onChange={(e) => setCustomRoleGrantEntityId((prev) => ({ ...prev, [role.id]: e.target.value }))}
-                            >
-                              <option value="">{strings.common.selectOption}</option>
-                              {matchingEntityScope.entities.map((entity) => (
-                                <option key={entity.id} value={entity.id}>{entity.name}</option>
-                              ))}
-                            </select>
-                          </label>
+                          <LabeledSelect
+                            label={matchingEntityScope.label}
+                            value={entityId}
+                            onChange={(next) => setCustomRoleGrantEntityId((prev) => ({ ...prev, [role.id]: next }))}
+                            options={matchingEntityScope.entities.map((entity) => ({ value: entity.id, label: entity.name }))}
+                            placeholder={strings.common.selectOption}
+                          />
                         )}
                         <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
-                          <label className="stack" style={{ gap: "0.25rem" }}>
-                            {strings.orgAdmin.customRoleGrantFieldLabel}
+                          <RecordFieldGroup label={strings.orgAdmin.customRoleGrantFieldLabel}>
                             <UserAutocomplete
                               users={users}
                               groups={allGroups}
@@ -4237,9 +4097,8 @@ export function OrgAdminPage() {
                                 grantCustomRoleToGroupById(role, groupId, target?.name ?? groupId);
                               }}
                             />
-                          </label>
-                          <label className="stack" style={{ gap: "0.25rem" }}>
-                            {strings.orgAdmin.customRoleRevokeFieldLabel}
+                          </RecordFieldGroup>
+                          <RecordFieldGroup label={strings.orgAdmin.customRoleRevokeFieldLabel}>
                             <UserAutocomplete
                               users={users}
                               groups={allGroups}
@@ -4257,7 +4116,7 @@ export function OrgAdminPage() {
                                 revokeCustomRoleFromGroupById(role, groupId, target?.name ?? groupId);
                               }}
                             />
-                          </label>
+                          </RecordFieldGroup>
                         </div>
                       </div>
                     );
@@ -4339,13 +4198,11 @@ export function OrgAdminPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{strings.orgAdmin.allowAiApprovalsAckBody}</span>
-              <label className="row" style={{ gap: "0.4rem" }}>
-                <input
-                  type="checkbox" checked={aiApprovalsAckChecked}
-                  onChange={(e) => setAiApprovalsAckChecked(e.target.checked)}
-                />
-                {strings.orgAdmin.allowAiApprovalsAckCheckbox}
-              </label>
+              <CheckboxField
+                label={strings.orgAdmin.allowAiApprovalsAckCheckbox}
+                checked={aiApprovalsAckChecked}
+                onChange={setAiApprovalsAckChecked}
+              />
             </span>
           }
           confirmLabel={strings.orgAdmin.allowAiApprovalsAckConfirm}

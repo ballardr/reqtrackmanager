@@ -15,6 +15,7 @@
 import { useState, type ReactNode } from "react";
 
 import { ConfirmDialog } from "./ConfirmDialog";
+import { TextAreaField } from "./FormFields";
 
 export type LifecycleAction = "activate" | "retire";
 
@@ -61,13 +62,13 @@ export function RecordLifecycleControls({
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{copy[action].body}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Comment
-                <textarea
-                  className="input" rows={2} aria-label="Transition comment"
-                  value={comment} onChange={(e) => setComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField
+                label="Comment"
+                ariaLabel="Transition comment"
+                value={comment}
+                onChange={setComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel={copy[action].confirmLabel}

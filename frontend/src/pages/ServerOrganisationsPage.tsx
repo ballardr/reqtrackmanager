@@ -14,6 +14,9 @@ import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
+import { FormActions } from "../components/FormActions";
+import { FormGrid } from "../components/FormGrid";
+import { FileField, TextField, CheckboxField } from "../components/FormFields";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -186,24 +189,20 @@ export function ServerOrganisationsPage() {
           a brand-new entity opens in a Modal, not a permanently-visible
           inline block that reflows the list underneath it. */}
       {showNewForm && (
-        <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)}>
+        <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)} size="lg">
           <div className="stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
-              <input
-                className="input"
-                autoFocus
+            <FormGrid minColumn="18rem">
+              <TextField
+                label={importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                onChange={setNewName}
+                inputProps={{ autoFocus: true }}
               />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              Or import from an exported {orgLabel} bundle (.zip)
-              <input
-                className="input" type="file" accept=".zip,application/zip"
-                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+              <FileField
+                label={`Or import from an exported ${orgLabel} bundle (.zip)`} accept=".zip,application/zip"
+                onChange={setImportFile}
               />
-            </label>
+            </FormGrid>
             {/* Every registered
                 module's optional org-creation seeding choices, grouped by
                 `group_label`; this page has no hardcoded knowledge of what
@@ -217,28 +216,25 @@ export function ServerOrganisationsPage() {
                     {creationChoices
                       .filter((c) => c.group_label === groupLabel)
                       .map((choice) => (
-                        <label key={choice.key} className="row" title={choice.description}>
-                          <input
-                            type="checkbox"
-                            checked={selectedChoiceKeys?.has(choice.key) ?? false}
-                            onChange={() => toggleChoiceKey(choice.key)}
-                          />
-                          {choice.label}
-                        </label>
+                        <CheckboxField
+                          key={choice.key}
+                          label={choice.label}
+                          title={choice.description}
+                          checked={selectedChoiceKeys?.has(choice.key) ?? false}
+                          onChange={() => toggleChoiceKey(choice.key)}
+                        />
                       ))}
                   </div>
                 ))}
               </div>
             )}
-            {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setShowNewForm(false)}>
-                {strings.common.cancel}
-              </button>
-              <button className="btn btn-primary" onClick={createOrg} disabled={!importFile && !newName}>
-                {strings.common.create}
-              </button>
-            </div>
+            <FormActions
+              error={createError}
+              onCancel={() => setShowNewForm(false)}
+              onSave={createOrg}
+              saveLabel={strings.common.create}
+              saveDisabled={!importFile && !newName}
+            />
           </div>
         </Modal>
       )}
@@ -259,6 +255,7 @@ export function ServerOrganisationsPage() {
             className="input"
             style={{ maxWidth: 280 }}
             placeholder={strings.serverOrgs.search(orgLabelPlural)}
+            aria-label={strings.serverOrgs.search(orgLabelPlural)}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

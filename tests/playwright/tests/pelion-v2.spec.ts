@@ -229,8 +229,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     try {
       await page.getByTitle("Preferences").click();
       await selectPreferencesGroup(page, "Security");
-      await page.getByPlaceholder("Current password").fill(orgAdminPassword);
-      await page.getByPlaceholder("New password").fill(TEMP_PASSWORD);
+      await page.getByLabel("Current password").fill(orgAdminPassword);
+      await page.getByLabel("New password").fill(TEMP_PASSWORD);
       const changeResponsePromise = page.waitForResponse(
         (resp) => resp.url().includes("/api/v1/auth/change-password") && resp.request().method() === "POST",
       );
@@ -255,8 +255,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       // rest of this spec.
       await page.getByTitle("Preferences").click();
       await selectPreferencesGroup(page, "Security");
-      await page.getByPlaceholder("Current password").fill(TEMP_PASSWORD);
-      await page.getByPlaceholder("New password").fill(orgAdminPassword);
+      await page.getByLabel("Current password").fill(TEMP_PASSWORD);
+      await page.getByLabel("New password").fill(orgAdminPassword);
       const revertResponsePromise = page.waitForResponse(
         (resp) => resp.url().includes("/api/v1/auth/change-password") && resp.request().method() === "POST",
       );

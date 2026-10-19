@@ -49,7 +49,6 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Link2, MessageSquareText
 import { useEffect, useState } from "react";
 
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { AutoGrowTextarea } from "../../components/AutoGrowTextarea";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { Modal } from "../../components/Modal";
@@ -60,6 +59,11 @@ import * as complianceApi from "./api";
 import { RequirementMappingsModal } from "./RequirementMappingsModal";
 import type { ComplianceActionType, ComplianceRequiredAction, ComplianceRequirement, ComplianceRequirementNode } from "./types";
 import { Badge } from "../../components/Badge";
+import { CheckboxField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { RecordFieldGroup } from "../../components/RecordDetailParts";
 
 interface Props {
   orgId: string;
@@ -647,38 +651,31 @@ function RequirementDetailPanel({
             </button>
           )}
         </div>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reference</span>
-          {isDraft ? (
-            <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. A.5.1" />
-          ) : (
-            <span>{requirement.reference || <span className="text-muted">None</span>}</span>
-          )}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          {isDraft ? (
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Requirement name" />
-          ) : (
-            <span>{requirement.name}</span>
-          )}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          {isDraft ? (
-            <AutoGrowTextarea value={description} onChange={setDescription} />
-          ) : (
-            <span>{requirement.description || <span className="text-muted">No description.</span>}</span>
-          )}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reasoning</span>
-          {isDraft ? (
-            <AutoGrowTextarea value={reasoning} onChange={setReasoning} />
-          ) : (
-            <span>{requirement.reasoning || <span className="text-muted">No reasoning recorded.</span>}</span>
-          )}
-        </label>
+        {isDraft ? (
+          <FormGrid minColumn="14rem">
+            <TextField label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+            <TextField label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+            <FormGridFull>
+              <TextAreaField label="Description" value={description} onChange={setDescription} autoGrow />
+            </FormGridFull>
+            <FormGridFull>
+              <TextAreaField label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
+            </FormGridFull>
+          </FormGrid>
+        ) : (
+          <>
+            <RecordFieldGroup label="Reference">
+              <span>{requirement.reference || <span className="text-muted">None</span>}</span>
+            </RecordFieldGroup>
+            <RecordFieldGroup label="Name"><span>{requirement.name}</span></RecordFieldGroup>
+            <RecordFieldGroup label="Description">
+              <span>{requirement.description || <span className="text-muted">No description.</span>}</span>
+            </RecordFieldGroup>
+            <RecordFieldGroup label="Reasoning">
+              <span>{requirement.reasoning || <span className="text-muted">No reasoning recorded.</span>}</span>
+            </RecordFieldGroup>
+          </>
+        )}
 
         {isDraft && (
           <div className="row" style={{ justifyContent: "flex-end" }}>
@@ -733,34 +730,23 @@ function RequirementFormModal({
   const [reasoning, setReasoning] = useState(initial?.reasoning ?? "");
 
   return (
-    <Modal title={initial ? "Edit requirement" : "New requirement"} onClose={onCancel}>
+    <Modal title={initial ? "Edit requirement" : "New requirement"} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reference</span>
-          <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. A.5.1" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Requirement name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reasoning</span>
-          <textarea className="input" value={reasoning} onChange={(e) => setReasoning(e.target.value)} rows={2} />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!name.trim()}
-            onClick={() => onSave({ reference, name, description, reasoning })}
-          >
-            Save
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <TextField label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+          <TextField label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+          <FormGridFull>
+            <TextAreaField label="Description" value={description} onChange={setDescription} rows={3} />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField label="Reasoning" value={reasoning} onChange={setReasoning} rows={2} />
+          </FormGridFull>
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ reference, name, description, reasoning })}
+          saveDisabled={!name.trim()}
+        />
       </div>
     </Modal>
   );
@@ -788,38 +774,27 @@ function RequiredActionFormModal({
   const [isMandatory, setIsMandatory] = useState(initial?.is_mandatory ?? true);
 
   return (
-    <Modal title={initial ? "Edit required action" : "New required action"} onClose={onCancel}>
+    <Modal title={initial ? "Edit required action" : "New required action"} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Action type</span>
-          <select className="input" value={actionTypeId} onChange={(e) => setActionTypeId(e.target.value)} aria-label="Action type">
-            {actionTypes.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Required action name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-        </label>
-        <label className="row" style={{ gap: "0.4rem" }}>
-          <input type="checkbox" checked={isMandatory} onChange={(e) => setIsMandatory(e.target.checked)} />
-          Mandatory
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!name.trim() || !actionTypeId}
-            onClick={() => onSave({ action_type_id: actionTypeId, name, description, is_mandatory: isMandatory })}
-          >
-            Save
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <LabeledSelect
+            label="Action type"
+            value={actionTypeId}
+            onChange={setActionTypeId}
+            options={actionTypes.map((t) => ({ value: t.id, label: t.name }))}
+            placeholder={null}
+          />
+          <TextField label="Name" ariaLabel="Required action name" value={name} onChange={setName} />
+          <FormGridFull>
+            <TextAreaField label="Description" value={description} onChange={setDescription} rows={2} />
+          </FormGridFull>
+          <CheckboxField label="Mandatory" checked={isMandatory} onChange={setIsMandatory} />
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ action_type_id: actionTypeId, name, description, is_mandatory: isMandatory })}
+          saveDisabled={!name.trim() || !actionTypeId}
+        />
       </div>
     </Modal>
   );
@@ -852,46 +827,34 @@ function RequirementClarifyModal({
   const [clarificationNote, setClarificationNote] = useState("");
 
   return (
-    <Modal title={`Clarify "${requirement.name}"`} onClose={onCancel}>
+    <Modal title={`Clarify "${requirement.name}"`} onClose={onCancel} size="lg">
       <div className="stack">
         <p className="text-muted" style={{ margin: 0 }}>
           Use this for a non-substantive correction or elaboration only — a typo fix, added context, or formatting.
           Anything that changes what must be satisfied requires a new standard version instead.
         </p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reference</span>
-          <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. A.5.1" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Requirement name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <AutoGrowTextarea value={description} onChange={setDescription} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reasoning</span>
-          <AutoGrowTextarea value={reasoning} onChange={setReasoning} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Clarification note (required)</span>
-          <AutoGrowTextarea
-            value={clarificationNote}
-            onChange={setClarificationNote}
-            placeholder="What changed, and why it's non-substantive."
-          />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!name.trim() || !clarificationNote.trim()}
-            onClick={() => onSave({ reference, name, description, reasoning, clarificationNote })}
-          >
-            Save clarification
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <TextField label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+          <TextField label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+          <FormGridFull>
+            <TextAreaField label="Description" value={description} onChange={setDescription} autoGrow />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField
+              label="Clarification note (required)" value={clarificationNote} onChange={setClarificationNote} autoGrow
+              inputProps={{ placeholder: "What changed, and why it's non-substantive." }}
+            />
+          </FormGridFull>
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ reference, name, description, reasoning, clarificationNote })}
+          saveLabel="Save clarification"
+          saveDisabled={!name.trim() || !clarificationNote.trim()}
+        />
       </div>
     </Modal>
   );

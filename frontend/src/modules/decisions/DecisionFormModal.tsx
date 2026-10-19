@@ -19,6 +19,9 @@ import { useState } from "react";
 
 import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay, userPrincipal } from "../../api/types";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
@@ -105,72 +108,64 @@ export function DecisionFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.unique_code}` : "New decision"} onClose={onCancel} size="lg">
       <div className="stack">
-        {!initial && templates && templates.length > 0 && (
+        <FormGrid minColumn="18rem">
+          {!initial && templates && templates.length > 0 && (
+            <FormGridFull>
+              <LabeledSelect
+                label="Start from a template (optional)"
+                value={templateId}
+                onChange={applyTemplate}
+                options={templates.map((t) => ({ value: t.id, label: t.name }))}
+                placeholder="No template"
+              />
+            </FormGridFull>
+          )}
+          <FormGridFull>
+            <TextField label="Decision title" value={title} onChange={setTitle} />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField label="Decision statement" value={statement} onChange={setStatement} />
+          </FormGridFull>
           <LabeledSelect
-            label="Start from a template (optional)"
-            value={templateId}
-            onChange={applyTemplate}
-            options={templates.map((t) => ({ value: t.id, label: t.name }))}
-            placeholder="No template"
+            label="Decision type"
+            value={decisionTypeId}
+            onChange={setDecisionTypeId}
+            options={decisionTypes.map((t) => ({ value: t.id, label: t.name }))}
           />
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Decision title</span>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Decision title" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Decision statement</span>
-          <textarea className="input" rows={2} value={statement} onChange={(e) => setStatement(e.target.value)} aria-label="Decision statement" />
-        </label>
-        <LabeledSelect
-          label="Decision type"
-          value={decisionTypeId}
-          onChange={setDecisionTypeId}
-          options={decisionTypes.map((t) => ({ value: t.id, label: t.name }))}
-        />
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Decision date (optional)</span>
-          <input className="input" type="date" value={decisionDate} onChange={(e) => setDecisionDate(e.target.value)} />
-        </label>
-        <PrincipalFormField
-          label="Decision maker (optional)"
-          orgUsers={orgUsers}
-          organizationId={organizationId}
-          projectId={projectId}
-          value={decisionMaker}
-          display={savedPrincipalDisplay(decisionMaker, initial?.decision_maker)}
-          onChange={setDecisionMaker}
-          ariaLabel="Decision maker"
-          placeholder="Search users and groups…"
-        />
-        <PrincipalFormField
-          label="Owner"
-          orgUsers={orgUsers}
-          organizationId={organizationId}
-          projectId={projectId}
-          value={owner}
-          display={savedPrincipalDisplay(owner, initial?.owner)}
-          onChange={setOwner}
-          ariaLabel="Owner"
-          placeholder="Select an owner…"
-          clearLabel="Clear"
-        />
-        {PROMPT_TO_FIELD.map((f) => (
-          <label key={f.fieldKey} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={2}
-              value={fields[f.fieldKey]}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.fieldKey]: e.target.value }))}
-            />
-          </label>
-        ))}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+          <DateField label="Decision date (optional)" value={decisionDate} onChange={setDecisionDate} />
+          <PrincipalFormField
+            label="Decision maker (optional)"
+            orgUsers={orgUsers}
+            organizationId={organizationId}
+            projectId={projectId}
+            value={decisionMaker}
+            display={savedPrincipalDisplay(decisionMaker, initial?.decision_maker)}
+            onChange={setDecisionMaker}
+            ariaLabel="Decision maker"
+            placeholder="Search users and groups…"
+          />
+          <PrincipalFormField
+            label="Owner"
+            orgUsers={orgUsers}
+            organizationId={organizationId}
+            projectId={projectId}
+            value={owner}
+            display={savedPrincipalDisplay(owner, initial?.owner)}
+            onChange={setOwner}
+            ariaLabel="Owner"
+            placeholder="Select an owner…"
+            clearLabel="Clear"
+          />
+          {PROMPT_TO_FIELD.map((f) => (
+            <FormGridFull key={f.fieldKey}>
+              <TextAreaField
+                label={f.label} value={fields[f.fieldKey]}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.fieldKey]: value }))}
+              />
+            </FormGridFull>
+          ))}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

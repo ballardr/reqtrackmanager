@@ -20,6 +20,9 @@ import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { ColorField, TextAreaField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
 
 const strings = t();
 
@@ -631,49 +634,46 @@ function PlatformBrandingTab() {
       {settings.default_logo_file_id && (
         <img src={fileUrl(settings.default_logo_file_id)} alt="" style={{ height: 40 }} />
       )}
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.headerTitle}
-        <input
-          className="input" placeholder={strings.appName}
-          value={headerTitle} onChange={(e) => {
+      <FormGrid minColumn="18rem">
+        <TextField
+          label={strings.serverSettings.headerTitle}
+          value={headerTitle}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setHeaderTitle(e.target.value);
+            setHeaderTitle(next);
           }}
+          placeholder={strings.appName}
+          hint={strings.serverSettings.headerTitleHint}
         />
-        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.headerTitleHint}</span>
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.orgLabelSingular}
-        <input
-          className="input" placeholder="organisation"
-          value={orgLabelSingular} onChange={(e) => {
+        <TextField
+          label={strings.serverSettings.orgLabelSingular}
+          value={orgLabelSingular}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setOrgLabelSingular(e.target.value);
+            setOrgLabelSingular(next);
           }}
+          placeholder="organisation"
+          hint={strings.serverSettings.orgLabelSingularHint}
         />
-        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelSingularHint}</span>
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.orgLabelPlural}
-        <input
-          className="input" placeholder="Organisations"
-          value={orgLabelPlural} onChange={(e) => {
+        <TextField
+          label={strings.serverSettings.orgLabelPlural}
+          value={orgLabelPlural}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setOrgLabelPlural(e.target.value);
+            setOrgLabelPlural(next);
           }}
+          placeholder="Organisations"
+          hint={strings.serverSettings.orgLabelPluralHint}
         />
-        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelPluralHint}</span>
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.accentColor}
-        <input
-          type="color" value={accentColor} onChange={(e) => {
-            brandingDirtyRef.current = true;
-            setAccentColor(e.target.value);
-          }}
-          style={{ width: 60, height: 36, padding: 2 }}
-        />
-      </label>
+      </FormGrid>
+      <ColorField
+        label={strings.serverSettings.accentColor}
+        value={accentColor}
+        onChange={(next) => {
+          brandingDirtyRef.current = true;
+          setAccentColor(next);
+        }}
+      />
       <div className="stack" style={{ gap: "0.25rem" }}>
         <label htmlFor="platform-login-background-input">{strings.serverSettings.loginBackground}</label>
         <FileUploadTrigger
@@ -696,35 +696,37 @@ function PlatformBrandingTab() {
       <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
       <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
       <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint(currentOrgLabel)}</p>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.emailFooterCompanyName}
-        <input
-          className="input" placeholder={strings.appName}
-          value={emailFooterCompanyName} onChange={(e) => {
+      <FormGrid minColumn="18rem">
+        <TextField
+          label={strings.serverSettings.emailFooterCompanyName}
+          value={emailFooterCompanyName}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setEmailFooterCompanyName(e.target.value);
+            setEmailFooterCompanyName(next);
+          }}
+          placeholder={strings.appName}
+          hint={strings.serverSettings.emailFooterCompanyNameHint}
+        />
+        <TextField
+          label={strings.serverSettings.emailFooterWebsite}
+          value={emailFooterWebsite}
+          onChange={(next) => {
+            brandingDirtyRef.current = true;
+            setEmailFooterWebsite(next);
           }}
         />
-        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.emailFooterCompanyNameHint}</span>
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.emailFooterWebsite}
-        <input
-          className="input" value={emailFooterWebsite} onChange={(e) => {
+        <FormGridFull>
+          <TextAreaField
+          label={strings.serverSettings.emailFooterAddress}
+          value={emailFooterAddress}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setEmailFooterWebsite(e.target.value);
+            setEmailFooterAddress(next);
           }}
+          rows={3}
         />
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.emailFooterAddress}
-        <textarea
-          className="input" rows={3} value={emailFooterAddress} onChange={(e) => {
-            brandingDirtyRef.current = true;
-            setEmailFooterAddress(e.target.value);
-          }}
-        />
-      </label>
+        </FormGridFull>
+      </FormGrid>
       {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
       <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
         {strings.serverSettings.save}
@@ -757,13 +759,13 @@ function TestEmailTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.system.testEmailHint}</p>
-      <div className="row">
-        <input
-          className="input"
-          type="email"
-          placeholder={strings.system.testEmailRecipientPlaceholder}
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <TextField
+          label={strings.system.testEmailRecipient}
+          hint={strings.system.testEmailRecipientHint}
           value={recipient}
-          onChange={(e) => setRecipient(e.target.value)}
+          onChange={setRecipient}
+          inputProps={{ type: "email" }}
         />
         <button className="btn btn-primary" onClick={send} disabled={sending}>
           {sending ? strings.system.testEmailSending : strings.system.testEmail}
@@ -810,14 +812,13 @@ function SignupModeTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.signupSettings.hint}</p>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.signupSettings.mode}
-        <select className="input" value={mode} onChange={(e) => setMode(e.target.value as SignupMode)}>
-          <option value="disabled">{strings.signupSettings.modeDisabled}</option>
-          <option value="always_on">{strings.signupSettings.modeAlwaysOn(orgLabel)}</option>
-          <option value="org_specified">{strings.signupSettings.modeOrgSpecified(orgLabel)}</option>
-        </select>
-      </label>
+      <LabeledSelect
+        label={strings.signupSettings.mode}
+        value={mode}
+        onChange={(next) => setMode(next as SignupMode)}
+        options={[{ value: "disabled", label: strings.signupSettings.modeDisabled }, { value: "always_on", label: strings.signupSettings.modeAlwaysOn(orgLabel) }, { value: "org_specified", label: strings.signupSettings.modeOrgSpecified(orgLabel) }]}
+        placeholder={null}
+      />
       {mode === "org_specified" && (
         <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.signupSettings.modeOrgSpecifiedHint(orgLabelPlural)}</p>
       )}

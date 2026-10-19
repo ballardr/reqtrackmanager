@@ -10,6 +10,7 @@ import { htmlToMarkdown, renderMarkdown, resolveImageRef } from "../utils/markdo
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { Modal } from "./Modal";
 import { Tooltip } from "./Tooltip";
+import { TextField } from "./FormFields";
 
 // The exact tag/attribute set `renderMarkdown` (and this component's own
 // insert-image action, below) ever produce — matches the "match the
@@ -325,17 +326,13 @@ export function RichTextEditor({
       {linkModalOpen && (
         <Modal title="Insert link" onClose={() => setLinkModalOpen(false)}>
           <form className="stack" onSubmit={confirmInsertLink}>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              Link URL
-              <input
-                className="input"
-                type="url"
-                autoFocus
-                placeholder="https://…"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-              />
-            </label>
+            <TextField
+              label="Link URL"
+              value={linkUrl}
+              onChange={setLinkUrl}
+              placeholder="https://…"
+              inputProps={{ autoFocus: true, type: "url" }}
+            />
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button type="button" className="btn" onClick={() => setLinkModalOpen(false)}>
                 Cancel

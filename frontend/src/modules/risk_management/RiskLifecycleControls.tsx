@@ -19,6 +19,8 @@ import { Modal } from "../../components/Modal";
 import { toErrorMessage } from "../../context/ToastContext";
 import { RISK_STATUS_LABEL } from "./types";
 import type { Risk, RiskStatus } from "./types";
+import { FormActions } from "../../components/FormActions";
+import { TextAreaField } from "../../components/FormFields";
 
 /**
  * @param risk The risk being managed.
@@ -79,15 +81,20 @@ export function RiskLifecycleControls({
                 rating and acceptance criteria.
               </p>
             )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Comment (optional)</span>
-              <textarea className="input" rows={2} aria-label="Status change comment" value={comment} onChange={(e) => setComment(e.target.value)} />
-            </label>
-            {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={close}>Cancel</button>
-              <button className="btn btn-primary" disabled={!target} onClick={move}>Change status</button>
-            </div>
+            <TextAreaField
+              label="Comment (optional)"
+              ariaLabel="Status change comment"
+              value={comment}
+              onChange={setComment}
+              rows={2}
+            />
+            <FormActions
+              error={error}
+              onCancel={close}
+              onSave={move}
+              saveLabel="Change status"
+              saveDisabled={!target}
+            />
           </div>
         </Modal>
       )}

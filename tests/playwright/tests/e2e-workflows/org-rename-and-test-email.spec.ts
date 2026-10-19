@@ -160,8 +160,8 @@ test.describe("organisation rename and test-email actions", () => {
     });
 
     await test.step("configure this organisation's own SMTP override (pointed at the same MailHog the deployment uses)", async () => {
-      await page.getByPlaceholder("SMTP host").fill("mailhog");
-      await page.getByPlaceholder("SMTP port").fill("1025");
+      await page.getByLabel("SMTP host").fill("mailhog");
+      await page.getByLabel("SMTP port").fill("1025");
       await page.getByRole("checkbox", { name: "Use TLS" }).uncheck();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
@@ -170,7 +170,7 @@ test.describe("organisation rename and test-email actions", () => {
     });
 
     await test.step("send a test email and confirm it actually arrives via this org's own SMTP override", async () => {
-      const recipientInput = page.getByPlaceholder("Recipient email (defaults to your own account)");
+      const recipientInput = page.getByLabel("Recipient email");
       await recipientInput.fill(testEmailRecipient);
       await Promise.all([
         page.waitForResponse((r) => r.url().includes(`/orgs/${org.id}/test-email`) && r.request().method() === "POST"),
@@ -201,7 +201,7 @@ test.describe("organisation rename and test-email actions", () => {
     await page.goto("/server/management");
     await selectServerManagementGroup(page, "Email");
 
-    await page.getByPlaceholder("Recipient email (defaults to your own account)").fill(recipient);
+    await page.getByLabel("Recipient email").fill(recipient);
     await Promise.all([
       page.waitForResponse((r) => r.url().includes("/system/test-email") && r.request().method() === "POST"),
       page.getByRole("button", { name: "Send test email" }).click(),

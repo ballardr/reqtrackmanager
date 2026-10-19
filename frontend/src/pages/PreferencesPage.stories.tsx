@@ -108,8 +108,8 @@ export const SecurityTabChangePassword: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     // "Change password" is a `variant="plain"` CollapsibleSection with no
     // `defaultCollapsed`, so it's already expanded — no click needed.
-    await userEvent.type(canvas.getByPlaceholderText("Current password"), "old-password");
-    await userEvent.type(canvas.getByPlaceholderText("New password"), "new-password-123");
+    await userEvent.type(canvas.getByLabelText("Current password"), "old-password");
+    await userEvent.type(canvas.getByLabelText("New password"), "new-password-123");
     await userEvent.click(canvas.getByRole("button", { name: "Change password" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/api/v1/auth/change-password", {
@@ -131,7 +131,7 @@ export const SecurityTabStart2FAEnrollment: Story = {
     await expect(canvas.getByText("Not enabled")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("switch", { name: "Enable 2FA" }));
     await waitFor(() => expect(canvas.getByText(/Scan this QR code/)).toBeInTheDocument());
-    await expect(canvas.getByPlaceholderText("Confirm code")).toBeInTheDocument();
+    await expect(canvas.getByLabelText("Confirm code")).toBeInTheDocument();
   },
 };
 

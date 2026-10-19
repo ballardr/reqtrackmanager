@@ -4,6 +4,8 @@
  * backend), and normalises error handling.
  */
 
+import { localToday } from "../utils/localDate";
+
 const BASE_URL =
   window.__ENV__?.VITE_API_BASE_URL ??
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -57,7 +59,7 @@ export const AUTH_UNAUTHORIZED_EVENT = "reqtrack:unauthorized";
  * cheap requests; see docs/decisions.md, "bcrypt login cost under
  * concurrent load"). */
 async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: number): Promise<Response> {
-  const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string>), "X-Client-Date": localToday() };
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
@@ -162,7 +164,7 @@ export const api = {
     return request<T>(path, { method: "POST", body: formData });
   },
   postForBlob: async (path: string, body?: unknown): Promise<Blob> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = { "Content-Type": "application/json", "X-Client-Date": localToday() };
     if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
     const response = await fetch(`${BASE_URL}${path}`, {
       method: "POST",
@@ -173,7 +175,7 @@ export const api = {
     return response.blob();
   },
   getForBlob: async (path: string): Promise<Blob> => {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { "X-Client-Date": localToday() };
     if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
     const response = await fetch(`${BASE_URL}${path}`, { headers });
     if (!response.ok) throw new ApiError(response.status, response.statusText);

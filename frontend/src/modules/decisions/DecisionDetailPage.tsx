@@ -51,6 +51,7 @@ import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionComment, DecisionFieldValues, DecisionTypeDefinition } from "./types";
 import type { FileAsset } from "../../api/types";
 import { Badge } from "../../components/Badge";
+import { TextAreaField } from "../../components/FormFields";
 
 export function DecisionDetailPage() {
   const { projectId, decisionId } = useParams<{ projectId: string; decisionId: string }>();
@@ -286,13 +287,7 @@ export function DecisionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>This records a formal approval in the audit trail. A comment is optional.</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Approval comment
-                <textarea
-                  className="input" rows={2} aria-label="Approval comment"
-                  value={approveComment} onChange={(e) => setApproveComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField label="Approval comment" value={approveComment} onChange={setApproveComment} rows={2} />
             </span>
           }
           confirmLabel="Approve"
@@ -312,13 +307,7 @@ export function DecisionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining the rejection is required.</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Rejection comment
-                <textarea
-                  className="input" rows={2} aria-label="Rejection comment"
-                  value={rejectComment} onChange={(e) => setRejectComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField label="Rejection comment" value={rejectComment} onChange={setRejectComment} rows={2} />
             </span>
           }
           confirmLabel="Reject"

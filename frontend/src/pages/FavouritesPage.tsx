@@ -93,6 +93,7 @@ export function FavouritesPage() {
           className="input"
           style={{ maxWidth: 280 }}
           placeholder={strings.projects.search}
+          aria-label={strings.projects.search}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

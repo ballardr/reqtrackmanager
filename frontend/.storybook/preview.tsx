@@ -1,6 +1,7 @@
 import type { Decorator, Preview } from "@storybook/react-vite";
 import { useEffect } from "react";
 
+import { ToastProvider } from "../src/context/ToastContext";
 import "../src/styles/theme.css";
 
 /**
@@ -20,6 +21,16 @@ const withTheme: Decorator = (Story, context) => {
     </div>
   );
 };
+
+/**
+ * Every component that reports a mutation reads the shared Toast context, as it does under the real app
+ * root, so no story has to wrap itself just to render. A story that needs its own provider still can.
+ */
+const withToasts: Decorator = (Story) => (
+  <ToastProvider>
+    <Story />
+  </ToastProvider>
+);
 
 const preview: Preview = {
   parameters: {
@@ -56,7 +67,7 @@ const preview: Preview = {
   initialGlobals: {
     theme: "light",
   },
-  decorators: [withTheme],
+  decorators: [withTheme, withToasts],
 };
 
 export default preview;

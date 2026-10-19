@@ -11,6 +11,9 @@
  */
 import { useState } from "react";
 
+import { FormActions } from "../../components/FormActions";
+import { TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
 import type { DecisionTemplateFieldValues } from "./types";
 
@@ -54,30 +57,23 @@ export function DecisionTemplateFormModal({
   return (
     <Modal title={initial ? "Edit decision template" : "New decision template"} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Template name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Template name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </label>
-        {PROMPT_FIELDS.map((f) => (
-          <label key={f.key} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={2}
-              value={prompts[f.key]}
-              onChange={(e) => setPrompts((p) => ({ ...p, [f.key]: e.target.value }))}
-            />
-          </label>
-        ))}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!name.trim()} onClick={save}>Save</button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField label="Template name" value={name} onChange={setName} />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField label="Description" value={description} onChange={setDescription} />
+          </FormGridFull>
+          {PROMPT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField
+                label={f.label} value={prompts[f.key]}
+                onChange={(value) => setPrompts((p) => ({ ...p, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!name.trim()} />
       </div>
     </Modal>
   );

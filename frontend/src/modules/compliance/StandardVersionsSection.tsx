@@ -34,6 +34,10 @@ import {
   type ComplianceStandard,
   type ComplianceStandardVersion,
 } from "./types";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 
 export function StandardVersionsSection({
   orgId,
@@ -151,48 +155,41 @@ function VersionFormModal({
   const [cloneFrom, setCloneFrom] = useState("");
 
   return (
-    <Modal title="New version" onClose={onCancel}>
+    <Modal title="New version" onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Version label</span>
-          <input className="input" value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. v2.0" aria-label="Version label" autoFocus />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Effective date</span>
-          <input className="input" type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Change note</span>
-          <textarea className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} rows={2} />
-        </label>
-        {versions.length > 0 && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Clone requirements from</span>
-            <select className="input" value={cloneFrom} onChange={(e) => setCloneFrom(e.target.value)} aria-label="Clone requirements from">
-              <option value="">Start empty</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.id}>{v.version_label}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!versionLabel.trim()}
-            onClick={() =>
-              onSave({
-                version_label: versionLabel,
-                effective_date: effectiveDate || null,
-                change_note: changeNote,
-                clone_from_version_id: cloneFrom || null,
-              })
-            }
-          >
-            Save
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <TextField
+            label="Version label"
+            value={versionLabel}
+            onChange={setVersionLabel}
+            placeholder="e.g. v2.0"
+            inputProps={{ autoFocus: true }}
+          />
+          <DateField label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
+          <FormGridFull>
+            <TextAreaField label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
+          </FormGridFull>
+          {versions.length > 0 && (
+            <LabeledSelect
+              label="Clone requirements from"
+              value={cloneFrom}
+              onChange={setCloneFrom}
+              options={versions.map((v) => ({ value: v.id, label: v.version_label }))}
+              placeholder="Start empty"
+            />
+          )}
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() =>
+            onSave({
+              version_label: versionLabel,
+              effective_date: effectiveDate || null,
+              change_note: changeNote,
+              clone_from_version_id: cloneFrom || null,
+            })}
+        saveDisabled={!versionLabel.trim()}
+        />
       </div>
     </Modal>
   );

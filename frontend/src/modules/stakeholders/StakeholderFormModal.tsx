@@ -30,9 +30,10 @@ import { Modal } from "../../components/Modal";
 import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
 import { TreeSelect } from "../../components/TreeSelect";
 import { buildGroupTree, groupSelectNodes } from "./groupTree";
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup, TargetCadence } from "./types";
 import { GRID_QUADRANT_LABEL, TARGET_CADENCE_LABEL } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 const TEXT_FIELDS: { key: keyof StakeholderFieldValues; label: string; rows: number }[] = [
   { key: "description", label: "Description", rows: 2 },
@@ -189,11 +190,7 @@ export function StakeholderFormModal({
           </FormGridFull>
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
         </FormGrid>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

@@ -773,7 +773,7 @@ export const NewReportTemplateOpensModalAndCreates: Story = {
     const dialog = body.getByRole("dialog", { name: "New template" });
     await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
 
-    await userEvent.type(within(dialog).getByPlaceholderText("Name", { exact: true }), "Corporate Template");
+    await userEvent.type(within(dialog).getByLabelText("Name", { exact: true }), "Corporate Template");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
     await waitFor(() =>
@@ -826,7 +826,7 @@ export const NewReportTemplateWithPerTypeContent: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
     await userEvent.click(await canvas.findByRole("button", { name: "New template" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New template" });
-    await userEvent.type(within(dialog).getByPlaceholderText("Name", { exact: true }), "Board Pack");
+    await userEvent.type(within(dialog).getByLabelText("Name", { exact: true }), "Board Pack");
     await userEvent.selectOptions(within(dialog).getByLabelText("Report type"), "decisions.r1");
     await userEvent.click(within(dialog).getAllByRole("button", { name: "Add chapter" })[0]);
     await userEvent.type(within(dialog).getAllByPlaceholderText("Chapter title")[0], "Board summary");
@@ -856,7 +856,7 @@ export const NewReportTemplateModalCancel: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "New template" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New template" });
-    await userEvent.type(within(dialog).getByPlaceholderText("Name", { exact: true }), "Discarded Template");
+    await userEvent.type(within(dialog).getByLabelText("Name", { exact: true }), "Discarded Template");
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
@@ -1408,8 +1408,8 @@ export const EmailSettingsSave: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Email" }));
-    await waitFor(() => expect(canvas.getByPlaceholderText("SMTP host")).toBeInTheDocument());
-    await userEvent.type(canvas.getByPlaceholderText("SMTP host"), "smtp.example.com");
+    await waitFor(() => expect(canvas.getByLabelText("SMTP host")).toBeInTheDocument());
+    await userEvent.type(canvas.getByLabelText("SMTP host"), "smtp.example.com");
     await userEvent.click(canvas.getByRole("button", { name: "Save email settings" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(

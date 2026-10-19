@@ -30,6 +30,8 @@ import type { FileAsset } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { Modal } from "./Modal";
 import { Spinner } from "./Spinner";
+import { FormActions } from "./FormActions";
+import { CheckboxField } from "./FormFields";
 
 export interface ResourcePickerSource {
   id: string;
@@ -126,19 +128,18 @@ export function ResourcePickerModal({
           {files && files.length > 0 && (
             <div className="stack" style={{ maxHeight: "50vh", overflowY: "auto" }}>
               {files.map((f) => (
-                <label key={f.id} className="row">
-                  <input type="checkbox" checked={selected.has(f.id)} onChange={() => toggle(f.id)} />
-                  {f.filename}
-                </label>
+                <CheckboxField key={f.id} label={f.filename} checked={selected.has(f.id)} onChange={() => toggle(f.id)} />
               ))}
             </div>
           )}
-          {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-          <div className="row" style={{ justifyContent: "flex-end", marginTop: "auto" }}>
-            <button className="btn" onClick={onClose}>{strings.common.cancel}</button>
-            <button className="btn btn-primary" onClick={handleAttach} disabled={selected.size === 0 || attaching}>
-              {strings.resourcePicker.attachSelected(selected.size)}
-            </button>
+          <div className="stack" style={{ marginTop: "auto" }}>
+            <FormActions
+              error={error}
+              onCancel={onClose}
+              onSave={handleAttach}
+              saveLabel={strings.resourcePicker.attachSelected(selected.size)}
+              saveDisabled={selected.size === 0 || attaching}
+            />
           </div>
         </div>
       </div>

@@ -154,7 +154,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     const reasoningCheckbox = page.getByRole("checkbox", { name: "Reasoning", exact: true });
     await reasoningCheckbox.check();
     await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Tighter UX target");
-    await page.getByPlaceholder("Reason for change").fill("Field feedback showed 5s felt slow");
+    await page.getByLabel("Reason for change").fill("Field feedback showed 5s felt slow");
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await page.getByText("Boot in under 3 seconds").click();

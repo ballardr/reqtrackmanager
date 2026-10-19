@@ -27,6 +27,7 @@ import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import type { RepresentedLink } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 /** What makes a panel editable: the candidates to add and the two mutations. */
 export interface RepresentationEdit {
@@ -101,21 +102,17 @@ export function RepresentationPanel({
   const addForm = (close: () => void) => (
     <div className="stack">
       <LabeledSelect label={edit!.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
-      <div className="row" style={{ justifyContent: "flex-end" }}>
-        <button className="btn" onClick={close}>Cancel</button>
-        <button
-          className="btn btn-primary"
-          disabled={!picked}
-          onClick={async () => {
+      <FormActions
+        onCancel={close}
+        onSave={async () => {
             const id = picked;
             setPicked("");
             close();
             await mutate(() => edit!.onAdd(id), "Link added.", "Could not add the link.");
           }}
-        >
-          Add
-        </button>
-      </div>
+        saveLabel="Add"
+        saveDisabled={!picked}
+      />
     </div>
   );
 

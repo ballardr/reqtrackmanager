@@ -38,6 +38,9 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceStandard, ComplianceStandardDefaultExclusion } from "./types";
 import { userDisplayName } from "./types";
+import { TextAreaField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { LabeledSelect } from "../../components/LabeledSelect";
 
 export function StandardApplicabilityPanel({
   standard,
@@ -192,30 +195,21 @@ function ExcludeProjectModal({
         {candidateProjects.length === 0 ? (
           <p className="text-muted">Every project in this organisation is already excluded, or none exist.</p>
         ) : (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Project</span>
-            <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Project">
-              <option value="">Select a project…</option>
-              {candidateProjects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </label>
+          <LabeledSelect
+            label="Project"
+            value={projectId}
+            onChange={setProjectId}
+            options={candidateProjects.map((p) => ({ value: p.id, label: p.name }))}
+            placeholder="Select a project…"
+          />
         )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reason (required)</span>
-          <textarea className="input" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!projectId || !reason.trim()}
-            onClick={() => onSave({ project_id: projectId, reason })}
-          >
-            Exclude
-          </button>
-        </div>
+        <TextAreaField label="Reason (required)" value={reason} onChange={setReason} rows={2} />
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ project_id: projectId, reason })}
+          saveLabel="Exclude"
+          saveDisabled={!projectId || !reason.trim()}
+        />
       </div>
     </Modal>
   );

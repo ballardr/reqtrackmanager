@@ -77,6 +77,7 @@ import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from 
 import { RecordHeader } from "../../components/RecordHeader";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
+import { TextAreaField } from "../../components/FormFields";
 
 /** The two optional-comment, positive/neutral-progression actions — mirrors
  * `PainPointDetailPage.tsx`'s `OptionalCommentAction`/`OPTIONAL_COMMENT_COPY`
@@ -329,13 +330,13 @@ export function OpenQuestionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{OPTIONAL_COMMENT_COPY[optionalAction].body}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Comment
-                <textarea
-                  className="input" rows={2} aria-label="Transition comment"
-                  value={optionalComment} onChange={(e) => setOptionalComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField
+                label="Comment"
+                ariaLabel="Transition comment"
+                value={optionalComment}
+                onChange={setOptionalComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel={OPTIONAL_COMMENT_COPY[optionalAction].confirmLabel}
@@ -366,13 +367,12 @@ export function OpenQuestionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining why is required.</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Withdrawal comment
-                <textarea
-                  className="input" rows={2} aria-label="Withdrawal comment"
-                  value={withdrawComment} onChange={(e) => setWithdrawComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField
+                label="Withdrawal comment"
+                value={withdrawComment}
+                onChange={setWithdrawComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel="Withdraw"

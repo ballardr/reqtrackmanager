@@ -46,7 +46,7 @@ test("change request submitter cannot approve their own request; the project man
     const reasoningCheckbox = page.getByRole("checkbox", { name: "Reasoning", exact: true });
     await reasoningCheckbox.check();
     await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Tighter latency target after field testing.");
-    await page.getByPlaceholder("Reason for change").fill("Customer escalation on response time.");
+    await page.getByLabel("Reason for change").fill("Customer escalation on response time.");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await searchChangeRequests(page, proposedName);
     await expect(page.getByText(proposedName)).toBeVisible();
@@ -160,7 +160,7 @@ test("a project manager sees and can use 'Approve and clear completion' on a CR 
     const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
     await nameCheckbox.check();
     await nameCheckbox.locator("xpath=../..").locator("input.input").fill(proposedName);
-    await page.getByPlaceholder("Reason for change").fill("Substantive rework, needs re-verifying.");
+    await page.getByLabel("Reason for change").fill("Substantive rework, needs re-verifying.");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await searchChangeRequests(page, proposedName);
     await expect(page.getByText(proposedName)).toBeVisible();

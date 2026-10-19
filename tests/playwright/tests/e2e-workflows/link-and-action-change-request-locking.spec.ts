@@ -77,7 +77,7 @@ test.describe("action/link change-request locking", () => {
 
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const actionPanel = page.getByRole("dialog", { name: "Create and link a new action" });
-      await actionPanel.getByPlaceholder("Title").fill(actionTitle);
+      await actionPanel.getByLabel("Title").fill(actionTitle);
       await actionPanel.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
       await actionPanel.getByRole("button", { name: "Create", exact: true }).click();
       await expect(actionPanel).not.toBeVisible();

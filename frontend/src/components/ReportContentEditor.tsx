@@ -7,6 +7,7 @@ import { OverridePill } from "./OverridePill";
 import type { InheritedContent, ReportContentField } from "./reportContentInheritance";
 import { ReportChapterListEditor } from "./ReportChapterListEditor";
 import { RichTextEditor } from "./RichTextEditor";
+import { LabeledSelect } from "./LabeledSelect";
 
 const strings = t();
 
@@ -110,16 +111,17 @@ export function ReportContentEditor({
 
   return (
     <div className="stack">
-      <label className="stack" style={{ gap: "0.25rem", maxWidth: 360 }}>
-        {strings.reports.contentTypes}
-        <select id={`${idPrefix}-type`} className="input" value={activeType.key} onChange={(e) => select(e.target.value)}>
-          {types.map((tp) => (
-            <option key={tp.key} value={tp.key}>
-              {isBlank(value.find((e) => e.report_key === tp.key)) ? tp.title : strings.reports.typeWithContent(tp.title)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <LabeledSelect
+        label={strings.reports.contentTypes}
+        value={activeType.key}
+        onChange={select}
+        options={types.map((tp) => ({
+          value: tp.key,
+          label: isBlank(value.find((e) => e.report_key === tp.key)) ? tp.title : strings.reports.typeWithContent(tp.title),
+        }))}
+        placeholder={null}
+        inputProps={{ id: `${idPrefix}-type` }}
+      />
       <div className="stack">
         <span className="text-muted" style={{ fontSize: "0.85rem" }}>
           {activeType.key === ALL_REPORTS_KEY ? strings.reports.allReportsHint : strings.reports.typeHint(activeType.title)}{" "}

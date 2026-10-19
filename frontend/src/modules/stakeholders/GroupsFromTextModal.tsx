@@ -12,6 +12,7 @@ import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
 import type { GroupTextProposal } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 export function GroupsFromTextModal({
   proposals,
@@ -61,13 +62,13 @@ export function GroupsFromTextModal({
             </ul>
           </>
         )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={chosen.size === 0} onClick={() => onConfirm([...chosen])}>
-            Create groups
-          </button>
-        </div>
+        <FormActions
+          error={error}
+          onCancel={onCancel}
+          onSave={() => onConfirm([...chosen])}
+          saveLabel="Create groups"
+          saveDisabled={chosen.size === 0}
+        />
       </div>
     </Modal>
   );

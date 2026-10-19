@@ -43,7 +43,7 @@ test.describe("requirement action change requests", () => {
     await test.step("Create and link a new action now requires a reason and creates nothing directly", async () => {
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const dialog = page.getByRole("dialog", { name: "Create and link a new action" });
-      await dialog.getByPlaceholder("Title").fill(actionTitle);
+      await dialog.getByLabel("Title").fill(actionTitle);
       await dialog.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
       const createButton = dialog.getByRole("button", { name: "Create", exact: true });
       await expect(createButton).toBeDisabled();

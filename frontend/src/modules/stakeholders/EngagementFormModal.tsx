@@ -15,19 +15,13 @@ import { useState } from "react";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
-import { CheckboxField, DateField, TextAreaField, TextField } from "./RecordFormFields";
+import { CheckboxField, DateField, TextAreaField, TextField } from "../../components/FormFields";
 import type { Engagement, EngagementChannel, EngagementFieldValues } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
+import { FormActions } from "../../components/FormActions";
+import { localToday } from "../../utils/localDate";
 
 const CHANNEL_OPTIONS = Object.entries(ENGAGEMENT_CHANNEL_LABEL).map(([value, label]) => ({ value, label }));
-
-/** Today as YYYY-MM-DD in the viewer's timezone (the engagement date defaults to the day it is logged). */
-function today(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
 
 export function EngagementFormModal({
   initial,
@@ -52,7 +46,7 @@ export function EngagementFormModal({
   const seed = initial ?? defaults;
   const [title, setTitle] = useState(seed?.title ?? "");
   const [channel, setChannel] = useState<EngagementChannel>(seed?.channel ?? "meeting");
-  const [date, setDate] = useState(seed?.engagement_date ?? today());
+  const [date, setDate] = useState(seed?.engagement_date ?? localToday());
   const [purpose, setPurpose] = useState(seed?.purpose ?? "");
   const [summary, setSummary] = useState(seed?.summary ?? "");
   const [notes, setNotes] = useState(seed?.notes ?? "");
@@ -98,22 +92,16 @@ export function EngagementFormModal({
             </>
           )}
         </FormGrid>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={title.trim() === "" || date === ""}
-            onClick={() =>
-              onSave({
-                title: title.trim(), channel, engagement_date: date, purpose, summary, notes,
-                consent_recorded: consent, retain_until: retainUntil === "" ? null : retainUntil,
-              })
-            }
-          >
-            Save
-          </button>
-        </div>
+        <FormActions
+          error={error}
+          onCancel={onCancel}
+          onSave={() =>
+            onSave({
+              title: title.trim(), channel, engagement_date: date, purpose, summary, notes,
+              consent_recorded: consent, retain_until: retainUntil === "" ? null : retainUntil,
+            })}
+        saveDisabled={title.trim() === "" || date === ""}
+        />
       </div>
     </Modal>
   );

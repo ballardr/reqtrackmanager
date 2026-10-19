@@ -127,7 +127,7 @@ export const CreateAssignedToAGroup: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New action/ }));
-    await userEvent.type(canvas.getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(canvas.getByLabelText("Title"), "Verify audit log retention");
     await userEvent.type(canvas.getByRole("combobox", { name: "Assignee" }), "test");
     await userEvent.click(await canvas.findByText("Test Group"));
     await userEvent.click(canvas.getByRole("button", { name: "Create" }));
@@ -149,7 +149,7 @@ export const CreateNewAction: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New action/ }));
-    await userEvent.type(canvas.getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(canvas.getByLabelText("Title"), "Verify audit log retention");
     await userEvent.click(canvas.getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(

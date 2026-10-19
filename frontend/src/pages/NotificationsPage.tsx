@@ -1,3 +1,4 @@
+import { useMutation } from "../hooks/useMutation";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -21,6 +22,7 @@ const PAGE_SIZE = 30;
  * loading every notification ever received up front would be wasteful.
  */
 export function NotificationsPage() {
+  const run = useMutation();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[] | null>(null);
@@ -48,7 +50,7 @@ export function NotificationsPage() {
   }, [search, unreadOnly]);
 
   async function markRead(id: string) {
-    await api.post(`/api/v1/notifications/${id}/read`);
+    if (!(await run(() => api.post(`/api/v1/notifications/${id}/read`), { failure: "Could not mark read." }))) return;
     setNotifications((prev) => (prev ? prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)) : prev));
   }
 
@@ -87,6 +89,7 @@ export function NotificationsPage() {
             className="input"
             style={{ maxWidth: 320 }}
             placeholder={strings.notifications.search}
+            aria-label={strings.notifications.search}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

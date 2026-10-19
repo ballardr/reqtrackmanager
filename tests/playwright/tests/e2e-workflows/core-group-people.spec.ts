@@ -63,7 +63,7 @@ test.describe("Core records: groups as owners, reviewers, assignees and watchers
     // --- An Action can be assigned to the squad from the Actions page.
     await page.goto(`/projects/${project.id}/actions`);
     await page.getByRole("button", { name: /New action/ }).click();
-    await page.getByPlaceholder("Title").fill(`Squad action ${suffix}`);
+    await page.getByLabel("Title").fill(`Squad action ${suffix}`);
     await page.getByRole("combobox", { name: "Assignee" }).fill("Core Squad");
     await page.getByRole("option", { name: new RegExp(squadName) }).click();
     await page.getByRole("button", { name: "Create", exact: true }).click();
