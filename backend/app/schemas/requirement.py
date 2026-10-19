@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 
 class RequirementCreate(BaseModel):
@@ -74,7 +75,7 @@ class RequirementUpdate(BaseModel):
     reviewer: PrincipalRef | None = None
 
 
-class RequirementOut(BaseModel):
+class RequirementOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
     unique_code: str

@@ -163,6 +163,9 @@ class TaggedRecordOut(BaseModel):
     status: str | None = None
     is_archived: bool = False
     project_id: uuid.UUID | None = None
+    # The owning project's name and code, for a record found in a related project of a widened scope.
+    project_name: str | None = None
+    project_code: str | None = None
 
 
 class TaggedRecordsOut(BaseModel):

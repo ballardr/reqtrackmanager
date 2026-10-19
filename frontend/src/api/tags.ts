@@ -11,6 +11,7 @@
  * so the admin panel is one component for both).
  */
 import { api } from "./client";
+import { appendScopeParam, type ProjectScope } from "./projectScope";
 
 /** A tag as shown on a record. */
 export interface TagChipData {
@@ -95,6 +96,9 @@ export interface TaggedRecord {
   status: string | null;
   is_archived: boolean;
   project_id: string | null;
+  /** The owning project's name and code, for a record found in a related project. */
+  project_name?: string | null;
+  project_code?: string | null;
 }
 
 export const TAG_NAME_MAX_LENGTH = 40;
@@ -177,12 +181,13 @@ export function orgTagAdminApi(organizationId: string): TagAdminApi {
 
 /** Records of any type carrying some tags that the caller can open. */
 export function findTaggedRecords(
-  projectId: string, tags: string[], mode: "any" | "all" = "any", artefactType?: string,
+  projectId: string, tags: string[], mode: "any" | "all" = "any", artefactType?: string, projectScope: ProjectScope = "this",
 ): Promise<{ records: TaggedRecord[]; truncated: boolean }> {
   const query = new URLSearchParams();
   for (const tag of tags) query.append("tag", tag);
   query.set("tag_mode", mode);
   if (artefactType) query.set("artefact_type", artefactType);
+  appendScopeParam(query, { project_scope: projectScope });
   return api.get(`/api/v1/projects/${projectId}/tags/records?${query}`);
 }
 

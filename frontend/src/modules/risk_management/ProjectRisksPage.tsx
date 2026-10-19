@@ -44,6 +44,10 @@ import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 
@@ -90,6 +94,7 @@ export function ProjectRisksPage() {
   const [untreatedOnly, setUntreatedOnly] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -111,7 +116,7 @@ export function ProjectRisksPage() {
     if (!projectId) return;
     let active = true;
     riskApi
-      .list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode })
+      .list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
       .then((list) => {
         if (!active) return;
         setRisks(list);
@@ -123,7 +128,7 @@ export function ProjectRisksPage() {
     return () => {
       active = false;
     };
-  }, [projectId, includeArchived, refreshKey, tagFilter.tags, tagFilter.mode]);
+  }, [projectId, includeArchived, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -144,8 +149,8 @@ export function ProjectRisksPage() {
 
 
   const columns: DirectoryColumn<Risk>[] = [
-    { key: "code", label: "Code", render: (r) => <RecordCode code={r.unique_code} /> },
-    { key: "title", label: "Title", render: (r) => r.title },
+    { key: "code", label: "Code", render: (r) => <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /> },
+    { key: "title", label: "Title", render: (r) => <>{r.title}<ProjectScopeLabel row={r} /></> },
     { key: "type", label: "Type", render: (r) => r.risk_type_name ?? "—" },
     { key: "inherent", label: "Inherent", render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },
     { key: "residual", label: "Residual", render: (r) => <RiskRatingBadge rating={r.residual_rating} /> },
@@ -201,7 +206,7 @@ export function ProjectRisksPage() {
               columns={columns}
               rows={filtered}
               rowKey={(r) => r.id}
-              rowHref={(r) => `/projects/${projectId}/modules/risk_management/risks/${r.id}`}
+              rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
               emptyState={<p className="text-muted">{risks.length === 0 ? "No Risks recorded for this project yet." : "No Risks match these filters."}</p>}
             />
           ) : (
@@ -247,6 +252,7 @@ export function ProjectRisksPage() {
           </FilterField>
           <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
           <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>

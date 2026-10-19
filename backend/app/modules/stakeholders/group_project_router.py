@@ -41,6 +41,7 @@ from app.modules.stakeholders.schemas import (
     StakeholderGroupUpdate,
 )
 from app.schemas.project import MoveDirection
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
 from app.services.tags import TagFilter
 
@@ -68,9 +69,18 @@ def _refs(refs) -> list[StakeholderGroupRefOut]:
 def list_groups(
     project_id: UUID, tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view),
     db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """The organisation's groups and this project's own, flat; the client builds the tree from `parent_group_id`."""
-    return tag_filter.keep(db, project_id, GROUP_ARTEFACT_TYPE, gsh.list_groups(db, _ctx(db, project_id)))
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        return tag_filter.keep(db, pid, GROUP_ARTEFACT_TYPE, gsh.list_groups(db, _ctx(db, pid)))
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, GROUP_ARTEFACT_TYPE, rows_for,
+        gate=("stakeholders", "stakeholder"),
+    )
 
 
 @router.get("/stakeholder-groups/text-proposals", response_model=list[GroupTextProposalOut])

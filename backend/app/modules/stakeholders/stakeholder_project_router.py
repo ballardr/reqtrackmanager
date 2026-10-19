@@ -84,6 +84,7 @@ from app.schemas.type_vocabulary import (
     RestoreTypesRequest,
 )
 from app.services.audit import log_event
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
 from app.services.tags import TagFilter
 from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
@@ -268,25 +269,34 @@ def list_project_stakeholders(
     project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
     group_id: UUID | None = None, direct_only: bool = False, group_by: UUID | None = None,
     tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """The project's stakeholders, plus the organisation's unless
     `include_org=false`. Org stakeholders hidden from the project are left out
     unless `include_hidden=true` (the manage UI), where they carry `project_hidden`.
     `group_id` keeps a group's members (and its descendants' unless `direct_only`); `group_by`
     orders them by branch under that top-level group."""
-    project = _project(db, project_id)
-    stakeholders = list_project_visible_stakeholders(
-        db, project, include_archived=include_archived, include_hidden=include_hidden
-    )
-    if not include_org:
-        stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
-    stakeholders = tag_filter.keep(db, project_id, STAKEHOLDER_ARTEFACT_TYPE, stakeholders)
-    if group_id is not None or group_by is not None:
-        stakeholders = gsh.filter_and_sort_stakeholders(
-            db, stakeholders, load_groups(db, project.organization_id, project_id), group_id=group_id,
-            direct_only=direct_only, group_by=group_by,
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        project = _project(db, pid)
+        stakeholders = list_project_visible_stakeholders(
+            db, project, include_archived=include_archived, include_hidden=include_hidden
         )
-    return sh.stakeholders_to_out(db, stakeholders, project_id=project_id)
+        if not include_org:
+            stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
+        stakeholders = tag_filter.keep(db, pid, STAKEHOLDER_ARTEFACT_TYPE, stakeholders)
+        if group_id is not None or group_by is not None:
+            stakeholders = gsh.filter_and_sort_stakeholders(
+                db, stakeholders, load_groups(db, project.organization_id, pid), group_id=group_id,
+                direct_only=direct_only, group_by=group_by,
+            )
+        return sh.stakeholders_to_out(db, stakeholders, project_id=pid)
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, STAKEHOLDER_ARTEFACT_TYPE, rows_for,
+        gate=("stakeholders", "stakeholder"),
+    )
 
 
 @router.get("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)

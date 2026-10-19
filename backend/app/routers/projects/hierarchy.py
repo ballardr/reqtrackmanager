@@ -35,8 +35,10 @@ from app.schemas.project import (
     ProjectMemberSourceAdd,
     ProjectMemberSourceOut,
 )
+from app.schemas.project_scope import ProjectScopeOptionsOut
 from app.services.audit import log_event
 from app.services.project_hierarchy import get_ancestor_chain
+from app.services.project_scope import scope_options
 from app.services.rbac import (
     get_effective_org_roles,
     get_effective_project_managers,
@@ -153,6 +155,19 @@ def get_project_children(
             )
         )
     return out
+
+
+@router.get("/{project_id}/scope-options", response_model=ProjectScopeOptionsOut)
+def get_project_scope_options(
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Which list-scope choices (`project_scope` on every list) this project offers the caller:
+    whether they can open a parent and/or a child project. Counts only projects the caller can
+    open, so it never reveals that a hidden one exists."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return scope_options(db, project, current_user.id)
 
 
 @router.get("/{project_id}/member-sources", response_model=list[ProjectMemberSourceOut])

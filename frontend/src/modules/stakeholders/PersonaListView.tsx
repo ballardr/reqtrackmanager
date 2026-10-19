@@ -10,6 +10,7 @@
  */
 import { PersonaFormModal } from "./PersonaFormModal";
 import type { TagFilterState } from "../../hooks/useTagFilter";
+import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import { RecordListView } from "./RecordListView";
 import type { Persona, PersonaFieldValues } from "./types";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
@@ -30,6 +31,7 @@ export function PersonaListView({
   onShowHidden,
   onOpen,
   tagFilter,
+  projectScope,
   onCreate,
 }: {
   personas: Persona[];
@@ -51,6 +53,8 @@ export function PersonaListView({
   onOpen: (persona: Persona) => void;
   /** The project's tag filter (state kept by the page); omit where tags are not offered. */
   tagFilter?: { projectId: string; filter: TagFilterState };
+  /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
+  projectScope?: ProjectScopeState;
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when personas are created elsewhere. */
   onCreate?: (values: PersonaFieldValues) => Promise<void>;
 }) {
@@ -85,6 +89,7 @@ export function PersonaListView({
       onShowHidden={onShowHidden}
       onOpen={onOpen}
       tagFilter={tagFilter}
+      projectScope={projectScope}
       onCreate={onCreate}
       renderCreateModal={onCreate ? (props) => <PersonaFormModal {...props} typeOptions={typeOptions} /> : undefined}
     />

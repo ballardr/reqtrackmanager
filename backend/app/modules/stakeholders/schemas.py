@@ -35,6 +35,7 @@ from app.modules.stakeholders.enums import (
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 # A positive, finite importance weight (`inf` would poison a weighted roll-up).
 Weight = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -83,7 +84,7 @@ class PersonaUpdate(BaseModel):
     change_note: str = ""
 
 
-class PersonaOut(BaseModel):
+class PersonaOut(ProjectScopedRow):
     """A persona merged with its current version. `effective_weight` and
     `weight_override`/`weight_source` are populated only by the project router:
     the resolved weight for that project, the project's own override (if any),
@@ -266,7 +267,7 @@ class StakeholderGroupRefOut(BaseModel):
     parent_group_id: UUID | None
 
 
-class StakeholderOut(BaseModel):
+class StakeholderOut(ProjectScopedRow):
     """A stakeholder merged with its current version. `project_hidden` and
     `hidden_override` are populated only for an org stakeholder returned by the
     project router: whether it is hidden from that project, and the project's
@@ -415,7 +416,7 @@ class NeedUpdate(BaseModel):
     change_note: str = ""
 
 
-class NeedOut(BaseModel):
+class NeedOut(ProjectScopedRow):
     """A need merged with its current version."""
 
     id: UUID
@@ -581,7 +582,7 @@ class StakeholderGroupUpdate(BaseModel):
     exclusive_children: bool | None = None
 
 
-class StakeholderGroupOut(BaseModel):
+class StakeholderGroupOut(ProjectScopedRow):
     """A group with its direct member and child counts (members hidden from the viewing project are not counted)."""
 
     id: UUID
@@ -672,7 +673,7 @@ class EngagementUpdate(BaseModel):
     retain_until: date | None = None
 
 
-class EngagementOut(BaseModel):
+class EngagementOut(ProjectScopedRow):
     """An engagement. `retention_due` is true once `retain_until` has been reached; the counts are of
     Stakeholder participants and (research extras) anonymous participants."""
 
@@ -835,7 +836,7 @@ class FindingUpdate(BaseModel):
     description: str | None = None
 
 
-class FindingOut(BaseModel):
+class FindingOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
     engagement_id: UUID

@@ -55,6 +55,7 @@ from app.modules.stakeholders.service import (
 )
 from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
 from app.services.tags import TagFilter
 
@@ -95,10 +96,18 @@ def create_need(
 def list_needs(
     project_id: UUID, include_archived: bool = False, tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    _project(db, project_id)
-    needs = list_project_needs(db, project_id, include_archived=include_archived)
-    return nd.needs_to_out(db, tag_filter.keep(db, project_id, NEED_ARTEFACT_TYPE, needs))
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        _project(db, pid)
+        needs = list_project_needs(db, pid, include_archived=include_archived)
+        return nd.needs_to_out(db, tag_filter.keep(db, pid, NEED_ARTEFACT_TYPE, needs))
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, NEED_ARTEFACT_TYPE, rows_for,
+        gate=("stakeholders", "stakeholder_need"),
+    )
 
 
 @router.get("/needs/{need_id}", response_model=NeedOut)

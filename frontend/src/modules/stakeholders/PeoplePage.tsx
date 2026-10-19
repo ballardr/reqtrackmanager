@@ -25,6 +25,8 @@ import { ToggleChips } from "../../components/ToggleChips";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { rowProjectId } from "../../api/projectScope";
+import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useProjectEnabledModules } from "../../hooks/useProjectEnabledModules";
@@ -87,6 +89,7 @@ export function PeoplePage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [includeHidden, setIncludeHidden] = useState(false);
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const tagFilterProp = { projectId: projectId ?? "", filter: tagFilter };
   const [creating, setCreating] = useState<Creating>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -105,12 +108,12 @@ export function PeoplePage() {
       const mine = ++loadSeq.current;
       const on = (k: PeopleKind) => enabled.includes(k);
       Promise.all([
-        on("persona") ? projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode }) : [],
+        on("persona") ? projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
         on("persona") ? projectPersonaApi.listTypes(projectId) : [],
-        on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode }) : [],
+        on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
         on("stakeholder") ? projectStakeholderApi.listTypes(projectId) : [],
-        on("need") ? projectNeedApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }) : [],
-        on("group") ? projectStakeholderGroupApi.list(projectId, { tags: tagFilter.tags, tag_mode: tagFilter.mode }).catch(() => [] as StakeholderGroup[]) : [],
+        on("need") ? projectNeedApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
+        on("group") ? projectStakeholderGroupApi.list(projectId, { tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }).catch(() => [] as StakeholderGroup[]) : [],
       ])
         .then(([p, pt, s, st, n, g]) => {
           if (mine !== loadSeq.current) return;
@@ -127,7 +130,7 @@ export function PeoplePage() {
           if (mine === loadSeq.current) setLoadError(toErrorMessage(err, NOT_AVAILABLE));
         });
     },
-    [projectId, loaded, enabledKey, includeArchived, includeHidden, refreshKey, tagFilter.query],
+    [projectId, loaded, enabledKey, includeArchived, includeHidden, refreshKey, tagFilter.query, projectScope.scope],
   );
 
   useLoadOnChange(
@@ -147,7 +150,6 @@ export function PeoplePage() {
   if (!loaded || (enabled.length > 0 && data === "loading")) return <Spinner />;
   if (enabled.length === 0) return <p className="text-muted">{NOT_AVAILABLE}</p>;
 
-  const base = `/projects/${projectId}/modules/stakeholders`;
   const typeOptions = (types: EffectivePersonaType[]) => types.filter((t) => t.is_enabled).map((t) => ({ value: t.id, label: t.name }));
 
   function setKinds(next: PeopleKind[]) {
@@ -160,6 +162,9 @@ export function PeoplePage() {
     if (next.length > 0) setKinds(next);
   }
 
+  // Group pickers and filters offer this project's own groups, not those of related projects in a widened list.
+  const ownGroups = groups.filter((g) => !g.from_project_id);
+
   const rows: PeopleRow[] = [
     ...(selected.includes("persona") ? personas.map(personaRow) : []),
     ...(selected.includes("stakeholder") ? stakeholders.map(stakeholderRow) : []),
@@ -168,11 +173,13 @@ export function PeoplePage() {
   ];
 
   function openRow(row: PeopleRow) {
+    // A row of a related project opens in that project.
+    const rowBase = `/projects/${rowProjectId(row, projectId ?? "")}/modules/stakeholders`;
     const path: Record<PeopleKind, string> = {
-      persona: `${base}/personas/${row.id}`,
-      stakeholder: `${base}/stakeholders/${row.id}`,
-      need: `${base}/needs/${row.id}`,
-      group: `${base}/groups?group=${row.id}`,
+      persona: `${rowBase}/personas/${row.id}`,
+      stakeholder: `${rowBase}/stakeholders/${row.id}`,
+      need: `${rowBase}/needs/${row.id}`,
+      group: `${rowBase}/groups?group=${row.id}`,
     };
     navigate(path[row.kind]);
   }
@@ -253,6 +260,7 @@ export function PeoplePage() {
           onShowHidden={(p) => showHidden(p, "persona")}
           onOpen={(p) => openRow(personaRow(p))}
           tagFilter={tagFilterProp}
+          projectScope={projectScope}
         />
       )}
       {only === "stakeholder" && (
@@ -265,7 +273,7 @@ export function PeoplePage() {
           showScope
           typeOptions={typeOptions(stakeholderTypes)}
           scheme={scheme}
-          groups={groups}
+          groups={ownGroups}
           groupTier="project"
           showLastEngaged
           orgUsers={orgUsers}
@@ -277,6 +285,7 @@ export function PeoplePage() {
           onShowHidden={(s) => showHidden(s, "stakeholder")}
           onOpen={(s) => openRow(stakeholderRow(s))}
           tagFilter={tagFilterProp}
+          projectScope={projectScope}
         />
       )}
       {only === "need" && (
@@ -289,6 +298,7 @@ export function PeoplePage() {
           onIncludeArchivedChange={setIncludeArchived}
           onOpen={(n) => openRow(needRow(n))}
           tagFilter={tagFilterProp}
+          projectScope={projectScope}
         />
       )}
       {only === "group" && <StakeholderGroupsPanel key={refreshKey} projectId={projectId} initialGroupId={params.get("group")} />}
@@ -304,6 +314,7 @@ export function PeoplePage() {
           }}
           onOpen={openRow}
           tagFilter={tagFilterProp}
+          projectScope={projectScope}
         />
       )}
 
@@ -321,7 +332,7 @@ export function PeoplePage() {
       )}
       {creating === "stakeholder" && (
         <StakeholderFormModal
-          scopeLabel="project" projectId={projectId} typeOptions={typeOptions(stakeholderTypes)} scheme={scheme} groups={groups} groupTier="project"
+          scopeLabel="project" projectId={projectId} typeOptions={typeOptions(stakeholderTypes)} scheme={scheme} groups={ownGroups} groupTier="project"
           loadHint={(influence, interest) => projectStakeholderApi.cadenceHint(projectId, influence, interest)}
           error={createError} onCancel={cancelCreate}
           onSave={({ group_ids: groupIds = [], ...values }: StakeholderFieldValues & { group_ids?: string[] }, quickLinks, tags) =>
@@ -361,7 +372,7 @@ export function PeoplePage() {
       )}
       {creating === "group" && (
         <StakeholderGroupFormModal
-          groups={groups} error={createError} onCancel={cancelCreate}
+          groups={ownGroups} error={createError} onCancel={cancelCreate}
           onSave={(values: StakeholderGroupFieldValues) =>
             create(async () => { await projectStakeholderGroupApi.create(projectId, values); }, "Stakeholder group created.")}
         />

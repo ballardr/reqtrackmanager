@@ -11,6 +11,7 @@
 import { Badge } from "../../components/Badge";
 import { PEOPLE_KIND_LABEL, type PeopleRow } from "./peopleRows";
 import type { TagFilterState } from "../../hooks/useTagFilter";
+import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import { RecordListView } from "./RecordListView";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
 
@@ -23,6 +24,7 @@ export function PeopleListView({
   onShowHidden,
   onOpen,
   tagFilter,
+  projectScope,
 }: {
   rows: PeopleRow[];
   includeArchived: boolean;
@@ -34,6 +36,8 @@ export function PeopleListView({
   onOpen: (row: PeopleRow) => void;
   /** The project's tag filter (state kept by the page); omit where tags are not offered. */
   tagFilter?: { projectId: string; filter: TagFilterState };
+  /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
+  projectScope?: ProjectScopeState;
 }) {
   return (
     <RecordListView<PeopleRow, never>
@@ -62,6 +66,7 @@ export function PeopleListView({
       onShowHidden={onShowHidden}
       onOpen={onOpen}
       tagFilter={tagFilter}
+      projectScope={projectScope}
     />
   );
 }

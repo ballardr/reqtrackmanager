@@ -56,6 +56,7 @@
  * deliberately not built into the UI, a flagged scope trim.
  */
 import { api, ApiError } from "../../api/client";
+import type { ProjectScope } from "../../api/projectScope";
 import type { Organization, PrincipalRef } from "../../api/types";
 import type {
   ComplianceActionType,
@@ -710,8 +711,10 @@ export function listProjectCompliance(projectId: string): Promise<ProjectComplia
   return api.get(`${projectBase(projectId)}/project-compliance`);
 }
 
-export function getProjectComplianceStatus(projectId: string): Promise<ProjectComplianceStatus[]> {
-  return api.get(`${projectBase(projectId)}/status`);
+/** The standards assigned to a project; `projectScope` adds those of its related projects. */
+export function getProjectComplianceStatus(projectId: string, projectScope: ProjectScope = "this"): Promise<ProjectComplianceStatus[]> {
+  const query = projectScope === "this" ? "" : `?project_scope=${projectScope}`;
+  return api.get(`${projectBase(projectId)}/status${query}`);
 }
 
 export function listNonCompliantRequirements(projectId: string): Promise<NonCompliantRequirement[]> {

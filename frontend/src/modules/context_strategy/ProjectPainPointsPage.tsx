@@ -55,6 +55,10 @@ import { RecordCode } from "../../components/RecordCode";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 
@@ -77,6 +81,7 @@ export function ProjectPainPointsPage() {
   const [priorityFilter, setPriorityFilter] = useState<PainPointPriority | "">(() => oneOf(initial.get("priority"), Object.keys(PAIN_POINT_PRIORITY_LABEL) as PainPointPriority[]));
   const [includeArchived, setIncludeArchived] = useState(false);
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const [hideIntentional, setHideIntentional] = useState(initial.get("intentional") === "hide");
   const [onlyIntentional, setOnlyIntentional] = useState(initial.get("intentional") === "only");
   const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
@@ -98,7 +103,7 @@ export function ProjectPainPointsPage() {
   async function reloadPainPoints() {
     if (!projectId) return;
     try {
-      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }));
+      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -111,7 +116,7 @@ export function ProjectPainPointsPage() {
     void projectPainPointApi.listTypes(projectId).then(setTypes).catch(() => setTypes([]));
   }, [projectId]);
 
-  useLoadOnChange(reloadPainPoints, [projectId, includeArchived, tagFilter.query]);
+  useLoadOnChange(reloadPainPoints, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -164,11 +169,12 @@ export function ProjectPainPointsPage() {
       render: (p) => (
         <>
           {p.title}
+          <ProjectScopeLabel row={p} />
           {p.is_intentional && <Badge tone="info" className="badge-after">Intentional</Badge>}
         </>
       ),
     },
-    { key: "code", label: "Code", render: (p) => <RecordCode code={p.unique_code} /> },
+    { key: "code", label: "Code", render: (p) => <RecordCode code={p.unique_code} ownerProjectCode={p.from_project_code} /> },
     { key: "type", label: "Type", render: (p) => p.pain_point_type_name },
     { key: "priority", label: "Priority", render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
     {
@@ -214,7 +220,7 @@ export function ProjectPainPointsPage() {
           sort={sort}
           onSort={(key) => setSort((current) => cycleSort(current, key))}
           rowKey={(p) => p.id}
-          onRowClick={(p) => navigate(`/projects/${projectId}/modules/context_strategy/pain-points/${p.id}`)}
+          onRowClick={(p) => navigate(`/projects/${rowProjectId(p, projectId)}/modules/context_strategy/pain-points/${p.id}`)}
           emptyState={<p className="text-muted">No Pain Points recorded for this project yet.</p>}
         />
         <FilterPanel
@@ -254,6 +260,7 @@ export function ProjectPainPointsPage() {
             label="Only intentional limitations" checked={onlyIntentional}
             onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
           />
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>

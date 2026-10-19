@@ -95,6 +95,7 @@ from app.modules.context_strategy.service import (
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 # --- Strategies --------------------------------------------------------------
 
@@ -131,7 +132,7 @@ class StrategyUpdate(BaseModel):
     change_note: str = ""
 
 
-class StrategyOut(BaseModel):
+class StrategyOut(ProjectScopedRow):
     """Always built explicitly by the router (`_strategy_to_out`) — merges
     the `Strategy` identity row with its current `StrategyVersion`'s
     content; `is_locked` is computed, not a column (see this module's own
@@ -258,7 +259,7 @@ class FutureStateUpdate(BaseModel):
     change_note: str = ""
 
 
-class FutureStateOut(BaseModel):
+class FutureStateOut(ProjectScopedRow):
     """Always built explicitly by the router (`future_state_to_out`) — exact
     mirror of `StrategyOut`."""
 
@@ -464,7 +465,7 @@ class PainPointUpdate(BaseModel):
     is_intentional: bool | None = None  # None = leave unchanged
 
 
-class PainPointOut(BaseModel):
+class PainPointOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
     unique_code: str
@@ -641,7 +642,7 @@ class GuidingPrincipleUpdate(BaseModel):
     change_note: str = ""
 
 
-class GuidingPrincipleOut(BaseModel):
+class GuidingPrincipleOut(ProjectScopedRow):
     """Always built explicitly by the router (`guiding_principle_to_out`) —
     exact mirror of `StrategyOut`/`FutureStateOut`."""
 
@@ -745,7 +746,7 @@ class OpenQuestionUpdate(BaseModel):
     due_date: date | None = None
 
 
-class OpenQuestionOut(BaseModel):
+class OpenQuestionOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
     unique_code: str

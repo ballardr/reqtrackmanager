@@ -101,6 +101,7 @@ from app.modules.compliance.enums import (
     ComplianceStatus,
 )
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 # --- Standards ---------------------------------------------------------------
 
@@ -505,7 +506,7 @@ class ComplianceRequiredActionAssessmentOut(BaseModel):
     updated_at: datetime
 
 
-class ProjectComplianceStatusOut(BaseModel):
+class ProjectComplianceStatusOut(ProjectScopedRow):
     """§20's overall status summary for one `ProjectCompliance` assignment
     — see `service.py::summarize_project_compliance` for the exact,
     documented calculation this schema exposes. Always includes the raw
@@ -640,7 +641,7 @@ class ComplianceEvidenceActionLinkCreate(BaseModel):
     required_action_assessment_id: UUID
 
 
-class ComplianceEvidenceOut(BaseModel):
+class ComplianceEvidenceOut(ProjectScopedRow):
     """Response shape for one `ComplianceEvidence` row, plus its *computed*
     (never stored) `validity_state` (§14 — see `service.py::compute_
     evidence_validity_state`) and its current linked requirement/required-

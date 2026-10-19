@@ -54,6 +54,10 @@ import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { CheckboxField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useProjectScope } from "../hooks/useProjectScope";
+import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
+import { rowProjectId } from "../api/projectScope";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PAGE_SIZE = 30;
@@ -171,6 +175,7 @@ export function ChangeRequestsPage() {
   type ChangeRequestSortKey = "proposed_name" | "status" | "created_at";
   const [sort, setSort] = useState<SortState<ChangeRequestSortKey> | null>(null);
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
@@ -180,6 +185,7 @@ export function ChangeRequestsPage() {
     if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
     for (const tag of tagFilter.tags) params.append("tag", tag);
     if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
+    if (projectScope.widened) params.set("project_scope", projectScope.scope);
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -264,7 +270,7 @@ export function ChangeRequestsPage() {
     }
   }
 
-  useLoadOnChange(reload, [projectId, statusFilter, targetStageFilter, sort, search, tagFilter.query]);
+  useLoadOnChange(reload, [projectId, statusFilter, targetStageFilter, sort, search, tagFilter.query, projectScope.scope]);
 
   // Deep-linked from a requirement's "Make change request" button
   // (?requirement=<id>) — pre-selects that requirement for a
@@ -776,9 +782,10 @@ export function ChangeRequestsPage() {
                       className="entity-accent-row"
                       style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
                     >
-                      <td className="text-muted"><RecordCode code={cr.unique_code} /></td>
+                      <td className="text-muted"><RecordCode code={cr.unique_code} ownerProjectCode={cr.from_project_code} /></td>
                       <td>
-                        <Link to={`/projects/${projectId}/change-requests/${cr.id}`}>{crTitle(cr)}</Link>
+                        <Link to={`/projects/${rowProjectId(cr, projectId ?? "")}/change-requests/${cr.id}`}>{crTitle(cr)}</Link>
+                        <ProjectScopeLabel row={cr} />
                       </td>
                       <td>
                         <FilterBadge
@@ -806,10 +813,11 @@ export function ChangeRequestsPage() {
                   className="card stack entity-accent-card"
                   style={{ gap: "0.5rem", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
                 >
-                  <Link to={`/projects/${projectId}/change-requests/${cr.id}`} style={{ fontWeight: 600 }}>
+                  <Link to={`/projects/${rowProjectId(cr, projectId ?? "")}/change-requests/${cr.id}`} style={{ fontWeight: 600 }}>
                     {crTitle(cr)}
                   </Link>
-                  <small className="text-muted"><RecordCode code={cr.unique_code} /></small>
+                  <small className="text-muted"><RecordCode code={cr.unique_code} ownerProjectCode={cr.from_project_code} /></small>
+                  <ProjectScopeLabel row={cr} />
                   <div className="row" style={{ gap: "0.4rem" }}>
                     <FilterBadge
                       active={statusFilter === cr.status}
@@ -867,6 +875,7 @@ export function ChangeRequestsPage() {
               ))}
             </select>
           </FilterField>
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
         </FilterPanel>
       </div>

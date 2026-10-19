@@ -14,6 +14,7 @@ package) as a pure code-organization refactor — see
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
@@ -73,6 +74,7 @@ from app.services.definitions import get_default_project_status_id, seed_action_
 from app.services.downloads import filename_safe
 from app.services.project_export import build_project_bundle, import_project_bundle
 from app.services.project_hierarchy import build_project_tree, would_create_project_cycle
+from app.services.project_scope import ProjectScope
 from app.services.rbac import (
     can_manage_project_settings,
     check_pat_scope,
@@ -860,6 +862,7 @@ def list_project_files(
     response: Response,
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
+    project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ):
@@ -890,83 +893,96 @@ def list_project_files(
     `limit`/`offset` (U-P-06) — same optional pagination and
     `X-Total-Count` header convention as `list_requirements`/
     `list_projects`.
+
+    `project_scope` adds the files of the related projects the caller can open (each row
+    labelled `from_project_*`, see `services.project_scope`); a file never leaks across projects
+    otherwise: each project's rows are built by the same joins on that project's own id.
     """
-    entries: list[dict] = []
 
-    for asset, linked_at, req_id, req_code, req_name in db.execute(
-        select(FileAsset, RequirementFile.created_at, Requirement.id, Requirement.unique_code, RequirementVersion.name)
-        .join(RequirementFile, RequirementFile.file_id == FileAsset.id)
-        .join(Requirement, Requirement.id == RequirementFile.requirement_id)
-        .join(
-            RequirementVersion,
-            (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
+    def rows_for(pid: UUID) -> list[ProjectFileOut]:
+        """This project's files, newest first."""
+        entries: list[dict] = []
+
+        for asset, linked_at, req_id, req_code, req_name in db.execute(
+            select(FileAsset, RequirementFile.created_at, Requirement.id, Requirement.unique_code, RequirementVersion.name)
+            .join(RequirementFile, RequirementFile.file_id == FileAsset.id)
+            .join(Requirement, Requirement.id == RequirementFile.requirement_id)
+            .join(
+                RequirementVersion,
+                (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
+            )
+            .where(Requirement.project_id == pid)
+        ).all():
+            entries.append({
+                "file": asset, "linked_at": linked_at, "source": "requirement_attachment",
+                "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
+            })
+
+        # Joined directly on RequirementAction.project_id rather than via a
+        # linked requirement: an action may be linked to zero, one, or several
+        # requirements (via untyped `ArtefactLink` rows), so it has no single
+        # owning requirement to attribute the file to.
+        for asset, linked_at, action_id, action_code, action_title in db.execute(
+            select(FileAsset, RequirementActionFile.created_at, RequirementAction.id, RequirementAction.unique_code, RequirementAction.title)
+            .join(RequirementActionFile, RequirementActionFile.file_id == FileAsset.id)
+            .join(RequirementAction, RequirementAction.id == RequirementActionFile.action_id)
+            .where(RequirementAction.project_id == pid)
+        ).all():
+            entries.append({
+                "file": asset, "linked_at": linked_at, "source": "action_attachment",
+                "action_id": action_id, "action_unique_code": action_code, "action_title": action_title,
+            })
+
+        for asset, uploaded_at, comment_id, req_id, req_code, req_name in db.execute(
+            select(FileAsset, CommentFile.created_at, ReviewComment.id, Requirement.id, Requirement.unique_code, RequirementVersion.name)
+            .join(CommentFile, CommentFile.file_id == FileAsset.id)
+            .join(ReviewComment, ReviewComment.id == CommentFile.comment_id)
+            .join(
+                Requirement,
+                (Requirement.id == ReviewComment.target_id) & (ReviewComment.target_type == ReviewTargetType.REQUIREMENT),
+            )
+            .join(
+                RequirementVersion,
+                (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
+            )
+            .where(Requirement.project_id == pid)
+        ).all():
+            entries.append({
+                "file": asset, "linked_at": uploaded_at, "source": "comment_attachment",
+                "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
+                "comment_id": comment_id,
+            })
+
+        entries.sort(key=lambda e: e["linked_at"], reverse=True)
+
+        uploader_ids = {e["file"].uploaded_by for e in entries}
+        uploader_names = (
+            dict(db.execute(select(User.id, User.display_name).where(User.id.in_(uploader_ids))).all())
+            if uploader_ids else {}
         )
-        .where(Requirement.project_id == project_id)
-    ).all():
-        entries.append({
-            "file": asset, "linked_at": linked_at, "source": "requirement_attachment",
-            "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
-        })
 
-    # Joined directly on RequirementAction.project_id rather than via a
-    # linked requirement: an action may be linked to zero, one, or several
-    # requirements (via untyped `ArtefactLink` rows), so it has no single
-    # owning requirement to attribute the file to.
-    for asset, linked_at, action_id, action_code, action_title in db.execute(
-        select(FileAsset, RequirementActionFile.created_at, RequirementAction.id, RequirementAction.unique_code, RequirementAction.title)
-        .join(RequirementActionFile, RequirementActionFile.file_id == FileAsset.id)
-        .join(RequirementAction, RequirementAction.id == RequirementActionFile.action_id)
-        .where(RequirementAction.project_id == project_id)
-    ).all():
-        entries.append({
-            "file": asset, "linked_at": linked_at, "source": "action_attachment",
-            "action_id": action_id, "action_unique_code": action_code, "action_title": action_title,
-        })
+        out = [
+            ProjectFileOut(
+                file=FileAssetOut.model_validate(e["file"]),
+                uploaded_by_display_name=uploader_names.get(e["file"].uploaded_by, ""),
+                source=e["source"],
+                requirement_id=e.get("requirement_id"),
+                requirement_unique_code=e.get("requirement_unique_code"),
+                requirement_name=e.get("requirement_name"),
+                action_id=e.get("action_id"),
+                action_unique_code=e.get("action_unique_code"),
+                action_title=e.get("action_title"),
+                comment_id=e.get("comment_id"),
+            )
+            for e in entries
+        ]
+        return out
 
-    for asset, uploaded_at, comment_id, req_id, req_code, req_name in db.execute(
-        select(FileAsset, CommentFile.created_at, ReviewComment.id, Requirement.id, Requirement.unique_code, RequirementVersion.name)
-        .join(CommentFile, CommentFile.file_id == FileAsset.id)
-        .join(ReviewComment, ReviewComment.id == CommentFile.comment_id)
-        .join(
-            Requirement,
-            (Requirement.id == ReviewComment.target_id) & (ReviewComment.target_type == ReviewTargetType.REQUIREMENT),
-        )
-        .join(
-            RequirementVersion,
-            (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
-        )
-        .where(Requirement.project_id == project_id)
-    ).all():
-        entries.append({
-            "file": asset, "linked_at": uploaded_at, "source": "comment_attachment",
-            "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
-            "comment_id": comment_id,
-        })
-
-    entries.sort(key=lambda e: e["linked_at"], reverse=True)
-
-    uploader_ids = {e["file"].uploaded_by for e in entries}
-    uploader_names = (
-        dict(db.execute(select(User.id, User.display_name).where(User.id.in_(uploader_ids))).all())
-        if uploader_ids else {}
+    out = project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, "requirement", rows_for,
+        # A file may hang from several records, so a row is identified by its origin as well.
+        id_of=lambda row: (row.file.id, row.source, row.requirement_id, row.action_id, row.comment_id),
     )
-
-    out = [
-        ProjectFileOut(
-            file=FileAssetOut.model_validate(e["file"]),
-            uploaded_by_display_name=uploader_names.get(e["file"].uploaded_by, ""),
-            source=e["source"],
-            requirement_id=e.get("requirement_id"),
-            requirement_unique_code=e.get("requirement_unique_code"),
-            requirement_name=e.get("requirement_name"),
-            action_id=e.get("action_id"),
-            action_unique_code=e.get("action_unique_code"),
-            action_title=e.get("action_title"),
-            comment_id=e.get("comment_id"),
-        )
-        for e in entries
-    ]
-
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:
         out = out[offset:offset + limit]
@@ -1217,61 +1233,105 @@ def get_project_changes_endpoint(
     return entries
 
 
-@router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)
-def get_project_metrics(
-    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db)
-):
-    """Project overview dashboard metrics (U-P-05)."""
+@dataclass
+class _ProjectCounts:
+    """One project's overview counts (`id` is the project, which is what `ProjectScope.collect` keys rows on)."""
+
+    id: UUID
+    requirements: int = 0
+    completed: int = 0
+    proposed: int = 0
+    approved: int = 0
+    rejected: int = 0
+    files: int = 0
+    by_status: dict[str, int] = field(default_factory=dict)
+
+
+def _project_counts(db: Session, pid: UUID) -> _ProjectCounts:
+    """The overview counts of one project: live requirements (and how many are completed, by status),
+    change requests by outcome, and distinct requirement attachments."""
+    counts = _ProjectCounts(id=pid)
     requirement_ids = db.scalars(
-        select(Requirement.id).where(Requirement.project_id == project_id, Requirement.is_archived.is_(False))
+        select(Requirement.id).where(Requirement.project_id == pid, Requirement.is_archived.is_(False))
     ).all()
-    requirement_count = len(requirement_ids)
-    completed = 0
+    counts.requirements = len(requirement_ids)
     if requirement_ids:
         # C-G-11: completion is `Requirement.is_completed`, an overlay
         # marker independent of `RequirementVersion.status` (no longer a
         # `RequirementStatus` value at all) — queried directly off the
         # identity row, not the version.
-        completed = len(
+        counts.completed = len(
             db.scalars(
                 select(Requirement.id).where(
                     Requirement.id.in_(requirement_ids), Requirement.is_completed.is_(True)
                 )
             ).all()
         )
-    percent = (completed / requirement_count * 100.0) if requirement_count else 0.0
-
-    proposed = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == project_id,
-                ChangeRequest.status.in_([ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW]),
-            )
-        ).all()
-    )
-    approved = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == project_id, ChangeRequest.status == ChangeRequestStatus.APPROVED
-            )
-        ).all()
-    )
-    rejected = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == project_id, ChangeRequest.status == ChangeRequestStatus.REJECTED
-            )
-        ).all()
-    )
-
-    requirements_by_status: dict[str, int] = {}
-    if requirement_ids:
         for status_value in db.scalars(
             select(RequirementVersion.status).where(
                 RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None)
             )
         ).all():
-            requirements_by_status[status_value.value] = requirements_by_status.get(status_value.value, 0) + 1
+            counts.by_status[status_value.value] = counts.by_status.get(status_value.value, 0) + 1
+        counts.files = len(
+            set(
+                db.scalars(
+                    select(RequirementFile.file_id).where(RequirementFile.requirement_id.in_(requirement_ids))
+                ).all()
+            )
+        )
+    counts.proposed = len(
+        db.scalars(
+            select(ChangeRequest.id).where(
+                ChangeRequest.project_id == pid,
+                ChangeRequest.status.in_([ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW]),
+            )
+        ).all()
+    )
+    counts.approved = len(
+        db.scalars(
+            select(ChangeRequest.id).where(
+                ChangeRequest.project_id == pid, ChangeRequest.status == ChangeRequestStatus.APPROVED
+            )
+        ).all()
+    )
+    counts.rejected = len(
+        db.scalars(
+            select(ChangeRequest.id).where(
+                ChangeRequest.project_id == pid, ChangeRequest.status == ChangeRequestStatus.REJECTED
+            )
+        ).all()
+    )
+    return counts
+
+
+@router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)
+def get_project_metrics(
+    project_id: UUID, project_scope: ProjectScope = Depends(),
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Project overview dashboard metrics (U-P-05).
+
+    `project_scope` sums the counts over the related projects the caller can open
+    (`services.project_scope`); `scope_project_count` says how many projects that was. The stage
+    progress stays this project's own: stages and baselines belong to one project.
+    """
+    per_project = project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, "requirement", lambda pid: [_project_counts(db, pid)],
+    )
+    own = next(c for c in per_project if c.id == project_id)
+    requirement_count = sum(c.requirements for c in per_project)
+    completed = sum(c.completed for c in per_project)
+    percent = (completed / requirement_count * 100.0) if requirement_count else 0.0
+    proposed = sum(c.proposed for c in per_project)
+    approved = sum(c.approved for c in per_project)
+    rejected = sum(c.rejected for c in per_project)
+    file_count = sum(c.files for c in per_project)
+    requirements_by_status: dict[str, int] = {}
+    for c in per_project:
+        for key, value in c.by_status.items():
+            requirements_by_status[key] = requirements_by_status.get(key, 0) + value
+    own_requirement_count = own.requirements
 
     # Per-stage progress (dashboard "Stage Progress" chart): a stage that has
     # been baselined (C-G-10) shows completion across the requirements
@@ -1302,22 +1362,12 @@ def get_project_metrics(
                 )
             stage_percent = (stage_completed / stage_requirement_count * 100.0) if stage_requirement_count else 0.0
         else:
-            stage_requirement_count = requirement_count
+            stage_requirement_count = own_requirement_count
             stage_percent = 0.0
         stage_progress.append(
             StageProgressOut(
                 stage_id=stage.id, name=stage.name, status=stage.status,
                 requirement_count=stage_requirement_count, completed_percent=round(stage_percent, 1),
-            )
-        )
-
-    file_count = 0
-    if requirement_ids:
-        file_count = len(
-            set(
-                db.scalars(
-                    select(RequirementFile.file_id).where(RequirementFile.requirement_id.in_(requirement_ids))
-                ).all()
             )
         )
 
@@ -1330,4 +1380,5 @@ def get_project_metrics(
         file_count=file_count,
         requirements_by_status=requirements_by_status,
         stage_progress=stage_progress,
+        scope_project_count=len(per_project),
     )

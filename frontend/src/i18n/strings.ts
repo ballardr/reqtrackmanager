@@ -1739,6 +1739,8 @@ const en = {
     landingProject: "A specific {project}",
     landingProjectSelect: "Which {project}",
     showProjectCode: "Show the project code on record codes",
+    defaultProjectScope: "Default list scope",
+    defaultProjectScopeHint: "Which {projects} a list covers when you open it in a {project} with parent or child {projects}. You can change it on each list; the choice is remembered per {project}.",
     showProjectCodeHint: "Shows ACME-REQ-001 instead of REQ-001 inside a {project}. Records from another {project} always show it, and so does everything when your organisation requires it.",
     contentWidth: "Content width",
     contentWidthFull: "Full width",
@@ -1996,6 +1998,19 @@ const en = {
     traceMapEdgeLabel: (phrase: string, from: string, to: string) => `${from} ${phrase} ${to}`,
     traceUnclassifiedHint:
       "Most of these links have no direction, so they all appear under Related. An organisation administrator can give a link type a direction (Organisation admin, Projects and workflow, Link types) to fill the Upstream and Downstream views.",
+  },
+  /** The list scope filter: widening a list to the parent and/or child {projects}. */
+  projectScope: {
+    label: "Show records from",
+    options: {
+      this: "This {project}",
+      parents: "This + parent {projects}",
+      children: "This + child {projects}",
+      both: "This + parent and child {projects}",
+    },
+    widenedHint: "Includes records from related {projects} you can open. Counts cover all of them.",
+    fromProject: (name: string) => `From ${name}`,
+    coversProjects: (count: number) => `Counts cover ${count} ${count === 1 ? "project" : "projects"}; stage progress is this project's own.`,
   },
   /** Feedback for a mutation run through `useMutation`: "Stage added." / "Could not add the stage." from a verb and a noun. */
   tags: {

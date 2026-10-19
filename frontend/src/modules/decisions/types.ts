@@ -19,6 +19,7 @@
  */
 
 import type { Principal, PrincipalRef } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
 
 // --- Decision lifecycle ------------------------------------------------------
 
@@ -93,7 +94,7 @@ export type DecisionTemplateFieldValues = Omit<DecisionTemplate, "id" | "organiz
 
 // --- Decisions -----------------------------------------------------------------
 
-export interface Decision {
+export interface Decision extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;

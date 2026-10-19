@@ -51,6 +51,7 @@ from app.modules.stakeholders.schemas import (
 )
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
 from app.schemas.file import FileAssetOut
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_module_enabled
 from app.services.tags import TagFilter
 
@@ -91,15 +92,24 @@ def list_engagements(
     persona_id: UUID | None = None, date_from: date | None = None, date_to: date | None = None,
     retention_due: bool | None = None, tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """The project's engagements, most recent first. Filters combine: channel, a participant Stakeholder, a
     covered Persona, a date range, and whether the retain-until date has been reached."""
-    project = _project(db, project_id)
-    engagements = es.list_engagements(
-        db, project, channel=channel.value if channel else None, stakeholder_id=stakeholder_id, persona_id=persona_id,
-        date_from=date_from, date_to=date_to, retention_due=retention_due,
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        project = _project(db, pid)
+        engagements = es.list_engagements(
+            db, project, channel=channel.value if channel else None, stakeholder_id=stakeholder_id, persona_id=persona_id,
+            date_from=date_from, date_to=date_to, retention_due=retention_due,
+        )
+        return tag_filter.keep(db, pid, ENGAGEMENT_ARTEFACT_TYPE, engagements)
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, ENGAGEMENT_ARTEFACT_TYPE, rows_for,
+        gate=(STAKEHOLDERS_MODULE_KEY, None),
     )
-    return tag_filter.keep(db, project_id, ENGAGEMENT_ARTEFACT_TYPE, engagements)
 
 
 @router.get("/engagements/{engagement_id}", response_model=EngagementOut)

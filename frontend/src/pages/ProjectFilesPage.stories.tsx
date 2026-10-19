@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import { buildProjectFile, withRouter } from "../testing/storybook-helpers";
+import { buildProjectFile, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ProjectFilesPage } from "./ProjectFilesPage";
 
 const PROJECT_ID = "project-1";
@@ -108,3 +108,38 @@ export const EmptyState: Story = {
 
 export const LightTheme: Story = { ...MixedSources, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...MixedSources, globals: { theme: "dark" } };
+
+/** Widening the list to the parent adds its files, labelled with the project, linking to the origin in that project. */
+export const WidenedToTheParent: Story = {
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/scope-options")) return { has_parents: true, has_children: false, truncated: false };
+      throw new Error(`unmocked path: ${path}`);
+    });
+    spyOn(api, "getPage").mockImplementation(async (path: string) => {
+      const own = buildProjectFile({
+        file: { id: "file-1", organization_id: "org-1", filename: "own.pdf", content_type: "application/pdf", size_bytes: 10, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-20T09:00:00Z" },
+        requirement_id: "requirement-1", requirement_unique_code: "SW-001", requirement_name: "Own requirement",
+      });
+      const parent = buildProjectFile({
+        file: { id: "file-2", organization_id: "org-1", filename: "parent.pdf", content_type: "application/pdf", size_bytes: 10, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-21T09:00:00Z" },
+        requirement_id: "requirement-9", requirement_unique_code: "SW-009", requirement_name: "Parent requirement",
+        from_project_id: "project-parent", from_project_name: "Platform", from_project_code: "PLAT",
+      });
+      const items = path.includes("project_scope=parents") ? [own, parent] : [own];
+      return { items, total: items.length };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("own.pdf")).toBeInTheDocument());
+    await expect(canvas.queryByText("parent.pdf")).not.toBeInTheDocument();
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Show records from" }), "parents");
+    await expect(await canvas.findByText("parent.pdf")).toBeInTheDocument();
+    await expect(canvas.getByText("From Platform")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "SW-009 — Parent requirement" })).toHaveAttribute(
+      "href", "/projects/project-parent/requirements/requirement-9"
+    );
+  },
+};

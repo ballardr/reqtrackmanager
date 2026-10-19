@@ -39,6 +39,7 @@ from app.modules.stakeholders.schemas import (
     PromptUpdate,
 )
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
 from app.services.tags import TagFilter
 
@@ -170,13 +171,22 @@ def delete_anonymous_participant(
 def list_project_findings(
     project_id: UUID, tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view),
     db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """Every finding in the project, newest first."""
-    _project(db, project_id)
-    rows = db.scalars(
-        select(ResearchFinding).where(ResearchFinding.project_id == project_id).order_by(ResearchFinding.created_at.desc())
-    ).all()
-    return [rs.finding_to_out(f) for f in tag_filter.keep(db, project_id, FINDING_ARTEFACT_TYPE, rows)]
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        _project(db, pid)
+        rows = db.scalars(
+            select(ResearchFinding).where(ResearchFinding.project_id == pid).order_by(ResearchFinding.created_at.desc())
+        ).all()
+        return [rs.finding_to_out(f) for f in tag_filter.keep(db, pid, FINDING_ARTEFACT_TYPE, rows)]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, FINDING_ARTEFACT_TYPE, rows_for,
+        gate=(STAKEHOLDERS_MODULE_KEY, RESEARCH_SUBCOMPONENT),
+    )
 
 
 @router.get("/engagements/{engagement_id}/findings", response_model=list[FindingOut])

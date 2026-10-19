@@ -32,6 +32,10 @@ import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 
@@ -50,6 +54,7 @@ export function ProjectStrategiesPage() {
   const [priorityFilter, setPriorityFilter] = useState<StrategyPriority | "">("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -57,7 +62,7 @@ export function ProjectStrategiesPage() {
   async function reloadStrategies() {
     if (!projectId) return;
     try {
-      setStrategies(await projectStrategyApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }));
+      setStrategies(await projectStrategyApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -69,7 +74,7 @@ export function ProjectStrategiesPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useLoadOnChange(reloadStrategies, [projectId, includeArchived, tagFilter.query]);
+  useLoadOnChange(reloadStrategies, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -83,7 +88,7 @@ export function ProjectStrategiesPage() {
   });
 
   const columns: DirectoryColumn<Strategy>[] = [
-    { key: "title", label: "Title", render: (s) => s.title },
+    { key: "title", label: "Title", render: (s) => <>{s.title}<ProjectScopeLabel row={s} /></> },
     { key: "code", label: "Code", render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
     { key: "priority", label: "Priority", render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
     {
@@ -105,7 +110,7 @@ export function ProjectStrategiesPage() {
           columns={columns}
           rows={filtered}
           rowKey={(s) => s.id}
-          onRowClick={(s) => navigate(`/projects/${projectId}/modules/context_strategy/strategies/${s.id}`)}
+          onRowClick={(s) => navigate(`/projects/${rowProjectId(s, projectId)}/modules/context_strategy/strategies/${s.id}`)}
           emptyState={<p className="text-muted">No Strategy recorded for this project yet.</p>}
         />
         <FilterPanel
@@ -128,6 +133,7 @@ export function ProjectStrategiesPage() {
               ))}
             </select>
           </FilterField>
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>

@@ -36,7 +36,10 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { TagFilterField } from "../../components/TagFilterField";
+import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
@@ -56,6 +59,10 @@ export interface ListedRecord {
   /** Set only by project endpoints, for an org record: whether the project hides it. */
   project_hidden?: boolean | null;
   hidden_source?: HiddenSource | null;
+  /** Set only on a row of a related project in a widened list. */
+  from_project_id?: string | null;
+  from_project_name?: string | null;
+  from_project_code?: string | null;
 }
 
 export function RecordListView<R extends ListedRecord, V>({
@@ -78,6 +85,7 @@ export function RecordListView<R extends ListedRecord, V>({
   toolbar,
   extraFilters,
   tagFilter,
+  projectScope,
   includeArchived = false,
   onIncludeArchivedChange,
   includeHidden = false,
@@ -117,6 +125,8 @@ export function RecordListView<R extends ListedRecord, V>({
   extraFilters?: ReactNode;
   /** Offers the project's tag filter; the page keeps the state (`useTagFilter`) and sends it with its list read. */
   tagFilter?: { projectId: string; filter: TagFilterState };
+  /** The project page's list scope; offers the scope filter and labels rows of related projects. */
+  projectScope?: ProjectScopeState;
   includeArchived?: boolean;
   /** Offered when passed; omit for a kind that cannot be archived. */
   onIncludeArchivedChange?: (next: boolean) => void;
@@ -147,7 +157,7 @@ export function RecordListView<R extends ListedRecord, V>({
   });
 
   const columns: DirectoryColumn<R>[] = [
-    { key: "name", label: "Name", render: (r) => r.name },
+    { key: "name", label: "Name", render: (r) => <>{r.name}<ProjectScopeLabel row={r} /></> },
     { key: "code", label: "Code", render: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span> },
     ...columnsBeforeType,
     ...(typeName
@@ -240,6 +250,7 @@ export function RecordListView<R extends ListedRecord, V>({
             </FilterField>
           )}
           {extraFilters}
+          {projectScope && <ProjectScopeFilter scope={projectScope} />}
           {tagFilter && <TagFilterField projectId={tagFilter.projectId} filter={tagFilter.filter} />}
           {onIncludeArchivedChange && (
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />

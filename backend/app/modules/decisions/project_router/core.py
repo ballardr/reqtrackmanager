@@ -29,6 +29,7 @@ from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, resolve_effect
 from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.principals import principal_filter_clause, principal_labels, principal_ref, validate_principal
+from app.services.project_scope import ProjectScope
 from app.services.sequences import generate_unique_code
 from app.services.tags import TagFilter
 
@@ -143,6 +144,7 @@ def list_decisions(
     include_archived: bool = False,
     tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """Lists Decisions with filter-panel query params, mirroring
     `routers.requirements.list_requirements`'s own filtering style
@@ -154,33 +156,41 @@ def list_decisions(
     Requirement set, and nothing asks for it; can be
     added later the same way `list_requirements` added it, without a
     breaking change. **Decided by: Agent** (scope containment)."""
-    query = select(Decision).where(Decision.project_id == project_id)
-    if not include_archived:
-        query = query.where(Decision.is_archived.is_(False))
-    if decision_type_id:
-        query = query.where(Decision.decision_type_id == decision_type_id)
-    if status_filter:
-        query = query.where(Decision.status == status_filter)
-    if owner_id:
-        query = query.where(Decision.owner_type == owner_type.value, Decision.owner_id == owner_id)
-    if owner_mine:
-        query = query.where(principal_filter_clause(db, current_user.id, Decision.owner_type, Decision.owner_id, project_id=project_id))
-    if decision_maker_id:
-        query = query.where(Decision.decision_maker_type == decision_maker_type.value, Decision.decision_maker_id == decision_maker_id)
-    if decision_maker_mine:
-        query = query.where(principal_filter_clause(
-            db, current_user.id, Decision.decision_maker_type, Decision.decision_maker_id, project_id=project_id,
-        ))
-    decisions = db.scalars(query.order_by(Decision.created_at)).all()
-    decisions = tag_filter.keep(db, project_id, DECISION_ARTEFACT_TYPE, decisions)
 
-    if search:
-        needle = search.lower()
-        decisions = [
-            d for d in decisions
-            if needle in d.title.lower() or needle in d.decision_statement.lower() or needle in d.unique_code.lower()
-        ]
-    return _decisions_to_out(db, decisions)
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(Decision).where(Decision.project_id == pid)
+        if not include_archived:
+            query = query.where(Decision.is_archived.is_(False))
+        if decision_type_id:
+            query = query.where(Decision.decision_type_id == decision_type_id)
+        if status_filter:
+            query = query.where(Decision.status == status_filter)
+        if owner_id:
+            query = query.where(Decision.owner_type == owner_type.value, Decision.owner_id == owner_id)
+        if owner_mine:
+            query = query.where(principal_filter_clause(db, current_user.id, Decision.owner_type, Decision.owner_id, project_id=pid))
+        if decision_maker_id:
+            query = query.where(Decision.decision_maker_type == decision_maker_type.value, Decision.decision_maker_id == decision_maker_id)
+        if decision_maker_mine:
+            query = query.where(principal_filter_clause(
+                db, current_user.id, Decision.decision_maker_type, Decision.decision_maker_id, project_id=pid,
+            ))
+        decisions = db.scalars(query.order_by(Decision.created_at)).all()
+        decisions = tag_filter.keep(db, pid, DECISION_ARTEFACT_TYPE, decisions)
+
+        if search:
+            needle = search.lower()
+            decisions = [
+                d for d in decisions
+                if needle in d.title.lower() or needle in d.decision_statement.lower() or needle in d.unique_code.lower()
+            ]
+        return _decisions_to_out(db, decisions)
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, DECISION_ARTEFACT_TYPE, rows_for,
+        gate=("decisions", None),
+    )
 
 
 @router.get("/{decision_id}", response_model=DecisionOut)

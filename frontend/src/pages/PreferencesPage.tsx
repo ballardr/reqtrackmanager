@@ -15,6 +15,8 @@ import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { PROJECT_SCOPES, parseProjectScope } from "../api/projectScope";
+import { DEFAULT_PROJECT_SCOPE_PREFERENCE } from "../hooks/useProjectScope";
 import { SHOW_PROJECT_CODE_PREFERENCE } from "../hooks/useRecordCode";
 import { useUiPreference } from "../hooks/useUiPreference";
 import type {
@@ -85,6 +87,8 @@ export function PreferencesPage() {
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [contentBoxed, setContentBoxed] = useUiPreference<boolean>("content_boxed", false);
   const [showProjectCode, setShowProjectCode] = useUiPreference<boolean>(SHOW_PROJECT_CODE_PREFERENCE, true);
+  const [storedProjectScope, setDefaultProjectScope] = useUiPreference<string>(DEFAULT_PROJECT_SCOPE_PREFERENCE, "this");
+  const defaultProjectScope = parseProjectScope(storedProjectScope) ?? "this";
   const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
   const [landingProjectId, setLandingProjectId] = useState(
     landingModeFor(user?.landing_preference) === "project" ? user?.landing_preference ?? "" : ""
@@ -498,6 +502,14 @@ export function PreferencesPage() {
               hint={strings.preferences.showProjectCodeHint}
             />
           </FormGridFull>
+          <LabeledSelect
+            label={strings.preferences.defaultProjectScope}
+            value={defaultProjectScope}
+            onChange={setDefaultProjectScope}
+            options={PROJECT_SCOPES.map((scope) => ({ value: scope, label: strings.projectScope.options[scope] }))}
+            placeholder={null}
+            hint={strings.preferences.defaultProjectScopeHint}
+          />
           <LabeledSelect
             label={strings.preferences.landing}
             value={landingMode}

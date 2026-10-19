@@ -91,6 +91,10 @@ def _resolve_user_from_pat(token: str, db: Session, request: Request) -> User:
     request.state.pat_allowed_project_ids = (
         {UUID(project_id) for project_id in pat.allowed_project_ids} if pat.allowed_project_ids else None
     )
+    # The same scope on the session, for code that reads other projects on the caller's behalf
+    # (`rbac.session_may_reach_project`) and has no request to look at.
+    db.info["pat_allowed_org_ids"] = request.state.pat_allowed_org_ids
+    db.info["pat_allowed_project_ids"] = request.state.pat_allowed_project_ids
     return user
 
 
@@ -214,6 +218,7 @@ def get_current_user_or_module_frame(module_key: str):
                     "organization_id": frame_claims.get("organization_id"),
                     "project_id": frame_claims.get("project_id"),
                 }
+                db.info["module_frame_project_id"] = frame_claims.get("project_id")
                 return user
         return _resolve_user_from_token(token, db, request)
 

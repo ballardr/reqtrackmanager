@@ -5,6 +5,8 @@
  * backend (I-A-01: loosely coupled).
  */
 
+import type { ProjectScopedRow } from "./projectScope";
+
 export type ProjectRole = "project_manager" | "project_administrator" | "stakeholder" | "member";
 export type OrgRole = "org_admin" | "project_creator" | "member";
 // Module system. `server_admin` mirrors
@@ -527,7 +529,7 @@ export interface FileAsset {
  * `action_title` are set for "action_attachment" rows (an action may be
  * linked to zero, one, or several requirements, so it has no single owning
  * requirement to attribute the file to). See backend `ProjectFileOut`. */
-export interface ProjectFile {
+export interface ProjectFile extends ProjectScopedRow {
   file: FileAsset;
   uploaded_by_display_name: string;
   source: "requirement_attachment" | "action_attachment" | "comment_attachment";
@@ -1348,9 +1350,11 @@ export interface ProjectMetrics {
   file_count: number;
   requirements_by_status: Record<string, number>;
   stage_progress: StageProgress[];
+  /** How many projects the counts cover (1 unless the overview is widened to related projects). */
+  scope_project_count: number;
 }
 
-export interface Requirement {
+export interface Requirement extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;
@@ -1468,7 +1472,7 @@ export interface LinkedRequirement {
   name: string;
 }
 
-export interface RequirementAction {
+export interface RequirementAction extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;
@@ -1535,7 +1539,7 @@ export const CHANGEABLE_FIELD_LABEL: Record<ChangeableRequirementField, string> 
   attachments: "Attachments",
 };
 
-export interface ChangeRequest {
+export interface ChangeRequest extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;

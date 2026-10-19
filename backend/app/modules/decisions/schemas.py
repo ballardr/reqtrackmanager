@@ -45,6 +45,7 @@ from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.service import DecisionDecisionLinkKind, DecisionRequirementLinkKind
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 # --- Decision Types (project-scoped) ----------------------------------------
 
@@ -157,7 +158,7 @@ class DecisionUpdate(BaseModel):
     constraints: str | None = None
 
 
-class DecisionOut(BaseModel):
+class DecisionOut(ProjectScopedRow):
     """Always built explicitly by the router (`_decision_to_out`), never
     `from_attributes` alone — `is_locked` is computed, not a column (see
     this module's own docstring)."""

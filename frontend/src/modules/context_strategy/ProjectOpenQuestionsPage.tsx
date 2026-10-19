@@ -37,6 +37,10 @@ import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQ
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
@@ -58,6 +62,7 @@ export function ProjectOpenQuestionsPage() {
   const [priorityFilter, setPriorityFilter] = useState<OpenQuestionPriority | "">(() => oneOf(initial.get("priority"), Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]));
   const [includeArchived, setIncludeArchived] = useState(false);
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
   const [overdueOnly, setOverdueOnly] = useState(initial.get("overdue") === "1");
   const [unownedOnly, setUnownedOnly] = useState(initial.get("unowned") === "1");
@@ -68,7 +73,7 @@ export function ProjectOpenQuestionsPage() {
   async function reloadOpenQuestions() {
     if (!projectId) return;
     try {
-      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }));
+      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -80,7 +85,7 @@ export function ProjectOpenQuestionsPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useLoadOnChange(reloadOpenQuestions, [projectId, includeArchived, tagFilter.query]);
+  useLoadOnChange(reloadOpenQuestions, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -98,8 +103,8 @@ export function ProjectOpenQuestionsPage() {
   });
 
   const columns: DirectoryColumn<OpenQuestion>[] = [
-    { key: "question", label: "Question", render: (q) => q.question },
-    { key: "code", label: "Code", render: (q) => <RecordCode code={q.unique_code} /> },
+    { key: "question", label: "Question", render: (q) => <>{q.question}<ProjectScopeLabel row={q} /></> },
+    { key: "code", label: "Code", render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
     { key: "priority", label: "Priority", render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
     {
       key: "status", label: "Status",
@@ -120,7 +125,7 @@ export function ProjectOpenQuestionsPage() {
           columns={columns}
           rows={filtered}
           rowKey={(q) => q.id}
-          onRowClick={(q) => navigate(`/projects/${projectId}/modules/context_strategy/open-questions/${q.id}`)}
+          onRowClick={(q) => navigate(`/projects/${rowProjectId(q, projectId)}/modules/context_strategy/open-questions/${q.id}`)}
           emptyState={<p className="text-muted">No Open Questions recorded for this project yet.</p>}
         />
         <FilterPanel
@@ -146,6 +151,7 @@ export function ProjectOpenQuestionsPage() {
           <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
           <FilterCheckbox label="Overdue only" checked={overdueOnly} onChange={setOverdueOnly} />
           <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>

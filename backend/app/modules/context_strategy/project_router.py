@@ -313,6 +313,7 @@ from app.schemas.type_vocabulary import HiddenTypeOut, RestoreTypesOut, RestoreT
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.principals import validate_principal
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.relationships import get_all_links
 from app.services.tags import TagFilter
@@ -377,13 +378,21 @@ def list_project_strategies(
     project_id: UUID, include_archived: bool = False,
     tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(Strategy).where(Strategy.project_id == project_id, Strategy.scope == _SCOPE)
-    if not include_archived:
-        query = query.where(Strategy.is_archived.is_(False))
-    strategies = db.scalars(query.order_by(Strategy.created_at)).all()
-    strategies = tag_filter.keep(db, project_id, STRATEGY_ARTEFACT_TYPE, strategies)
-    return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(Strategy).where(Strategy.project_id == pid, Strategy.scope == _SCOPE)
+        if not include_archived:
+            query = query.where(Strategy.is_archived.is_(False))
+        strategies = db.scalars(query.order_by(Strategy.created_at)).all()
+        strategies = tag_filter.keep(db, pid, STRATEGY_ARTEFACT_TYPE, strategies)
+        return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, STRATEGY_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "strategy"),
+    )
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyOut)
@@ -838,13 +847,21 @@ def list_project_future_states(
     project_id: UUID, include_archived: bool = False,
     tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(FutureState).where(FutureState.project_id == project_id, FutureState.scope == _FS_SCOPE)
-    if not include_archived:
-        query = query.where(FutureState.is_archived.is_(False))
-    future_states = db.scalars(query.order_by(FutureState.created_at)).all()
-    future_states = tag_filter.keep(db, project_id, FUTURE_STATE_ARTEFACT_TYPE, future_states)
-    return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(FutureState).where(FutureState.project_id == pid, FutureState.scope == _FS_SCOPE)
+        if not include_archived:
+            query = query.where(FutureState.is_archived.is_(False))
+        future_states = db.scalars(query.order_by(FutureState.created_at)).all()
+        future_states = tag_filter.keep(db, pid, FUTURE_STATE_ARTEFACT_TYPE, future_states)
+        return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, FUTURE_STATE_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "future_state"),
+    )
 
 
 @router.get("/future-states/{future_state_id}", response_model=FutureStateOut)
@@ -1456,14 +1473,22 @@ def list_project_pain_points(
     project_id: UUID, include_archived: bool = False,
     tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(PainPoint).where(PainPoint.project_id == project_id)
-    if not include_archived:
-        query = query.where(PainPoint.is_archived.is_(False))
-    pain_points = db.scalars(query.order_by(PainPoint.created_at)).all()
-    pain_points = tag_filter.keep(db, project_id, PAIN_POINT_ARTEFACT_TYPE, pain_points)
-    labels = owner_labels(db, pain_points)
-    return [pain_point_to_out(db, p, labels) for p in pain_points]
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(PainPoint).where(PainPoint.project_id == pid)
+        if not include_archived:
+            query = query.where(PainPoint.is_archived.is_(False))
+        pain_points = db.scalars(query.order_by(PainPoint.created_at)).all()
+        pain_points = tag_filter.keep(db, pid, PAIN_POINT_ARTEFACT_TYPE, pain_points)
+        labels = owner_labels(db, pain_points)
+        return [pain_point_to_out(db, p, labels) for p in pain_points]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, PAIN_POINT_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "pain_point"),
+    )
 
 
 @router.get("/pain-points/{pain_point_id}", response_model=PainPointOut)
@@ -2036,15 +2061,23 @@ def list_project_guiding_principles(
     project_id: UUID, include_archived: bool = False,
     tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(GuidingPrinciple).where(
-        GuidingPrinciple.project_id == project_id, GuidingPrinciple.scope == _GP_SCOPE,
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(GuidingPrinciple).where(
+            GuidingPrinciple.project_id == pid, GuidingPrinciple.scope == _GP_SCOPE,
+        )
+        if not include_archived:
+            query = query.where(GuidingPrinciple.is_archived.is_(False))
+        guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
+        guiding_principles = tag_filter.keep(db, pid, GUIDING_PRINCIPLE_ARTEFACT_TYPE, guiding_principles)
+        return guiding_principles_to_out(db, guiding_principles)
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "guiding_principle"),
     )
-    if not include_archived:
-        query = query.where(GuidingPrinciple.is_archived.is_(False))
-    guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
-    guiding_principles = tag_filter.keep(db, project_id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, guiding_principles)
-    return guiding_principles_to_out(db, guiding_principles)
 
 
 @router.get("/guiding-principles/{guiding_principle_id}", response_model=GuidingPrincipleOut)
@@ -2546,14 +2579,22 @@ def list_project_open_questions(
     project_id: UUID, include_archived: bool = False,
     tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_open_question_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(OpenQuestion).where(OpenQuestion.project_id == project_id)
-    if not include_archived:
-        query = query.where(OpenQuestion.is_archived.is_(False))
-    open_questions = db.scalars(query.order_by(OpenQuestion.created_at)).all()
-    open_questions = tag_filter.keep(db, project_id, OPEN_QUESTION_ARTEFACT_TYPE, open_questions)
-    labels = owner_labels(db, open_questions)
-    return [open_question_to_out(db, oq, labels) for oq in open_questions]
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(OpenQuestion).where(OpenQuestion.project_id == pid)
+        if not include_archived:
+            query = query.where(OpenQuestion.is_archived.is_(False))
+        open_questions = db.scalars(query.order_by(OpenQuestion.created_at)).all()
+        open_questions = tag_filter.keep(db, pid, OPEN_QUESTION_ARTEFACT_TYPE, open_questions)
+        labels = owner_labels(db, open_questions)
+        return [open_question_to_out(db, oq, labels) for oq in open_questions]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, OPEN_QUESTION_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "open_question"),
+    )
 
 
 @router.get("/open-questions/{open_question_id}", response_model=OpenQuestionOut)

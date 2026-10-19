@@ -342,6 +342,8 @@ class TaggedRecord:
     status: str | None
     is_archived: bool
     project_id: uuid.UUID | None
+    project_name: str | None = None
+    project_code: str | None = None
 
 
 #: Most records `find_tagged_records` returns.
@@ -351,6 +353,7 @@ MAX_TAGGED_RECORDS = 200
 def find_tagged_records(
     db: Session, *, project: Project, resolver: ArtefactResolver, names: list[str], match_all: bool = False,
     artefact_type: str | None = None, limit: int = MAX_TAGGED_RECORDS,
+    project_ids: set[uuid.UUID] | None = None,
 ) -> tuple[list[TaggedRecord], bool]:
     """Records of any type, visible to the caller in `project`, carrying any (or all) of `names`.
 
@@ -365,6 +368,10 @@ def find_tagged_records(
         match_all: Require every name instead of any.
         artefact_type: Restrict to one registered type.
         limit: Most rows to return (capped at `MAX_TAGGED_RECORDS`).
+        project_ids: The projects to look in (the request project plus the related projects of a
+            widened scope, `services.project_scope`); `None` means the request project only. The
+            resolver must have been built with `include_related=True` for any other project to
+            resolve.
 
     Returns:
         `(records, truncated)`, newest tag use first.
@@ -377,8 +384,9 @@ def find_tagged_records(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Give at least one tag.")
     if artefact_type is not None and artefact_type not in get_all_registered_artefact_types():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefact type not found.")
+    scope_ids = project_ids if project_ids is not None else {project.id}
     owner = or_(
-        ArtefactTag.project_id == project.id,
+        ArtefactTag.project_id.in_(scope_ids),
         and_(ArtefactTag.project_id.is_(None), Tag.organization_id == project.organization_id),
     )
     query = (
@@ -399,11 +407,11 @@ def find_tagged_records(
     found: list[TaggedRecord] = []
     for hit_type, hit_id, _ in hits:
         summary = resolver.visible((hit_type, hit_id))
-        if summary is None or (summary.project_id is not None and summary.project_id != project.id):
+        if summary is None or (summary.project_id is not None and summary.project_id not in scope_ids):
             continue
         found.append(TaggedRecord(
             hit_type, get_artefact_type_label(hit_type), hit_id, summary.label, summary.status, summary.is_archived,
-            summary.project_id,
+            summary.project_id, resolver.project_name(summary.project_id), resolver.project_code(summary.project_id),
         ))
         if len(found) > cap:
             break

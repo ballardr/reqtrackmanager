@@ -54,6 +54,7 @@ from app.schemas.tags import (
 from app.services import tags as tag_service
 from app.services.link_authoring import DRAFT_ARTEFACT_ID
 from app.services.link_graph import ArtefactResolver
+from app.services.project_scope import ProjectScope
 from app.services.rbac import can_manage_project_settings, require_org_role, require_project_manage, require_project_view
 from app.services.tags import TagScope
 
@@ -180,14 +181,20 @@ def find_tagged_records(
     project_id: UUID, tag: list[str] = Query(..., description="Tag names (case-insensitive)."),
     tag_mode: Literal["any", "all"] = Query("any"), artefact_type: str | None = Query(None),
     limit: int = Query(tag_service.MAX_TAGGED_RECORDS, ge=1, le=tag_service.MAX_TAGGED_RECORDS),
+    project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ) -> TaggedRecordsOut:
-    """Records of any type carrying these tags that the caller can open (others are omitted, not described)."""
+    """Records of any type carrying these tags that the caller can open (others are omitted, not described).
+
+    `project_scope` also looks in the related projects the caller can open; the resolver applies each
+    one's own module, permission and visibility rules, and a record from another project carries its
+    `project_id`, `project_name` and `project_code`."""
     project = _project_or_404(db, project_id)
-    resolver = ArtefactResolver(db, project, current_user.id)
+    resolver = ArtefactResolver(db, project, current_user.id, include_related=project_scope.widened)
+    scope_ids = {r.project.id for r in project_scope.projects(db, project, current_user.id)}
     records, truncated = tag_service.find_tagged_records(
         db, project=project, resolver=resolver, names=tag, match_all=tag_mode == "all", artefact_type=artefact_type,
-        limit=limit,
+        limit=limit, project_ids=scope_ids,
     )
     return TaggedRecordsOut(
         records=[TaggedRecordOut(**r.__dict__) for r in records], truncated=truncated,

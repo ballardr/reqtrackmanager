@@ -8,6 +8,7 @@
  * value goes through its label map, never the raw string.
  */
 import type { BadgeTone, FileAsset, Principal, PrincipalRef } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
 
 export type RiskStatus =
   | "identified"
@@ -122,7 +123,7 @@ export interface RiskLevelIds {
   residual_detectability_level_id: string | null;
 }
 
-export interface Risk extends RiskLevelIds {
+export interface Risk extends RiskLevelIds, ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;

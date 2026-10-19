@@ -67,6 +67,7 @@ from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.services import relationships
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_permission
 from app.services.sequences import generate_unique_code
 from app.services.tags import TagFilter
@@ -190,13 +191,22 @@ def create_evidence(
 def list_evidence(
     project_id: UUID, tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """Lists every piece of evidence for this project, including archived
     rows — a caller wanting only active evidence filters client-side,
     mirroring `list_project_compliance`'s own identical judgment call."""
-    evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == project_id)).all()
-    evidence_rows = tag_filter.keep(db, project_id, "compliance_evidence", evidence_rows)
-    return [build_evidence_out(db, evidence) for evidence in evidence_rows]
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == pid)).all()
+        evidence_rows = tag_filter.keep(db, pid, "compliance_evidence", evidence_rows)
+        return [build_evidence_out(db, evidence) for evidence in evidence_rows]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, "compliance_evidence", rows_for,
+        gate=("compliance", None),
+    )
 
 
 @router.get("/expiring-evidence", response_model=list[ComplianceEvidenceOut])

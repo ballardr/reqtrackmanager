@@ -578,3 +578,5 @@ class ProjectMetricsOut(BaseModel):
     file_count: int = 0
     requirements_by_status: dict[str, int] = {}
     stage_progress: list[StageProgressOut] = []
+    # How many projects the counts cover (1 unless the request widened the scope; stage progress is always the project's own).
+    scope_project_count: int = 1

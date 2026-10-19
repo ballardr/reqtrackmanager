@@ -28,6 +28,8 @@ import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { rowProjectId } from "../../api/projectScope";
+import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 
 type Option = { value: string; label: string };
@@ -44,6 +46,7 @@ export function ProjectEngagementsPage() {
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "engagement");
   const commitTags = useCommitTags(projectId ?? "", "engagement");
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const [engagements, setEngagements] = useState<EngagementRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<EngagementListFilters>({});
@@ -67,7 +70,7 @@ export function ProjectEngagementsPage() {
     if (!projectId || findingId) return;
     let active = true;
     projectEngagementApi
-      .list(projectId, { ...filters, tags: tagFilter.tags, tag_mode: tagFilter.mode })
+      .list(projectId, { ...filters, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
       .then((list) => {
         if (!active) return;
         setEngagements(list.map((e) => ({ ...e, name: e.title })));
@@ -79,7 +82,7 @@ export function ProjectEngagementsPage() {
     return () => {
       active = false;
     };
-  }, [projectId, findingId, filters, refreshKey, tagFilter.tags, tagFilter.mode]);
+  }, [projectId, findingId, filters, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -140,8 +143,9 @@ export function ProjectEngagementsPage() {
             <FilterCheckbox label="Retention review due" checked={filters.retention_due === true} onChange={(next) => setFilter({ retention_due: next ? true : undefined })} />
           </>
         }
-        onOpen={(e) => navigate(`/projects/${projectId}/modules/stakeholders/engagements/${e.id}`)}
+        onOpen={(e) => navigate(`/projects/${rowProjectId(e, projectId)}/modules/stakeholders/engagements/${e.id}`)}
         tagFilter={{ projectId, filter: tagFilter }}
+        projectScope={projectScope}
         onCreate={async (values, quickLinks, tags) => {
           const created = await projectEngagementApi.create(projectId, values);
           showToast("Engagement logged.");

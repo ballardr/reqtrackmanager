@@ -14,6 +14,7 @@
  * (a user, an organisation group or a project group), returned resolved.
  */
 import type { BadgeTone, Principal } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
 
 export type PersonaScope = "organization" | "project";
 export type PersonaStatus = "draft" | "active" | "retired";
@@ -52,7 +53,7 @@ export const PERSONA_WEIGHT_SOURCE_LABEL: Record<PersonaWeightSource, string> = 
  * `hidden_override` and `hidden_source` (whether the project hides it, its own
  * override, and who supplied the effective value) are only populated by the
  * project-scoped endpoints. */
-export interface Persona {
+export interface Persona extends ProjectScopedRow {
   id: string;
   scope: PersonaScope;
   organization_id: string | null;
@@ -243,7 +244,7 @@ export const HIDDEN_SOURCE_LABEL: Record<HiddenSource, string> = {
  * stakeholder returned by the project-scoped endpoints: whether it is hidden
  * from that project, the project's own override (null when it only inherits)
  * and the project that supplied the effective value. */
-export interface Stakeholder {
+export interface Stakeholder extends ProjectScopedRow {
   id: string;
   scope: StakeholderScope;
   organization_id: string | null;
@@ -363,7 +364,7 @@ export const NEED_STATUS_TONE: Record<NeedStatus, BadgeTone> = {
 };
 
 /** A Stakeholder Need merged with its current version. Always project-scoped. */
-export interface Need {
+export interface Need extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;
@@ -455,7 +456,7 @@ export interface StakeholderGroupRef {
 }
 
 /** A node of the group tree; `member_count` counts direct members only. */
-export interface StakeholderGroup extends StakeholderGroupRef {
+export interface StakeholderGroup extends StakeholderGroupRef, ProjectScopedRow {
   organization_id: string | null;
   project_id: string | null;
   /** Human-readable code (`SGP-003`), numbered per owner. */
@@ -498,7 +499,7 @@ export interface GroupFromTextResult {
 // --- Engagements ----------------------------------------------------------------
 
 /** An Engagement as the project API returns it. `retention_due` is true once `retain_until` has been reached. */
-export interface Engagement {
+export interface Engagement extends ProjectScopedRow {
   id: string;
   project_id: string;
   creator_id: string;
@@ -633,7 +634,7 @@ export interface AnonymousParticipant {
 }
 
 /** Research extras: something learned in an engagement. */
-export interface ResearchFinding {
+export interface ResearchFinding extends ProjectScopedRow {
   id: string;
   project_id: string;
   engagement_id: string;

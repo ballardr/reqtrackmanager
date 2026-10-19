@@ -49,6 +49,10 @@ import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 
@@ -71,6 +75,7 @@ export function ProjectDecisionsPage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [ownedByMe, setOwnedByMe] = useState(false);
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -87,6 +92,7 @@ export function ProjectDecisionsPage() {
         owner_mine: ownedByMe,
         tags: tagFilter.tags,
         tag_mode: tagFilter.mode,
+        project_scope: projectScope.scope,
       }));
       setLoadError(null);
     } catch (err) {
@@ -104,15 +110,15 @@ export function ProjectDecisionsPage() {
     decisionsApi.listDecisionTypes(projectId).then(setDecisionTypes);
   }, [projectId]);
 
-  useLoadOnChange(reloadDecisions, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe, tagFilter.query]);
+  useLoadOnChange(reloadDecisions, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe, tagFilter.query, projectScope.scope]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decisions === null || project === null) return <Spinner />;
 
   const columns: DirectoryColumn<Decision>[] = [
-    { key: "unique_code", label: "Code", render: (d) => <RecordCode code={d.unique_code} /> },
-    { key: "title", label: "Title", render: (d) => d.title },
+    { key: "unique_code", label: "Code", render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
+    { key: "title", label: "Title", render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
     {
       key: "type", label: "Type",
       render: (d) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? "—",
@@ -163,6 +169,7 @@ export function ProjectDecisionsPage() {
             </select>
           </FilterField>
           <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
@@ -196,7 +203,7 @@ export function ProjectDecisionsPage() {
 
       {selected && (
         <DecisionQuickViewPanel
-          projectId={projectId}
+          projectId={rowProjectId(selected, projectId)}
           decision={selected}
           decisionTypes={decisionTypes}
           onClose={() => setSelected(null)}

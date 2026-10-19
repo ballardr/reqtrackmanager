@@ -35,6 +35,10 @@ import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 
@@ -53,6 +57,7 @@ export function ProjectFutureStatesPage() {
   const [statusFilter, setStatusFilter] = useState<FutureStateStatus | "">(() => oneOf(initial.get("status"), Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]));
   const [includeArchived, setIncludeArchived] = useState(false);
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const [roadmapOnly, setRoadmapOnly] = useState(initial.get("roadmap") === "1");
   const [targetPassedOnly, setTargetPassedOnly] = useState(initial.get("target_passed") === "1");
   const [noMeasuresOnly, setNoMeasuresOnly] = useState(initial.get("no_measures") === "1");
@@ -63,7 +68,7 @@ export function ProjectFutureStatesPage() {
   async function reloadFutureStates() {
     if (!projectId) return;
     try {
-      setFutureStates(await projectFutureStateApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }));
+      setFutureStates(await projectFutureStateApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -75,7 +80,7 @@ export function ProjectFutureStatesPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useLoadOnChange(reloadFutureStates, [projectId, includeArchived, tagFilter.query]);
+  useLoadOnChange(reloadFutureStates, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -92,7 +97,7 @@ export function ProjectFutureStatesPage() {
   });
 
   const columns: DirectoryColumn<FutureState>[] = [
-    { key: "title", label: "Title", render: (fs) => fs.title },
+    { key: "title", label: "Title", render: (fs) => <>{fs.title}<ProjectScopeLabel row={fs} /></> },
     { key: "code", label: "Code", render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
     {
       key: "status", label: "Status",
@@ -114,7 +119,7 @@ export function ProjectFutureStatesPage() {
           columns={columns}
           rows={filtered}
           rowKey={(fs) => fs.id}
-          onRowClick={(fs) => navigate(`/projects/${projectId}/modules/context_strategy/future-states/${fs.id}`)}
+          onRowClick={(fs) => navigate(`/projects/${rowProjectId(fs, projectId)}/modules/context_strategy/future-states/${fs.id}`)}
           emptyState={<p className="text-muted">No Future State recorded for this project yet.</p>}
         />
         <FilterPanel
@@ -132,6 +137,7 @@ export function ProjectFutureStatesPage() {
           <FilterCheckbox label="On the roadmap only" checked={roadmapOnly} onChange={setRoadmapOnly} />
           <FilterCheckbox label="Target date passed" checked={targetPassedOnly} onChange={setTargetPassedOnly} />
           <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>

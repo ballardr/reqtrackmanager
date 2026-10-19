@@ -38,12 +38,15 @@ function mockRequirementsListApis(
   opts: {
     components?: Component[]; categories?: Category[]; linkOptions?: ArtefactLinkTypeOption[]; candidates?: ArtefactLinkCandidate[];
     withTags?: boolean;
+    /** The project has a parent the viewer can open; a widened list then adds the parent's requirement. */
+    withParent?: boolean;
   } = {},
 ) {
   const comps = opts.components ?? components;
   const cats = opts.categories ?? categories;
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (opts.withTags && path.endsWith(`/projects/${PROJECT_ID}/tags`)) return buildVocabulary();
+    if (path.endsWith("/scope-options")) return { has_parents: opts.withParent === true, has_children: false, truncated: false };
     if (path.endsWith("/my-roles")) return { roles: myRoles === "manager" ? ["project_manager"] : ["member"] };
     if (path.includes("/artefacts/")) return finderReply(path, opts.linkOptions ?? [], opts.candidates ?? []);
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles === "manager" ? ["project_manager"] : ["member"] })];
@@ -61,12 +64,18 @@ function mockRequirementsListApis(
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
-  spyOn(api, "getPage").mockResolvedValue({
-    items: [
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    const items = [
       buildRequirement({ id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1" }),
       buildRequirement({ id: "r2", unique_code: "RPT-EXP-002", name: "Nightly export", component_id: "c2", category_id: "cat2", target_stage_id: "s1", status: "approved" }),
-    ],
-    total: 2,
+    ];
+    if (path.includes("project_scope=parents")) {
+      items.push(buildRequirement({
+        id: "r3", unique_code: "PLAT-001", name: "Single sign-on", from_project_id: "project-parent",
+        from_project_name: "Platform", from_project_code: "PLAT",
+      }));
+    }
+    return { items, total: items.length };
   });
 }
 
@@ -199,6 +208,28 @@ export const FilterByStatusBadge: Story = {
     await userEvent.click(draftBadge);
     const statusSelect = canvas.getByLabelText("Status");
     await expect(statusSelect).toHaveValue("draft");
+  },
+};
+
+/** A project with a parent offers the scope filter; widening it adds the parent's requirement, labelled with its
+ * project, qualified by its code and read-only here (no bulk checkbox, no reorder buttons), and sends `project_scope`. */
+export const WideningTheScopeAddsTheParentsRequirements: Story = {
+  beforeEach: () => mockRequirementsListApis("manager", { withParent: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await expect(canvas.queryByText("Single sign-on")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Show records from" }), "parents");
+    const row = (await canvas.findByRole("link", { name: "Single sign-on" })).closest("tr")!;
+    await expect(within(row).getByText("From Platform")).toBeInTheDocument();
+    await expect(within(row).getByText("PLAT-PLAT-001")).toBeInTheDocument();
+    await expect(within(row).queryByRole("checkbox")).not.toBeInTheDocument();
+    await expect(within(row).queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      const paths = (api.getPage as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
+      expect(paths.some((p) => p.includes("project_scope=parents"))).toBe(true);
+    });
   },
 };
 

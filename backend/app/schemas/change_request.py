@@ -23,6 +23,7 @@ from app.models.enums import (
 )
 from app.schemas.artefact_links import LinkOrientation
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 #: Field names a MODIFY_REQUIREMENT change request may list in
 #: `changed_fields` — matching RequirementVersion's own attribute names,
@@ -152,7 +153,7 @@ class ChangeRequestCreate(BaseModel):
     proposed_link_id: UUID | None = None
 
 
-class ChangeRequestOut(BaseModel):
+class ChangeRequestOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
     unique_code: str

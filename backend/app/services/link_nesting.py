@@ -47,7 +47,7 @@ from app.models.relationship import ArtefactLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.services.link_type_scope import LinkRuleError
 from app.services.project_hierarchy import get_project_chain_ids
-from app.services.rbac import get_effective_project_roles
+from app.services.rbac import get_effective_project_roles, session_may_reach_project
 
 MAX_RELATED_PROJECTS = 50
 """Cap on the related projects considered at once (ancestors + descendants), so a
@@ -175,8 +175,10 @@ class RelatedProject:
 
 
 def can_open_project(db: Session, user_id: uuid.UUID, project_id: uuid.UUID) -> bool:
-    """Whether the user holds a genuine role on the project (may read its content)."""
-    return bool(get_effective_project_roles(db, user_id, project_id))
+    """Whether the user holds a genuine role on the project (may read its content) and the
+    credential behind the request may reach it (a token scoped to one project does not reach
+    its parent or child)."""
+    return session_may_reach_project(db, project_id) and bool(get_effective_project_roles(db, user_id, project_id))
 
 
 def related_projects(

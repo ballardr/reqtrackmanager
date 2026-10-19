@@ -63,3 +63,31 @@ export const NoStandardsAssigned: Story = {
     await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
   },
 };
+
+/** A widened overview adds the related projects' assignments, each tile naming its project and opening there. */
+export const WidenedToTheParent: Story = {
+  args: { projectScope: "parents" },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/modules/compliance/status") && path.includes("project_scope=parents")) {
+        return [
+          ...complianceStatus,
+          {
+            ...complianceStatus[0], project_compliance_id: "pc-2", project_id: "project-parent", project_name: "Platform",
+            standard_name: "Platform Standard", compliance_percentage: 40,
+            from_project_id: "project-parent", from_project_name: "Platform", from_project_code: "PLAT",
+          },
+        ];
+      }
+      throw new Error(`Unmocked path: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Platform Standard · Platform")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: /Platform Standard/ })).toHaveAttribute(
+      "href", "/projects/project-parent/modules/compliance"
+    );
+    await expect(canvas.getByText("Corporate Security Standard")).toBeInTheDocument();
+  },
+};

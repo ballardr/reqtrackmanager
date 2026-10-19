@@ -65,6 +65,7 @@ from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.downloads import filename_safe
 from app.services.principals import group_ref_from_text, validate_principal
+from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirement_csv import (
     CUSTOM_FIELD_COLUMN_PREFIX,
@@ -299,6 +300,7 @@ def list_requirements(
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
+    project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01)
@@ -330,61 +332,74 @@ def list_requirements(
     watched filters below narrow it further — unlike `X-Total-Count`, it does not
     change when the caller adds a filter or search term, so the frontend
     can show "12 matching · 57 total" instead of just a bare filtered count.
+
+    `project_scope` (`parents`/`children`/`both`) adds the requirements of the related projects
+    the caller can open (`services.project_scope`); rows from another project carry
+    `from_project_*`, the counts above cover every project listed, and project-local filters
+    (component, category, target stage) only match rows of the project they belong to.
     """
-    query = select(Requirement).where(Requirement.project_id == project_id)
-    if not include_archived:
-        query = query.where(Requirement.is_archived.is_(False))
+    unfiltered = 0
 
-    response.headers["X-Total-Unfiltered-Count"] = str(
-        db.scalar(select(func.count()).select_from(query.subquery()))
-    )
+    def rows_for(pid: UUID) -> list[RequirementOut]:
+        nonlocal unfiltered
+        query = select(Requirement).where(Requirement.project_id == pid)
+        if not include_archived:
+            query = query.where(Requirement.is_archived.is_(False))
 
-    if is_completed is not None:
-        query = query.where(Requirement.is_completed.is_(is_completed))
-    if component_id:
-        query = query.where(Requirement.component_id == component_id)
-    if category_id:
-        query = query.where(Requirement.category_id == category_id)
-    if any(t.strip() for t in tag):
-        project = db.get(Project, project_id)
-        query = query.where(Requirement.id.in_(
-            tag_service.tagged_ids(db, project=project, artefact_type="requirement", names=tag, match_all=tag_mode == "all")
-        ))
-    requirements = db.scalars(query).all()
-    prefetch = _prefetch_for_list(db, [r.id for r in requirements], current_user.id)
+        unfiltered += db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
-    out = []
-    for req in requirements:
-        version = prefetch.versions[req.id]
-        kws = prefetch.keywords.get(req.id, [])
-        if keyword and keyword.casefold() not in {k.casefold() for k in kws}:
-            continue
-        if search:
-            needle = search.lower()
-            if needle not in version.name.lower() and needle not in req.unique_code.lower():
+        if is_completed is not None:
+            query = query.where(Requirement.is_completed.is_(is_completed))
+        if component_id:
+            query = query.where(Requirement.component_id == component_id)
+        if category_id:
+            query = query.where(Requirement.category_id == category_id)
+        if any(t.strip() for t in tag):
+            query = query.where(Requirement.id.in_(
+                tag_service.tagged_ids(
+                    db, project=db.get(Project, pid), artefact_type="requirement", names=tag, match_all=tag_mode == "all",
+                )
+            ))
+        requirements = db.scalars(query).all()
+        prefetch = _prefetch_for_list(db, [r.id for r in requirements], current_user.id)
+
+        rows = []
+        for req in requirements:
+            version = prefetch.versions[req.id]
+            kws = prefetch.keywords.get(req.id, [])
+            if keyword and keyword.casefold() not in {k.casefold() for k in kws}:
                 continue
-        if status_filter and version.status != status_filter:
-            continue
-        if target_stage_id and version.target_stage_id != target_stage_id:
-            continue
-        item = _to_out(db, req, version, current_user.id, prefetch)
-        if has_comments and item.comment_count == 0:
-            continue
-        if only_watched and not item.is_subscribed:
-            continue
-        out.append(item)
+            if search:
+                needle = search.lower()
+                if needle not in version.name.lower() and needle not in req.unique_code.lower():
+                    continue
+            if status_filter and version.status != status_filter:
+                continue
+            if target_stage_id and version.target_stage_id != target_stage_id:
+                continue
+            item = _to_out(db, req, version, current_user.id, prefetch)
+            if has_comments and item.comment_count == 0:
+                continue
+            if only_watched and not item.is_subscribed:
+                continue
+            rows.append(item)
+
+        if not sort:
+            comp_order = {c.id: c.sort_order for c in db.scalars(
+                select(ProjectComponent).where(ProjectComponent.project_id == pid)).all()}
+            cat_order = {c.id: c.sort_order for c in db.scalars(
+                select(ProjectCategory).where(ProjectCategory.project_id == pid)).all()}
+            rows.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
+        return rows
+
+    out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
+    response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:
         def _sort_value(item: RequirementOut):
             value = getattr(item, sort)
             return value.lower() if isinstance(value, str) else value
         out.sort(key=_sort_value, reverse=(order == "desc"))
-    else:
-        comp_order = {c.id: c.sort_order for c in db.scalars(
-            select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
-        cat_order = {c.id: c.sort_order for c in db.scalars(
-            select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
-        out.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
 
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:

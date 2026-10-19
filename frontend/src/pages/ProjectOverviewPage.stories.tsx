@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, ProjectMetrics } from "../api/types";
-import { buildChangeEntry, buildProject, buildProjectListItem, withRouter, withTerminology } from "../testing/storybook-helpers";
+import { buildChangeEntry, buildProject, buildProjectListItem, buildUser, withRouter, withStatefulAuth, withTerminology } from "../testing/storybook-helpers";
 import { ProjectOverviewPage } from "./ProjectOverviewPage";
 
 const metrics: ProjectMetrics = {
@@ -21,6 +21,7 @@ const metrics: ProjectMetrics = {
     { stage_id: "s1", name: "Scoping", status: "completed", requirement_count: 10, completed_percent: 100 },
     { stage_id: "s2", name: "Build", status: "scoping", requirement_count: 14, completed_percent: 30 },
   ],
+  scope_project_count: 1,
 };
 
 const activity: ChangeEntry[] = [buildChangeEntry({ action: "updated", actor_display_name: "Alex Morgan" })];
@@ -37,7 +38,7 @@ type Story = StoryObj<typeof ProjectOverviewPage>;
 export const Dashboard: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/metrics")) return metrics;
+      if (path.includes("/metrics")) return metrics;
       if (path.endsWith("/changes")) return activity;
       // No parent/children for this fixture — a plain top-level project,
       // so neither the breadcrumb nor the "Child of/Parent of" labels
@@ -72,7 +73,7 @@ export const Dashboard: Story = {
 export const WithHierarchy: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/metrics")) return metrics;
+      if (path.includes("/metrics")) return metrics;
       if (path.endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors")) {
         return [
@@ -131,7 +132,7 @@ export const LoadError: Story = {
 export const EntitySwitcherOffersSiblingProjects: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/metrics")) return metrics;
+      if (path.includes("/metrics")) return metrics;
       if (path.endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors")) return [];
       if (path.endsWith("/children")) return [];
@@ -161,3 +162,28 @@ export const EntitySwitcherOffersSiblingProjects: Story = {
 
 export const LightTheme: Story = { ...Dashboard, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...Dashboard, globals: { theme: "dark" } };
+
+/** A project with a parent offers the scope filter: widening it re-reads the counts with `project_scope`
+ * and says how many projects they now cover (stage progress stays this project's own). */
+export const WidenedToTheParent: Story = {
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/metrics")) {
+        return path.includes("project_scope=parents")
+          ? { ...metrics, requirement_count: 60, scope_project_count: 2 }
+          : metrics;
+      }
+      if (path.endsWith("/scope-options")) return { has_parents: true, has_children: false, truncated: false };
+      if (path.endsWith("/changes")) return activity;
+      if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
+      return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Show records from" }), "parents");
+    await expect(await canvas.findByText("Counts cover 2 projects; stage progress is this project's own.")).toBeInTheDocument();
+    await expect(canvas.getByText("Requirements").previousSibling).toHaveTextContent("60");
+  },
+};

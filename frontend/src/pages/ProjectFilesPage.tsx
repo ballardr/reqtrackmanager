@@ -9,6 +9,10 @@ import { useStrings } from "../context/TerminologyContext";
 import { formatFileSize } from "../utils/formatFileSize";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useProjectScope } from "../hooks/useProjectScope";
+import { rowProjectId } from "../api/projectScope";
+import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
 
 const PAGE_SIZE = 50;
 
@@ -33,29 +37,30 @@ export function ProjectFilesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [files, setFiles] = useState<ProjectFile[] | null>(null);
   const [total, setTotal] = useState(0);
+  const projectScope = useProjectScope(projectId);
 
   async function loadFiles(offset: number, append: boolean) {
     if (!projectId) return;
     const page = await api.getPage<ProjectFile>(
-      `/api/v1/projects/${projectId}/files?limit=${PAGE_SIZE}&offset=${offset}`
+      `/api/v1/projects/${projectId}/files?limit=${PAGE_SIZE}&offset=${offset}${projectScope.widened ? `&${projectScope.query}` : ""}`
     );
     setFiles((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
   }
 
-  useResetOnChange([projectId], () => setFiles(null));
-  useLoadOnChange(() => loadFiles(0, false), [projectId]);
+  useResetOnChange([projectId, projectScope.scope], () => setFiles(null));
+  useLoadOnChange(() => loadFiles(0, false), [projectId, projectScope.scope]);
 
   function originLink(f: ProjectFile): { to: string; label: string } | null {
     if (f.source === "action_attachment" && f.action_id) {
       return {
-        to: `/projects/${projectId}/actions/${f.action_id}`,
+        to: `/projects/${rowProjectId(f, projectId ?? "")}/actions/${f.action_id}`,
         label: f.action_unique_code ? `${f.action_unique_code} — ${f.action_title}` : (f.action_title ?? f.action_id),
       };
     }
     if (f.requirement_id) {
       return {
-        to: `/projects/${projectId}/requirements/${f.requirement_id}`,
+        to: `/projects/${rowProjectId(f, projectId ?? "")}/requirements/${f.requirement_id}`,
         label: f.requirement_unique_code
           ? `${f.requirement_unique_code} — ${f.requirement_name}`
           : (f.requirement_name ?? f.requirement_id),
@@ -73,6 +78,9 @@ export function ProjectFilesPage() {
   return (
     <div className="stack">
       <h1 style={{ margin: 0 }}>{strings.files.title}</h1>
+      <div style={{ maxWidth: 320 }}>
+        <ProjectScopeFilter scope={projectScope} />
+      </div>
 
       {!files && <Spinner />}
       {files && files.length === 0 && <p className="text-muted">{strings.files.empty}</p>}
@@ -104,6 +112,7 @@ export function ProjectFilesPage() {
                           {sourceLabel(f.source)}
                         </span>
                         {link && <Link to={link.to}>{link.label}</Link>}
+                        <ProjectScopeLabel row={f} />
                       </div>
                     </td>
                     <td className="text-muted">{f.uploaded_by_display_name}</td>

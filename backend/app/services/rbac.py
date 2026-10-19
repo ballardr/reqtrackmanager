@@ -231,6 +231,34 @@ def check_pat_project_scope(request: Request, project_id: UUID) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This access token is not scoped to this project.")
 
 
+def session_may_reach_project(db: Session, project_id: UUID) -> bool:
+    """Whether the credential behind this request's session may touch `project_id`: a Personal
+    Access Token's org and optional project scope, or a Tier B `<ModuleFrame>` token's single
+    project (both stamped on `db.info` by `deps` when the request authenticates).
+
+    Every project endpoint checks its own path project (`check_pat_scope_for_project`,
+    `_enforce_module_frame_scope`). Code that reads *another* project on the caller's behalf
+    (`services.link_nesting.can_open_project`, so the link graph, link authoring and lists widened
+    to related projects) must apply the same limit, or a token scoped to one project would reach
+    its parent or child. Always true for an ordinary session request.
+
+    Args:
+        db: The request's session.
+        project_id: The other project about to be read.
+    """
+    allowed_projects = db.info.get("pat_allowed_project_ids")
+    if allowed_projects is not None and project_id not in allowed_projects:
+        return False
+    allowed_orgs = db.info.get("pat_allowed_org_ids")
+    if allowed_orgs is not None:
+        organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
+        if organization_id is None or organization_id not in allowed_orgs:
+            return False
+    if "module_frame_project_id" in db.info and db.info["module_frame_project_id"] != str(project_id):
+        return False
+    return True
+
+
 def is_org_active(db: Session, organization_id: UUID) -> bool:
     """Boolean form of the check `_require_org_active` raises on. Exists for
     call sites that can't raise an `HTTPException` and need to translate

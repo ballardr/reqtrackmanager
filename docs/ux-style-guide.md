@@ -923,6 +923,27 @@ A create form accepts every field the edit form edits, and both render the **sam
 - Fields that cannot exist before the record does (comments, attachments, change note) and permission-gated fields the caller may not use are left out of create: **hide** the control, never show one the server will refuse (the create form asks the server whether the caller may, as Pain Point scoring does).
 - A field deliberately absent from create or edit is recorded in `docs/decisions.md` with the reason.
 
+## Pattern: list scope filter (nested projects)
+
+In a project tree a list can be widened to the **parent and/or child projects the viewer can open**. Every project-scoped record list does this the same way, so no list builds its own:
+
+- **`useProjectScope(projectId)`** holds the choice and **`ProjectScopeFilter`** renders it in the list's filter panel: *This project*, *This + parent projects*, *This + child projects*, *This + parent and child projects*. The page sends `project_scope` with its list read (`ScopeListFilters`/`appendScopeParam` for a module's API wrapper); the server does the widening. The filter is **hidden** for a project with no parent or child the viewer can open (`GET /projects/{id}/scope-options`), and offers only the choices that add something.
+- **A row from another project says so and opens there.** `ProjectScopeLabel` adds a muted "From {project}" beside the name, the code is qualified by that project's code (`<RecordCode ownerProjectCode>` or `ScopedRecordCode`), and the row links to `rowProjectId(row, projectId)`. A row of the viewed project carries no `from_project_*` fields, so a single-project list is unchanged.
+- **Rows from another project are read-only in the list.** Bulk selection, reorder buttons and anything that calls the viewed project's own endpoints with the row's id are hidden for them; people open the record in its own project to change it. A picker or filter built from the viewed project's own data (the stakeholder group filter, create pickers) offers that project's entries only. The risk matrix plots every listed risk (levels are organisation-wide).
+- **The choice is remembered per person and project** (`project_scopes` in `ui_preferences`, one key whatever the number of projects) and starts from the person's default (**Preferences → Default list scope**, `default_project_scope`). A stored choice a project cannot offer degrades to what it can ("both" in a project with only children shows children).
+- **Counts and result totals cover every project listed**; the filter says so beside the select whenever the list is widened. The same filter sits on the project overview (stat tiles, charts and module tiles; stage progress stays the project's own) and on the files list. A module's overview tile receives `projectScope` and covers the same projects.
+
+```mermaid
+flowchart LR
+    A["List page<br/>useProjectScope"] -->|"?project_scope=parents"| B["List endpoint<br/>ProjectScope.collect"]
+    B --> C{"For each related project"}
+    C -->|"can open it, credential reaches it,<br/>module enabled there, type view held there"| D["Endpoint's own list logic<br/>for that project"]
+    C -->|"otherwise"| E["Omitted, never redacted"]
+    D --> F["Rows labelled from_project_*"]
+```
+
+Server rule: omit, never redact. A project the viewer cannot open, a module disabled in it, a record type they cannot view there, or a token scoped to a different project each leave its rows out without a trace. See `docs/decisions.md`'s "Nested-project scope filter" entry.
+
 ## Tokens
 
 `frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and spacing/radii used consistently even though not yet named as tokens. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.

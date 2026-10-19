@@ -34,6 +34,7 @@ import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox } from "../../components/FilterPanel";
 import { branchNames, descendantIds, groupPath } from "./groupTree";
 import type { TagFilterState } from "../../hooks/useTagFilter";
+import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import { RecordListView } from "./RecordListView";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import { StakeholderGroupFilterFields } from "./StakeholderGroupFilterFields";
@@ -63,6 +64,7 @@ export function StakeholderListView({
   onShowHidden,
   onOpen,
   tagFilter,
+  projectScope,
   onCreate,
   onCreateFromUser,
 }: {
@@ -93,6 +95,8 @@ export function StakeholderListView({
   onOpen: (stakeholder: Stakeholder) => void;
   /** The project's tag filter (state kept by the page); omit where tags are not offered. */
   tagFilter?: { projectId: string; filter: TagFilterState };
+  /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
+  projectScope?: ProjectScopeState;
   /** Resolves on success; a rejection keeps the modal open and shows its message. `groupIds` are the groups chosen on the form. Omit when stakeholders are created elsewhere. */
   onCreate?: (values: StakeholderFieldValues, groupIds: string[]) => Promise<void>;
   /** Same contract, for the "Add from org user" modal; omit to leave that button out. */
@@ -188,6 +192,7 @@ export function StakeholderListView({
         onShowHidden={onShowHidden}
         onOpen={onOpen}
       tagFilter={tagFilter}
+      projectScope={projectScope}
         onCreate={onCreate && (({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds))}
         renderCreateModal={onCreate ? (props) => (
           <StakeholderFormModal

@@ -13,6 +13,23 @@ The **Projects** list is searchable by name/summary and filterable by active/arc
 | Favourites, role/stage filters, and a choice of tile, list, or tree view |
 | ![Projects dashboard with filters and a tile-view layout](../../static/img/screenshots/projects-page.png) |
 
+## Listing records from parent and child projects
+
+In a project that has a parent or child project you can open, every record list (requirements, change requests, actions, files, and each module's lists such as risks, decisions, engagements and people) and the project **Overview** has a **Show records from** filter: *This project*, *This + parent projects*, *This + child projects*, or *This + parent and child projects*. It is not shown when the project has no relatives you can open.
+
+- A row from another project is labelled **From {project}**, its code includes that project's code (for example `PLAT-REQ-001`), and it opens in its own project. Those rows are read-only in the list: no bulk selection or reordering, so to change one you open it where it lives.
+- You only ever see records you could already see in the other project: you need a role there, the feature must be switched on there, and you need permission to view that type of record. Anything else is left out, with no hint that it exists. Siblings and projects outside the tree are never included.
+- Result counts cover every project the list includes. On the Overview the tiles and charts add up the projects (a line says how many; stage progress stays this project's own), and the risk matrix plots risks from every project in the list, so you can read the risk of a whole product built from sub-projects.
+- The choice is remembered for each project, and starts from **Preferences → Default list scope**. If that default is wider than a project offers (for example "both" in a project with no children), the list shows the widest choice the project does offer.
+
+```mermaid
+flowchart LR
+    A["Open a list"] --> B{"Project has a parent or child you can open?"}
+    B -->|"no"| C["This project only; no filter shown"]
+    B -->|"yes"| D["Show records from: your remembered choice, else your default"]
+    D --> E["Rows from this project, then from each project you may see"]
+```
+
 ## View modes
 
 The Projects list offers **tile**, **list**, and (for an organisation with hierarchical projects) **tree** view; the Requirements list offers tile and list view. Each page remembers its own view-mode choice independently — switching Projects to list view doesn't change what Requirements shows, and the choice persists across visits rather than resetting to a default every time the page loads.

@@ -54,6 +54,7 @@ from app.modules.compliance.service import (
 from app.services import notifications
 from app.services.audit import log_event
 from app.services.downloads import filename_safe
+from app.services.project_scope import ProjectScope
 
 router = APIRouter(tags=["compliance-project-assignment"])
 
@@ -309,20 +310,33 @@ def migrate_project_compliance_version(
 
 @router.get("/status", response_model=list[ProjectComplianceStatusOut])
 def get_project_status(
-    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, project_scope: ProjectScope = Depends(),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """§20's overall status summary, one entry per active (non-archived)
     standard assigned to this project — the `compliance_get_project_status`
     MCP tool. A project may have several standards
     assigned at once (§7's own worked example), so this returns a list
     rather than inventing a single cross-standard aggregate nothing in the
-    requirements asks for."""
-    assignments = db.scalars(
-        select(ProjectCompliance).where(
-            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
-        )
-    ).all()
-    return [build_status_out(db, pc) for pc in assignments]
+    requirements asks for.
+
+    `project_scope` adds the assignments of the related projects the caller can open, each row
+    labelled `from_project_*` (and carrying that project's `project_name`), so a parent's
+    overview shows its sub-projects' compliance beside its own."""
+
+    def rows_for(pid: UUID) -> list[ProjectComplianceStatusOut]:
+        """This project's active assignments with their status."""
+        assignments = db.scalars(
+            select(ProjectCompliance).where(
+                ProjectCompliance.project_id == pid, ProjectCompliance.is_archived.is_(False)
+            )
+        ).all()
+        return [build_status_out(db, pc) for pc in assignments]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, "project_compliance_requirement", rows_for,
+        gate=("compliance", None), id_of=lambda row: row.project_compliance_id,
+    )
 
 
 @router.get("/non-compliant-requirements", response_model=list[NonCompliantRequirementOut])

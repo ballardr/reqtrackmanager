@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
+import type { ProjectScope } from "../api/projectScope";
 import type { ReportCatalogueEntry, ReportResult, ReportRunValues } from "../api/reports";
 import type { ReportFigureActionResolver } from "../components/ReportViewer";
 
@@ -126,7 +127,9 @@ export interface ProjectOverviewTileDef {
    * tiles — used only as this contribution's React list `key`, never
    * rendered. */
   key: string;
-  render: (props: { projectId: string }) => ReactNode;
+  /** `projectScope` is the overview's list scope (`this` unless the viewer widened it to related projects):
+   * a tile that counts or summarises project data should cover the same projects as the built-in tiles. */
+  render: (props: { projectId: string; projectScope: ProjectScope }) => ReactNode;
 }
 
 /**

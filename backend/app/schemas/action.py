@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from app.models.enums import RequirementActionOutcome
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 
 class RequirementActionCreate(BaseModel):
@@ -52,7 +53,7 @@ class LinkedRequirementOut(BaseModel):
     name: str
 
 
-class RequirementActionOut(BaseModel):
+class RequirementActionOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
     unique_code: str

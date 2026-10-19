@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18 and 19 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19 and 20 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-18 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19; Phases 8, 9, 10, 13, 14, 15, 16, 17, 18 and 19 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 20.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+19 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19, Phase 20 done 2026-10-20; Phases 8, 9, 10, 13, 14, 15, 16, 17, 18, 19 and 20 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 21.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -27,7 +27,7 @@
 | 17 | Quick-link on create | N21 | [x] |
 | 18 | Tags on every item type | N22 | [x] |
 | 19 | Create forms accept every field the edit form does (pain point first) | N23 | [x] |
-| 20 | Nested-project scope filter on every list | N24 | [ ] |
+| 20 | Nested-project scope filter on every list | N24 | [x] |
 | 21 | Field help (?) tooltips | N25 | [ ] |
 | 23 | Global search: plain header search box with live results, search page (scope, filters, field picker), per-user default search fields, per-type search registration | N26 | [ ] |
 | 24 | Record codes in reports, CSV and PDF exports, bundles and embedded references | N7, N27 | [ ] |
@@ -491,6 +491,13 @@ Reading the diagram: a module is checked at three levels from the server down. A
 - **Frontend:** `ProjectScopeFilter` in the shared list-filter bar; rows from another project show a muted project label; counts and stat blocks state their scope. **Preference (Q23):** user preference `default_project_scope` in `ui_preferences` (Preferences page, with an explainer), overridden per user and project by the filter itself, persisted under a project-keyed key so a change in one project sticks there without changing the global default.
 - **Inventory:** the lists to cover (requirements, change requests, actions, files, every module list) with a verdict each; reports and exports keep their own scope control and are listed, not changed.
 - **Tests:** backend: each option's id set on a three-level tree, a user with access to the parent but not the child, module disabled in the child, cross-org isolation, performance bound (one query for the id set, not per row); Storybook for the filter and a mixed list; Playwright: default from preference, change in a project and revisit.
+
+- **Done 2026-10-20 (uncommitted at hand-back).** Details, the inventory with a verdict per list, and the SOC 2 review are in `docs/decisions.md`.
+  - **Backend:** `services/project_scope.py` (`ProjectScope` dependency, `collect` fan-out, `scope_options`), `schemas/project_scope.py` (`ProjectScopedRow` mixin on 17 row schemas), `GET /projects/{id}/scope-options`. All 17 project record lists take `project_scope`; a structural test fails if a tagged list does not.
+  - **Frontend:** `useProjectScope`, `ProjectScopeFilter`, `ProjectScopeLabel`, `ScopeListFilters`; wired into 14 list pages (Requirements, Change requests, Actions, the five Context & Strategy lists, Risks, Decisions, Engagements, People) and a Preferences default (`default_project_scope`). Rows from another project are labelled, qualified and read-only.
+  - **Found and fixed on the way:** a Personal Access Token or module-frame token scoped to one project could read that project's parent or child through the link graph, record activity, link authoring and proposed links (`can_open_project` checked the role, not the credential). Fixed centrally (`rbac.session_may_reach_project`); recorded in the access-control policy.
+  - **Follow-up the same day (user review):** the files list, the overview stat blocks (metrics sum the listed projects; Compliance overview tiles via a `projectScope` prop on `projectOverviewTiles`) and the tag-finder API are scoped too, and the risk matrix plots risks of related projects.
+  - **Not done, on purpose:** UI for the Findings and Evidence lists (no list page with a filter panel) and for the tag finder (nothing calls it yet); reports, exports and the history page stay single-project.
 
 ### Phase 21 — Field help (?) tooltips (N25)
 

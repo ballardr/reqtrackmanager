@@ -71,6 +71,7 @@ from app.schemas.type_vocabulary import (
     RestoreTypesRequest,
 )
 from app.services.audit import log_event
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
 from app.services.tags import TagFilter
 from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
@@ -218,18 +219,27 @@ def create_project_persona(
 def list_project_personas(
     project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
     tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """The project's personas, plus the organisation's unless `include_org=false`.
     Org personas hidden from the project are left out unless `include_hidden=true`
     (the manage UI), where they carry `project_hidden`."""
-    project = _project(db, project_id)
-    personas = list_project_visible_personas(
-        db, project, include_archived=include_archived, include_hidden=include_hidden
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        project = _project(db, pid)
+        personas = list_project_visible_personas(
+            db, project, include_archived=include_archived, include_hidden=include_hidden
+        )
+        if not include_org:
+            personas = [p for p in personas if p.scope == PersonaScope.PROJECT]
+        personas = tag_filter.keep(db, pid, PERSONA_ARTEFACT_TYPE, personas)
+        return sh.personas_to_out(db, personas, project_id=pid)
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, PERSONA_ARTEFACT_TYPE, rows_for,
+        gate=("stakeholders", "persona"),
     )
-    if not include_org:
-        personas = [p for p in personas if p.scope == PersonaScope.PROJECT]
-    personas = tag_filter.keep(db, project_id, PERSONA_ARTEFACT_TYPE, personas)
-    return sh.personas_to_out(db, personas, project_id=project_id)
 
 
 @router.get("/personas/{persona_id}", response_model=PersonaOut)

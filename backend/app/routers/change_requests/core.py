@@ -50,6 +50,7 @@ from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CH
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.principals import principal_columns, principal_out, validate_principal
+from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
@@ -453,6 +454,7 @@ def list_change_requests(
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     tag_filter: TagFilter = Depends(),
+    project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Lists change requests, with optional status/target-version filters.
@@ -491,49 +493,58 @@ def list_change_requests(
     archived-visibility concept), before `cr_status`/`active_only`/
     `target_stage_id` narrow it further — unlike `X-Total-Count`, it does
     not change when the caller applies a status/target-version filter.
-    """
-    base_query = select(ChangeRequest).where(ChangeRequest.project_id == project_id)
-    response.headers["X-Total-Unfiltered-Count"] = str(
-        db.scalar(select(func.count()).select_from(base_query.subquery()))
-    )
 
-    query = base_query
-    if cr_status:
-        query = query.where(ChangeRequest.status == cr_status)
-    elif active_only:
-        query = query.where(ChangeRequest.status.in_([
-            ChangeRequestStatus.DRAFT, ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW,
-        ]))
-    # Newest first by default. Without an explicit order Postgres returned
-    # rows in arbitrary order, so `limit`/`offset` pages could repeat or skip
-    # rows and a just-created request could land anywhere (2026-10-04). Also
-    # the tie-breaker for `sort` below, since Python's sort is stable.
-    crs = db.scalars(query.order_by(ChangeRequest.created_at.desc(), ChangeRequest.id.desc())).all()
-    crs = tag_filter.keep(db, project_id, "change_request", crs)
-    needle = search.strip().lower() if search and search.strip() else None
-    requirement_text: dict[UUID, str] = {}
-    if needle:
-        requirement_ids = {cr.requirement_id for cr in crs if cr.requirement_id}
-        if requirement_ids:
-            for requirement_id, code, name in db.execute(
-                select(Requirement.id, Requirement.unique_code, RequirementVersion.name)
-                .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
-                .where(Requirement.id.in_(requirement_ids), RequirementVersion.valid_to.is_(None))
-            ).all():
-                requirement_text[requirement_id] = f"{code} {name}".lower()
-    out = []
-    for cr in crs:
-        version = _latest_version(db, cr)
-        if target_stage_id and version.proposed_target_stage_id != target_stage_id:
-            continue
-        if needle:
-            haystack = " ".join(filter(None, [
-                cr.unique_code.lower(), (version.proposed_name or "").lower(), (version.reason or "").lower(),
-                requirement_text.get(cr.requirement_id, "") if cr.requirement_id else "",
+    `project_scope` adds the change requests of the related projects the caller can open, each
+    row labelled with `from_project_*` (see `list_requirements`).
+    """
+    unfiltered = 0
+
+    def rows_for(pid: UUID) -> list[ChangeRequestOut]:
+        nonlocal unfiltered
+        base_query = select(ChangeRequest).where(ChangeRequest.project_id == pid)
+        unfiltered += db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
+
+        query = base_query
+        if cr_status:
+            query = query.where(ChangeRequest.status == cr_status)
+        elif active_only:
+            query = query.where(ChangeRequest.status.in_([
+                ChangeRequestStatus.DRAFT, ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW,
             ]))
-            if needle not in haystack:
+        # Newest first by default. Without an explicit order Postgres returned
+        # rows in arbitrary order, so `limit`/`offset` pages could repeat or skip
+        # rows and a just-created request could land anywhere (2026-10-04). Also
+        # the tie-breaker for `sort` below, since Python's sort is stable.
+        crs = db.scalars(query.order_by(ChangeRequest.created_at.desc(), ChangeRequest.id.desc())).all()
+        crs = tag_filter.keep(db, pid, "change_request", crs)
+        needle = search.strip().lower() if search and search.strip() else None
+        requirement_text: dict[UUID, str] = {}
+        if needle:
+            requirement_ids = {cr.requirement_id for cr in crs if cr.requirement_id}
+            if requirement_ids:
+                for requirement_id, code, name in db.execute(
+                    select(Requirement.id, Requirement.unique_code, RequirementVersion.name)
+                    .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
+                    .where(Requirement.id.in_(requirement_ids), RequirementVersion.valid_to.is_(None))
+                ).all():
+                    requirement_text[requirement_id] = f"{code} {name}".lower()
+        rows = []
+        for cr in crs:
+            version = _latest_version(db, cr)
+            if target_stage_id and version.proposed_target_stage_id != target_stage_id:
                 continue
-        out.append(_to_out(db, cr, version, current_user.id, with_links=False))
+            if needle:
+                haystack = " ".join(filter(None, [
+                    cr.unique_code.lower(), (version.proposed_name or "").lower(), (version.reason or "").lower(),
+                    requirement_text.get(cr.requirement_id, "") if cr.requirement_id else "",
+                ]))
+                if needle not in haystack:
+                    continue
+            rows.append(_to_out(db, cr, version, current_user.id, with_links=False))
+        return rows
+
+    out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "change_request", rows_for)
+    response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:
         def _sort_value(item: ChangeRequestOut):

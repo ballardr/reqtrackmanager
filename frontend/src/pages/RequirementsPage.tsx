@@ -60,6 +60,10 @@ import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../hooks/useCommitTags";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useProjectScope } from "../hooks/useProjectScope";
+import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
+import { rowProjectId } from "../api/projectScope";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PAGE_SIZE = 30;
@@ -85,6 +89,7 @@ export function RequirementsPage() {
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement");
   const commitTags = useCommitTags(projectId ?? "", "requirement");
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const myRoles = useMyProjectRoles(projectId);
   const [isOrgAdminOfProject, setIsOrgAdminOfProject] = useState(false);
   const canManageProject =
@@ -198,6 +203,7 @@ export function RequirementsPage() {
     if (includeArchived) params.set("include_archived", "true");
     for (const tag of tagFilter.tags) params.append("tag", tag);
     if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
+    if (projectScope.widened) params.set("project_scope", projectScope.scope);
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -270,7 +276,7 @@ export function RequirementsPage() {
 
   useLoadOnChange(reload, [
     projectId, search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
-    hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query,
+    hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query, projectScope.scope,
   ]);
 
   // Deep-linked from the Project Overview page's "New requirement" button
@@ -455,8 +461,9 @@ export function RequirementsPage() {
   // other indeterminate-checkbox implementation.
   useEffect(() => {
     if (!selectAllRef.current || !requirements) return;
-    const selectedLoaded = requirements.filter((r) => selectedIds.has(r.id)).length;
-    selectAllRef.current.indeterminate = selectedLoaded > 0 && selectedLoaded < requirements.length;
+    const own = requirements.filter((r) => !r.from_project_id);
+    const selectedLoaded = own.filter((r) => selectedIds.has(r.id)).length;
+    selectAllRef.current.indeterminate = selectedLoaded > 0 && selectedLoaded < own.length;
   }, [requirements, selectedIds]);
 
   function toggleRowSelected(id: string) {
@@ -470,9 +477,11 @@ export function RequirementsPage() {
 
   function toggleSelectAllLoaded() {
     if (!requirements) return;
+    // Rows from a related project are read-only here: bulk actions only ever touch this project's own.
+    const own = requirements.filter((r) => !r.from_project_id);
     setSelectedIds((current) => {
-      const allSelected = requirements.every((r) => current.has(r.id));
-      return allSelected ? new Set() : new Set(requirements.map((r) => r.id));
+      const allSelected = own.every((r) => current.has(r.id));
+      return allSelected ? new Set() : new Set(own.map((r) => r.id));
     });
   }
 
@@ -900,20 +909,23 @@ export function RequirementsPage() {
                 >
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                      <RecordCode code={r.unique_code} />
+                      <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} />
                     </span>
-                    <div className="row" style={{ gap: "0.25rem" }}>
-                      <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
-                        <ArrowUp />
-                      </button>
-                      <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
-                        <ArrowDown />
-                      </button>
-                    </div>
+                    {!r.from_project_id && (
+                      <div className="row" style={{ gap: "0.25rem" }}>
+                        <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
+                          <ArrowUp />
+                        </button>
+                        <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
+                          <ArrowDown />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <Link to={`/projects/${projectId}/requirements/${r.id}`} style={{ fontWeight: 600 }}>
+                  <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`} style={{ fontWeight: 600 }}>
                     {r.name}
                   </Link>
+                  <ProjectScopeLabel row={r} />
                   {r.reasoning && (
                     <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
                       {r.reasoning.length > 140 ? `${r.reasoning.slice(0, 140)}…` : r.reasoning}
@@ -939,10 +951,10 @@ export function RequirementsPage() {
                     <div className="row" style={{ gap: "0.5rem" }}>{badges(r)}</div>
                   </div>
                   <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                    {componentName(r.component_id)} · {categoryName(r.category_id)}
+                    {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
                   </div>
                   <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    Target: {stageName(r.target_stage_id)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
+                    Target: {r.from_project_id ? "—" : stageName(r.target_stage_id)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
                   </div>
                 </div>
               ))}
@@ -958,7 +970,7 @@ export function RequirementsPage() {
                         <input
                           ref={selectAllRef}
                           type="checkbox"
-                          checked={requirements.length > 0 && requirements.every((r) => selectedIds.has(r.id))}
+                          checked={requirements.some((r) => !r.from_project_id) && requirements.every((r) => r.from_project_id || selectedIds.has(r.id))}
                           onChange={toggleSelectAllLoaded}
                           aria-label={strings.requirements.bulkSelectAll}
                         />
@@ -990,17 +1002,20 @@ export function RequirementsPage() {
                     >
                       {canManageProject && (
                         <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(r.id)}
-                            onChange={() => toggleRowSelected(r.id)}
-                            aria-label={strings.requirements.bulkSelectRow(`${r.unique_code} ${r.name}`)}
-                          />
+                          {!r.from_project_id && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(r.id)}
+                              onChange={() => toggleRowSelected(r.id)}
+                              aria-label={strings.requirements.bulkSelectRow(`${r.unique_code} ${r.name}`)}
+                            />
+                          )}
                         </td>
                       )}
-                      <td className="text-muted"><RecordCode code={r.unique_code} /></td>
+                      <td className="text-muted"><RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /></td>
                       <td>
-                        <Link to={`/projects/${projectId}/requirements/${r.id}`}>{r.name}</Link>
+                        <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`}>{r.name}</Link>
+                        <ProjectScopeLabel row={r} />
                       </td>
                       <td>
                         <div className="row" style={{ gap: "0.4rem" }}>
@@ -1018,20 +1033,22 @@ export function RequirementsPage() {
                         </div>
                       </td>
                       <td className="text-muted">
-                        {stageName(r.target_stage_id)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
+                        {r.from_project_id ? "—" : stageName(r.target_stage_id)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
                       </td>
                       <td className="text-muted">
-                        {componentName(r.component_id)} · {categoryName(r.category_id)}
+                        {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
                       </td>
                       <td>
-                        <div className="row" style={{ gap: "0.25rem" }}>
-                          <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
-                            <ArrowUp />
-                          </button>
-                          <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
-                            <ArrowDown />
-                          </button>
-                        </div>
+                        {!r.from_project_id && (
+                          <div className="row" style={{ gap: "0.25rem" }}>
+                            <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
+                              <ArrowUp />
+                            </button>
+                            <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
+                              <ArrowDown />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1089,6 +1106,7 @@ export function RequirementsPage() {
           {/* C-G-11: completion is now an independent overlay marker, not a
               status value — a separate checkbox alongside the Status
               <select> above rather than one of its options. */}
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
           <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />

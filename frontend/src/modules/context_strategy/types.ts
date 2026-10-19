@@ -55,6 +55,7 @@
  * Strategy/Future State/Pain Point's added-by-convention `title`.
  */
 import type { Principal } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
 
 // --- Strategy lifecycle --------------------------------------------------
 
@@ -127,7 +128,7 @@ export const STRATEGY_LINK_KIND_LABEL: Record<StrategyLinkKind, string> = {
 
 // --- Strategies ------------------------------------------------------------
 
-export interface Strategy {
+export interface Strategy extends ProjectScopedRow {
   id: string;
   scope: StrategyScope;
   organization_id: string | null;
@@ -272,7 +273,7 @@ export const FUTURE_STATE_LINK_KIND_LABEL: Record<FutureStateLinkKind, string> =
 
 // --- Future States -----------------------------------------------------------
 
-export interface FutureState {
+export interface FutureState extends ProjectScopedRow {
   id: string;
   scope: FutureStateScope;
   organization_id: string | null;
@@ -445,7 +446,7 @@ export interface ProjectPainPointType {
 
 // --- Pain Points -------------------------------------------------------------
 
-export interface PainPoint {
+export interface PainPoint extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;
@@ -663,7 +664,7 @@ export const GUIDING_PRINCIPLE_LINK_KIND_LABEL: Record<GuidingPrincipleLinkKind,
 
 // --- Guiding Principles ------------------------------------------------------
 
-export interface GuidingPrinciple {
+export interface GuidingPrinciple extends ProjectScopedRow {
   id: string;
   scope: GuidingPrincipleScope;
   organization_id: string | null;
@@ -791,7 +792,7 @@ export const OPEN_QUESTION_LINK_KIND_LABEL: Record<OpenQuestionLinkKind, string>
 
 // --- Open Questions ------------------------------------------------------------
 
-export interface OpenQuestion {
+export interface OpenQuestion extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;

@@ -183,7 +183,7 @@ export const moduleDefinition: TierAModuleDefinition = {
   projectOverviewTiles: [
     {
       key: "status",
-      render: ({ projectId }) => createElement(ComplianceProjectOverviewTiles, { projectId }),
+      render: ({ projectId, projectScope }) => createElement(ComplianceProjectOverviewTiles, { projectId, projectScope }),
     },
   ],
   // Corrected out of `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR`

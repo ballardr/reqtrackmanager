@@ -447,6 +447,33 @@ def test_a_cross_level_link_shows_in_the_graph_from_both_pages_with_project_labe
     assert from_child["edges"][0]["cross_project"] is True and from_child["edges"][0]["nesting_permitted"] is True
 
 
+def test_a_token_scoped_to_the_child_does_not_see_the_parent_through_the_graph_or_link_options(world, tree):
+    """A Personal Access Token limited to one project does not reach the parent through a read of
+    related projects, even though its user holds a role on both."""
+    related = _scoped(world, "ancestor_either_way")
+    assert world.generic_link(
+        tree.child, (REQ, tree.req["child"]), related, (REQ, tree.req["root"]), other_project=tree.root,
+    ).status_code == 201
+    pat = world.client.post(
+        "/api/v1/me/pats",
+        json={"name": "child-only", "allowed_organization_ids": [world.org["id"]], "allowed_project_ids": [tree.child["id"]]},
+        headers=auth_headers(world.token),
+    )
+    assert pat.status_code == 201, pat.text
+    narrow = pat.json()["token"]
+
+    scoped = world.graph(tree.child, (REQ, tree.req["child"]), token=narrow).json()
+    full = world.graph(tree.child, (REQ, tree.req["child"])).json()
+
+    assert str(tree.req["root"]) in _graph_ids(full)
+    assert str(tree.req["root"]) not in _graph_ids(scoped)
+    assert scoped["hidden_count"] == 1
+    refused = world.generic_link(
+        tree.child, (REQ, tree.req["child"]), related, (REQ, tree.req["root"]), token=narrow, other_project=tree.root,
+    )
+    assert refused.status_code == 404  # the same answer as "does not exist"
+
+
 def test_siblings_are_out_of_scope_even_through_a_shared_parent(world, tree):
     related = _scoped(world, "ancestor_either_way")
     # Parent's requirement linked down to both children.

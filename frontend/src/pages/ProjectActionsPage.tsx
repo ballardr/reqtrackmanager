@@ -25,7 +25,11 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../hooks/useCommitTags";
+import { useProjectScope } from "../hooks/useProjectScope";
 import { useTagFilter } from "../hooks/useTagFilter";
+import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
+import { rowProjectId } from "../api/projectScope";
 import { TagField } from "../components/TagField";
 import { TagFilterField } from "../components/TagFilterField";
 import { useRequestSequence } from "../hooks/useRequestSequence";
@@ -52,6 +56,7 @@ export function ProjectActionsPage() {
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement_action");
   const commitTags = useCommitTags(projectId ?? "", "requirement_action");
   const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const [newTags, setNewTags] = useState<string[]>([]);
   const [actions, setActions] = useState<RequirementAction[] | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
@@ -83,6 +88,7 @@ export function ProjectActionsPage() {
     if (includeArchived) params.set("include_archived", "true");
     for (const tag of tagFilter.tags) params.append("tag", tag);
     if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
+    if (projectScope.widened) params.set("project_scope", projectScope.scope);
     const qs = params.toString();
     return qs ? `?${qs}` : "";
   }
@@ -111,7 +117,7 @@ export function ProjectActionsPage() {
     if (!newActionTypeId && types[0]) setNewActionTypeId(types[0].id);
   }
 
-  useLoadOnChange(reload, [projectId, outcomeFilter, typeFilter, includeArchived, tagFilter.query]);
+  useLoadOnChange(reload, [projectId, outcomeFilter, typeFilter, includeArchived, tagFilter.query, projectScope.scope]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -249,9 +255,10 @@ export function ProjectActionsPage() {
                       className="entity-accent-row"
                       style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.action }}
                     >
-                      <td className="text-muted"><RecordCode code={a.unique_code} /></td>
+                      <td className="text-muted"><RecordCode code={a.unique_code} ownerProjectCode={a.from_project_code} /></td>
                       <td>
-                        <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.title}</Link>
+                        <Link to={`/projects/${rowProjectId(a, projectId ?? "")}/actions/${a.id}`}>{a.title}</Link>
+                        <ProjectScopeLabel row={a} />
                         {a.is_archived && <Badge className="badge-after">{strings.actions.archived}</Badge>}
                       </td>
                       <td className="text-muted">{actionTypeName(a.action_type_id)}</td>
@@ -295,6 +302,7 @@ export function ProjectActionsPage() {
               ))}
             </select>
           </FilterField>
+          <ProjectScopeFilter scope={projectScope} />
           {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label={strings.actions.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>

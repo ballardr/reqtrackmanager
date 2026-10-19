@@ -32,6 +32,7 @@
  */
 import { api } from "../../api/client";
 import { appendTagParams, type TagListFilters } from "../../api/tags";
+import { appendScopeParam, type ScopeListFilters } from "../../api/projectScope";
 import type { FileAsset, PrincipalRef } from "../../api/types";
 import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type {
@@ -70,15 +71,16 @@ import type {
 } from "./types";
 
 /** The query string of a list read: the archived toggle and the tag filter. */
-function listQuery(filters: { include_archived?: boolean } & TagListFilters): string {
+function listQuery(filters: { include_archived?: boolean } & TagListFilters & ScopeListFilters): string {
   const params = new URLSearchParams();
   if (filters.include_archived) params.set("include_archived", "true");
   appendTagParams(params, filters);
+  appendScopeParam(params, filters);
   const text = params.toString();
   return text ? `?${text}` : "";
 }
 
-export interface StrategyListFilters extends TagListFilters {
+export interface StrategyListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;
 }
 
@@ -188,7 +190,7 @@ export const orgStrategyApi = buildStrategyApi(orgBase);
 
 // --- Future State ------------------------------------------------
 
-export interface FutureStateListFilters extends TagListFilters {
+export interface FutureStateListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;
 }
 
@@ -344,7 +346,7 @@ function scoringQuery(params: { model_key?: string; rollup?: string; include_arc
   return text ? `?${text}` : "";
 }
 
-export interface PainPointListFilters extends TagListFilters {
+export interface PainPointListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;
 }
 
@@ -518,7 +520,7 @@ export const projectPainPointApi = {
 // discipline `projectPainPointApi.update`'s identical `& { owner: PrincipalRef
 // | null }` extension already establishes for Pain Point.
 
-export interface GuidingPrincipleListFilters extends TagListFilters {
+export interface GuidingPrincipleListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;
 }
 
@@ -630,7 +632,7 @@ export const orgGuidingPrincipleApi = buildGuidingPrincipleApi(orgBase);
 // same shape Pain Point's own project-scoped-only exception already
 // established. `id` parameters below are a `project_id`.
 
-export interface OpenQuestionListFilters extends TagListFilters {
+export interface OpenQuestionListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;
 }
 

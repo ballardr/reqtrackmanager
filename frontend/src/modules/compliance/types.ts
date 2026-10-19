@@ -29,6 +29,7 @@
  */
 
 import type { OrgUser, Principal } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
 
 /** Shared "id -> display name" lookup for the Project Compliance View's own
  * assignee/actor/owner fields — mirrors `RequirementDetailPage.tsx`'s own
@@ -430,7 +431,7 @@ export interface ComplianceRequiredActionAssessment {
   updated_at: string;
 }
 
-export interface ProjectComplianceStatus {
+export interface ProjectComplianceStatus extends ProjectScopedRow {
   project_compliance_id: string;
   project_id: string;
   /** See `schemas.py::ProjectComplianceStatusOut`'s own
@@ -495,7 +496,7 @@ export interface PendingApproval {
   assessed_by: string | null;
 }
 
-export interface ComplianceEvidence {
+export interface ComplianceEvidence extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;

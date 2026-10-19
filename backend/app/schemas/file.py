@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.project_scope import ProjectScopedRow
+
 
 class FileAssetOut(BaseModel):
     model_config = {"from_attributes": True}
@@ -26,7 +28,7 @@ class LinkResourceRequest(BaseModel):
     file_id: UUID
 
 
-class ProjectFileOut(BaseModel):
+class ProjectFileOut(ProjectScopedRow):
     """One file reachable from a project's requirements (`GET
     /projects/{id}/files`) — a direct requirement attachment, a requirement
     action attachment, or a file attached to a comment on one of the
