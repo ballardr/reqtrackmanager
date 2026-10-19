@@ -1886,6 +1886,51 @@ export interface OrgModule {
   frontend_manifest: ModuleFrontendManifest | null;
 }
 
+export const MODULE_ENTITLEMENT_POLICY_LABEL: Record<ModuleEntitlementPolicy, string> = {
+  open: "Open — every organisation may use every module",
+  closed: "Closed — only organisations granted a module may use it",
+};
+
+/** One module's server-wide default — `GET/PUT /system/module-defaults[/{module_key}]`. A
+ * fresh install has every module available (`org_enabled` and `project_default_enabled` both
+ * true); `has_override` is false while the registry's own default decides. */
+export interface ServerModuleDefault {
+  module_key: string;
+  name: string;
+  description: string;
+  org_enabled: boolean;
+  project_default_enabled: boolean;
+  has_override: boolean;
+}
+
+/** Which tier decides whether a module is enabled for an organisation. */
+export type ModuleEnabledSource = "organization" | "server_default" | "registry";
+
+export const MODULE_ENABLED_SOURCE_LABEL: Record<ModuleEnabledSource, string> = {
+  organization: "set by the organisation",
+  server_default: "server default",
+  registry: "built-in default",
+};
+
+/** One module as a server administrator sees it for one organisation —
+ * `GET/PUT /system/orgs/{id}/module-entitlements[/{module_key}]`. */
+export interface OrgModuleEntitlement {
+  module_key: string;
+  name: string;
+  entitled: boolean;
+  has_override: boolean;
+  default_policy_used: boolean;
+  enabled: boolean;
+  default_project_enabled: boolean;
+  enabled_source: ModuleEnabledSource;
+}
+
+/** The result of applying the server defaults to every organisation. */
+export interface ApplyServerModuleDefaultsResult {
+  organizations_changed: number;
+  rows_written: number;
+}
+
 /** One sub-component a module declares, with this organisation's own
  * levers for it — `GET/PUT /orgs/{id}/modules/{module_key}/subcomponents
  * [/{subcomponent_key}]`. Same two levers as `OrgModule`: `enabled` (hard

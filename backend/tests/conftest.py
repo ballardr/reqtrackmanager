@@ -55,6 +55,9 @@ os.environ["DATABASE_URL"] = dedicated_pytest_database_url(os.environ["DATABASE_
 os.environ.setdefault("SERVER_ADMIN_EMAIL", "admin@example.com")
 os.environ.setdefault("SERVER_ADMIN_PASSWORD", "ChangeMe123!")
 os.environ.setdefault("SERVER_ADMIN_CREATE_ORG", "true")
+# A fresh install seeds every module available; the suite's tables are truncated after every test, so
+# that seed would reach only the first test. Tests that need it enable the setting themselves.
+os.environ.setdefault("MODULES_DEFAULT_AVAILABLE", "false")
 
 import pytest
 from fastapi.testclient import TestClient

@@ -200,6 +200,11 @@ def list_project_modules(
     content" dependency this file's other read endpoints (`list_project_
     module_roles`, `list_project_enabled_modules`, `list_project_module_
     subcomponents`) already use.
+
+    Modules the organisation has disabled, or has no entitlement for, are
+    omitted (Decided by: User): a project admin cannot use them and is not
+    offered them. A project's own override row for an omitted module is kept,
+    so it reappears with its state if the organisation re-enables the module.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -222,6 +227,7 @@ def list_project_modules(
             ),
         )
         for definition in get_module_registry().values()
+        if is_module_enabled(db, project.organization_id, definition.key)
     ]
 
 
@@ -442,6 +448,8 @@ def list_project_module_subcomponents(
 
     404s if the project doesn't exist or `module_key` isn't registered. A
     module with no declared `sub_components` simply returns an empty list.
+    Sub-components the organisation has switched off are omitted, as are all
+    of them when the organisation has the module itself off.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -459,7 +467,10 @@ def list_project_module_subcomponents(
             )
         )
     }
-    return [_project_subcomponent_out(db, project, module_key, sub, project_rows.get(sub.key)) for sub in definition.sub_components]
+    return [
+        out for sub in definition.sub_components
+        if (out := _project_subcomponent_out(db, project, module_key, sub, project_rows.get(sub.key))).org_hard_enabled
+    ]
 
 
 @router.put(

@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 and 12 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q27 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12 and 13 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q27 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-11 / 23 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9 and 10 done 2026-10-19; Phases 8, 9 and 10 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phases 13 and 14 are still open and come after Phases 4–10 now. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 13.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+12 / 23 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10 and 13 done 2026-10-19; Phases 8, 9, 10 and 13 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day; Phase 14 is still open and comes after Phases 4–10 now. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 14.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -20,7 +20,7 @@
 | 9 | Aside tabs: Links and Activity, one activity endpoint | N10 | [x] |
 | 10 | Forms aligned to the style guide | N7 (forms) | [x] |
 | 12 | Container health check reports unhealthy on a working install | N11 | [x] |
-| 13 | Module availability: new-install defaults, server admin UI, hide unavailable modules | N12, N13, N14 | [ ] |
+| 13 | Module availability: new-install defaults, server admin UI, hide unavailable modules | N12, N13, N14 | [x] |
 | 14 | Navigation: ordering, scrollbar, sub-component hiding | N15, N16, N17 | [ ] |
 | 15 | Org defaults can be hidden per project and restored (delete plus "add org defaults") | N18 | [ ] |
 | 16 | One People page (Personas and Stakeholders) and "Save and activate" | N19, N20 | [ ] |
@@ -375,6 +375,12 @@ Reading the diagram: a module is checked at three levels from the server down. A
 - **Module boundary:** no per-module code; the server table and UI iterate the registry. `org_creation_choices` seeding is unchanged (check at build time that it does not conflict with the new default).
 - **Nested projects:** `ServerModuleDefault` is server-wide, not a project definition table; not applicable, recorded.
 - **Tests:** resolution matrix (entitled/not × org enabled/not × server default × org override × project override) for module and sub-component; fresh-install bootstrap seeds all on, migration on an existing database seeds nothing; non-server-admin responses omit hidden modules, server admin sees all; audit rows for each change; Storybook for the Server Modules section; Playwright for the full path (server admin withdraws a module from an org; the org admin and project admin no longer see it).
+
+- **Done 2026-10-19 (notes).** Built as specified; details and decisions in `docs/decisions.md`.
+  - **Server defaults:** `ServerModuleDefault` (migration 0100), consulted in `is_module_enabled` and `resolve_default_project_enabled`; fresh install (no `ServerSettings` row) seeded all-on once, upgrade seeds nothing; `MODULES_DEFAULT_AVAILABLE` switches it off (the test suite and the Playwright stack do).
+  - **UI:** Server Management → Modules (`ServerModulesTab`): entitlement policy, default grid with a Tier 2 "Apply to all", per-organisation grant/withdraw naming the deciding tier.
+  - **Hiding:** non-entitled modules from organisation admins, organisation-disabled modules and sub-components from project admins; server admins keep the full view.
+  - **Open (Q15, Q16):** built on the recommended answers; the user has not signed them off.
 
 ### Phase 14 — Navigation: ordering, scrollbar, sub-component hiding (N15, N16, N17)
 

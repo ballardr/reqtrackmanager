@@ -131,8 +131,15 @@ be usable by a given organisation:
 - **Enablement** — the org-tier day-to-day switch. Among modules the
   organisation is entitled to, has *this organisation's own admin* actually
   turned it on? Stored as an explicit override row
-  (`OrganizationModuleEnablement`); no row means "use the module's own
-  registry default" (`ModuleDefinition.default_enabled`).
+  (`OrganizationModuleEnablement`); no row means "use the server-wide default"
+  (`ServerModuleDefault`), and with none of those, the module's own registry
+  default (`ModuleDefinition.default_enabled`).
+- **Server default** — what an organisation with no row of its own gets
+  (`ServerModuleDefault`: enabled for the organisation, and on by default for
+  its projects). A fresh install is seeded with every module on; an upgrade is
+  seeded with nothing, so it keeps its current effective states. Server
+  administrators change it under Server Management → Modules, and can apply it
+  to every existing organisation explicitly.
 
 ```mermaid
 flowchart TD
@@ -144,10 +151,20 @@ flowchart TD
     ISENTITLED -->|no| DISABLED["Effectively disabled"]
     ISENTITLED -->|yes| ENAB{"Explicit enablement override row exists?"}
     ENAB -->|yes| ENABVAL["Use its 'enabled' value"]
-    ENAB -->|no| DEFENABLED["Fall back to ModuleDefinition.default_enabled"]
+    ENAB -->|no| SRVDEF{"ServerModuleDefault row exists?"}
+    SRVDEF -->|yes| SRVVAL["Use its 'org_enabled' value"]
+    SRVDEF -->|no| DEFENABLED["Fall back to ModuleDefinition.default_enabled"]
+    SRVVAL --> RESULT
     ENABVAL --> RESULT["Effective enabled state"]
     DEFENABLED --> RESULT
 ```
+
+**Hiding.** A module an administrator cannot use is not listed to them: the
+organisation module list omits a module the organisation is not entitled to
+(server administrators keep the full view); the project module list omits a
+module, and its sub-components, the organisation has disabled. A project's own
+row for a hidden module is kept, so it returns with its state when the module
+is re-enabled.
 
 Whichever backend dependency a module's endpoints use to check this
 (`require_org_module_enabled(module_key)` / `require_project_module_enabled

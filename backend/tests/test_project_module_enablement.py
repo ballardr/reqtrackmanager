@@ -53,7 +53,6 @@ from app.modules.registry import (
     ModuleDefinition,
     ModuleSubComponentDefinition,
     build_registry,
-    get_module_registry,
     is_module_enabled_for_project,
     is_module_subcomponent_enabled,
 )
@@ -570,7 +569,7 @@ def test_list_project_modules_includes_every_registered_module_with_correct_stat
     client, admin_token, org_id, fake_module,
 ):
     """The Project Admin Modules tab's own discovery endpoint: every
-    registered module appears, including ones this project has no
+    module the organisation has enabled appears, including ones this project has no
     override for at all, each with the correct effective/org-default/
     override-provenance state — proven against both an unset module (the
     fake fixture, still at registry default) and one with an actual
@@ -585,9 +584,13 @@ def test_list_project_modules_includes_every_registered_module_with_correct_stat
     assert by_key[fake_module]["effective_enabled"] is True
     assert by_key[fake_module]["has_project_override"] is True
     assert by_key[fake_module]["project_override_enabled"] is True
-    # A real, already-registered module (Decision Management) also
-    # appears, proving this isn't limited to fixture modules.
-    assert "decisions" in by_key
+    # A real module the organisation has not enabled (Decision Management is opt-in) is
+    # omitted, and appears once the organisation enables it.
+    assert "decisions" not in by_key
+    resp = client.put(f"/api/v1/orgs/{org_id}/modules/decisions", json={"enabled": True}, headers=auth_headers(admin_token))
+    assert resp.status_code == 200, resp.text
+    resp = client.get(f"/api/v1/projects/{project_id}/modules", headers=auth_headers(admin_token))
+    assert "decisions" in {row["module_key"] for row in resp.json()}
 
     resp = client.put(
         f"/api/v1/projects/{project_id}/modules/{fake_module}/enablement", json={"enabled": False},
@@ -615,7 +618,7 @@ def test_list_project_modules_for_project_role_who_is_not_org_admin(
 ):
     """The Modules tab is reachable by a project-only role, not just an org
     admin: a plain org member holding only a project role gets
-    every registered module, while an org member with no role on the
+    every module the organisation has enabled, while an org member with no role on the
     project is refused (403), so the tab can't become a module-list leak."""
     project = create_project(client, admin_token, org_id, f"Modules Tab {project_role}")
     holder_id = create_org_user(client, admin_token, org_id, f"modtab-{project_role}@example.com")
@@ -629,7 +632,10 @@ def test_list_project_modules_for_project_role_who_is_not_org_admin(
     holder_token = login(client, f"modtab-{project_role}@example.com", "Password123!")
     resp = client.get(f"/api/v1/projects/{project['id']}/modules", headers=auth_headers(holder_token))
     assert resp.status_code == 200, resp.text
-    assert {row["module_key"] for row in resp.json()} == set(get_module_registry())
+    org_modules = client.get(f"/api/v1/orgs/{org_id}/modules", headers=auth_headers(admin_token)).json()
+    org_enabled = {m["module_key"] for m in org_modules if m["enabled"]}
+    assert org_enabled
+    assert {row["module_key"] for row in resp.json()} == org_enabled
 
     outsider_token = login(client, f"modtab-outsider-{project_role}@example.com", "Password123!")
     resp = client.get(f"/api/v1/projects/{project['id']}/modules", headers=auth_headers(outsider_token))
@@ -718,10 +724,9 @@ def test_org_hard_off_reaches_existing_projects_and_restores_on_re_enable(client
         json={"enabled": False, "default_project_enabled": True}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200, resp.text
-    sub = _project_sub(client, admin_token, project_id, fake_module)
-    assert sub["effective_enabled"] is False
-    assert sub["org_hard_enabled"] is False
-    assert sub["project_override_enabled"] is True
+    # An organisation-disabled sub-component vanishes from the project's list; its project row is kept.
+    sub_url = f"/api/v1/projects/{project_id}/modules/{fake_module}/subcomponents"
+    assert SUBCOMPONENT_KEY not in {row["subcomponent_key"] for row in client.get(sub_url, headers=auth_headers(admin_token)).json()}
 
     resp = client.put(
         f"/api/v1/orgs/{org_id}/modules/{fake_module}",

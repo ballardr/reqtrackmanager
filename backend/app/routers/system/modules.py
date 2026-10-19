@@ -29,9 +29,21 @@ from app.models.enums import ModuleEntitlementPolicy, ServerRole
 from app.models.module import OrganizationModuleEntitlement
 from app.models.organization import Organization
 from app.models.user import User
-from app.modules.registry import build_mcp_tool_manifest, get_module_registry, is_module_entitled
+from app.modules.registry import (
+    build_mcp_tool_manifest,
+    get_module_registry,
+    is_module_enabled,
+    is_module_entitled,
+    resolve_default_project_enabled,
+)
 from app.services.audit import log_event
 from app.services.branding import get_server_settings
+from app.services.module_defaults import (
+    apply_server_defaults_to_organizations,
+    effective_enabled_source,
+    list_server_module_defaults,
+    set_server_module_default,
+)
 from app.services.rbac import require_server_role
 
 router = APIRouter(tags=["system-modules"])
@@ -74,6 +86,12 @@ class OrgModuleEntitlementOut(BaseModel):
         default_policy_used: The inverse of `has_override` — `True` when
             `entitled` was derived from `ServerSettings.
             default_module_entitlement_policy` rather than an explicit row.
+        enabled: The module's *effective* enabled state for the organisation
+            (entitled AND enabled).
+        default_project_enabled: Whether the organisation's projects get the
+            module on by default.
+        enabled_source: Which tier decides `enabled`: `"organization"` (its own
+            row), `"server_default"` or `"registry"`.
     """
 
     module_key: str
@@ -81,6 +99,54 @@ class OrgModuleEntitlementOut(BaseModel):
     entitled: bool
     has_override: bool
     default_policy_used: bool
+    enabled: bool = False
+    default_project_enabled: bool = False
+    enabled_source: str = "registry"
+
+
+class ServerModuleDefaultOut(BaseModel):
+    """One module's server-wide default state; `has_override` is `False` when the
+    registry's own `default_enabled` decides both values."""
+
+    module_key: str
+    name: str
+    description: str
+    org_enabled: bool
+    project_default_enabled: bool
+    has_override: bool
+
+
+class ServerModuleDefaultUpdate(BaseModel):
+    """Sets the server-wide default for one module."""
+
+    org_enabled: bool
+    project_default_enabled: bool
+
+
+class ApplyServerModuleDefaultsRequest(BaseModel):
+    """Optionally limits "apply to all organisations" to one module."""
+
+    module_key: str | None = None
+
+
+class ApplyServerModuleDefaultsOut(BaseModel):
+    """How many organisations and enablement rows an apply action changed."""
+
+    organizations_changed: int
+    rows_written: int
+
+
+def _org_entitlement_out(db: Session, organization_id: UUID, definition, has_override: bool) -> OrgModuleEntitlementOut:
+    """Builds one organisation's module view: entitlement plus the effective enablement and the
+    tier that decides it, so the Server Management page can show provenance."""
+    return OrgModuleEntitlementOut(
+        module_key=definition.key, name=definition.name,
+        entitled=is_module_entitled(db, organization_id, definition.key),
+        has_override=has_override, default_policy_used=not has_override,
+        enabled=is_module_enabled(db, organization_id, definition.key),
+        default_project_enabled=resolve_default_project_enabled(db, organization_id, definition.key),
+        enabled_source=effective_enabled_source(db, organization_id, definition.key),
+    )
 
 
 class OrgModuleEntitlementUpdate(BaseModel):
@@ -194,17 +260,10 @@ def list_org_module_entitlements(
             )
         )
     }
-    result: list[OrgModuleEntitlementOut] = []
-    for definition in get_module_registry().values():
-        override = overrides.get(definition.key)
-        entitled = is_module_entitled(db, organization_id, definition.key)
-        result.append(
-            OrgModuleEntitlementOut(
-                module_key=definition.key, name=definition.name, entitled=entitled,
-                has_override=override is not None, default_policy_used=override is None,
-            )
-        )
-    return result
+    return [
+        _org_entitlement_out(db, organization_id, definition, definition.key in overrides)
+        for definition in get_module_registry().values()
+    ]
 
 
 @router.put(
@@ -251,10 +310,82 @@ def update_org_module_entitlement(
     )
     db.commit()
     db.refresh(row)
-    return OrgModuleEntitlementOut(
-        module_key=definition.key, name=definition.name, entitled=row.entitled,
-        has_override=True, default_policy_used=False,
+    return _org_entitlement_out(db, organization_id, definition, True)
+
+
+# --- Server-wide default module states -----------------
+
+
+@router.get("/module-defaults", response_model=list[ServerModuleDefaultOut])
+def list_server_module_default_states(
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Lists every registered module with its server-wide default: whether an organisation with
+    no row of its own has it enabled, and whether such an organisation's projects get it on by
+    default. A fresh install has every module on/on; an upgraded deployment shows the registry's
+    own defaults until an administrator changes one."""
+    modules = get_module_registry()
+    return [
+        ServerModuleDefaultOut(
+            module_key=state.module_key, name=modules[state.module_key].name,
+            description=modules[state.module_key].description, org_enabled=state.org_enabled,
+            project_default_enabled=state.project_default_enabled, has_override=state.has_override,
+        )
+        for state in list_server_module_defaults(db)
+    ]
+
+
+@router.put("/module-defaults/{module_key}", response_model=ServerModuleDefaultOut)
+def update_server_module_default(
+    module_key: str, payload: ServerModuleDefaultUpdate,
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Sets the server-wide default for one module. Organisations with their own choice keep it;
+    the rest follow the new default, and their existing projects keep their current state (only
+    projects created afterwards read the new project default)."""
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+    row = set_server_module_default(
+        db, module_key, payload.org_enabled, payload.project_default_enabled, current_user.id,
     )
+    log_event(
+        db, entity_type="server_module_default", entity_id=module_key,
+        action="module.server_default_updated", actor_id=current_user.id,
+        detail={
+            "module_key": module_key, "org_enabled": payload.org_enabled,
+            "project_default_enabled": payload.project_default_enabled,
+        },
+    )
+    db.commit()
+    return ServerModuleDefaultOut(
+        module_key=module_key, name=definition.name, description=definition.description,
+        org_enabled=row.org_enabled, project_default_enabled=row.project_default_enabled, has_override=True,
+    )
+
+
+@router.post("/module-defaults/apply", response_model=ApplyServerModuleDefaultsOut)
+def apply_server_module_defaults(
+    payload: ApplyServerModuleDefaultsRequest,
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Writes the server-wide defaults into every existing organisation, replacing each
+    organisation's own choice for the modules it is entitled to (one module, or all). Existing
+    projects keep their state. This is the explicit route for switching modules on in
+    organisations that predate the default; nothing changes them automatically."""
+    if payload.module_key is not None and payload.module_key not in get_module_registry():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+    changed, written = apply_server_defaults_to_organizations(db, current_user.id, payload.module_key)
+    log_event(
+        db, entity_type="system", entity_id="platform", action="module.server_defaults_applied",
+        actor_id=current_user.id,
+        detail={"module_key": payload.module_key, "organizations_changed": changed, "rows_written": written},
+    )
+    db.commit()
+    return ApplyServerModuleDefaultsOut(organizations_changed=changed, rows_written=written)
 
 
 # --- Module-contributed MCP tools -------------------

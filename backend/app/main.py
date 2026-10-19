@@ -53,6 +53,7 @@ from app.services import pubsub
 from app.services.bootstrap import run_bootstrap
 from app.services.client_date import reset_client_date, set_client_date
 from app.services.disk_monitor import run_disk_monitor_loop
+from app.services.module_defaults import seed_fresh_install_defaults
 from app.services.notifications import run_digest_loop
 from app.services.process_coordination import run_leadership_loop, startup_lock
 from app.services.scheduler import start_scheduler, stop_scheduler
@@ -77,6 +78,9 @@ async def lifespan(_: FastAPI):
         run_migrations()
         db = SessionLocal()
         try:
+            # Before the bootstrap: a database with no server settings yet is a fresh install,
+            # and gets every module available (`seed_fresh_install_defaults`).
+            seed_fresh_install_defaults(db)
             run_bootstrap(db)
             # Keeps `module_role_definitions` caught up
             # with whatever the live registry currently declares, the same

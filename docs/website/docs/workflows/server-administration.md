@@ -23,13 +23,14 @@ Opening any one org's admin page from here as a server admin (rather than an org
 
 | Server management |
 | --- |
-| Access review, platform branding, public sign-up, and email settings |
+| Access review, platform branding, public sign-up, email and module settings |
 | ![Server management page with section navigation](../../static/img/screenshots/server-management.png) |
 
 - **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators.
 - **Platform branding** — the deployment's own logo and login-page styling, distinct from an organisation's own branding.
 - **Public sign-up** — the deployment-wide sign-up mode: disabled (accounts created by an admin or invite only), always on (anyone can create an account, joining no organisation automatically), or restricted to organisations that have opted in by email domain. See [Signing in → Signing up](./signing-in.md#signing-up) for what a user sees on the other side of this setting.
 - **Email** — deployment-wide outbound email configuration.
+- **Modules** — which [modules](../modules/overview.md) exist for whom: the default entitlement policy (open or closed), what an organisation gets for a module it has not chosen itself (available, and on for new projects), an **Apply to all organisations** action that writes those defaults into existing organisations (type the word shown to confirm), and a per-organisation list to grant or withdraw a module. A module withdrawn from an organisation disappears from its administrators' and projects' module lists. A fresh install starts with every module available; an upgraded one changes only when you choose.
 
 ## Managing orphaned accounts
 

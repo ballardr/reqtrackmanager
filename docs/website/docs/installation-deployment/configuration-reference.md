@@ -22,6 +22,7 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `SERVER_ADMIN_EMAIL` | `admin@example.com` | — | Bootstrap server-admin login |
 | `SERVER_ADMIN_PASSWORD` | `ChangeMe123!` | **Yes** | Bootstrap server-admin password |
 | `SERVER_ADMIN_CREATE_ORG` | `true` | — | Also create a default org with the admin as org admin |
+| `MODULES_DEFAULT_AVAILABLE` | `true` | — | A fresh install starts with every module available to every organisation and on for new projects; an upgrade is never changed. Set `false` to keep each module's own opt-in default. Server administrators change the defaults under Server Management → Modules |
 | `CORS_ORIGINS` | `http://localhost:3000` | Recommended | Comma-separated allowed frontend origins |
 | `STORAGE_BACKEND` | `local` (Compose default: `s3`) | — | File storage backend: `local` (filesystem) or `s3` (S3-compatible) |
 | `STORAGE_LOCAL_DIR` | `./data/files` | — | Filesystem directory used by the `local` storage backend |

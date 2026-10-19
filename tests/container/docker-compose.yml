@@ -161,6 +161,9 @@ services:
       SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
       SERVER_ADMIN_PASSWORD: ${SERVER_ADMIN_PASSWORD:-ChangeMe123!}
       SERVER_ADMIN_CREATE_ORG: "true"
+      # The Playwright suite is written against each module's own opt-in default, so a fresh
+      # test database must not be seeded with every module available.
+      MODULES_DEFAULT_AVAILABLE: "false"
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}

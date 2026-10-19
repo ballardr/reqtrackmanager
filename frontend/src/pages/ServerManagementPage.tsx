@@ -20,6 +20,7 @@ import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { ServerModulesTab } from "./ServerModulesTab";
 import { ColorField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
@@ -845,9 +846,9 @@ function SignupModeTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email";
+type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "modules";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "modules"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -872,6 +873,7 @@ export function ServerManagementPage() {
     { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
     { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
+    { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
   ];
 
   return (
@@ -886,6 +888,7 @@ export function ServerManagementPage() {
         {activeGroup === "branding" && <PlatformBrandingTab />}
         {activeGroup === "signup" && <SignupModeTab />}
         {activeGroup === "email" && <TestEmailTab />}
+        {activeGroup === "modules" && <ServerModulesTab />}
       </ResourceMenu>
     </div>
   );

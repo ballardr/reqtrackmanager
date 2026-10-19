@@ -220,11 +220,10 @@ def list_org_modules(
     """Lists every registered module with this organisation's effective
     entitlement/enablement state.
 
-    Non-entitled modules are included, not filtered out: the Modules admin
-    UI shows them greyed out with an explanatory note rather than hiding
-    them entirely (visibility helps future upsell; the toggle itself stays
-    disabled) — the frontend does the graying, this endpoint just reports
-    the truth.
+    Modules the server has not made available to this organisation (not
+    entitled) are omitted for everyone but a server administrator, who keeps
+    the full view (Decided by: User, reversing the earlier greyed-out
+    listing): an organisation admin is not offered a switch they cannot use.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -232,6 +231,8 @@ def list_org_modules(
     result: list[OrgModuleOut] = []
     for definition in get_module_registry().values():
         entitled = is_module_entitled(db, organization_id, definition.key)
+        if not entitled and not current_user.is_server_admin:
+            continue
         enabled = is_module_enabled(db, organization_id, definition.key)
         default_project_enabled = resolve_default_project_enabled(db, organization_id, definition.key)
         manifest = get_frontend_manifest(definition.key)

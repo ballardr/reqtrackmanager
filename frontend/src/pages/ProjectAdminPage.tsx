@@ -2796,24 +2796,18 @@ export function ProjectAdminPage() {
             ) : (
               <ModuleSettingsList
                 items={projectModules.map((m) => {
-                  // `org_hard_enabled` false = the org has turned the
-                  // module off; nothing a project sets can turn it on, so
-                  // the control is disabled (greyed, with a hint).
-                  const orgOff = !m.org_hard_enabled;
                   const subComponents = projectModuleSubComponents[m.module_key] ?? [];
                   return {
                     key: m.module_key,
                     name: m.name,
-                    hint: orgOff
-                      ? strings.admin.moduleDisabledForOrgHint
-                      : m.effective_enabled !== m.org_default_enabled
-                        ? strings.admin.moduleOrgDefaultHint(m.org_default_enabled)
-                        : null,
-                    muted: orgOff,
+                    // The API lists only modules the organisation has enabled, so a module here
+                    // is always one this project may switch.
+                    hint: m.effective_enabled !== m.org_default_enabled
+                      ? strings.admin.moduleOrgDefaultHint(m.org_default_enabled)
+                      : null,
                     control: (
                       <ToggleSwitch
                         checked={m.effective_enabled}
-                        disabled={orgOff}
                         label={strings.admin.moduleToggleLabel(m.name)}
                         onChange={(next) => toggleProjectModuleEnabled(m.module_key, next)}
                       />
@@ -2827,7 +2821,7 @@ export function ProjectAdminPage() {
                       control: (
                         <ToggleSwitch
                           checked={sub.effective_enabled}
-                          disabled={!m.effective_enabled || !sub.org_hard_enabled}
+                          disabled={!m.effective_enabled}
                           label={strings.admin.moduleSubComponentToggleLabel(m.name, sub.name)}
                           onChange={(next) => toggleProjectSubComponentEnabled(m.module_key, sub.subcomponent_key, next)}
                         />

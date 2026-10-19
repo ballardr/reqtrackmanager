@@ -93,6 +93,37 @@ class OrganizationModuleEntitlement(UUIDPKMixin, TimestampMixin, Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
+class ServerModuleDefault(UUIDPKMixin, TimestampMixin, Base):
+    """Server-wide default state of one module, consulted by
+    `app.modules.registry.is_module_enabled` and `resolve_default_project_enabled`
+    for any organisation with no `OrganizationModuleEnablement` row of its own,
+    before falling back to `ModuleDefinition.default_enabled`.
+
+    Explicit-override-only, like `OrganizationModuleEntitlement`: no row means
+    "use the registry's own default". A fresh install is seeded all-on
+    (`services.module_defaults.seed_fresh_install_defaults`); an upgrade seeds
+    nothing, so existing deployments keep their current effective states. No
+    per-organisation rows are pre-created, so a later change here reaches every
+    organisation that never overrode the module.
+
+    Attributes:
+        module_key: The module's registry key (a plain string, as elsewhere).
+        org_enabled: Whether an organisation with no row of its own has the module
+            enabled.
+        project_default_enabled: Whether a project of such an organisation gets
+            the module on by default, absent its own override.
+        updated_by: The administrator who last set this default.
+    """
+
+    __tablename__ = "server_module_defaults"
+    __table_args__ = (UniqueConstraint("module_key"),)
+
+    module_key: Mapped[str] = mapped_column(String(100))
+    org_enabled: Mapped[bool] = mapped_column(Boolean)
+    project_default_enabled: Mapped[bool] = mapped_column(Boolean)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
 class OrganizationModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
     """Org-tier override of whether an org admin has enabled a given
     module for day-to-day use — the switch an `OrgRole.ORG_ADMIN` controls

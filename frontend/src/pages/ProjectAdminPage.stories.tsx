@@ -1641,14 +1641,6 @@ const overriddenModule: ProjectModuleEnablement = {
   module_key: "context_strategy", name: "Context & Strategy", effective_enabled: false,
   org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: false,
 };
-// Corrected 2026-09-29 — the
-// organisation has hard-disabled this module outright: no project
-// override, existing or new, can widen it on. The Modules tab must render
-// its toggle disabled with an explanatory hint in this state.
-const orgHardDisabledModule: ProjectModuleEnablement = {
-  module_key: "fake_module", name: "Fake Module", effective_enabled: false,
-  org_default_enabled: false, org_hard_enabled: false, has_project_override: false, project_override_enabled: null,
-};
 const usingOrgDefaultSubComponent: ProjectModuleSubComponent = {
   module_key: "context_strategy", subcomponent_key: "pain_point", name: "Pain Point",
   effective_enabled: true, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: true,
@@ -1705,30 +1697,6 @@ export const ModulesTabToggleWholeModule: Story = {
       )
     );
     await expect(within(document.body).getByText("Fake Module disabled for this project")).toBeInTheDocument();
-  },
-};
-
-/** Corrected 2026-09-29: a
- * module the organisation has hard-disabled outright (`org_hard_enabled:
- * false`) renders its row greyed out, its toggle disabled, and an
- * explanatory hint — the same "greyed out, not hidden, with a reason"
- * convention Org Admin's own Modules page already uses for a
- * non-entitled/not-yet-implemented module — rather than a toggle a
- * project admin could click and have silently rejected (or, before this
- * correction, silently accepted and then never take effect). */
-export const ModulesTabHardDisabledModuleShowsDisabledToggleWithHint: Story = {
-  beforeEach: () => mockProjectAdminApis({ projectModules: [orgHardDisabledModule] }),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
-    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
-
-    await expect(
-      canvas.getByText("Turned off for your organisation — ask an organisation admin to turn it on.")
-    ).toBeInTheDocument();
-    const toggle = canvas.getByRole("switch", { name: "Enable Fake Module for this project" });
-    await expect(toggle).not.toBeChecked();
-    await expect(toggle).toBeDisabled();
   },
 };
 

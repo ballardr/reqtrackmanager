@@ -24,7 +24,7 @@ from app.models.custom_role import (
 )
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
-from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement
+from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
 from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import (
@@ -140,6 +140,7 @@ __all__ = [
     "UserServerRole",
     "OrganizationModuleEntitlement",
     "OrganizationModuleEnablement",
+    "ServerModuleDefault",
     "GroupModuleRole",
     "ModuleRoleDefinitionRow",
     "UserModuleRole",

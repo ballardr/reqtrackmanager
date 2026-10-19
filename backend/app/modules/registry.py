@@ -2238,7 +2238,7 @@ def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) 
     `organization_id` — entitlement AND enablement
     (exact formula: "Effective enabled
     = entitled(org,key) AND (org_row.enabled if present else
-    registry.default_enabled)").
+    server_default.org_enabled if present else registry.default_enabled)").
 
     Returns `False` immediately (without a database lookup for enablement)
     when the module isn't registered at all, or when the organisation
@@ -2273,7 +2273,19 @@ def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) 
     )
     if override is not None:
         return override.enabled
+    server_default = _server_module_default(db, module_key)
+    if server_default is not None:
+        return server_default.org_enabled
     return definition.default_enabled
+
+
+def _server_module_default(db: Session, module_key: str):
+    """Returns the `ServerModuleDefault` row for `module_key`, or `None` when
+    the server has no explicit default for it (the registry's own
+    `default_enabled` then applies)."""
+    from app.models.module import ServerModuleDefault
+
+    return db.scalar(select(ServerModuleDefault).where(ServerModuleDefault.module_key == module_key))
 
 
 def resolve_default_project_enabled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
@@ -2281,8 +2293,9 @@ def resolve_default_project_enabled(db: Session, organization_id: uuid.UUID, mod
     own override" value for `module_key` (Platform Foundations,
 `OrganizationModuleEnablement.
     default_project_enabled`) — an explicit row's own value if one exists,
-    else the registry's own `default_enabled`, same fallback shape
-    `is_module_enabled` already uses for the sibling `enabled` column.
+    else the server-wide `ServerModuleDefault.project_default_enabled`, else the
+    registry's own `default_enabled` — the same fallback chain
+    `is_module_enabled` uses for the sibling `enabled` column.
 
     This is deliberately **not** gated on `enabled` itself here — that hard
     floor is checked separately by `is_module_enabled`/
@@ -2317,6 +2330,9 @@ def resolve_default_project_enabled(db: Session, organization_id: uuid.UUID, mod
     )
     if row is not None:
         return row.default_project_enabled
+    server_default = _server_module_default(db, module_key)
+    if server_default is not None:
+        return server_default.project_default_enabled
     return definition.default_enabled
 
 

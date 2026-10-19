@@ -62,6 +62,12 @@ class Settings(BaseSettings):
             interface (I-A-04) is mounted at all. Deployments that can't or
             don't want persistent socket connections (e.g. behind certain
             proxies/load balancers) can disable it entirely.
+        modules_default_available: Whether a fresh install is seeded with every
+            registered module available to every organisation and on for new
+            projects (`services.module_defaults.seed_fresh_install_defaults`).
+            Only a database with no server settings yet is ever seeded, so an
+            upgraded deployment is unaffected either way; set false to keep the
+            registry's per-module opt-in defaults on a fresh install.
         geoip_lookup_enabled: Whether login events attempt to resolve the
             client IP's approximate location (C-A-07). Defaults to disabled
             since it calls an external third-party service on every login;
@@ -239,6 +245,8 @@ class Settings(BaseSettings):
     storage_health_check_interval_seconds: int = Field(default=300, ge=60)
 
     websocket_enabled: bool = True
+
+    modules_default_available: bool = True
 
     geoip_lookup_enabled: bool = False
     geoip_lookup_exclude_cidrs: str = "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7"
