@@ -51,15 +51,15 @@ export function ActionFields({
   return (
     <FormGrid minColumn="14rem">
       <FormGridFull>
-        <TextField label={strings.actions.name} value={values.title} onChange={(next) => set("title", next)} disabled={disabled} />
+        <TextField helpNotNeeded label={strings.actions.name} value={values.title} onChange={(next) => set("title", next)} disabled={disabled} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField
+        <TextAreaField helpNotNeeded
           label={strings.actions.description} value={values.description} onChange={(next) => set("description", next)}
           rows={3} disabled={disabled}
         />
       </FormGridFull>
-      <LabeledSelect
+      <LabeledSelect helpNotNeeded
         label={strings.actions.actionType}
         value={values.actionTypeId}
         onChange={(next) => set("actionTypeId", next)}
@@ -73,13 +73,13 @@ export function ActionFields({
           {archivedAssignee}
         </div>
       ) : (
-        <PrincipalFormField
+        <PrincipalFormField helpNotNeeded
           label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
           value={values.assignee} display={assigneeDisplay} onChange={(next) => set("assignee", next)}
           ariaLabel={strings.actions.assignee} placeholder={strings.reviews.unassigned}
         />
       )}
-      <DateField label={strings.actions.dueDate} value={values.dueDate} onChange={(next) => set("dueDate", next)} disabled={disabled} />
+      <DateField helpNotNeeded label={strings.actions.dueDate} value={values.dueDate} onChange={(next) => set("dueDate", next)} disabled={disabled} />
     </FormGrid>
   );
 }

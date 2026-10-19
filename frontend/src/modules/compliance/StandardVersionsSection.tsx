@@ -40,6 +40,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 export function StandardVersionsSection({
   orgId,
@@ -159,19 +160,19 @@ function VersionFormModal({
     <Modal title="New version" onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <TextField
+          <TextField helpNotNeeded
             label="Version label"
             value={versionLabel}
             onChange={setVersionLabel}
             placeholder="e.g. v2.0"
             inputProps={{ autoFocus: true }}
           />
-          <DateField label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
+          <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
           <FormGridFull>
-            <TextAreaField label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
+            <TextAreaField helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
           </FormGridFull>
           {versions.length > 0 && (
-            <LabeledSelect
+            <LabeledSelect help={COMPLIANCE_HELP.complianceCloneFrom}
               label="Clone requirements from"
               value={cloneFrom}
               onChange={setCloneFrom}

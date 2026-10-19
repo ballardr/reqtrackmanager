@@ -569,7 +569,7 @@ export function ChangeRequestsPage() {
               </p>
             )}
             {orgResources.map((r) => (
-              <CheckboxField key={r.id} label={r.filename} checked={attachmentFileIds.includes(r.id)} onChange={() => toggleAttachment(r.id)} />
+              <CheckboxField helpNotNeeded key={r.id} label={r.filename} checked={attachmentFileIds.includes(r.id)} onChange={() => toggleAttachment(r.id)} />
             ))}
           </div>
         );
@@ -609,7 +609,7 @@ export function ChangeRequestsPage() {
 
           {kind === "modify_requirement" ? (
             <>
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.changeRequests.selectARequirement}
                 value={requirementId}
                 onChange={setRequirementId}
@@ -639,7 +639,7 @@ export function ChangeRequestsPage() {
             </>
           ) : (
             <FormGrid minColumn="18rem">
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.requirements.component}
                 value={componentId}
                 onChange={(nextComponentId) => {
@@ -649,7 +649,7 @@ export function ChangeRequestsPage() {
                 options={components.map((c) => ({ value: c.id, label: c.name }))}
                 placeholder={null}
               />
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.requirements.category}
                 value={categoryId}
                 onChange={setCategoryId}
@@ -657,41 +657,41 @@ export function ChangeRequestsPage() {
                 placeholder={null}
               />
               <FormGridFull>
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.changeRequests.proposedName}
                   value={proposed.name}
                   onChange={(next) => setProposed((p) => ({ ...p, name: next }))}
                 />
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField
+                <TextAreaField helpNotNeeded
                   label={strings.changeRequests.proposedReasoning}
                   value={proposed.reasoning}
                   onChange={(next) => setProposed((p) => ({ ...p, reasoning: next }))}
                 />
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField
+                <TextAreaField help={strings.help.requirementClarification}
                   label={strings.requirements.clarification}
                   value={proposed.clarification}
                   onChange={(next) => setProposed((p) => ({ ...p, clarification: next }))}
                 />
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField
+                <TextAreaField helpNotNeeded
                   label={strings.requirements.description}
                   value={proposed.description}
                   onChange={(next) => setProposed((p) => ({ ...p, description: next }))}
                 />
               </FormGridFull>
-              <LabeledSelect
+              <LabeledSelect help={strings.help.requirementTargetVersion}
                 label={strings.requirements.targetVersion}
                 value={proposed.targetStageId}
                 onChange={(next) => setProposed((p) => ({ ...p, targetStageId: next }))}
                 options={stages.map((s) => ({ value: s.id, label: s.name }))}
                 placeholder="—"
               />
-              <LabeledSelect
+              <LabeledSelect help={strings.help.requirementLevel}
                 label={strings.requirements.level}
                 value={proposed.level}
                 onChange={(next) => setProposed((p) => ({ ...p, level: next as RequirementLevel }))}
@@ -721,7 +721,7 @@ export function ChangeRequestsPage() {
             />
           )}
 
-          <TextAreaField label={strings.changeRequests.reason} value={reason} onChange={setReason} />
+          <TextAreaField helpNotNeeded label={strings.changeRequests.reason} value={reason} onChange={setReason} />
           {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
           <div className="row">
             <button

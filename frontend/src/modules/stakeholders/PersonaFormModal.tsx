@@ -22,6 +22,7 @@ import { TagField } from "../../components/TagField";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import type { Persona, PersonaFieldValues } from "./types";
 import { FormActions } from "../../components/FormActions";
+import { STAKEHOLDERS_HELP } from "./help";
 
 const TEXT_FIELDS: { key: keyof PersonaFieldValues; label: string; rows: number }[] = [
   { key: "description", label: "Description", rows: 2 },
@@ -90,26 +91,25 @@ export function PersonaFormModal({
     <Modal title={initial ? `Edit ${initial.name}` : `New Persona (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <TextField label="Name" ariaLabel="Persona name" value={name} onChange={setName} />
-          <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
-          <TextField label="Role / job title" ariaLabel="Role or job title" value={roleTitle} onChange={setRoleTitle} />
-          <TextField
+          <TextField helpNotNeeded label="Name" ariaLabel="Persona name" value={name} onChange={setName} />
+          <LabeledSelect helpNotNeeded label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
+          <TextField helpNotNeeded label="Role / job title" ariaLabel="Role or job title" value={roleTitle} onChange={setRoleTitle} />
+          <TextField help={STAKEHOLDERS_HELP.personaImportanceWeight}
             label="Importance weight (optional)"
             ariaLabel="Importance weight"
             value={weight}
             onChange={setWeight}
-            hint="Used when scoring against personas. Leave blank to weight every persona equally; must be greater than zero."
             inputProps={{ min: "0", step: "any", "aria-invalid": !weightValid, type: "number" }}
           />
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
             </FormGridFull>
           ))}
-          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {initial && <FormGridFull><TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (
             <FormGridFull>
               <div className="stack">

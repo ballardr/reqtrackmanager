@@ -66,34 +66,34 @@ export function EngagementFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField label="Title" ariaLabel="Engagement title" value={title} onChange={setTitle} hint="What happened, e.g. “Quarterly review with the regulator”." />
+            <TextField helpNotNeeded label="Title" ariaLabel="Engagement title" value={title} onChange={setTitle} hint="What happened, e.g. “Quarterly review with the regulator”." />
           </FormGridFull>
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Channel" value={channel} placeholder={null}
             onChange={(value) => setChannel(value as EngagementChannel)} options={CHANNEL_OPTIONS}
           />
-          <DateField label="Date" value={date} onChange={setDate} />
+          <DateField helpNotNeeded label="Date" value={date} onChange={setDate} />
           {!compact && (
             <FormGridFull>
-              <TextAreaField label="Purpose" rows={2} value={purpose} onChange={setPurpose} hint="Why the engagement took place." />
+              <TextAreaField helpNotNeeded label="Purpose" rows={2} value={purpose} onChange={setPurpose} hint="Why the engagement took place." />
             </FormGridFull>
           )}
           <FormGridFull>
-            <TextAreaField label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} hint="A line or two on the outcome." />
+            <TextAreaField helpNotNeeded label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} hint="A line or two on the outcome." />
           </FormGridFull>
           {!compact && (
             <>
               <FormGridFull>
-                <TextAreaField
+                <TextAreaField helpNotNeeded
                   label="Notes" rows={5} value={notes} onChange={setNotes}
                   hint="Notes can name people and are personal data: they are deleted with the engagement."
                 />
               </FormGridFull>
-              <CheckboxField
+              <CheckboxField helpNotNeeded
                 heading="Consent" label="Recorded" ariaLabel="Consent recorded" checked={consent} onChange={setConsent}
                 hint="Tick once the participants have agreed to being recorded here."
               />
-              <DateField
+              <DateField helpNotNeeded
                 label="Retain until" value={retainUntil} onChange={setRetainUntil}
                 hint="Optional. Nothing is deleted automatically; the engagement is flagged when this date is reached."
               />

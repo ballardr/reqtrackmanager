@@ -11,6 +11,8 @@
 import type { ReactNode } from "react";
 
 import type { OrgUser, Principal, PrincipalRef } from "../api/types";
+import { FieldCaption } from "./FieldHelp";
+import type { FieldHelpProps } from "./FieldHelp";
 import { PrincipalBadge } from "./PrincipalBadge";
 import { PrincipalPicker } from "./PrincipalPicker";
 
@@ -29,14 +31,15 @@ export function RecordField({ label, value }: { label: string; value: string }) 
  *
  * @param action A control on the caption's own line, e.g. an `AddPopoverButton`, so adding to a
  *   list costs no extra row.
+ * @param help The group's `(?)` help text; `helpNotNeeded` for a self-explanatory group (see `FieldHelp`).
  */
 export function RecordFieldGroup({
-  label, children, gap = "0.25rem", action,
-}: { label: string; children: ReactNode; gap?: string; action?: ReactNode }) {
+  label, children, gap = "0.25rem", action, help,
+}: FieldHelpProps & { label: string; children: ReactNode; gap?: string; action?: ReactNode }) {
   return (
     <div className="stack" style={{ gap }}>
       <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
-        <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
+        <FieldCaption label={label} help={help} muted />
         {action}
       </span>
       {children}
@@ -69,7 +72,7 @@ export function RecordPrincipalField({
   onChange: (principal: PrincipalRef | null) => void;
 }) {
   return (
-    <RecordFieldGroup label={label}>
+    <RecordFieldGroup helpNotNeeded label={label}>
       {readOnly ? (
         <PrincipalBadge principal={principal} />
       ) : (

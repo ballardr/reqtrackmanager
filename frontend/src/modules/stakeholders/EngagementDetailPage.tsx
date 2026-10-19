@@ -184,7 +184,7 @@ export function EngagementDetailPage() {
             onChange={(facilitators) => save({ facilitators }, "Facilitators updated.", "Could not update this Engagement's facilitators.")}
           />
 
-          <RecordFieldGroup label="Consent and retention">
+          <RecordFieldGroup helpNotNeeded label="Consent and retention">
             <span data-testid="consent">Consent recorded: {engagement.consent_recorded ? "Yes" : "No"}</span>
             <span data-testid="retention">
               {engagement.retain_until ? `Retain until ${engagement.retain_until}` : "No retain-until date"}

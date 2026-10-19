@@ -45,7 +45,7 @@ export function StandardProjectsPanel({ orgId, standard }: { orgId: string; stan
 
   return (
     <div className="stack">
-      <LabeledSelect
+      <LabeledSelect helpNotNeeded
         label="Compliance state"
         value={stateFilter}
         onChange={(next) => setSearchParams(next ? { state: next } : {})}

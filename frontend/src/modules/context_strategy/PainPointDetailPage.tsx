@@ -360,7 +360,7 @@ export function PainPointDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{OPTIONAL_COMMENT_COPY[optionalAction].body}</span>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label="Comment"
                 ariaLabel="Transition comment"
                 value={optionalComment}
@@ -390,7 +390,7 @@ export function PainPointDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{MANDATORY_COMMENT_COPY[mandatoryAction].hint}</span>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
                 value={mandatoryComment}
                 onChange={setMandatoryComment}

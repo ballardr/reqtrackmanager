@@ -57,45 +57,45 @@ export function RequirementFields({
   return (
     <>
       <FormGridFull>
-        <TextField label={strings.requirements.name} value={values.name} onChange={(next) => set("name", next)} placeholder={strings.requirements.name} />
+        <TextField helpNotNeeded label={strings.requirements.name} value={values.name} onChange={(next) => set("name", next)} placeholder={strings.requirements.name} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField autoGrow label={strings.requirements.reasoning} rows={3} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
+        <TextAreaField helpNotNeeded autoGrow label={strings.requirements.reasoning} rows={3} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField autoGrow label={strings.requirements.clarification} rows={2} value={values.clarification} onChange={(next) => set("clarification", next)} inputProps={{ placeholder: strings.requirements.clarification }} />
+        <TextAreaField help={strings.help.requirementClarification} autoGrow label={strings.requirements.clarification} rows={2} value={values.clarification} onChange={(next) => set("clarification", next)} inputProps={{ placeholder: strings.requirements.clarification }} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField autoGrow label={strings.requirements.description} rows={2} value={values.description} onChange={(next) => set("description", next)} inputProps={{ placeholder: strings.requirements.description }} />
+        <TextAreaField helpNotNeeded autoGrow label={strings.requirements.description} rows={2} value={values.description} onChange={(next) => set("description", next)} inputProps={{ placeholder: strings.requirements.description }} />
       </FormGridFull>
       {afterDescription}
-      <LabeledSelect
+      <LabeledSelect help={strings.help.requirementTargetVersion}
         label={strings.requirements.targetVersion}
         value={values.targetStageId}
         onChange={(next) => set("targetStageId", next)}
         options={stages.map((s) => ({ value: s.id, label: s.name }))}
         placeholder={null}
       />
-      <LabeledSelect
+      <LabeledSelect help={strings.help.requirementLevel}
         label={strings.requirements.level}
         value={values.level}
         onChange={(next) => set("level", next as RequirementLevel)}
         options={LEVELS.map((value) => ({ value, label: REQUIREMENT_LEVEL_LABEL[value] }))}
         placeholder={null}
       />
-      <DateField label={strings.requirements.reviewDate} value={values.reviewDate} onChange={(next) => set("reviewDate", next)} />
-      <TextField
+      <DateField help={strings.help.requirementReviewDate} label={strings.requirements.reviewDate} value={values.reviewDate} onChange={(next) => set("reviewDate", next)} />
+      <TextField help={strings.help.requirementReminderLead}
         label={strings.requirements.reviewLeadDays} value={values.reviewLeadDays}
         onChange={(next) => set("reviewLeadDays", next)} inputProps={{ type: "number", min: 0 }}
       />
-      <PrincipalFormField
+      <PrincipalFormField help={strings.help.requirementReviewer}
         label={strings.requirements.reviewer} orgUsers={orgUsers} organizationId={organizationId}
         projectId={projectId} value={values.reviewer}
         display={saved ? savedPrincipalDisplay(values.reviewer, saved.reviewer) : undefined}
         onChange={(reviewer) => set("reviewer", reviewer)}
         ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
       />
-      <PrincipalFormField
+      <PrincipalFormField helpNotNeeded
         label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId}
         projectId={projectId} value={values.owner}
         display={saved ? savedPrincipalDisplay(values.owner, saved.owner) : undefined}

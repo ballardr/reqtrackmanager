@@ -40,8 +40,8 @@ function FindingFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.title}` : "New finding"} onClose={onCancel} size="lg">
       <div className="stack">
-        <TextField label="Title" ariaLabel="Finding title" value={title} onChange={setTitle} hint="One line, e.g. “Technicians skip the checklist when offline”." />
-        <TextAreaField label="Description" rows={5} value={description} onChange={setDescription} hint="Findings can quote participants and are deleted with the engagement." />
+        <TextField helpNotNeeded label="Title" ariaLabel="Finding title" value={title} onChange={setTitle} hint="One line, e.g. “Technicians skip the checklist when offline”." />
+        <TextAreaField helpNotNeeded label="Description" rows={5} value={description} onChange={setDescription} hint="Findings can quote participants and are deleted with the engagement." />
         <FormActions
           error={error}
           onCancel={onCancel}

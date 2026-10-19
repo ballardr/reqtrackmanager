@@ -59,6 +59,7 @@ import {
 } from "./types";
 import { levelName, useStakeholderScheme } from "./useStakeholderScheme";
 import { Badge } from "../../components/Badge";
+import { STAKEHOLDERS_HELP } from "./help";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder activated.",
@@ -310,14 +311,14 @@ export function StakeholderDetailPage() {
         {stakeholder.workflows_scenarios && <RecordField label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
         {stakeholder.contact_info && <RecordField label="Contact / reference information" value={stakeholder.contact_info} />}
 
-        <RecordFieldGroup label="Influence and interest">
+        <RecordFieldGroup help={STAKEHOLDERS_HELP.stakeholderInfluenceInterest} label="Influence and interest">
           <span data-testid="grid-position">
             Influence: {levelName(scheme, "influence", stakeholder.influence_level_id)} · Interest: {levelName(scheme, "interest", stakeholder.interest_level_id)}
             {hint?.quadrant && ` · ${GRID_QUADRANT_LABEL[hint.quadrant]}`}
           </span>
         </RecordFieldGroup>
 
-        <RecordFieldGroup label="Engagement">
+        <RecordFieldGroup helpNotNeeded label="Engagement">
           <span data-testid="cadence">
             Target cadence: {stakeholder.target_cadence ? TARGET_CADENCE_LABEL[stakeholder.target_cadence] : "Not set"}
             {hint?.suggested_cadence && hint.suggested_cadence !== stakeholder.target_cadence &&
@@ -348,7 +349,7 @@ export function StakeholderDetailPage() {
           }}
         />
         {stakeholder.user_id && (
-          <RecordFieldGroup label="Platform user">
+          <RecordFieldGroup helpNotNeeded label="Platform user">
             <span>{linkedUser?.display_name ?? "A platform user"}</span>
           </RecordFieldGroup>
         )}

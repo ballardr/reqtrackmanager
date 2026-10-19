@@ -150,6 +150,6 @@ export function FilterCheckbox({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <CheckboxField label={label} checked={checked} onChange={onChange} />
+    <CheckboxField helpNotNeeded label={label} checked={checked} onChange={onChange} />
   );
 }

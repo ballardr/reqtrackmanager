@@ -59,14 +59,14 @@ export function DecisionTemplateFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField label="Template name" value={name} onChange={setName} />
+            <TextField helpNotNeeded label="Template name" value={name} onChange={setName} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField label="Description" value={description} onChange={setDescription} />
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
           </FormGridFull>
           {PROMPT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={f.label} value={prompts[f.key]}
                 onChange={(value) => setPrompts((p) => ({ ...p, [f.key]: value }))}
               />

@@ -145,7 +145,10 @@ test.describe("project codes", () => {
 
     await test.step("opting out in Preferences shows the bare code", async () => {
       await page.goto("/preferences");
+      // The preference saves in the background; navigating before it lands would reload the old value.
+      const saved = page.waitForResponse((r) => r.url().includes("/auth/me/preferences") && r.request().method() === "PATCH");
       await page.getByRole("checkbox", { name: "Show the project code on record codes" }).uncheck();
+      await saved;
       await expect(page.getByRole("checkbox", { name: "Show the project code on record codes" })).not.toBeChecked();
       await page.goto(`/projects/${project.id}/requirements/${requirement.id}`);
       await expect(header).toContainText(requirement.unique_code);

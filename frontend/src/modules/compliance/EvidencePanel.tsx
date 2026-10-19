@@ -313,22 +313,22 @@ export function EvidenceFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField label="Title" ariaLabel="Evidence title" value={title} onChange={setTitle} />
+            <TextField helpNotNeeded label="Title" ariaLabel="Evidence title" value={title} onChange={setTitle} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField label="Description" value={description} onChange={setDescription} rows={2} />
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
           </FormGridFull>
-          <TextField label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
-          <DateField label="Issued date" value={issuedDate} onChange={setIssuedDate} />
+          <TextField helpNotNeeded label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
+          <DateField helpNotNeeded label="Issued date" value={issuedDate} onChange={setIssuedDate} />
           {!initial && (
-            <DateField
+            <DateField helpNotNeeded
               label="Expiry date (optional — change later via Revalidate)"
               value={expiryDate}
               onChange={setExpiryDate}
             />
           )}
           <FormGridFull>
-            <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
+            <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
           </FormGridFull>
           {!initial && (
             <FormGridFull>
@@ -388,9 +388,9 @@ function RevalidateModal({
     <Modal title="Revalidate evidence" onClose={onCancel}>
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <DateField label="New expiry date (optional)" value={newExpiryDate} onChange={setNewExpiryDate} />
+          <DateField helpNotNeeded label="New expiry date (optional)" value={newExpiryDate} onChange={setNewExpiryDate} />
           <FormGridFull>
-            <TextAreaField label="Justification" value={justification} onChange={setJustification} rows={2} />
+            <TextAreaField helpNotNeeded label="Justification" value={justification} onChange={setJustification} rows={2} />
           </FormGridFull>
         </FormGrid>
         <FormActions

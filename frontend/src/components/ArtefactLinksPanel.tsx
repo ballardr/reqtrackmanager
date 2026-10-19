@@ -383,7 +383,7 @@ export function ArtefactLinksPanel({
             changeRequest ? (
               <span className="stack" style={{ gap: "0.5rem" }}>
                 <span>{strings.artefactLinks.removeConfirmViaChangeRequest}</span>
-                <TextAreaField
+                <TextAreaField helpNotNeeded
                   label={strings.artefactLinks.reasonLabel}
                   value={removeReason}
                   onChange={setRemoveReason}

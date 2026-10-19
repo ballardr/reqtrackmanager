@@ -331,7 +331,7 @@ export function OpenQuestionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{OPTIONAL_COMMENT_COPY[optionalAction].body}</span>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label="Comment"
                 ariaLabel="Transition comment"
                 value={optionalComment}
@@ -368,7 +368,7 @@ export function OpenQuestionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining why is required.</span>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label="Withdrawal comment"
                 value={withdrawComment}
                 onChange={setWithdrawComment}

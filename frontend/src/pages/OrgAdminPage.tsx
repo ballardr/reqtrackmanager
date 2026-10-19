@@ -2181,9 +2181,9 @@ export function OrgAdminPage() {
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.createInitialAdmin}</h2>
           <FormGrid minColumn="14rem">
-            <TextField label={strings.orgAdmin.email} value={bootstrapEmail} onChange={setBootstrapEmail} />
-            <TextField label={strings.orgAdmin.name} value={bootstrapName} onChange={setBootstrapName} />
-            <TextField
+            <TextField helpNotNeeded label={strings.orgAdmin.email} value={bootstrapEmail} onChange={setBootstrapEmail} />
+            <TextField helpNotNeeded label={strings.orgAdmin.name} value={bootstrapName} onChange={setBootstrapName} />
+            <TextField helpNotNeeded
               label={strings.orgAdmin.password}
               value={bootstrapPassword}
               onChange={setBootstrapPassword}
@@ -2551,7 +2551,7 @@ export function OrgAdminPage() {
             {renameModalOpen && (
               <Modal title={strings.orgAdmin.rename} onClose={() => setRenameModalOpen(false)}>
                 <div className="stack">
-                  <TextField
+                  <TextField helpNotNeeded
                     label={strings.orgAdmin.rename}
                     value={orgNameEdit}
                     onChange={setOrgNameEdit}
@@ -2572,7 +2572,7 @@ export function OrgAdminPage() {
               <p className="text-muted" style={{ margin: 0 }}>{strings.importMerge.hint(orgLabel)}</p>
               {!importMergeConflicts && !importMergeResult && (
                 <div className="stack">
-                  <FileField label={strings.importMerge.chooseFile} accept=".zip,application/zip" onChange={setImportMergeFile} />
+                  <FileField helpNotNeeded label={strings.importMerge.chooseFile} accept=".zip,application/zip" onChange={setImportMergeFile} />
                   <button
                     className="btn btn-primary" onClick={previewImportMerge}
                     disabled={!importMergeFile || importMergePreviewing} style={{ alignSelf: "flex-start" }}
@@ -2782,20 +2782,20 @@ export function OrgAdminPage() {
               <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)} size="lg">
                 <div className="stack">
                   <FormGrid minColumn="18rem">
-                    <TextField
+                    <TextField helpNotNeeded
                       label={strings.orgAdmin.email}
                       value={newUserEmail}
                       onChange={setNewUserEmail}
                       inputProps={{ autoFocus: true, type: "email" }}
                     />
-                    <TextField label={strings.orgAdmin.name} value={newUserName} onChange={setNewUserName} />
-                    <TextField
+                    <TextField helpNotNeeded label={strings.orgAdmin.name} value={newUserName} onChange={setNewUserName} />
+                    <TextField helpNotNeeded
                       label={strings.orgAdmin.password}
                       value={newUserPassword}
                       onChange={setNewUserPassword}
                       inputProps={{ type: "password" }}
                     />
-                    <LabeledSelect
+                    <LabeledSelect helpNotNeeded
                       label={strings.orgAdmin.role}
                       value={newUserRole}
                       onChange={(next) => setNewUserRole(next as OrgRole)}
@@ -2817,7 +2817,7 @@ export function OrgAdminPage() {
               <Modal title={strings.orgAdmin.inviteUser} onClose={() => setInviteUserModalOpen(false)}>
                 <div className="stack">
                   <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.inviteUserModalHint}</p>
-                  <TextField
+                  <TextField helpNotNeeded
                     label={strings.orgAdmin.email}
                     value={inviteUserEmail}
                     onChange={setInviteUserEmail}
@@ -2915,7 +2915,7 @@ export function OrgAdminPage() {
                 // Popover for a one/two-field quick action on something
                 // that already exists, not creating a new entity.
                 <Modal title={strings.orgAdmin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
-                  <TextField
+                  <TextField helpNotNeeded
                     label={strings.admin.name}
                     value={newGroupName}
                     onChange={setNewGroupName}
@@ -3073,7 +3073,7 @@ export function OrgAdminPage() {
                         only the muted hint renders, nothing else. */}
                     {ssoConfigured ? (
                       <div className="stack" style={{ gap: "0.5rem" }}>
-                        <CheckboxField
+                        <CheckboxField help={strings.help.ssoGroupSync}
                           label={strings.orgAdmin.syncFromSso}
                           checked={syncEnabled}
                           onChange={(next) => toggleGroupSync(g.id, next)}
@@ -3081,13 +3081,13 @@ export function OrgAdminPage() {
                         {syncEnabled && (
                           <>
                             <FormGrid minColumn="16rem">
-                              <TextField
+                              <TextField help={strings.help.ssoGroupName}
                                 label={strings.orgAdmin.idpSyncedGroupName}
                                 placeholder={strings.orgAdmin.idpSyncedGroupNamePlaceholder}
                                 value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
                                 onChange={(next) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: next }))}
                               />
-                              <LabeledSelect
+                              <LabeledSelect helpNotNeeded
                                 label={strings.orgAdmin.grantedOrgRole}
                                 value={grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""}
                                 onChange={(next) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: next as OrgRole | "" }))}
@@ -3261,7 +3261,7 @@ export function OrgAdminPage() {
         {activeGroup === "branding-defaults" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding}>
-              <UploadField
+              <UploadField helpNotNeeded
                 id="org-logo-input"
                 label={strings.orgAdmin.logo(orgLabel)}
                 labelExtra={<OverridePill custom={org.logo_file_id != null} onReset={removeLogo} disabled={logoUploading} />}
@@ -3280,7 +3280,7 @@ export function OrgAdminPage() {
                   "after" diagram, G4a: "Branding — logo, colour, footer") —
                   moved here from the SSO section, where it previously sat
                   for no reason connected to SSO/OIDC itself. */}
-              <UploadField
+              <UploadField helpNotNeeded
                 id="org-login-background-input"
                 label={strings.orgAdmin.loginBackground}
                 labelExtra={
@@ -3305,7 +3305,7 @@ export function OrgAdminPage() {
                 <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
               )}
 
-              <TextField
+              <TextField helpNotNeeded
                 label={strings.orgAdmin.headerTitle}
                 labelExtra={<OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />}
                 placeholder={strings.appName}
@@ -3314,26 +3314,26 @@ export function OrgAdminPage() {
                 hint={strings.orgAdmin.headerTitleHint}
                 inputProps={{ id: "org-header-title" }}
               />
-              <CheckboxField
+              <CheckboxField helpNotNeeded
                 label={strings.orgAdmin.useOwnAccentColor(orgLabel)}
                 checked={useOwnAccentColor}
                 onChange={setUseOwnAccentColor}
               />
               {useOwnAccentColor && (
-                <ColorField label={strings.admin.accentColor} value={accentColorInput} onChange={setAccentColorInput} />
+                <ColorField helpNotNeeded label={strings.admin.accentColor} value={accentColorInput} onChange={setAccentColorInput} />
               )}
               <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
               <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
               <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
               <FormGrid minColumn="18rem">
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.orgAdmin.emailFooterCompanyName}
                   labelExtra={<OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />}
                   value={emailFooterCompanyNameInput}
                   onChange={setEmailFooterCompanyNameInput}
                   inputProps={{ id: "org-email-footer-company" }}
                 />
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.orgAdmin.emailFooterWebsite}
                   labelExtra={<OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />}
                   value={emailFooterWebsiteInput}
@@ -3341,7 +3341,7 @@ export function OrgAdminPage() {
                   inputProps={{ id: "org-email-footer-website" }}
                 />
                 <FormGridFull>
-                  <TextAreaField
+                  <TextAreaField helpNotNeeded
                     label={strings.orgAdmin.emailFooterAddress}
                     labelExtra={<OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />}
                     rows={3}
@@ -3430,16 +3430,16 @@ export function OrgAdminPage() {
               >
                 <div className="stack">
                   <FormGrid minColumn="18rem">
-                    <TextField label={strings.admin.templateName} value={newTemplateName} onChange={setNewTemplateName} />
-                    <ColorField label={strings.admin.accentColor} value={newTemplateAccentColor} onChange={setNewTemplateAccentColor} />
+                    <TextField helpNotNeeded label={strings.admin.templateName} value={newTemplateName} onChange={setNewTemplateName} />
+                    <ColorField helpNotNeeded label={strings.admin.accentColor} value={newTemplateAccentColor} onChange={setNewTemplateAccentColor} />
                     <FormGridFull>
-                      <TextField label={strings.admin.footerText} value={newTemplateFooterText} onChange={setNewTemplateFooterText} />
+                      <TextField helpNotNeeded label={strings.admin.footerText} value={newTemplateFooterText} onChange={setNewTemplateFooterText} />
                     </FormGridFull>
-                    <CheckboxField
+                    <CheckboxField helpNotNeeded
                       label={strings.admin.includeCoverPage} checked={newTemplateIncludeCoverPage}
                       onChange={setNewTemplateIncludeCoverPage}
                     />
-                    <CheckboxField
+                    <CheckboxField helpNotNeeded
                       label={strings.admin.includeLogo(orgLabel)} checked={newTemplateIncludeLogo}
                       onChange={setNewTemplateIncludeLogo}
                     />
@@ -3457,7 +3457,7 @@ export function OrgAdminPage() {
                       </div>
                     </FormGridFull>
                     <FormGridFull>
-                      <CheckboxField
+                      <CheckboxField help={strings.help.reportChapterDefault}
                         label={strings.admin.templateChaptersPerComponent} checked={newTemplateChaptersPerComponent}
                         onChange={setNewTemplateChaptersPerComponent}
                       />
@@ -3479,23 +3479,23 @@ export function OrgAdminPage() {
           <div className="stack">
             {ssoConfig && (
               <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig}>
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.orgAdmin.slug}
                   value={slugInput}
                   onChange={setSlugInput}
                   hint={strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
                 />
-                <CheckboxField label={strings.orgAdmin.ssoEnabled} checked={ssoEnabled} onChange={setSsoEnabled} />
-                <CheckboxField label={strings.orgAdmin.ssoOnly} checked={ssoOnly} onChange={setSsoOnly} />
-                <TextField label={strings.orgAdmin.oidcIssuerUrl} value={oidcIssuerUrl} onChange={setOidcIssuerUrl} />
-                <TextField label={strings.orgAdmin.oidcClientId} value={oidcClientId} onChange={setOidcClientId} />
-                <TextField
+                <CheckboxField help={strings.help.ssoEnable} label={strings.orgAdmin.ssoEnabled} checked={ssoEnabled} onChange={setSsoEnabled} />
+                <CheckboxField help={strings.help.ssoNativeFormHidden} label={strings.orgAdmin.ssoOnly} checked={ssoOnly} onChange={setSsoOnly} />
+                <TextField help={strings.help.ssoIssuerUrl} label={strings.orgAdmin.oidcIssuerUrl} value={oidcIssuerUrl} onChange={setOidcIssuerUrl} />
+                <TextField help={strings.help.ssoClientId} label={strings.orgAdmin.oidcClientId} value={oidcClientId} onChange={setOidcClientId} />
+                <TextField help={strings.help.ssoClientSecret}
                   label={strings.orgAdmin.oidcClientSecret}
                   value={oidcClientSecret}
                   onChange={setOidcClientSecret}
                   inputProps={{ type: "password" }}
                 />
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.orgAdmin.oidcRequiredGroup}
                   value={oidcRequiredGroup}
                   onChange={setOidcRequiredGroup}
@@ -3554,7 +3554,7 @@ export function OrgAdminPage() {
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.smtpEmail" title={strings.orgAdmin.smtpEmailTitle}>
                 <FormGrid minColumn="14rem">
-                  <TextField
+                  <TextField helpNotNeeded
                     label={strings.orgAdmin.smtpHost}
                     value={smtpHost}
                     onChange={(next) => {
@@ -3562,7 +3562,7 @@ export function OrgAdminPage() {
                       setSmtpHost(next);
                     }}
                   />
-                  <TextField
+                  <TextField helpNotNeeded
                     label={strings.orgAdmin.smtpPort}
                     value={smtpPort}
                     onChange={(next) => {
@@ -3570,7 +3570,7 @@ export function OrgAdminPage() {
                       setSmtpPort(next);
                     }}
                   />
-                  <TextField
+                  <TextField helpNotNeeded
                     label={strings.orgAdmin.smtpUsername}
                     value={smtpUsername}
                     onChange={(next) => {
@@ -3578,7 +3578,7 @@ export function OrgAdminPage() {
                       setSmtpUsername(next);
                     }}
                   />
-                  <TextField
+                  <TextField helpNotNeeded
                     label={strings.orgAdmin.smtpPassword}
                     value={smtpPassword}
                     onChange={(next) => {
@@ -3588,7 +3588,7 @@ export function OrgAdminPage() {
                     inputProps={{ type: "password" }}
                   />
                   <FormGridFull>
-                    <CheckboxField
+                    <CheckboxField helpNotNeeded
                       label={strings.orgAdmin.smtpUseTls}
                       checked={smtpUseTls}
                       onChange={(next) => {
@@ -3603,7 +3603,7 @@ export function OrgAdminPage() {
                   <strong>{strings.orgAdmin.testEmail}</strong>
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
                   <div className="row" style={{ alignItems: "flex-end" }}>
-                    <TextField
+                    <TextField helpNotNeeded
                       label={strings.orgAdmin.testEmailRecipient}
                       hint={strings.orgAdmin.testEmailRecipientHint}
                       value={testEmailRecipient}
@@ -3644,7 +3644,7 @@ export function OrgAdminPage() {
           <div className="stack">
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.security" title={strings.orgAdmin.securityTitle}>
-                <ToggleField
+                <ToggleField helpNotNeeded
                   label={strings.orgAdmin.require2fa}
                   checked={require2fa}
                   onChange={(next) => {
@@ -3654,7 +3654,7 @@ export function OrgAdminPage() {
                   hint={strings.orgAdmin.require2faHint(orgLabel)}
                 />
 
-                <ToggleField
+                <ToggleField helpNotNeeded
                   label={strings.orgAdmin.allowSelfSignup}
                   checked={allowSelfSignup}
                   onChange={(next) => {
@@ -3668,7 +3668,7 @@ export function OrgAdminPage() {
                   <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</div>
                 )}
 
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.orgAdmin.autoAcceptEmailDomain}
                   value={autoAcceptEmailDomain}
                   onChange={(next) => {
@@ -3679,7 +3679,7 @@ export function OrgAdminPage() {
                   hint={strings.orgAdmin.autoAcceptEmailDomainHint}
                 />
 
-                <LabeledSelect
+                <LabeledSelect help={strings.help.externalUserPolicy}
                   label={strings.orgAdmin.externalUserPolicy}
                   value={externalUserPolicy}
                   onChange={(next) => {
@@ -3690,7 +3690,7 @@ export function OrgAdminPage() {
                   placeholder={null}
                 />
 
-                <ToggleField
+                <ToggleField helpNotNeeded
                   label={strings.orgAdmin.allowRelaxedChildProjectCreation}
                   checked={allowRelaxedChildProjectCreation}
                   onChange={(next) => {
@@ -3700,7 +3700,7 @@ export function OrgAdminPage() {
                   hint={strings.orgAdmin.allowRelaxedChildProjectCreationHint}
                 />
 
-                <ToggleField
+                <ToggleField helpNotNeeded
                   label={strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
                   checked={forceRequireCrForLinks}
                   onChange={(next) => {
@@ -3711,7 +3711,7 @@ export function OrgAdminPage() {
                 />
 
                 {/* AI approval via MCP (docs/decisions.md) */}
-                <ToggleField
+                <ToggleField helpNotNeeded
                   label={strings.orgAdmin.allowAiApprovals}
                   checked={allowAiApprovals}
                   onChange={(next) => {
@@ -3760,7 +3760,7 @@ export function OrgAdminPage() {
                     Security-card button above, on this same "Security"
                     group/page, since it's one field on the same
                     OrgAdvancedSettings object. */}
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.orgAdmin.patMaxLifetime}
                   value={patMaxLifetimeDays}
                   onChange={(next) => {
@@ -3979,7 +3979,7 @@ export function OrgAdminPage() {
                       <FormGrid minColumn="18rem">
                         {!editingCustomRoleId && customRolePresets.length > 0 && (
                           <FormGridFull>
-                            <LabeledSelect
+                            <LabeledSelect helpNotNeeded
                               label={strings.orgAdmin.customRolePreset}
                               value=""
                               onChange={applyCustomRolePreset}
@@ -3988,13 +3988,13 @@ export function OrgAdminPage() {
                             />
                           </FormGridFull>
                         )}
-                        <TextField
+                        <TextField helpNotNeeded
                           label={strings.orgAdmin.customRoleName}
                           value={customRoleFormName}
                           onChange={setCustomRoleFormName}
                           inputProps={{ autoFocus: true }}
                         />
-                        <LabeledSelect
+                        <LabeledSelect help={strings.help.customRoleScope}
                           label={strings.orgAdmin.customRoleScope}
                           value={customRoleFormScope}
                           onChange={setCustomRoleFormScope}
@@ -4008,7 +4008,7 @@ export function OrgAdminPage() {
                           ]}
                         />
                         <FormGridFull>
-                          <TextField
+                          <TextField helpNotNeeded
                             label={strings.orgAdmin.customRoleDescription}
                             value={customRoleFormDescription}
                             onChange={setCustomRoleFormDescription}
@@ -4066,7 +4066,7 @@ export function OrgAdminPage() {
                           <Badge>{customRoleScopeLabel(role.scope)}</Badge>
                         </div>
                         {role.scope === "project" && (
-                          <LabeledSelect
+                          <LabeledSelect helpNotNeeded
                             label={strings.orgAdmin.projects}
                             value={projectId}
                             onChange={(next) => setCustomRoleGrantProjectId((prev) => ({ ...prev, [role.id]: next }))}
@@ -4081,7 +4081,7 @@ export function OrgAdminPage() {
                             for a role scoped to a registered module-owned entity scope (e.g. compliance's
                             "standard"), populated through that scope's own `entities` list. */}
                         {matchingEntityScope !== undefined && (
-                          <LabeledSelect
+                          <LabeledSelect helpNotNeeded
                             label={matchingEntityScope.label}
                             value={entityId}
                             onChange={(next) => setCustomRoleGrantEntityId((prev) => ({ ...prev, [role.id]: next }))}
@@ -4090,7 +4090,7 @@ export function OrgAdminPage() {
                           />
                         )}
                         <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
-                          <RecordFieldGroup label={strings.orgAdmin.customRoleGrantFieldLabel}>
+                          <RecordFieldGroup helpNotNeeded label={strings.orgAdmin.customRoleGrantFieldLabel}>
                             <UserAutocomplete
                               users={users}
                               groups={allGroups}
@@ -4109,7 +4109,7 @@ export function OrgAdminPage() {
                               }}
                             />
                           </RecordFieldGroup>
-                          <RecordFieldGroup label={strings.orgAdmin.customRoleRevokeFieldLabel}>
+                          <RecordFieldGroup helpNotNeeded label={strings.orgAdmin.customRoleRevokeFieldLabel}>
                             <UserAutocomplete
                               users={users}
                               groups={allGroups}
@@ -4209,7 +4209,7 @@ export function OrgAdminPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{strings.orgAdmin.allowAiApprovalsAckBody}</span>
-              <CheckboxField
+              <CheckboxField helpNotNeeded
                 label={strings.orgAdmin.allowAiApprovalsAckCheckbox}
                 checked={aiApprovalsAckChecked}
                 onChange={setAiApprovalsAckChecked}

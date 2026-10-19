@@ -2107,6 +2107,55 @@ const en = {
       inheritedBadge: "Inherited",
     },
   },
+  // Field help (`FieldHelp`, style guide "Pattern: field help"): one or two sentences per non-obvious
+  // form field saying what it is, what it affects and typical values. A field that explains itself
+  // passes `helpNotNeeded` instead. Terminology tokens ({requirement}, {project}) are filled in per
+  // organisation like the rest of this table.
+  help: {
+    // Requirements and change requests
+    requirementLevel: "How binding the {requirement} is: a Requirement must be met, a Recommended one should be met unless there is a reason not to, and an Optional one is nice to have.",
+    requirementTargetVersion: "The release this {requirement} is planned for. Leave it empty while that is undecided.",
+    requirementClarification: "Extra detail that explains how to read or apply the {requirement} without changing what it requires, such as an interpretation or an example.",
+    requirementReviewDate: "When this {requirement} is next due to be checked that it is still right. A review that falls due notifies the assigned reviewer.",
+    requirementReminderLead: "How many days before the review date the assigned reviewer is reminded, for example 14.",
+    requirementReviewer: "The person or group who carries out the periodic review of this {requirement} and is notified when it falls due.",
+    requirementPrefix: "A short code that starts the identifiers of everything under it, for example SW in SW-PERF-014.",
+    // Reports
+    reportBrandingTemplate: "The branding applied to the export: logo, colours, cover page and footer. Leave it unset to use the default.",
+    reportChapterLayout: "Whether the report starts a new chapter for each {component} or runs on continuously. Automatic follows the chosen template.",
+    reportChapterDefault: "New reports start a chapter for each {component} unless the person exporting chooses a continuous layout.",
+    // Project and organisation codes
+    orgCode: "A short code for this organisation, used to qualify the codes of organisation-level records (for example ACME-PER-001). Letters and digits only, and different from every project code.",
+    projectCode: "The short code that qualifies this {project}'s record codes outside it (for example ACME-REQ-001). It must be unique in the organisation and follow the organisation's code rules.",
+    codeCharacters: "Which characters a project code may use: letters only, digits only, or both.",
+    codeShortest: "The shortest a project code may be. The limits apply to codes set from now on; existing codes are never rewritten.",
+    codeLongest: "The longest a project code may be. The limits apply to codes set from now on; existing codes are never rewritten.",
+    codeAssignment: "Automatic generates a code from the {project}'s name when it is created; manual asks the person creating it to type one.",
+    // Scoring
+    scoringModel: "The formula that combines the scoring axes (for example likelihood and consequence) into one score and band.",
+    scoringDefaultModel: "The scoring model used for new scores in this {project} when none is chosen. The model decides how the axes combine into one score.",
+    scoringRollup: "How several scores become one number: a weighted average uses each score's weight, worst case takes the highest, and a plain average ignores weights.",
+    // Organisation and server administration
+    ssoEnable: "Lets members sign in through the organisation's identity provider (OpenID Connect). Fill in the issuer and client details first.",
+    ssoNativeFormHidden: "Removes the email and password form from the organisation's login page so people can only sign in through SSO. Check that SSO works first, or nobody can sign in.",
+    ssoIssuerUrl: "The base URL of your identity provider, the address that serves /.well-known/openid-configuration, for example https://login.example.com/realms/acme.",
+    ssoClientId: "The identifier your identity provider assigned to this application.",
+    ssoClientSecret: "The secret your identity provider issued for this application.",
+    ssoGroupSync: "Keeps this group's members in step with a group at the identity provider each time someone signs in through SSO.",
+    ssoGroupName: "The name of the identity-provider group whose members this group mirrors.",
+    customRoleScope: "Where the role can be granted: across the organisation, within one {project}, or on the records of one kind in a module.",
+    externalUserPolicy: "Whether people from outside the organisation can be added to projects: nobody, only people whose email is on the organisation's domain, or anyone.",
+    moduleEntitlementPolicy: "Whether organisations may use a module when the server has no setting for that organisation. Choose the default that suits new organisations.",
+    // Projects
+    projectAllowMemberChangeRequests: "When on, ordinary members can submit {changeRequests}; when off, only managers can.",
+    projectUsableAsTemplate: "Lets people create new {project}s from this one, copying its structure.",
+    projectParent: "Places this {project} under another so the two can share settings and see each other's records, subject to each person's access.",
+    projectInheritAccess: "When on, people who have access to the parent {project} also get access here, with the same role.",
+    projectRoleToMirror: "Only people who hold this role on the parent are given access here. Leave it on all roles to mirror everyone.",
+    // Links and tags
+    linkRelationship: "How the two records are connected. The choices depend on the kinds of record being linked.",
+    tagMergeInto: "Moves every use of this tag onto the target tag, then removes this one.",
+  },
   mutation: {
     past: {
       add: "added", save: "saved", remove: "removed", delete: "deleted", rename: "renamed", move: "moved", update: "updated",
@@ -2142,6 +2191,7 @@ const en = {
     customValue: "Custom",
     resetToPlatformDefault: "Reset to platform default",
     chooseFile: "Choose file",
+    fieldHelp: (label: string) => `Help: ${label}`,
     selectOption: "Select…",
     typeToConfirmLabel: (name: string) => `Type "${name}" to confirm`,
     // `SplitButtonTrigger`'s chevron affordance (style guide "Pattern:

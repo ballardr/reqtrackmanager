@@ -48,12 +48,12 @@ export function StakeholderFromUserModal({
               Creates a Stakeholder with this person's name and email filled in, linked to their account.
             </p>
           </FormGridFull>
-          <PrincipalFormField
+          <PrincipalFormField helpNotNeeded
             label="Organisation user" kinds={["user"]} orgUsers={orgUsers} value={userPrincipal(userId)}
             onChange={(principal) => setUserId(principal?.id ?? null)} ariaLabel="Organisation user" placeholder="Search users…"
           />
-          <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={typeOptions} placeholder="No type" />
-          <TextField label="Role" value={role} onChange={setRole} />
+          <LabeledSelect helpNotNeeded label="Type" value={typeId} onChange={setTypeId} options={typeOptions} placeholder="No type" />
+          <TextField helpNotNeeded label="Role" value={role} onChange={setRole} />
         </FormGrid>
         <FormActions
           error={error}

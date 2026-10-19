@@ -211,7 +211,7 @@ export function ProjectRisksPage() {
             />
           ) : (
             <div className="stack">
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label="Plot by" value={basis} onChange={(next) => setBasis(next as RiskMatrixBasis)}
                 options={BASIS_OPTIONS} placeholder={null}
               />

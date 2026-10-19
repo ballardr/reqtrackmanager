@@ -29,13 +29,13 @@ export function CustomFieldsForm({
         if (def.field_type === "long_text") {
           return (
             <FormGridFull key={def.id}>
-              <TextAreaField label={label} rows={3} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />
+              <TextAreaField helpNotNeeded label={label} rows={3} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />
             </FormGridFull>
           );
         }
         if (def.field_type === "checkbox") {
           return (
-            <CheckboxField
+            <CheckboxField helpNotNeeded
               key={def.id} label={label} disabled={disabled}
               checked={Boolean(values[def.id])} onChange={(next) => onChange(def.id, next)}
             />
@@ -43,13 +43,13 @@ export function CustomFieldsForm({
         }
         if (def.field_type === "list") {
           return (
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               key={def.id} label={label} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)}
               options={(def.options ?? []).map((opt) => ({ value: String(opt), label: String(opt) }))}
             />
           );
         }
-        return <TextField key={def.id} label={label} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />;
+        return <TextField helpNotNeeded key={def.id} label={label} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />;
       })}
     </FormGrid>
   );

@@ -632,7 +632,7 @@ function PlatformBrandingTab() {
         <img src={fileUrl(settings.default_logo_file_id)} alt="" style={{ height: 40 }} />
       )}
       <FormGrid minColumn="18rem">
-        <TextField
+        <TextField helpNotNeeded
           label={strings.serverSettings.headerTitle}
           value={headerTitle}
           onChange={(next) => {
@@ -642,7 +642,7 @@ function PlatformBrandingTab() {
           placeholder={strings.appName}
           hint={strings.serverSettings.headerTitleHint}
         />
-        <TextField
+        <TextField helpNotNeeded
           label={strings.serverSettings.orgLabelSingular}
           value={orgLabelSingular}
           onChange={(next) => {
@@ -652,7 +652,7 @@ function PlatformBrandingTab() {
           placeholder="organisation"
           hint={strings.serverSettings.orgLabelSingularHint}
         />
-        <TextField
+        <TextField helpNotNeeded
           label={strings.serverSettings.orgLabelPlural}
           value={orgLabelPlural}
           onChange={(next) => {
@@ -663,7 +663,7 @@ function PlatformBrandingTab() {
           hint={strings.serverSettings.orgLabelPluralHint}
         />
       </FormGrid>
-      <ColorField
+      <ColorField helpNotNeeded
         label={strings.serverSettings.accentColor}
         value={accentColor}
         onChange={(next) => {
@@ -694,7 +694,7 @@ function PlatformBrandingTab() {
       <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
       <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint(currentOrgLabel)}</p>
       <FormGrid minColumn="18rem">
-        <TextField
+        <TextField helpNotNeeded
           label={strings.serverSettings.emailFooterCompanyName}
           value={emailFooterCompanyName}
           onChange={(next) => {
@@ -704,7 +704,7 @@ function PlatformBrandingTab() {
           placeholder={strings.appName}
           hint={strings.serverSettings.emailFooterCompanyNameHint}
         />
-        <TextField
+        <TextField helpNotNeeded
           label={strings.serverSettings.emailFooterWebsite}
           value={emailFooterWebsite}
           onChange={(next) => {
@@ -713,7 +713,7 @@ function PlatformBrandingTab() {
           }}
         />
         <FormGridFull>
-          <TextAreaField
+          <TextAreaField helpNotNeeded
           label={strings.serverSettings.emailFooterAddress}
           value={emailFooterAddress}
           onChange={(next) => {
@@ -757,7 +757,7 @@ function TestEmailTab() {
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.system.testEmailHint}</p>
       <div className="row" style={{ alignItems: "flex-end" }}>
-        <TextField
+        <TextField helpNotNeeded
           label={strings.system.testEmailRecipient}
           hint={strings.system.testEmailRecipientHint}
           value={recipient}
@@ -807,7 +807,7 @@ function SignupModeTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.signupSettings.hint}</p>
-      <LabeledSelect
+      <LabeledSelect helpNotNeeded
         label={strings.signupSettings.mode}
         value={mode}
         onChange={(next) => setMode(next as SignupMode)}

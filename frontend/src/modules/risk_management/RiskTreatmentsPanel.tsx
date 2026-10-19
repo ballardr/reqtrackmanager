@@ -151,14 +151,14 @@ export function RiskTreatmentsPanel({
       {assessing && (
         <Modal title={`Assess ${assessing.label}`} onClose={() => setAssessing(null)}>
           <div className="stack">
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label="Verdict"
               value={status}
               onChange={(next) => setStatus(next as TreatmentAssessmentStatus)}
               options={ASSESSABLE.map((s) => ({ value: s, label: TREATMENT_ASSESSMENT_STATUS_LABEL[s] }))}
               placeholder={null}
             />
-            <TextAreaField label="Rationale" value={rationale} onChange={setRationale} rows={3} />
+            <TextAreaField helpNotNeeded label="Rationale" value={rationale} onChange={setRationale} rows={3} />
             <p className="text-muted" style={{ margin: 0 }}>A rationale is required to mark a treatment Effective or Ineffective.</p>
             <FormActions error={error} onCancel={() => setAssessing(null)} onSave={save} />
           </div>

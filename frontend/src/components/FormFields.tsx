@@ -5,12 +5,15 @@
  * compact forms and add-on-demand"): a single-line input, a multi-line textarea, a date input and a
  * checkbox, each with a visible label that is also the accessible name (principle 13) and an optional
  * hint underneath. Lay them out in a `FormGrid`; pick from a list with `LabeledSelect` and people with
- * `PrincipalFormField`.
+ * `PrincipalFormField`. Every field takes `help` (a `(?)` button revealing what the field means,
+ * `FieldHelp`) or, for a self-explanatory field, `helpNotNeeded`.
  */
 import { useId } from "react";
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { FieldCaption, FieldHelp, FieldShell } from "./FieldHelp";
+import type { FieldHelpProps } from "./FieldHelp";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ToggleSwitch } from "./ToggleSwitch";
 
@@ -18,20 +21,10 @@ import { ToggleSwitch } from "./ToggleSwitch";
 type InputExtras = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "className" | "aria-label" | "placeholder" | "disabled">;
 type TextAreaExtras = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange" | "className" | "aria-label" | "rows" | "disabled">;
 
-/** The caption line of a field whose label carries a control beside it (an `OverridePill`): the label is tied to its input by `htmlFor`. */
-function LabelRow({ htmlFor, label, extra }: { htmlFor: string; label: string; extra: ReactNode }) {
-  return (
-    <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-      <label htmlFor={htmlFor}>{label}</label>
-      {extra}
-    </span>
-  );
-}
-
 /** A labelled single-line input; `ariaLabel` overrides the label as the accessible name when they differ. */
 export function TextField({
-  label, value, onChange, ariaLabel, hint, placeholder, disabled, inputProps, labelExtra,
-}: {
+  label, value, onChange, ariaLabel, hint, placeholder, disabled, inputProps, labelExtra, help,
+}: FieldHelpProps & {
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -44,28 +37,14 @@ export function TextField({
   labelExtra?: ReactNode;
 }) {
   const id = useId();
-  const input = (
-    <input
-      {...inputProps} id={labelExtra ? (inputProps?.id ?? id) : inputProps?.id} className="input" value={value}
-      onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel ?? label} placeholder={placeholder} disabled={disabled}
-    />
-  );
-  const hintNode = hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>;
-  if (labelExtra) {
-    return (
-      <div className="stack" style={{ gap: "0.25rem" }}>
-        <LabelRow htmlFor={inputProps?.id ?? id} label={label} extra={labelExtra} />
-        {input}
-        {hintNode}
-      </div>
-    );
-  }
+  const controlId = inputProps?.id ?? id;
   return (
-    <label className="stack" style={{ gap: "0.25rem" }}>
-      <span>{label}</span>
-      {input}
-      {hintNode}
-    </label>
+    <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint}>
+      <input
+        {...inputProps} id={controlId} className="input" value={value}
+        onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel ?? label} placeholder={placeholder} disabled={disabled}
+      />
+    </FieldShell>
   );
 }
 
@@ -75,8 +54,8 @@ export function TextField({
  * is then ignored.
  */
 export function TextAreaField({
-  label, value, onChange, rows = 2, hint, ariaLabel, disabled, inputProps, autoGrow, labelExtra,
-}: {
+  label, value, onChange, rows = 2, hint, ariaLabel, disabled, inputProps, autoGrow, labelExtra, help,
+}: FieldHelpProps & {
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -90,38 +69,25 @@ export function TextAreaField({
   labelExtra?: ReactNode;
 }) {
   const id = useId();
-  const controlId = labelExtra ? (inputProps?.id ?? id) : inputProps?.id;
-  const control = autoGrow ? (
-    <AutoGrowTextarea {...inputProps} id={controlId} value={value} onChange={onChange} aria-label={ariaLabel ?? label} disabled={disabled} />
-  ) : (
-    <textarea
-      {...inputProps} id={controlId} className="input" rows={rows} value={value} onChange={(e) => onChange(e.target.value)}
-      aria-label={ariaLabel ?? label} disabled={disabled}
-    />
-  );
-  const hintNode = hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>;
-  if (labelExtra) {
-    return (
-      <div className="stack" style={{ gap: "0.25rem" }}>
-        <LabelRow htmlFor={controlId ?? id} label={label} extra={labelExtra} />
-        {control}
-        {hintNode}
-      </div>
-    );
-  }
+  const controlId = inputProps?.id ?? id;
   return (
-    <label className="stack" style={{ gap: "0.25rem" }}>
-      <span>{label}</span>
-      {control}
-      {hintNode}
-    </label>
+    <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint}>
+      {autoGrow ? (
+        <AutoGrowTextarea {...inputProps} id={controlId} value={value} onChange={onChange} aria-label={ariaLabel ?? label} disabled={disabled} />
+      ) : (
+        <textarea
+          {...inputProps} id={controlId} className="input" rows={rows} value={value} onChange={(e) => onChange(e.target.value)}
+          aria-label={ariaLabel ?? label} disabled={disabled}
+        />
+      )}
+    </FieldShell>
   );
 }
 
 /** A labelled date input (`value` is YYYY-MM-DD, or "" for none); `ariaLabel` overrides the label as the accessible name. */
 export function DateField({
-  label, value, onChange, hint, ariaLabel, disabled, inputProps,
-}: {
+  label, value, onChange, hint, ariaLabel, disabled, inputProps, help,
+}: FieldHelpProps & {
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -130,15 +96,15 @@ export function DateField({
   disabled?: boolean;
   inputProps?: Omit<InputExtras, "type">;
 }) {
+  const id = useId();
+  const controlId = inputProps?.id ?? id;
   return (
-    <label className="stack" style={{ gap: "0.25rem" }}>
-      <span>{label}</span>
+    <FieldShell label={label} controlId={controlId} help={help} hint={hint}>
       <input
-        {...inputProps} className="input" type="date" value={value} onChange={(e) => onChange(e.target.value)}
+        {...inputProps} id={controlId} className="input" type="date" value={value} onChange={(e) => onChange(e.target.value)}
         aria-label={ariaLabel ?? label} disabled={disabled}
       />
-      {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
-    </label>
+    </FieldShell>
   );
 }
 
@@ -148,8 +114,8 @@ export function DateField({
  * `label` is then the checkbox's own text and `ariaLabel` its accessible name.
  */
 export function CheckboxField({
-  label, checked, onChange, hint, heading, ariaLabel, disabled, title,
-}: {
+  label, checked, onChange, hint, heading, ariaLabel, disabled, title, help,
+}: FieldHelpProps & {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -162,14 +128,17 @@ export function CheckboxField({
 }) {
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
-      {heading && <span>{heading}</span>}
-      <label className="row" style={{ gap: "0.4rem", minHeight: heading ? "2.25rem" : undefined }}>
-        <input
-          type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel}
-          disabled={disabled} title={title}
-        />
-        {label}
-      </label>
+      {heading && <FieldCaption label={heading} help={help} />}
+      <span className="row" style={{ gap: "0.4rem", alignItems: "center", minHeight: heading ? "2.25rem" : undefined }}>
+        <label className="row" style={{ gap: "0.4rem" }}>
+          <input
+            type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel}
+            disabled={disabled} title={title}
+          />
+          {label}
+        </label>
+        {!heading && help && <FieldHelp label={label} help={help} />}
+      </span>
       {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
     </div>
   );
@@ -177,23 +146,22 @@ export function CheckboxField({
 
 /** A labelled colour picker (`value` is a `#rrggbb` string). */
 export function ColorField({
-  label, value, onChange, hint, ariaLabel,
-}: {
+  label, value, onChange, hint, ariaLabel, help,
+}: FieldHelpProps & {
   label: string;
   value: string;
   onChange: (value: string) => void;
   hint?: ReactNode;
   ariaLabel?: string;
 }) {
+  const id = useId();
   return (
-    <label className="stack" style={{ gap: "0.25rem" }}>
-      <span>{label}</span>
+    <FieldShell label={label} controlId={id} help={help} hint={hint}>
       <input
-        type="color" value={value} onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel ?? label}
+        id={id} type="color" value={value} onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel ?? label}
         style={{ width: 60, height: 36, padding: 2 }}
       />
-      {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
-    </label>
+    </FieldShell>
   );
 }
 
@@ -203,8 +171,8 @@ export function ColorField({
  * filling the form in.
  */
 export function ToggleField({
-  label, checked, onChange, hint, disabled,
-}: {
+  label, checked, onChange, hint, disabled, help,
+}: FieldHelpProps & {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -212,13 +180,16 @@ export function ToggleField({
   disabled?: boolean;
 }) {
   return (
-    <label className="row" style={{ gap: "0.6rem" }}>
-      <ToggleSwitch checked={checked} onChange={onChange} label={label} disabled={disabled} />
-      <span className="stack" style={{ gap: 0 }}>
-        {label}
-        {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
-      </span>
-    </label>
+    <span className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
+      <label className="row" style={{ gap: "0.6rem" }}>
+        <ToggleSwitch checked={checked} onChange={onChange} label={label} disabled={disabled} />
+        <span className="stack" style={{ gap: 0 }}>
+          {label}
+          {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
+        </span>
+      </label>
+      {help && <FieldHelp label={label} help={help} />}
+    </span>
   );
 }
 
@@ -228,23 +199,22 @@ export function ToggleField({
  * uses `FileUploadTrigger` instead.
  */
 export function FileField({
-  label, onChange, accept, hint, ariaLabel,
-}: {
+  label, onChange, accept, hint, ariaLabel, help,
+}: FieldHelpProps & {
   label: string;
   onChange: (file: File | null) => void;
   accept?: string;
   hint?: ReactNode;
   ariaLabel?: string;
 }) {
+  const id = useId();
   return (
-    <label className="stack" style={{ gap: "0.25rem" }}>
-      <span>{label}</span>
+    <FieldShell label={label} controlId={id} help={help} hint={hint}>
       <input
-        className="input" type="file" accept={accept} aria-label={ariaLabel ?? label}
+        id={id} className="input" type="file" accept={accept} aria-label={ariaLabel ?? label}
         onChange={(e) => onChange(e.target.files?.[0] ?? null)}
       />
-      {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
-    </label>
+    </FieldShell>
   );
 }
 
@@ -257,8 +227,8 @@ export function FileField({
  * @param children The trigger button's content.
  */
 export function UploadField({
-  id, label, labelExtra, accept, disabled, onSelect, children,
-}: {
+  id, label, labelExtra, accept, disabled, onSelect, children, help,
+}: FieldHelpProps & {
   id: string;
   label: string;
   labelExtra?: ReactNode;
@@ -269,7 +239,7 @@ export function UploadField({
 }) {
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
-      <LabelRow htmlFor={id} label={label} extra={labelExtra} />
+      <FieldCaption htmlFor={id} label={label} extra={labelExtra} help={help} />
       <FileUploadTrigger id={id} accept={accept} disabled={disabled} onSelect={onSelect}>
         {children}
       </FileUploadTrigger>

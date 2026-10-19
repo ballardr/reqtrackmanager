@@ -72,7 +72,7 @@ export function AddToGroupControl({
       {open && (
         <Popover anchorRef={triggerRef} title={label} onClose={() => setOpen(false)}>
           <div className="stack">
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label={strings.orgAdmin.addToGroupSelectLabel}
               value={groupId}
               onChange={setGroupId}

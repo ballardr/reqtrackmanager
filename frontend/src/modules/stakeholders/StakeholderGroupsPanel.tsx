@@ -233,7 +233,7 @@ export function StakeholderGroupsPanel({
           )}
           {editable(selected) && (
             <div className="row" style={{ gap: "0.5rem", alignItems: "flex-end" }}>
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label="Stakeholder to add" value={picked} onChange={setPicked} placeholder="Choose…"
                 options={candidates.filter((c) => !memberIds.has(c.value))}
               />

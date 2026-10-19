@@ -31,6 +31,7 @@ import type { EngagementOutcome, OutcomeKind, OutcomeTarget, OutcomeTargetType }
 import { OUTCOME_KIND_LABEL, OUTCOME_TARGET_TYPE_LABEL } from "./types";
 import { FormActions } from "../../components/FormActions";
 import { FormGrid } from "../../components/FormGrid";
+import { STAKEHOLDERS_HELP } from "./help";
 
 const KIND_OPTIONS = Object.entries(OUTCOME_KIND_LABEL).map(([value, label]) => ({ value, label }));
 const ALL_TYPE_OPTIONS = Object.entries(OUTCOME_TARGET_TYPE_LABEL).map(([value, label]) => ({ value, label }));
@@ -111,7 +112,7 @@ export function EngagementOutcomesPanel({
   if (outcomes === null) return null;
 
   return (
-    <RecordFieldGroup
+    <RecordFieldGroup helpNotNeeded
       label={heading}
       gap="0.35rem"
       action={
@@ -144,12 +145,12 @@ export function EngagementOutcomesPanel({
         <Modal title="Record an outcome" onClose={() => setAdding(false)} size="lg">
           <div className="stack">
             <FormGrid minColumn="18rem">
-              <LabeledSelect label="Outcome kind" value={kind} placeholder={null} onChange={(v) => changeKind(v as OutcomeKind)} options={KIND_OPTIONS} />
-              <LabeledSelect
+              <LabeledSelect help={STAKEHOLDERS_HELP.engagementOutcomeKind} label="Outcome kind" value={kind} placeholder={null} onChange={(v) => changeKind(v as OutcomeKind)} options={KIND_OPTIONS} />
+              <LabeledSelect helpNotNeeded
                 label="Outcome type" value={targetType} placeholder={null}
                 onChange={(v) => { setTargetType(v as OutcomeTargetType); setPicked(""); }} options={typeOptions}
               />
-              <LabeledSelect label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+              <LabeledSelect helpNotNeeded label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
             </FormGrid>
             <FormActions
               onCancel={() => setAdding(false)}

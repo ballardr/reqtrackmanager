@@ -46,6 +46,7 @@ import { ReportExportButton } from "./ReportExportButton";
 import { ReportParamsForm } from "./ReportParamsForm";
 import { ReportViewer, type ReportFigureActionResolver } from "./ReportViewer";
 import { Spinner } from "./Spinner";
+import { useStrings } from "../context/TerminologyContext";
 
 const RERUN_DELAY_MS = 300;
 
@@ -73,6 +74,7 @@ export function ReportRunner({
   organizationId: string;
   focusSection?: string;
 }) {
+  const strings = useStrings();
   const { showToast } = useToast();
   const [values, setValues] = useState<ReportRunValues>(() => initialValues(entry));
   const [result, setResult] = useState<ReportResult | null>(null);
@@ -171,7 +173,7 @@ export function ReportRunner({
         />
         <div className="row" style={{ alignItems: "flex-end", gap: "0.75rem" }}>
           {templates.length > 0 && (
-            <LabeledSelect
+            <LabeledSelect help={strings.help.reportBrandingTemplate}
               label="Branding template"
               value={templateId}
               onChange={setTemplateId}

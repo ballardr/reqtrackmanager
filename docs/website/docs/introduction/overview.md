@@ -96,6 +96,10 @@ The screenshots below are captured from the seeded demo dataset — a fictional 
 | Activity, actions, discussion thread and links for a single requirement |
 | ![Requirement detail page showing its fields, activity, actions and discussion thread, and a Links panel on the right](../../static/img/screenshots/requirement-detail.png) |
 
+## Help on a field
+
+A field whose meaning is not obvious from its name (a persona's importance weight, a scoring model, how long before a review you are reminded) has a small **?** button after its label. Select it, with the mouse, a tap or the keyboard, to read what the field is, what it affects and a typical value, in place and without leaving the form. Press **Escape**, or select the button again, to close it. Fields that explain themselves, such as a name or a title, have no button.
+
 ## Where to go next
 
 - New to the product? Read [Use cases](./use-cases.md) for concrete scenarios this was built for.

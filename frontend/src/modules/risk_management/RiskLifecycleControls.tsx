@@ -68,7 +68,7 @@ export function RiskLifecycleControls({
         <Modal title={`Change status of ${risk.unique_code}`} onClose={close}>
           <div className="stack">
             <p className="text-muted" style={{ margin: 0 }}>Currently {RISK_STATUS_LABEL[risk.status]}.</p>
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label="New status"
               value={target}
               onChange={(next) => setTarget(next as RiskStatus | "")}
@@ -81,7 +81,7 @@ export function RiskLifecycleControls({
                 rating and acceptance criteria.
               </p>
             )}
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label="Comment (optional)"
               ariaLabel="Status change comment"
               value={comment}

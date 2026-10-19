@@ -37,7 +37,7 @@ export function ReportChapterListEditor({
       {list.map((chapter, idx) => (
         <div key={idx} className="card stack" style={{ gap: "0.4rem" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
-            <TextField
+            <TextField helpNotNeeded
               label="Chapter title"
               placeholder="Chapter title"
               value={chapter.title}

@@ -21,6 +21,7 @@ import {
 } from "./painPointScoreDraft";
 import { PAIN_POINT_SCORE_TARGET_STATUS_LABEL } from "./types";
 import type { PainPointScoreEntry } from "./types";
+import { CONTEXT_STRATEGY_HELP } from "./help";
 
 /**
  * @param axes The scheme's axes by key.
@@ -54,7 +55,7 @@ export function PainPointScoreFields({
   return (
     <>
       {personasOffered || mode === "persona" ? (
-        <LabeledSelect
+        <LabeledSelect help={CONTEXT_STRATEGY_HELP.scoringMode}
           label="Scoring mode" value={mode} onChange={(next) => onModeChange(next as ScoreMode)}
           options={SCORE_MODE_OPTIONS} placeholder={null} disabled={disabled}
         />

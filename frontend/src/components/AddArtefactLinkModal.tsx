@@ -284,7 +284,7 @@ export function AddArtefactLinkModal({
       <div className="stack">
         {changeRequest && <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.changeRequestAddNotice}</p>}
         {relatedProjects.length > 0 && (
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.artefactLinks.projectLabel}
             value={otherProjectId}
             onChange={setOtherProjectId}
@@ -299,7 +299,7 @@ export function AddArtefactLinkModal({
         {options !== null && options.length > 0 && (
           <>
             {typeChoices.length > 1 && (
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.artefactLinks.otherTypeLabel}
                 value={otherType}
                 placeholder={strings.artefactLinks.otherTypePlaceholder}
@@ -323,7 +323,7 @@ export function AddArtefactLinkModal({
                     onChange={(e) => filterLevel(index, e.target.value)}
                   />
                 )}
-                <LabeledSelect
+                <LabeledSelect helpNotNeeded
                   label={level.label}
                   value={level.value}
                   placeholder={strings.artefactLinks.levelAny(level.label)}
@@ -333,7 +333,7 @@ export function AddArtefactLinkModal({
                 {level.truncated && <span className="text-muted">{strings.artefactLinks.levelTruncated}</span>}
               </div>
             ))}
-            <TextField
+            <TextField helpNotNeeded
               label={strings.artefactLinks.searchLabel}
               value={searchText}
               onChange={(next) => {
@@ -344,7 +344,7 @@ export function AddArtefactLinkModal({
             />
             {!searchable && <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.searchPrompt}</p>}
             {searchable && (
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.artefactLinks.targetLabel}
                 value={targetId}
                 onChange={(value) => {
@@ -364,7 +364,7 @@ export function AddArtefactLinkModal({
               <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.candidatesTruncated}</p>
             )}
             {target && (
-              <LabeledSelect
+              <LabeledSelect help={strings.help.linkRelationship}
                 label={strings.artefactLinks.linkTypeLabel}
                 value={effectiveKey}
                 onChange={setChosenKey}
@@ -375,7 +375,7 @@ export function AddArtefactLinkModal({
           </>
         )}
         {changeRequest && (
-          <TextAreaField label={strings.artefactLinks.reasonLabel} value={reason} onChange={setReason} rows={2} />
+          <TextAreaField helpNotNeeded label={strings.artefactLinks.reasonLabel} value={reason} onChange={setReason} rows={2} />
         )}
         <FormActions
           onCancel={onClose}

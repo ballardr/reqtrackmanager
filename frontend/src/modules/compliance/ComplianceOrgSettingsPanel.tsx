@@ -63,7 +63,7 @@ export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
         SSO-managed, designate a fallback group here instead of assigning managers one at a time — every current
         member of this group counts as a Standards Manager for any standard with no explicit manager of its own.
       </p>
-      <LabeledSelect
+      <LabeledSelect helpNotNeeded
         label="Default compliance-managers group"
         value={settings.default_standards_manager_group_id ?? ""}
         onChange={handleChange}

@@ -7,11 +7,15 @@
  * selects all needed byte-for-byte — extracted once a third and fourth
  * occurrence made it a genuine repeated pattern (`CLAUDE.md`'s reuse rule). Purely presentational: one labelled
  * `<select>` with a leading placeholder option and an optional disabled
- * state (plus `ariaLabel` when the accessible name must differ from the visible label, `hint` and `inputProps`
+ * state (plus `help`/`helpNotNeeded` for the field's `(?)` help, `ariaLabel` when the accessible name must differ from the visible label, `hint` and `inputProps`
  * for the odd `select` attribute). Callers own any cascading-reset behaviour (e.g. clearing a child
  * selection when its parent changes) — this component only renders.
  */
+import { useId } from "react";
 import type { ReactNode, SelectHTMLAttributes } from "react";
+
+import { FieldShell } from "./FieldHelp";
+import type { FieldHelpProps } from "./FieldHelp";
 
 export function LabeledSelect({
   label,
@@ -23,7 +27,8 @@ export function LabeledSelect({
   ariaLabel,
   hint,
   inputProps,
-}: {
+  help,
+}: FieldHelpProps & {
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -37,11 +42,13 @@ export function LabeledSelect({
   hint?: ReactNode;
   inputProps?: Omit<SelectHTMLAttributes<HTMLSelectElement>, "value" | "onChange" | "className" | "aria-label" | "disabled">;
 }) {
+  const id = useId();
+  const controlId = inputProps?.id ?? id;
   return (
-    <label className="stack" style={{ gap: "0.25rem" }}>
-      <span>{label}</span>
+    <FieldShell label={label} controlId={controlId} help={help} hint={hint}>
       <select
         {...inputProps}
+        id={controlId}
         className="input"
         aria-label={ariaLabel ?? label}
         disabled={disabled}
@@ -55,7 +62,6 @@ export function LabeledSelect({
           </option>
         ))}
       </select>
-      {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
-    </label>
+    </FieldShell>
   );
 }

@@ -81,7 +81,7 @@ export function StandardImportModal({
     <Modal title="Import standard" onClose={onCancel}>
       <div className="stack">
         {!orgId && orgs && orgs.length > 1 && (
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Organisation"
             value={selectedOrgId}
             onChange={setSelectedOrgId}
@@ -90,7 +90,7 @@ export function StandardImportModal({
             inputProps={{ autoFocus: true }}
           />
         )}
-        <FileField
+        <FileField helpNotNeeded
           label="Standard export file"
           accept=".json,application/json"
           onChange={(next) => {

@@ -472,22 +472,22 @@ export function PreferencesPage() {
           {avatarError && <div style={{ color: "var(--color-danger)" }}>{avatarError}</div>}
         </div>
         <FormGrid minColumn="18rem">
-          <TextField
+          <TextField helpNotNeeded
             label={strings.preferences.displayName}
             value={displayName}
             onChange={setDisplayName}
             disabled={user?.display_name_locked}
             hint={user?.display_name_locked ? strings.preferences.displayNameLocked(orgLabel) : undefined}
           />
-          <TextField label={strings.preferences.pronouns} value={pronouns} onChange={setPronouns} />
-          <LabeledSelect
+          <TextField helpNotNeeded label={strings.preferences.pronouns} value={pronouns} onChange={setPronouns} />
+          <LabeledSelect helpNotNeeded
             label={strings.preferences.theme}
             value={theme}
             onChange={(next) => setTheme(next as ThemePreference)}
             options={[{ value: "light", label: strings.preferences.light }, { value: "dark", label: strings.preferences.dark }, { value: "system", label: strings.preferences.system }]}
             placeholder={null}
           />
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.preferences.contentWidth}
             value={contentBoxed ? "boxed" : "full"}
             onChange={(next) => setContentBoxed(next === "boxed")}
@@ -495,14 +495,14 @@ export function PreferencesPage() {
             placeholder={null}
           />
           <FormGridFull>
-            <CheckboxField
+            <CheckboxField helpNotNeeded
               label={strings.preferences.showProjectCode}
               checked={showProjectCode}
               onChange={setShowProjectCode}
               hint={strings.preferences.showProjectCodeHint}
             />
           </FormGridFull>
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.preferences.defaultProjectScope}
             value={defaultProjectScope}
             onChange={setDefaultProjectScope}
@@ -510,7 +510,7 @@ export function PreferencesPage() {
             placeholder={null}
             hint={strings.preferences.defaultProjectScopeHint}
           />
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.preferences.landing}
             value={landingMode}
             onChange={(next) => setLandingMode(next as LandingMode)}
@@ -518,7 +518,7 @@ export function PreferencesPage() {
             placeholder={null}
           />
           {landingMode === "project" && (
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label={strings.preferences.landingProjectSelect}
               value={landingProjectId}
               onChange={setLandingProjectId}
@@ -526,7 +526,7 @@ export function PreferencesPage() {
               placeholder={null}
             />
           )}
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.preferences.emailDigest}
             value={digestMode}
             onChange={(next) => setDigestMode(next as DigestMode)}
@@ -547,13 +547,13 @@ export function PreferencesPage() {
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.security}</h2>
         <CollapsibleSection sectionKey="preferences.security.change_password" variant="plain" title={strings.preferences.changePassword}>
           <FormGrid minColumn="18rem">
-            <TextField
+            <TextField helpNotNeeded
               label={strings.preferences.currentPassword}
               value={currentPassword}
               onChange={setCurrentPassword}
               inputProps={{ type: "password" }}
             />
-            <TextField
+            <TextField helpNotNeeded
               label={strings.preferences.newPassword}
               value={newPassword}
               onChange={setNewPassword}
@@ -599,7 +599,7 @@ export function PreferencesPage() {
                 style={{ width: 180, height: 180 }}
               />
               <div className="row" style={{ alignItems: "flex-end" }}>
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.preferences.confirmCode}
                   value={confirmCode}
                   onChange={setConfirmCode}
@@ -614,7 +614,7 @@ export function PreferencesPage() {
 
           {user?.is_2fa_enabled && (
             <div className="row" style={{ alignItems: "flex-end" }}>
-              <TextField
+              <TextField helpNotNeeded
                 label={strings.preferences.authenticatorCode}
                 hint={strings.preferences.enterCodeToDisable}
                 value={disableCode}
@@ -760,13 +760,13 @@ export function PreferencesPage() {
           <Modal title={strings.preferences.patNew} onClose={closePatForm} size="lg">
             <div className="stack">
               <FormGrid minColumn="18rem">
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.preferences.patName}
                   placeholder={strings.preferences.patNamePlaceholder}
                   value={newPatName}
                   onChange={setNewPatName}
                 />
-                <DateField
+                <DateField helpNotNeeded
                   label={strings.preferences.patExpiry}
                   value={newPatExpiry}
                   onChange={(next) => {
@@ -787,7 +787,7 @@ export function PreferencesPage() {
                   <div className="stack" style={{ gap: "0.25rem" }}>
                     <span>{strings.preferences.patOrgs(orgLabelPlural)}</span>
                     {myOrgs.map((org) => (
-                      <CheckboxField
+                      <CheckboxField helpNotNeeded
                         key={org.id}
                         label={org.name}
                         checked={newPatOrgIds.has(org.id)}
@@ -806,7 +806,7 @@ export function PreferencesPage() {
                           <span className="text-muted">{strings.preferences.patNoProjectsInOrgs(orgLabel)}</span>
                         ) : (
                           scopedProjects.map((project) => (
-                            <CheckboxField
+                            <CheckboxField helpNotNeeded
                               key={project.id}
                               label={project.name}
                               checked={newPatProjectIds.has(project.id)}

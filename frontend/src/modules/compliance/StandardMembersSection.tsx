@@ -236,7 +236,7 @@ export function StandardMembersSection({
       {addOpen && (
         <Popover anchorRef={addTriggerRef} title="Add a member" onClose={() => setAddOpen(false)}>
           <div className="stack">
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label="Role"
               value={addRoleKey}
               onChange={(next) => setAddRoleKey(next as ComplianceStandardRoleKey)}

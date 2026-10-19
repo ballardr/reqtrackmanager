@@ -95,7 +95,7 @@ export function ProjectHistoryPage() {
             ))}
           </select>
         </label>
-        <CheckboxField
+        <CheckboxField helpNotNeeded
           label={strings.history.includeComments}
           checked={includeComments}
           onChange={setIncludeComments}

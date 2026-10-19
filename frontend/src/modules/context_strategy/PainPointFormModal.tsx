@@ -116,25 +116,25 @@ export function PainPointFormModal({
     <Modal title={initial ? `Edit ${initial.title}` : "New Pain Point"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <LabeledSelect label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
+          <LabeledSelect helpNotNeeded
             label="Priority"
             value={priority}
             onChange={(v) => setPriority(v as PainPointPriority)}
             options={Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
           <FormGridFull>
-            <TextField label="Title" ariaLabel="Pain Point title" value={title} onChange={setTitle} />
+            <TextField helpNotNeeded label="Title" ariaLabel="Pain Point title" value={title} onChange={setTitle} />
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
             </FormGridFull>
           ))}
-          <DateField
+          <DateField helpNotNeeded
             label={`Date identified${!initial ? " (defaults to today if left blank)" : ""}`} ariaLabel="Date identified"
             value={dateIdentified} onChange={setDateIdentified}
           />

@@ -76,7 +76,7 @@ function EntitlementPolicySection() {
   return (
     <CollapsibleSection sectionKey="serverModules.policy" title={strings.serverModules.policyTitle}>
       <p className="text-muted">{strings.serverModules.policyHint(orgLabelPlural)}</p>
-      <LabeledSelect
+      <LabeledSelect help={strings.help.moduleEntitlementPolicy}
         label={strings.serverModules.policyLabel}
         value={policy}
         onChange={(next) => change(next as ModuleEntitlementPolicy)}
@@ -213,7 +213,7 @@ function OrganisationAvailabilitySection() {
       {orgs === null ? (
         <Spinner />
       ) : (
-        <LabeledSelect
+        <LabeledSelect helpNotNeeded
           label={orgCapitalized}
           value={orgId}
           onChange={setOrgId}

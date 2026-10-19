@@ -60,6 +60,7 @@ import { RepresentationPanel } from "./RepresentationPanel";
 import type { Persona, PersonaFieldValues, PersonaVersion } from "./types";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA_WEIGHT_SOURCE_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
+import { STAKEHOLDERS_HELP } from "./help";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Persona activated.",
@@ -267,7 +268,7 @@ export function PersonaDetailPage() {
         {persona.frequency_of_use && <RecordField label="Frequency of use" value={persona.frequency_of_use} />}
         {persona.constraints && <RecordField label="Constraints" value={persona.constraints} />}
 
-        <RecordFieldGroup label="Importance weight" gap="0.35rem">
+        <RecordFieldGroup help={STAKEHOLDERS_HELP.personaImportanceWeight} label="Importance weight" gap="0.35rem">
           {projectId ? (
             <>
               <div className="row" style={{ gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>

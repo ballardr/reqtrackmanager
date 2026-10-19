@@ -35,8 +35,8 @@ function PromptEditModal({
   return (
     <Modal title="Edit session prompt" onClose={onCancel} size="lg">
       <div className="stack">
-        <TextAreaField label="Prompt" rows={2} value={text} onChange={setText} />
-        <TextAreaField label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
+        <TextAreaField helpNotNeeded label="Prompt" rows={2} value={text} onChange={setText} />
+        <TextAreaField helpNotNeeded label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
         <FormActions
           onCancel={onCancel}
           onSave={() => onSave({ prompt: text.trim(), response_notes: notes })}
@@ -77,7 +77,7 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <TextField label="New session prompt" value={draft} onChange={setDraft} inputProps={{ autoFocus: true }} />
+      <TextField helpNotNeeded label="New session prompt" value={draft} onChange={setDraft} inputProps={{ autoFocus: true }} />
       <FormActions
         onCancel={close}
         onSave={() => {
@@ -93,7 +93,7 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
   );
 
   return (
-    <RecordFieldGroup label="Session prompts" gap="0.35rem" action={<AddPopoverButton label="Add to Session prompts">{addForm}</AddPopoverButton>}>
+    <RecordFieldGroup helpNotNeeded label="Session prompts" gap="0.35rem" action={<AddPopoverButton label="Add to Session prompts">{addForm}</AddPopoverButton>}>
       {prompts.length === 0 ? (
         <span className="text-muted">No session prompts yet.</span>
       ) : (

@@ -129,13 +129,13 @@ export function OrgLoginPage() {
 
           {!info.sso_only && (
             <form className="stack" onSubmit={handleSubmit}>
-              <TextField
+              <TextField helpNotNeeded
                 label={strings.login.email}
                 value={email}
                 onChange={setEmail}
                 inputProps={{ required: true, type: "email" }}
               />
-              <TextField
+              <TextField helpNotNeeded
                 label={strings.login.password}
                 value={password}
                 onChange={setPassword}

@@ -33,6 +33,7 @@ import { blankRiskValues, valuesFromRisk } from "./riskFields";
 import { CONSEQUENCE_AXIS, DETECTABILITY_AXIS, findAxis, LIKELIHOOD_AXIS } from "./useRiskScheme";
 import { TREATMENT_STRATEGY_LABEL } from "./types";
 import type { Risk, RiskFieldValues, TreatmentStrategy } from "./types";
+import { RISK_HELP } from "./help";
 
 type LevelKey = Extract<keyof RiskFieldValues, `${"inherent" | "residual"}_${string}_level_id`>;
 
@@ -82,7 +83,7 @@ export function RiskFormModal({
   function textField(key: "statement" | "cause" | "risk_event" | "consequence" | "acceptance_criteria", label: string, disabled = false) {
     return (
       <FormGridFull>
-        <TextAreaField label={label} value={values[key]} onChange={(value) => set(key, value)} disabled={disabled} />
+        <TextAreaField helpNotNeeded label={label} value={values[key]} onChange={(value) => set(key, value)} disabled={disabled} />
       </FormGridFull>
     );
   }
@@ -118,20 +119,20 @@ export function RiskFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField label="Risk title" value={values.title} onChange={(value) => set("title", value)} />
+            <TextField helpNotNeeded label="Risk title" value={values.title} onChange={(value) => set("title", value)} />
           </FormGridFull>
           {textField("statement", "Risk statement")}
           {textField("cause", "Cause")}
           {textField("risk_event", "Risk event")}
           {textField("consequence", "Consequence")}
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Risk type"
             value={values.risk_type_id ?? ""}
             onChange={(next) => set("risk_type_id", next || null)}
             options={riskTypes.map((t) => ({ value: t.id, label: t.name }))}
             placeholder="No type"
           />
-          <PrincipalFormField
+          <PrincipalFormField helpNotNeeded
             label="Owner"
             orgUsers={orgUsers}
             organizationId={organizationId}
@@ -145,7 +146,7 @@ export function RiskFormModal({
           />
           {levelGroup("inherent", "Inherent")}
           {levelGroup("residual", "Residual")}
-          <LabeledSelect
+          <LabeledSelect help={RISK_HELP.riskTreatmentStrategy}
             label="Treatment strategy"
             value={values.treatment_strategy ?? ""}
             onChange={(next) => set("treatment_strategy", (next || null) as TreatmentStrategy | null)}
@@ -153,7 +154,7 @@ export function RiskFormModal({
             placeholder="Not decided"
             disabled={locked}
           />
-          <DateField
+          <DateField helpNotNeeded
             label="Next review date (optional)" ariaLabel="Next review date"
             value={values.review_date ?? ""} onChange={(value) => set("review_date", value || null)}
           />
@@ -168,7 +169,7 @@ export function RiskFormModal({
           )}
           {initial && (
             <FormGridFull>
-              <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+              <TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
             </FormGridFull>
           )}
           {!initial && (

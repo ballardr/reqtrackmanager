@@ -81,23 +81,23 @@ export function StrategyFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField label="Title" ariaLabel="Strategy title" value={title} onChange={setTitle} />
+            <TextField helpNotNeeded label="Title" ariaLabel="Strategy title" value={title} onChange={setTitle} />
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
             </FormGridFull>
           ))}
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Priority"
             value={priority}
             onChange={(v) => setPriority(v as StrategyPriority)}
             options={Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Time horizon"
             value={timeHorizon}
             onChange={(v) => setTimeHorizon(v as StrategyTimeHorizon)}
@@ -105,7 +105,7 @@ export function StrategyFormModal({
           />
           {initial && (
             <FormGridFull>
-              <TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+              <TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
             </FormGridFull>
           )}
           {!initial && projectId && (

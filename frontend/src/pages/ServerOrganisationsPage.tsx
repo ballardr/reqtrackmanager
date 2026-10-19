@@ -191,13 +191,13 @@ export function ServerOrganisationsPage() {
         <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)} size="lg">
           <div className="stack">
             <FormGrid minColumn="18rem">
-              <TextField
+              <TextField helpNotNeeded
                 label={importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
                 value={newName}
                 onChange={setNewName}
                 inputProps={{ autoFocus: true }}
               />
-              <FileField
+              <FileField helpNotNeeded
                 label={`Or import from an exported ${orgLabel} bundle (.zip)`} accept=".zip,application/zip"
                 onChange={setImportFile}
               />
@@ -215,7 +215,7 @@ export function ServerOrganisationsPage() {
                     {creationChoices
                       .filter((c) => c.group_label === groupLabel)
                       .map((choice) => (
-                        <CheckboxField
+                        <CheckboxField helpNotNeeded
                           key={choice.key}
                           label={choice.label}
                           title={choice.description}

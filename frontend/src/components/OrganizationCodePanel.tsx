@@ -56,7 +56,7 @@ export function OrganizationCodePanel({ org, onSaved }: { org: Organization; onS
     <div className="stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.organizationCodeHint}</p>
       <div className="row" style={{ gap: "1rem", alignItems: "flex-end" }}>
-        <TextField
+        <TextField help={strings.help.orgCode}
           label={strings.orgAdmin.organizationCodeLabel}
           value={code}
           onChange={setCode}

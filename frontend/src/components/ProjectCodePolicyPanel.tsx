@@ -61,26 +61,26 @@ export function ProjectCodePolicyPanel({ org, onSaved }: { org: Organization; on
     <div className="stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.codePolicyHint}</p>
       <FormGrid minColumn="10rem">
-        <LabeledSelect
+        <LabeledSelect help={strings.help.codeCharacters}
           label={strings.orgAdmin.codeKind}
           value={kind}
           onChange={(next) => setKind(next as ProjectCodeKind)}
           options={(Object.keys(PROJECT_CODE_KIND_LABEL) as ProjectCodeKind[]).map((k) => ({ value: k, label: PROJECT_CODE_KIND_LABEL[k] }))}
           placeholder={null}
         />
-        <TextField
+        <TextField help={strings.help.codeShortest}
           label={strings.orgAdmin.codeMinLength}
           value={minLength}
           onChange={setMinLength}
           inputProps={{ min: 1, max: 10, type: "number" }}
         />
-        <TextField
+        <TextField help={strings.help.codeLongest}
           label={strings.orgAdmin.codeMaxLength}
           value={maxLength}
           onChange={setMaxLength}
           inputProps={{ min: 1, max: 10, type: "number" }}
         />
-        <LabeledSelect
+        <LabeledSelect help={strings.help.codeAssignment}
           label={strings.orgAdmin.codeAssignment}
           value={assignment}
           onChange={(next) => setAssignment(next as ProjectCodeAssignment)}
@@ -95,7 +95,7 @@ export function ProjectCodePolicyPanel({ org, onSaved }: { org: Organization; on
           {strings.orgAdmin.codePolicyPreview(describeCodePolicy({ kind, min_length: min, max_length: max, assignment }))}
         </p>
       )}
-      <CheckboxField
+      <CheckboxField helpNotNeeded
         label={strings.orgAdmin.enforceCodeEverywhere}
         checked={enforce}
         onChange={setEnforce}

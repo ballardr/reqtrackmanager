@@ -320,7 +320,7 @@ export function ProjectListPage() {
           <div className="stack">
             <FormGrid minColumn="18rem">
               {orgs.length > 1 && (
-                <LabeledSelect
+                <LabeledSelect helpNotNeeded
                   label={orgLabelCap}
                   value={newOrgId}
                   onChange={setNewOrgId}
@@ -329,14 +329,14 @@ export function ProjectListPage() {
                   inputProps={{ autoFocus: true }}
                 />
               )}
-              <TextField
+              <TextField helpNotNeeded
                 label={strings.projects.name}
                 value={newName}
                 onChange={setNewName}
                 inputProps={{ autoFocus: orgs.length <= 1 }}
               />
               {newOrg?.project_code_policy.assignment === "manual" && !importFile && (
-                <TextField
+                <TextField helpNotNeeded
                   label={strings.projects.code}
                   value={newCode}
                   onChange={(next) => setNewCode(next.toUpperCase())}
@@ -350,10 +350,10 @@ export function ProjectListPage() {
                 </FormGridFull>
               )}
               <FormGridFull>
-                <TextAreaField label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />
+                <TextAreaField helpNotNeeded label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />
               </FormGridFull>
               {!importFile && templateOptions.length > 0 && (
-                <LabeledSelect
+                <LabeledSelect helpNotNeeded
                   label={strings.projects.useTemplate}
                   value={templateProjectId}
                   onChange={setTemplateProjectId}
@@ -361,7 +361,7 @@ export function ProjectListPage() {
                   placeholder={strings.projects.noTemplate}
                 />
               )}
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.admin.visibility}
                 value={newVisibility}
                 onChange={(next) => setNewVisibility(next as "only_specified" | "org_wide")}
@@ -383,7 +383,7 @@ export function ProjectListPage() {
                   picker with only "None" in it. */}
               {showParentField && (
                 <>
-                  <LabeledSelect
+                  <LabeledSelect help={strings.help.projectParent}
                     label={strings.projects.parentProject}
                     value={parentProjectId}
                     onChange={(next) => {
@@ -400,7 +400,7 @@ export function ProjectListPage() {
                   />
                   {parentProjectId && (
                     <>
-                      <LabeledSelect
+                      <LabeledSelect help={strings.help.projectInheritAccess}
                         label={strings.projects.inheritFromParent}
                         value={roleInheritanceMode}
                         onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
@@ -410,7 +410,7 @@ export function ProjectListPage() {
                         placeholder={null}
                       />
                       {roleInheritanceMode === "mirror_role" && (
-                        <LabeledSelect
+                        <LabeledSelect help={strings.help.projectRoleToMirror}
                           label={strings.projects.inheritModeFilterRole}
                           value={roleInheritanceFilterRole}
                           onChange={(next) => setRoleInheritanceFilterRole(next as ProjectRole)}
@@ -423,7 +423,7 @@ export function ProjectListPage() {
                 </>
               )}
               <FormGridFull>
-                <FileField
+                <FileField helpNotNeeded
                   label={strings.projects.importFromBundle} accept=".zip,application/zip"
                   onChange={setImportFile}
                 />

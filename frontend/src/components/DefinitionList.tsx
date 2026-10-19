@@ -307,7 +307,7 @@ export function DefinitionList<T extends { id: string }>({
       )}
       <div className="row" style={{ alignItems: "flex-end" }}>
         {fields.map((f) => (
-          <TextField
+          <TextField helpNotNeeded
             key={f.key}
             label={f.placeholder ?? f.ariaLabel ?? f.key}
             ariaLabel={fields.length > 1 ? f.ariaLabel : undefined}

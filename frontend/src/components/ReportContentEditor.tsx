@@ -111,7 +111,7 @@ export function ReportContentEditor({
 
   return (
     <div className="stack">
-      <LabeledSelect
+      <LabeledSelect helpNotNeeded
         label={strings.reports.contentTypes}
         value={activeType.key}
         onChange={select}

@@ -84,7 +84,7 @@ export function SupersedeAction({
             {candidates !== null && candidates.length === 0 ? (
               <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.supersedeNone}</p>
             ) : (
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={artefactLabel}
                 value={chosen}
                 onChange={setChosen}

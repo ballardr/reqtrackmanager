@@ -47,6 +47,7 @@ import {
 import { RISK_STATUS_LABEL, RISK_STATUS_TONE, TREATMENT_STRATEGY_LABEL } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus, RiskVersion } from "./types";
 import { Badge } from "../../components/Badge";
+import { RISK_HELP } from "./help";
 
 /** "Likely × Major" (and "× Undetectable" when scored), or "—" when nothing is set. */
 function levelSummary(
@@ -209,19 +210,19 @@ export function RiskDetailPage() {
         <section className="stack" aria-label="Rating" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Rating</h3>
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
-            <RecordFieldGroup label="Inherent">
+            <RecordFieldGroup help={RISK_HELP.riskInherent} label="Inherent">
               <RiskRatingBadge rating={risk.inherent_rating} />
               <span className="text-muted">
                 {levelSummary(scheme, risk.inherent_likelihood_level_id, risk.inherent_consequence_level_id, risk.inherent_detectability_level_id)}
               </span>
             </RecordFieldGroup>
-            <RecordFieldGroup label="Residual">
+            <RecordFieldGroup help={RISK_HELP.riskResidual} label="Residual">
               <RiskRatingBadge rating={risk.residual_rating} />
               <span className="text-muted">
                 {levelSummary(scheme, risk.residual_likelihood_level_id, risk.residual_consequence_level_id, risk.residual_detectability_level_id)}
               </span>
             </RecordFieldGroup>
-            <RecordFieldGroup label="Treatment">
+            <RecordFieldGroup help={RISK_HELP.riskTreatmentSummary} label="Treatment">
               <Badge tone={risk.is_effectively_treated ? "accent" : "muted"}>
                 {risk.is_effectively_treated ? `${risk.effective_treatment_count} effective` : "No effective treatment"}
               </Badge>

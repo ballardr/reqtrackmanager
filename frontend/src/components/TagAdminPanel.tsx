@@ -190,14 +190,14 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
           if (newName.trim() !== "" && !nameProblem) void addTag();
         }}
       >
-        <TextField
+        <TextField helpNotNeeded
           label={text.addLabel}
           value={newName}
           onChange={setNewName}
           placeholder={text.addPlaceholder}
           inputProps={{ maxLength: TAG_NAME_MAX_LENGTH * 2 }}
         />
-        <LabeledSelect
+        <LabeledSelect helpNotNeeded
           label={text.colourHeading}
           ariaLabel={text.colourLabel(newName.trim() || text.addLabel)}
           value={newColour}
@@ -396,7 +396,7 @@ function RenameDialog({ tag, onCancel, onSave }: { tag: Tag; onCancel: () => voi
   return (
     <Modal title={strings.tags.admin.rename(tag.name)} onClose={onCancel}>
       <div className="stack">
-        <TextField
+        <TextField helpNotNeeded
           label={strings.tags.admin.nameHeading}
           value={name}
           onChange={setName}
@@ -424,7 +424,7 @@ function MergeDialog({
     <Modal title={strings.tags.admin.mergeTitle(tag.name)} onClose={onCancel}>
       <div className="stack">
         <p className="text-muted" style={{ margin: 0 }}>{strings.tags.admin.mergeBody(tag.name, tag.usage_count)}</p>
-        <LabeledSelect
+        <LabeledSelect help={strings.help.tagMergeInto}
           label={strings.tags.admin.mergeTarget}
           value={target}
           onChange={setTarget}
@@ -511,7 +511,7 @@ function ReclassifyDialog({
       <div className="stack">
         <FilterField label={text.reclassifyAdd}>{choices(add, setAdd, text.reclassifyAdd)}</FilterField>
         <FilterField label={text.reclassifyRemove}>{choices(remove, setRemove, text.reclassifyRemove)}</FilterField>
-        <LabeledSelect
+        <LabeledSelect helpNotNeeded
           label={text.reclassifyTypes}
           value={type}
           onChange={(next) => { setType(next); setForecast(null); }}

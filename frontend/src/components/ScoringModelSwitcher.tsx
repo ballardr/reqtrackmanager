@@ -9,6 +9,7 @@
  * value and owns any persistence (none, for a per-view choice).
  */
 import { LabeledSelect } from "./LabeledSelect";
+import { useStrings } from "../context/TerminologyContext";
 
 export interface ScoringOption {
   value: string;
@@ -33,11 +34,12 @@ export function ScoringModelSwitcher({
   rollup?: string;
   onRollupChange?: (rollup: string) => void;
 }) {
+  const strings = useStrings();
   return (
     <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-      <LabeledSelect label="Scoring model" value={model} onChange={onModelChange} options={models} placeholder={null} />
+      <LabeledSelect help={strings.help.scoringModel} label="Scoring model" value={model} onChange={onModelChange} options={models} placeholder={null} />
       {rollups && rollup !== undefined && onRollupChange && (
-        <LabeledSelect label="Combine personas by" value={rollup} onChange={onRollupChange} options={rollups} placeholder={null} />
+        <LabeledSelect help={strings.help.scoringRollup} label="Combine personas by" value={rollup} onChange={onRollupChange} options={rollups} placeholder={null} />
       )}
     </div>
   );

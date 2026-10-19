@@ -29,6 +29,7 @@ import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import type { Decision, DecisionFieldValues, DecisionTemplate, DecisionTypeDefinition } from "./types";
+import { DECISIONS_HELP } from "./help";
 
 type PromptKey =
   | "context_prompt" | "options_considered_prompt" | "chosen_option_prompt" | "rationale_prompt"
@@ -116,7 +117,7 @@ export function DecisionFormModal({
         <FormGrid minColumn="18rem">
           {!initial && templates && templates.length > 0 && (
             <FormGridFull>
-              <LabeledSelect
+              <LabeledSelect help={DECISIONS_HELP.decisionTemplate}
                 label="Start from a template (optional)"
                 value={templateId}
                 onChange={applyTemplate}
@@ -126,19 +127,19 @@ export function DecisionFormModal({
             </FormGridFull>
           )}
           <FormGridFull>
-            <TextField label="Decision title" value={title} onChange={setTitle} />
+            <TextField helpNotNeeded label="Decision title" value={title} onChange={setTitle} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField label="Decision statement" value={statement} onChange={setStatement} />
+            <TextAreaField helpNotNeeded label="Decision statement" value={statement} onChange={setStatement} />
           </FormGridFull>
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Decision type"
             value={decisionTypeId}
             onChange={setDecisionTypeId}
             options={decisionTypes.map((t) => ({ value: t.id, label: t.name }))}
           />
-          <DateField label="Decision date (optional)" value={decisionDate} onChange={setDecisionDate} />
-          <PrincipalFormField
+          <DateField helpNotNeeded label="Decision date (optional)" value={decisionDate} onChange={setDecisionDate} />
+          <PrincipalFormField helpNotNeeded
             label="Decision maker (optional)"
             orgUsers={orgUsers}
             organizationId={organizationId}
@@ -149,7 +150,7 @@ export function DecisionFormModal({
             ariaLabel="Decision maker"
             placeholder="Search users and groups…"
           />
-          <PrincipalFormField
+          <PrincipalFormField helpNotNeeded
             label="Owner"
             orgUsers={orgUsers}
             organizationId={organizationId}
@@ -163,7 +164,7 @@ export function DecisionFormModal({
           />
           {PROMPT_TO_FIELD.map((f) => (
             <FormGridFull key={f.fieldKey}>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={f.label} value={fields[f.fieldKey]}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.fieldKey]: value }))}
               />

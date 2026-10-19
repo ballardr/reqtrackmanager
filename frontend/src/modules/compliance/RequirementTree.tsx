@@ -66,6 +66,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 interface Props {
   orgId: string;
@@ -654,25 +655,25 @@ function RequirementDetailPanel({
         </div>
         {isDraft ? (
           <FormGrid minColumn="14rem">
-            <TextField label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
-            <TextField label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+            <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+            <TextField helpNotNeeded label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
             <FormGridFull>
-              <TextAreaField label="Description" value={description} onChange={setDescription} autoGrow />
+              <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} autoGrow />
             </FormGridFull>
             <FormGridFull>
-              <TextAreaField label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
+              <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
             </FormGridFull>
           </FormGrid>
         ) : (
           <>
-            <RecordFieldGroup label="Reference">
+            <RecordFieldGroup help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference">
               <span>{requirement.reference || <span className="text-muted">None</span>}</span>
             </RecordFieldGroup>
-            <RecordFieldGroup label="Name"><span>{requirement.name}</span></RecordFieldGroup>
-            <RecordFieldGroup label="Description">
+            <RecordFieldGroup helpNotNeeded label="Name"><span>{requirement.name}</span></RecordFieldGroup>
+            <RecordFieldGroup helpNotNeeded label="Description">
               <span>{requirement.description || <span className="text-muted">No description.</span>}</span>
             </RecordFieldGroup>
-            <RecordFieldGroup label="Reasoning">
+            <RecordFieldGroup helpNotNeeded label="Reasoning">
               <span>{requirement.reasoning || <span className="text-muted">No reasoning recorded.</span>}</span>
             </RecordFieldGroup>
           </>
@@ -734,13 +735,13 @@ function RequirementFormModal({
     <Modal title={initial ? "Edit requirement" : "New requirement"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <TextField label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
-          <TextField label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+          <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+          <TextField helpNotNeeded label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField label="Description" value={description} onChange={setDescription} rows={3} />
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField label="Reasoning" value={reasoning} onChange={setReasoning} rows={2} />
+            <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} rows={2} />
           </FormGridFull>
         </FormGrid>
         <FormActions
@@ -778,18 +779,18 @@ function RequiredActionFormModal({
     <Modal title={initial ? "Edit required action" : "New required action"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Action type"
             value={actionTypeId}
             onChange={setActionTypeId}
             options={actionTypes.map((t) => ({ value: t.id, label: t.name }))}
             placeholder={null}
           />
-          <TextField label="Name" ariaLabel="Required action name" value={name} onChange={setName} />
+          <TextField helpNotNeeded label="Name" ariaLabel="Required action name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField label="Description" value={description} onChange={setDescription} rows={2} />
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
           </FormGridFull>
-          <CheckboxField label="Mandatory" checked={isMandatory} onChange={setIsMandatory} />
+          <CheckboxField help={COMPLIANCE_HELP.complianceMandatory} label="Mandatory" checked={isMandatory} onChange={setIsMandatory} />
         </FormGrid>
         <FormActions
           onCancel={onCancel}
@@ -835,16 +836,16 @@ function RequirementClarifyModal({
           Anything that changes what must be satisfied requires a new standard version instead.
         </p>
         <FormGrid minColumn="18rem">
-          <TextField label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
-          <TextField label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+          <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+          <TextField helpNotNeeded label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField label="Description" value={description} onChange={setDescription} autoGrow />
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} autoGrow />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
+            <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label="Clarification note (required)" value={clarificationNote} onChange={setClarificationNote} autoGrow
               inputProps={{ placeholder: "What changed, and why it's non-substantive." }}
             />

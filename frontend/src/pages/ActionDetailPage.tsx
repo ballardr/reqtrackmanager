@@ -260,7 +260,7 @@ export function ActionDetailPage() {
                 {strings.common.save}
               </button>
             )}
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label={strings.actions.outcome}
               value={action.outcome_status}
               onChange={(next) => setOutcome(next as RequirementActionOutcome)}

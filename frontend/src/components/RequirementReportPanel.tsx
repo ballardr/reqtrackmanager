@@ -168,7 +168,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
       <CollapsibleSection sectionKey="reports.templateAndLayout" title={strings.reports.templateAndLayout} defaultCollapsed>
         <FormGrid minColumn="16rem">
           {reportTemplates.length > 0 && (
-            <LabeledSelect
+            <LabeledSelect help={strings.help.reportBrandingTemplate}
               label={strings.reports.reportTemplate}
               value={reportTemplateId}
               onChange={selectTemplate}
@@ -176,7 +176,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
               placeholder={strings.reports.noTemplate}
             />
           )}
-          <LabeledSelect
+          <LabeledSelect help={strings.help.reportChapterLayout}
             label={strings.reports.chapterLayout}
             value={chaptersPerComponent === null ? "" : String(chaptersPerComponent)}
             onChange={(next) => setChaptersPerComponent(next === "" ? null : next === "true")}
@@ -191,21 +191,21 @@ export function RequirementReportPanel({ project }: { project: Project }) {
 
       <CollapsibleSection sectionKey="reports.filters" title={strings.reports.filters} defaultCollapsed>
         <FormGrid minColumn="14rem">
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.requirements.component}
             value={componentId}
             onChange={setComponentId}
             options={components.map((c) => ({ value: c.id, label: c.name }))}
             placeholder={strings.reports.allComponents}
           />
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.requirements.category}
             value={categoryId}
             onChange={setCategoryId}
             options={categories.map((c) => ({ value: c.id, label: c.name }))}
             placeholder={strings.reports.allCategories}
           />
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.requirements.status}
             value={statusFilter}
             onChange={(next) => setStatusFilter(next as RequirementStatus | "")}
@@ -216,14 +216,14 @@ export function RequirementReportPanel({ project }: { project: Project }) {
             }))}
             placeholder={strings.reports.allStatuses}
           />
-          <TextField
+          <TextField helpNotNeeded
             label={strings.reports.keywordFilter}
             placeholder={strings.reports.keywordFilter}
             value={keyword}
             onChange={setKeyword}
           />
         </FormGrid>
-        <CheckboxField
+        <CheckboxField helpNotNeeded
           label={strings.reports.includeArchived}
           checked={includeArchived}
           onChange={setIncludeArchived}

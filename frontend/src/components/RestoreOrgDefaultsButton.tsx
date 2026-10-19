@@ -76,7 +76,7 @@ export function RestoreOrgDefaultsButton({
               These organisation {noun} were hidden in this project. Tick the ones to show again.
             </p>
             {hidden.map((h) => (
-              <CheckboxField
+              <CheckboxField helpNotNeeded
                 key={h.id}
                 label={h.name}
                 checked={ticked.has(h.id)}

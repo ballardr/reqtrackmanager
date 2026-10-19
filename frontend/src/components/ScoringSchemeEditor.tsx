@@ -22,6 +22,7 @@ import { LabeledSelect } from "./LabeledSelect";
 import { OverridePill } from "./OverridePill";
 import { ScoringModelBands } from "./ScoringModelBands";
 import { Spinner } from "./Spinner";
+import { useStrings } from "../context/TerminologyContext";
 
 function parseLevel(values: Record<string, string>) {
   const weight = Number(values.weight);
@@ -34,6 +35,7 @@ function parseLevel(values: Record<string, string>) {
  * @param schemeKey The registered scoring scheme key.
  */
 export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schemeKey: string }) {
+  const strings = useStrings();
   const { showToast } = useToast();
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
           Used unless a project sets its own; anyone viewing scores can still switch model.
         </p>
         <div className="row" style={{ gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap" }}>
-          <LabeledSelect
+          <LabeledSelect help={strings.help.scoringDefaultModel}
             label="Default model"
             value={scheme.default_model_key}
             placeholder={null}

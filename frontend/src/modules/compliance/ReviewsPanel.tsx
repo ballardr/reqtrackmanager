@@ -39,6 +39,7 @@ import { DateField, TextAreaField, TextField } from "../../components/FormFields
 import { FormActions } from "../../components/FormActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 export function ReviewsPanel({
   projectId, projectComplianceId, organizationId, orgUsers,
@@ -189,7 +190,7 @@ function ReviewFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField
+            <TextField helpNotNeeded
               label="Frequency / description"
               ariaLabel="Frequency label"
               value={frequencyLabel}
@@ -197,21 +198,21 @@ function ReviewFormModal({
               placeholder="e.g. Annual security review"
             />
           </FormGridFull>
-          <DateField label="Next due date" value={nextDueDate} onChange={setNextDueDate} />
-          <TextField
+          <DateField helpNotNeeded label="Next due date" value={nextDueDate} onChange={setNextDueDate} />
+          <TextField help={COMPLIANCE_HELP.complianceReviewRecurrence}
             label="Recurs every (days, optional)"
             value={recurrenceDays}
             onChange={setRecurrenceDays}
             inputProps={{ min: 1, type: "number" }}
           />
           <FormGridFull>
-            <PrincipalFormField
+            <PrincipalFormField helpNotNeeded
               label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
               value={owner} display={savedPrincipalDisplay(owner, initial?.owner)} onChange={setOwner} ariaLabel="Review owner"
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
+            <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
           </FormGridFull>
         </FormGrid>
         <FormActions
@@ -243,7 +244,7 @@ function CompleteReviewModal({
   return (
     <Modal title="Complete review" onClose={onCancel}>
       <div className="stack">
-        <LabeledSelect
+        <LabeledSelect helpNotNeeded
           label="Outcome"
           ariaLabel="Review outcome"
           value={outcome}
@@ -251,7 +252,7 @@ function CompleteReviewModal({
           options={OUTCOME_OPTIONS.map((opt) => ({ value: opt, label: COMPLIANCE_REVIEW_OUTCOME_LABEL[opt] }))}
           placeholder={null}
         />
-        <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
+        <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
         <FormActions onCancel={onCancel} onSave={() => onSave({ outcome, notes })} saveLabel="Complete" />
       </div>
     </Modal>

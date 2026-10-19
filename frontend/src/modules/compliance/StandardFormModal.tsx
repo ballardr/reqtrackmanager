@@ -35,6 +35,7 @@ import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { COMPLIANCE_HELP } from "./help";
 
 export interface StandardFormValues {
   reference: string;
@@ -141,14 +142,14 @@ export function StandardFormModal({
         <FormGrid minColumn="18rem">
           {!initial && orgs && orgs.length > 1 && (
             <FormGridFull>
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label="Organisation" value={selectedOrgId} onChange={setSelectedOrgId}
                 options={orgs.map((o) => ({ value: o.id, label: o.name }))} placeholder={null}
               />
             </FormGridFull>
           )}
           {!initial && (
-            <TextField
+            <TextField help={COMPLIANCE_HELP.complianceStandardReference}
               label="Reference"
               ariaLabel="Standard reference"
               value={reference}
@@ -157,13 +158,13 @@ export function StandardFormModal({
               inputProps={{ autoFocus: !(orgs && orgs.length > 1) }}
             />
           )}
-          <TextField label="Name" ariaLabel="Standard name" value={name} onChange={setName} />
+          <TextField helpNotNeeded label="Name" ariaLabel="Standard name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField label="Description" value={description} onChange={setDescription} rows={3} />
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
           </FormGridFull>
-          <TextField label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
+          <TextField helpNotNeeded label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
           {initial && (
-            <PrincipalFormField
+            <PrincipalFormField helpNotNeeded
               label="Owner"
               kinds={["user", "org_group"]}
               orgUsers={orgUsers}
@@ -180,10 +181,10 @@ export function StandardFormModal({
               <FormGridFull>
                 <h3 style={{ margin: "0.5rem 0 0" }}>Initial version</h3>
               </FormGridFull>
-              <TextField label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
-              <DateField label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
+              <TextField helpNotNeeded label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
+              <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
               <FormGridFull>
-                <TextAreaField label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
+                <TextAreaField helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
               </FormGridFull>
             </>
           )}

@@ -101,7 +101,7 @@ export function RepresentationPanel({
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <LabeledSelect label={edit!.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+      <LabeledSelect helpNotNeeded label={edit!.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
       <FormActions
         onCancel={close}
         onSave={async () => {
@@ -117,7 +117,7 @@ export function RepresentationPanel({
   );
 
   return (
-    <RecordFieldGroup
+    <RecordFieldGroup helpNotNeeded
       label={heading}
       gap="0.35rem"
       action={edit && <AddPopoverButton label={`Add to ${heading}`} disabled={candidates.length === 0}>{addForm}</AddPopoverButton>}

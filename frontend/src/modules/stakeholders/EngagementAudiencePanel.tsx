@@ -110,7 +110,7 @@ export function EngagementAudiencePanel({
   if (audiences === null) return null;
 
   return (
-    <RecordFieldGroup
+    <RecordFieldGroup helpNotNeeded
       label="Audience groups"
       gap="0.35rem"
       action={

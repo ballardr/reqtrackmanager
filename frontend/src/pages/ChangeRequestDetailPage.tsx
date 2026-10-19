@@ -433,7 +433,7 @@ export function ChangeRequestDetailPage() {
           )}
           {(cr.status === "submitted" || cr.status === "in_review") && canDecide && (
             <>
-              <TextField
+              <TextField helpNotNeeded
                 label={strings.changeRequests.decisionNote}
                 placeholder={strings.changeRequests.decisionNote}
                 value={decisionNote}
@@ -520,11 +520,11 @@ export function ChangeRequestDetailPage() {
         ))}
         {canManageTasks && (
           <div className="row" style={{ alignItems: "flex-end" }}>
-            <TextField
+            <TextField helpNotNeeded
               label={strings.changeRequests.taskDescription} placeholder={strings.changeRequests.taskDescription}
               value={newTaskDescription} onChange={setNewTaskDescription}
             />
-            <PrincipalFormField
+            <PrincipalFormField helpNotNeeded
               label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
               value={newTaskAssignee} onChange={setNewTaskAssignee} ariaLabel={`${strings.changeRequests.newTask} ${strings.actions.assignee}`}
               placeholder={strings.reviews.unassigned}
@@ -556,7 +556,7 @@ export function ChangeRequestDetailPage() {
         )}
         {canVote && (cr.status === "submitted" || cr.status === "in_review") && (
           <div className="row" style={{ alignItems: "flex-end" }}>
-            <TextField
+            <TextField helpNotNeeded
               label={strings.changeRequests.voteComment} placeholder={strings.changeRequests.voteComment}
               value={voteComment} onChange={setVoteComment}
             />

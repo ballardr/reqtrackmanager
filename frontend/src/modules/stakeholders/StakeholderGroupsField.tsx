@@ -50,7 +50,7 @@ export function StakeholderGroupsField({
   }
 
   return (
-    <RecordFieldGroup label="Groups">
+    <RecordFieldGroup helpNotNeeded label="Groups">
       {current.length === 0 ? (
         <span className="text-muted">Not in any group.</span>
       ) : (

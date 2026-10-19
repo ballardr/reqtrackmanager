@@ -29,6 +29,7 @@ BASELINE = Path(__file__).resolve().parent / "form_markup_baseline.json"
 
 EXEMPT = {
     "components/FormFields.tsx",
+    "components/FieldHelp.tsx",  # `FieldShell` renders the labelled block the field components share
     "components/LabeledSelect.tsx",
     "components/PrincipalFormField.tsx",
     "components/FormActions.tsx",

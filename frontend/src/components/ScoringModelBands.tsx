@@ -20,6 +20,7 @@ import { LabeledSelect } from "./LabeledSelect";
 import { ScoringCellRatingsEditor } from "./ScoringCellRatingsEditor";
 import { ScoringBandsEditor } from "./ScoringBandsEditor";
 import { ScoringMatrixChart } from "./ScoringMatrixChart";
+import { useStrings } from "../context/TerminologyContext";
 
 /**
  * @param scheme The effective scheme configuration.
@@ -43,6 +44,7 @@ export function ScoringModelBands({
   onSaveCells?: (modelKey: string, cells: ScoringCellRating[]) => Promise<void>;
   onResetCells?: (modelKey: string) => Promise<void>;
 }) {
+  const strings = useStrings();
   const [modelKey, setModelKey] = useState(scheme.default_model_key);
   const model = scheme.models.find((m) => m.key === modelKey) ?? scheme.models[0];
   // First axis on the rows (Y), second across the columns (X).
@@ -51,7 +53,7 @@ export function ScoringModelBands({
   const yAxis = scheme.axes.find((a) => a.key === yKey);
   return (
     <div className="stack">
-      <LabeledSelect label="Model" value={model.key} onChange={setModelKey} placeholder={null}
+      <LabeledSelect help={strings.help.scoringModel} label="Model" value={model.key} onChange={setModelKey} placeholder={null}
         options={scheme.models.map((m) => ({ value: m.key, label: m.label }))} />
       <p className="text-muted" style={{ margin: 0 }}>
         Bands are based on the score as a percentage of the model's maximum, so they still apply if level weights change.

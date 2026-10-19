@@ -80,19 +80,19 @@ export function SignupPage() {
         ) : (
           config.signup_mode === "org_specified" && <p className="text-muted">{strings.signup.orgSpecifiedHint(orgLabelPlural)}</p>
         )}
-        <TextField
+        <TextField helpNotNeeded
           label={strings.signup.displayName}
           value={displayName}
           onChange={setDisplayName}
           inputProps={{ required: true, autoFocus: true }}
         />
-        <TextField
+        <TextField helpNotNeeded
           label={strings.signup.email}
           value={email}
           onChange={setEmail}
           inputProps={{ required: true, type: "email" }}
         />
-        <TextField
+        <TextField helpNotNeeded
           label={strings.signup.password}
           value={password}
           onChange={setPassword}

@@ -46,18 +46,18 @@ export function NeedFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField label="Name" ariaLabel="Need name" value={name} onChange={setName} hint="A short title, e.g. “Diagnose faults quickly”." />
+            <TextField helpNotNeeded label="Name" ariaLabel="Need name" value={name} onChange={setName} hint="A short title, e.g. “Diagnose faults quickly”." />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label="Need" rows={3} value={description} onChange={setDescription}
               hint="The need in the stakeholder's own words, before it becomes a requirement."
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField label="Rationale" rows={3} value={rationale} onChange={setRationale} hint="Why it matters, and where it came from." />
+            <TextAreaField helpNotNeeded label="Rationale" rows={3} value={rationale} onChange={setRationale} hint="Why it matters, and where it came from." />
           </FormGridFull>
-          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {initial && <FormGridFull><TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (
             <FormGridFull>
               <div className="stack">

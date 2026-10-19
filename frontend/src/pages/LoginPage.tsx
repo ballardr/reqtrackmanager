@@ -111,7 +111,7 @@ export function LoginPage() {
           <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} />
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.login.twoFactorTitle}</h2>
           <p className="text-muted">{strings.login.twoFactorPrompt}</p>
-          <TextField
+          <TextField helpNotNeeded
             label={strings.login.twoFactorCode}
             value={code}
             onChange={setCode}
@@ -134,13 +134,13 @@ export function LoginPage() {
         <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.login.title}</h2>
         {reauthMessage && <div className="text-muted">{reauthMessage}</div>}
-        <TextField
+        <TextField helpNotNeeded
           label={strings.login.email}
           value={email}
           onChange={setEmail}
           inputProps={{ required: true, autoFocus: true, type: "email" }}
         />
-        <TextField
+        <TextField helpNotNeeded
           label={strings.login.password}
           value={password}
           onChange={setPassword}

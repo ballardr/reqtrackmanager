@@ -28,7 +28,7 @@ export function ScoringLevelPicker({
   const selected = axis.levels.find((l) => l.id === value) ?? null;
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
-      <LabeledSelect
+      <LabeledSelect helpNotNeeded
         label={axis.label}
         value={value ?? ""}
         onChange={(next) => onChange(next || null)}

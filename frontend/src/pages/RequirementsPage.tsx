@@ -665,8 +665,8 @@ export function RequirementsPage() {
                 <div className="stack">
                   {components.length === 0 && (
                     <div className="row" style={{ alignItems: "flex-end" }}>
-                      <TextField label={strings.admin.name} value={newInlineComponentName} onChange={setNewInlineComponentName} />
-                      <TextField
+                      <TextField helpNotNeeded label={strings.admin.name} value={newInlineComponentName} onChange={setNewInlineComponentName} />
+                      <TextField help={strings.help.requirementPrefix}
                         label={strings.admin.prefix}
                         value={newInlineComponentPrefix}
                         onChange={(next) => setNewInlineComponentPrefix(next.toUpperCase())}
@@ -684,7 +684,7 @@ export function RequirementsPage() {
                   {categories.length === 0 && components.length > 0 && (
                     <div className="row" style={{ alignItems: "flex-end" }}>
                       {components.length > 1 && (
-                        <LabeledSelect
+                        <LabeledSelect helpNotNeeded
                           label={strings.requirements.component}
                           value={newComponentId}
                           onChange={setNewComponentId}
@@ -692,8 +692,8 @@ export function RequirementsPage() {
                           placeholder={null}
                         />
                       )}
-                      <TextField label={strings.admin.name} value={newInlineCategoryName} onChange={setNewInlineCategoryName} />
-                      <TextField
+                      <TextField helpNotNeeded label={strings.admin.name} value={newInlineCategoryName} onChange={setNewInlineCategoryName} />
+                      <TextField help={strings.help.requirementPrefix}
                         label={strings.admin.prefix}
                         value={newInlineCategoryPrefix}
                         onChange={(next) => setNewInlineCategoryPrefix(next.toUpperCase())}
@@ -728,7 +728,7 @@ export function RequirementsPage() {
                   ownerPlaceholder={strings.requirements.ownerDefaultsToYou}
                   afterDescription={
                     <>
-                      <LabeledSelect
+                      <LabeledSelect helpNotNeeded
                         label={strings.requirements.component}
                         value={newComponentId}
                         onChange={(componentId) => {
@@ -742,7 +742,7 @@ export function RequirementsPage() {
                         options={components.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
                         placeholder={null}
                       />
-                      <LabeledSelect
+                      <LabeledSelect helpNotNeeded
                         label={strings.requirements.category}
                         value={newCategoryId}
                         onChange={setNewCategoryId}

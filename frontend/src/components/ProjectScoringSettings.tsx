@@ -17,6 +17,7 @@ import { LabeledSelect } from "./LabeledSelect";
 import { OverridePill } from "./OverridePill";
 import { ScoringModelBands } from "./ScoringModelBands";
 import { Spinner } from "./Spinner";
+import { useStrings } from "../context/TerminologyContext";
 
 const RESET_LABEL = "Use inherited value";
 
@@ -25,6 +26,7 @@ const RESET_LABEL = "Use inherited value";
  * @param schemeKey The registered scoring scheme key.
  */
 export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: string; schemeKey: string }) {
+  const strings = useStrings();
   const { showToast } = useToast();
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: st
       <section className="stack" aria-labelledby={`${schemeKey}-project-default-model`}>
         <h3 id={`${schemeKey}-project-default-model`} style={{ margin: 0 }}>Default model</h3>
         <div className="row" style={{ gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap" }}>
-          <LabeledSelect
+          <LabeledSelect help={strings.help.scoringDefaultModel}
             label="Default model"
             value={scheme.default_model_key}
             placeholder={null}

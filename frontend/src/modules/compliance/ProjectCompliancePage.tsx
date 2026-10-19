@@ -294,7 +294,7 @@ function AssignStandardModal({
           <p className="text-muted">No compliance standards exist in this organisation yet.</p>
         ) : (
           <FormGrid minColumn="18rem">
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label="Standard"
               value={standardId}
               onChange={setStandardId}
@@ -307,14 +307,14 @@ function AssignStandardModal({
               ) : versions.length === 0 ? (
                 <p className="text-muted" style={{ margin: 0 }}>This standard has no published version to assign.</p>
               ) : (
-                <LabeledSelect
+                <LabeledSelect helpNotNeeded
                   label="Version" ariaLabel="Standard version"
                   value={versionId} onChange={setVersionId}
                   options={versions.map((v) => ({ value: v.id, label: v.version_label }))} placeholder={null}
                 />
               )
             )}
-            <DateField label="Target compliance date (optional)" value={targetDate} onChange={setTargetDate} />
+            <DateField helpNotNeeded label="Target compliance date (optional)" value={targetDate} onChange={setTargetDate} />
           </FormGrid>
         )}
         <FormActions

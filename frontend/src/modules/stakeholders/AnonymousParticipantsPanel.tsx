@@ -60,8 +60,8 @@ export function AnonymousParticipantsPanel({
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <TextField label="Participant label" value={label} onChange={setLabel} inputProps={{ autoFocus: true }} />
-      <LabeledSelect label="Persona represented" value={personaId} onChange={setPersonaId} options={personaOptions} placeholder="None" />
+      <TextField helpNotNeeded label="Participant label" value={label} onChange={setLabel} inputProps={{ autoFocus: true }} />
+      <LabeledSelect helpNotNeeded label="Persona represented" value={personaId} onChange={setPersonaId} options={personaOptions} placeholder="None" />
       <span className="text-muted" style={{ fontSize: "0.8rem" }}>
         Use a label such as “Participant 3”, not a name. Anyone who needs to be traced belongs in the Stakeholder register.
       </span>
@@ -81,7 +81,7 @@ export function AnonymousParticipantsPanel({
   );
 
   return (
-    <RecordFieldGroup
+    <RecordFieldGroup helpNotNeeded
       label="Anonymous participants"
       gap="0.35rem"
       action={<AddPopoverButton label="Add to Anonymous participants">{addForm}</AddPopoverButton>}

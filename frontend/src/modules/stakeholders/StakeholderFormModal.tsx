@@ -37,6 +37,7 @@ import { TextAreaField, TextField } from "../../components/FormFields";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup, TargetCadence } from "./types";
 import { GRID_QUADRANT_LABEL, TARGET_CADENCE_LABEL } from "./types";
 import { FormActions } from "../../components/FormActions";
+import { STAKEHOLDERS_HELP } from "./help";
 
 const TEXT_FIELDS: { key: keyof StakeholderFieldValues; label: string; rows: number }[] = [
   { key: "description", label: "Description", rows: 2 },
@@ -145,10 +146,10 @@ export function StakeholderFormModal({
     <Modal title={initial ? `Edit ${initial.name}` : `New Stakeholder (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <TextField label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
-          <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
-          <TextField label="Role" value={role} onChange={setRole} />
-          <TextField label="Organisation / group" value={group} onChange={setGroup} />
+          <TextField helpNotNeeded label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
+          <LabeledSelect helpNotNeeded label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
+          <TextField helpNotNeeded label="Role" value={role} onChange={setRole} />
+          <TextField helpNotNeeded label="Organisation / group" value={group} onChange={setGroup} />
           {influenceAxis && interestAxis && (
             <>
               <ScoringLevelPicker axis={influenceAxis} value={influence} onChange={setInfluence} />
@@ -156,7 +157,7 @@ export function StakeholderFormModal({
             </>
           )}
           <div className="stack" style={{ gap: "0.25rem" }}>
-            <LabeledSelect
+            <LabeledSelect help={STAKEHOLDERS_HELP.stakeholderCadence}
               label="Target engagement cadence" value={cadence} onChange={setCadence} options={CADENCE_OPTIONS}
               placeholder="Not set"
             />
@@ -179,25 +180,25 @@ export function StakeholderFormModal({
           )}
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
             </FormGridFull>
           ))}
           <FormGridFull>
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label="Contact / reference information" value={contact} onChange={setContact}
               hint="Confidential personal data. Everyone who can see this stakeholder can read it."
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label="Availability constraints" value={availability} onChange={setAvailability}
               hint="What limits how often they will engage (their side, not ours)."
             />
           </FormGridFull>
-          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {initial && <FormGridFull><TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (
             <FormGridFull>
               <div className="stack">

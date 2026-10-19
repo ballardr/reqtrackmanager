@@ -213,8 +213,8 @@ export function DecisionDetailPage() {
       <div className="stack">
         <p style={{ margin: 0 }}>{decision.decision_statement}</p>
         <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
-          <RecordFieldGroup label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
-          <RecordFieldGroup label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
+          <RecordFieldGroup helpNotNeeded label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
+          <RecordFieldGroup helpNotNeeded label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
         </div>
 
         {decision.context && <RecordField label="Context" value={decision.context} />}
@@ -287,7 +287,7 @@ export function DecisionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>This records a formal approval in the audit trail. A comment is optional.</span>
-              <TextAreaField label="Approval comment" value={approveComment} onChange={setApproveComment} rows={2} />
+              <TextAreaField helpNotNeeded label="Approval comment" value={approveComment} onChange={setApproveComment} rows={2} />
             </span>
           }
           confirmLabel="Approve"
@@ -307,7 +307,7 @@ export function DecisionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining the rejection is required.</span>
-              <TextAreaField label="Rejection comment" value={rejectComment} onChange={setRejectComment} rows={2} />
+              <TextAreaField helpNotNeeded label="Rejection comment" value={rejectComment} onChange={setRejectComment} rows={2} />
             </span>
           }
           confirmLabel="Reject"

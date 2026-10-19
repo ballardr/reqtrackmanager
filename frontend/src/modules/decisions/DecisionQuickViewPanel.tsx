@@ -44,8 +44,8 @@ export function DecisionQuickViewPanel({
         <h2 style={{ margin: 0 }}>{decision.title}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{decisionType?.name ?? "—"}</p>
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{decision.decision_statement}</p>
-        <RecordFieldGroup label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
-        <RecordFieldGroup label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
+        <RecordFieldGroup helpNotNeeded label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
+        <RecordFieldGroup helpNotNeeded label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
         <Link
           to={`/projects/${projectId}/modules/decisions/${decision.id}`}
           className="btn btn-primary"

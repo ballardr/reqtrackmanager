@@ -62,7 +62,7 @@ export function RecordLifecycleControls({
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{copy[action].body}</span>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label="Comment"
                 ariaLabel="Transition comment"
                 value={comment}

@@ -716,7 +716,7 @@ export function RequirementDetailPage() {
               />
             </FormGridFull>
             <FormGridFull>
-              <TextField
+              <TextField helpNotNeeded
                 label={strings.requirements.changeNote}
                 placeholder={strings.requirements.changeNote}
                 value={form.changeNote}
@@ -740,7 +740,7 @@ export function RequirementDetailPage() {
               {strings.requirements.reviewer}: <PrincipalBadge principal={requirement.reviewer} placeholder={strings.reviews.unassigned} />
             </Badge>
           </div>
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.requirements.recordReviewOutcome}
             value={reviewOutcome}
             onChange={(next) => setReviewOutcome(next as RequirementReviewOutcome)}
@@ -748,7 +748,7 @@ export function RequirementDetailPage() {
             placeholder={null}
           />
           {reviewOutcome === "failed" && (
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label={strings.requirements.reviewComment}
               value={reviewComment}
               onChange={setReviewComment}
@@ -854,7 +854,7 @@ export function RequirementDetailPage() {
               title={strings.requirements.linkExistingAction}
               onClose={() => setLinkExistingActionPopoverOpen(false)}
             >
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.requirements.linkExistingAction}
                 value={existingActionToLink}
                 onChange={setExistingActionToLink}
@@ -864,7 +864,7 @@ export function RequirementDetailPage() {
                 placeholder={strings.requirements.selectAnActionToLink}
               />
               {requirement.is_locked && (
-                <TextAreaField
+                <TextAreaField helpNotNeeded
                   label={strings.changeRequests.reason}
                   value={addActionReason}
                   onChange={setAddActionReason}
@@ -920,7 +920,7 @@ export function RequirementDetailPage() {
               requirement.is_locked ? (
                 <span className="stack" style={{ gap: "0.5rem" }}>
                   <span>{strings.requirements.unlinkActionViaChangeRequestConfirm}</span>
-                  <TextAreaField
+                  <TextAreaField helpNotNeeded
                     label={strings.changeRequests.reason}
                     value={unlinkActionReason}
                     onChange={setUnlinkActionReason}
@@ -963,7 +963,7 @@ export function RequirementDetailPage() {
               projectId={projectId}
             />
             {requirement.is_locked && (
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={strings.changeRequests.reason}
                 value={addActionReason}
                 onChange={setAddActionReason}

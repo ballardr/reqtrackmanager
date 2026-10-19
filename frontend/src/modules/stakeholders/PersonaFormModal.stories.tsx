@@ -109,3 +109,13 @@ export const ShowsError: Story = {
 };
 
 export const DarkTheme: Story = { ...CreateNeedsAName, globals: { theme: "dark" } };
+
+/** The importance weight explains itself behind a `(?)` button, and opening the help leaves the form untouched. */
+export const ImportanceWeightHasHelp: Story = {
+  play: async () => {
+    await userEvent.type(dialog().getByLabelText("Importance weight"), "2");
+    await userEvent.click(dialog().getByRole("button", { name: "Help: Importance weight (optional)" }));
+    await expect(dialog().getByText(/How much this persona counts when scores are rolled up/)).toBeVisible();
+    await expect(dialog().getByLabelText("Importance weight")).toHaveValue(2);
+  },
+};

@@ -389,7 +389,7 @@ export function GuidingPrincipleDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining what needs rework is required.</span>
-              <TextAreaField label="Send-back comment" value={sendBackComment} onChange={setSendBackComment} rows={2} />
+              <TextAreaField helpNotNeeded label="Send-back comment" value={sendBackComment} onChange={setSendBackComment} rows={2} />
             </span>
           }
           confirmLabel="Send back"
@@ -410,7 +410,7 @@ export function GuidingPrincipleDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{TRANSITION_COPY[transitionAction].body}</span>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label="Comment"
                 ariaLabel="Transition comment"
                 value={transitionComment}

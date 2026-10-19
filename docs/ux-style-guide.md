@@ -813,6 +813,7 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 - Every field has a visible label. Where specs or users already know a field by an example placeholder, keep the placeholder as well, never instead of the label.
 - A form that two places share its fields (an action created from the Actions page and from a requirement, and edited on its own page) shares them as a component (`ActionFields`), not as two copies.
 - One or two plain fields need no grid; three or more get one.
+- Every field has `help` or `helpNotNeeded` ([Pattern: field help](#pattern-field-help)).
 
 **Not yet migrated:** the inline add and rename rows of the project admin Structure section (stages, components, categories, custom fields), the branding, single sign-on and bootstrap cards of Organisation Admin, the Change Request detail page and the CSV import wizard still use placeholder-only inputs or hand-built layouts; the generic report tables render every row (a very long report table is still one long page).
 
@@ -943,6 +944,16 @@ flowchart LR
 ```
 
 Server rule: omit, never redact. A project the viewer cannot open, a module disabled in it, a record type they cannot view there, or a token scoped to a different project each leave its rows out without a trace. See `docs/decisions.md`'s "Nested-project scope filter" entry.
+
+## Pattern: field help
+
+Every form field that is not self-explanatory carries a `(?)` help button after its caption. Reason: some fields have no context on their own (a persona's importance weight, a scoring model, a review reminder lead time), and a guessed value leaves inconsistent data that nobody can later explain.
+
+- **How:** give the shared field component `help={strings.help.<key>}` (`TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `CheckboxField`, `ToggleField`, `ColorField`, `FileField`, `UploadField`, `PrincipalFormField`, `RecordFieldGroup`). `FieldCaption`/`FieldHelp` (`components/FieldHelp.tsx`) render the button, named "Help: {label}", and reveal the text **in place under the caption**, not in a floating `Popover`: forms are built inside dialogs and popovers, and a popover opened from a popover is not allowed. The button is keyboard-focusable, Escape closes the text (and not the dialog around it), and a tap works like a click.
+- **Copy:** the text lives in `strings.help` in `frontend/src/i18n/strings.ts`, written for the end user in one or two sentences: what the field is, what it affects, a typical value. Terminology tokens (`{requirement}`, `{project}`) are filled in per organisation, so help follows the renamed terms.
+- **Opt out:** a self-explanatory field (a name, a title, a comment, an email) passes `helpNotNeeded` instead, which keeps the decision greppable. A field whose visible `hint` already explains it opts out too; do not show the same sentence twice. Never pass both.
+- **Enforced:** `scripts/check_field_help.py` (a pytest, `backend/tests/test_field_help.py`) fails on a field with neither prop. Its baseline (`scripts/field_help_baseline.json`) is empty: a new field decides when it is written.
+- **Definition-driven fields** (a custom field's label comes from its definition, a list of text areas from a field table) opt out: the label is data, not a place to hard-code copy.
 
 ## Tokens
 

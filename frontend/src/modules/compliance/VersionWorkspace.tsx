@@ -152,7 +152,7 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
       )}
 
       <div className="card stack" style={{ gap: "0.4rem" }}>
-        <TextAreaField
+        <TextAreaField helpNotNeeded
           label="Version summary"
           value={summary}
           onChange={setSummary}

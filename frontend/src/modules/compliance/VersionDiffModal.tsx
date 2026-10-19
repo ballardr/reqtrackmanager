@@ -52,7 +52,7 @@ export function VersionDiffModal({ orgId, standardId, fromVersionId, versions, o
   return (
     <Modal title="Compare versions" onClose={onClose} size="lg">
       <div className="stack">
-        <LabeledSelect
+        <LabeledSelect helpNotNeeded
           label="Compare with"
           ariaLabel="Compare with version"
           value={otherVersionId}

@@ -326,7 +326,7 @@ export function RichTextEditor({
       {linkModalOpen && (
         <Modal title="Insert link" onClose={() => setLinkModalOpen(false)}>
           <form className="stack" onSubmit={confirmInsertLink}>
-            <TextField
+            <TextField helpNotNeeded
               label="Link URL"
               value={linkUrl}
               onChange={setLinkUrl}

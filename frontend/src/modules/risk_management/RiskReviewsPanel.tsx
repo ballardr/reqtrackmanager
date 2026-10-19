@@ -136,7 +136,7 @@ export function RiskReviewsPanel({
         <Modal title={`Record review of ${risk.unique_code}`} onClose={close} size="lg">
           <div className="stack">
             <FormGrid minColumn="18rem">
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label="Outcome"
                 value={outcome}
                 onChange={(next) => setOutcome(next as RiskReviewOutcome)}
@@ -150,9 +150,9 @@ export function RiskReviewsPanel({
                 </p>
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField label="Review notes" value={notes} onChange={setNotes} rows={3} />
+                <TextAreaField helpNotNeeded label="Review notes" value={notes} onChange={setNotes} rows={3} />
               </FormGridFull>
-              <DateField label="Next review date" value={nextDate} onChange={setNextDate} />
+              <DateField helpNotNeeded label="Next review date" value={nextDate} onChange={setNextDate} />
               <FormGridFull>
                 <p className="text-muted" style={{ margin: 0 }}>Leave the date empty to schedule no further review.</p>
               </FormGridFull>

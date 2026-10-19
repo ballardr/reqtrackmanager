@@ -18,6 +18,7 @@ import { useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { OverridePill } from "../../components/OverridePill";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
+import { STAKEHOLDERS_HELP } from "./help";
 
 export function RecordVisibilityControl({
   record,
@@ -40,7 +41,7 @@ export function RecordVisibilityControl({
   const shownDespiteParent = record.hidden_override === false;
 
   return (
-    <RecordFieldGroup label="Visibility in this project" gap="0.35rem">
+    <RecordFieldGroup help={STAKEHOLDERS_HELP.recordVisibility} label="Visibility in this project" gap="0.35rem">
       <div className="row" style={{ gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
         <span data-testid="project-visibility">
           {shownDespiteParent ? "Shown, although a parent project hides it" : "Visible"}

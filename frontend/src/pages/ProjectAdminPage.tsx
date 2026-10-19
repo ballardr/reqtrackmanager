@@ -1555,7 +1555,7 @@ export function ProjectAdminPage() {
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.settings}</h2>
         <FormGrid minColumn="18rem">
-          <TextField
+          <TextField helpNotNeeded
             label={strings.admin.name}
             value={settingsName}
             onChange={(next) => {
@@ -1563,7 +1563,7 @@ export function ProjectAdminPage() {
               setSettingsName(next);
             }}
           />
-          <TextField
+          <TextField help={strings.help.projectCode}
             label={strings.projects.code}
             value={settingsCode}
             onChange={(next) => {
@@ -1580,7 +1580,7 @@ export function ProjectAdminPage() {
             </p>
           </FormGridFull>
           <FormGridFull>
-          <TextAreaField
+          <TextAreaField helpNotNeeded
             label={strings.admin.summary}
             value={settingsSummary}
             onChange={(next) => {
@@ -1591,7 +1591,7 @@ export function ProjectAdminPage() {
           />
           </FormGridFull>
         </FormGrid>
-        <CheckboxField
+        <CheckboxField help={strings.help.projectAllowMemberChangeRequests}
           label={strings.admin.allowMemberChangeRequests}
           checked={allowMemberCr}
           onChange={(next) => {
@@ -1605,7 +1605,7 @@ export function ProjectAdminPage() {
             once the org's own force is active and this project isn't
             exempt — see `exemptFromOrgLinkLock` below for the escape
             hatch. */}
-        <CheckboxField
+        <CheckboxField helpNotNeeded
           label={strings.admin.requireChangeRequestForApprovedLinks}
           checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
           onChange={(next) => {
@@ -1622,7 +1622,7 @@ export function ProjectAdminPage() {
         </p>
         {orgForceLinksLocked && (
           <>
-            <CheckboxField
+            <CheckboxField helpNotNeeded
               label={strings.admin.exemptFromOrgLinkLock}
               checked={exemptFromOrgLinkLock}
               onChange={(next) => {
@@ -1638,7 +1638,7 @@ export function ProjectAdminPage() {
             rather than this page's own plain-checkbox convention above; a
             deliberate choice per the UX style guide's component-reuse
             principle, not an oversight. */}
-        <ToggleField
+        <ToggleField helpNotNeeded
           label={strings.admin.allowAiApprovals}
           checked={allowAiApprovals}
           onChange={(next) => {
@@ -1652,7 +1652,7 @@ export function ProjectAdminPage() {
           }}
           hint={strings.admin.allowAiApprovalsHint}
         />
-        <CheckboxField
+        <CheckboxField help={strings.help.projectUsableAsTemplate}
           label={strings.admin.isTemplate}
           checked={isTemplate}
           onChange={(next) => {
@@ -1661,7 +1661,7 @@ export function ProjectAdminPage() {
           }}
         />
         <FormGrid minColumn="18rem">
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.admin.visibility}
             value={visibility}
             onChange={(next) => {
@@ -1672,7 +1672,7 @@ export function ProjectAdminPage() {
             placeholder={null}
             hint={strings.admin.visibilityHint(orgLabel)}
           />
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.admin.projectStatus}
             value={statusId}
             onChange={(next) => {
@@ -1689,7 +1689,7 @@ export function ProjectAdminPage() {
             have) a parent of its own — it's the opt-in mechanism other
             projects' managers need before this project appears in *their*
             "Parent project" picker at all. */}
-        <CheckboxField
+        <CheckboxField helpNotNeeded
           label={strings.admin.canBeParent}
           checked={canBeParent}
           onChange={(next) => {
@@ -1710,7 +1710,7 @@ export function ProjectAdminPage() {
         {showParentField && (
           <>
             <FormGrid minColumn="18rem">
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.projects.parentProject}
                 value={parentProjectId}
                 onChange={(next) => {
@@ -1732,7 +1732,7 @@ export function ProjectAdminPage() {
               />
               {parentProjectId && (
                 <>
-                  <LabeledSelect
+                  <LabeledSelect help={strings.help.projectInheritAccess}
                     label={strings.projects.inheritFromParent}
                     value={roleInheritanceMode}
                     onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
@@ -1742,7 +1742,7 @@ export function ProjectAdminPage() {
                     placeholder={null}
                   />
                   {roleInheritanceMode === "mirror_role" && (
-                    <LabeledSelect
+                    <LabeledSelect help={strings.help.projectRoleToMirror}
                       label={strings.projects.inheritModeFilterRole}
                       value={roleInheritanceFilterRole}
                       onChange={(next) => {
@@ -1781,7 +1781,7 @@ export function ProjectAdminPage() {
             message={
               <span className="stack" style={{ gap: "0.5rem" }}>
                 <span>{strings.admin.allowAiApprovalsAckBody}</span>
-                <CheckboxField
+                <CheckboxField helpNotNeeded
                   label={strings.admin.allowAiApprovalsAckCheckbox}
                   checked={aiApprovalsAckChecked}
                   onChange={setAiApprovalsAckChecked}
@@ -1824,7 +1824,7 @@ export function ProjectAdminPage() {
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
         <FormGrid minColumn="14rem">
           {TERMINOLOGY_KEYS.map((key) => (
-            <TextField
+            <TextField helpNotNeeded
               key={key}
               label={strings.admin.terminologyKeyLabel[key]}
               placeholder={key}
@@ -1892,7 +1892,7 @@ export function ProjectAdminPage() {
               )}
               {s.status === "approved" && (
                 <div className="row">
-                  <CheckboxField
+                  <CheckboxField helpNotNeeded
                     label={strings.admin.cascadeToRequirements}
                     checked={cascadeInputs[s.id] ?? false}
                     onChange={(next) => setCascadeInputs((c) => ({ ...c, [s.id]: next }))}
@@ -1932,7 +1932,7 @@ export function ProjectAdminPage() {
           );
         })}
         <div className="row" style={{ alignItems: "flex-end" }}>
-          <TextField label={strings.admin.name} placeholder={strings.admin.name} value={newStageName} onChange={setNewStageName} />
+          <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newStageName} onChange={setNewStageName} />
           <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
             <Plus /> {strings.admin.newStage}
           </button>
@@ -2087,13 +2087,13 @@ export function ProjectAdminPage() {
                   );
                 })}
                 <div className="row" style={{ alignItems: "flex-end" }}>
-                  <TextField
+                  <TextField helpNotNeeded
                     label={strings.admin.name}
                     placeholder={strings.admin.name}
                     value={categoryInput.name}
                     onChange={(next) => setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, name: next } }))}
                   />
-                  <TextField
+                  <TextField help={strings.help.requirementPrefix}
                     label={strings.admin.prefix}
                     placeholder={strings.admin.prefix}
                     value={categoryInput.prefix}
@@ -2115,8 +2115,8 @@ export function ProjectAdminPage() {
           );
         })}
         <div className="row" style={{ alignItems: "flex-end" }}>
-          <TextField label={strings.admin.name} placeholder={strings.admin.name} value={newComponentName} onChange={setNewComponentName} />
-          <TextField
+          <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newComponentName} onChange={setNewComponentName} />
+          <TextField help={strings.help.requirementPrefix}
             label={strings.admin.prefix}
             placeholder={strings.admin.prefix}
             value={newComponentPrefix}
@@ -2160,7 +2160,7 @@ export function ProjectAdminPage() {
           </div>
         ))}
         <div className="row" style={{ alignItems: "flex-end" }}>
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.admin.fieldAppliesTo}
             value={newFieldKind}
             onChange={(next) => setNewFieldKind(next as CustomFieldEntityKind)}
@@ -2170,8 +2170,8 @@ export function ProjectAdminPage() {
             ]}
             placeholder={null}
           />
-          <TextField label={strings.admin.fieldName} placeholder={strings.admin.fieldName} value={newFieldName} onChange={setNewFieldName} />
-          <LabeledSelect
+          <TextField helpNotNeeded label={strings.admin.fieldName} placeholder={strings.admin.fieldName} value={newFieldName} onChange={setNewFieldName} />
+          <LabeledSelect helpNotNeeded
             label={strings.admin.fieldTypeLabel}
             value={newFieldType}
             onChange={(next) => setNewFieldType(next as CustomFieldType)}
@@ -2184,14 +2184,14 @@ export function ProjectAdminPage() {
             placeholder={null}
           />
           {newFieldType === "list" && (
-            <TextField
+            <TextField helpNotNeeded
               label={strings.admin.optionsCommaSeparated}
               placeholder={strings.admin.optionsCommaSeparated}
               value={newFieldOptions}
               onChange={setNewFieldOptions}
             />
           )}
-          <CheckboxField label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
+          <CheckboxField helpNotNeeded label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
           <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
             <Plus /> {strings.admin.newCustomField}
           </button>
@@ -2346,7 +2346,7 @@ export function ProjectAdminPage() {
           // "No roles assigned" in the Groups tab/SidePanel until one is
           // granted via the new per-row `MultiSelectDropdown`.
           <Modal title={strings.admin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
-            <TextField
+            <TextField helpNotNeeded
               label={strings.admin.name}
               value={newGroupName}
               onChange={setNewGroupName}
@@ -2489,7 +2489,7 @@ export function ProjectAdminPage() {
           return (
             <SidePanel title={strings.admin.groupDetails(g.name)} onClose={() => setOpenGroupId(null)}>
               <div className="stack">
-                <RecordFieldGroup label={strings.admin.groupRoleAtTop}>
+                <RecordFieldGroup helpNotNeeded label={strings.admin.groupRoleAtTop}>
                   {/* Same per-row MultiSelectDropdown as the Groups
                       tab's own "role" column (groupsTabColumns) — kept in
                       sync since both read from `memberTableGroups`/`groups`
@@ -2750,7 +2750,7 @@ export function ProjectAdminPage() {
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportSetupHint}</p>
         {reportTemplates.length > 0 && (
           <CollapsibleSection sectionKey="projectAdmin.reportSetup.defaultTemplate" title={strings.admin.defaultTemplateSection} defaultCollapsed={false}>
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label={strings.admin.defaultReportTemplate}
               value={defaultReportTemplateId}
               onChange={(next) => {

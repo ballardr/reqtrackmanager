@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19 and 20 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20 and 21 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-19 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19, Phase 20 done 2026-10-20; Phases 8, 9, 10, 13, 14, 15, 16, 17, 18, 19 and 20 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 21.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+20 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19, Phases 20 and 21 done 2026-10-20; Phases 8, 9, 10, 13, 14, 15, 16, 17, 18, 19, 20 and 21 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 23.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review now that Phase 21 is done.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -28,7 +28,7 @@
 | 18 | Tags on every item type | N22 | [x] |
 | 19 | Create forms accept every field the edit form does (pain point first) | N23 | [x] |
 | 20 | Nested-project scope filter on every list | N24 | [x] |
-| 21 | Field help (?) tooltips | N25 | [ ] |
+| 21 | Field help (?) tooltips | N25 | [x] |
 | 23 | Global search: plain header search box with live results, search page (scope, filters, field picker), per-user default search fields, per-type search registration | N26 | [ ] |
 | 24 | Record codes in reports, CSV and PDF exports, bundles and embedded references | N7, N27 | [ ] |
 | 25 | Server administrators can add users directly (Server Management → Users) | N28 | [ ] |
@@ -508,6 +508,14 @@ Reading the diagram: a module is checked at three levels from the server down. A
 - **Check:** a unit test that scans form components for field wrappers that have neither `help` nor `helpNotNeeded`, and fails the build; the sweep batches follow Phase 10's batches.
 - **Agent rule (added to `CLAUDE.md` and the style guide with the component):** "Every non-obvious form field has `help` text; opting out requires `helpNotNeeded` and is reserved for self-explanatory fields."
 - **Tests:** Storybook (default, open, long text, narrow); Playwright: open and close help by mouse and keyboard on the persona form.
+
+- **Done 2026-10-20 (uncommitted at hand-back).** Details, the opt-out rationale and the SOC 2 review are in `docs/decisions.md`.
+  - **Built:** `FieldHelp`/`FieldCaption`/`FieldShell` (`components/FieldHelp.tsx`); `help` and `helpNotNeeded` on `TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `CheckboxField`, `ToggleField`, `ColorField`, `FileField`, `UploadField`, `PrincipalFormField` and `RecordFieldGroup`; `strings.help` plus a `help.ts` in each module that owns field copy.
+  - **Differs from the spec:** the text opens in place under the caption rather than in a `Popover` (forms sit inside popovers, which cannot nest). The button is named "Help: {label}" by hidden text, not `aria-label`, so `getByLabel("Name")` finds only the field.
+  - **Sweep:** 432 fields in 104 files decided: 73 `help`, 359 `helpNotNeeded` (names, titles, comments, fields whose hint already explains them, and data-driven labels).
+  - **Check:** `scripts/check_field_help.py` with an empty baseline, run by `backend/tests/test_field_help.py`. Agent rule in `CLAUDE.md`; style guide "Pattern: field help"; website overview page.
+  - **Also fixed:** `project-codes.spec.ts` navigated before the background preference save landed, so it failed intermittently.
+  - **Tests:** the pytest above; Storybook `FieldHelp` (7), Persona form and `PrincipalFormField` stories, full suite 281 files / 2155 tests; Playwright `stakeholders/field-help.spec.ts` (2).
 
 ### Phase 23 — Global search (N26)
 

@@ -45,7 +45,7 @@ export function ReportParamsForm({
   return (
     <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }} role="group" aria-label="Report options">
       {projectOptions && (
-        <LabeledSelect
+        <LabeledSelect helpNotNeeded
           label="Project"
           value={typeof values.project_id === "string" ? values.project_id : ""}
           onChange={(next) => onChange("project_id", next === "" ? null : next)}
@@ -89,7 +89,7 @@ function ParamControl({
   }
   if (param.choices && param.choices.length > 0) {
     return (
-      <LabeledSelect
+      <LabeledSelect helpNotNeeded
         label={label}
         value={value === undefined || value === null ? "" : String(value)}
         onChange={(next) => onChange(next === "" ? null : next)}
