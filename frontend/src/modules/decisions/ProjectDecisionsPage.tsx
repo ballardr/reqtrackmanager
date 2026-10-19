@@ -48,12 +48,16 @@ import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, D
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 
 export function ProjectDecisionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "decision");
+  const commitTags = useCommitTags(projectId ?? "", "decision");
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [decisionTypes, setDecisionTypes] = useState<DecisionTypeDefinition[]>([]);
@@ -66,6 +70,7 @@ export function ProjectDecisionsPage() {
   const [decisionTypeFilter, setDecisionTypeFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [ownedByMe, setOwnedByMe] = useState(false);
+  const tagFilter = useTagFilter();
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -80,6 +85,8 @@ export function ProjectDecisionsPage() {
         decision_type_id: decisionTypeFilter || undefined,
         include_archived: includeArchived,
         owner_mine: ownedByMe,
+        tags: tagFilter.tags,
+        tag_mode: tagFilter.mode,
       }));
       setLoadError(null);
     } catch (err) {
@@ -97,7 +104,7 @@ export function ProjectDecisionsPage() {
     decisionsApi.listDecisionTypes(projectId).then(setDecisionTypes);
   }, [projectId]);
 
-  useLoadOnChange(reloadDecisions, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe]);
+  useLoadOnChange(reloadDecisions, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe, tagFilter.query]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -156,6 +163,7 @@ export function ProjectDecisionsPage() {
             </select>
           </FilterField>
           <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -170,13 +178,14 @@ export function ProjectDecisionsPage() {
           currentUserId={user?.id}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: DecisionFieldValues, quickLinks) => {
+          onSave={async (values: DecisionFieldValues, quickLinks, tags) => {
             setCreateError(null);
             try {
               const created = await decisionsApi.createDecision(projectId, values);
               showToast("Decision created.");
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reloadDecisions();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create decision."));

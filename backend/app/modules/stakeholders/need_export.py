@@ -36,6 +36,7 @@ from app.modules.stakeholders._principals import NEED_PRINCIPAL_FIELDS, principa
 from app.modules.stakeholders.enums import NeedStatus, PersonaScope, StakeholderScope
 from app.modules.stakeholders.models import Persona, Stakeholder, StakeholderNeed, StakeholderNeedFile
 from app.modules.stakeholders.service import (
+    NEED_ARTEFACT_TYPE,
     STAKEHOLDER_ARTEFACT_TYPE,
     add_gives_rise_to_link,
     add_has_need_link,
@@ -47,6 +48,7 @@ from app.modules.stakeholders.service import (
     list_need_requirement_links,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.tags import record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = ("name", "description", "rationale")
 
@@ -77,7 +79,7 @@ def _need_json(db: Session, need: StakeholderNeed, project: Project, emails: dic
         **{f: getattr(v, f) for f in _TEXT_FIELDS}, "status": v.status.value,
         **principals_to_bundle(db, v, NEED_PRINCIPAL_FIELDS), "created_by_email": emails.get(need.creator_id), "is_archived": need.is_archived,
         "archived_at": _j(need.archived_at), "created_at": _j(need.created_at), "holders": holders,
-        "requirement_unique_codes": codes,
+        "requirement_unique_codes": codes, "tags": record_tag_names(db, NEED_ARTEFACT_TYPE, need.id),
     }
 
 
@@ -150,6 +152,10 @@ def import_project_data(
         need.archived_at = _dt(n.get("archived_at"))
         need.archived_by = creator_id if need.is_archived else None
         db.flush()
+        restore_record_tags(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=NEED_ARTEFACT_TYPE, artefact_id=need.id, names=n.get("tags"),
+        )
         for holder in n.get("holders", []):
             lookup = stakeholders if holder["kind"] == STAKEHOLDER_ARTEFACT_TYPE else personas
             holder_id = lookup.get((holder["name"], holder["scope"]))

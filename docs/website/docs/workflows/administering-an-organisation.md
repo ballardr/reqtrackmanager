@@ -31,6 +31,10 @@ Deleting a group never leaves a project without a Project Manager. Every project
 
 Set the organisation's logo and, under **Templates & reports**, define **report templates** (accent colour, cover page, footer text, and optional content) and organisation-wide **report defaults** (introduction, chapters and appendices, written separately for each report type) that a project falls back to, after its parent projects, wherever it leaves its own report content blank. See [Core Features → Reports and export](../core-features/reports-and-export.md).
 
+## Tags
+
+**Org admin → Tags** holds the tags used by records the organisation itself owns (organisation personas, stakeholders, strategies and so on) and the setting for who may add a new one. A project's own records use that project's tags. See [Tags](../core-features/tags.md#child-projects-and-the-organisation).
+
 ## Link types
 
 Under **Projects & workflow → Link types**, define the vocabulary of links between records: each link type's name in both directions, its direction (upstream, downstream or none), which kinds of record it may join (**Can link from** / **Can link to**), and, in the **By artefact type** tab, which link types each kind of record may use. Deleting a link type that is in use opens a dialog to move its links to another type or delete them too. A switch on the same page decides whether project admins may add link types of their own and hide the organisation's. See [Links and traceability](../core-features/links-and-traceability.md#link-types).

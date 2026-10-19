@@ -132,7 +132,7 @@ export const CreateRunsTheCallerAndClosesOnSuccess: Story = {
   play: async ({ canvasElement, args }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "New Widget" }));
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Save widget" }));
-    await waitFor(() => expect(args.onCreate).toHaveBeenCalledWith("values", []));
+    await waitFor(() => expect(args.onCreate).toHaveBeenCalledWith("values", [], []));
     await waitFor(() => expect(within(canvasElement).queryByRole("dialog")).not.toBeInTheDocument());
   },
 };

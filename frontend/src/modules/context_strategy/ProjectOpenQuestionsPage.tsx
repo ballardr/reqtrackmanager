@@ -37,13 +37,17 @@ import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQ
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "open_question");
+  const commitTags = useCommitTags(projectId ?? "", "open_question");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [openQuestions, setOpenQuestions] = useState<OpenQuestion[] | null>(null);
@@ -53,6 +57,7 @@ export function ProjectOpenQuestionsPage() {
   const [statusFilter, setStatusFilter] = useState<OpenQuestionStatus | "">(() => oneOf(initial.get("status"), Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]));
   const [priorityFilter, setPriorityFilter] = useState<OpenQuestionPriority | "">(() => oneOf(initial.get("priority"), Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]));
   const [includeArchived, setIncludeArchived] = useState(false);
+  const tagFilter = useTagFilter();
   const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
   const [overdueOnly, setOverdueOnly] = useState(initial.get("overdue") === "1");
   const [unownedOnly, setUnownedOnly] = useState(initial.get("unowned") === "1");
@@ -63,7 +68,7 @@ export function ProjectOpenQuestionsPage() {
   async function reloadOpenQuestions() {
     if (!projectId) return;
     try {
-      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived }));
+      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -75,7 +80,7 @@ export function ProjectOpenQuestionsPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useLoadOnChange(reloadOpenQuestions, [projectId, includeArchived]);
+  useLoadOnChange(reloadOpenQuestions, [projectId, includeArchived, tagFilter.query]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -141,6 +146,7 @@ export function ProjectOpenQuestionsPage() {
           <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
           <FilterCheckbox label="Overdue only" checked={overdueOnly} onChange={setOverdueOnly} />
           <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -150,13 +156,14 @@ export function ProjectOpenQuestionsPage() {
           projectId={projectId}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: OpenQuestionFieldValues, quickLinks) => {
+          onSave={async (values: OpenQuestionFieldValues, quickLinks, tags) => {
             setCreateError(null);
             try {
               const created = await projectOpenQuestionApi.create(projectId, values);
               showToast("Open Question created.");
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reloadOpenQuestions();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Open Question."));

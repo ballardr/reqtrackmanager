@@ -54,6 +54,7 @@ from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
 from app.services.sequences import generate_unique_code
+from app.services.tags import TagFilter
 
 router = APIRouter(tags=["change-requests-core"])
 
@@ -451,9 +452,11 @@ def list_change_requests(
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Lists change requests, with optional status/target-version filters.
+    `tag`/`tag_mode` narrow to change requests carrying those tags.
     `limit`/`offset` (U-P-06) are optional pagination — see `list_requirements`
     for the same pattern.
 
@@ -506,6 +509,7 @@ def list_change_requests(
     # rows and a just-created request could land anywhere (2026-10-04). Also
     # the tie-breaker for `sort` below, since Python's sort is stable.
     crs = db.scalars(query.order_by(ChangeRequest.created_at.desc(), ChangeRequest.id.desc())).all()
+    crs = tag_filter.keep(db, project_id, "change_request", crs)
     needle = search.strip().lower() if search and search.strip() else None
     requirement_text: dict[UUID, str] = {}
     if needle:

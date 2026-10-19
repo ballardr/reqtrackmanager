@@ -18,6 +18,7 @@ import csv
 import io
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -43,7 +44,7 @@ from app.models.enums import (
     StageStatus,
 )
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
-from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
@@ -57,6 +58,7 @@ from app.schemas.requirement import (
     RequirementVersionOut,
 )
 from app.services import engagement, pubsub
+from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.bundle_common import enforce_upload_size_limit
 from app.services.changes import get_project_changes
@@ -155,10 +157,7 @@ def _prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id
     if len(prefetch.versions) != len(set(requirement_ids)):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
     prefetch.people = version_people(db, prefetch.versions.values())
-    for requirement_id, keyword in db.execute(select(RequirementKeyword.requirement_id, RequirementKeyword.keyword).where(
-        RequirementKeyword.requirement_id.in_(requirement_ids),
-    )).all():
-        prefetch.keywords.setdefault(requirement_id, []).append(keyword)
+    prefetch.keywords = tag_service.keywords_for_requirements(db, requirement_ids)
     prefetch.subscribed = set(db.scalars(select(Subscription.entity_id).where(
         Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
         Subscription.entity_type == "requirement",
@@ -287,6 +286,8 @@ def list_requirements(
     component_id: UUID | None = None,
     category_id: UUID | None = None,
     keyword: str | None = None,
+    tag: list[str] = Query([], description="Only requirements carrying these tags (case-insensitive)."),
+    tag_mode: Literal["any", "all"] = Query("any", description="Whether a requirement needs any or all of the `tag`s."),
     search: str | None = None,
     status_filter: RequirementStatus | None = Query(None, alias="status"),
     is_completed: bool | None = None,
@@ -344,6 +345,11 @@ def list_requirements(
         query = query.where(Requirement.component_id == component_id)
     if category_id:
         query = query.where(Requirement.category_id == category_id)
+    if any(t.strip() for t in tag):
+        project = db.get(Project, project_id)
+        query = query.where(Requirement.id.in_(
+            tag_service.tagged_ids(db, project=project, artefact_type="requirement", names=tag, match_all=tag_mode == "all")
+        ))
     requirements = db.scalars(query).all()
     prefetch = _prefetch_for_list(db, [r.id for r in requirements], current_user.id)
 
@@ -351,7 +357,7 @@ def list_requirements(
     for req in requirements:
         version = prefetch.versions[req.id]
         kws = prefetch.keywords.get(req.id, [])
-        if keyword and keyword.lower() not in kws:
+        if keyword and keyword.casefold() not in {k.casefold() for k in kws}:
             continue
         if search:
             needle = search.lower()
@@ -708,7 +714,8 @@ def update_requirement(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
         requirement.component_id = payload.component_id
         requirement.category_id = payload.category_id
-    set_keywords(db, requirement, payload.keywords)
+    if payload.keywords is not None:
+        set_keywords(db, requirement, payload.keywords, current_user.id)
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="updated",
               actor_id=current_user.id, project_id=project_id, detail={"change_note": payload.change_note})
     requirements_updated_total.inc()

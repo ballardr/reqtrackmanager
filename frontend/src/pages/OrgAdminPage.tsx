@@ -57,6 +57,7 @@ import {
   PROJECT_ROLE_LABEL,
   toModuleAvailability,
 } from "../api/types";
+import { OrgTagsPanel } from "../components/OrgTagsPanel";
 import { ActionMenu } from "../components/ActionMenu";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
@@ -141,6 +142,7 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "email",
   "security",
   "modules",
+  "tags",
   // Fine-Grained Access Control (core, not a module —): custom-role
   // definition (ORG_ADMIN-only) plus the broader grant_roles-based
   // assignment surface, named "Role Management".
@@ -2257,6 +2259,7 @@ export function OrgAdminPage() {
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
+    { key: "tags", label: strings.orgAdmin.groupTags, href: `/orgs/${orgId}/admin/tags` },
     { key: "role-management", label: strings.orgAdmin.groupRoleManagement, href: `/orgs/${orgId}/admin/role-management` },
     ...moduleAdminSections.map((section) => ({
       key: section.key,
@@ -3830,6 +3833,14 @@ export function OrgAdminPage() {
                 {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
               </CollapsibleSection>
             )}
+          </div>
+        )}
+
+        {activeGroup === "tags" && orgId && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.tags" title={strings.tags.admin.title}>
+              <OrgTagsPanel organizationId={orgId} />
+            </CollapsibleSection>
           </div>
         )}
 

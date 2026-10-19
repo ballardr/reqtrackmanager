@@ -7,6 +7,7 @@
  * `onCreate` is optional here. Status renders through `NEED_STATUS_LABEL`.
  */
 import { NeedFormModal } from "./NeedFormModal";
+import type { TagFilterState } from "../../hooks/useTagFilter";
 import { RecordListView } from "./RecordListView";
 import type { Need, NeedFieldValues } from "./types";
 import { NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
@@ -19,6 +20,7 @@ export function NeedListView({
   includeArchived,
   onIncludeArchivedChange,
   onOpen,
+  tagFilter,
   onCreate,
 }: {
   needs: Need[];
@@ -28,6 +30,8 @@ export function NeedListView({
   includeArchived: boolean;
   onIncludeArchivedChange: (next: boolean) => void;
   onOpen: (need: Need) => void;
+  /** The project's tag filter (state kept by the page); omit where tags are not offered. */
+  tagFilter?: { projectId: string; filter: TagFilterState };
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when needs are created elsewhere. */
   onCreate?: (values: NeedFieldValues) => Promise<void>;
 }) {
@@ -48,6 +52,7 @@ export function NeedListView({
       includeArchived={includeArchived}
       onIncludeArchivedChange={onIncludeArchivedChange}
       onOpen={onOpen}
+      tagFilter={tagFilter}
       onCreate={onCreate}
       renderCreateModal={
         onCreate ? (props) => <NeedFormModal error={props.error} onCancel={props.onCancel} onSave={props.onSave} /> : undefined

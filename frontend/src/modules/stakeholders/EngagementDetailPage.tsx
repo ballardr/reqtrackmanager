@@ -23,6 +23,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FormGrid } from "../../components/FormGrid";
 import { PrincipalListField } from "../../components/PrincipalListField";
@@ -157,6 +158,7 @@ export function EngagementDetailPage() {
         recordLabel="Engagement"
         title={engagement.title}
         code={engagement.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="engagement" artefactId={engagement.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/stakeholders/engagements`, label: "← Engagements" }}
         badges={
           <>

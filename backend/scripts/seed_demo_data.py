@@ -253,7 +253,7 @@ def set_requirement_status(
         "clarification": requirement.get("clarification", ""),
         "component_id": requirement["component_id"], "category_id": requirement["category_id"],
         "owner": owner or requirement.get("owner") or {"type": "user", "id": requirement["creator_id"]},
-        "status": status_value, "keywords": requirement.get("keywords", []),
+        "status": status_value,
         "custom_fields": requirement.get("custom_fields", {}),
         "change_note": f"Marked {status_value} during scoping.",
     }
@@ -264,6 +264,23 @@ def set_requirement_status(
     if reviewer is not None:
         body["reviewer"] = reviewer
     r = httpx.put(f"{BASE}/projects/{project_id}/requirements/{requirement['id']}", json=body, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_tag(headers: dict, project_id: str, name: str, colour: str | None = None) -> dict:
+    """Adds a tag to a project's own vocabulary."""
+    r = httpx.post(f"{BASE}/projects/{project_id}/tags", json={"name": name, "colour": colour}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def tag_record(headers: dict, project_id: str, artefact_type: str, artefact_id: str, names: list[str]) -> dict:
+    """Makes a record carry exactly `names` (any registered artefact type; new names are created in a free project)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/tags", json={"tags": names},
+        headers=headers, timeout=30,
+    )
     r.raise_for_status()
     return r.json()
 
@@ -3106,6 +3123,26 @@ def main() -> None:
           f" (inherent {risk_single_controller['inherent_rating']['label']}, residual {risk_single_controller['residual_rating']['label']}),"
           f" {risk_regulator['unique_code']} {risk_regulator['title']!r} (inherent {risk_regulator['inherent_rating']['label']}"
           f" from its pinned cell), plus {risk_unscored['unique_code']} captured with no assessment yet and a modem supply-chain risk")
+
+    print("Seeding tags — Falcon-3's own vocabulary (with colours), tags on requirements, a Pain Point, a Risk and"
+          " a Persona of different kinds, an organisation tag on an organisation Persona, and the Avionics"
+          " sub-project following Falcon-3's list...")
+    create_tag(h_pm, drone["id"], "Safety-critical", "#c53030")
+    create_tag(h_pm, drone["id"], "Regulatory", "#2b6cb0")
+    create_tag(h_pm, drone["id"], "Release 1", "#2f855a")
+    create_tag(h_pm, drone["id"], "Needs review")
+    drone_req_list = list(drone_reqs.values())
+    for index, requirement in enumerate(drone_req_list[:6]):
+        names = ["Safety-critical"] if index % 3 == 0 else ["Regulatory", "Release 1"] if index % 3 == 1 else ["Release 1"]
+        tag_record(h_pm, drone["id"], "requirement", requirement["id"], names)
+    tag_record(h_pm, drone["id"], "pain_point", pp_accepted["id"], ["Safety-critical", "Needs review"])
+    tag_record(h_pm, drone["id"], "risk", risk_single_controller["id"], ["Safety-critical"])
+    tag_record(h_pm, drone["id"], "persona", drone_operator_persona["id"], ["Regulatory"])
+    create_tag_org = httpx.post(
+        f"{BASE}/orgs/{org['id']}/tags", json={"name": "Strategic", "colour": "#6b46c1"}, headers=h_pm, timeout=30,
+    )
+    create_tag_org.raise_for_status()
+    tag_record(h_pm, drone["id"], "persona", persona_inspector["id"], ["Strategic"])
 
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")

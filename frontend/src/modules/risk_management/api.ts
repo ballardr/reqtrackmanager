@@ -9,6 +9,7 @@
  * / `organizationId` parameters match the endpoint's scope.
  */
 import { api } from "../../api/client";
+import { appendTagParams, type TagListFilters } from "../../api/tags";
 import type { FileAsset } from "../../api/types";
 import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type { EffectiveTypeRow, OrgTypeRow } from "../../components/TypeVocabularyPanels";
@@ -31,7 +32,7 @@ const orgBase = (organizationId: string) => `/api/v1/orgs/${organizationId}/modu
 const riskUrl = (projectId: string, riskId: string) => `${projectBase(projectId)}/risks/${riskId}`;
 
 /** Optional filters of the register list. */
-export interface RiskListFilters {
+export interface RiskListFilters extends TagListFilters {
   include_archived?: boolean;
   effectively_treated?: boolean;
   review_overdue?: boolean;
@@ -43,6 +44,7 @@ export const riskApi = {
     if (filters.include_archived) params.set("include_archived", "true");
     if (filters.effectively_treated !== undefined) params.set("effectively_treated", String(filters.effectively_treated));
     if (filters.review_overdue !== undefined) params.set("review_overdue", String(filters.review_overdue));
+    appendTagParams(params, filters);
     const query = params.toString();
     return api.get<Risk[]>(`${projectBase(projectId)}/risks${query ? `?${query}` : ""}`);
   },

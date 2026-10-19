@@ -56,6 +56,7 @@ from app.modules.stakeholders.service import (
 from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholder-needs-project"])
 
@@ -92,11 +93,12 @@ def create_need(
 
 @router.get("/needs", response_model=list[NeedOut])
 def list_needs(
-    project_id: UUID, include_archived: bool = False,
+    project_id: UUID, include_archived: bool = False, tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     _project(db, project_id)
-    return nd.needs_to_out(db, list_project_needs(db, project_id, include_archived=include_archived))
+    needs = list_project_needs(db, project_id, include_archived=include_archived)
+    return nd.needs_to_out(db, tag_filter.keep(db, project_id, NEED_ARTEFACT_TYPE, needs))
 
 
 @router.get("/needs/{need_id}", response_model=NeedOut)

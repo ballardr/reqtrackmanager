@@ -43,6 +43,9 @@ import { RISK_STATUS_LABEL, RISK_STATUS_TONE } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 
 type View = "register" | "matrix";
 
@@ -69,6 +72,7 @@ export function ProjectRisksPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "risk");
+  const commitTags = useCommitTags(projectId ?? "", "risk");
   const scheme = useRiskScheme(projectId);
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -85,6 +89,7 @@ export function ProjectRisksPage() {
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [untreatedOnly, setUntreatedOnly] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const tagFilter = useTagFilter();
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -106,7 +111,7 @@ export function ProjectRisksPage() {
     if (!projectId) return;
     let active = true;
     riskApi
-      .list(projectId, { include_archived: includeArchived })
+      .list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode })
       .then((list) => {
         if (!active) return;
         setRisks(list);
@@ -118,7 +123,7 @@ export function ProjectRisksPage() {
     return () => {
       active = false;
     };
-  }, [projectId, includeArchived, refreshKey]);
+  }, [projectId, includeArchived, refreshKey, tagFilter.tags, tagFilter.mode]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -242,6 +247,7 @@ export function ProjectRisksPage() {
           </FilterField>
           <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
           <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -256,13 +262,14 @@ export function ProjectRisksPage() {
           currentUserId={user?.id}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: RiskFieldValues, _changeNote, quickLinks) => {
+          onSave={async (values: RiskFieldValues, _changeNote, quickLinks, tags) => {
             setCreateError(null);
             try {
               const created = await riskApi.create(projectId, values);
               showToast("Risk created.");
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               setRefreshKey((k) => k + 1);
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create risk."));

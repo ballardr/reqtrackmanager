@@ -9,6 +9,7 @@ import {
   withRouter, withStatefulAuth, withTerminology, withToast,
 } from "../testing/storybook-helpers";
 import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
+import { buildVocabulary } from "../testing/tagsFixtures";
 import { RequirementsPage } from "./RequirementsPage";
 
 const PROJECT_ID = "project-1";
@@ -34,11 +35,15 @@ function finderReply(path: string, options: ArtefactLinkTypeOption[], candidates
 
 function mockRequirementsListApis(
   myRoles: "manager" | "member",
-  opts: { components?: Component[]; categories?: Category[]; linkOptions?: ArtefactLinkTypeOption[]; candidates?: ArtefactLinkCandidate[] } = {},
+  opts: {
+    components?: Component[]; categories?: Category[]; linkOptions?: ArtefactLinkTypeOption[]; candidates?: ArtefactLinkCandidate[];
+    withTags?: boolean;
+  } = {},
 ) {
   const comps = opts.components ?? components;
   const cats = opts.categories ?? categories;
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (opts.withTags && path.endsWith(`/projects/${PROJECT_ID}/tags`)) return buildVocabulary();
     if (path.endsWith("/my-roles")) return { roles: myRoles === "manager" ? ["project_manager"] : ["member"] };
     if (path.includes("/artefacts/")) return finderReply(path, opts.linkOptions ?? [], opts.candidates ?? []);
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles === "manager" ? ["project_manager"] : ["member"] })];
@@ -194,6 +199,34 @@ export const FilterByStatusBadge: Story = {
     await userEvent.click(draftBadge);
     const statusSelect = canvas.getByLabelText("Status");
     await expect(statusSelect).toHaveValue("draft");
+  },
+};
+
+/** The tag filter lists the project's tags and sends the chosen ones, with the match mode, in the list read. */
+export const FilterByTagSendsTheTagParameters: Story = {
+  beforeEach: () => mockRequirementsListApis("manager", { withTags: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await userEvent.click(await canvas.findByRole("button", { name: "Tags" }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Safety" }));
+    await waitFor(() => {
+      const paths = (api.getPage as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
+      expect(paths.some((p) => p.includes("tag=Safety") && p.includes("tag_mode=any"))).toBe(true);
+    });
+  },
+};
+
+/** "Tag selected" in the bulk toolbar opens the dialog that adds and removes tags on the selected rows. */
+export const BulkTagSelectedOpensTheTagDialog: Story = {
+  beforeEach: () => mockRequirementsListApis("manager", { withTags: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await userEvent.click(canvas.getByLabelText("Select AUTH-LOG-001 Reset password"));
+    await userEvent.click(canvas.getByRole("button", { name: "Tag selected" }));
+    await expect(await within(document.body).findByRole("dialog", { name: "Tag 1 selected requirement" })).toBeInTheDocument();
   },
 };
 

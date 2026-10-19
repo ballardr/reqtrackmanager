@@ -36,6 +36,8 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { TagFilterField } from "../../components/TagFilterField";
+import type { TagFilterState } from "../../hooks/useTagFilter";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
 import { Badge } from "../../components/Badge";
@@ -75,6 +77,7 @@ export function RecordListView<R extends ListedRecord, V>({
   columnsAfterScope,
   toolbar,
   extraFilters,
+  tagFilter,
   includeArchived = false,
   onIncludeArchivedChange,
   includeHidden = false,
@@ -112,6 +115,8 @@ export function RecordListView<R extends ListedRecord, V>({
   toolbar?: ReactNode;
   /** Extra `FilterField`s a kind adds to the filter panel (e.g. Stakeholders' group filter). */
   extraFilters?: ReactNode;
+  /** Offers the project's tag filter; the page keeps the state (`useTagFilter`) and sends it with its list read. */
+  tagFilter?: { projectId: string; filter: TagFilterState };
   includeArchived?: boolean;
   /** Offered when passed; omit for a kind that cannot be archived. */
   onIncludeArchivedChange?: (next: boolean) => void;
@@ -122,9 +127,9 @@ export function RecordListView<R extends ListedRecord, V>({
   onShowHidden?: (record: R) => void;
   onOpen: (record: R) => void;
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit (with `renderCreateModal`) when records are created elsewhere. */
-  onCreate?: (values: V, quickLinks: CollectedLink[]) => Promise<void>;
+  onCreate?: (values: V, quickLinks: CollectedLink[], tags: string[]) => Promise<void>;
   /** Renders the create form; `onSave` is already wired to `onCreate` and the error state. */
-  renderCreateModal?: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V, quickLinks?: CollectedLink[]) => void }) => ReactNode;
+  renderCreateModal?: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V, quickLinks?: CollectedLink[], tags?: string[]) => void }) => ReactNode;
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -235,6 +240,7 @@ export function RecordListView<R extends ListedRecord, V>({
             </FilterField>
           )}
           {extraFilters}
+          {tagFilter && <TagFilterField projectId={tagFilter.projectId} filter={tagFilter.filter} />}
           {onIncludeArchivedChange && (
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
           )}
@@ -249,10 +255,10 @@ export function RecordListView<R extends ListedRecord, V>({
           scopeLabel,
           error: createError,
           onCancel: () => { setCreating(false); setCreateError(null); },
-          onSave: async (values, quickLinks = []) => {
+          onSave: async (values, quickLinks = [], tags = []) => {
             setCreateError(null);
             try {
-              await onCreate(values, quickLinks);
+              await onCreate(values, quickLinks, tags);
               setCreating(false);
             } catch (err) {
               setCreateError(toErrorMessage(err, `Could not create ${noun}.`));

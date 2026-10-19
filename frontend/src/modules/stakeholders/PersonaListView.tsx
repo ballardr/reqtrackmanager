@@ -9,6 +9,7 @@
  * The "Show hidden" filter and Visibility column are `RecordListView`'s.
  */
 import { PersonaFormModal } from "./PersonaFormModal";
+import type { TagFilterState } from "../../hooks/useTagFilter";
 import { RecordListView } from "./RecordListView";
 import type { Persona, PersonaFieldValues } from "./types";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
@@ -28,6 +29,7 @@ export function PersonaListView({
   onIncludeHiddenChange,
   onShowHidden,
   onOpen,
+  tagFilter,
   onCreate,
 }: {
   personas: Persona[];
@@ -47,6 +49,8 @@ export function PersonaListView({
   /** Re-shows a hidden persona in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (persona: Persona) => void;
   onOpen: (persona: Persona) => void;
+  /** The project's tag filter (state kept by the page); omit where tags are not offered. */
+  tagFilter?: { projectId: string; filter: TagFilterState };
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when personas are created elsewhere. */
   onCreate?: (values: PersonaFieldValues) => Promise<void>;
 }) {
@@ -80,6 +84,7 @@ export function PersonaListView({
       onIncludeHiddenChange={onIncludeHiddenChange}
       onShowHidden={onShowHidden}
       onOpen={onOpen}
+      tagFilter={tagFilter}
       onCreate={onCreate}
       renderCreateModal={onCreate ? (props) => <PersonaFormModal {...props} typeOptions={typeOptions} /> : undefined}
     />

@@ -14,6 +14,7 @@
  * `organization_id` to match the scope.
  */
 import { api } from "../../api/client";
+import { appendTagParams, type TagListFilters } from "../../api/tags";
 import type { FileAsset, PrincipalRef } from "../../api/types";
 import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type {
@@ -66,7 +67,7 @@ const projectBase = (projectId: string) => `/api/v1/projects/${projectId}/module
 const orgBase = (organizationId: string) => `/api/v1/orgs/${organizationId}/modules/stakeholders`;
 
 /** Every list endpoint's optional filters. */
-export interface RecordListFilters {
+export interface RecordListFilters extends TagListFilters {
   include_archived?: boolean;
   /** Project Stakeholder list only: also list org Stakeholders hidden from the project. */
   include_hidden?: boolean;
@@ -129,6 +130,7 @@ function buildRecordApi<Rec, Version, Comment, Create, Update>(
       const params = new URLSearchParams();
       if (filters.include_archived) params.set("include_archived", "true");
       if (filters.include_hidden) params.set("include_hidden", "true");
+      appendTagParams(params, filters);
       const query = params.toString();
       return api.get<Rec[]>(`${url(id)}${query ? `?${query}` : ""}`);
     },
@@ -263,7 +265,12 @@ function buildGroupApi(base: (id: string) => string) {
   const url = (id: string, groupId?: string) => `${base(id)}/stakeholder-groups${groupId ? `/${groupId}` : ""}`;
   return {
     /** Every group this scope can see, flat (the project's include the organisation's). */
-    list: (id: string) => api.get<StakeholderGroup[]>(url(id)),
+    list: (id: string, filters: TagListFilters = {}) => {
+      const params = new URLSearchParams();
+      appendTagParams(params, filters);
+      const query = params.toString();
+      return api.get<StakeholderGroup[]>(`${url(id)}${query ? `?${query}` : ""}`);
+    },
     create: (id: string, values: StakeholderGroupFieldValues) => api.post<StakeholderGroup>(url(id), values),
     update: (id: string, groupId: string, values: Partial<StakeholderGroupFieldValues>) =>
       api.patch<StakeholderGroup>(url(id, groupId), values),
@@ -352,7 +359,7 @@ export type EngagementCreateValues = EngagementFieldValues & {
 export type EngagementUpdateValues = Partial<EngagementFieldValues> & { facilitators?: PrincipalRef[] };
 
 /** The list endpoint's optional filters; they combine. */
-export interface EngagementListFilters {
+export interface EngagementListFilters extends TagListFilters {
   channel?: EngagementChannel;
   stakeholder_id?: string;
   persona_id?: string;
@@ -381,8 +388,10 @@ export const projectEngagementApi = {
   list: (projectId: string, filters: EngagementListFilters = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
+      if (key === "tags" || key === "tag_mode") continue;
       if (value !== undefined && value !== "") params.set(key, String(value));
     }
+    appendTagParams(params, filters);
     const query = params.toString();
     return api.get<Engagement[]>(`${projectBase(projectId)}/engagements${query ? `?${query}` : ""}`);
   },

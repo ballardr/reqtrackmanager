@@ -31,6 +31,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
@@ -255,6 +256,7 @@ export function StakeholderDetailPage() {
         recordLabel="Stakeholder"
         title={stakeholder.name}
         code={stakeholder.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="stakeholder" artefactId={stakeholder.id} /> : undefined}
         codeOwner={codeOwner}
         back={{ to: listPath, label: backLabel }}
         badges={

@@ -38,6 +38,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { OverridePill } from "../../components/OverridePill";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -212,6 +213,7 @@ export function PersonaDetailPage() {
         recordLabel="Persona"
         title={persona.name}
         code={persona.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="persona" artefactId={persona.id} /> : undefined}
         codeOwner={codeOwner}
         back={{ to: backLink, label: backLabel }}
         badges={

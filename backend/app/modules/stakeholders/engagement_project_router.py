@@ -52,6 +52,7 @@ from app.modules.stakeholders.schemas import (
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
 from app.schemas.file import FileAssetOut
 from app.services.rbac import require_project_module_enabled
+from app.services.tags import TagFilter
 
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}", tags=["engagements-project"])
 
@@ -88,15 +89,17 @@ def create_engagement(
 def list_engagements(
     project_id: UUID, channel: EngagementChannel | None = None, stakeholder_id: UUID | None = None,
     persona_id: UUID | None = None, date_from: date | None = None, date_to: date | None = None,
-    retention_due: bool | None = None, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    retention_due: bool | None = None, tag_filter: TagFilter = Depends(),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """The project's engagements, most recent first. Filters combine: channel, a participant Stakeholder, a
     covered Persona, a date range, and whether the retain-until date has been reached."""
     project = _project(db, project_id)
-    return es.list_engagements(
+    engagements = es.list_engagements(
         db, project, channel=channel.value if channel else None, stakeholder_id=stakeholder_id, persona_id=persona_id,
         date_from=date_from, date_to=date_to, retention_due=retention_due,
     )
+    return tag_filter.keep(db, project_id, ENGAGEMENT_ARTEFACT_TYPE, engagements)
 
 
 @router.get("/engagements/{engagement_id}", response_model=EngagementOut)

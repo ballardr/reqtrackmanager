@@ -84,6 +84,7 @@ from app.services.link_types import ensure_org_link_type
 from app.services.project_hierarchy import get_ancestor_chain
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
 from app.services.sequences import code_owner, generate_unique_code
+from app.services.tags import forget_record_tags
 from app.services.type_vocabulary import TypeVocabulary
 
 STAKEHOLDERS_MODULE_KEY = "stakeholders"
@@ -903,6 +904,7 @@ def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> Non
     file_ids |= set(db.scalars(select(StakeholderCommentFile.file_id).where(StakeholderCommentFile.comment_id.in_(comment_ids))))
     for link in get_all_links(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id, include_cross_project=True):
         delete_link(db, link)
+    forget_record_tags(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id)
     db.execute(delete(StakeholderGroupMember).where(StakeholderGroupMember.stakeholder_id == stakeholder.id))
     # The attachment rows cascade from the stakeholder; the bytes must be
     # removed explicitly, so delete the assets (their FK cascades the links).

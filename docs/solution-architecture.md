@@ -345,6 +345,26 @@ flowchart TD
 
 **Quick-link on create (platform review October 2026).** A create form relates the new record to others in the same trip. `QuickLinkField` only collects links, searching with the finder above asked about a record that does not exist yet (`DRAFT_ARTEFACT_ID`: the finder reads accept it when the caller holds link authority on the type, so the field is absent for anyone who could not link it). Once the record exists, `useCommitQuickLinks` sends one `POST /projects/{id}/artefacts/{type}/{id}/links/bulk` (`routers/artefact_links.py`, at most 25 links). It runs `create_link_for_artefact` per link, so every rule of the single-link call applies, and is all-or-nothing: the first refusal rolls the transaction back and is re-raised with its own status and a `Link i of n:` prefix. The create endpoints are unchanged, so a refused link set leaves the saved record and points the user to its Links panel. Same-project targets only.
 
+**Tags (platform review October 2026).** Any record of any registered artefact type carries tags from a governed vocabulary, with no per-module code. `Tag` (`models/tag.py`) is owned by a project (`project_id` set) or by the organisation (`project_id` NULL, for organisation-owned records); `ArtefactTag` attaches a tag to `(artefact_type, artefact_id)`, where the type is a plain string checked against `get_all_registered_artefact_types()` (the `ArtefactLink` approach) and `project_id` records the owning project so usage and filters need no per-type join. Names are unique per vocabulary ignoring case (`name_key`). Requirement keywords are tags (migration 0102 moved them and dropped `requirement_keywords`; `RequirementOut.keywords` is unchanged).
+
+```mermaid
+flowchart TD
+    R["Record (any type)"] --> W{"Owned by a project?"}
+    W -- "no (organisation-owned)" --> ORG["Organisation vocabulary and Organization.tag_mode"]
+    W -- "yes" --> P{"Project has tags of its own?"}
+    P -- "yes" --> OWN["Its own vocabulary"]
+    P -- "no" --> ANC["Nearest ancestor's vocabulary<br/>(the action-type fallback rule)"]
+    OWN --> M["Mode: own tag_mode, else nearest ancestor's, else free"]
+    ANC --> M
+    ORG --> M
+    M --> A{"Name in the vocabulary<br/>or already on the record?"}
+    A -- "yes" --> OK["Attach"]
+    A -- "no, free" --> NEW["Create in the record's own scope, attach"]
+    A -- "no, restricted" --> NO["422: not in the tag list"]
+```
+
+`services/tags.py` holds the rules (normalisation, resolution, attach/detach, vocabulary maintenance, `TagFilter`, usage, find-by-tag) and `routers/tags.py` the API: record tags under `/projects/{id}/artefacts/{type}/{id}/tags` (the page record is the authorisation anchor, as for links), the project vocabulary under `/projects/{id}/tags`, the organisation's under `/orgs/{id}/tags`. Reading a record's tags follows the record's visibility (`ArtefactResolver`, a hidden record is a 404); changing them needs `manage` on the type, or for requirements and actions the roles that can edit them; vocabulary maintenance needs project-settings authority (organisation administrator for the organisation's list). Every list endpoint takes `tag`/`tag_mode` through the `TagFilter` dependency. Tags are written to the audit trail (`tagged`/`untagged` against the record, so its Activity tab shows them; `created`/`updated`/`merged`/`deleted`/`reclassified` against the tag). The project bundle carries the vocabulary, the mode and the tags of requirements, personas, stakeholders, needs, engagements, findings and risks, restored whatever the new project's mode.
+
 **The scoped link finder (platform enhancements Phase 6c).** The "Add a link" dialog finds the target with one control used to different depth: a search box over a scope that narrows step by step. `services/link_browse.py` serves both reads. With no record type, `link-candidates` is a bounded global search (two characters or more, at most 10 per type merged to 50, only types some usable link type reaches from the page record and the caller may `view` in the searched project). With a type, it lists that type's records, narrowed by `selected=level:option,...`. `link-browse` returns the next level for the type given the choices so far. A type's levels are declared by its owner as `ArtefactSummaryProvider.browse_levels` (`BrowseLevel(key, label, list_options=None)`): a level without `list_options` derives its options from the `facets` its records carry (a status, a type), so most modules declare a level in one line; Requirement (Component -> Category), Action and the Compliance clause (Standard -> Version -> Requirement) use SQL because they can be large. Each chosen option is validated against what its level offered given the choices before it, so a client cannot widen a level with an id from another organisation or project. A backend test fails when a registered type declares no level, so a new module's type cannot ship search-only. The relationship is chosen after the record, from the link types usable between the two.
 
 ```mermaid

@@ -27,6 +27,8 @@ import type { Engagement, EngagementFieldValues } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { useTagFilter } from "../../hooks/useTagFilter";
 
 type Option = { value: string; label: string };
 
@@ -40,6 +42,8 @@ export function ProjectEngagementsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "engagement");
+  const commitTags = useCommitTags(projectId ?? "", "engagement");
+  const tagFilter = useTagFilter();
   const [engagements, setEngagements] = useState<EngagementRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<EngagementListFilters>({});
@@ -63,7 +67,7 @@ export function ProjectEngagementsPage() {
     if (!projectId || findingId) return;
     let active = true;
     projectEngagementApi
-      .list(projectId, filters)
+      .list(projectId, { ...filters, tags: tagFilter.tags, tag_mode: tagFilter.mode })
       .then((list) => {
         if (!active) return;
         setEngagements(list.map((e) => ({ ...e, name: e.title })));
@@ -75,7 +79,7 @@ export function ProjectEngagementsPage() {
     return () => {
       active = false;
     };
-  }, [projectId, findingId, filters, refreshKey]);
+  }, [projectId, findingId, filters, refreshKey, tagFilter.tags, tagFilter.mode]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -137,11 +141,13 @@ export function ProjectEngagementsPage() {
           </>
         }
         onOpen={(e) => navigate(`/projects/${projectId}/modules/stakeholders/engagements/${e.id}`)}
-        onCreate={async (values, quickLinks) => {
+        tagFilter={{ projectId, filter: tagFilter }}
+        onCreate={async (values, quickLinks, tags) => {
           const created = await projectEngagementApi.create(projectId, values);
           showToast("Engagement logged.");
           reload();
           await commitQuickLinks(created.id, quickLinks);
+          await commitTags(created.id, tags);
         }}
         renderCreateModal={(props) => (
           <EngagementFormModal projectId={projectId} error={props.error} onCancel={props.onCancel} onSave={props.onSave} />

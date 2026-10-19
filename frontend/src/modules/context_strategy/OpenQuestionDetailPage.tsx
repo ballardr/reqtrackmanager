@@ -62,6 +62,7 @@ import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types"
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -218,6 +219,7 @@ export function OpenQuestionDetailPage() {
         recordLabel="Open Question"
         title={openQuestion.question}
         code={openQuestion.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "← Open Question" }}
         badges={
           <>

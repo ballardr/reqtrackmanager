@@ -26,6 +26,7 @@ import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import type { Decision, DecisionFieldValues, DecisionTemplate, DecisionTypeDefinition } from "./types";
 
@@ -68,10 +69,11 @@ export function DecisionFormModal({
   currentUserId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: DecisionFieldValues, quickLinks: CollectedLink[]) => void;
+  onSave: (values: DecisionFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [templateId, setTemplateId] = useState("");
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [title, setTitle] = useState(initial?.title ?? "");
   const [statement, setStatement] = useState(initial?.decision_statement ?? "");
   const [decisionTypeId, setDecisionTypeId] = useState(initial?.decision_type_id ?? decisionTypes[0]?.id ?? "");
@@ -103,7 +105,7 @@ export function DecisionFormModal({
       decision_maker: decisionMaker,
       owner,
       ...(Object.fromEntries(PROMPT_TO_FIELD.map((f) => [f.fieldKey, fields[f.fieldKey] || null])) as Record<string, string | null>),
-    } as DecisionFieldValues, quickLinks);
+    } as DecisionFieldValues, quickLinks, tags);
   }
 
   const valid = title.trim() !== "" && statement.trim() !== "" && decisionTypeId !== "" && owner !== null;
@@ -169,9 +171,12 @@ export function DecisionFormModal({
           ))}
           {!initial && (
             <FormGridFull>
-              <QuickLinkField
+              <div className="stack">
+                <QuickLinkField
                 projectId={projectId} artefactType="decision" preferredType="requirement" value={quickLinks} onChange={setQuickLinks}
               />
+                <TagField projectId={projectId} artefactType="decision" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>

@@ -55,6 +55,7 @@ import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types"
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -264,6 +265,7 @@ export function GuidingPrincipleDetailPage() {
         recordLabel="Guiding Principle"
         title={guidingPrinciple.name}
         code={guidingPrinciple.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} /> : undefined}
         codeOwner={codeOwner}
         back={{ to: backLink, label: backLabel }}
         badges={

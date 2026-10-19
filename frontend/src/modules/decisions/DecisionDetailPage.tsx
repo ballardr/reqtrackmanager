@@ -34,6 +34,7 @@ import { api } from "../../api/client";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
@@ -174,6 +175,7 @@ export function DecisionDetailPage() {
         recordLabel="Decision"
         title={decision.title}
         code={decision.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="decision" artefactId={decision.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/decisions`, label: "← Decisions" }}
         badges={
           <Badge tone={DECISION_STATUS_TONE[decision.status]}>

@@ -81,6 +81,7 @@ from app.schemas.type_vocabulary import (
 from app.services import scoring
 from app.services.audit import log_event
 from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled, require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{RISK_MODULE_KEY}", tags=["risk-management-project"])
@@ -219,7 +220,8 @@ def create_risk(
 @router.get("/risks", response_model=list[RiskOut])
 def list_risks(
     project_id: UUID, include_archived: bool = False, effectively_treated: bool | None = None,
-    review_overdue: bool | None = None, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    review_overdue: bool | None = None, tag_filter: TagFilter = Depends(),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """The project's risks with derived ratings; archived ones only with
     `include_archived`. `effectively_treated=false` answers "which risks have no
@@ -228,6 +230,7 @@ def list_risks(
     project = _project(db, project_id)
     ctx = load_rating_context(db, project)
     risks = list_project_risks(db, project_id, include_archived=include_archived)
+    risks = tag_filter.keep(db, project_id, RISK_ARTEFACT_TYPE, risks)
     counts = effective_treatment_counts(db, [r.id for r in risks])
     if effectively_treated is not None:
         risks = [r for r in risks if (counts.get(r.id, 0) > 0) == effectively_treated]

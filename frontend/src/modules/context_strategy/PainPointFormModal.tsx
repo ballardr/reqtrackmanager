@@ -21,6 +21,7 @@ import { useState } from "react";
 import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
@@ -55,7 +56,7 @@ export function PainPointFormModal({
   types: EffectivePainPointType[];
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: PainPointFieldValues, quickLinks: CollectedLink[]) => void;
+  onSave: (values: PainPointFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [painPointTypeId, setPainPointTypeId] = useState(initial?.pain_point_type_id ?? "");
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -63,6 +64,7 @@ export function PainPointFormModal({
   const [dateIdentified, setDateIdentified] = useState(initial?.date_identified ?? "");
   const [isIntentional, setIsIntentional] = useState(initial?.is_intentional ?? false);
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof PainPoint] as string | undefined) ?? ""]))
   );
@@ -79,7 +81,7 @@ export function PainPointFormModal({
       date_identified: dateIdentified || null,
       is_intentional: isIntentional,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as PainPointFieldValues, quickLinks);
+    } as PainPointFieldValues, quickLinks, tags);
   }
 
   const valid = painPointTypeId !== "" && title.trim() !== "";
@@ -121,10 +123,13 @@ export function PainPointFormModal({
           </FormGridFull>
           {!initial && projectId && (
             <FormGridFull>
-              <QuickLinkField
+              <div className="stack">
+                <QuickLinkField
                 projectId={projectId} artefactType="pain_point" preferredType="persona" value={quickLinks}
                 onChange={setQuickLinks}
               />
+                <TagField projectId={projectId} artefactType="pain_point" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>

@@ -29,6 +29,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
 import { TreeSelect } from "../../components/TreeSelect";
 import { buildGroupTree, groupSelectNodes } from "./groupTree";
@@ -79,10 +80,11 @@ export function StakeholderFormModal({
   groupTier?: "organization" | "project";
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: StakeholderFieldValues & { group_ids?: string[] }, quickLinks: CollectedLink[]) => void;
+  onSave: (values: StakeholderFieldValues & { group_ids?: string[] }, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [name, setName] = useState(initial?.name ?? "");
   const [typeId, setTypeId] = useState(initial?.stakeholder_type_id ?? "");
   const [role, setRole] = useState(initial?.role ?? "");
@@ -136,7 +138,7 @@ export function StakeholderFormModal({
       ...(activate ? { activate: true } : {}),
       ...(!initial && groups ? { group_ids: groupIds } : {}),
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as StakeholderFieldValues, quickLinks);
+    } as StakeholderFieldValues, quickLinks, tags);
   }
 
   return (
@@ -198,7 +200,10 @@ export function StakeholderFormModal({
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (
             <FormGridFull>
-              <QuickLinkField projectId={projectId} artefactType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="stakeholder" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>

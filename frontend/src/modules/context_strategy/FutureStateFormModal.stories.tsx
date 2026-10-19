@@ -33,7 +33,7 @@ export const SubmitsNewFutureState: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Regional #1 by 2028", desired_state: "We are the top provider in our region.", target_date: null }), []
+      expect.objectContaining({ title: "Regional #1 by 2028", desired_state: "We are the top provider in our region.", target_date: null }), [], []
     ));
   },
 };
@@ -58,7 +58,7 @@ export const SubmitsWithTargetDate: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ target_date: "2028-06-30" }), []
+      expect.objectContaining({ target_date: "2028-06-30" }), [], []
     ));
   },
 };
@@ -98,7 +98,7 @@ export const ClearingTargetDateSendsNull: Story = {
     const body = within(document.body);
     await userEvent.clear(body.getByLabelText("Target date"));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ target_date: null }), []));
+    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ target_date: null }), [], []));
   },
 };
 

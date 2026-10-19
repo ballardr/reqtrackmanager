@@ -47,6 +47,7 @@ from app.routers import (
     reviews,
     scim,
     system,
+    tags,
     ws,
 )
 from app.services import pubsub
@@ -275,6 +276,8 @@ app.include_router(custom_fields.router)
 app.include_router(action_types.router)
 app.include_router(actions.router)
 app.include_router(artefact_links.router)
+app.include_router(tags.router)
+app.include_router(tags.org_router)
 app.include_router(project_link_types.router)
 app.include_router(notifications.router)
 app.include_router(reviews.router)

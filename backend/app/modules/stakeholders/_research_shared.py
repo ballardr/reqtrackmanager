@@ -47,6 +47,7 @@ from app.modules.stakeholders.service import get_current_persona_version
 from app.services.audit import log_event
 from app.services.ordering import move_ordered
 from app.services.relationships import delete_link, get_all_links
+from app.services.tags import forget_record_tags
 
 
 def _not_found(noun: str) -> HTTPException:
@@ -265,6 +266,7 @@ def delete_finding(db: Session, finding: ResearchFinding, actor: User, project: 
     """Deletes a finding and every link it has, audit-logs and commits."""
     for link in get_all_links(db, FINDING_ARTEFACT_TYPE, finding.id, include_cross_project=True):
         delete_link(db, link)
+    forget_record_tags(db, FINDING_ARTEFACT_TYPE, finding.id)
     finding_id = finding.id
     db.delete(finding)
     log_event(

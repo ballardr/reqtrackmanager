@@ -53,7 +53,10 @@ import type {
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 
 const SCHEME_KEY = "pain_point";
 
@@ -62,6 +65,7 @@ export function ProjectPainPointsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "pain_point");
+  const commitTags = useCommitTags(projectId ?? "", "pain_point");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [painPoints, setPainPoints] = useState<PainPoint[] | null>(null);
@@ -72,6 +76,7 @@ export function ProjectPainPointsPage() {
   const [statusFilter, setStatusFilter] = useState<PainPointStatus | "">(() => oneOf(initial.get("status"), Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]));
   const [priorityFilter, setPriorityFilter] = useState<PainPointPriority | "">(() => oneOf(initial.get("priority"), Object.keys(PAIN_POINT_PRIORITY_LABEL) as PainPointPriority[]));
   const [includeArchived, setIncludeArchived] = useState(false);
+  const tagFilter = useTagFilter();
   const [hideIntentional, setHideIntentional] = useState(initial.get("intentional") === "hide");
   const [onlyIntentional, setOnlyIntentional] = useState(initial.get("intentional") === "only");
   const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
@@ -92,7 +97,7 @@ export function ProjectPainPointsPage() {
   async function reloadPainPoints() {
     if (!projectId) return;
     try {
-      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived }));
+      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -105,7 +110,7 @@ export function ProjectPainPointsPage() {
     void projectPainPointApi.listTypes(projectId).then(setTypes).catch(() => setTypes([]));
   }, [projectId]);
 
-  useLoadOnChange(reloadPainPoints, [projectId, includeArchived]);
+  useLoadOnChange(reloadPainPoints, [projectId, includeArchived, tagFilter.query]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -246,6 +251,7 @@ export function ProjectPainPointsPage() {
             label="Only intentional limitations" checked={onlyIntentional}
             onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
           />
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -256,13 +262,14 @@ export function ProjectPainPointsPage() {
           types={types}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: PainPointFieldValues, quickLinks) => {
+          onSave={async (values: PainPointFieldValues, quickLinks, tags) => {
             setCreateError(null);
             try {
               const created = await projectPainPointApi.create(projectId, values);
               showToast("Pain Point created.");
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reloadPainPoints();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Pain Point."));

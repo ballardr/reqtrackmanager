@@ -179,6 +179,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             to codes created from now on; existing codes are never rewritten.
         enforce_code_everywhere: When set, a record code is shown with its project
             code even inside its own project, overriding each user's preference.
+        tag_mode: `"free"` or `"restricted"`: whether organisation-owned records may take a tag
+            nobody listed in the organisation's tag vocabulary.
     """
 
     __tablename__ = "organizations"
@@ -193,6 +195,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
         ),
     )
     enforce_code_everywhere: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    tag_mode: Mapped[str] = mapped_column(String(12), default="free", server_default=text("'free'"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     require_2fa: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_self_signup: Mapped[bool] = mapped_column(Boolean, default=False)

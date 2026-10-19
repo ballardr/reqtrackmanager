@@ -30,13 +30,17 @@ import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } 
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 
 export function ProjectStrategiesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "strategy");
+  const commitTags = useCommitTags(projectId ?? "", "strategy");
   const [project, setProject] = useState<Project | null>(null);
   const [strategies, setStrategies] = useState<Strategy[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -45,6 +49,7 @@ export function ProjectStrategiesPage() {
   const [statusFilter, setStatusFilter] = useState<StrategyStatus | "">("");
   const [priorityFilter, setPriorityFilter] = useState<StrategyPriority | "">("");
   const [includeArchived, setIncludeArchived] = useState(false);
+  const tagFilter = useTagFilter();
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -52,7 +57,7 @@ export function ProjectStrategiesPage() {
   async function reloadStrategies() {
     if (!projectId) return;
     try {
-      setStrategies(await projectStrategyApi.list(projectId, { include_archived: includeArchived }));
+      setStrategies(await projectStrategyApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -64,7 +69,7 @@ export function ProjectStrategiesPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useLoadOnChange(reloadStrategies, [projectId, includeArchived]);
+  useLoadOnChange(reloadStrategies, [projectId, includeArchived, tagFilter.query]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -123,6 +128,7 @@ export function ProjectStrategiesPage() {
               ))}
             </select>
           </FilterField>
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -133,13 +139,14 @@ export function ProjectStrategiesPage() {
           projectId={projectId}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: StrategyFieldValues, quickLinks) => {
+          onSave={async (values: StrategyFieldValues, quickLinks, tags) => {
             setCreateError(null);
             try {
               const created = await projectStrategyApi.create(projectId, values);
               showToast("Strategy created.");
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reloadStrategies();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Strategy."));

@@ -24,6 +24,8 @@ import { Spinner } from "../../components/Spinner";
 import { ToggleChips } from "../../components/ToggleChips";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { useTagFilter } from "../../hooks/useTagFilter";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useProjectEnabledModules } from "../../hooks/useProjectEnabledModules";
 import { projectNeedApi, projectPersonaApi, projectStakeholderApi, projectStakeholderGroupApi } from "./api";
@@ -64,6 +66,9 @@ export function PeoplePage() {
   const commitNeedLinks = useCommitQuickLinks(projectId ?? "", "stakeholder_need");
   const commitPersonaLinks = useCommitQuickLinks(projectId ?? "", "persona");
   const commitStakeholderLinks = useCommitQuickLinks(projectId ?? "", "stakeholder");
+  const commitNeedTags = useCommitTags(projectId ?? "", "stakeholder_need");
+  const commitPersonaTags = useCommitTags(projectId ?? "", "persona");
+  const commitStakeholderTags = useCommitTags(projectId ?? "", "stakeholder");
   const { modules, loaded } = useProjectEnabledModules(projectId ?? null);
   const disabled = modules.find((m) => m.module_key === MODULE_KEY)?.disabled_sub_components;
   const enabled = useMemo(() => enabledKinds(disabled ?? []), [disabled]);
@@ -81,6 +86,8 @@ export function PeoplePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [includeHidden, setIncludeHidden] = useState(false);
+  const tagFilter = useTagFilter();
+  const tagFilterProp = { projectId: projectId ?? "", filter: tagFilter };
   const [creating, setCreating] = useState<Creating>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const scheme = useStakeholderScheme({ projectId: projectId ?? "" });
@@ -98,12 +105,12 @@ export function PeoplePage() {
       const mine = ++loadSeq.current;
       const on = (k: PeopleKind) => enabled.includes(k);
       Promise.all([
-        on("persona") ? projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden }) : [],
+        on("persona") ? projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode }) : [],
         on("persona") ? projectPersonaApi.listTypes(projectId) : [],
-        on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden }) : [],
+        on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode }) : [],
         on("stakeholder") ? projectStakeholderApi.listTypes(projectId) : [],
-        on("need") ? projectNeedApi.list(projectId, { include_archived: includeArchived }) : [],
-        on("group") ? projectStakeholderGroupApi.list(projectId).catch(() => [] as StakeholderGroup[]) : [],
+        on("need") ? projectNeedApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }) : [],
+        on("group") ? projectStakeholderGroupApi.list(projectId, { tags: tagFilter.tags, tag_mode: tagFilter.mode }).catch(() => [] as StakeholderGroup[]) : [],
       ])
         .then(([p, pt, s, st, n, g]) => {
           if (mine !== loadSeq.current) return;
@@ -120,7 +127,7 @@ export function PeoplePage() {
           if (mine === loadSeq.current) setLoadError(toErrorMessage(err, NOT_AVAILABLE));
         });
     },
-    [projectId, loaded, enabledKey, includeArchived, includeHidden, refreshKey],
+    [projectId, loaded, enabledKey, includeArchived, includeHidden, refreshKey, tagFilter.query],
   );
 
   useLoadOnChange(
@@ -245,6 +252,7 @@ export function PeoplePage() {
           onIncludeHiddenChange={setIncludeHidden}
           onShowHidden={(p) => showHidden(p, "persona")}
           onOpen={(p) => openRow(personaRow(p))}
+          tagFilter={tagFilterProp}
         />
       )}
       {only === "stakeholder" && (
@@ -268,6 +276,7 @@ export function PeoplePage() {
           onIncludeHiddenChange={setIncludeHidden}
           onShowHidden={(s) => showHidden(s, "stakeholder")}
           onOpen={(s) => openRow(stakeholderRow(s))}
+          tagFilter={tagFilterProp}
         />
       )}
       {only === "need" && (
@@ -279,6 +288,7 @@ export function PeoplePage() {
           includeArchived={includeArchived}
           onIncludeArchivedChange={setIncludeArchived}
           onOpen={(n) => openRow(needRow(n))}
+          tagFilter={tagFilterProp}
         />
       )}
       {only === "group" && <StakeholderGroupsPanel key={refreshKey} projectId={projectId} initialGroupId={params.get("group")} />}
@@ -293,6 +303,7 @@ export function PeoplePage() {
             if (row.kind === "persona" || row.kind === "stakeholder") void showHidden(row.source as Persona | Stakeholder, row.kind);
           }}
           onOpen={openRow}
+          tagFilter={tagFilterProp}
         />
       )}
 
@@ -300,10 +311,11 @@ export function PeoplePage() {
         <PersonaFormModal
           scopeLabel="project" projectId={projectId} typeOptions={typeOptions(personaTypes)} error={createError}
           onCancel={cancelCreate}
-          onSave={(values: PersonaFieldValues, quickLinks) =>
+          onSave={(values: PersonaFieldValues, quickLinks, tags) =>
             create(async () => {
               const created = await projectPersonaApi.create(projectId, values);
               await commitPersonaLinks(created.id, quickLinks);
+              await commitPersonaTags(created.id, tags);
             }, "Persona created.")}
         />
       )}
@@ -312,12 +324,13 @@ export function PeoplePage() {
           scopeLabel="project" projectId={projectId} typeOptions={typeOptions(stakeholderTypes)} scheme={scheme} groups={groups} groupTier="project"
           loadHint={(influence, interest) => projectStakeholderApi.cadenceHint(projectId, influence, interest)}
           error={createError} onCancel={cancelCreate}
-          onSave={({ group_ids: groupIds = [], ...values }: StakeholderFieldValues & { group_ids?: string[] }, quickLinks) =>
+          onSave={({ group_ids: groupIds = [], ...values }: StakeholderFieldValues & { group_ids?: string[] }, quickLinks, tags) =>
             create(
               () => createStakeholderWithGroups(
                 async (v) => {
                   const created = await projectStakeholderApi.create(projectId, v);
                   await commitStakeholderLinks(created.id, quickLinks);
+                  await commitStakeholderTags(created.id, tags);
                   return created;
                 },
                 (id, ids) => projectStakeholderGroupApi.setStakeholderGroups(projectId, id, ids),
@@ -338,10 +351,11 @@ export function PeoplePage() {
       {creating === "need" && (
         <NeedFormModal
           projectId={projectId} error={createError} onCancel={cancelCreate}
-          onSave={(values: NeedFieldValues, quickLinks) =>
+          onSave={(values: NeedFieldValues, quickLinks, tags) =>
             create(async () => {
               const created = await projectNeedApi.create(projectId, values);
               await commitNeedLinks(created.id, quickLinks);
+              await commitNeedTags(created.id, tags);
             }, "Stakeholder Need created.")}
         />
       )}

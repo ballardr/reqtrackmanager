@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16 and 17 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17 and 18 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-16 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16 and 17 done 2026-10-19; Phases 8, 9, 10, 13, 14, 15, 16 and 17 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 18.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+17 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17 and 18 done 2026-10-19; Phases 8, 9, 10, 13, 14, 15, 16, 17 and 18 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 19.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -25,7 +25,7 @@
 | 15 | Org defaults can be hidden per project and restored (delete plus "add org defaults") | N18 | [x] |
 | 16 | One People page (Personas and Stakeholders) and "Save and activate" | N19, N20 | [x] |
 | 17 | Quick-link on create | N21 | [x] |
-| 18 | Tags on every item type | N22 | [ ] |
+| 18 | Tags on every item type | N22 | [x] |
 | 19 | Create forms accept every field the edit form does (pain point first) | N23 | [ ] |
 | 20 | Nested-project scope filter on every list | N24 | [ ] |
 | 21 | Field help (?) tooltips | N25 | [ ] |
@@ -459,6 +459,12 @@ Reading the diagram: a module is checked at three levels from the server down. A
 - **Sub-phases (each shippable):** 18a data, API, bulk operations, tests; 18b chips, filters, record integration; 18c admin tables, usage tables, MCP, export/import.
 - **Tests:** normalisation and uniqueness, restricted vs free, inheritance, cross-project and cross-org isolation, module boundary (a module type is taggable with no core edit), bulk reclassify counts and atomicity, filter and/or semantics on a sample of list endpoints, usage table correctness; Storybook; Playwright: tag an item, filter by it, rename the tag, reclassify, delete it.
 
+- **Done 2026-10-19 (uncommitted at hand-back).** Details, the decisions (Q20, Q21, Q24, the keyword unification) and the SOC 2 review in `docs/decisions.md`.
+  - **Built:** `Tag`/`ArtefactTag` and migration 0102 (requirement keywords become tags), `services/tags.py`, the tag API for records, projects and the organisation, the `TagFilter` dependency on every project list, the project bundle (vocabulary, mode, tags of requirements, personas, stakeholders, needs, engagements, findings, risks), six MCP tools plus the skill, `RecordTags` on 14 detail pages, `TagField` on 13 create forms, `TagFilterField` on the project lists and People, **Tag selected** on Requirements, Project Admin and Org Admin Tags pages with usage tables, merge, reclassify and Tier-2 delete.
+  - **Moved to Phase 24:** the **tags column in reports** (the codes-in-reports phase edits the same collectors through one shared helper). Not built: tag filter on the organisation-level lists; tags in the organisation bundle, change requests and compliance records.
+  - **Changed behaviour:** an update that omits `keywords` leaves a requirement's tags alone (it used to clear them).
+  - **Sub-phases:** 18a, 18b and 18c shipped together.
+
 ### Phase 19 — Create forms accept every field the edit form does (N23)
 
 **Why:** a user cannot enter severity, frequency and confidence when creating a pain point and must reopen it to do so; probably true elsewhere. **Risk addressed:** unscored records that look complete; the class of "create narrower than edit". **Outcome:** create and edit show the same fields (except those that cannot exist before creation, such as comments or attachments).
@@ -555,6 +561,7 @@ flowchart LR
 - **Embedded references:** add `unique_code` (and the owner code where the record may be organisation-owned) to the small reference schemas listed above, and show it through `ScopedRecordCode` in the chips and rows that use them. These are additive fields.
 - **Bundles and CSV:** a CSV gains a Code column (or a code-led label) wherever it has a name column; a bundle export carries each record's code as informational data only, and an import still numbers records afresh and still matches references by title (`label_title`), never by code. Spreadsheet formula-injection protection is kept: a cell now begins with the code, so the existing test that a title starting `=` is neutralised is re-checked.
 - **MCP:** tool results that return records carry the code where the record has one; update the skill and regenerate the references (`mcp-server` and module tool references).
+- **Tags column (moved here from Phase 18):** every report row that names a record gains its tags (one shared helper beside the code formatter, so a collector adds one call, not its own query), and the CSV exports gain a Tags column.
 - **Not done:** rewriting codes inside free text (comments, descriptions that quote a code); changing how an import numbers records.
 - **Tests:** backend per report and export (the code appears; qualified for an organisation-owned record and for a record from another project; the organisation's enforce switch on and off; the person's preference ignored); coverage test over the catalogue; bundle round trip unchanged by codes (import numbers afresh, references still resolve by title, two records with one title still handled as before); CSV formula neutralisation with a leading code. Storybook for each report view and chip that changed. Playwright: one report per module opened and downloaded as CSV, asserting a code column; an organisation-owned Persona chip on a Stakeholder shows `ACME-PER-001`.
 - **Sub-phases (each shippable):** 24a inventory, the shared formatter and the report framework hook, plus core reports; 24b module reports (Context & Strategy, Stakeholders, Decisions, Risks, Compliance); 24c CSV, PDF and bundle exports, embedded references, MCP, docs, seeds.

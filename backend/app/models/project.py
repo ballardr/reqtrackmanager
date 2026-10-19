@@ -195,6 +195,11 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # review_lead_days override (C-R-08).
     review_reminder_lead_days_default: Mapped[int] = mapped_column(Integer, default=7)
 
+    # How tags are applied in this project: "free" (anyone who may tag a record can coin a tag) or
+    # "restricted" (only tags a project administrator listed). NULL inherits the nearest ancestor's
+    # setting, else "free" (services.tags.resolve_tag_mode).
+    tag_mode: Mapped[str | None] = mapped_column(String(12), nullable=True)
+
 
 class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     """One lifecycle horizon of a project (C-G-08, C-G-10).

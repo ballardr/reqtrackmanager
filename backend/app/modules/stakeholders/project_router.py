@@ -72,6 +72,7 @@ from app.schemas.type_vocabulary import (
 )
 from app.services.audit import log_event
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholders-project"])
@@ -216,7 +217,7 @@ def create_project_persona(
 @router.get("/personas", response_model=list[PersonaOut])
 def list_project_personas(
     project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """The project's personas, plus the organisation's unless `include_org=false`.
     Org personas hidden from the project are left out unless `include_hidden=true`
@@ -227,6 +228,7 @@ def list_project_personas(
     )
     if not include_org:
         personas = [p for p in personas if p.scope == PersonaScope.PROJECT]
+    personas = tag_filter.keep(db, project_id, PERSONA_ARTEFACT_TYPE, personas)
     return sh.personas_to_out(db, personas, project_id=project_id)
 
 

@@ -50,6 +50,7 @@ from app.services.principals import principal_columns, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
 from app.services.relationships import get_all_links as get_all_artefact_links
+from app.services.tags import TagFilter
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/actions", tags=["actions"])
 
@@ -116,9 +117,10 @@ def create_action(
 @router.get("", response_model=list[RequirementActionOut])
 def list_actions(
     project_id: UUID, outcome_status: RequirementActionOutcome | None = None,
-    action_type_id: UUID | None = None, include_archived: bool = False,
+    action_type_id: UUID | None = None, include_archived: bool = False, tag_filter: TagFilter = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
+    """Lists the project's actions; `tag`/`tag_mode` narrow to actions carrying those tags."""
     query = select(RequirementAction).where(RequirementAction.project_id == project_id)
     if not include_archived:
         query = query.where(RequirementAction.is_archived.is_(False))
@@ -127,6 +129,7 @@ def list_actions(
     if action_type_id is not None:
         query = query.where(RequirementAction.action_type_id == action_type_id)
     actions = db.scalars(query.order_by(RequirementAction.unique_code)).all()
+    actions = tag_filter.keep(db, project_id, "requirement_action", actions)
     counts = engagement.get_comment_counts(db, ReviewTargetType.ACTION, [a.id for a in actions])
     labels = assignee_labels(db, actions)
     return [action_to_out(db, a, counts.get(a.id, 0), labels) for a in actions]

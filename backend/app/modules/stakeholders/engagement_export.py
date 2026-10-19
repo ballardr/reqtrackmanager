@@ -55,6 +55,7 @@ from app.modules.stakeholders.service import (
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.codes import label_title
 from app.services.principals import principal_from_bundle, principal_to_bundle
+from app.services.tags import record_tag_names, restore_record_tags
 
 _KEY = "project_engagements"
 _TEXT_FIELDS = ("title", "purpose", "summary", "notes")
@@ -104,6 +105,7 @@ def _engagement_json(
         {
             "unique_code": f.unique_code, "title": f.title, "description": f.description, "created_by_email": emails.get(f.creator_id),
             "created_at": _j(f.created_at), "outcomes": _outcomes_json(db, project, FINDING_ARTEFACT_TYPE, f.id),
+            "tags": record_tag_names(db, FINDING_ARTEFACT_TYPE, f.id),
         }
         for f in eng.list_findings(db, engagement.id)
     ]
@@ -131,6 +133,7 @@ def _engagement_json(
             {"prompt": p.prompt, "response_notes": p.response_notes} for p in eng.list_prompts(db, engagement.id)
         ],
         "anonymous_participants": anonymous, "findings": findings,
+        "tags": record_tag_names(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id),
     }
 
 
@@ -244,6 +247,10 @@ def import_project_data(
             if ref is not None:
                 facilitators.append(ref)
         eng.set_facilitators(db, engagement, facilitators)
+        restore_record_tags(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=ENGAGEMENT_ARTEFACT_TYPE, artefact_id=engagement.id, names=e.get("tags"),
+        )
         for participant in e.get("participants", []):
             stakeholder_id = stakeholders.get((participant["name"], participant["scope"]))
             if stakeholder_id is None:
@@ -292,6 +299,10 @@ def import_project_data(
             finding = eng.create_finding(
                 db, project, engagement, creator_id=finding_creator, actor=current_user, title=f["title"],
                 description=f.get("description", ""),
+            )
+            restore_record_tags(
+                db, organization_id=organization_id, record_project_id=project.id, actor_id=finding_creator,
+                artefact_type=FINDING_ARTEFACT_TYPE, artefact_id=finding.id, names=f.get("tags"),
             )
             _import_outcomes(
                 db, engagement, FINDING_ARTEFACT_TYPE, finding.id, f.get("outcomes", []), resolve, current_user,

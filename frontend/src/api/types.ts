@@ -234,6 +234,8 @@ export const ENTITY_TYPE_LABEL: Record<string, string> = {
   requirement_action: "Action",
   requirement_action_link: "Action link",
   artefact_link: "Link",
+  tag: "Tag",
+  tag_settings: "Tag settings",
 };
 
 function capitalize(value: string): string {
@@ -284,6 +286,8 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   comment_file_removed: "removed a file from a comment on",
   moved: "reordered",
   review_response_submitted: "responded to the review",
+  merged: "merged",
+  reclassified: "reclassified",
 };
 
 export function activityActionLabel(action: string): string {
@@ -1668,6 +1672,9 @@ export function describeActivityEntry(entry: ChangeEntry): string {
     const preposition = entry.detail.direction === "incoming" ? "from" : "to";
     const kind = typeof entry.detail.other_type_label === "string" ? ` (${entry.detail.other_type_label})` : "";
     return `${who} ${removed ? "removed a link" : "added a link"} ${preposition} ${entry.detail.other_label}${kind}`;
+  }
+  if ((entry.action === "tagged" || entry.action === "untagged") && typeof entry.detail?.tag === "string") {
+    return `${who} ${entry.action === "tagged" ? "added" : "removed"} the tag "${entry.detail.tag}"`;
   }
   const action = activityActionLabel(entry.action);
   const changeNote = entry.detail && typeof entry.detail.change_note === "string" ? entry.detail.change_note : "";

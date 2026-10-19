@@ -34,7 +34,7 @@ export const SubmitsNewStrategy: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Lead the regional market", objective: "Become the top provider in our region." }), []
+      expect.objectContaining({ title: "Lead the regional market", objective: "Become the top provider in our region." }), [], []
     ));
   },
 };

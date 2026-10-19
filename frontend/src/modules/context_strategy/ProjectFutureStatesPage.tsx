@@ -33,13 +33,17 @@ import { FUTURE_STATE_ROADMAP_STATUSES, FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 
 export function ProjectFutureStatesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "future_state");
+  const commitTags = useCommitTags(projectId ?? "", "future_state");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
@@ -48,6 +52,7 @@ export function ProjectFutureStatesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<FutureStateStatus | "">(() => oneOf(initial.get("status"), Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]));
   const [includeArchived, setIncludeArchived] = useState(false);
+  const tagFilter = useTagFilter();
   const [roadmapOnly, setRoadmapOnly] = useState(initial.get("roadmap") === "1");
   const [targetPassedOnly, setTargetPassedOnly] = useState(initial.get("target_passed") === "1");
   const [noMeasuresOnly, setNoMeasuresOnly] = useState(initial.get("no_measures") === "1");
@@ -58,7 +63,7 @@ export function ProjectFutureStatesPage() {
   async function reloadFutureStates() {
     if (!projectId) return;
     try {
-      setFutureStates(await projectFutureStateApi.list(projectId, { include_archived: includeArchived }));
+      setFutureStates(await projectFutureStateApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -70,7 +75,7 @@ export function ProjectFutureStatesPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useLoadOnChange(reloadFutureStates, [projectId, includeArchived]);
+  useLoadOnChange(reloadFutureStates, [projectId, includeArchived, tagFilter.query]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -127,6 +132,7 @@ export function ProjectFutureStatesPage() {
           <FilterCheckbox label="On the roadmap only" checked={roadmapOnly} onChange={setRoadmapOnly} />
           <FilterCheckbox label="Target date passed" checked={targetPassedOnly} onChange={setTargetPassedOnly} />
           <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
@@ -137,13 +143,14 @@ export function ProjectFutureStatesPage() {
           projectId={projectId}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: FutureStateFieldValues, quickLinks) => {
+          onSave={async (values: FutureStateFieldValues, quickLinks, tags) => {
             setCreateError(null);
             try {
               const created = await projectFutureStateApi.create(projectId, values);
               showToast("Future State created.");
               setCreating(false);
               await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reloadFutureStates();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Future State."));

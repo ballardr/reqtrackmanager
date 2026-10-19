@@ -227,6 +227,13 @@ def _require_artefact_type(value: str, field_name: str = "artefact_type") -> str
         raise ValueError(f"'{field_name}' must be a lowercase artefact type such as 'requirement', got {value!r}.")
     return value
 
+def _require_tag_mode(value: str) -> str:
+    """Validates a tag match mode."""
+    if value not in ("any", "all"):
+        raise ValueError(f"'tag_mode' must be 'any' or 'all', got {value!r}.")
+    return value
+
+
 def _default_scope() -> tuple[str | None, str | None]:
     """Reads this MCP connection's optional default-scope headers,
     `X-Default-Organization-Id`/`X-Default-Project-Id` — a convenience for a
@@ -541,6 +548,8 @@ async def list_requirements(
     component_id: str | None = None,
     category_id: str | None = None,
     include_archived: bool = False,
+    tags: list[str] | None = None,
+    tag_mode: str = "any",
 ) -> list[dict]:
     """Lists requirements in a project, with the same filters the Requirements page's filter panel offers.
 
@@ -551,10 +560,14 @@ async def list_requirements(
         search: Optional case-insensitive substring match against a
             requirement's name or its unique code (e.g. "SW-PERF-014") —
             use this to find a specific requirement by code.
-        keyword: Optional exact match against a requirement's assigned keywords.
+        keyword: Optional match against one of a requirement's tags (its keywords).
         component_id: Optional UUID to filter to one component.
         category_id: Optional UUID to filter to one category.
         include_archived: Whether to include archived requirements (excluded by default).
+        tags: Optional tag names; only requirements carrying them are listed
+            (case-insensitive). `tag_mode` "any" (default) needs one of them,
+            "all" needs every one.
+        tag_mode: "any" or "all".
 
     Returns:
         A list of requirements, each including `id`, `unique_code`, `name`,
@@ -565,11 +578,13 @@ async def list_requirements(
     pid = _require_project_id(project_id)
     comp = _require_uuid(component_id, "component_id") if component_id else None
     cat = _require_uuid(category_id, "category_id") if category_id else None
+    _require_tag_mode(tag_mode)
     response = await _call_backend(
         "GET", f"/api/v1/projects/{pid}/requirements",
         params={
             "status": status, "search": search, "keyword": keyword,
             "component_id": comp, "category_id": cat, "include_archived": include_archived,
+            "tag": tags or None, "tag_mode": tag_mode,
         },
     )
     return response.json()
@@ -856,6 +871,81 @@ async def list_link_candidate_projects(project_id: str | None = None) -> dict:
     """
     pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/link-candidate-projects")
+    return response.json()
+
+
+@mcp.tool
+async def list_tags(project_id: str | None = None) -> dict:
+    """Lists the tags a project offers and how new tags are treated.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+
+    Returns:
+        `mode` ("free": anyone who may tag a record can coin a tag;
+        "restricted": only listed tags can be applied), `inherited` (true when
+        the list belongs to a parent project, which then manages it) and
+        `tags`, each with `id`, `name`, `colour`, `usage_count`.
+    """
+    pid = _require_project_id(project_id)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/tags")
+    return response.json()
+
+
+@mcp.tool
+async def get_artefact_tags(project_id: str | None = None, *, artefact_type: str, artefact_id: str) -> dict:
+    """Gets the tags on one record of any type.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The record's type, for example "requirement", "decision",
+            "pain_point" or "persona".
+        artefact_id: The record's UUID (from the matching list tool).
+
+    Returns:
+        `tags` (each `id`, `name`, `colour`), `can_edit` (whether the caller may
+        change them), `restricted` (only listed tags can be applied) and
+        `suggestions` (the tags to choose from).
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/tags")
+    return response.json()
+
+
+@mcp.tool
+async def find_artefacts_by_tag(
+    project_id: str | None = None,
+    *,
+    tags: list[str],
+    tag_mode: str = "any",
+    artefact_type: str | None = None,
+) -> dict:
+    """Finds records of every type that carry some tags: "what is tagged `safety`?" without listing each type.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        tags: One or more tag names (case-insensitive).
+        tag_mode: "any" (default) needs one of the tags, "all" needs every one.
+        artefact_type: Optional: only this record type.
+
+    Returns:
+        `records` (each `artefact_type`, `type_label`, `id`, `label`, `status`,
+        `is_archived`) and `truncated` (more matched than were returned). Records
+        the caller cannot open are left out, so absence is not proof a record
+        is untagged.
+    """
+    pid = _require_project_id(project_id)
+    _require_tag_mode(tag_mode)
+    if not tags:
+        raise ValueError("'tags' needs at least one tag name.")
+    if artefact_type is not None:
+        _require_artefact_type(artefact_type)
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/tags/records",
+        params={"tag": tags, "tag_mode": tag_mode, "artefact_type": artefact_type},
+    )
     return response.json()
 
 
@@ -1185,7 +1275,7 @@ if MCP_WRITES_ENABLED:
                 "project_group", "id": uuid}`); omit to leave unchanged.
             target_stage_id: Retarget which project stage this requirement is for; omit to leave unchanged.
             level: "requirement", "recommended", or "optional"; omit to leave unchanged.
-            keywords: Replaces the full keyword set if given; omit to leave the current keywords unchanged.
+            keywords: Replaces the requirement's tags (its keywords) if given; omit to leave them unchanged.
             custom_fields: Replaces the full custom field value map if given; omit to leave unchanged.
             review_date / review_lead_days / reviewer: Review scheduling fields (`reviewer` is a
                 principal, same shape as `owner`); omit any you're not changing.
@@ -1211,7 +1301,6 @@ if MCP_WRITES_ENABLED:
                 _require_uuid(target_stage_id, "target_stage_id") if target_stage_id else current["target_stage_id"]
             ),
             "level": level if level is not None else current["level"],
-            "keywords": keywords if keywords is not None else current["keywords"],
             "custom_fields": custom_fields if custom_fields is not None else current["custom_fields"],
             "change_note": change_note,
             "review_date": review_date if review_date is not None else current["review_date"],
@@ -1222,6 +1311,9 @@ if MCP_WRITES_ENABLED:
             # transition, by construction, regardless of what the caller's
             # account could do directly via the API.
         }
+        if keywords is not None:
+            # Omitted leaves the tags alone; a stale copy of them sent back would remove tags added since the read.
+            body["keywords"] = keywords
         response = await _call_backend("PUT", f"/api/v1/projects/{pid}/requirements/{rid}", json=body)
         return response.json()
 
@@ -1418,6 +1510,93 @@ if MCP_WRITES_ENABLED:
         lid = _require_uuid(link_id, "link_id")
         await _call_backend("DELETE", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/links/{lid}")
         return {"deleted": True, "link_id": lid}
+
+    @mcp.tool
+    async def set_artefact_tags(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        tags: list[str],
+    ) -> dict:
+        """Makes a record carry exactly these tags, adding and removing as needed.
+
+        Read `get_artefact_tags` first and send the full wanted list: a tag
+        left out is removed. A project in "restricted" mode accepts only tags
+        on its list (`list_tags`); a refused name is a rule, not a glitch, so
+        report it rather than retrying with another spelling. Tags are not
+        record content, so this works on an approved requirement.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The record's type, for example "requirement".
+            artefact_id: The record's UUID.
+            tags: The wanted tag names (up to 50; names are case-insensitive, at
+                most 40 characters, with no commas or semicolons).
+
+        Returns:
+            The record's tags as `get_artefact_tags` returns them.
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        response = await _call_backend(
+            "PUT", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/tags", json={"tags": tags}
+        )
+        return response.json()
+
+    @mcp.tool
+    async def add_artefact_tag(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        tag: str,
+    ) -> dict:
+        """Adds one tag to a record, keeping its others (see `set_artefact_tags` for the rules).
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The record's type, for example "requirement".
+            artefact_id: The record's UUID.
+            tag: The tag name.
+
+        Returns:
+            The record's tags as `get_artefact_tags` returns them.
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/tags", json={"name": tag}
+        )
+        return response.json()
+
+    @mcp.tool
+    async def remove_artefact_tag(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        tag_id: str,
+    ) -> dict:
+        """Removes one tag from a record. The tag stays in the project's list.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The record's type, for example "requirement".
+            artefact_id: The record's UUID.
+            tag_id: The tag's UUID (from `get_artefact_tags`).
+
+        Returns:
+            The record's remaining tags as `get_artefact_tags` returns them.
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        tid = _require_uuid(tag_id, "tag_id")
+        response = await _call_backend("DELETE", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/tags/{tid}")
+        return response.json()
 
 
 # --- Module-contributed tools ----------

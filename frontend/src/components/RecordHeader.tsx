@@ -33,6 +33,7 @@ import { ItemRow } from "./ItemRow";
  * @param codeOwner The owning organisation's code for a record the organisation owns (`PER-001` becomes `ACME-PER-001`).
  * @param subtitle Secondary line under the title (type, owner, version).
  * @param badges Status and scope pills, shown on the line under the title.
+ * @param tags The record's tags (`RecordTags`), shown under the badges.
  * @param back Link back to the list: `{ to, label }`, or `{ onClick, label }` inside a page that switches views itself.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
  * @param onEdit Opens the edit form; omit when the user cannot edit.
@@ -47,6 +48,7 @@ export function RecordHeader({
   codeOwner,
   subtitle,
   badges,
+  tags,
   back,
   headingLevel = "h1",
   onEdit,
@@ -60,6 +62,7 @@ export function RecordHeader({
   codeOwner?: string | null;
   subtitle?: ReactNode;
   badges?: ReactNode;
+  tags?: ReactNode;
   back?: { to: string; label: string } | { onClick: () => void; label: string };
   headingLevel?: "h1" | "h2";
   onEdit?: () => void;
@@ -99,6 +102,7 @@ export function RecordHeader({
         </span>
       </ItemRow>
       {badges && <div className="row">{badges}</div>}
+      {tags && <div>{tags}</div>}
       {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
       {transitions && <div className="row">{transitions}</div>}
     </header>

@@ -898,6 +898,22 @@ A create form for a linkable record includes **`QuickLinkField`** ("Link to"), s
 - **Same project only.** Linking to an ancestor or descendant project stays in the Links panel's dialog, which has the project selector.
 - Create forms only: the edit form never shows it. A form that already collects its own links, or that creates something that cannot take links, omits it with the reason recorded in `docs/decisions.md` (Change Request: its Proposed links are the requirement's links, applied on approval; organisation-scoped records: links are managed within a project).
 
+## Pattern: tags
+
+Any record can carry tags; the UI for them is four shared pieces, so no page builds its own:
+
+- **`RecordTags`** in `RecordHeader`'s `tags` slot, under the badges: chips for everyone who can open the record and, for someone who may tag it, the picker (`TagInput`) in place. A change saves at once with the whole set (`PUT .../tags`); a refusal puts the chips back and says why in a toast. It renders nothing when the record has no tags and the viewer cannot add any, and nothing at all if the read fails (tags are secondary to the record).
+- **`TagField`** + `useCommitTags` in a create form, beside `QuickLinkField` and with the same contract: the field only collects names, the form creates the record and then applies them, and a refused set never undoes the record (a toast says where to add them). It asks the server about a draft record, so a caller who may not tag the type sees no field.
+- **`TagFilterField`** + `useTagFilter` in a list's filter panel: tick tags, then **Any of these** or **All of these** once two are ticked. The page sends `tag`/`tag_mode` with its list read, so the server narrows the list. Hidden while the project has no tags.
+- **`TagAdminPanel`** (Project Admin and Org Admin, one component bound to `projectTagAdminApi`/`orgTagAdminApi`): the mode, the vocabulary table and a usage table per kind of record.
+
+Rules:
+- **`TagInput` is a picker in a restricted project** (no "Add tag" row; an unlisted name is refused with who can add it) and a combobox that can coin a tag in a free one. Names are matched ignoring case; the listed spelling wins.
+- **The chip carries the tag's colour on its left edge only** (`--tag-colour`, user data); the label keeps the theme's text colour so it reads in light and dark. Colours are chosen from a named list, never a free colour input.
+- **Deleting a tag is Tier 2** (type its name) and the dialog states how many records lose it; merge and reclassify state the count and, for reclassify, show a preview before **Apply**. Every change ends in a toast.
+- **An inherited list is read-only** with a notice that the parent manages it.
+- Tag filters and chips use the shared components above; a list that builds its own tag control repeats the debt this section exists to stop.
+
 ## Tokens
 
 `frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and spacing/radii used consistently even though not yet named as tokens. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.

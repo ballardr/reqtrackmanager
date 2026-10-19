@@ -50,7 +50,7 @@ export const SavesEnteredValues: Story = {
       expect.objectContaining({
         name: "Pat Regulator", interests: "Evidence of compliance", stakeholder_type_id: "stype-regulator",
         target_cadence: "quarterly", influence_level_id: "infl-high", interest_level_id: "int-low",
-      }), []
+      }), [], []
     );
   },
 };
@@ -59,7 +59,7 @@ export const SaveAndActivateSendsTheActivateFlag: Story = {
   play: async ({ args }) => {
     await userEvent.type(dialog().getByLabelText("Stakeholder name"), "Pat Regulator");
     await userEvent.click(dialog().getByRole("button", { name: "Save and activate" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Pat Regulator", activate: true }), []);
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Pat Regulator", activate: true }), [], []);
   },
 };
 
@@ -75,7 +75,7 @@ export const BlankOptionalsSaveAsNull: Story = {
     await userEvent.type(dialog().getByLabelText("Stakeholder name"), "Pat Regulator");
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ stakeholder_type_id: null, target_cadence: null, influence_level_id: null, interest_level_id: null }), []
+      expect.objectContaining({ stakeholder_type_id: null, target_cadence: null, influence_level_id: null, interest_level_id: null }), [], []
     );
   },
 };
@@ -147,7 +147,7 @@ export const CreateReturnsTheChosenGroups: Story = {
     await userEvent.click(within(document.body).getByRole("checkbox", { name: "Acme" }));
     // The opened tree is itself a dialog, so the Save button is found on the page rather than within "the" dialog.
     await userEvent.click(within(document.body).getByRole("button", { name: "Save" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Alex Acme", group_ids: ["acme"] }), []);
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Alex Acme", group_ids: ["acme"] }), [], []);
   },
 };
 
@@ -156,6 +156,6 @@ export const EditDoesNotOfferOrSendGroups: Story = {
   play: async ({ args }) => {
     await expect(dialog().queryByRole("button", { name: "Organisation groups" })).not.toBeInTheDocument();
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.not.objectContaining({ group_ids: expect.anything() }), []);
+    await expect(args.onSave).toHaveBeenCalledWith(expect.not.objectContaining({ group_ids: expect.anything() }), [], []);
   },
 };

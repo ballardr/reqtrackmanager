@@ -313,6 +313,7 @@ from app.services.files import delete_file, upload_file
 from app.services.principals import validate_principal
 from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.relationships import get_all_links
+from app.services.tags import TagFilter
 from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/context_strategy", tags=["context-strategy-project"])
@@ -372,12 +373,14 @@ def create_project_strategy(
 @router.get("/strategies", response_model=list[StrategyOut])
 def list_project_strategies(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     query = select(Strategy).where(Strategy.project_id == project_id, Strategy.scope == _SCOPE)
     if not include_archived:
         query = query.where(Strategy.is_archived.is_(False))
     strategies = db.scalars(query.order_by(Strategy.created_at)).all()
+    strategies = tag_filter.keep(db, project_id, STRATEGY_ARTEFACT_TYPE, strategies)
     return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
 
 
@@ -831,12 +834,14 @@ def create_project_future_state(
 @router.get("/future-states", response_model=list[FutureStateOut])
 def list_project_future_states(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
     query = select(FutureState).where(FutureState.project_id == project_id, FutureState.scope == _FS_SCOPE)
     if not include_archived:
         query = query.where(FutureState.is_archived.is_(False))
     future_states = db.scalars(query.order_by(FutureState.created_at)).all()
+    future_states = tag_filter.keep(db, project_id, FUTURE_STATE_ARTEFACT_TYPE, future_states)
     return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
 
 
@@ -1434,12 +1439,14 @@ def create_project_pain_point(
 @router.get("/pain-points", response_model=list[PainPointOut])
 def list_project_pain_points(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
     query = select(PainPoint).where(PainPoint.project_id == project_id)
     if not include_archived:
         query = query.where(PainPoint.is_archived.is_(False))
     pain_points = db.scalars(query.order_by(PainPoint.created_at)).all()
+    pain_points = tag_filter.keep(db, project_id, PAIN_POINT_ARTEFACT_TYPE, pain_points)
     labels = owner_labels(db, pain_points)
     return [pain_point_to_out(db, p, labels) for p in pain_points]
 
@@ -1997,6 +2004,7 @@ def create_project_guiding_principle(
 @router.get("/guiding-principles", response_model=list[GuidingPrincipleOut])
 def list_project_guiding_principles(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
     query = select(GuidingPrinciple).where(
@@ -2005,6 +2013,7 @@ def list_project_guiding_principles(
     if not include_archived:
         query = query.where(GuidingPrinciple.is_archived.is_(False))
     guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
+    guiding_principles = tag_filter.keep(db, project_id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, guiding_principles)
     return guiding_principles_to_out(db, guiding_principles)
 
 
@@ -2505,12 +2514,14 @@ def create_project_open_question(
 @router.get("/open-questions", response_model=list[OpenQuestionOut])
 def list_project_open_questions(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_open_question_view), db: Session = Depends(get_db),
 ):
     query = select(OpenQuestion).where(OpenQuestion.project_id == project_id)
     if not include_archived:
         query = query.where(OpenQuestion.is_archived.is_(False))
     open_questions = db.scalars(query.order_by(OpenQuestion.created_at)).all()
+    open_questions = tag_filter.keep(db, project_id, OPEN_QUESTION_ARTEFACT_TYPE, open_questions)
     labels = owner_labels(db, open_questions)
     return [open_question_to_out(db, oq, labels) for oq in open_questions]
 

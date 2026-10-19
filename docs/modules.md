@@ -1878,6 +1878,8 @@ metadata — don't rely on the manifest builder's exclusion as your only
 defence; design the endpoint itself so an AI-driven caller can't reach an
 approval action even if the tool mechanism changes later.
 
+**Tags.** Every type you list in `artefact_types` is taggable with no tag code in your module: tags are keyed by the registered type string (`ArtefactTag.artefact_type`, validated against `get_all_registered_artefact_types()`), and the generic endpoint `/projects/{id}/artefacts/{type}/{id}/tags` authorises through the same `ArtefactResolver` and `manage` permission your type already has. What your module does add: take `TagFilter` (`app/services/tags.py`) as a dependency on each project list endpoint and narrow the rows with `tag_filter.keep(db, project_id, YOUR_TYPE, rows)`; pass `<RecordTags>` to `RecordHeader` on the detail page, `TagField` + `useCommitTags` in the create form and `TagFilterField` + `useTagFilter` in the list; and call `forget_record_tags` where a record is erased for good. A bundle export that carries your records adds `"tags": record_tag_names(...)` to each row and `restore_record_tags(...)` on import.
+
 **Reports.** If your module reports on its records, declare `ReportDefinition`s
 (§4g) rather than building routes, PDF/CSV code or a catalogue of your own.
 

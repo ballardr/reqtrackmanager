@@ -8,6 +8,12 @@ organisation to enable AI approval. Parameters marked `*` are required. Omit
 `organization_id` / `project_id` when the connection sets default-scope headers.
 Module-contributed tools are in `module-tools.md`.
 
+## `add_artefact_tag` (write)
+
+Adds one tag to a record, keeping its others (see `set_artefact_tags` for the rules).
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tag*` (string)
+
 ## `approve_requirement` (approval)
 
 Approves a draft or reviewed requirement (the same transition the UI's "Approve" button performs).
@@ -44,11 +50,23 @@ Removes a link touching an artefact. Irreversible: confirm with the user first.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_id*` (string)
 
+## `find_artefacts_by_tag` (read)
+
+Finds records of every type that carry some tags: "what is tagged `safety`?" without listing each type.
+
+Parameters: `project_id` (string), `tags*` (list[string]), `tag_mode` (string), `artefact_type` (string)
+
 ## `get_artefact_link_graph` (read)
 
 Gets what an artefact is linked to, out to a few hops: use it for impact analysis ("what depends on this?", "where does this come from?").
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `depth` (integer), `direction` (string)
+
+## `get_artefact_tags` (read)
+
+Gets the tags on one record of any type.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string)
 
 ## `get_change_request` (read)
 
@@ -176,7 +194,13 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 
 Lists requirements in a project, with the same filters the Requirements page's filter panel offers.
 
-Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean)
+Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean), `tags` (list[string]), `tag_mode` (string)
+
+## `list_tags` (read)
+
+Lists the tags a project offers and how new tags are treated.
+
+Parameters: `project_id` (string)
 
 ## `preview_change_request_links` (read)
 
@@ -184,11 +208,23 @@ Previews which of a change request's proposed links would merge if it were appro
 
 Parameters: `project_id` (string), `change_request_id*` (string)
 
+## `remove_artefact_tag` (write)
+
+Removes one tag from a record. The tag stays in the project's list.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tag_id*` (string)
+
 ## `search_artefact_link_candidates` (read)
 
 Finds the record to link an artefact to: use it to get the `other_id` that `create_artefact_link` needs.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `other_type` (string), `other_project_id` (string), `selected` (string), `q` (string)
+
+## `set_artefact_tags` (write)
+
+Makes a record carry exactly these tags, adding and removing as needed.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tags*` (list[string])
 
 ## `update_requirement` (write)
 

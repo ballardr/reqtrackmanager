@@ -15,6 +15,7 @@ import type { CollectedLink } from "../../api/artefactLinks";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import type { Need, NeedFieldValues } from "./types";
 import { FormActions } from "../../components/FormActions";
@@ -31,13 +32,14 @@ export function NeedFormModal({
   projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: NeedFieldValues, quickLinks: CollectedLink[]) => void;
+  onSave: (values: NeedFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [rationale, setRationale] = useState(initial?.rationale ?? "");
   const [changeNote, setChangeNote] = useState("");
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
 
   return (
     <Modal title={initial ? `Edit ${initial.name}` : "New Stakeholder Need"} onClose={onCancel} size="lg">
@@ -58,19 +60,22 @@ export function NeedFormModal({
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (
             <FormGridFull>
-              <QuickLinkField
+              <div className="stack">
+                <QuickLinkField
                 projectId={projectId} artefactType="stakeholder_need" preferredType="stakeholder" value={quickLinks}
                 onChange={setQuickLinks}
               />
+                <TagField projectId={projectId} artefactType="stakeholder_need" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>
         <FormActions
           error={error}
           onCancel={onCancel}
-          onSave={() => onSave({ name: name.trim(), description, rationale, change_note: changeNote }, quickLinks)}
+          onSave={() => onSave({ name: name.trim(), description, rationale, change_note: changeNote }, quickLinks, tags)}
           onSaveAndActivate={
-            initial ? undefined : () => onSave({ name: name.trim(), description, rationale, change_note: changeNote, activate: true }, quickLinks)
+            initial ? undefined : () => onSave({ name: name.trim(), description, rationale, change_note: changeNote, activate: true }, quickLinks, tags)
           }
           saveDisabled={name.trim() === ""}
         />

@@ -36,6 +36,10 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
 import { Modal } from "../components/Modal";
 import { QuickLinkField } from "../components/QuickLinkField";
+import { TagField } from "../components/TagField";
+import { BulkTagDialog } from "../components/BulkTagDialog";
+import { projectTagAdminApi } from "../api/tags";
+import { TagFilterField } from "../components/TagFilterField";
 import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort, type SortState } from "../components/sortState";
@@ -52,6 +56,8 @@ import { TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../hooks/useCommitTags";
+import { useTagFilter } from "../hooks/useTagFilter";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
@@ -76,6 +82,8 @@ export function RequirementsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement");
+  const commitTags = useCommitTags(projectId ?? "", "requirement");
+  const tagFilter = useTagFilter();
   const myRoles = useMyProjectRoles(projectId);
   const [isOrgAdminOfProject, setIsOrgAdminOfProject] = useState(false);
   const canManageProject =
@@ -161,6 +169,7 @@ export function RequirementsPage() {
   const [createdRequirement, setCreatedRequirement] = useState<Requirement | null>(null);
   const [createdFiles, setCreatedFiles] = useState<FileAsset[]>([]);
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [newTags, setNewTags] = useState<string[]>([]);
 
   // --- Bulk operations (list view only) ---------------------------------
   // Style guide "Pattern: bulk operations on a list" — the first pilot of
@@ -173,6 +182,7 @@ export function RequirementsPage() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkArchiveDialogOpen, setBulkArchiveDialogOpen] = useState(false);
   const [bulkMovePopoverOpen, setBulkMovePopoverOpen] = useState(false);
+  const [bulkTagDialogOpen, setBulkTagDialogOpen] = useState(false);
   const [bulkMoveStageId, setBulkMoveStageId] = useState("");
   const [bulkMoveDialogOpen, setBulkMoveDialogOpen] = useState(false);
   const bulkMoveTriggerRef = useRef<HTMLButtonElement>(null);
@@ -188,6 +198,8 @@ export function RequirementsPage() {
     if (hasCommentsOnly) params.set("has_comments", "true");
     if (onlyWatched) params.set("only_watched", "true");
     if (includeArchived) params.set("include_archived", "true");
+    for (const tag of tagFilter.tags) params.append("tag", tag);
+    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -260,7 +272,7 @@ export function RequirementsPage() {
 
   useLoadOnChange(reload, [
     projectId, search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
-    hasCommentsOnly, onlyWatched, includeArchived, sort,
+    hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query,
   ]);
 
   // Deep-linked from the Project Overview page's "New requirement" button
@@ -383,6 +395,8 @@ export function RequirementsPage() {
       showToast(strings.requirements.created);
       await commitQuickLinks(created.id, quickLinks);
       setQuickLinks([]);
+      await commitTags(created.id, newTags);
+      setNewTags([]);
       if (!andAttach) {
         setShowNewForm(false);
         return;
@@ -519,7 +533,6 @@ export function RequirementsPage() {
         owner: principalRef(r.owner),
         target_stage_id: targetStageId,
         level: r.level,
-        keywords: r.keywords,
         custom_fields: r.custom_fields,
         change_note: "Bulk move to stage.",
         review_date: r.review_date,
@@ -772,6 +785,9 @@ export function RequirementsPage() {
                 <FormGridFull>
                   <QuickLinkField projectId={projectId ?? ""} artefactType="requirement" value={quickLinks} onChange={setQuickLinks} />
                 </FormGridFull>
+                <FormGridFull>
+                  <TagField projectId={projectId ?? ""} artefactType="requirement" value={newTags} onChange={setNewTags} />
+                </FormGridFull>
               </FormGrid>
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button
@@ -818,6 +834,9 @@ export function RequirementsPage() {
                 </button>
               </div>
               <div className="row" style={{ gap: "0.5rem" }}>
+                <button className="btn" onClick={() => setBulkTagDialogOpen(true)} disabled={bulkRunning}>
+                  {strings.requirements.bulkTagSelected}
+                </button>
                 <button className="btn btn-danger" onClick={() => setBulkArchiveDialogOpen(true)} disabled={bulkRunning}>
                   {strings.requirements.bulkArchiveSelected}
                 </button>
@@ -871,6 +890,21 @@ export function RequirementsPage() {
               confirmLabel={strings.requirements.bulkArchiveSelected}
               onConfirm={bulkArchive}
               onCancel={() => setBulkArchiveDialogOpen(false)}
+            />
+          )}
+
+          {bulkTagDialogOpen && projectId && (
+            <BulkTagDialog
+              api={projectTagAdminApi(projectId)}
+              artefactType="requirement"
+              ids={[...selectedIds]}
+              title={strings.requirements.bulkTagTitle(selectedIds.size)}
+              onClose={() => setBulkTagDialogOpen(false)}
+              onApplied={async (result) => {
+                setBulkTagDialogOpen(false);
+                showToast(strings.tags.admin.reclassifyDone(result.matched));
+                await reload();
+              }}
             />
           )}
 
@@ -1085,6 +1119,7 @@ export function RequirementsPage() {
           {/* C-G-11: completion is now an independent overlay marker, not a
               status value — a separate checkbox alongside the Status
               <select> above rather than one of its options. */}
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
           <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
           <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />

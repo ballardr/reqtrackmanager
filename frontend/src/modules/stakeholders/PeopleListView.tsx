@@ -10,6 +10,7 @@
  */
 import { Badge } from "../../components/Badge";
 import { PEOPLE_KIND_LABEL, type PeopleRow } from "./peopleRows";
+import type { TagFilterState } from "../../hooks/useTagFilter";
 import { RecordListView } from "./RecordListView";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
 
@@ -21,6 +22,7 @@ export function PeopleListView({
   onIncludeHiddenChange,
   onShowHidden,
   onOpen,
+  tagFilter,
 }: {
   rows: PeopleRow[];
   includeArchived: boolean;
@@ -30,6 +32,8 @@ export function PeopleListView({
   /** Re-shows a hidden Persona or Stakeholder in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (row: PeopleRow) => void;
   onOpen: (row: PeopleRow) => void;
+  /** The project's tag filter (state kept by the page); omit where tags are not offered. */
+  tagFilter?: { projectId: string; filter: TagFilterState };
 }) {
   return (
     <RecordListView<PeopleRow, never>
@@ -57,6 +61,7 @@ export function PeopleListView({
       onIncludeHiddenChange={onIncludeHiddenChange}
       onShowHidden={onShowHidden}
       onOpen={onOpen}
+      tagFilter={tagFilter}
     />
   );
 }

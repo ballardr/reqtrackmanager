@@ -57,6 +57,7 @@ from app.modules.stakeholders.models import (
 )
 from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_KEY, STAKEHOLDER_SCORING_SCHEME_KEY
 from app.modules.stakeholders.service import (
+    STAKEHOLDER_ARTEFACT_TYPE,
     STAKEHOLDER_TYPES,
     add_represents_link,
     create_stakeholder,
@@ -65,6 +66,7 @@ from app.modules.stakeholders.service import (
     list_represented_personas,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.tags import record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = (
     "name", "description", "role", "organisation_group", "interests", "responsibilities", "goals_needs",
@@ -114,6 +116,7 @@ def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UU
         **principals_to_bundle(db, v, STAKEHOLDER_PRINCIPAL_FIELDS), "user_email": emails.get(v.user_id),
         "created_by_email": emails.get(stakeholder.creator_id), "is_archived": stakeholder.is_archived,
         "archived_at": _j(stakeholder.archived_at), "created_at": _j(stakeholder.created_at),
+        "tags": record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
         "represents": [
             {"persona_name": get_current_persona_version(db, p.id).name, "persona_scope": p.scope.value}
             for _, p in list_represented_personas(db, stakeholder, organization_id)
@@ -284,6 +287,10 @@ def _create_stakeholder_from_json(
     stakeholder.archived_at = _dt(data.get("archived_at"))
     stakeholder.archived_by = creator_id if stakeholder.is_archived else None
     db.flush()
+    restore_record_tags(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=STAKEHOLDER_ARTEFACT_TYPE, artefact_id=stakeholder.id, names=data.get("tags"),
+    )
     for rep in data.get("represents", []):
         persona_id = personas.get((rep["persona_name"], rep["persona_scope"]))
         persona = db.get(Persona, persona_id) if persona_id else None

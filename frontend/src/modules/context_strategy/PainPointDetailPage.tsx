@@ -58,6 +58,7 @@ import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types"
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -241,6 +242,7 @@ export function PainPointDetailPage() {
         recordLabel="Pain Point"
         title={painPoint.title}
         code={painPoint.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/context_strategy/pain-points`, label: "← Pain Point" }}
         badges={
           <>

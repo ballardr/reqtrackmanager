@@ -30,6 +30,7 @@ from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.principals import principal_filter_clause, principal_labels, principal_ref, validate_principal
 from app.services.sequences import generate_unique_code
+from app.services.tags import TagFilter
 
 router = APIRouter(tags=["decisions-core"])
 
@@ -140,6 +141,7 @@ def list_decisions(
     decision_maker_mine: bool = False,
     search: str | None = None,
     include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Lists Decisions with filter-panel query params, mirroring
@@ -170,6 +172,7 @@ def list_decisions(
             db, current_user.id, Decision.decision_maker_type, Decision.decision_maker_id, project_id=project_id,
         ))
     decisions = db.scalars(query.order_by(Decision.created_at)).all()
+    decisions = tag_filter.keep(db, project_id, DECISION_ARTEFACT_TYPE, decisions)
 
     if search:
         needle = search.lower()

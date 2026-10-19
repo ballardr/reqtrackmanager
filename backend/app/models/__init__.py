@@ -59,7 +59,6 @@ from app.models.requirement import (
     Baseline,
     BaselineItem,
     Requirement,
-    RequirementKeyword,
     RequirementReview,
     RequirementVersion,
 )
@@ -73,10 +72,13 @@ from app.models.requirement_link_type import (
 from app.models.scoring import ScoringBand, ScoringCellRating, ScoringLevel, ScoringModelDefault
 from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
 from app.models.server_role import UserServerRole
+from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
 
 __all__ = [
     "ActionTypeDefinition",
+    "ArtefactTag",
+    "Tag",
     "AuditEvent",
     "LoginEvent",
     "ChangeRequest",
@@ -124,7 +126,6 @@ __all__ = [
     "Baseline",
     "BaselineItem",
     "Requirement",
-    "RequirementKeyword",
     "ArtefactTypeLinkRule",
     "ArtefactTypeLinkRuleEntry",
     "ProjectDefinitionSuppression",

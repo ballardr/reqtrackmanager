@@ -49,6 +49,7 @@ import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { DefinitionList } from "../components/DefinitionList";
+import { ProjectTagsPanel } from "../components/ProjectTagsPanel";
 import { DeleteInUseDialog } from "../components/DeleteInUseDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
@@ -132,7 +133,7 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * makes its inline role-toggle safe.
  */
 type CoreProjectAdminGroupKey =
-  | "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup" | "modules";
+  | "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup" | "tags" | "modules";
 
 /** Widened to admit a module-contributed section's own key (2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
  * `OrgAdminPage.tsx`'s own `moduleAdminSections`. */
@@ -145,6 +146,7 @@ const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
   "members",
   "groups",
   "reportSetup",
+  "tags",
   "modules",
 ];
 
@@ -1508,6 +1510,7 @@ export function ProjectAdminPage() {
     { key: "members", label: strings.admin.membersNav, href: `/projects/${projectId}/admin/members` },
     { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
     { key: "reportSetup", label: strings.admin.reportSetup, href: `/projects/${projectId}/admin/reportSetup` },
+    { key: "tags", label: strings.admin.tagsNav, href: `/projects/${projectId}/admin/tags` },
     { key: "modules", label: strings.admin.modulesNav, href: `/projects/${projectId}/admin/modules` },
     ...moduleAdminSections.map((section) => ({
       key: section.key, label: section.label, href: `/projects/${projectId}/admin/${section.key}`,
@@ -2789,6 +2792,14 @@ export function ProjectAdminPage() {
           this is the core, module-agnostic "is this module/sub-component
           on for this project" surface, the project-tier sibling of Org
           Admin's own "Modules" section (`OrgAdminPage.tsx`). */}
+      {activeGroup === "tags" && projectId && (
+        <div className="stack">
+          <CollapsibleSection sectionKey="projectAdmin.tags" title={strings.tags.admin.title}>
+            <ProjectTagsPanel projectId={projectId} />
+          </CollapsibleSection>
+        </div>
+      )}
+
       {activeGroup === "modules" && (
         <div className="stack">
           <CollapsibleSection sectionKey="projectAdmin.modules" title={strings.admin.modulesNav}>

@@ -52,11 +52,11 @@ from app.models.project import (
     ProjectStage,
     UserProjectRole,
 )
-from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
-from app.services.requirements import get_current_version
+from app.services.requirements import get_current_version, get_keywords, set_keywords
 
 
 def clone_project(
@@ -234,9 +234,9 @@ def clone_project(
                 custom_fields=remapped_custom_fields,
             )
         )
-        keywords = db.scalars(select(RequirementKeyword.keyword).where(RequirementKeyword.requirement_id == requirement.id)).all()
-        for keyword in keywords:
-            db.add(RequirementKeyword(requirement_id=new_requirement.id, keyword=keyword))
+        keywords = get_keywords(db, requirement.id)
+        if keywords:
+            set_keywords(db, new_requirement, keywords, creator.id)
 
     return new_project
 

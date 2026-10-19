@@ -28,7 +28,7 @@ from app.database import get_db
 from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
-from app.models.requirement import Requirement, RequirementKeyword
+from app.models.requirement import Requirement
 from app.models.user import User
 from app.schemas.report import ReportRequest
 from app.services.downloads import file_response, filename_safe
@@ -48,7 +48,7 @@ from app.services.reports import (
     generate_docx_report,
     generate_pdf_report,
 )
-from app.services.requirements import get_current_version
+from app.services.requirements import get_current_version, get_keywords
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["reports"])
 
@@ -72,10 +72,8 @@ def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list
         if payload.status is not None and version.status != payload.status:
             continue
         if payload.keyword is not None:
-            keywords = db.scalars(
-                select(RequirementKeyword.keyword).where(RequirementKeyword.requirement_id == req.id)
-            ).all()
-            if payload.keyword.lower() not in keywords:
+            keywords = {k.casefold() for k in get_keywords(db, req.id)}
+            if payload.keyword.casefold() not in keywords:
                 continue
         component = components.get(req.component_id)
         category = categories.get(req.category_id)

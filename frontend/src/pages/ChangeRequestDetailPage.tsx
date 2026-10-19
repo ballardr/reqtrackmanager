@@ -30,6 +30,7 @@ import {
 import { ArtefactLinksPanel } from "../components/ArtefactLinksPanel";
 import { DetailLayout } from "../components/DetailLayout";
 import { RecordActivity } from "../components/RecordActivity";
+import { RecordTags } from "../components/RecordTags";
 import { ApproveChangeRequestDialog } from "../components/ApproveChangeRequestDialog";
 import { CommentThread } from "../components/CommentThread";
 import { PrincipalBadge } from "../components/PrincipalBadge";
@@ -280,6 +281,7 @@ export function ChangeRequestDetailPage() {
         recordLabel="Change request"
         title={title}
         code={cr.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="change_request" artefactId={cr.id} /> : undefined}
         badges={cr.is_subscribed ? <Badge tone="info">{strings.requirements.subscribed}</Badge> : undefined}
         actions={[
           {

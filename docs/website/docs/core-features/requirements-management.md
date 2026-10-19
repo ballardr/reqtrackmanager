@@ -26,6 +26,10 @@ Opening a requirement shows its full detail: name, reasoning, clarification, des
 
 Once a requirement is locked (Approved or Completed), the edit form disables itself with a "Locked" badge, and further changes go through a [change request](./change-requests.md) instead — see [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md) for why.
 
+## Keywords are tags
+
+A requirement's **keywords** are its [tags](tags.md): add them from the **Tags** box under the requirement's title, filter the list by them, and change many requirements at once with **Tag selected**. Because they are shared with every other kind of record, a keyword keeps the capital letters it was typed with (older keywords were all lower case), and a project can limit new ones to a list its administrators keep.
+
 ## Traceability links
 
 Links are shown and edited in the **Links** panel beside a requirement's page (see [Links and traceability](links-and-traceability.md#the-links-panel)). Requirements can be linked to each other with a typed, bidirectional relationship — e.g. "Derives from" / "Is the source of" — for real traceability between requirements, beyond the 12 seeded default link types (an organisation can define more from its admin page). A link between two approved requirements can itself be made to require a change request to add or remove, via a per-project setting, for teams that want link changes reviewed the same way content changes are.

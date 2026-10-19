@@ -34,6 +34,7 @@ import {
 } from "../api/types";
 import { ArtefactLinksPanel, type LinksChangeRequestMode } from "../components/ArtefactLinksPanel";
 import { RecordActivity } from "../components/RecordActivity";
+import { RecordTags } from "../components/RecordTags";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
 import { PrincipalFormField } from "../components/PrincipalFormField";
@@ -448,7 +449,6 @@ export function RequirementDetailPage() {
         owner: form.owner,
         target_stage_id: form.targetStageId,
         level: form.level,
-        keywords: requirement.keywords,
         custom_fields: customFieldValues,
         change_note: form.changeNote,
         review_date: form.reviewDate || null,
@@ -605,6 +605,7 @@ export function RequirementDetailPage() {
         recordLabel={strings.requirements.recordLabel}
         title={requirement.name}
         code={requirement.unique_code}
+        tags={projectId && requirementId ? <RecordTags projectId={projectId} artefactType="requirement" artefactId={requirementId} /> : undefined}
         badges={
           <>
             {requirement.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
@@ -702,11 +703,6 @@ export function RequirementDetailPage() {
             <Badge>
               {strings.requirements.owner}: <PrincipalBadge principal={requirement.owner} />
             </Badge>
-            {requirement.keywords.map((k) => (
-              <Badge key={k}>
-                {k}
-              </Badge>
-            ))}
           </div>
           <CustomFieldsForm definitions={customFieldDefs} values={customFieldValues} disabled onChange={() => {}} />
         </div>

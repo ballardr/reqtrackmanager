@@ -2156,6 +2156,12 @@ td:has(> .disclosure-toggle) {
   border: 1px solid var(--color-border);
 }
 
+/* A tag: the user's own colour (inline `--tag-colour`) marks the left edge; the label keeps the theme's text colour. */
+.tag-chip {
+  border-left: 3px solid var(--tag-colour, var(--color-border));
+  border-radius: 6px;
+}
+
 .chip__label {
   min-width: 0;
   overflow-wrap: anywhere;

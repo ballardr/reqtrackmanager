@@ -16,6 +16,7 @@ import { useState } from "react";
 import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { FormActions } from "../../components/FormActions";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
@@ -50,7 +51,7 @@ export function StrategyFormModal({
   projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: StrategyFieldValues, quickLinks: CollectedLink[]) => void;
+  onSave: (values: StrategyFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [priority, setPriority] = useState<StrategyPriority>(initial?.priority ?? "medium");
@@ -61,6 +62,7 @@ export function StrategyFormModal({
   );
 
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
 
   function save() {
     onSave({
@@ -69,7 +71,7 @@ export function StrategyFormModal({
       time_horizon: timeHorizon,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as StrategyFieldValues, quickLinks);
+    } as StrategyFieldValues, quickLinks, tags);
   }
 
   const valid = title.trim() !== "" && (fields.objective ?? "").trim() !== "";
@@ -108,7 +110,10 @@ export function StrategyFormModal({
           )}
           {!initial && projectId && (
             <FormGridFull>
-              <QuickLinkField projectId={projectId} artefactType="strategy" value={quickLinks} onChange={setQuickLinks} />
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="strategy" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="strategy" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>

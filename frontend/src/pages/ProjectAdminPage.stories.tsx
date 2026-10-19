@@ -35,6 +35,7 @@ import {
   withTerminology,
   withToast,
 } from "../testing/storybook-helpers";
+import { buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
 const PROJECT_ID = "project-1";
@@ -105,6 +106,8 @@ function mockProjectAdminApis(
   };
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return project;
+    if (path.endsWith(`/projects/${PROJECT_ID}/tags`)) return buildVocabulary();
+    if (path.includes(`/projects/${PROJECT_ID}/tags/usage`)) return buildUsage();
     // Checked before the "/orgs/" + "/groups"/"/users" branches below,
     // which this bare org-detail path doesn't match (no further segment).
     if (path === `/api/v1/orgs/${project.organization_id}`) return organization;
@@ -1648,6 +1651,18 @@ const usingOrgDefaultSubComponent: ProjectModuleSubComponent = {
 const overriddenSubComponent: ProjectModuleSubComponent = {
   module_key: "context_strategy", subcomponent_key: "strategy", name: "Strategy",
   effective_enabled: false, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: false,
+};
+
+/** The Tags group shows the project's tag vocabulary and usage tables. */
+export const TagsGroupShowsTheVocabularyAndUsage: Story = {
+  beforeEach: () => mockProjectAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Tags" }));
+    await expect(await canvas.findByRole("table", { name: "Tags" })).toBeInTheDocument();
+    await expect(canvas.getByRole("combobox", { name: "Who can add a new tag" })).toHaveValue("free");
+    await expect(canvas.getByRole("table", { name: "Where tags are used: Requirement" })).toBeInTheDocument();
+  },
 };
 
 /** One switch per module; a module whose value differs from the org's

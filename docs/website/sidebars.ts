@@ -57,6 +57,7 @@ const sidebars: SidebarsConfig = {
         'core-features/stages-and-baselining',
         'core-features/requirement-actions',
         'core-features/links-and-traceability',
+        'core-features/tags',
         'core-features/reports-and-export',
         'core-features/notifications-and-email',
         'core-features/file-attachments-and-shared-resources',

@@ -33,6 +33,7 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox } from "../../components/FilterPanel";
 import { branchNames, descendantIds, groupPath } from "./groupTree";
+import type { TagFilterState } from "../../hooks/useTagFilter";
 import { RecordListView } from "./RecordListView";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import { StakeholderGroupFilterFields } from "./StakeholderGroupFilterFields";
@@ -61,6 +62,7 @@ export function StakeholderListView({
   onIncludeHiddenChange,
   onShowHidden,
   onOpen,
+  tagFilter,
   onCreate,
   onCreateFromUser,
 }: {
@@ -89,6 +91,8 @@ export function StakeholderListView({
   /** Re-shows a hidden stakeholder in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (stakeholder: Stakeholder) => void;
   onOpen: (stakeholder: Stakeholder) => void;
+  /** The project's tag filter (state kept by the page); omit where tags are not offered. */
+  tagFilter?: { projectId: string; filter: TagFilterState };
   /** Resolves on success; a rejection keeps the modal open and shows its message. `groupIds` are the groups chosen on the form. Omit when stakeholders are created elsewhere. */
   onCreate?: (values: StakeholderFieldValues, groupIds: string[]) => Promise<void>;
   /** Same contract, for the "Add from org user" modal; omit to leave that button out. */
@@ -183,6 +187,7 @@ export function StakeholderListView({
         onIncludeHiddenChange={onIncludeHiddenChange}
         onShowHidden={onShowHidden}
         onOpen={onOpen}
+      tagFilter={tagFilter}
         onCreate={onCreate && (({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds))}
         renderCreateModal={onCreate ? (props) => (
           <StakeholderFormModal

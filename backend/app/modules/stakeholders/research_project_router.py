@@ -40,6 +40,7 @@ from app.modules.stakeholders.schemas import (
 )
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}", tags=["research-project"])
 
@@ -166,13 +167,16 @@ def delete_anonymous_participant(
 
 
 @router.get("/findings", response_model=list[FindingOut])
-def list_project_findings(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+def list_project_findings(
+    project_id: UUID, tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
     """Every finding in the project, newest first."""
     _project(db, project_id)
     rows = db.scalars(
         select(ResearchFinding).where(ResearchFinding.project_id == project_id).order_by(ResearchFinding.created_at.desc())
     ).all()
-    return [rs.finding_to_out(f) for f in rows]
+    return [rs.finding_to_out(f) for f in tag_filter.keep(db, project_id, FINDING_ARTEFACT_TYPE, rows)]
 
 
 @router.get("/engagements/{engagement_id}/findings", response_model=list[FindingOut])

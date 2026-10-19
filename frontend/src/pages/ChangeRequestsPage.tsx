@@ -34,6 +34,8 @@ import {
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { TagFilterField } from "../components/TagFilterField";
+import { useTagFilter } from "../hooks/useTagFilter";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { PrincipalPicker } from "../components/PrincipalPicker";
 import { Modal } from "../components/Modal";
@@ -168,6 +170,7 @@ export function ChangeRequestsPage() {
   // client-side sort would only reorder the currently-loaded page.
   type ChangeRequestSortKey = "proposed_name" | "status" | "created_at";
   const [sort, setSort] = useState<SortState<ChangeRequestSortKey> | null>(null);
+  const tagFilter = useTagFilter();
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
@@ -175,6 +178,8 @@ export function ChangeRequestsPage() {
     if (statusFilter === "active") params.set("active_only", "true");
     else if (statusFilter) params.set("cr_status", statusFilter);
     if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
+    for (const tag of tagFilter.tags) params.append("tag", tag);
+    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -259,7 +264,7 @@ export function ChangeRequestsPage() {
     }
   }
 
-  useLoadOnChange(reload, [projectId, statusFilter, targetStageFilter, sort, search]);
+  useLoadOnChange(reload, [projectId, statusFilter, targetStageFilter, sort, search, tagFilter.query]);
 
   // Deep-linked from a requirement's "Make change request" button
   // (?requirement=<id>) — pre-selects that requirement for a
@@ -862,6 +867,7 @@ export function ChangeRequestsPage() {
               ))}
             </select>
           </FilterField>
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
         </FilterPanel>
       </div>
     </div>

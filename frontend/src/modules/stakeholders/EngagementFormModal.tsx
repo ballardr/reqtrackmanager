@@ -17,6 +17,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { CheckboxField, DateField, TextAreaField, TextField } from "../../components/FormFields";
 import type { Engagement, EngagementChannel, EngagementFieldValues } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
@@ -46,7 +47,7 @@ export function EngagementFormModal({
   compact?: boolean;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: EngagementFieldValues, quickLinks: CollectedLink[]) => void;
+  onSave: (values: EngagementFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const seed = initial ?? defaults;
   const [title, setTitle] = useState(seed?.title ?? "");
@@ -58,6 +59,7 @@ export function EngagementFormModal({
   const [consent, setConsent] = useState(seed?.consent_recorded ?? false);
   const [retainUntil, setRetainUntil] = useState(seed?.retain_until ?? "");
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
 
   return (
     <Modal title={heading ?? (initial ? `Edit ${initial.title}` : "Log engagement")} onClose={onCancel} size="lg">
@@ -99,7 +101,10 @@ export function EngagementFormModal({
           )}
           {!initial && !compact && projectId && (
             <FormGridFull>
-              <QuickLinkField projectId={projectId} artefactType="engagement" preferredType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="engagement" preferredType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="engagement" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>
@@ -110,7 +115,7 @@ export function EngagementFormModal({
             onSave({
               title: title.trim(), channel, engagement_date: date, purpose, summary, notes,
               consent_recorded: consent, retain_until: retainUntil === "" ? null : retainUntil,
-            }, quickLinks)}
+            }, quickLinks, tags)}
         saveDisabled={title.trim() === "" || date === ""}
         />
       </div>

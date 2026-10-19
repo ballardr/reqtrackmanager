@@ -69,6 +69,7 @@ from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.rbac import require_permission
 from app.services.sequences import generate_unique_code
+from app.services.tags import TagFilter
 
 router = APIRouter(tags=["compliance-project-evidence"])
 
@@ -187,12 +188,14 @@ def create_evidence(
 
 @router.get("/evidence", response_model=list[ComplianceEvidenceOut])
 def list_evidence(
-    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, tag_filter: TagFilter = Depends(),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Lists every piece of evidence for this project, including archived
     rows — a caller wanting only active evidence filters client-side,
     mirroring `list_project_compliance`'s own identical judgment call."""
     evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == project_id)).all()
+    evidence_rows = tag_filter.keep(db, project_id, "compliance_evidence", evidence_rows)
     return [build_evidence_out(db, evidence) for evidence in evidence_rows]
 
 

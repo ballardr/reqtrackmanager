@@ -95,7 +95,7 @@ export const SubmitsNewDecision: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Adopt PostgreSQL", decision_statement: "Use PostgreSQL as the backing store.", owner: { type: "user", id: "user-1" }, decision_maker: null }), []
+      expect.objectContaining({ title: "Adopt PostgreSQL", decision_statement: "Use PostgreSQL as the backing store.", owner: { type: "user", id: "user-1" }, decision_maker: null }), [], []
     ));
   },
 };
@@ -112,7 +112,7 @@ export const ChoosesAGroupOwner: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: { type: "org_group", id: "group-1" } }), []
+      expect.objectContaining({ owner: { type: "org_group", id: "group-1" } }), [], []
     ));
   },
 };
@@ -127,11 +127,11 @@ export const ChoosesAProjectGroupDecisionMaker: Story = {
     await userEvent.click(await body.findByText("Release board"));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ decision_maker: { type: "project_group", id: "pgroup-1" } }), []
+      expect.objectContaining({ decision_maker: { type: "project_group", id: "pgroup-1" } }), [], []
     ));
     await userEvent.click(body.getByRole("button", { name: "Unassign: Decision maker" }));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ decision_maker: null }), []));
+    await waitFor(() => expect(args.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ decision_maker: null }), [], []));
   },
 };
 
@@ -193,7 +193,7 @@ export const TypesArriveAfterOpening: Story = {
     const save = body.getByRole("button", { name: "Save" });
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ decision_type_id: DECISION_TYPES[0].id }), []);
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ decision_type_id: DECISION_TYPES[0].id }), [], []);
   },
 };
 

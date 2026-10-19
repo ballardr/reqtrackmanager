@@ -64,7 +64,9 @@ class RequirementUpdate(BaseModel):
     # unset, only omitted-from-this-particular-edit or retargeted.
     target_stage_id: UUID | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
-    keywords: list[str] = []
+    # Omitted leaves the requirement's tags as they are (a stale copy sent back would remove tags added since);
+    # a list replaces them (`services.tags`).
+    keywords: list[str] | None = None
     custom_fields: dict[str, Any] = {}
     change_note: str = ""
     review_date: date | None = None  # C-R-06 (blocked by is_locked() once approved, same as every other field here)

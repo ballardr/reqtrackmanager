@@ -18,6 +18,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import type { Persona, PersonaFieldValues } from "./types";
 import { FormActions } from "../../components/FormActions";
@@ -51,7 +52,7 @@ export function PersonaFormModal({
   typeOptions: { value: string; label: string }[];
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: PersonaFieldValues, quickLinks: CollectedLink[]) => void;
+  onSave: (values: PersonaFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [typeId, setTypeId] = useState(initial?.persona_type_id ?? "");
@@ -59,6 +60,7 @@ export function PersonaFormModal({
   const [weight, setWeight] = useState(initial?.weight != null ? String(initial.weight) : "");
   const [changeNote, setChangeNote] = useState("");
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof Persona] as string | undefined) ?? ""])),
   );
@@ -81,7 +83,7 @@ export function PersonaFormModal({
       change_note: changeNote,
       ...(activate ? { activate: true } : {}),
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as PersonaFieldValues, quickLinks);
+    } as PersonaFieldValues, quickLinks, tags);
   }
 
   return (
@@ -110,7 +112,10 @@ export function PersonaFormModal({
           {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (
             <FormGridFull>
-              <QuickLinkField projectId={projectId} artefactType="persona" value={quickLinks} onChange={setQuickLinks} />
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="persona" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="persona" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>

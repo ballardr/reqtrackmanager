@@ -18,6 +18,7 @@ import { useState } from "react";
 import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { FormActions } from "../../components/FormActions";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
@@ -47,7 +48,7 @@ export function GuidingPrincipleFormModal({
   projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: GuidingPrincipleFieldValues, quickLinks: CollectedLink[]) => void;
+  onSave: (values: GuidingPrincipleFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [priority, setPriority] = useState<GuidingPrinciplePriority>(initial?.priority ?? "medium");
@@ -59,6 +60,7 @@ export function GuidingPrincipleFormModal({
   );
 
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
 
   function save() {
     onSave({
@@ -66,7 +68,7 @@ export function GuidingPrincipleFormModal({
       priority,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as GuidingPrincipleFieldValues, quickLinks);
+    } as GuidingPrincipleFieldValues, quickLinks, tags);
   }
 
   const valid = name.trim() !== "" && (fields.principle_statement ?? "").trim() !== "";
@@ -99,7 +101,10 @@ export function GuidingPrincipleFormModal({
           )}
           {!initial && projectId && (
             <FormGridFull>
-              <QuickLinkField projectId={projectId} artefactType="guiding_principle" value={quickLinks} onChange={setQuickLinks} />
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="guiding_principle" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="guiding_principle" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>

@@ -14,7 +14,7 @@ Add a comment to a requirement's or change request's discussion thread for infor
 
 ## Archiving, deleting and subscribing to a record
 
-On every record's page (a requirement, action, change request, or a module record such as a Decision, Risk or Persona) the same controls sit in the same place: the **Edit** pencil and a **⋮ "{Record} actions"** menu at the right of the title.
+On every record's page (a requirement, action, change request, or a module record such as a Decision, Risk or Persona) the same controls sit in the same place: the **Edit** pencil and a **⋮ "\{Record\} actions"** menu at the right of the title.
 
 | In the menu | What it does |
 | --- | --- |

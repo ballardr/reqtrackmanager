@@ -100,7 +100,6 @@ from app.models.requirement import (
     Baseline,
     BaselineItem,
     Requirement,
-    RequirementKeyword,
     RequirementReview,
     RequirementVersion,
 )
@@ -126,6 +125,7 @@ from app.services.relationships import create_link as create_artefact_link
 from app.services.report_content import bundle_entries, content_entries, replace_scope_content
 from app.services.report_content_bundle import ContentImageImporter, collect_content_images
 from app.services.sequences import generate_unique_code
+from app.services.tags import export_vocabulary, import_vocabulary, keywords_for_requirements, set_keywords
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -203,12 +203,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     for vs in versions_by_req.values():
         vs.sort(key=lambda v: v.version_number)
 
-    keywords_by_req: dict[UUID, list[str]] = {}
-    if req_ids:
-        for req_id, keyword in db.execute(
-            select(RequirementKeyword.requirement_id, RequirementKeyword.keyword).where(RequirementKeyword.requirement_id.in_(req_ids))
-        ).all():
-            keywords_by_req.setdefault(req_id, []).append(keyword)
+    keywords_by_req = keywords_for_requirements(db, req_ids)
 
     # Requirement-to-requirement traceability links only (not untyped
     # action links, which also live in `artefact_links` but aren't part of
@@ -515,6 +510,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "report_content": [e.model_dump() for e in content], "report_images": report_images,
         "default_report_template_name": default_report_template_name,
+        "tags": export_vocabulary(db, project),
         "stages": [{"name": s.name, "sort_order": s.sort_order} for s in stages],
         "components": [
             {
@@ -700,6 +696,8 @@ def apply_project_data(
             db.flush()
         project.default_report_template_id = template.id
 
+    import_vocabulary(db, project, data.get("tags"), current_user.id)
+
     stage_id_by_name: dict[str, UUID] = {}
     for i, s in enumerate(data.get("stages", []) or [{"name": "Scoping", "sort_order": 0}]):
         stage = ProjectStage(
@@ -841,8 +839,8 @@ def apply_project_data(
             db.add(version)
             db.flush()
             version_id_by_code_and_number[(r["unique_code"], v["version_number"])] = version.id
-        for kw in r.get("keywords", []):
-            db.add(RequirementKeyword(requirement_id=requirement.id, keyword=kw))
+        if r.get("keywords"):
+            set_keywords(db, requirement, r["keywords"], current_user.id, enforce_mode=False)
         for att in r.get("attachments", []):
             asset = import_file_ref(att, "linked_by_email")
             if asset:

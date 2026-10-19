@@ -85,6 +85,7 @@ from app.schemas.type_vocabulary import (
 )
 from app.services.audit import log_event
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholders-project"])
@@ -266,7 +267,7 @@ def create_project_stakeholder_from_user(
 def list_project_stakeholders(
     project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
     group_id: UUID | None = None, direct_only: bool = False, group_by: UUID | None = None,
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """The project's stakeholders, plus the organisation's unless
     `include_org=false`. Org stakeholders hidden from the project are left out
@@ -279,6 +280,7 @@ def list_project_stakeholders(
     )
     if not include_org:
         stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
+    stakeholders = tag_filter.keep(db, project_id, STAKEHOLDER_ARTEFACT_TYPE, stakeholders)
     if group_id is not None or group_by is not None:
         stakeholders = gsh.filter_and_sort_stakeholders(
             db, stakeholders, load_groups(db, project.organization_id, project_id), group_id=group_id,

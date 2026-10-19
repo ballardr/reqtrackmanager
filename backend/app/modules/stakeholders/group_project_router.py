@@ -27,6 +27,7 @@ from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import _group_shared as gsh
+from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE
 from app.modules.stakeholders.schemas import (
     GroupFromTextCreate,
     GroupFromTextOut,
@@ -41,6 +42,7 @@ from app.modules.stakeholders.schemas import (
 )
 from app.schemas.project import MoveDirection
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholder-groups-project"])
 
@@ -63,9 +65,12 @@ def _refs(refs) -> list[StakeholderGroupRefOut]:
 
 
 @router.get("/stakeholder-groups", response_model=list[StakeholderGroupOut])
-def list_groups(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+def list_groups(
+    project_id: UUID, tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
     """The organisation's groups and this project's own, flat; the client builds the tree from `parent_group_id`."""
-    return gsh.list_groups(db, _ctx(db, project_id))
+    return tag_filter.keep(db, project_id, GROUP_ARTEFACT_TYPE, gsh.list_groups(db, _ctx(db, project_id)))
 
 
 @router.get("/stakeholder-groups/text-proposals", response_model=list[GroupTextProposalOut])

@@ -36,6 +36,7 @@ from app.modules.compliance.service import (
 )
 from app.services import notifications
 from app.services.audit import log_event
+from app.services.tags import TagFilter
 
 router = APIRouter(tags=["compliance-project-applicability"])
 
@@ -45,7 +46,7 @@ router = APIRouter(tags=["compliance-project-applicability"])
     response_model=list[ProjectComplianceRequirementOut],
 )
 def list_project_compliance_requirements(
-    project_id: UUID, project_compliance_id: UUID,
+    project_id: UUID, project_compliance_id: UUID, tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Lists every requirement's project-specific assessment for this
@@ -55,6 +56,7 @@ def list_project_compliance_requirements(
     pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
     )
+    pcrs = tag_filter.keep(db, project_id, "project_compliance_requirement", pcrs)
     return [build_requirement_out(pcr, applicability) for pcr in pcrs]
 
 

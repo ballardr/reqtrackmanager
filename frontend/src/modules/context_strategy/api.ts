@@ -31,6 +31,7 @@
  * while they are.
  */
 import { api } from "../../api/client";
+import { appendTagParams, type TagListFilters } from "../../api/tags";
 import type { FileAsset, PrincipalRef } from "../../api/types";
 import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type {
@@ -67,7 +68,16 @@ import type {
   StrategyVersion,
 } from "./types";
 
-export interface StrategyListFilters {
+/** The query string of a list read: the archived toggle and the tag filter. */
+function listQuery(filters: { include_archived?: boolean } & TagListFilters): string {
+  const params = new URLSearchParams();
+  if (filters.include_archived) params.set("include_archived", "true");
+  appendTagParams(params, filters);
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
+export interface StrategyListFilters extends TagListFilters {
   include_archived?: boolean;
 }
 
@@ -75,7 +85,7 @@ function buildStrategyApi(base: (id: string) => string) {
   return {
     // --- CRUD ---------------------------------------------------------------
     list(id: string, filters: StrategyListFilters = {}) {
-      const query = filters.include_archived ? "?include_archived=true" : "";
+      const query = listQuery(filters);
       return api.get<Strategy[]>(`${base(id)}/strategies${query}`);
     },
     create(id: string, values: Omit<StrategyFieldValues, "change_note">) {
@@ -177,7 +187,7 @@ export const orgStrategyApi = buildStrategyApi(orgBase);
 
 // --- Future State ------------------------------------------------
 
-export interface FutureStateListFilters {
+export interface FutureStateListFilters extends TagListFilters {
   include_archived?: boolean;
 }
 
@@ -213,7 +223,7 @@ function buildFutureStateApi(base: (id: string) => string) {
   return {
     // --- CRUD ---------------------------------------------------------------
     list(id: string, filters: FutureStateListFilters = {}) {
-      const query = filters.include_archived ? "?include_archived=true" : "";
+      const query = listQuery(filters);
       return api.get<FutureState[]>(`${base(id)}/future-states${query}`);
     },
     create(id: string, values: Omit<FutureStateFieldValues, "change_note">) {
@@ -333,7 +343,7 @@ function scoringQuery(params: { model_key?: string; rollup?: string; include_arc
   return text ? `?${text}` : "";
 }
 
-export interface PainPointListFilters {
+export interface PainPointListFilters extends TagListFilters {
   include_archived?: boolean;
 }
 
@@ -390,7 +400,7 @@ export const projectPainPointApi = {
 
   // --- CRUD -----------------------------------------------------------------
   list(projectId: string, filters: PainPointListFilters = {}) {
-    const query = filters.include_archived ? "?include_archived=true" : "";
+    const query = listQuery(filters);
     return api.get<PainPoint[]>(`${projectBase(projectId)}/pain-points${query}`);
   },
   create(projectId: string, values: PainPointFieldValues) {
@@ -503,7 +513,7 @@ export const projectPainPointApi = {
 // discipline `projectPainPointApi.update`'s identical `& { owner: PrincipalRef
 // | null }` extension already establishes for Pain Point.
 
-export interface GuidingPrincipleListFilters {
+export interface GuidingPrincipleListFilters extends TagListFilters {
   include_archived?: boolean;
 }
 
@@ -511,7 +521,7 @@ function buildGuidingPrincipleApi(base: (id: string) => string) {
   return {
     // --- CRUD ---------------------------------------------------------------
     list(id: string, filters: GuidingPrincipleListFilters = {}) {
-      const query = filters.include_archived ? "?include_archived=true" : "";
+      const query = listQuery(filters);
       return api.get<GuidingPrinciple[]>(`${base(id)}/guiding-principles${query}`);
     },
     create(id: string, values: Omit<GuidingPrincipleFieldValues, "change_note"> & { owner?: PrincipalRef | null }) {
@@ -615,7 +625,7 @@ export const orgGuidingPrincipleApi = buildGuidingPrincipleApi(orgBase);
 // same shape Pain Point's own project-scoped-only exception already
 // established. `id` parameters below are a `project_id`.
 
-export interface OpenQuestionListFilters {
+export interface OpenQuestionListFilters extends TagListFilters {
   include_archived?: boolean;
 }
 
@@ -624,7 +634,7 @@ export interface OpenQuestionListFilters {
 export const projectOpenQuestionApi = {
   // --- CRUD -----------------------------------------------------------------
   list(projectId: string, filters: OpenQuestionListFilters = {}) {
-    const query = filters.include_archived ? "?include_archived=true" : "";
+    const query = listQuery(filters);
     return api.get<OpenQuestion[]>(`${projectBase(projectId)}/open-questions${query}`);
   },
   create(projectId: string, values: OpenQuestionFieldValues) {

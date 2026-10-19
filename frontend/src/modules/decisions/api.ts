@@ -11,6 +11,7 @@
  * endpoints clear that bar the same way Compliance's did).
  */
 import { api } from "../../api/client";
+import { appendTagParams, type TagListFilters } from "../../api/tags";
 import type { FileAsset, PrincipalType } from "../../api/types";
 import type {
   Decision,
@@ -54,7 +55,7 @@ export function deleteDecisionType(projectId: string, decisionTypeId: string, re
 
 // --- Decisions: CRUD -----------------------------------------------------------
 
-export interface DecisionListFilters {
+export interface DecisionListFilters extends TagListFilters {
   decision_type_id?: string;
   status?: DecisionStatus;
   /** Exactly this principal (a user, or a group with `owner_type`). */
@@ -85,6 +86,7 @@ export function listDecisions(projectId: string, filters: DecisionListFilters = 
   if (filters.decision_maker_mine) params.set("decision_maker_mine", "true");
   if (filters.search) params.set("search", filters.search);
   if (filters.include_archived) params.set("include_archived", "true");
+  appendTagParams(params, filters);
   const query = params.toString();
   return api.get<Decision[]>(`${projectBase(projectId)}${query ? `?${query}` : ""}`);
 }

@@ -27,6 +27,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
 import { blankRiskValues, valuesFromRisk } from "./riskFields";
 import { CONSEQUENCE_AXIS, DETECTABILITY_AXIS, findAxis, LIKELIHOOD_AXIS } from "./useRiskScheme";
@@ -65,12 +66,13 @@ export function RiskFormModal({
   currentUserId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: RiskFieldValues, changeNote: string, quickLinks: CollectedLink[]) => void;
+  onSave: (values: RiskFieldValues, changeNote: string, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [values, setValues] = useState<RiskFieldValues>(() =>
     initial ? valuesFromRisk(initial) : blankRiskValues(userPrincipal(currentUserId)));
   const [changeNote, setChangeNote] = useState("");
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const set = <K extends keyof RiskFieldValues>(key: K, value: RiskFieldValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
 
@@ -171,13 +173,16 @@ export function RiskFormModal({
           )}
           {!initial && (
             <FormGridFull>
-              <QuickLinkField
+              <div className="stack">
+                <QuickLinkField
                 projectId={projectId} artefactType="risk" value={quickLinks} onChange={setQuickLinks}
               />
+                <TagField projectId={projectId} artefactType="risk" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>
-        <FormActions error={error} onCancel={onCancel} onSave={() => onSave(values, changeNote, quickLinks)} saveDisabled={!valid} />
+        <FormActions error={error} onCancel={onCancel} onSave={() => onSave(values, changeNote, quickLinks, tags)} saveDisabled={!valid} />
       </div>
     </Modal>
   );

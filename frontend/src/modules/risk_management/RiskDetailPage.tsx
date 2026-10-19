@@ -23,6 +23,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
@@ -170,6 +171,7 @@ export function RiskDetailPage() {
         recordLabel="Risk"
         title={risk.title}
         code={risk.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="risk" artefactId={risk.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/risk_management/risks`, label: "← Risks" }}
         badges={
           <>

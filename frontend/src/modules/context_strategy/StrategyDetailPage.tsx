@@ -36,6 +36,7 @@ import { useParams } from "react-router-dom";
 import type { FileAsset } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -207,6 +208,7 @@ export function StrategyDetailPage() {
         recordLabel="Strategy"
         title={strategy.title}
         code={strategy.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="strategy" artefactId={strategy.id} /> : undefined}
         codeOwner={codeOwner}
         back={{ to: backLink, label: backLabel }}
         badges={

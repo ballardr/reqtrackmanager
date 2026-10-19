@@ -49,11 +49,13 @@ from app.modules.stakeholders.models import (
     ProjectPersonaWeight,
 )
 from app.modules.stakeholders.service import (
+    PERSONA_ARTEFACT_TYPE,
     PERSONA_TYPES,
     create_persona,
     get_current_persona_version,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.tags import record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = (
     "name", "description", "role_title", "goals", "needs", "behaviours", "context_environment",
@@ -86,6 +88,7 @@ def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, st
         "type_name": type_name, "type_is_project_local": type_is_local, "status": v.status.value,
         **principals_to_bundle(db, v, PERSONA_PRINCIPAL_FIELDS), "created_by_email": emails.get(persona.creator_id),
         "is_archived": persona.is_archived, "archived_at": _j(persona.archived_at), "created_at": _j(persona.created_at),
+        "tags": record_tag_names(db, PERSONA_ARTEFACT_TYPE, persona.id),
     })
     return data
 
@@ -136,6 +139,11 @@ def _create_persona_from_json(
     persona.is_archived = bool(data.get("is_archived"))
     persona.archived_at = _dt(data.get("archived_at"))
     persona.archived_by = creator_id if persona.is_archived else None
+    db.flush()
+    restore_record_tags(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=PERSONA_ARTEFACT_TYPE, artefact_id=persona.id, names=data.get("tags"),
+    )
     return persona
 
 

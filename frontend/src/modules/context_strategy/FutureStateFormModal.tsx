@@ -24,6 +24,7 @@ import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import type { FutureState, FutureStateFieldValues } from "./types";
 
 const TEXT_FIELDS: { key: keyof FutureStateFieldValues; label: string; rows: number }[] = [
@@ -52,7 +53,7 @@ export function FutureStateFormModal({
   projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: FutureStateFieldValues, quickLinks: CollectedLink[]) => void;
+  onSave: (values: FutureStateFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [targetDate, setTargetDate] = useState(initial?.target_date ?? "");
@@ -62,6 +63,7 @@ export function FutureStateFormModal({
   );
 
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
 
   function save() {
     onSave({
@@ -69,7 +71,7 @@ export function FutureStateFormModal({
       target_date: targetDate.trim() === "" ? null : targetDate,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as FutureStateFieldValues, quickLinks);
+    } as FutureStateFieldValues, quickLinks, tags);
   }
 
   const valid = title.trim() !== "" && (fields.desired_state ?? "").trim() !== "";
@@ -97,7 +99,10 @@ export function FutureStateFormModal({
           )}
           {!initial && projectId && (
             <FormGridFull>
-              <QuickLinkField projectId={projectId} artefactType="future_state" value={quickLinks} onChange={setQuickLinks} />
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="future_state" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="future_state" value={tags} onChange={setTags} />
+              </div>
             </FormGridFull>
           )}
         </FormGrid>

@@ -24,6 +24,10 @@ import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../hooks/useCommitTags";
+import { useTagFilter } from "../hooks/useTagFilter";
+import { TagField } from "../components/TagField";
+import { TagFilterField } from "../components/TagFilterField";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
 import { ActionFields } from "../components/ActionFields";
@@ -46,6 +50,9 @@ export function ProjectActionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement_action");
+  const commitTags = useCommitTags(projectId ?? "", "requirement_action");
+  const tagFilter = useTagFilter();
+  const [newTags, setNewTags] = useState<string[]>([]);
   const [actions, setActions] = useState<RequirementAction[] | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -74,6 +81,8 @@ export function ProjectActionsPage() {
     if (outcomeFilter) params.set("outcome_status", outcomeFilter);
     if (typeFilter) params.set("action_type_id", typeFilter);
     if (includeArchived) params.set("include_archived", "true");
+    for (const tag of tagFilter.tags) params.append("tag", tag);
+    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
     const qs = params.toString();
     return qs ? `?${qs}` : "";
   }
@@ -102,7 +111,7 @@ export function ProjectActionsPage() {
     if (!newActionTypeId && types[0]) setNewActionTypeId(types[0].id);
   }
 
-  useLoadOnChange(reload, [projectId, outcomeFilter, typeFilter, includeArchived]);
+  useLoadOnChange(reload, [projectId, outcomeFilter, typeFilter, includeArchived, tagFilter.query]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -137,6 +146,8 @@ export function ProjectActionsPage() {
       showToast(strings.actions.created);
       await commitQuickLinks(created.id, newQuickLinks);
       setNewQuickLinks([]);
+      await commitTags(created.id, newTags);
+      setNewTags([]);
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -192,6 +203,7 @@ export function ProjectActionsPage() {
             projectId={projectId}
           />
           <QuickLinkField projectId={projectId ?? ""} artefactType="requirement_action" preferredType="requirement" value={newQuickLinks} onChange={setNewQuickLinks} />
+          <TagField projectId={projectId ?? ""} artefactType="requirement_action" value={newTags} onChange={setNewTags} />
           <button
             className="btn btn-primary" style={{ alignSelf: "flex-start" }}
             onClick={createAction} disabled={!newTitle.trim() || !newActionTypeId}
@@ -283,6 +295,7 @@ export function ProjectActionsPage() {
               ))}
             </select>
           </FilterField>
+          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           <FilterCheckbox label={strings.actions.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

@@ -19,6 +19,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project, Requirement } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
@@ -159,6 +160,7 @@ export function NeedDetailPage() {
         recordLabel="Stakeholder Need"
         title={need.name}
         code={need.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="stakeholder_need" artefactId={need.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/stakeholders/people?kind=need`, label: "← People" }}
         badges={<Badge tone={NEED_STATUS_TONE[need.status]}>{NEED_STATUS_LABEL[need.status]}</Badge>}
         subtitle={`v${need.version_number}${need.is_archived ? " · Archived" : ""}`}
