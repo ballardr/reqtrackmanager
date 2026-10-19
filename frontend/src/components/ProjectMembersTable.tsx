@@ -141,7 +141,7 @@
  *   table doesn't need a no-op stub.
  */
 import { Info, Send, Trash2, Wand2 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import type {
   EffectiveMember,
@@ -163,6 +163,7 @@ import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { Popover } from "./Popover";
 import { cycleSort, type SortState } from "./sortState";
 import { Badge } from "./Badge";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 const PAGE_SIZE = 20;
@@ -367,9 +368,7 @@ export function ProjectMembersTable({
   const [confirmRemoveUserId, setConfirmRemoveUserId] = useState<string | null>(null);
   const [confirmRemoveGroupId, setConfirmRemoveGroupId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [search, roleFilter, showInvited]);
+  useResetOnChange([search, roleFilter, showInvited], () => setVisibleCount(PAGE_SIZE));
 
   const needle = search.trim().toLowerCase();
 

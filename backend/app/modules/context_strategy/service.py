@@ -227,6 +227,7 @@ from app.modules.context_strategy.models import (
 )
 from app.modules.registry import LinkTypeSeed
 from app.schemas.principal import PrincipalRef
+from app.services import definition_suppression
 from app.services.audit import log_event
 from app.services.link_types import ensure_org_link_type
 from app.services.relationships import create_link, get_link_between
@@ -918,6 +919,7 @@ def delete_org_pain_point_type(db: Session, pain_point_type: PainPointTypeDefini
             "This Pain Point type is still referenced by at least one project and cannot be removed. "
             "Disable it instead, or ask each referencing project to stop using it first."
         )
+    definition_suppression.forget_definition(db, PAIN_POINT_TYPE_KIND, pain_point_type.id)
     db.delete(pain_point_type)
     db.flush()
 
@@ -956,6 +958,10 @@ class EffectivePainPointType:
     source: str
 
 
+PAIN_POINT_TYPE_KIND = "pain_point_type"
+definition_suppression.register_definition_kind(PAIN_POINT_TYPE_KIND)
+
+
 def resolve_effective_pain_point_types(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> list[EffectivePainPointType]:
     """Resolves a project's effective Pain Point type list:
     every active org type (using its project override's name/order/enabled
@@ -986,8 +992,12 @@ def resolve_effective_pain_point_types(db: Session, project_id: uuid.UUID, organ
         )
     ).all()
 
+    hidden = definition_suppression.get_suppressed_ids(db, project_id, PAIN_POINT_TYPE_KIND)
+
     effective: list[EffectivePainPointType] = []
     for org_type in org_types:
+        if org_type.id in hidden:
+            continue
         override = overrides.get(org_type.id)
         if override is not None:
             effective.append(
@@ -1054,11 +1064,105 @@ def get_or_create_project_pain_point_type(
     )
     if passthrough is not None:
         return passthrough
+    if org_type.id in definition_suppression.get_suppressed_ids(db, project_id, PAIN_POINT_TYPE_KIND):
+        raise ValueError("This Pain Point type is hidden in this project.")
 
     passthrough = ProjectPainPointType(project_id=project_id, org_type_id=org_type.id, is_enabled=True)
     db.add(passthrough)
     db.flush()
     return passthrough
+
+
+def hide_org_pain_point_type(
+    db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID
+) -> PainPointTypeDefinition:
+    """Hides an organisation Pain Point type in a project (see
+    `TypeVocabulary.hide_org_type`, which this mirrors). `type_ref_id` is the
+    org type id or the project's override row id for it; the override row is
+    kept so Pain Points that use it are unaffected.
+
+    Raises:
+        ValueError: if the id is not an org-backed type of this project.
+    """
+    row = db.get(ProjectPainPointType, type_ref_id)
+    org_type_id = row.org_type_id if row is not None and row.project_id == project_id else type_ref_id
+    org_type = db.get(PainPointTypeDefinition, org_type_id) if org_type_id is not None else None
+    if org_type is None or org_type.organization_id != organization_id:
+        raise ValueError("This is not an organisation Pain Point type that can be hidden here.")
+    definition_suppression.hide_definition(db, project_id, PAIN_POINT_TYPE_KIND, org_type.id)
+    return org_type
+
+
+def remove_pain_point_type(
+    db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID
+) -> tuple[str, uuid.UUID]:
+    """What "delete" means for a Pain Point type in a project: a project-local
+    type is deleted (`delete_project_pain_point_type`); an organisation default
+    (by org id or override row id) is hidden here (`hide_org_pain_point_type`).
+
+    Returns:
+        `("deleted", row id)` or `("hidden", org type id)`.
+
+    Raises:
+        LookupError: if the id is no type of this project.
+        ValueError: if a local type is still in use.
+    """
+    row = db.get(ProjectPainPointType, type_ref_id)
+    if row is not None and row.project_id == project_id and row.org_type_id is None:
+        delete_project_pain_point_type(db, row)
+        return "deleted", row.id
+    try:
+        return "hidden", hide_org_pain_point_type(db, project_id, organization_id, type_ref_id).id
+    except ValueError as exc:
+        raise LookupError(str(exc)) from exc
+
+
+def list_hidden_pain_point_types(
+    db: Session, project_id: uuid.UUID, organization_id: uuid.UUID
+) -> list[PainPointTypeDefinition]:
+    """The organisation Pain Point types hidden in the project, in the organisation's order."""
+    hidden = definition_suppression.get_suppressed_ids(db, project_id, PAIN_POINT_TYPE_KIND)
+    if not hidden:
+        return []
+    return list(db.scalars(
+        select(PainPointTypeDefinition)
+        .where(PainPointTypeDefinition.organization_id == organization_id, PainPointTypeDefinition.id.in_(hidden))
+        .order_by(PainPointTypeDefinition.sort_order)
+    ).all())
+
+
+def restore_hidden_pain_point_types(
+    db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, org_type_ids: set[uuid.UUID] | None = None,
+) -> list[PainPointTypeDefinition]:
+    """Shows hidden organisation Pain Point types in the project again: all of
+    them, or only `org_type_ids`. Returns the restored org types."""
+    hidden = list_hidden_pain_point_types(db, project_id, organization_id)
+    wanted = {t.id for t in hidden}
+    if org_type_ids is not None:
+        wanted &= org_type_ids
+    restored = definition_suppression.restore_definitions(db, project_id, PAIN_POINT_TYPE_KIND, wanted)
+    return [t for t in hidden if t.id in restored]
+
+
+class _PainPointTypeHiding:
+    """Adapts the Pain Point type functions to `services.type_vocabulary_routes.HideableVocabulary`."""
+
+    label = "Pain Point type"
+
+    @staticmethod
+    def remove_type(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID):
+        return remove_pain_point_type(db, project_id, organization_id, type_ref_id)
+
+    @staticmethod
+    def list_hidden(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID):
+        return list_hidden_pain_point_types(db, project_id, organization_id)
+
+    @staticmethod
+    def restore_hidden(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, org_type_ids=None):
+        return restore_hidden_pain_point_types(db, project_id, organization_id, org_type_ids)
+
+
+PAIN_POINT_TYPE_HIDING = _PainPointTypeHiding()
 
 
 def create_project_local_pain_point_type(

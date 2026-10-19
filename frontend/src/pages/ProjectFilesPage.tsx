@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api, fileUrl } from "../api/client";
@@ -7,6 +7,8 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
 import { formatFileSize } from "../utils/formatFileSize";
+import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 50;
 
@@ -41,11 +43,8 @@ export function ProjectFilesPage() {
     setTotal(page.total);
   }
 
-  useEffect(() => {
-    setFiles(null);
-    loadFiles(0, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  useResetOnChange([projectId], () => setFiles(null));
+  useLoadOnChange(() => loadFiles(0, false), [projectId]);
 
   function originLink(f: ProjectFile): { to: string; label: string } | null {
     if (f.source === "action_attachment" && f.action_id) {

@@ -26,7 +26,7 @@
  *   plain irreversible-delete, which is what `ConfirmDialog`/its two
  *   confirmation tiers are for).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { OrgUser, ProjectListItem } from "../../api/types";
 import { api } from "../../api/client";
@@ -41,6 +41,7 @@ import { userDisplayName } from "./types";
 import { TextAreaField } from "../../components/FormFields";
 import { FormActions } from "../../components/FormActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function StandardApplicabilityPanel({
   standard,
@@ -69,10 +70,7 @@ export function StandardApplicabilityPanel({
     setOrgUsers(loadedUsers);
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [standard.organization_id, standard.id]);
+  useLoadOnChange(reload, [standard.organization_id, standard.id]);
 
   async function handleToggle(next: boolean) {
     setToggling(true);

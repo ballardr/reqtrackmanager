@@ -26,6 +26,7 @@ import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function ProjectGuidingPrinciplesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -59,10 +60,7 @@ export function ProjectGuidingPrinciplesPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useEffect(() => {
-    void reloadGuidingPrinciples();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, includeArchived]);
+  useLoadOnChange(reloadGuidingPrinciples, [projectId, includeArchived]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;

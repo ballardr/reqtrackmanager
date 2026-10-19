@@ -32,6 +32,7 @@ import { Modal } from "./Modal";
 import { Spinner } from "./Spinner";
 import { FormActions } from "./FormActions";
 import { CheckboxField } from "./FormFields";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 export interface ResourcePickerSource {
   id: string;
@@ -62,9 +63,12 @@ export function ResourcePickerModal({
 
   const activeSource = sources.find((s) => s.id === activeSourceId) ?? null;
 
-  useEffect(() => {
+  useResetOnChange([activeSourceId], () => {
     setFiles(null);
     setSelected(new Set());
+  });
+
+  useEffect(() => {
     if (!activeSource) return;
     let cancelled = false;
     activeSource.loadFiles().then((loaded) => {

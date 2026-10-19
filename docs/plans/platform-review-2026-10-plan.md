@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13 and 14 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q27 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 and 15 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-13 / 23 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13 and 14 done 2026-10-19; Phases 8, 9, 10, 13 and 14 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 15.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+14 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14 and 15 done 2026-10-19; Phases 8, 9, 10, 13, 14 and 15 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 16.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -22,7 +22,7 @@
 | 12 | Container health check reports unhealthy on a working install | N11 | [x] |
 | 13 | Module availability: new-install defaults, server admin UI, hide unavailable modules | N12, N13, N14 | [x] |
 | 14 | Navigation: ordering, scrollbar, sub-component hiding | N15, N16, N17 | [x] |
-| 15 | Org defaults can be hidden per project and restored (delete plus "add org defaults") | N18 | [ ] |
+| 15 | Org defaults can be hidden per project and restored (delete plus "add org defaults") | N18 | [x] |
 | 16 | One People page (Personas and Stakeholders) and "Save and activate" | N19, N20 | [ ] |
 | 17 | Quick-link on create | N21 | [ ] |
 | 18 | Tags on every item type | N22 | [ ] |
@@ -31,6 +31,7 @@
 | 21 | Field help (?) tooltips | N25 | [ ] |
 | 23 | Global search: plain header search box with live results, search page (scope, filters, field picker), per-user default search fields, per-type search registration | N26 | [ ] |
 | 24 | Record codes in reports, CSV and PDF exports, bundles and embedded references | N7, N27 | [ ] |
+| 25 | Server administrators can add users directly (Server Management → Users) | N28 | [ ] |
 | 22 | Docs website, seeds, README and close-out (runs last; the number 22 is kept so references stay valid) | all | [ ] |
 
 ```mermaid
@@ -66,6 +67,7 @@ flowchart LR
     P23 --> P22
     P8 --> P24["24 Codes in reports, exports, references"]
     P24 --> P22
+    P13 --> P25["25 Server admin adds users"] --> P22
 ```
 
 Codes (6–8) and layout (3–5) touch the same pages for different reasons, so they run one after the other, not in parallel; layout goes first because codes then land in the new shared header once.
@@ -104,6 +106,7 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 | N24 Nested-project scope filter | Do it; **authorisation is the hard part** | Items from other projects must obey that project's read gate and module enablement; the list must say which project a row is from (Phase 20). |
 | N25 Field help tooltips | Do it; component plus a checkable rule | A `(?)` button on every non-obvious field; persona importance weighting is the motivating case (Phase 21). |
 | N27 Codes in reports, CSVs and references | Added at the user's request 2026-10-19; collects the "not done, flagged" items of Phases 6, 7 and 8 | Phases 6 to 8 put codes on records and in every list, but reports, CSV and PDF exports, bundle exports and a few embedded references (a Persona chip on a Stakeholder, held needs, group chips) still show names only, and the organisation's "always show the project code" switch is ignored there. One shared server-side formatter instead of 85 files formatting their own (Phase 24). |
+| N28 Server admins cannot add users | Confirmed gap; **half exists** | `POST /orgs/{id}/users` already lets a server admin create a user inside an organisation (a documented carve-out), but nothing in Server Management calls it, and there is no way to create a user who belongs to no organisation yet. Account creation is sensitive (initial credential, `sso_only` orgs, audit), so reuse the existing creation path and invite flow rather than a second one (Phase 25). |
 | N26 Global search | Do it; **the existing search cannot be reused as it is** | The only cross-type search today is the link finder (`link-candidates`), which matches record *labels* only, returns at most 10 per type, and is limited to types a link type reaches. Searching descriptions or other fields, filtering and paging need a new per-type registration (`ArtefactSearchProvider`) in which each module declares its searchable fields. Authorisation is the hard part, as for N24; results a user cannot see are omitted, never redacted. Regex was dropped at the user's request (2026-10-18). |
 
 ### Interpretation of imprecise wording (CLAUDE.md: inputs may be casual)
@@ -169,6 +172,8 @@ Codes (6–8) and layout (3–5) touch the same pages for different reasons, so 
 | Q26 | Search result types beyond records | **Projects are results** (found by name or code, shown only if the user can read them); **users and groups are not searchable** here (**Decided by: User**, 2026-10-18). The directory stays in Org Admin, which keeps who can enumerate whom unchanged. | 23 |
 | Q27 | Live results while typing | **Yes, a live dropdown** (**Decided by: User**, 2026-10-18), debounced so results do not flicker while typing (design in Phase 23). | 23 |
 | Q28 | Header search scope and default fields | **No scope selector in the header box**: it uses the narrowest matching scope and the scope is changed on the search page. **Default fields are ID and Title only**, changeable per user in Preferences (`search_default_fields`), overridable per search (**Decided by: User**, 2026-10-19). Supersedes the earlier always-visible selector and the ID, Title, Description default. | 23 |
+
+| Q29 | How a server-admin-created user gets a credential | **Both, as Org Admin does: invite by email, or create directly with an admin-set password** (**Decided by: User**, 2026-10-19). Agent refinement: the form offers the two as a choice, invite first; the typed-password path applies the same password policy as signup and change-password (minimum 8 characters), and the response never echoes it. A forced change at first login is not built (no such field exists), so the admin who typed the password knows it until the user changes it; recorded as a known limitation. | 25 |
 
 ## 4. Phase specs
 
@@ -403,6 +408,12 @@ Reading the diagram: a module is checked at three levels from the server down. A
 - **Agent rule (added to `CLAUDE.md` when the component lands):** "Any project-scoped definition with an organisation version must support hide-and-restore through `DefinitionList`; a delete that only shows an explanatory message is a defect." Also in the style guide ("Pattern: organisation defaults in a project").
 - **Tests:** backend: hide, restore, in-use, nested chain, cross-project and cross-org isolation, audit logging, per kind; Storybook for `DefinitionList` (inherited, hidden, none left); Playwright: hide an org pain point type in a project, see it disappear from the project's choices, restore it.
 
+- **Done 2026-10-19 (uncommitted at hand-back).** Details, the inventory and decisions in `docs/decisions.md`.
+  - **Inventory result (differs from the list above):** only the four typed vocabularies (Pain Point, Persona, Stakeholder, Risk types) have an organisation tier that a project views and could not hide. Link types already had Hide / Show; scoring has "Use inherited value"; action types, decision types and custom fields are project-only; statuses, decision templates and compliance vocabularies are organisation-only.
+  - **Built:** migration `0101` (`project_definition_suppressions`); `services/definition_suppression.py` (kind registry, hide, list, restore, forget); `TypeVocabulary` hide/restore and `services/type_vocabulary_routes.py`; Pain Point adapter; `DELETE` now hides an organisation-backed type, plus `GET .../hidden` and `POST .../restore`, on all four vocabularies; hidden defaults travel in project bundles; frontend `RestoreOrgDefaultsButton`, `DefinitionList` `getDeleteLabel` / `confirmDelete`, and `ProjectTypeVocabularyPanel` (hide confirm, empty list allowed, restore dialog with a subset).
+  - **Docs and rules:** `CLAUDE.md` rule "Organisation Defaults a Project Can Hide"; style guide "Pattern: organisation defaults in a project"; access-control policy; architecture note; website pages for Pain Point, Persona, Stakeholder and Risk types; demo seed hides the unused "Environmental" Risk type in Falcon-3.
+  - **Tests:** backend `tests/test_project_definition_suppression.py` (30); Storybook for the new button, `DefinitionList` and the five panels; Playwright `pain-point-type-hide.spec.ts`.
+
 ### Phase 16 — One People page and "Save and activate" (N19, N20)
 
 **Why:** Personas and Stakeholders are two pages for what a user thinks of as "the people we are designing for/with", and creating a persona then separately activating it is two steps for a user who is allowed to do both. **Risk addressed:** navigation sprawl; draft records nobody activates; self-approval where the process forbids it. **Outcome:** one list, one New ▾ menu, and a second create button only where the same user could already activate the record.
@@ -534,9 +545,23 @@ flowchart LR
 - **Tests:** backend per report and export (the code appears; qualified for an organisation-owned record and for a record from another project; the organisation's enforce switch on and off; the person's preference ignored); coverage test over the catalogue; bundle round trip unchanged by codes (import numbers afresh, references still resolve by title, two records with one title still handled as before); CSV formula neutralisation with a leading code. Storybook for each report view and chip that changed. Playwright: one report per module opened and downloaded as CSV, asserting a code column; an organisation-owned Persona chip on a Stakeholder shows `ACME-PER-001`.
 - **Sub-phases (each shippable):** 24a inventory, the shared formatter and the report framework hook, plus core reports; 24b module reports (Context & Strategy, Stakeholders, Decisions, Risks, Compliance); 24c CSV, PDF and bundle exports, embedded references, MCP, docs, seeds.
 
+### Phase 25 — Server administrators can add users directly (N28)
+
+**Why:** the only supported way to add a person is through an organisation (Org Admin, or self-signup/invite), so a server admin cannot onboard someone from Server Management, and cannot create a user before an organisation exists for them. **Risk addressed:** a platform operator forced into workarounds (a throwaway org, direct database edits) that bypass audit; a second, inconsistent account-creation path if built carelessly. **Outcome:** Server Management → Access Review (the users list) has an **Add user** action, by invite or with a password as in Org Admin, through the same code as every other path, audited, with or without an organisation.
+
+- **Reuse, don't fork.** Extract the body of `create_org_user` (`backend/app/routers/orgs/membership.py`) and the invite creation into a service function; the new `POST /system/users` (`routers/system/users.py`, server admin only) and the existing org endpoint both call it. Email uniqueness, lower-casing, the `sso_only` guard and the `log_event` audit row stay in the one place.
+- **Found defect, fixed in this phase:** `OrgUserCreate.password` (`schemas/org.py`) has no minimum length, unlike signup and change-password (`min_length=8`), so Org Admin can create an account with a one-character password. The extracted service validates once for both entry points, with a test pinning it.
+- **Request:** email, display name, optional organisation plus role (default member), per Q29 a choice of **Send invite** (the user sets their own password, via the pending-invite flow) or **Create with password** (the admin sets it, as `create_org_user` does today). With no organisation the account exists with no membership (the `ALWAYS_ON` self-signup shape), and an admin assigns one later. An `sso_only` organisation is rejected with the existing message.
+- **UI:** an **Add user** button above the Access Review `DirectoryTable`, opening a `Modal` form (`FormGrid`; organisation picker with a "No organisation" choice; role `<select>` through `ORG_ROLE_LABEL`), a Toast on success and the new row focused. Follows the create-form conventions of the style guide; confirmation Tier 1.
+- **Security:** consult the access-control and data-classification policies; the typed password is validated by the shared password policy and is never returned, logged or audited; no password hash or token in any response or log; the action is rate-limited like invites and recorded as `user.created` with the acting server admin. Server-admin and server-role grants are **not** settable here (they stay on their own audited endpoints), so this cannot mint a server admin.
+- **Users and groups parity:** creates a user account only; not a person field, not applicable (recorded).
+- **Nested projects / module boundary:** no project-scoped table, no module code; not applicable.
+- **Tests:** backend: server admin creates with and without an organisation, both modes (invite and password; the invited user can log in after accepting, the password user can log in immediately), weak password 400, duplicate email 409, `sso_only` 400, non-server-admin 403, audit row present, the org endpoint behaves exactly as before after the extraction, no secret in the response; Storybook for the form; Playwright: server admin adds a user with no organisation and one in an organisation, both appear in the list, an invited user accepts and logs in, and a password user logs in directly.
+- **Docs and seeds:** docs website page for Server Management users, `docs/solution-architecture.md` if the service extraction changes a described flow, SOC 2 access-control policy note; the seeds need no new data.
+
 ### Phase 22 — Close-out
 
-- Docs website audit for every user-visible change (the label, Help, header and menu, codes, activity tab, forms, Server Management modules page, hide/restore of org defaults, People page, Save and activate, quick-link, tags, scope filter, field help, nav order, global search, codes in reports and exports), retake affected screenshots, README, `docs/solution-architecture.md` (project codes, activity endpoint, record codes in reports and exports), `docs/modules.md` (any new registration fields), `docs/decisions.md` entries with Decided-by tags, style guide updates (list below), memory index.
+- Docs website audit for every user-visible change (the label, server-admin user creation, Help, header and menu, codes, activity tab, forms, Server Management modules page, hide/restore of org defaults, People page, Save and activate, quick-link, tags, scope filter, field help, nav order, global search, codes in reports and exports), retake affected screenshots, README, `docs/solution-architecture.md` (project codes, activity endpoint, record codes in reports and exports), `docs/modules.md` (any new registration fields), `docs/decisions.md` entries with Decided-by tags, style guide updates (list below), memory index.
 - Seeds: both seed scripts get organisation and project codes under the org policy, tags (free and restricted projects, one nested tree for the scope filter), a hidden org default in one project, server module defaults, all modules on, a long-titled record per type for the layout check, searchable text in every type (including an engagement finding and a Compliance clause) and no codeless record.
 - `CLAUDE.md` agent rules added by their phases are confirmed present: org-default hide/restore (15), quick-link on create (17), field help (21), module-visibility (13), plus the save-and-activate review (16) and the search-provider rule for new artefact types (23) and the report-formatter rule for record codes (24).
 - Style guide sections added or changed: header search (no scope control), search results page with scope selector, Preferences search section, organisation defaults in a project, quick-link, field help, People list and New menu, scope filter, tags, pills, text beside controls, icon scale, record header and object actions, links aside tabs, form checklist, the stale token-table row.

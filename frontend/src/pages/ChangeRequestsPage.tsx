@@ -51,6 +51,8 @@ import { Badge } from "../components/Badge";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { CheckboxField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PAGE_SIZE = 30;
 
@@ -257,27 +259,28 @@ export function ChangeRequestsPage() {
     }
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, statusFilter, targetStageFilter, sort, search]);
+  useLoadOnChange(reload, [projectId, statusFilter, targetStageFilter, sort, search]);
 
   // Deep-linked from a requirement's "Make change request" button
   // (?requirement=<id>) — pre-selects that requirement for a
   // MODIFY_REQUIREMENT change request and opens the form.
-  useEffect(() => {
-    const deepLinkedRequirementId = searchParams.get("requirement");
+  const deepLinkedRequirementId = searchParams.get("requirement");
+  useResetOnChange([deepLinkedRequirementId], () => {
     if (deepLinkedRequirementId) {
       setKind("modify_requirement");
       setRequirementId(deepLinkedRequirementId);
       setShowForm(true);
-      setSearchParams((params) => {
-        params.delete("requirement");
-        return params;
-      }, { replace: true });
     }
+  }, { runOnMount: true });
+
+  useEffect(() => {
+    if (!deepLinkedRequirementId) return;
+    setSearchParams((params) => {
+      params.delete("requirement");
+      return params;
+    }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [deepLinkedRequirementId]);
 
   // Deep-linked from the Project Overview dashboard's CR glance tiles/pie
   // chart segments (UX review) — `statusFilter` above is already seeded
@@ -306,7 +309,7 @@ export function ChangeRequestsPage() {
   // always pre-filled with real content rather than something copied by
   // hand — and drop any previously-toggled fields/attachments, since they
   // described a different requirement's content.
-  useEffect(() => {
+  useResetOnChange([requirementId, kind, selectedRequirement?.id], () => {
     if (kind !== "modify_requirement" || !selectedRequirement) return;
     setProposed({
       name: selectedRequirement.name,
@@ -322,14 +325,11 @@ export function ChangeRequestsPage() {
     setCustomFieldValues(selectedRequirement.custom_fields);
     setChangedFields(new Set());
     setAttachmentFileIds([]);
-    // `requirements` is a dependency, not just `requirementId`/`kind` — a
-    // deep-linked requirement id can be set (by the effect above) before
-    // the requirements list itself has finished loading, in which case
-    // `selectedRequirement` is still null on that pass and this effect
-    // must re-fire once the list actually arrives, not just on the next
-    // `requirementId` change (which may never come).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requirementId, kind, requirements]);
+    // Keyed on the resolved requirement's id, not just `requirementId`/`kind`: a
+    // deep-linked requirement id can be set before the requirements list has
+    // finished loading, in which case `selectedRequirement` is still null on that
+    // pass and the form must be primed once the list arrives.
+  });
 
   /** The collected links as the API takes them (the display fields are dropped). */
   function proposedLinksPayload() {

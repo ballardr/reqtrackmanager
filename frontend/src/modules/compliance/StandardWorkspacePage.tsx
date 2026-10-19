@@ -83,6 +83,8 @@ import type {
 } from "./types";
 import { userDisplayName } from "./types";
 import { Badge } from "../../components/Badge";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
 
@@ -140,12 +142,11 @@ export function StandardWorkspacePage() {
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([standardId], () => {
     setStandard(null);
     setNotFound(false);
-    void reloadStandard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [standardId]);
+  });
+  useLoadOnChange(reloadStandard, [standardId]);
 
   useEffect(() => {
     if (!standard) return;
@@ -161,10 +162,13 @@ export function StandardWorkspacePage() {
   // resolves which version counts as "current" — a second, small request
   // rather than a new backend field, since `listRequirements` already
   // exists and is cheap for the tile's purposes).
-  useEffect(() => {
-    if (!standard) return;
+  useResetOnChange([standard?.organization_id, standard?.id], () => {
     setVersions(null);
     setRequirementCount(null);
+  });
+
+  useEffect(() => {
+    if (!standard) return;
     complianceApi.listStandardVersions(standard.organization_id, standard.id).then(setVersions);
     complianceApi.getStandardProjectSummary(standard.organization_id, standard.id).then(setProjectSummary);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -180,9 +184,10 @@ export function StandardWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [standard?.organization_id, standard?.id, latestVersion?.id]);
 
+  useResetOnChange([section, standard?.organization_id, standard?.id], () => setHistory(null));
+
   useEffect(() => {
     if (section !== "history" || !standard) return;
-    setHistory(null);
     complianceApi
       .getStandardHistory(standard.organization_id, standard.id)
       .then(setHistory)

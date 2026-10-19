@@ -1,5 +1,5 @@
 import { useMutation } from "../hooks/useMutation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -10,6 +10,8 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
+import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
 
@@ -43,11 +45,8 @@ export function NotificationsPage() {
     setTotal(page.total);
   }
 
-  useEffect(() => {
-    setNotifications(null);
-    load(0, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, unreadOnly]);
+  useResetOnChange([search, unreadOnly], () => setNotifications(null));
+  useLoadOnChange(() => load(0, false), [search, unreadOnly]);
 
   async function markRead(id: string) {
     if (!(await run(() => api.post(`/api/v1/notifications/${id}/read`), { failure: "Could not mark read." }))) return;

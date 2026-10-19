@@ -25,7 +25,7 @@
  * shortcut; "Edit" is still listed in the menu too, since a shortcut is
  * never a substitute for a menu entry.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 
 import { ActionMenu } from "../../components/ActionMenu";
@@ -36,6 +36,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionTemplateFormModal } from "./DecisionTemplateFormModal";
 import type { DecisionTemplate } from "./types";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
@@ -55,10 +56,7 @@ export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  useLoadOnChange(reload, [orgId]);
 
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (templates === null) return <Spinner />;

@@ -69,7 +69,7 @@ test.describe("module enablement overrides", () => {
     const { org, adminHeaders, createProject } = await setupOrg(page, "overrides");
     const existing = await createProject("E2E Module Overrides Existing");
 
-    await test.step("module Off at org level: project toggle disabled with a hint, API widen rejected", async () => {
+    await test.step("module Off at org level: not listed to the project admin, API widen rejected", async () => {
       const resp = await page.request.put(
         `${apiBaseUrl}/api/v1/projects/${existing.id}/modules/context_strategy/enablement`,
         { headers: adminHeaders, data: { enabled: true } },
@@ -78,9 +78,9 @@ test.describe("module enablement overrides", () => {
 
       await page.goto(`/projects/${existing.id}/admin`);
       await selectProjectAdminGroup(page, "Modules");
-      const row = moduleRow(page, "Context & Strategy");
-      await expect(row.getByText("Turned off for your organisation — ask an organisation admin to turn it on.")).toBeVisible();
-      await expect(row.getByRole("switch")).toBeDisabled();
+      // A module the organisation has turned off is not offered to a project admin at all.
+      await expect(page.locator(".module-settings-row").first()).toBeVisible();
+      await expect(moduleRow(page, "Context & Strategy")).toHaveCount(0);
     });
 
     await test.step("org turns it on for new projects: the existing project (nothing copied while Off) gets it", async () => {
@@ -121,9 +121,9 @@ test.describe("module enablement overrides", () => {
 
     await page.goto(`/projects/${existing.id}/admin`);
     await selectProjectAdminGroup(page, "Modules");
-    await moduleRow(page, "Context & Strategy").getByRole("button", { name: "5 components · 4 on" }).click();
-    const painPoints = page.getByRole("switch", { name: "Enable Pain Points (Context & Strategy) for this project" });
-    await expect(painPoints).toHaveAttribute("aria-checked", "false");
-    await expect(painPoints).toBeDisabled();
+    // The org-disabled sub-component is no longer listed to the project admin: four of five remain, all on.
+    await moduleRow(page, "Context & Strategy").getByRole("button", { name: "4 components · all on" }).click();
+    await expect(page.getByRole("switch", { name: "Enable Pain Points (Context & Strategy) for this project" })).toHaveCount(0);
+    await expect(page.getByRole("switch", { name: "Enable Strategy (Context & Strategy) for this project" })).toBeVisible();
   });
 });

@@ -21,7 +21,7 @@
  * is exactly the case that precedent's own "revisit" note anticipated, and
  * it confirms rather than overturns the existing placement.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
@@ -34,6 +34,7 @@ import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -58,10 +59,7 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reloadGuidingPrinciples();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, includeArchived]);
+  useLoadOnChange(reloadGuidingPrinciples, [orgId, includeArchived]);
 
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciples === null) return <Spinner />;

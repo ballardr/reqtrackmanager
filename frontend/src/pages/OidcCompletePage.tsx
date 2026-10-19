@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { setAuthToken } from "../api/client";
@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { OIDC_CLIENT_NONCE_STORAGE_KEY } from "./OrgLoginPage";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
 
@@ -33,7 +34,7 @@ export function OidcCompletePage() {
   const [error, setError] = useState<string | null>(null);
   const orgLabel = useOrgLabel();
 
-  useEffect(() => {
+  useLoadOnChange(() => {
     // Not react-router's useSearchParams: the payload is in the fragment
     // (after '#'), which react-router treats as opaque and never parses.
     const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
@@ -69,7 +70,6 @@ export function OidcCompletePage() {
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
     setAuthToken(token);
     refreshUser().then(() => navigate("/projects", { replace: true }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (error) {

@@ -8,6 +8,9 @@ import { ProjectContext, type ProjectContextValue } from "./ProjectContextValue"
 
 export type { TerminologyKey };
 
+/** What terms resolve against outside a project: no overrides. */
+const NO_PROJECT_CONTEXT: ProjectContextValue = { terminology: {} };
+
 /**
  * Provides the current project's terminology overrides (C-C-03) to
  * everything rendered underneath it. Fetches once per `projectId` change;
@@ -17,13 +20,11 @@ export type { TerminologyKey };
  * see `BrandingContext`.
  */
 export function TerminologyProvider({ projectId, children }: { projectId: string | null; children: ReactNode }) {
-  const [value, setValue] = useState<ProjectContextValue>({ terminology: {} });
+  const [loaded, setValue] = useState<ProjectContextValue>(NO_PROJECT_CONTEXT);
+  const value = projectId ? loaded : NO_PROJECT_CONTEXT;
 
   useEffect(() => {
-    if (!projectId) {
-      setValue({ terminology: {} });
-      return;
-    }
+    if (!projectId) return;
     let cancelled = false;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((project) => {
       if (cancelled) return;

@@ -9,6 +9,7 @@ import {
   type DeleteInUseKeepOption,
   type DeleteInUseRemoveOption,
 } from "./DeleteInUseDialog";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { TextField } from "./FormFields";
 
 const strings = t();
@@ -74,6 +75,12 @@ export interface DefinitionListProps<T extends { id: string }> {
    */
   loadInUse?: (item: T, message: string) => Promise<DeleteInUseConfig>;
   deleteLabel: string;
+  /** Overrides `deleteLabel` for one row, for a row whose delete means something
+   * else (an organisation default that is only hidden in this project). */
+  getDeleteLabel?: (item: T) => string;
+  /** Asks first (Tier 1) before deleting a row: return the dialog text for the
+   * row, or `null` to delete at once. */
+  confirmDelete?: (item: T) => { title: string; message: ReactNode; confirmLabel: string } | null;
   addLabel: string;
   /**
    * Optional per-row slot rendered between the text field(s) and the
@@ -115,6 +122,8 @@ export function DefinitionList<T extends { id: string }>({
   onDelete,
   loadInUse,
   deleteLabel,
+  getDeleteLabel,
+  confirmDelete,
   addLabel,
   renderExtra,
   renderDetails,
@@ -125,6 +134,7 @@ export function DefinitionList<T extends { id: string }>({
     Object.fromEntries(fields.map((f) => [f.key, ""]))
   );
   const [inUse, setInUse] = useState<{ item: T; config: DeleteInUseConfig | null; message: string } | null>(null);
+  const [confirming, setConfirming] = useState<{ item: T; title: string; message: ReactNode; confirmLabel: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function draftFor(item: T): Record<string, string> {
@@ -169,6 +179,12 @@ export function DefinitionList<T extends { id: string }>({
         setError(err instanceof Error ? err.message : strings.common.error);
       }
     }
+  }
+
+  function handleDeleteClick(item: T) {
+    const confirm = confirmDelete?.(item) ?? null;
+    if (confirm) setConfirming({ item, ...confirm });
+    else void handleAttemptDelete(item);
   }
 
   async function handleAdd() {
@@ -237,9 +253,9 @@ export function DefinitionList<T extends { id: string }>({
                 <button
                   className="btn btn-danger"
                   disabled={atFloor}
-                  title={atFloor ? floorHint : deleteLabel}
-                  aria-label={atFloor ? floorHint : deleteLabel}
-                  onClick={() => handleAttemptDelete(item)}
+                  title={atFloor ? floorHint : (getDeleteLabel?.(item) ?? deleteLabel)}
+                  aria-label={atFloor ? floorHint : (getDeleteLabel?.(item) ?? deleteLabel)}
+                  onClick={() => handleDeleteClick(item)}
                 >
                   <Trash2 />
                 </button>
@@ -249,6 +265,19 @@ export function DefinitionList<T extends { id: string }>({
           </div>
         );
       })}
+      {confirming && (
+        <ConfirmDialog
+          title={confirming.title}
+          message={confirming.message}
+          confirmLabel={confirming.confirmLabel}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            const { item } = confirming;
+            setConfirming(null);
+            void handleAttemptDelete(item);
+          }}
+        />
+      )}
       {inUse && (
         <DeleteInUseDialog
           title={strings.admin.deleteInUseTitle(fields[0].getValue(inUse.item))}

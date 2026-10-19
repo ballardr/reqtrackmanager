@@ -55,6 +55,8 @@ import { TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PAGE_SIZE = 30;
 
@@ -265,10 +267,7 @@ export function RequirementsPage() {
     setMetaLoaded(true);
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+  useLoadOnChange(reload, [
     projectId, search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
     hasCommentsOnly, onlyWatched, includeArchived, sort,
   ]);
@@ -276,16 +275,18 @@ export function RequirementsPage() {
   // Deep-linked from the Project Overview page's "New requirement" button
   // (?new=1) — opened once, then the param is stripped so a later reload
   // of this page doesn't keep reopening the form.
+  const newFormRequested = searchParams.get("new") === "1";
+  useResetOnChange([newFormRequested], () => {
+    if (newFormRequested) setShowNewForm(true);
+  }, { runOnMount: true });
+
   useEffect(() => {
-    if (searchParams.get("new") === "1") {
-      setShowNewForm(true);
-      setSearchParams((params) => {
-        params.delete("new");
-        return params;
-      }, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+    if (!newFormRequested) return;
+    setSearchParams((params) => {
+      params.delete("new");
+      return params;
+    }, { replace: true });
+  }, [newFormRequested, setSearchParams]);
 
   // Deep-linked from the Project Overview dashboard's glance tiles/pie-chart
   // segments/stage-progress bars (UX review: clicking a widget should land

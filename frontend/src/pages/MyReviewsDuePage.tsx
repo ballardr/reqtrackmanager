@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { RecordCode } from "../components/RecordCode";
 import { Link } from "react-router-dom";
 
@@ -7,6 +7,7 @@ import type { RequirementDueForReview } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 30;
 
@@ -28,9 +29,7 @@ export function MyReviewsDuePage() {
     setTotal(page.total);
   }
 
-  useEffect(() => {
-    load(0, false);
-  }, []);
+  useLoadOnChange(() => load(0, false), []);
 
   if (!items) return <Spinner />;
 

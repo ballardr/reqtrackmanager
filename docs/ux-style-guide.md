@@ -225,6 +225,26 @@ flowchart LR
 
 One shared component serves every scope the vocabulary lives at (`LinkTypesPanel` with a `scope`), never a per-page copy. A project's view lists what it reaches **read-only, each row saying where it comes from** (badge: Organisation / Inherited from the parent), above **its own rows in the same editable row** the organisation uses (create-as-a-layer). The only control on an inherited row is **Hide / Show**, which removes it from pickers and never from existing data (the row is labelled *Hidden*, or *Hidden by a parent project*). A same-named row that loses to a higher scope says so (*Not offered*). When the organisation forbids customisation the panel renders read-only with the reason, and the organisation's switch asks first (Tier 1), states how many project-level rows it affects, and deletes nothing. Deleting a row other scopes use goes through `DeleteInUseDialog` with its *Keep it for the projects that use it* option, ticked by default.
 
+## Pattern: organisation defaults in a project
+
+*(New 2026-10-19 — Platform review Phase 15. Applies to any project-scoped list that inherits rows an organisation defines and lets the project take only some of them: Pain Point, Persona, Stakeholder and Risk types today.)*
+
+A project must be able to remove an organisation default it does not want. **Delete on an organisation-backed row means "hide in this project"**, never a message saying there is nothing to delete.
+
+- The row's delete button is named *Hide {noun} in this project* (`DefinitionList`'s `getDeleteLabel`), asks first at Tier 1 (`confirmDelete`; the text says other projects are unaffected, existing records keep the value and the default can be added back), and ends in a Toast. A project-only row keeps the real delete.
+- **Add organisation defaults** (`RestoreOrgDefaultsButton`) sits under the list and appears **only while something is hidden**, with the count. It opens a dialog listing the hidden defaults, all ticked, so the admin restores all or a chosen subset.
+- Hiding stops *new* use only: records that already hold the value keep it and still show it, and the project's rename/reorder override survives a hide and restore.
+- The list may legitimately end up empty (`minItems={0}`): hiding every default is the project's choice.
+- Link types predate this pattern and use Hide / Show on the inherited row ([Pattern: one vocabulary panel for every scope](#pattern-one-vocabulary-panel-for-every-scope)); a new definition table uses this pattern.
+
+```mermaid
+flowchart LR
+    A["Row from the organisation"] -->|"Hide in this project (Tier 1)"| B["Hidden: not listed, not offered"]
+    B -->|"Add organisation defaults"| A
+    B -.->|"existing records"| C["Keep the value"]
+    D["Project-only row"] -->|"Delete (blocked while in use)"| E["Gone"]
+```
+
 ## Pattern: create panels, popovers, and one door for bulk
 
 *(The side-panel-for-entities half of this section is historical — see the revised Principle 3 and the new `Pattern: modal dialog for entity create/rename`, below, for the current rule. Left as-is here rather than rewritten, since it documents the reasoning and mockups from when it was current; the "one door for bulk" and Popover-for-small-forms parts are unaffected by the revision.)*

@@ -67,6 +67,7 @@ DEFAULT_RISK_TYPES: tuple[str, ...] = (
 )
 
 RISK_TYPES = TypeVocabulary(
+    kind="risk_type",
     label="Risk type",
     org_model=RiskTypeDefinition,
     project_model=ProjectRiskType,

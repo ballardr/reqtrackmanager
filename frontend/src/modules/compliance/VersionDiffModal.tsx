@@ -16,6 +16,7 @@ import { toErrorMessage } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceStandardVersion, StandardVersionDiff } from "./types";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 interface Props {
   orgId: string;
@@ -31,13 +32,13 @@ export function VersionDiffModal({ orgId, standardId, fromVersionId, versions, o
   const [diff, setDiff] = useState<StandardVersionDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!otherVersionId) {
-      setDiff(null);
-      return;
-    }
+  useResetOnChange([orgId, standardId, fromVersionId, otherVersionId], () => {
     setDiff(null);
     setError(null);
+  });
+
+  useEffect(() => {
+    if (!otherVersionId) return;
     complianceApi
       .getStandardVersionDiff(orgId, standardId, fromVersionId, otherVersionId)
       .then(setDiff)

@@ -78,6 +78,7 @@ import { RecordHeader } from "../../components/RecordHeader";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 /** The two optional-comment, positive/neutral-progression actions — mirrors
  * `PainPointDetailPage.tsx`'s `OptionalCommentAction`/`OPTIONAL_COMMENT_COPY`
@@ -145,9 +146,7 @@ export function OpenQuestionDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-  }, [projectId, openQuestionId]);
+  useLoadOnChange(reloadCommentsAndFiles, [projectId, openQuestionId]);
 
   async function runTransition(action: () => Promise<OpenQuestion>, successMessage: string) {
     try {

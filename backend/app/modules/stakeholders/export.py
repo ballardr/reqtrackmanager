@@ -226,7 +226,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         if target is not None and target.scope == PersonaScope.ORGANIZATION:
             visibility_json.append({"org_persona_name": get_current_persona_version(db, target.id).name, "hidden": v.hidden})
     return {
-        "project_persona_types": types_json, "project_personas": personas_json,
+        "project_persona_types": types_json, "project_persona_hidden_org_types": PERSONA_TYPES.hidden_names(db, project.id, project.organization_id),
+        "project_personas": personas_json,
         "project_persona_weights": weights_json, "project_persona_visibility": visibility_json,
     }, assets
 
@@ -308,6 +309,9 @@ def import_project_data(
             warnings.add("A persona visibility override was skipped — its persona was not found in the target organisation.")
             continue
         db.add(ProjectPersonaVisibility(project_id=project.id, persona_id=persona_id, hidden=v["hidden"]))
+    # Hidden last: a persona above may use a type the project hides, which needs its row created first.
+    for name in PERSONA_TYPES.hide_by_names(db, project.id, organization_id, data.get("project_persona_hidden_org_types", [])):
+        warnings.add(f"Hidden persona type {name!r} skipped — the organisation has no such type.")
     db.flush()
 
 

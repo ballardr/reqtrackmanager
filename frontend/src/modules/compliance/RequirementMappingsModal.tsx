@@ -17,6 +17,8 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceMappingRelationshipType, ComplianceRequirement, ComplianceRequirementMapping, ComplianceStandard, ComplianceStandardVersion } from "./types";
 import { TextField } from "../../components/FormFields";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 interface Props {
   orgId: string;
@@ -48,25 +50,30 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
     }
   }
 
-  useEffect(() => {
+  useLoadOnChange(() => {
     void reload();
     void complianceApi.listMappingRelationshipTypes(orgId).then(setRelationshipTypes);
     void complianceApi.listStandards(orgId).then(setStandards);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, standardId, versionId, requirement.id]);
 
-  useEffect(() => {
+  useResetOnChange([orgId, targetStandardId], () => {
     setTargetVersionId("");
     setTargetVersions([]);
     setTargetRequirements([]);
     setTargetRequirementId("");
+  });
+
+  useEffect(() => {
     if (!targetStandardId) return;
     void complianceApi.listStandardVersions(orgId, targetStandardId).then(setTargetVersions);
   }, [orgId, targetStandardId]);
 
-  useEffect(() => {
+  useResetOnChange([orgId, targetStandardId, targetVersionId], () => {
     setTargetRequirements([]);
     setTargetRequirementId("");
+  });
+
+  useEffect(() => {
     if (!targetStandardId || !targetVersionId) return;
     void complianceApi.listRequirements(orgId, targetStandardId, targetVersionId).then(setTargetRequirements);
   }, [orgId, targetStandardId, targetVersionId]);

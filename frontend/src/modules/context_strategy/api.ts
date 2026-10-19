@@ -32,6 +32,7 @@
  */
 import { api } from "../../api/client";
 import type { FileAsset, PrincipalRef } from "../../api/types";
+import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type {
   ContextStrategyLink,
   EffectivePainPointType,
@@ -377,8 +378,14 @@ export const projectPainPointApi = {
   ) {
     return api.put<ProjectPainPointType>(`${projectBase(projectId)}/pain-point-types/${typeRefId}`, values);
   },
-  deleteType(projectId: string, projectPainPointTypeId: string) {
-    return api.delete<void>(`${projectBase(projectId)}/pain-point-types/${projectPainPointTypeId}`);
+  deleteType(projectId: string, typeRefId: string) {
+    return api.delete<void>(`${projectBase(projectId)}/pain-point-types/${typeRefId}`);
+  },
+  listHiddenTypes(projectId: string) {
+    return api.get<HiddenDefinition[]>(`${projectBase(projectId)}/pain-point-types/hidden`);
+  },
+  restoreTypes(projectId: string, orgTypeIds?: string[]) {
+    return api.post<unknown>(`${projectBase(projectId)}/pain-point-types/restore`, { org_type_ids: orgTypeIds ?? null });
   },
 
   // --- CRUD -----------------------------------------------------------------

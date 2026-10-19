@@ -1,6 +1,6 @@
 import { useMutation } from "../hooks/useMutation";
 import { Bell, BellOff, MessageSquare } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -45,6 +45,7 @@ import { useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/FormFields";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
@@ -220,10 +221,7 @@ export function ChangeRequestDetailPage() {
     }
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, crId]);
+  useLoadOnChange(reload, [projectId, crId]);
 
   async function act(action: () => Promise<unknown>, successMessage?: string) {
     setActionError(null);

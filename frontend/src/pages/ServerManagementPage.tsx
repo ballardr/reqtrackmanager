@@ -1,5 +1,5 @@
 import { Ban, Eye, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
@@ -24,6 +24,7 @@ import { ServerModulesTab } from "./ServerModulesTab";
 import { ColorField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
 
@@ -116,10 +117,7 @@ function AccessReviewTab() {
     await loadUsers(0, false);
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, includeDeactivated, search, sort]);
+  useLoadOnChange(reload, [view, includeDeactivated, search, sort]);
 
   function applySort(key: SystemUserSortKey) {
     setSort(cycleSort(sort, key));
@@ -555,9 +553,7 @@ function PlatformBrandingTab() {
     }
   }
 
-  useEffect(() => {
-    reload();
-  }, []);
+  useLoadOnChange(reload, []);
 
   async function save() {
     setError(null);
@@ -792,9 +788,7 @@ function SignupModeTab() {
     setMode(c.signup_mode);
   }
 
-  useEffect(() => {
-    reload();
-  }, []);
+  useLoadOnChange(reload, []);
 
   async function save() {
     setError(null);

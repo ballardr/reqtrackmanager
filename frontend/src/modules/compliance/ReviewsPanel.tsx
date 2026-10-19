@@ -15,7 +15,7 @@
  * the per-assignment CRUD surface, matching `ApplicabilityTree`'s own
  * "one assignment at a time" scope.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay } from "../../api/types";
@@ -38,6 +38,7 @@ import { Badge } from "../../components/Badge";
 import { DateField, TextAreaField, TextField } from "../../components/FormFields";
 import { FormActions } from "../../components/FormActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function ReviewsPanel({
   projectId, projectComplianceId, organizationId, orgUsers,
@@ -57,10 +58,7 @@ export function ReviewsPanel({
     }
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, projectComplianceId]);
+  useLoadOnChange(reload, [projectId, projectComplianceId]);
 
   if (reviews === null) return <Spinner />;
 

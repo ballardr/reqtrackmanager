@@ -30,7 +30,7 @@
  * scoped) suggests a different, more consistent placement across all of
  * Context & Strategy's org-scoped surfaces.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
@@ -43,6 +43,7 @@ import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -67,10 +68,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reloadStrategies();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, includeArchived]);
+  useLoadOnChange(reloadStrategies, [orgId, includeArchived]);
 
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategies === null) return <Spinner />;

@@ -36,6 +36,7 @@ import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTIO
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQuestionStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -72,10 +73,7 @@ export function ProjectOpenQuestionsPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useEffect(() => {
-    void reloadOpenQuestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, includeArchived]);
+  useLoadOnChange(reloadOpenQuestions, [projectId, includeArchived]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;

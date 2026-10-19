@@ -99,6 +99,7 @@ STAKEHOLDER_CODE_PREFIX = "STK"
 DEFAULT_PERSONA_TYPES: tuple[str, ...] = ("Primary", "Secondary", "Negative")
 
 PERSONA_TYPES = TypeVocabulary(
+    kind="persona_type",
     label="Persona type",
     org_model=PersonaTypeDefinition,
     project_model=ProjectPersonaType,
@@ -406,6 +407,7 @@ DEFAULT_STAKEHOLDER_TYPES: tuple[str, ...] = (
 )
 
 STAKEHOLDER_TYPES = TypeVocabulary(
+    kind="stakeholder_type",
     label="Stakeholder type",
     org_model=StakeholderTypeDefinition,
     project_model=ProjectStakeholderType,

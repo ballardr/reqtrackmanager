@@ -153,7 +153,6 @@ from app.modules.context_strategy.models import (
     PainPointComment,
     PainPointCommentFile,
     PainPointFile,
-    ProjectPainPointType,
     Strategy,
     StrategyComment,
     StrategyCommentFile,
@@ -234,6 +233,7 @@ from app.modules.context_strategy.service import (
     GUIDING_PRINCIPLE_ARTEFACT_TYPE,
     OPEN_QUESTION_ARTEFACT_TYPE,
     PAIN_POINT_ARTEFACT_TYPE,
+    PAIN_POINT_TYPE_HIDING,
     STRATEGY_ARTEFACT_TYPE,
     accept_pain_point,
     activate_future_state,
@@ -266,7 +266,6 @@ from app.modules.context_strategy.service import (
     create_strategy,
     create_strategy_link,
     create_strategy_supersession,
-    delete_project_pain_point_type,
     get_current_future_state_version,
     get_current_guiding_principle_version,
     get_current_version,
@@ -308,11 +307,13 @@ from app.modules.context_strategy.service import (
     withdraw_open_question,
 )
 from app.schemas.file import FileAssetOut
+from app.schemas.type_vocabulary import HiddenTypeOut, RestoreTypesOut, RestoreTypesRequest
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.principals import validate_principal
 from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.relationships import get_all_links
+from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/context_strategy", tags=["context-strategy-project"])
 
@@ -1276,13 +1277,6 @@ def _get_pain_point(db: Session, project_id: UUID, pain_point_id: UUID) -> PainP
     return get_pain_point_in_scope(db, project_id=project_id, pain_point_id=pain_point_id)
 
 
-def _get_project_pain_point_type(db: Session, project_id: UUID, project_pain_point_type_id: UUID) -> ProjectPainPointType:
-    row = db.get(ProjectPainPointType, project_pain_point_type_id)
-    if row is None or row.project_id != project_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pain Point type not found.")
-    return row
-
-
 # --- Pain Point type vocabulary -----------
 
 
@@ -1357,25 +1351,47 @@ def override_project_pain_point_type(
     return row
 
 
-@router.delete("/pain-point-types/{project_pain_point_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/pain-point-types/{type_ref_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project_pain_point_type_endpoint(
-    project_id: UUID, project_pain_point_type_id: UUID,
+    project_id: UUID, type_ref_id: UUID,
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
-    """Deletes a `ProjectPainPointType` row (§6.2 "Remove types where no
-    longer used") — for an org-backed override, this simply reverts to the
-    plain org default; for a project-local type, this genuinely removes it.
-    409s if any Pain Point still references it (`service.delete_project_
-    pain_point_type`'s own docstring)."""
+    """Deletes a project-local Pain Point type, or hides an organisation default
+    in this project (§6.2 "Remove types where no longer used"; restore with
+    `POST /pain-point-types/restore`). `type_ref_id` is an
+    `EffectivePainPointTypeOut.id`. Hiding keeps the project's row, so existing
+    Pain Points are unaffected. 409 while a project-local type is still in use."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
-    row = _get_project_pain_point_type(db, project_id, project_pain_point_type_id)
-    apply_value_error_as_conflict(delete_project_pain_point_type, db, row)
-    log_event(db, entity_type="project_pain_point_type", entity_id=project_pain_point_type_id, action="deleted",
-              actor_id=current_user.id, project_id=project_id)
-    db.commit()
+    remove_project_type(db, PAIN_POINT_TYPE_HIDING, project, type_ref_id, current_user, "project_pain_point_type")
+
+
+@router.get("/pain-point-types/hidden", response_model=list[HiddenTypeOut])
+def list_hidden_project_pain_point_types(
+    project_id: UUID, current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """The organisation Pain Point types this project has hidden. Needs the manager role."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    return list_hidden_types(db, PAIN_POINT_TYPE_HIDING, project)
+
+
+@router.post("/pain-point-types/restore", response_model=RestoreTypesOut)
+def restore_hidden_project_pain_point_types(
+    project_id: UUID, payload: RestoreTypesRequest,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Shows hidden organisation Pain Point types in this project again: every
+    one, or only `org_type_ids`. Needs the manager role."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    return restore_hidden_types(db, PAIN_POINT_TYPE_HIDING, project, payload, current_user, "project_pain_point_type")
 
 
 # --- Pain Point CRUD -----------------------------------------------------------

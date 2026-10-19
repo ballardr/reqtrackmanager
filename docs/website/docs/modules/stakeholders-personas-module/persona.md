@@ -69,7 +69,7 @@ A Persona moves **Draft → Active → Retired**, and a Retired Persona can be r
 
 ## Persona types
 
-Persona types are a two-tier list. The organisation maintains a shared list (a Persona Type Admin manages it); each project can rename, reorder, disable or add to it for itself, without affecting other projects. A type that a Persona currently uses can't be deleted.
+Persona types are a two-tier list. The organisation maintains a shared list (a Persona Type Admin manages it); each project can rename, reorder, disable or add to it for itself, and hide an organisation type it does not want (the delete button on an organisation type hides it in this project; **Add organisation defaults** shows it again), without affecting other projects. Personas that already use a hidden type keep it. A type that a Persona currently uses can't be deleted.
 
 ## Where this fits
 

@@ -66,6 +66,8 @@ import { DateField } from "../../components/FormFields";
 import { FormActions } from "../../components/FormActions";
 import { FormGrid } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 type ComplianceTabKey = "standards" | "evidence" | "outstanding";
 
@@ -118,14 +120,13 @@ export function ProjectCompliancePage() {
     }
   }
 
-  useEffect(() => {
+  useLoadOnChange(() => {
     if (!projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((proj) => {
       setProject(proj);
       api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`).then(setOrgUsers);
     });
     void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   if (!projectId) return null;
@@ -267,12 +268,13 @@ function AssignStandardModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
+  useResetOnChange([orgId, standardId], () => {
+    setVersions(null);
+    setVersionId("");
+  });
+
   useEffect(() => {
-    if (!standardId) {
-      setVersions(null);
-      setVersionId("");
-      return;
-    }
+    if (!standardId) return;
     complianceApi.listStandardVersions(orgId, standardId).then((all) => {
       const published = all.filter((v) => v.status === "published");
       setVersions(published);

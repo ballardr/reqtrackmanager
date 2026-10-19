@@ -21,6 +21,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceOrgSettings } from "./types";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
@@ -28,9 +29,12 @@ export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
   const [groups, setGroups] = useState<OrgGroup[] | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  useResetOnChange([orgId], () => {
     setSettings(null);
     setGroups(null);
+  });
+
+  useEffect(() => {
     complianceApi.getComplianceOrgSettings(orgId).then(setSettings);
     api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`).then(setGroups);
   }, [orgId]);

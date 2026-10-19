@@ -30,7 +30,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.risk_management import _shared as sh
 from app.modules.risk_management.enums import RiskStatus
-from app.modules.risk_management.models import ProjectRiskType, Risk, RiskReview
+from app.modules.risk_management.models import Risk, RiskReview
 from app.modules.risk_management.ratings import load_rating_context
 from app.modules.risk_management.reports import REPORT_ROUTERS
 from app.modules.risk_management.reviews import count_stale_treatments, list_reviews, record_review
@@ -69,10 +69,19 @@ from app.modules.risk_management.treatment import (
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.scoring import ScoringSchemeOut
-from app.schemas.type_vocabulary import EffectiveTypeOut, ProjectTypeCreate, ProjectTypeOut, ProjectTypeOverrideUpdate
+from app.schemas.type_vocabulary import (
+    EffectiveTypeOut,
+    HiddenTypeOut,
+    ProjectTypeCreate,
+    ProjectTypeOut,
+    ProjectTypeOverrideUpdate,
+    RestoreTypesOut,
+    RestoreTypesRequest,
+)
 from app.services import scoring
 from app.services.audit import log_event
 from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled, require_project_subcomponent_enabled
+from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{RISK_MODULE_KEY}", tags=["risk-management-project"])
 
@@ -146,21 +155,39 @@ def override_project_risk_type(
     return row
 
 
-@router.delete("/risk-types/{project_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/risk-types/{type_ref_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project_risk_type(
-    project_id: UUID, project_type_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, type_ref_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Removes a project type row (an override reverts to the org default); 409
-    while a risk still uses it."""
+    """Deletes a project-local type, or hides an organisation default in this
+    project (restore it with `POST /risk-types/restore`); `type_ref_id` is an
+    `EffectiveTypeOut.id`. Hiding keeps the project's row, so existing records
+    are unaffected. 409 while a project-local type is still in use."""
     project = _project(db, project_id)
     sh.require_risk_manage(db, current_user, project)
-    row = db.get(ProjectRiskType, project_type_id)
-    if row is None or row.project_id != project_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Risk type not found.")
-    sh.apply_value_error_as_conflict(RISK_TYPES.delete_project_type, db, row)
-    log_event(db, entity_type="project_risk_type", entity_id=project_type_id, action="deleted",
-              actor_id=current_user.id, project_id=project_id)
-    db.commit()
+    remove_project_type(db, RISK_TYPES, project, type_ref_id, current_user, "project_risk_type")
+
+
+@router.get("/risk-types/hidden", response_model=list[HiddenTypeOut])
+def list_hidden_project_risk_types(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The organisation defaults this project has hidden. Needs the manage role."""
+    project = _project(db, project_id)
+    sh.require_risk_manage(db, current_user, project)
+    return list_hidden_types(db, RISK_TYPES, project)
+
+
+@router.post("/risk-types/restore", response_model=RestoreTypesOut)
+def restore_hidden_project_risk_types(
+    project_id: UUID, payload: RestoreTypesRequest, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Shows hidden organisation defaults in this project again: every one, or
+    only `org_type_ids`. Needs the manage role."""
+    project = _project(db, project_id)
+    sh.require_risk_manage(db, current_user, project)
+    return restore_hidden_types(db, RISK_TYPES, project, payload, current_user, "project_risk_type")
 
 
 @router.get("/scoring-scheme", response_model=ScoringSchemeOut)

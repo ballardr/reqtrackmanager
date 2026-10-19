@@ -386,7 +386,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
                 "org_stakeholder_name": get_current_stakeholder_version(db, target.id).name, "hidden": row.hidden,
             })
     return {
-        "project_stakeholder_types": types_json, "project_stakeholders": stakeholders_json,
+        "project_stakeholder_types": types_json,
+        "project_stakeholder_hidden_org_types": STAKEHOLDER_TYPES.hidden_names(db, project.id, project.organization_id),
+        "project_stakeholders": stakeholders_json,
         "project_stakeholder_visibility": visibility_json,
         "project_stakeholder_groups": _export_groups(db, project.organization_id, project.id, StakeholderScope.PROJECT),
     }, assets
@@ -469,6 +471,11 @@ def import_project_data(
             warnings.add("A stakeholder visibility override was skipped — its stakeholder was not found in the target organisation.")
             continue
         db.add(ProjectStakeholderVisibility(project_id=project.id, stakeholder_id=stakeholder_id, hidden=v["hidden"]))
+    # Hidden last: a stakeholder above may use a type the project hides, which needs its row created first.
+    for name in STAKEHOLDER_TYPES.hide_by_names(
+        db, project.id, organization_id, data.get("project_stakeholder_hidden_org_types", []),
+    ):
+        warnings.add(f"Hidden stakeholder type {name!r} skipped — the organisation has no such type.")
     db.flush()
 
     visible = {

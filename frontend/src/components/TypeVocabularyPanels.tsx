@@ -20,9 +20,11 @@
  *
  * The project tier's reorder is client-side: its API only sets a row's
  * `display_order`, so `onMove` swaps the two neighbours' values via two
- * override calls. A project row still showing the org default
- * (`source === "org"`) has nothing project-specific to delete, which is
- * refused locally rather than surfacing a 404.
+ * override calls. Delete on a row backed by an organisation default hides it
+ * in this project (Tier-1 confirm, the project's own override row is kept so
+ * existing records are unaffected); "Add organisation defaults"
+ * (`RestoreOrgDefaultsButton`) shows them again. Delete on a project-only type
+ * deletes it, blocked while in use.
  *
  * Gating is server-side (403 surfaces through `DefinitionList`'s error
  * handling), so both panels render their controls unconditionally. The `api`
@@ -34,6 +36,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ApiError } from "../api/client";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { DefinitionList } from "./DefinitionList";
+import { RestoreOrgDefaultsButton, type HiddenDefinition } from "./RestoreOrgDefaultsButton";
 import { Spinner } from "./Spinner";
 import { ToggleSwitch } from "./ToggleSwitch";
 
@@ -71,7 +74,11 @@ export interface ProjectTypeVocabularyApi {
     typeRefId: string,
     values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null },
   ): Promise<unknown>;
-  delete(projectId: string, typeRowId: string): Promise<unknown>;
+  /** Deletes a project-only type, or hides an organisation default (any org-backed row's id). */
+  delete(projectId: string, typeRefId: string): Promise<unknown>;
+  listHidden(projectId: string): Promise<HiddenDefinition[]>;
+  /** Shows hidden organisation defaults again: the given ids, or all when omitted. */
+  restore(projectId: string, orgTypeIds?: string[]): Promise<unknown>;
 }
 
 const SOURCE_LABEL: Record<EffectiveTypeRow["source"], string> = {
@@ -79,6 +86,11 @@ const SOURCE_LABEL: Record<EffectiveTypeRow["source"], string> = {
   project_override: "Org default (overridden)",
   project_local: "Project only",
 };
+
+/** True for a row backed by an organisation default (shown as-is or overridden here), whose delete only hides it. */
+function isOrgBacked(item: EffectiveTypeRow | undefined): boolean {
+  return item !== undefined && item.source !== "project_local";
+}
 
 /** Re-throws a 409 as a plain `Error` carrying `message`, keeping the cause
  * as a property (`{ cause }` predates this project's `lib` target). */
@@ -199,6 +211,7 @@ export function ProjectTypeVocabularyPanel({
 }) {
   const { showToast } = useToast();
   const [items, setItems] = useState<EffectiveTypeRow[] | null>(null);
+  const [hidden, setHidden] = useState<HiddenDefinition[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [refreshKey, setRefreshKey] = useState(0);
@@ -206,11 +219,11 @@ export function ProjectTypeVocabularyPanel({
 
   useEffect(() => {
     let active = true;
-    api
-      .list(projectId)
-      .then((list) => {
+    Promise.all([api.list(projectId), api.listHidden(projectId)])
+      .then(([list, hiddenRows]) => {
         if (!active) return;
         setItems([...list].sort((a, b) => a.display_order - b.display_order));
+        setHidden(hiddenRows);
         setLoadError(null);
       })
       .catch((err) => {
@@ -257,18 +270,26 @@ export function ProjectTypeVocabularyPanel({
         }}
         onDelete={async (id) => {
           const item = items.find((i) => i.id === id);
-          if (item?.source === "org") {
-            throw new Error("This is an organisation default with no project-specific override yet — there is nothing to delete. Disable it instead.");
-          }
           try {
             await api.delete(projectId, id);
           } catch (err) {
             throw blockedError(err, `This type is still used by at least one ${noun} in this project. Disable it instead of deleting it.`);
           }
-          showToast(`Project ${noun} type deleted.`);
+          showToast(isOrgBacked(item) ? `${noun} type hidden in this project.` : `Project ${noun} type deleted.`);
           reload();
         }}
         deleteLabel={`Delete ${noun} type`}
+        getDeleteLabel={(item) => (isOrgBacked(item) ? `Hide ${noun} type in this project` : `Delete ${noun} type`)}
+        confirmDelete={(item) =>
+          isOrgBacked(item)
+            ? {
+                title: `Hide "${item.name}" in this project?`,
+                message: `It is an organisation default. It will no longer be offered in this project, and ${noun}s that already use it keep it. Other projects are unaffected, and you can add it back with "Add organisation defaults".`,
+                confirmLabel: "Hide",
+              }
+            : null
+        }
+        minItems={0}
         addLabel={`Add project-only ${noun} type`}
         renderExtra={(item) => (
           <span key="type-extra" className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
@@ -289,6 +310,17 @@ export function ProjectTypeVocabularyPanel({
           </span>
         )}
       />
+      <div className="row">
+        <RestoreOrgDefaultsButton
+          hidden={hidden}
+          noun={`${noun} types`}
+          onRestore={async (ids) => {
+            await api.restore(projectId, ids);
+            showToast(ids.length === 1 ? "Organisation default added back." : `${ids.length} organisation defaults added back.`);
+            reload();
+          }}
+        />
+      </div>
     </div>
   );
 }

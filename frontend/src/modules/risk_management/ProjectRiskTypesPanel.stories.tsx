@@ -20,7 +20,7 @@ type Story = StoryObj<typeof ProjectRiskTypesPanel>;
 
 export const ListsEffectiveTypes: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(RISK_TYPES);
+    spyOn(api, "get").mockImplementation(async (path: string) => (path.endsWith("/hidden") ? [] : RISK_TYPES));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -31,7 +31,7 @@ export const ListsEffectiveTypes: Story = {
 
 export const AddLocalTypeUsesTheRiskEndpoint: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(RISK_TYPES);
+    spyOn(api, "get").mockImplementation(async (path: string) => (path.endsWith("/hidden") ? [] : RISK_TYPES));
     spyOn(api, "post").mockResolvedValue({});
   },
   play: async ({ canvasElement }) => {

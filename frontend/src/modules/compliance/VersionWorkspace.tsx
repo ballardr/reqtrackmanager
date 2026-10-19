@@ -30,7 +30,7 @@
  * component's own `versions` prop — no new fetch, since `StandardNavSection`
  * /`StandardVersionsSection` already load it for the same standard.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
@@ -45,6 +45,7 @@ import {
   type ComplianceStandardVersion,
 } from "./types";
 import { TextAreaField } from "../../components/FormFields";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 interface Props {
   orgId: string;
@@ -63,9 +64,7 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
   const [summary, setSummary] = useState(version.summary);
   const [savingSummary, setSavingSummary] = useState(false);
 
-  useEffect(() => {
-    setSummary(version.summary);
-  }, [version.id, version.summary]);
+  useResetOnChange([version.id, version.summary], () => setSummary(version.summary));
 
   async function handleSaveSummary() {
     setSavingSummary(true);

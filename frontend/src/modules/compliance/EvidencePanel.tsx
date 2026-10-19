@@ -22,7 +22,7 @@
  * not a second place to manage linkage.
  */
 import { FolderOpen, Paperclip } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { FileAsset } from "../../api/types";
 import { api } from "../../api/client";
@@ -48,6 +48,7 @@ import {
 } from "./types";
 import { DateField, TextAreaField, TextField } from "../../components/FormFields";
 import { FormActions } from "../../components/FormActions";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();
@@ -74,10 +75,7 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
     }
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  useLoadOnChange(reload, [projectId]);
 
   async function openEvidence(item: ComplianceEvidence) {
     setSelected(item);

@@ -52,6 +52,7 @@ import type { Decision, DecisionComment, DecisionFieldValues, DecisionTypeDefini
 import type { FileAsset } from "../../api/types";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function DecisionDetailPage() {
   const { projectId, decisionId } = useParams<{ projectId: string; decisionId: string }>();
@@ -99,10 +100,7 @@ export function DecisionDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, decisionId]);
+  useLoadOnChange(reloadCommentsAndFiles, [projectId, decisionId]);
 
   async function runTransition(action: () => Promise<Decision>, successMessage: string) {
     try {

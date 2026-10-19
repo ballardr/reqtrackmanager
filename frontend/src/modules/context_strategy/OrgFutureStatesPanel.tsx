@@ -14,7 +14,7 @@
  * Strategy, so it lands on `orgOverviewSections` (Org Dashboard) too, not
  * `orgAdminSections` (Org Management).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
@@ -27,6 +27,7 @@ import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -50,10 +51,7 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reloadFutureStates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, includeArchived]);
+  useLoadOnChange(reloadFutureStates, [orgId, includeArchived]);
 
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureStates === null) return <Spinner />;

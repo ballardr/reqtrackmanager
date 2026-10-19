@@ -28,6 +28,7 @@ import { RecordHeader } from "../components/RecordHeader";
 import { useConfirmedAction } from "../components/useConfirmedAction";
 import { ActionFields } from "../components/ActionFields";
 import { LabeledSelect } from "../components/LabeledSelect";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 /**
  * Detail view for a single requirement action: an editable outcome-status
@@ -91,10 +92,7 @@ export function ActionDetailPage() {
     }
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, actionId]);
+  useLoadOnChange(reload, [projectId, actionId]);
 
   useEffect(() => {
     if (!projectId) return;

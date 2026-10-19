@@ -61,6 +61,7 @@ import { LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { ActionFields } from "../components/ActionFields";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -369,10 +370,7 @@ export function RequirementDetailPage() {
     reload();
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, requirementId]);
+  useLoadOnChange(reload, [projectId, requirementId]);
 
   useEffect(() => {
     if (!projectId) return;

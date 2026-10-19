@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError } from "../api/client";
 import { withToast } from "../testing/storybook-helpers";
@@ -39,11 +39,22 @@ function orgApi(initial: OrgTypeRow[]) {
   };
 }
 
+/** A stateful in-memory project-tier API: deleting an org-backed row hides it
+ * (listed by `listHidden`, shown again by `restore`), a project-only row is removed. */
 function projectApi(initial: EffectiveTypeRow[]) {
   let items = initial;
+  let hidden: EffectiveTypeRow[] = [];
   return {
     async list() {
       return items;
+    },
+    async listHidden() {
+      return hidden.map((h) => ({ id: h.id, name: h.name }));
+    },
+    async restore(_projectId: string, ids?: string[]) {
+      const back = hidden.filter((h) => !ids || ids.includes(h.id));
+      hidden = hidden.filter((h) => !back.includes(h));
+      items = [...items, ...back];
     },
     async createLocal(_projectId: string, name: string, displayOrder?: number) {
       items = [...items, { id: `local-${items.length + 1}`, name, display_order: displayOrder ?? 0, is_enabled: true, source: "project_local" as const }];
@@ -62,7 +73,9 @@ function projectApi(initial: EffectiveTypeRow[]) {
       );
     },
     async delete(_projectId: string, id: string) {
-      if (items.find((i) => i.id === id)?.name === "In use") throw new ApiError(409, "Referenced.");
+      const row = items.find((i) => i.id === id);
+      if (row?.name === "In use") throw new ApiError(409, "Referenced.");
+      if (row && row.source !== "project_local") hidden = [...hidden, row];
       items = items.filter((i) => i.id !== id);
     },
   };
@@ -180,7 +193,7 @@ export const ProjectTierRenameAndDisable: Story = {
   },
 };
 
-export const ProjectTierRefusesToDeleteUntouchedOrgDefault: Story = {
+export const ProjectTierHidesAnOrgDefaultAndRestoresIt: Story = {
   render: () => (
     <ProjectTypeVocabularyPanel
       projectId="project-1" noun="Widget" description="d"
@@ -193,9 +206,76 @@ export const ProjectTierRefusesToDeleteUntouchedOrgDefault: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByDisplayValue("Alpha"));
+    await expect(canvas.queryByRole("button", { name: /Add organisation defaults/ })).not.toBeInTheDocument();
+
     const row = canvas.getByDisplayValue("Alpha").closest("div")!.parentElement!;
-    await userEvent.click(within(row).getByRole("button", { name: "Delete Widget type" }));
-    await waitFor(() => expect(canvas.getByText(/nothing to delete. Disable it instead/)).toBeInTheDocument());
+    await userEvent.click(within(row).getByRole("button", { name: "Hide Widget type in this project" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.click(dialog.getByRole("button", { name: "Hide" }));
+
+    await waitFor(() => expect(canvas.queryByDisplayValue("Alpha")).not.toBeInTheDocument());
+    await expect(canvas.getByDisplayValue("Gamma")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: /Add organisation defaults \(1\)/ }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Add 1 default" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Alpha")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: /Add organisation defaults/ })).not.toBeInTheDocument();
+  },
+};
+
+export const ProjectTierHidingCanBeCancelledAndTheLastDefaultCanBeHidden: Story = {
+  render: () => (
+    <ProjectTypeVocabularyPanel
+      projectId="project-1" noun="Widget" description="d"
+      api={projectApi([{ id: "a", name: "Alpha", display_order: 0, is_enabled: true, source: "org" }])}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByDisplayValue("Alpha"));
+    const row = canvas.getByDisplayValue("Alpha").closest("div")!.parentElement!;
+    const hide = within(row).getByRole("button", { name: "Hide Widget type in this project" });
+    await expect(hide).toBeEnabled();
+
+    await userEvent.click(hide);
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    await expect(canvas.getByDisplayValue("Alpha")).toBeInTheDocument();
+
+    await userEvent.click(hide);
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Hide" }));
+    await waitFor(() => expect(canvas.queryByDisplayValue("Alpha")).not.toBeInTheDocument());
+  },
+};
+
+export const ProjectTierRestoresOnlyTheTickedDefaults: Story = {
+  render: () => (
+    <ProjectTypeVocabularyPanel
+      projectId="project-1" noun="Widget" description="d"
+      api={projectApi([
+        { id: "a", name: "Alpha", display_order: 0, is_enabled: true, source: "org" },
+        { id: "b", name: "Beta", display_order: 1, is_enabled: true, source: "org" },
+        { id: "c", name: "Gamma", display_order: 2, is_enabled: true, source: "project_local" },
+      ])}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByDisplayValue("Alpha"));
+    for (const name of ["Alpha", "Beta"]) {
+      const row = canvas.getByDisplayValue(name).closest("div")!.parentElement!;
+      await userEvent.click(within(row).getByRole("button", { name: "Hide Widget type in this project" }));
+      await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Hide" }));
+      await waitFor(() => expect(canvas.queryByDisplayValue(name)).not.toBeInTheDocument());
+    }
+
+    await userEvent.click(canvas.getByRole("button", { name: /Add organisation defaults \(2\)/ }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.click(dialog.getByRole("checkbox", { name: "Alpha" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Add 1 default" }));
+
+    await waitFor(() => expect(canvas.getByDisplayValue("Beta")).toBeInTheDocument());
+    await expect(canvas.queryByDisplayValue("Alpha")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: /Add organisation defaults \(1\)/ })).toBeInTheDocument();
   },
 };
 

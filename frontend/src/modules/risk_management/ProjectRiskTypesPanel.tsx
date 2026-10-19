@@ -13,6 +13,8 @@ const api = {
   createLocal: riskApi.createLocalType,
   override: riskApi.overrideType,
   delete: riskApi.deleteType,
+  listHidden: riskApi.listHiddenTypes,
+  restore: riskApi.restoreTypes,
 };
 
 export function ProjectRiskTypesPanel({ projectId }: { projectId: string }) {
@@ -24,7 +26,7 @@ export function ProjectRiskTypesPanel({ projectId }: { projectId: string }) {
       description={
         <>
           This project's effective Risk type list — every active organisation type (with this project's own override, if
-          any) plus any type added for this project only. Disabling a type here only affects this project.
+          any) plus any type added for this project only. Disabling or hiding a type here only affects this project.
         </>
       }
     />

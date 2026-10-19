@@ -10,6 +10,7 @@
  */
 import { api } from "../../api/client";
 import type { FileAsset } from "../../api/types";
+import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type { EffectiveTypeRow, OrgTypeRow } from "../../components/TypeVocabularyPanels";
 import type {
   Risk,
@@ -86,8 +87,11 @@ export const riskApi = {
     projectId: string, typeRefId: string,
     values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null },
   ) => api.put<unknown>(`${projectBase(projectId)}/risk-types/${typeRefId}`, values),
-  deleteType: (projectId: string, projectTypeId: string) =>
-    api.delete<void>(`${projectBase(projectId)}/risk-types/${projectTypeId}`),
+  deleteType: (projectId: string, typeRefId: string) =>
+    api.delete<void>(`${projectBase(projectId)}/risk-types/${typeRefId}`),
+  listHiddenTypes: (projectId: string) => api.get<HiddenDefinition[]>(`${projectBase(projectId)}/risk-types/hidden`),
+  restoreTypes: (projectId: string, orgTypeIds?: string[]) =>
+    api.post<unknown>(`${projectBase(projectId)}/risk-types/restore`, { org_type_ids: orgTypeIds ?? null }),
 };
 
 /** Org tier of the type vocabulary (shape expected by `OrgTypeVocabularyPanel`); `id` parameters are an `organization_id`. */

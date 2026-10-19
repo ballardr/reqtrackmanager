@@ -5,6 +5,7 @@ import type { ModuleFrameToken } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 /** The app's `ThemeProvider` (`context/ThemeContext.tsx`) always stamps the
  * *resolved* light/dark theme onto `<html data-theme>` — reading it
@@ -95,10 +96,13 @@ export function ModuleFrame({ moduleKey, frameUrl, navLabel, organizationId, pro
 
   const iframeOrigin = new URL(frameUrl).origin;
 
-  useEffect(() => {
-    let cancelled = false;
+  useResetOnChange([moduleKey, organizationId, projectId], () => {
     setToken(null);
     setIframeLoaded(false);
+  });
+
+  useEffect(() => {
+    let cancelled = false;
     const mintPath = projectId
       ? `/api/v1/projects/${projectId}/modules/${moduleKey}/frame-token`
       : `/api/v1/orgs/${organizationId}/modules/${moduleKey}/frame-token`;

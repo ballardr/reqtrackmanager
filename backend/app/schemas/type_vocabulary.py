@@ -74,3 +74,22 @@ class ProjectTypeOut(BaseModel):
     name_override: str | None
     display_order_override: int | None
     is_enabled: bool
+
+
+class HiddenTypeOut(BaseModel):
+    """An organisation type a project has hidden (can be restored)."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    name: str
+
+
+class RestoreTypesRequest(BaseModel):
+    """Which hidden organisation types to show again; `None` restores every one."""
+    org_type_ids: list[UUID] | None = None
+
+
+class RestoreTypesOut(BaseModel):
+    """The organisation types shown again by a restore."""
+    restored: list[HiddenTypeOut]

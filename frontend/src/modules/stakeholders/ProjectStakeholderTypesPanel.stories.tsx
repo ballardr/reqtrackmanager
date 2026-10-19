@@ -11,7 +11,7 @@ const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders/stakeholder-ty
 
 function mockProjectTypeApis(initial: EffectivePersonaType[]) {
   let items = initial;
-  spyOn(api, "get").mockImplementation(async () => items);
+  spyOn(api, "get").mockImplementation(async (path: string) => (path.endsWith("/hidden") ? [] : items));
   spyOn(api, "post").mockImplementation(async (_path: string, body?: unknown) => {
     const payload = body as { name: string; display_order: number | null };
     items = [...items, { id: `local-${items.length + 1}`, name: payload.name, display_order: payload.display_order ?? 0, is_enabled: true, source: "project_local" }];

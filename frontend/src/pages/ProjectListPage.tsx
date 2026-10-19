@@ -35,6 +35,8 @@ import { FileField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
 // MEMBER_ONLY, which caps at baseline MEMBER — parity with
@@ -87,14 +89,14 @@ export function ProjectListPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectListItem[]>([]);
-  const [viewMode, setViewMode] = useViewMode("projects");
+  const [storedViewMode, setViewMode] = useViewMode("projects");
   // Hierarchical projects (docs/decisions.md).
   const [parentProjectId, setParentProjectId] = useState("");
   const [roleInheritanceMode, setRoleInheritanceMode] = useState<ProjectRoleInheritanceMode>("none");
   const [roleInheritanceFilterRole, setRoleInheritanceFilterRole] = useState<ProjectRole>("project_manager");
   const [pendingInheritMode, setPendingInheritMode] = useState<ProjectRoleInheritanceMode | null>(null);
   const [treeNodes, setTreeNodes] = useState<ProjectTreeNode[] | null>(null);
-  const [treeOrgId, setTreeOrgId] = useState("");
+  const [chosenTreeOrgId, setTreeOrgId] = useState("");
 
   // The tree option only appears when the caller's accessible project set
   // actually contains a parent/child relationship — a tree mode with
@@ -105,15 +107,11 @@ export function ProjectListPage() {
     allProjects.some((p) => p.organization_id === o.id && (p.parent_project_id || p.children.length > 0))
   );
 
-  useEffect(() => {
-    if (!hasHierarchy && viewMode === "tree") setViewMode("tiles");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasHierarchy]);
-
-  useEffect(() => {
-    if (!treeOrgId && orgsWithHierarchy[0]) setTreeOrgId(orgsWithHierarchy[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgsWithHierarchy.length]);
+  // Derived rather than written back by effects: tree mode is meaningless without a hierarchy
+  // (the stored choice comes back if one appears), and the tree shows the first organisation
+  // with a hierarchy until another is picked.
+  const viewMode = !hasHierarchy && storedViewMode === "tree" ? "tiles" : storedViewMode;
+  const treeOrgId = chosenTreeOrgId || orgsWithHierarchy[0]?.id || "";
 
   useEffect(() => {
     if (viewMode !== "tree" || !treeOrgId) return;
@@ -131,15 +129,15 @@ export function ProjectListPage() {
   // duplicating the create-project modal's logic on that page. Cleared
   // immediately after opening so a later reload/back-navigation doesn't
   // silently re-open the modal.
+  const deepLinkParentId = searchParams.get("parentProjectId");
+  const deepLinkOrgId = searchParams.get("organizationId");
+  useResetOnChange([deepLinkParentId, deepLinkOrgId], () => {
+    if (deepLinkParentId && deepLinkOrgId) openAddSubProject(deepLinkParentId, deepLinkOrgId);
+  }, { runOnMount: true });
+
   useEffect(() => {
-    const parentId = searchParams.get("parentProjectId");
-    const orgId = searchParams.get("organizationId");
-    if (parentId && orgId) {
-      openAddSubProject(parentId, orgId);
-      setSearchParams({}, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+    if (deepLinkParentId && deepLinkOrgId) setSearchParams({}, { replace: true });
+  }, [deepLinkParentId, deepLinkOrgId, setSearchParams]);
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ archived: String(showArchived), limit: String(PAGE_SIZE), offset: String(offset) });
@@ -200,20 +198,16 @@ export function ProjectListPage() {
     if (!newOrgId && activeOrgs[0]) setNewOrgId(activeOrgs[0].id);
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showArchived, search, roleFilter, stageStatusFilter, orgFilter, favoriteOnly]);
+  useLoadOnChange(reload, [showArchived, search, roleFilter, stageStatusFilter, orgFilter, favoriteOnly]);
 
-  useEffect(() => {
-    // C-E-04: pre-select the organisation's default template project (if
-    // one is configured) whenever the target org changes, rather than
-    // always starting from "None". The user can still pick a different
-    // template or explicitly choose "None (blank project)" before creating.
+  // C-E-04: pre-select the organisation's default template project (if
+  // one is configured) whenever the target org changes, rather than
+  // always starting from "None". The user can still pick a different
+  // template or explicitly choose "None (blank project)" before creating.
+  useResetOnChange([newOrgId], () => {
     const org = orgs.find((o) => o.id === newOrgId);
     setTemplateProjectId(org?.default_template_project_id ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newOrgId]);
+  }, { runOnMount: true });
 
   async function toggleFavorite(project: ProjectListItem) {
     try {

@@ -21,13 +21,14 @@
  * reloads its own list — the same self-contained shape
  * `DecisionTemplatesPanel.tsx` already uses for org templates.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { DefinitionList } from "../../components/DefinitionList";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import type { DecisionTypeDefinition } from "./types";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function DecisionTypesPanel({ projectId }: { projectId: string }) {
   const { showToast } = useToast();
@@ -43,10 +44,7 @@ export function DecisionTypesPanel({ projectId }: { projectId: string }) {
     }
   }
 
-  useEffect(() => {
-    void onReload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  useLoadOnChange(onReload, [projectId]);
 
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (items === null) return <Spinner />;

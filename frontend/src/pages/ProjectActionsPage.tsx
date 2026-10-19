@@ -24,6 +24,7 @@ import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
 import { ActionFields } from "../components/ActionFields";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
 
@@ -96,10 +97,7 @@ export function ProjectActionsPage() {
     if (!newActionTypeId && types[0]) setNewActionTypeId(types[0].id);
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, outcomeFilter, typeFilter, includeArchived]);
+  useLoadOnChange(reload, [projectId, outcomeFilter, typeFilter, includeArchived]);
 
   useEffect(() => {
     if (!projectId) return;

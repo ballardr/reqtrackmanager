@@ -26,7 +26,7 @@
  * assessment/required-actions/evidence/approval workflow; this component
  * owns only the tree's read/navigation concern.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { OrgUser } from "../../api/types";
 import { Spinner } from "../../components/Spinner";
@@ -41,6 +41,8 @@ import {
   type ProjectComplianceRequirement,
 } from "./types";
 import { Badge } from "../../components/Badge";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 interface Props {
   orgId: string;
@@ -82,11 +84,10 @@ export function ApplicabilityTree({
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([orgId, standardId, versionId, projectComplianceId], () => {
     setTree(null);
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, standardId, versionId, projectComplianceId]);
+  });
+  useLoadOnChange(reload, [orgId, standardId, versionId, projectComplianceId]);
 
   async function reloadOne(pcrId: string) {
     // Re-fetches every pcr rather than just one, since a change (e.g.

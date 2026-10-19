@@ -24,7 +24,7 @@
  * which makes the creator the owner until it is reassigned from the edit
  * dialog.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay } from "../../api/types";
@@ -89,33 +89,18 @@ export function StandardFormModal({
   onCancel: () => void;
   onSave: (values: StandardFormValues | EditableStandardFieldValues, organizationId: string) => void;
 }) {
-  const [selectedOrgId, setSelectedOrgId] = useState(orgId ?? (orgs?.length === 1 ? orgs[0].id : ""));
-  // `orgs` is frequently still loading (an async fetch on the caller's own
-  // page, e.g. `StandardListPage.tsx`'s `reload()`) at the exact moment
-  // this modal first mounts — `useState`'s initializer above only runs
-  // once, so a caller with genuinely exactly one candidate org, whose
-  // `orgs` prop is still `[]`/loading at mount, would otherwise be stuck
-  // with `selectedOrgId === ""` forever, permanently disabling Save with
-  // no picker ever shown to fix it (no `orgs.length > 1`, so no UI
-  // surfaces the problem either). Auto-fills only for that single-
-  // candidate case, once `orgs` finishes loading — **never** for a
-  // multi-org caller: an earlier version of this effect auto-filled from
-  // `orgs[0].id` whenever nothing had been chosen yet, without checking
-  // `orgs.length`, which silently picked whichever organisation happened
-  // to load first (not necessarily the one shown as the picker's first
-  // option, since the fill could race ahead of the picker's own re-render)
-  // — a real, found-in-verification bug that could create a standard in
-  // the wrong organisation with no error and no visual sign anything went
-  // wrong. For `orgs.length > 1`, `selectedOrgId` is left blank until the
-  // caller explicitly chooses in the picker — Save stays correctly
-  // disabled until they do, exactly like the pre-existing case where
-  // `orgs` hasn't loaded at all yet.
-  useEffect(() => {
-    if (!selectedOrgId && (orgId || orgs?.length === 1)) {
-      setSelectedOrgId(orgId ?? orgs![0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, orgs]);
+  const [chosenOrgId, setSelectedOrgId] = useState("");
+  // The organisation is derived, not copied into state by an effect: `orgs` is
+  // frequently still loading (an async fetch on the caller's own page, e.g.
+  // `StandardListPage.tsx`'s `reload()`) when this modal first mounts, so a
+  // caller with exactly one candidate org must pick it up once `orgs` arrives.
+  // **Never** for a multi-org caller: auto-filling from `orgs[0].id` whenever
+  // nothing was chosen once silently picked whichever organisation loaded first
+  // (not necessarily the picker's first option) and created a standard in the
+  // wrong organisation with no error. For `orgs.length > 1` the value stays
+  // blank until the caller chooses in the picker, so Save stays disabled until
+  // they do.
+  const selectedOrgId = chosenOrgId || (orgId ?? (orgs?.length === 1 ? orgs[0].id : ""));
   const [reference, setReference] = useState(initial?.reference ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");

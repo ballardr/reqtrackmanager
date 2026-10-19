@@ -39,6 +39,7 @@ import {
   type ProjectComplianceStatus,
 } from "./types";
 import { Badge } from "../../components/Badge";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 type DetailTabKey = "requirements" | "reviews";
 
@@ -65,7 +66,8 @@ export function ProjectComplianceDetail({
   // archived one (excluded from `GET .../status`) needs the client-side
   // fallback resolution — see `api.ts::resolveStandardIdForVersion`'s own
   // docstring for why no backend endpoint gives this directly.
-  const [resolvedStandardId, setResolvedStandardId] = useState<string | null>(status?.standard_id ?? null);
+  const [fetchedStandardId, setFetchedStandardId] = useState<string | null>(null);
+  const resolvedStandardId = status ? status.standard_id : fetchedStandardId;
   // Lifted into local state (not read directly off the `status` prop) so it
   // can be refreshed after a nested requirement change without the parent
   // (`ProjectCompliancePage`) needing to re-fetch its whole assignment list
@@ -73,15 +75,13 @@ export function ProjectComplianceDetail({
   // `onAssessmentChanged` docstring for the staleness this fixes.
   const [liveStatus, setLiveStatus] = useState<ProjectComplianceStatus | null>(status);
 
+  useResetOnChange([status], () => setLiveStatus(status));
+
   useEffect(() => {
-    setLiveStatus(status);
-    if (status) {
-      setResolvedStandardId(status.standard_id);
-      return;
-    }
+    if (status) return;
     let cancelled = false;
     complianceApi.resolveStandardIdForVersion(orgId, assignment.standard_version_id).then((id) => {
-      if (!cancelled) setResolvedStandardId(id);
+      if (!cancelled) setFetchedStandardId(id);
     });
     return () => {
       cancelled = true;

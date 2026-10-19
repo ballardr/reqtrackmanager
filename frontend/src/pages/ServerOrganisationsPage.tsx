@@ -17,6 +17,7 @@ import { useToast } from "../context/ToastContext";
 import { FormActions } from "../components/FormActions";
 import { FormGrid } from "../components/FormGrid";
 import { FileField, TextField, CheckboxField } from "../components/FormFields";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -70,9 +71,7 @@ export function ServerOrganisationsPage() {
     setOrgs(await api.get<Organization[]>("/api/v1/orgs"));
   }
 
-  useEffect(() => {
-    reload();
-  }, []);
+  useLoadOnChange(reload, []);
 
   useEffect(() => {
     // Fetched once, independent of the modal opening — the checkboxes only

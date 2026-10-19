@@ -39,7 +39,7 @@
  * tiles-mode render below (name + org + status, in card form).
  */
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import type { Organization } from "../../api/types";
@@ -55,6 +55,7 @@ import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
 import { StandardFormModal, type EditableStandardFieldValues, type StandardFormValues } from "./StandardFormModal";
 import { StandardImportModal } from "./StandardImportModal";
 import type { StandardImportResult } from "./types";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 type StandardListRow = StandardAcrossOrgsRow;
 
@@ -79,10 +80,7 @@ export function StandardListPage() {
     setRows(collected);
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includeArchived]);
+  useLoadOnChange(reload, [includeArchived]);
 
   const showOrgColumn = (orgs?.length ?? 0) > 1 || !!user?.is_server_admin;
   const filtered = (rows ?? []).filter(

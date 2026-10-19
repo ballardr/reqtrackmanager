@@ -29,6 +29,7 @@ import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function ProjectStrategiesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -61,10 +62,7 @@ export function ProjectStrategiesPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useEffect(() => {
-    void reloadStrategies();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, includeArchived]);
+  useLoadOnChange(reloadStrategies, [projectId, includeArchived]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;

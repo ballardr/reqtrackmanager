@@ -64,6 +64,8 @@ import { FormActions } from "../../components/FormActions";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 interface Props {
   orgId: string;
@@ -123,13 +125,12 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([orgId, standardId, versionId], () => {
     setRequirements(null);
     setExpandedIds(new Set());
     setActionsByRequirement({});
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, standardId, versionId]);
+  });
+  useLoadOnChange(reload, [orgId, standardId, versionId]);
 
   async function toggleExpand(requirementId: string) {
     const next = new Set(expandedIds);

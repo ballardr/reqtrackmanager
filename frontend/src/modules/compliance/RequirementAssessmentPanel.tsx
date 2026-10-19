@@ -28,7 +28,7 @@
  * a user who already attached a file at creation time isn't asked again.
  */
 import { FolderOpen } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { api } from "../../api/client";
 import type { FileAsset, OrgUser, PrincipalRef } from "../../api/types";
@@ -60,6 +60,8 @@ import {
 } from "./types";
 import { TextAreaField } from "../../components/FormFields";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 const APPLICABILITY_OPTIONS: ComplianceApplicability[] = ["applicable", "not_applicable"];
 const STATUS_OPTIONS: ComplianceStatus[] = [
@@ -131,18 +133,20 @@ export function RequirementAssessmentPanel({
     setAllEvidence(all.filter((e) => !e.is_archived));
   }
 
-  useEffect(() => {
+  useResetOnChange([pcr.id], () => {
     setApplicability(pcr.explicit_applicability ?? "applicable");
     setApplicabilityJustification(pcr.justification);
     setStatus(pcr.compliance_status);
     setStatusJustification(pcr.justification);
     setNotes(pcr.notes);
     setDecisionNote("");
-    reloadRequiredActions().catch((err) => showToast(toErrorMessage(err, "Could not load required actions."), "error"));
-    reloadEvidence().catch((err) => showToast(toErrorMessage(err, "Could not load evidence."), "error"));
     setHistory(null);
     setShowHistory(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  useLoadOnChange(() => {
+    reloadRequiredActions().catch((err) => showToast(toErrorMessage(err, "Could not load required actions."), "error"));
+    reloadEvidence().catch((err) => showToast(toErrorMessage(err, "Could not load evidence."), "error"));
   }, [pcr.id]);
 
   async function loadHistory() {

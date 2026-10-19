@@ -21,6 +21,8 @@ const api = {
     projectPainPointApi.createLocalType(projectId, name, displayOrder),
   override: projectPainPointApi.overrideType,
   delete: projectPainPointApi.deleteType,
+  listHidden: projectPainPointApi.listHiddenTypes,
+  restore: projectPainPointApi.restoreTypes,
 };
 
 export function ProjectPainPointTypesPanel({ projectId }: { projectId: string }) {
@@ -32,7 +34,7 @@ export function ProjectPainPointTypesPanel({ projectId }: { projectId: string })
       description={
         <>
           This project's effective Pain Point type list — every active organisation type (with this project's own
-          override, if any) plus any type added directly for this project only. Disabling a type here only affects
+          override, if any) plus any type added directly for this project only. Disabling or hiding a type here only affects
           this project; the organisation's own list (Org Management) is unaffected.
         </>
       }

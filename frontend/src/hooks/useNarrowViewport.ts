@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 /**
  * Tracks whether the viewport is currently at or below `breakpointPx` wide,
@@ -15,15 +15,13 @@ import { useEffect, useState } from "react";
  */
 export function useNarrowViewport(breakpointPx: number): boolean {
   const query = `(max-width: ${breakpointPx}px)`;
-  const [isNarrow, setIsNarrow] = useState(() => window.matchMedia(query).matches);
-
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    setIsNarrow(mql.matches);
-    const listener = (event: MediaQueryListEvent) => setIsNarrow(event.matches);
-    mql.addEventListener("change", listener);
-    return () => mql.removeEventListener("change", listener);
-  }, [query]);
-
-  return isNarrow;
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    },
+    [query],
+  );
+  return useSyncExternalStore(subscribe, () => window.matchMedia(query).matches);
 }

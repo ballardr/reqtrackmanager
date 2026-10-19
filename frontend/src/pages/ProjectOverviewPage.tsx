@@ -16,6 +16,7 @@ import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { getInstalledModule } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { Badge } from "../components/Badge";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. Every
@@ -58,9 +59,10 @@ export function ProjectOverviewPage() {
       )
     : [];
 
+  useResetOnChange([projectId], () => setLoadError(null));
+
   useEffect(() => {
     if (!projectId) return;
-    setLoadError(null);
     const onError = (err: unknown) => setLoadError(err instanceof ApiError ? err.message : strings.common.error);
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject).catch(onError);
     api.get<ProjectMetrics>(`/api/v1/projects/${projectId}/metrics`).then(setMetrics).catch(onError);

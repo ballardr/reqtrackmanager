@@ -1,6 +1,6 @@
 import { useMutation } from "../hooks/useMutation";
 import { Bell } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -8,6 +8,8 @@ import type { Notification } from "../api/types";
 import { getNotificationLink } from "../modules/artefactPaths";
 import { t } from "../i18n/strings";
 import { Tooltip } from "./Tooltip";
+import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
 
@@ -24,19 +26,13 @@ export function NotificationBell() {
     setNotifications(list);
   }
 
-  useEffect(() => {
-    reload();
-    const interval = setInterval(reload, 30_000);
-    return () => clearInterval(interval);
-  }, []);
+  useLoadOnChange(reload, [], { intervalMs: 30_000 });
 
   // The dropdown previously stayed open across navigation (it's rendered
   // in the header, outside the routed content, so nothing else was ever
   // telling it to close) — closing it on every route change matches how a
   // popover is expected to behave everywhere else in the app.
-  useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
+  useResetOnChange([location.pathname], () => setOpen(false));
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 

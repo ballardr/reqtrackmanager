@@ -22,6 +22,7 @@ from app.models.custom_role import (
     GroupCustomRoleGrant,
     UserCustomRoleGrant,
 )
+from app.models.definition_suppression import ProjectDefinitionSuppression
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
@@ -126,6 +127,7 @@ __all__ = [
     "RequirementKeyword",
     "ArtefactTypeLinkRule",
     "ArtefactTypeLinkRuleEntry",
+    "ProjectDefinitionSuppression",
     "ProjectLinkTypeVisibility",
     "RequirementLinkTypeDefinition",
     "RequirementAction",

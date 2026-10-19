@@ -3005,6 +3005,13 @@ def main() -> None:
     enable_module(h_pm, org["id"], "risk_management")
     risk_types = list_effective_risk_types(h_pm, drone["id"])
     risk_levels = get_risk_levels(h_pm, drone["id"])
+    # Falcon-3 is an airframe project: the organisation's "Environmental" Risk type is hidden here (Project admin ->
+    # Risk Types shows "Add organisation defaults (1)"); other projects still see it and no risk below uses it.
+    r = httpx.delete(
+        f"{BASE}/projects/{drone['id']}/modules/risk_management/risk-types/{risk_types['Environmental']['id']}",
+        headers=h_pm, timeout=30,
+    )
+    r.raise_for_status()
     set_project_scoring_cell_ratings(h_pm, drone["id"], "risk", "lxc", [{
         "first_level_id": risk_levels["likelihood"]["Rare"], "second_level_id": risk_levels["consequence"]["Catastrophic"],
         "band_label": "High",

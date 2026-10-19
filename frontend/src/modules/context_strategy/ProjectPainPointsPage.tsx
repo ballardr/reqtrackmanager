@@ -52,6 +52,7 @@ import type {
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 const SCHEME_KEY = "pain_point";
 
@@ -102,10 +103,7 @@ export function ProjectPainPointsPage() {
     void projectPainPointApi.listTypes(projectId).then(setTypes).catch(() => setTypes([]));
   }, [projectId]);
 
-  useEffect(() => {
-    void reloadPainPoints();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, includeArchived]);
+  useLoadOnChange(reloadPainPoints, [projectId, includeArchived]);
 
   useEffect(() => {
     if (!projectId) return;

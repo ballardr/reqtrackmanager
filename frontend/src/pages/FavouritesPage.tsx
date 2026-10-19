@@ -15,6 +15,8 @@ import { useFavourites } from "../context/FavouritesContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { Badge } from "../components/Badge";
+import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 30;
 
@@ -68,11 +70,8 @@ export function FavouritesPage() {
     setTotal(page.total);
   }
 
-  useEffect(() => {
-    setProjects(null);
-    load(0, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  useResetOnChange([search], () => setProjects(null));
+  useLoadOnChange(() => load(0, false), [search]);
 
   async function unfavorite(project: ProjectListItem) {
     try {

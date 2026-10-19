@@ -40,7 +40,7 @@ from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, v
 from app.modules.stakeholders._shared import get_visible_persona, get_visible_stakeholder
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus
 from app.modules.stakeholders.groups import load_groups
-from app.modules.stakeholders.models import ProjectStakeholderType, Stakeholder
+from app.modules.stakeholders.models import Stakeholder
 from app.modules.stakeholders.schemas import (
     CadenceHintOut,
     RepresentedPersonaOut,
@@ -74,9 +74,18 @@ from app.modules.stakeholders.service import (
     unarchive_record,
 )
 from app.schemas.file import FileAssetOut
-from app.schemas.type_vocabulary import EffectiveTypeOut, ProjectTypeCreate, ProjectTypeOut, ProjectTypeOverrideUpdate
+from app.schemas.type_vocabulary import (
+    EffectiveTypeOut,
+    HiddenTypeOut,
+    ProjectTypeCreate,
+    ProjectTypeOut,
+    ProjectTypeOverrideUpdate,
+    RestoreTypesOut,
+    RestoreTypesRequest,
+)
 from app.services.audit import log_event
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholders-project"])
 
@@ -167,21 +176,39 @@ def override_project_stakeholder_type(
     return row
 
 
-@router.delete("/stakeholder-types/{project_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/stakeholder-types/{type_ref_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project_stakeholder_type(
-    project_id: UUID, project_type_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, type_ref_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Removes a project type row (an override reverts to the org default);
-    409 while a stakeholder still uses it."""
+    """Deletes a project-local type, or hides an organisation default in this
+    project (restore it with `POST /stakeholder-types/restore`); `type_ref_id` is an
+    `EffectiveTypeOut.id`. Hiding keeps the project's row, so existing records
+    are unaffected. 409 while a project-local type is still in use."""
     project = _project(db, project_id)
     _require_manage(db, current_user, project)
-    row = db.get(ProjectStakeholderType, project_type_id)
-    if row is None or row.project_id != project_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder type not found.")
-    psh.apply_value_error_as_conflict(STAKEHOLDER_TYPES.delete_project_type, db, row)
-    log_event(db, entity_type="project_stakeholder_type", entity_id=project_type_id, action="deleted",
-              actor_id=current_user.id, project_id=project_id)
-    db.commit()
+    remove_project_type(db, STAKEHOLDER_TYPES, project, type_ref_id, current_user, "project_stakeholder_type")
+
+
+@router.get("/stakeholder-types/hidden", response_model=list[HiddenTypeOut])
+def list_hidden_project_stakeholder_types(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The organisation defaults this project has hidden. Needs the manage role."""
+    project = _project(db, project_id)
+    _require_manage(db, current_user, project)
+    return list_hidden_types(db, STAKEHOLDER_TYPES, project)
+
+
+@router.post("/stakeholder-types/restore", response_model=RestoreTypesOut)
+def restore_hidden_project_stakeholder_types(
+    project_id: UUID, payload: RestoreTypesRequest, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Shows hidden organisation defaults in this project again: every one, or
+    only `org_type_ids`. Needs the manage role."""
+    project = _project(db, project_id)
+    _require_manage(db, current_user, project)
+    return restore_hidden_types(db, STAKEHOLDER_TYPES, project, payload, current_user, "project_stakeholder_type")
 
 
 # --- Cadence hint ------------------------------------------------------------

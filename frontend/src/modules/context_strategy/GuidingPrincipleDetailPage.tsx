@@ -76,6 +76,7 @@ import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * same generic confirm-dialog-copy pattern as `StrategyDetailPage.tsx`'s own
@@ -128,7 +129,8 @@ export function GuidingPrincipleDetailPage() {
   const [comments, setComments] = useState<GuidingPrincipleComment[] | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(organizationId);
+  const [fetchedOwnerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
+  const ownerOrgId = organizationId ?? fetchedOwnerOrgId;
 
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -151,11 +153,7 @@ export function GuidingPrincipleDetailPage() {
   // project is fetched once to resolve one (mirrors `PainPointDetailPage.tsx`'s
   // identical lookup); an org-scoped Guiding Principle already has it.
   useEffect(() => {
-    if (organizationId) {
-      setOwnerOrgId(organizationId);
-      return;
-    }
-    if (!projectId) return;
+    if (organizationId || !projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((p) => setOwnerOrgId(p.organization_id));
   }, [projectId, organizationId]);
 
@@ -178,10 +176,7 @@ export function GuidingPrincipleDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeId, guidingPrincipleId]);
+  useLoadOnChange(reloadCommentsAndFiles, [scopeId, guidingPrincipleId]);
 
   async function runTransition(action: () => Promise<GuidingPrinciple>, successMessage: string) {
     try {

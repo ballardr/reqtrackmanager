@@ -15,6 +15,8 @@ const api = {
     projectStakeholderApi.createLocalType(projectId, name, displayOrder),
   override: projectStakeholderApi.overrideType,
   delete: projectStakeholderApi.deleteType,
+  listHidden: projectStakeholderApi.listHiddenTypes,
+  restore: projectStakeholderApi.restoreTypes,
 };
 
 export function ProjectStakeholderTypesPanel({ projectId }: { projectId: string }) {
@@ -26,7 +28,7 @@ export function ProjectStakeholderTypesPanel({ projectId }: { projectId: string 
       description={
         <>
           This project's effective Stakeholder type list — every active organisation type (with this project's own
-          override, if any) plus any type added for this project only. Disabling a type here only affects this
+          override, if any) plus any type added for this project only. Disabling or hiding a type here only affects this
           project.
         </>
       }

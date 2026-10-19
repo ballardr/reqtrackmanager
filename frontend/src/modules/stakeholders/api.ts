@@ -15,6 +15,7 @@
  */
 import { api } from "../../api/client";
 import type { FileAsset, PrincipalRef } from "../../api/types";
+import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type {
   AnonymousParticipant,
   CadenceHint,
@@ -182,7 +183,10 @@ function buildProjectTypeCalls(segment: string) {
       projectId: string, typeRefId: string,
       values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null },
     ) => api.put<unknown>(url(projectId, typeRefId), values),
-    deleteType: (projectId: string, projectTypeId: string) => api.delete<void>(url(projectId, projectTypeId)),
+    deleteType: (projectId: string, typeRefId: string) => api.delete<void>(url(projectId, typeRefId)),
+    listHiddenTypes: (projectId: string) => api.get<HiddenDefinition[]>(`${url(projectId)}/hidden`),
+    restoreTypes: (projectId: string, orgTypeIds?: string[]) =>
+      api.post<unknown>(`${url(projectId)}/restore`, { org_type_ids: orgTypeIds ?? null }),
   };
 }
 

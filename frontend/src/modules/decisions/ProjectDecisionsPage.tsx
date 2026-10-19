@@ -46,6 +46,7 @@ import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
 import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function ProjectDecisionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -94,10 +95,7 @@ export function ProjectDecisionsPage() {
     decisionsApi.listDecisionTypes(projectId).then(setDecisionTypes);
   }, [projectId]);
 
-  useEffect(() => {
-    void reloadDecisions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe]);
+  useLoadOnChange(reloadDecisions, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;

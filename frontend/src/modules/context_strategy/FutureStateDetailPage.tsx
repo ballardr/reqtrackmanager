@@ -47,6 +47,7 @@ import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -128,10 +129,7 @@ export function FutureStateDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeId, futureStateId]);
+  useLoadOnChange(reloadCommentsAndFiles, [scopeId, futureStateId]);
 
   async function runTransition(action: () => Promise<FutureState>, successMessage: string) {
     try {

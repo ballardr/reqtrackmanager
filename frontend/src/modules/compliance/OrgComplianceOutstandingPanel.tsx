@@ -79,6 +79,7 @@ import {
   type OutstandingRequiredAction,
 } from "./types";
 import { Badge } from "../../components/Badge";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 type Category = "" | "non_compliant" | "pending" | "actions" | "evidence" | "reviews";
 type EvidenceValidityFilter = "" | Extract<ComplianceEvidenceValidityState, "expired" | "expiring_soon">;
@@ -135,11 +136,10 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
   // changes, not derived from the (possibly already version-narrowed) rows
   // already on screen, so switching the version filter afterward doesn't
   // require a second fetch.
+  useResetOnChange([orgId, standardFilter], () => setRequirementsById(new Map()));
+
   useEffect(() => {
-    if (!standardFilter) {
-      setRequirementsById(new Map());
-      return;
-    }
+    if (!standardFilter) return;
     let cancelled = false;
     complianceApi
       .listStandardVersions(orgId, standardFilter)

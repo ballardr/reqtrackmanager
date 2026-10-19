@@ -53,6 +53,7 @@ import {
   type PendingApproval,
 } from "./types";
 import { Badge } from "../../components/Badge";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();
@@ -81,11 +82,10 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
       .catch((err) => showToast(toErrorMessage(err, "Could not load outstanding items."), "error"));
   }, [projectId, showToast]);
 
+  useResetOnChange([orgId, standardFilter], () => setRequirementsById(new Map()));
+
   useEffect(() => {
-    if (!standardFilter) {
-      setRequirementsById(new Map());
-      return;
-    }
+    if (!standardFilter) return;
     let cancelled = false;
     complianceApi
       .listStandardVersions(orgId, standardFilter)

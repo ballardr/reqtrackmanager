@@ -37,7 +37,7 @@
  * group), not every user a group happens to currently reach.
  */
 import { UserPlus, Users } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type { OrgGroup, OrgUser } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
@@ -57,6 +57,8 @@ import {
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 const STANDARD_ROLE_KEYS: ComplianceStandardRoleKey[] = ["standards_manager", "standards_contributor"];
 
@@ -99,11 +101,10 @@ export function StandardMembersSection({
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([orgId, standard.id], () => {
     setData(null);
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, standard.id]);
+  });
+  useLoadOnChange(reload, [orgId, standard.id]);
 
   async function handleToggleUserRole(member: ComplianceStandardMember, roleKey: ComplianceStandardRoleKey, checked: boolean) {
     try {

@@ -21,7 +21,7 @@
  * opening/leaving a version here updates the address bar to match rather
  * than leaving it on the plain `/versions` URL the whole time.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Modal } from "../../components/Modal";
@@ -38,6 +38,8 @@ import { DateField, TextAreaField, TextField } from "../../components/FormFields
 import { FormActions } from "../../components/FormActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function StandardVersionsSection({
   orgId,
@@ -66,11 +68,10 @@ export function StandardVersionsSection({
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([orgId, standard.id], () => {
     setVersions(null);
-    void reloadVersions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, standard.id]);
+  });
+  useLoadOnChange(reloadVersions, [orgId, standard.id]);
 
   const activeVersion = initialVersionId ? versions?.find((v) => v.id === initialVersionId) ?? null : null;
 

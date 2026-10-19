@@ -6,6 +6,7 @@ import type { ExternalUserMatch, OrgGroup, OrgUser, OrgUserSearchResult, Project
 import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { Badge } from "./Badge";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const strings = t();
 
@@ -123,12 +124,13 @@ export function UserAutocomplete({
   const needle = query.trim().toLowerCase();
 
   // Debounced server-side search, only in organizationId mode.
+  useResetOnChange([organizationId, needle.length === 0], () => {
+    setServerMatches([]);
+    setExternal(null);
+  });
+
   useEffect(() => {
-    if (!organizationId || needle.length === 0) {
-      setServerMatches([]);
-      setExternal(null);
-      return;
-    }
+    if (!organizationId || needle.length === 0) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {

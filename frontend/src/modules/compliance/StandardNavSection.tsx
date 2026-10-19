@@ -67,6 +67,7 @@ import { NavRailLink } from "../../components/NavRailLink";
 import { useUiPreference } from "../../hooks/useUiPreference";
 import * as complianceApi from "./api";
 import { COMPLIANCE_STANDARD_VERSION_STATUS_LABEL, type ComplianceStandardVersion } from "./types";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 export function StandardNavSection({ entityId, railCollapsed }: { entityId: string; railCollapsed: boolean }) {
   const location = useLocation();
@@ -75,8 +76,9 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
   const [expanded, setExpanded] = useUiPreference<boolean>(`section_collapsed:standardVersionsNav:${entityId}`, false);
   const [autoExpandSuppressed, setAutoExpandSuppressed] = useState(false);
 
+  useResetOnChange([entityId], () => setOrgId(null));
+
   useEffect(() => {
-    setOrgId(null);
     complianceApi.getStandardById(entityId).then((standard) => setOrgId(standard.organization_id));
   }, [entityId]);
 
@@ -91,9 +93,7 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
 
   // 29a: force the group open on a version's own route without persisting
   // that to the stored preference (see this file's own header comment).
-  useEffect(() => {
-    setAutoExpandSuppressed(false);
-  }, [location.pathname]);
+  useResetOnChange([location.pathname], () => setAutoExpandSuppressed(false));
   const routeForcesExpand = !autoExpandSuppressed && location.pathname.startsWith(`${versionsBase}/`);
   const effectiveExpanded = expanded || routeForcesExpand;
 

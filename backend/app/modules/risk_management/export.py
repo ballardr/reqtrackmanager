@@ -248,7 +248,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         ]
         entry["treatments"] = _treatment_json(db, project, risk.id, req_code, link_type_names, verdicts_by_link, emails)
         risks_json.append(entry)
-    return {"risk_project_types": types_json, "risks": risks_json}, assets
+    return {
+        "risk_project_types": types_json,
+        "risk_hidden_org_types": RISK_TYPES.hidden_names(db, project.id, project.organization_id),
+        "risks": risks_json,
+    }, assets
 
 
 # --- Project level: import ---------------------------------------------------
@@ -297,7 +301,7 @@ def import_project_data(
     treatment links. Anything that cannot be matched in the target (a type, a
     scoring level, a requirement, a link type) is skipped or left unset with a
     warning, never guessed."""
-    if not data.get("risks") and not data.get("risk_project_types"):
+    if not data.get("risks") and not data.get("risk_project_types") and not data.get("risk_hidden_org_types"):
         return
     organization_id = project.organization_id
     seed_missing_scoring_levels(db, organization_id)
@@ -408,6 +412,10 @@ def import_project_data(
                     reassessment_reason=verdict.get("reassessment_reason", ""),
                 ))
     db.flush()
+
+    # Hidden last: a risk above may use a type the project hides, which needs its row created first.
+    for name in RISK_TYPES.hide_by_names(db, project.id, organization_id, data.get("risk_hidden_org_types", [])):
+        warnings.add(f"Hidden risk type {name!r} skipped — the organisation has no such type.")
 
     # Keep new Risks from reusing an imported code.
     counter = db.scalar(select(ProjectSequenceCounter).where(

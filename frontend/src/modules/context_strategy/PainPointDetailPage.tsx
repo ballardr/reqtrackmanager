@@ -75,6 +75,7 @@ import { RecordHeader } from "../../components/RecordHeader";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 /** The three optional-comment, positive/neutral-progression actions —
  * mirrors `StrategyDetailPage.tsx`'s `TransitionAction`/`TRANSITION_COPY`
@@ -167,9 +168,7 @@ export function PainPointDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-  }, [projectId, painPointId]);
+  useLoadOnChange(reloadCommentsAndFiles, [projectId, painPointId]);
 
   async function runTransition(action: () => Promise<PainPoint>, successMessage: string) {
     try {

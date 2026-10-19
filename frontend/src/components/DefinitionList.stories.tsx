@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError } from "../api/client";
 import { DefinitionList } from "./DefinitionList";
@@ -299,6 +299,48 @@ export const DerivedOrderWithFloorAndOptionalField: Story = {
     await expect(canvas.getByPlaceholderText("Weight")).toHaveAttribute("type", "number");
     await userEvent.click(canvas.getByRole("button", { name: "Add level" }));
     await waitFor(() => expect(canvas.getAllByRole("button", { name: "Delete level" })).toHaveLength(3));
+  },
+};
+
+export const PerRowDeleteLabelAndConfirmation: Story = {
+  render: () => {
+    function Harness() {
+      const [items, setItems] = useState<Named[]>([
+        { id: "org", name: "Organisation default" },
+        { id: "own", name: "Own row" },
+      ]);
+      return (
+        <DefinitionList<Named>
+          items={items}
+          fields={[{ key: "name", getValue: (i) => i.name, placeholder: "Name" }]}
+          getReassignLabel={(i) => i.name}
+          onRename={async () => {}}
+          onAdd={async () => {}}
+          onDelete={async (id) => setItems((prev) => prev.filter((i) => i.id !== id))}
+          deleteLabel="Delete type"
+          getDeleteLabel={(i) => (i.id === "org" ? "Hide type in this project" : "Delete type")}
+          confirmDelete={(i) =>
+            i.id === "org" ? { title: `Hide "${i.name}"?`, message: "It can be added back.", confirmLabel: "Hide" } : null
+          }
+          minItems={0}
+          addLabel="New type"
+        />
+      );
+    }
+    return <Harness />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // A row with a confirmation asks first, and Cancel leaves it in place.
+    await userEvent.click(canvas.getByRole("button", { name: "Hide type in this project" }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: 'Hide "Organisation default"?' })).getByRole("button", { name: "Cancel" }));
+    await expect(canvas.getByDisplayValue("Organisation default")).toBeInTheDocument();
+    // Confirming deletes it; a row without a confirmation deletes at once, down to an empty list.
+    await userEvent.click(canvas.getByRole("button", { name: "Hide type in this project" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Hide" }));
+    await waitFor(() => expect(canvas.queryByDisplayValue("Organisation default")).not.toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Delete type" }));
+    await waitFor(() => expect(canvas.queryByDisplayValue("Own row")).not.toBeInTheDocument());
   },
 };
 

@@ -35,6 +35,7 @@ import { CheckboxField, DateField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { FormActions } from "../components/FormActions";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 type LandingMode = "auto" | "overview" | "project";
 
@@ -120,7 +121,7 @@ export function PreferencesPage() {
   const [newPatProjectIds, setNewPatProjectIds] = useState<Set<string>>(new Set());
   const [newPatExpiry, setNewPatExpiry] = useState("");
   const [expiryAutoFilled, setExpiryAutoFilled] = useState(true);
-  const [maxExpiresAt, setMaxExpiresAt] = useState<string | null>(null);
+  const [fetchedMaxExpiresAt, setMaxExpiresAt] = useState<string | null>(null);
   const [patError, setPatError] = useState<string | null>(null);
   const [createdPat, setCreatedPat] = useState<PersonalAccessTokenCreateResult | null>(null);
   // The "New personal access token" form creates a brand-new entity, not
@@ -173,11 +174,10 @@ export function PreferencesPage() {
     setMyOrgRoles(Object.fromEntries(memberships.map(([org, roles]) => [org.id, roles])));
   }
 
-  useEffect(() => {
+  useLoadOnChange(() => {
     api.get<NotificationPreference[]>("/api/v1/notifications/preferences").then(setNotificationPrefs);
     api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
     loadMyAccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function leaveOrg(orgId: string) {
@@ -229,11 +229,10 @@ export function PreferencesPage() {
   // actual date. Only overwrites the field while it still holds a
   // previous auto-filled value (or is empty) — a value the user typed in
   // themselves is left alone.
+  const maxExpiresAt = newPatOrgIds.size === 0 ? null : fetchedMaxExpiresAt;
+
   useEffect(() => {
-    if (newPatOrgIds.size === 0) {
-      setMaxExpiresAt(null);
-      return;
-    }
+    if (newPatOrgIds.size === 0) return;
     const params = new URLSearchParams();
     for (const orgId of newPatOrgIds) params.append("organization_ids", orgId);
     api.get<{ max_expires_at: string }>(`/api/v1/me/pats/max-lifetime?${params.toString()}`).then(({ max_expires_at }) => {
