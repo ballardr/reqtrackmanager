@@ -4,6 +4,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import { buildCandidate, buildOption } from "../../testing/artefactLinksFixtures";
 import { buildRecordTags } from "../../testing/tagsFixtures";
+import { buildScoringScheme } from "../../testing/storybook-helpers";
 
 import { PainPointFormModal } from "./PainPointFormModal";
 import type { EffectivePainPointType, PainPoint } from "./types";
@@ -174,5 +175,72 @@ export const EditDoesNotOfferTheQuickLinkField: Story = {
   beforeEach: mockLinkFinder,
   play: async () => {
     await expect(within(document.body).queryByRole("combobox", { name: "Link to" })).not.toBeInTheDocument();
+  },
+};
+
+const SCORING = {
+  scheme: buildScoringScheme(),
+  targets: [
+    { id: "persona-1", label: "Field Technician", weight: 3, is_active: true },
+    { id: "persona-2", label: "Back-office Planner", weight: 1, is_active: true },
+    { id: "persona-3", label: "Retired Persona", weight: 1, is_active: false },
+  ],
+};
+
+/** The caller may not score (no `scoring` prop), so the create form has no scoring section. */
+export const NoScoringSectionWithoutTheScoringTier: Story = {
+  play: async () => {
+    await expect(within(document.body).queryByRole("region", { name: "Scoring" })).not.toBeInTheDocument();
+  },
+};
+
+/** A manager scores the Pain Point on all personas together while creating it. */
+export const ScoresAllPersonasOnCreate: Story = {
+  args: { scoring: SCORING },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
+    await userEvent.type(body.getByLabelText("Pain Point title"), "Field reports require paper re-keying");
+    const group = within(body.getByRole("group", { name: "All personas scores" }));
+    await userEvent.selectOptions(group.getByRole("combobox", { name: "Severity" }), "sev-5");
+    await userEvent.selectOptions(group.getByRole("combobox", { name: "Frequency" }), "freq-1");
+    await userEvent.click(body.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scores: [{ target_id: null, severity_level_id: "sev-5", frequency_level_id: "freq-1", confidence_level_id: null }],
+      }), [], [],
+    ));
+  },
+};
+
+/** Per-persona scoring lists the active personas only and sends one row per scored persona. */
+export const ScoresEachPersonaOnCreate: Story = {
+  args: { scoring: SCORING },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
+    await userEvent.type(body.getByLabelText("Pain Point title"), "Field reports require paper re-keying");
+    await userEvent.selectOptions(body.getByRole("combobox", { name: "Scoring mode" }), "persona");
+    await expect(body.queryByRole("group", { name: "Retired Persona scores" })).not.toBeInTheDocument();
+    const planner = within(body.getByRole("group", { name: "Back-office Planner scores" }));
+    await userEvent.selectOptions(planner.getByRole("combobox", { name: "Severity" }), "sev-2");
+    await userEvent.click(body.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scores: [{ target_id: "persona-2", severity_level_id: "sev-2", frequency_level_id: null, confidence_level_id: null }],
+      }), [], [],
+    ));
+  },
+};
+
+/** Leaving every level unset still sends an (empty) score list, which the server treats as unscored. */
+export const UnscoredCreateSendsNoScoreRows: Story = {
+  args: { scoring: SCORING },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
+    await userEvent.type(body.getByLabelText("Pain Point title"), "Field reports require paper re-keying");
+    await userEvent.click(body.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ scores: [] }), [], []));
   },
 };

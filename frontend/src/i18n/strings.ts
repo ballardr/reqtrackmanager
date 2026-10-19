@@ -226,6 +226,7 @@ const en = {
     allCategories: "All {categories}",
     status: "Status",
     owner: "Owner",
+    ownerDefaultsToYou: "Defaults to you",
     keywords: "Keywords",
     locked: "Locked (approved)",
     lockedNotice: "use a {changeRequest} to modify",

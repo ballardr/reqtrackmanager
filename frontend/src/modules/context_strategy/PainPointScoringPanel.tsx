@@ -20,40 +20,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { projectScoringApi, type ScoringAxis, type ScoringScheme } from "../../api/scoring";
-import { LabeledSelect } from "../../components/LabeledSelect";
-import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectPainPointApi } from "./api";
 import { BlockerBadge, PainPointScoreBadge } from "./PainPointScoreBadges";
-import { PAIN_POINT_ROLLUP_LABEL, PAIN_POINT_SCORE_TARGET_STATUS_LABEL } from "./types";
-import type { PainPointRollup, PainPointScoreEntry, PainPointScoreInput, PainPointScores } from "./types";
-import { Badge } from "../../components/Badge";
+import { PainPointScoreFields } from "./PainPointScoreFields";
+import {
+  ALL_PERSONAS_KEY, draftFromEntries, scoreInputsFromDraft, visibleScoreRows,
+  type ScoreDraft, type ScoreMode, type ScoreRow,
+} from "./painPointScoreDraft";
+import { PAIN_POINT_ROLLUP_LABEL } from "./types";
+import type { PainPointRollup, PainPointScores } from "./types";
 
 const SCHEME_KEY = "pain_point";
-const AXIS_KEYS = ["severity", "frequency", "confidence"] as const;
-type AxisKey = (typeof AXIS_KEYS)[number];
-type RowDraft = Record<AxisKey, string | null>;
-type Draft = Record<string, RowDraft>;
-type Mode = "all" | "persona";
-
-const ALL_KEY = "all";
-const EMPTY_ROW: RowDraft = { severity: null, frequency: null, confidence: null };
-
-const MODE_OPTIONS = [
-  { value: "all", label: "All personas together" },
-  { value: "persona", label: "Each persona separately" },
-];
-
-/** Builds the editable draft (keyed `all` or by persona id) from saved rows. */
-function draftFrom(entries: PainPointScoreEntry[]): Draft {
-  return Object.fromEntries(entries.map((e) => [
-    e.target_id ?? ALL_KEY,
-    { severity: e.severity_level_id, frequency: e.frequency_level_id, confidence: e.confidence_level_id },
-  ]));
-}
-
 /**
  * @param projectId The Pain Point's project.
  * @param painPointId The Pain Point being scored.
@@ -71,14 +51,14 @@ export function PainPointScoringPanel({
   const [scores, setScores] = useState<PainPointScores | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [rollup, setRollup] = useState<PainPointRollup>("weighted_average");
-  const [mode, setMode] = useState<Mode>("all");
-  const [draft, setDraft] = useState<Draft>({});
+  const [mode, setMode] = useState<ScoreMode>("all");
+  const [draft, setDraft] = useState<ScoreDraft>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const adopt = useCallback((loaded: PainPointScores) => {
     setScores(loaded);
-    setDraft(draftFrom(loaded.entries));
+    setDraft(draftFromEntries(loaded.entries));
     setMode(loaded.scope === "per_persona" ? "persona" : "all");
   }, []);
 
@@ -112,8 +92,8 @@ export function PainPointScoringPanel({
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (scheme === null || scores === null || model === null) return <Spinner />;
 
-  const savedByKey = new Map(scores.entries.map((e) => [e.target_id ?? ALL_KEY, e]));
-  const personaRows = [
+  const savedByKey = new Map(scores.entries.map((e) => [e.target_id ?? ALL_PERSONAS_KEY, e]));
+  const personaRows: ScoreRow[] = [
     ...scores.available_targets
       .filter((t) => t.is_active || savedByKey.has(t.id))
       .map((t) => ({
@@ -124,23 +104,9 @@ export function PainPointScoringPanel({
       .filter((e) => e.status === "unavailable" && e.target_id)
       .map((e) => ({ key: e.target_id as string, label: "Persona unavailable", note: "", retired: false, unavailable: true })),
   ];
-  const personasOffered = personaRows.length > 0;
-  const rows = mode === "all"
-    ? [{ key: ALL_KEY, label: "All personas", note: "", retired: false, unavailable: false }]
-    : personaRows;
-
-  function setLevel(key: string, axis: AxisKey, levelId: string | null) {
-    setDraft((prev) => ({ ...prev, [key]: { ...(prev[key] ?? EMPTY_ROW), [axis]: levelId } }));
-  }
 
   async function save() {
-    const visible = new Set(rows.map((r) => r.key));
-    const payload: PainPointScoreInput[] = Object.entries(draft)
-      .filter(([key]) => visible.has(key))
-      .map(([key, row]) => ({
-        target_id: key === ALL_KEY ? null : key,
-        severity_level_id: row.severity, frequency_level_id: row.frequency, confidence_level_id: row.confidence,
-      }));
+    const payload = scoreInputsFromDraft(draft, visibleScoreRows(mode, personaRows));
     setSaving(true);
     try {
       const saved = await projectPainPointApi.setScores(projectId, painPointId, payload, { model_key: model ?? undefined, rollup });
@@ -177,40 +143,10 @@ export function PainPointScoringPanel({
         </p>
       )}
 
-      {personasOffered || mode === "persona" ? (
-        <LabeledSelect
-          label="Scoring mode" value={mode} onChange={(next) => setMode(next as Mode)}
-          options={MODE_OPTIONS} placeholder={null} disabled={locked}
-        />
-      ) : (
-        <p className="text-muted" style={{ margin: 0 }}>Personas aren't available in this project, so scores apply to all personas.</p>
-      )}
-
-      {rows.map((row) => {
-        const saved = savedByKey.get(row.key);
-        const values = draft[row.key] ?? EMPTY_ROW;
-        return (
-          <div key={row.key} className="stack" role="group" aria-label={`${row.label} scores`}>
-            <div className="row" style={{ gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-              <strong>{row.label}</strong>
-              {row.note && <span className="text-muted">{row.note}</span>}
-              {row.retired && <Badge tone="muted">{PAIN_POINT_SCORE_TARGET_STATUS_LABEL.inactive}</Badge>}
-              {saved && <PainPointScoreBadge score={saved.score} />}
-              {saved && <BlockerBadge summary={{ is_blocker: saved.is_blocker, blocker_labels: [] }} />}
-            </div>
-            <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
-              {AXIS_KEYS.map((axisKey) => axes[axisKey] && (
-                <ScoringLevelPicker
-                  key={axisKey} axis={axes[axisKey]} value={values[axisKey]}
-                  onChange={(levelId) => setLevel(row.key, axisKey, levelId)}
-                  disabled={locked || (row.retired && !saved)}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
-      {mode === "persona" && !personasOffered && <p className="text-muted">No personas to score.</p>}
+      <PainPointScoreFields
+        axes={axes} personaRows={personaRows} mode={mode} onModeChange={setMode}
+        draft={draft} onDraftChange={setDraft} disabled={locked} saved={savedByKey}
+      />
 
       <div className="row" style={{ justifyContent: "flex-end" }}>
         <button className="btn btn-primary" disabled={locked || saving} onClick={save}>Save scores</button>

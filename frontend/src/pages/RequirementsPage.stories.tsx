@@ -418,6 +418,35 @@ export const CreateRequirementShowsToast: Story = {
   },
 };
 
+/** The create form takes every field the edit form does: clarification, review date, reminder lead
+ * time and (empty here) owner and reviewer all reach the create call. */
+export const CreateRequirementSendsClarificationAndReviewFields: Story = {
+  beforeEach: () => {
+    mockRequirementsListApis("manager");
+    spyOn(api, "post").mockResolvedValue(buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Reset password via SMS" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
+    const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
+    await waitFor(() => expect(within(panel).getByPlaceholderText("Name")).toBeInTheDocument());
+    await userEvent.type(within(panel).getByPlaceholderText("Name"), "Reset password via SMS");
+    await userEvent.type(within(panel).getByLabelText("Clarification"), "Applies to field staff");
+    await userEvent.type(within(panel).getByLabelText(/Reminder lead time/), "14");
+    await expect(within(panel).getByText("Owner")).toBeInTheDocument();
+    await expect(within(panel).getByText("Assigned reviewer")).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/requirements`,
+        expect.objectContaining({
+          clarification: "Applies to field staff", review_lead_days: 14, review_date: null, owner: null, reviewer: null,
+        })
+      )
+    );
+  },
+};
+
 /** UX review: "Create & attach files" advances the same modal to a second step
  * (attach files) instead of closing — only possible afterwards, from the detail page, before. */
 export const CreateRequirementAdvancesToAttachFilesStep: Story = {

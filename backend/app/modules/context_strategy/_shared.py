@@ -474,9 +474,18 @@ def require_pain_point_type_admin_role(db: Session, current_user: User, *, organ
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Pain Point Type Admin (or org admin) may do this.")
 
 
+def can_manage_pain_points(db: Session, current_user: User, *, organization_id: uuid.UUID, project_id: uuid.UUID) -> bool:
+    """True when `current_user` holds the Pain Point manager tier (the `pain_point_manager` module
+    role, composed with server admin and project manager); the non-raising form of
+    `require_pain_point_manage_role`, for a form that must hide what the user may not do."""
+    return user_satisfies_module_role(
+        db, current_user, MODULE_KEY, "pain_point_manager", organization_id=organization_id, project_id=project_id,
+    )
+
+
 def require_pain_point_manage_role(db: Session, current_user: User, *, organization_id: uuid.UUID, project_id: uuid.UUID) -> None:
     """Gate for Pain Point type-vocabulary CRUD (`ProjectPainPointType`
-    create/override/delete) and direct content updates (`PUT`) — satisfied
+    create/override/delete), direct content updates (`PUT`) and scoring — satisfied
     by the `pain_point_manager` module role alone (which itself composes
     with server admin and `ProjectRole.PROJECT_MANAGER` via `user_
     satisfies_module_role`), no Fine-Grained Access Control fallback —
@@ -484,9 +493,7 @@ def require_pain_point_manage_role(db: Session, current_user: User, *, organizat
     (§6.5) grants create/comment/evidence to any project member, not a
     standing right to edit submitted content afterwards — see
     `project_router.py`'s own docstring."""
-    if not user_satisfies_module_role(
-        db, current_user, MODULE_KEY, "pain_point_manager", organization_id=organization_id, project_id=project_id,
-    ):
+    if not can_manage_pain_points(db, current_user, organization_id=organization_id, project_id=project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Pain Point Manager (or admin/manager) may do this.")
 
 

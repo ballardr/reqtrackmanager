@@ -10,6 +10,11 @@
  * concept to add in edit mode — `PainPointFieldValues` is identical for both
  * calls.
  *
+ * **Scoring at creation (Decided by: Agent).** A create form also offers Severity, Frequency and
+ * Confidence through `PainPointScoreFields`, the grid the detail page's scoring panel uses, so a
+ * Pain Point need not be reopened to be scored. It appears only when the caller may score (the
+ * `scoring` prop); an existing record is scored in its panel, not in this form.
+ *
  * **`owner` is deliberately not a field here (Decided by: Agent).**
  * Source overview §6.5 places "Assign owner" on the manager tier as its own
  * distinct capability, not part of the create/edit content form — see
@@ -27,8 +32,13 @@ import { DateField, TextAreaField, TextField } from "../../components/FormFields
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
+import type { ScoringScheme } from "../../api/scoring";
+import { PainPointScoreFields } from "./PainPointScoreFields";
+import { scoreInputsFromDraft, visibleScoreRows, type ScoreDraft, type ScoreMode, type ScoreRow } from "./painPointScoreDraft";
 import { PAIN_POINT_PRIORITY_LABEL } from "./types";
-import type { EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority } from "./types";
+import type {
+  EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointScoringTarget,
+} from "./types";
 
 const TEXT_FIELDS: { key: keyof PainPointFieldValues; label: string; rows: number }[] = [
   { key: "description", label: "Description", rows: 3 },
@@ -41,6 +51,7 @@ export function PainPointFormModal({
   initial,
   projectId,
   types,
+  scoring,
   error,
   onCancel,
   onSave,
@@ -54,6 +65,10 @@ export function PainPointFormModal({
    * current type even if it has since been disabled (so editing an existing
    * Pain Point never silently drops its own type from the picker). */
   types: EffectivePainPointType[];
+  /** Create only: the scoring scheme and the personas on offer, passed only when the caller may
+   * score (a Pain Point manager). Without it the form has no scoring section, since scoring is a
+   * triage-tier action that the server would refuse. */
+  scoring?: { scheme: ScoringScheme; targets: PainPointScoringTarget[] };
   error?: string | null;
   onCancel: () => void;
   onSave: (values: PainPointFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
@@ -65,6 +80,8 @@ export function PainPointFormModal({
   const [isIntentional, setIsIntentional] = useState(initial?.is_intentional ?? false);
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [scoreMode, setScoreMode] = useState<ScoreMode>("all");
+  const [scoreDraft, setScoreDraft] = useState<ScoreDraft>({});
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof PainPoint] as string | undefined) ?? ""]))
   );
@@ -73,13 +90,22 @@ export function PainPointFormModal({
     .filter((t) => t.is_enabled || t.id === initial?.pain_point_type_id)
     .map((t) => ({ value: t.id, label: t.is_enabled ? t.name : `${t.name} (disabled)` }));
 
+  const scoreAxes = Object.fromEntries((scoring?.scheme.axes ?? []).map((a) => [a.key, a]));
+  const personaRows: ScoreRow[] = (scoring?.targets ?? [])
+    .filter((t) => t.is_active)
+    .map((t) => ({ key: t.id, label: t.label, note: t.weight !== null ? `weight ${t.weight}` : "", retired: false, unavailable: false }));
+
   function save() {
+    const scores = !initial && scoring
+      ? scoreInputsFromDraft(scoreDraft, visibleScoreRows(scoreMode, personaRows))
+      : undefined;
     onSave({
       pain_point_type_id: painPointTypeId,
       title,
       priority,
       date_identified: dateIdentified || null,
       is_intentional: isIntentional,
+      ...(scores ? { scores } : {}),
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
     } as PainPointFieldValues, quickLinks, tags);
   }
@@ -121,6 +147,17 @@ export function PainPointFormModal({
               </span>
             </div>
           </FormGridFull>
+          {!initial && scoring && (
+            <FormGridFull>
+              <section className="stack" aria-label="Scoring">
+                <strong>Scoring (optional)</strong>
+                <PainPointScoreFields
+                  axes={scoreAxes} personaRows={personaRows} mode={scoreMode} onModeChange={setScoreMode}
+                  draft={scoreDraft} onDraftChange={setScoreDraft}
+                />
+              </section>
+            </FormGridFull>
+          )}
           {!initial && projectId && (
             <FormGridFull>
               <div className="stack">

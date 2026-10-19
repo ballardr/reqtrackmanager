@@ -41,7 +41,7 @@ Scores are shown two ways: the raw product on the Pain Point and in the list (fo
 
 ## Scoring a Pain Point
 
-Open a Pain Point and use the **Scoring** section. Saving scores is for the **Pain Point Manager** role; anyone who can see the Pain Point can read them.
+Open a Pain Point and use the **Scoring** section. Saving scores is for the **Pain Point Manager** role; anyone who can see the Pain Point can read them. A Pain Point Manager can also score while creating one: the **New Pain Point** form has an optional **Scoring** section with the same controls, and members without the role do not see it.
 
 | The Scoring section of a Pain Point |
 | --- |

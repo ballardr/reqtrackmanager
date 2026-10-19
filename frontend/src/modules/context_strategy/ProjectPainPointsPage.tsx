@@ -48,7 +48,7 @@ import {
 } from "./types";
 import type {
   EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointRollup,
-  PainPointScoringList, PainPointScoringSummary, PainPointStatus,
+  PainPointScoringList, PainPointScoringSummary, PainPointScoringTargets, PainPointStatus,
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
@@ -84,6 +84,7 @@ export function ProjectPainPointsPage() {
   const [scoredFilter, setScoredFilter] = useState<"" | "yes" | "no">(() => oneOf(initial.get("scored"), ["yes", "no"] as const));
 
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
+  const [scoringTargets, setScoringTargets] = useState<PainPointScoringTargets | null>(null);
   const [model, setModel] = useState<string | null>(initial.get("model"));
   const [rollup, setRollup] = useState<PainPointRollup>(
     () => oneOf(initial.get("rollup"), Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]) || "weighted_average",
@@ -115,6 +116,8 @@ export function ProjectPainPointsPage() {
   useEffect(() => {
     if (!projectId) return;
     void projectScoringApi.get(projectId, SCHEME_KEY).then(setScheme).catch(() => setScheme(null));
+    // Whether the create form may offer scoring; a failure just leaves the section out.
+    void projectPainPointApi.getScoringTargets(projectId).then(setScoringTargets).catch(() => setScoringTargets(null));
   }, [projectId]);
 
   // Scores are secondary to the list itself: a failure here just leaves the
@@ -260,6 +263,7 @@ export function ProjectPainPointsPage() {
         <PainPointFormModal
           projectId={projectId}
           types={types}
+          scoring={scheme && scoringTargets?.can_score ? { scheme, targets: scoringTargets.available_targets } : undefined}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
           onSave={async (values: PainPointFieldValues, quickLinks, tags) => {

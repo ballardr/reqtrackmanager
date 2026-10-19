@@ -58,6 +58,7 @@ import type {
   PainPointRollup,
   PainPointScoreInput,
   PainPointScores,
+  PainPointScoringTargets,
   PainPointScoringList,
   PainPointTypeDefinition,
   ProjectPainPointType,
@@ -415,6 +416,10 @@ export const projectPainPointApi = {
   // --- Per-persona scoring ---------------------------------------
   listScores(projectId: string, params: { model_key?: string; rollup?: PainPointRollup; include_archived?: boolean } = {}) {
     return api.get<PainPointScoringList>(`${projectBase(projectId)}/pain-point-scores${scoringQuery(params)}`);
+  },
+  /** Whether the caller may score, and the personas on offer, before a Pain Point exists. */
+  getScoringTargets(projectId: string) {
+    return api.get<PainPointScoringTargets>(`${projectBase(projectId)}/pain-point-scoring-targets`);
   },
   getScores(projectId: string, painPointId: string, params: { model_key?: string; rollup?: PainPointRollup } = {}) {
     return api.get<PainPointScores>(`${projectBase(projectId)}/pain-points/${painPointId}/scores${scoringQuery(params)}`);

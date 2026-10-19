@@ -17,7 +17,6 @@ import type {
   ProjectStage,
   Requirement,
   RequirementAction,
-  RequirementLevel,
   RequirementReviewOutcome,
   PrincipalRef,
   RequirementVersionEntry,
@@ -30,14 +29,14 @@ import {
   REQUIREMENT_STATUS_LABEL,
   principalRef,
   REQUIREMENT_STATUS_TONE,
-  savedPrincipalDisplay,
 } from "../api/types";
 import { ArtefactLinksPanel, type LinksChangeRequestMode } from "../components/ArtefactLinksPanel";
 import { RecordActivity } from "../components/RecordActivity";
 import { RecordTags } from "../components/RecordTags";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
-import { PrincipalFormField } from "../components/PrincipalFormField";
+import { RequirementFields } from "../components/RequirementFields";
+import { EMPTY_REQUIREMENT_FIELDS, type RequirementFieldValues } from "../components/requirementFieldValues";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
@@ -57,7 +56,7 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { getInstalledModule } from "../modules/registry";
 import { Badge } from "../components/Badge";
-import { DateField, TextAreaField, TextField } from "../components/FormFields";
+import { TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { ActionFields } from "../components/ActionFields";
@@ -107,19 +106,7 @@ export function RequirementDetailPage() {
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [history, setHistory] = useState<RequirementVersionEntry[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [form, setForm] = useState({
-    name: "",
-    reasoning: "",
-    clarification: "",
-    description: "",
-    changeNote: "",
-    targetStageId: "",
-    level: "requirement" as RequirementLevel,
-    reviewDate: "",
-    reviewLeadDays: "",
-    owner: null as PrincipalRef | null,
-    reviewer: null as PrincipalRef | null,
-  });
+  const [form, setForm] = useState<RequirementFieldValues & { changeNote: string }>({ ...EMPTY_REQUIREMENT_FIELDS, changeNote: "" });
   // Guards `form` against `reload()` — called after every unrelated
   // mutation on this page (posting a comment, uploading a file, linking an
   // action, ...) and not awaited by its callers, so it can still be
@@ -709,77 +696,14 @@ export function RequirementDetailPage() {
       ) : (
         <div className="card stack">
           <FormGrid minColumn="18rem">
-            <FormGridFull>
-              <TextField
-                label={strings.requirements.name}
-                value={form.name}
-                onChange={(next) => updateForm((f) => ({ ...f, name: next }))}
-              />
-            </FormGridFull>
-            <FormGridFull>
-              <TextAreaField
-                label={strings.requirements.reasoning}
-                value={form.reasoning}
-                onChange={(next) => updateForm((f) => ({ ...f, reasoning: next }))}
-                rows={3}
-              />
-            </FormGridFull>
-            <FormGridFull>
-              <TextAreaField
-                label={strings.requirements.clarification}
-                value={form.clarification}
-                onChange={(next) => updateForm((f) => ({ ...f, clarification: next }))}
-                rows={2}
-              />
-            </FormGridFull>
-            <FormGridFull>
-              <TextAreaField
-                label={strings.requirements.description}
-                value={form.description}
-                onChange={(next) => updateForm((f) => ({ ...f, description: next }))}
-                rows={2}
-              />
-            </FormGridFull>
-            <LabeledSelect
-              label={strings.requirements.targetVersion}
-              value={form.targetStageId}
-              onChange={(next) => updateForm((f) => ({ ...f, targetStageId: next }))}
-              options={stages.map((s) => ({ value: s.id, label: s.name }))}
-              placeholder={null}
-            />
-            <LabeledSelect
-              label={strings.requirements.level}
-              value={form.level}
-              onChange={(next) => updateForm((f) => ({ ...f, level: next as RequirementLevel }))}
-              options={[
-                { value: "requirement", label: REQUIREMENT_LEVEL_LABEL.requirement },
-                { value: "recommended", label: REQUIREMENT_LEVEL_LABEL.recommended },
-                { value: "optional", label: REQUIREMENT_LEVEL_LABEL.optional },
-              ]}
-              placeholder={null}
-            />
-            <DateField
-              label={strings.requirements.reviewDate}
-              value={form.reviewDate}
-              onChange={(next) => updateForm((f) => ({ ...f, reviewDate: next }))}
-            />
-            <TextField
-              label={strings.requirements.reviewLeadDays}
-              value={form.reviewLeadDays}
-              onChange={(next) => updateForm((f) => ({ ...f, reviewLeadDays: next }))}
-              inputProps={{ type: "number", min: 0 }}
-            />
-            <PrincipalFormField
-              label={strings.requirements.reviewer} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
-              projectId={projectId} value={form.reviewer} display={savedPrincipalDisplay(form.reviewer, requirement.reviewer)}
-              onChange={(reviewer) => updateForm((f) => ({ ...f, reviewer }))}
-              ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
-            />
-            <PrincipalFormField
-              label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
-              projectId={projectId} value={form.owner} display={savedPrincipalDisplay(form.owner, requirement.owner)}
-              onChange={(owner) => updateForm((f) => ({ ...f, owner }))}
-              ariaLabel={strings.requirements.owner} placeholder={strings.reviews.unassigned} clearLabel="Clear"
+            <RequirementFields
+              values={form}
+              onChange={(next) => updateForm((f) => ({ ...f, ...next }))}
+              stages={stages}
+              orgUsers={orgUsers}
+              organizationId={organizationId ?? undefined}
+              projectId={projectId}
+              saved={{ owner: requirement.owner, reviewer: requirement.reviewer }}
             />
             <FormGridFull>
               <CustomFieldsForm

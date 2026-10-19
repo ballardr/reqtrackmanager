@@ -110,6 +110,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.context_strategy._shared import (
     apply_value_error_as_conflict,
+    can_manage_pain_points,
     context_strategy_link_to_out,
     future_state_to_out,
     get_future_state_in_scope,
@@ -210,6 +211,7 @@ from app.modules.context_strategy.schemas import (
     PainPointScoresUpdate,
     PainPointScoringListOut,
     PainPointScoringSummaryOut,
+    PainPointScoringTargetsOut,
     PainPointTransitionRequest,
     PainPointUpdate,
     ProjectPainPointTypeCreate,
@@ -1423,12 +1425,25 @@ def create_project_pain_point(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if not pain_point_type.is_enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This Pain Point type is disabled for this project.")
+    scoring_ctx = None
+    if payload.scores:
+        # Scoring is triage-tier (as on `PUT .../scores`): creating needs no grant, scoring does.
+        require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+        scoring_ctx = load_scoring_context(db, project)
     pain_point = create_pain_point(
         db, project=project, pain_point_type=pain_point_type, creator=current_user, title=payload.title,
         description=payload.description, source=payload.source, impact=payload.impact, evidence=payload.evidence,
         priority=payload.priority, date_identified=payload.date_identified,
         is_intentional=payload.is_intentional,
     )
+    if scoring_ctx is not None:
+        # Same validation and audit as the scores endpoint; any 400 leaves nothing committed.
+        set_pain_point_scores(
+            db, scoring_ctx, pain_point,
+            [ScoreEntryInput(e.target_id, e.severity_level_id, e.frequency_level_id, e.confidence_level_id)
+             for e in payload.scores],
+            current_user,
+        )
     log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="created",
               actor_id=current_user.id, project_id=project_id, detail={"title": payload.title})
     db.commit()
@@ -1595,6 +1610,21 @@ def list_project_pain_point_scores(
     return PainPointScoringListOut(
         model_key=model.key, model_source=ctx.default_model_source if model.key == ctx.default_model_key else "chosen",
         rollup=method.value, items=[_scoring_summary_out(s) for s in summaries],
+    )
+
+
+@router.get("/pain-point-scoring-targets", response_model=PainPointScoringTargetsOut)
+def get_project_pain_point_scoring_targets(
+    project_id: UUID, current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """What a create form needs to offer scoring before the Pain Point exists: whether the caller
+    may score at all, and the personas it can be scored against."""
+    project = db.get(Project, project_id)
+    can_score = can_manage_pain_points(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    targets = list(load_scoring_context(db, project).targets.values()) if can_score else []
+    return PainPointScoringTargetsOut(
+        can_score=can_score,
+        available_targets=[ScoringTargetOut(id=t.id, label=t.label, weight=t.weight, is_active=t.is_active) for t in targets],
     )
 
 

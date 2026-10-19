@@ -493,6 +493,8 @@ export interface PainPointFieldValues {
   date_identified: string | null;
   /** Omitted on update = unchanged. */
   is_intentional?: boolean;
+  /** Scores at creation (create only; an existing record is scored in its scoring panel). */
+  scores?: PainPointScoreInput[];
 }
 
 // --- Pain Point scoring --------------------------------------------
@@ -562,6 +564,13 @@ export interface PainPointScores extends PainPointScoringSummary {
   model_key: string;
   model_source: string;
   rollup: PainPointRollup;
+  available_targets: PainPointScoringTarget[];
+}
+
+/** `GET .../pain-point-scoring-targets`: what a create form needs before the Pain Point exists.
+ * `can_score` is false for a member who may create but not score. */
+export interface PainPointScoringTargets {
+  can_score: boolean;
   available_targets: PainPointScoringTarget[];
 }
 

@@ -15,7 +15,6 @@ import type {
   ProjectStage,
   Requirement,
   RequirementImportResult,
-  RequirementLevel,
   RequirementStatus,
 } from "../api/types";
 import type { CollectedLink } from "../api/artefactLinks";
@@ -29,6 +28,8 @@ import {
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
+import { RequirementFields } from "../components/RequirementFields";
+import { EMPTY_REQUIREMENT_FIELDS, requirementPeopleAndReviewPayload, type RequirementFieldValues } from "../components/requirementFieldValues";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
@@ -52,7 +53,7 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
-import { TextAreaField, TextField } from "../components/FormFields";
+import { TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
@@ -147,13 +148,10 @@ export function RequirementsPage() {
   const [sort, setSort] = useState<SortState<RequirementSortKey> | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const csvWizardRef = useRef<CsvImportWizardHandle>(null);
-  const [newName, setNewName] = useState("");
-  const [newReasoning, setNewReasoning] = useState("");
-  const [newDescription, setNewDescription] = useState("");
+  const [newFields, setNewFields] = useState<RequirementFieldValues>(EMPTY_REQUIREMENT_FIELDS);
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [newComponentId, setNewComponentId] = useState("");
   const [newCategoryId, setNewCategoryId] = useState("");
-  const [newTargetStageId, setNewTargetStageId] = useState("");
-  const [newLevel, setNewLevel] = useState<RequirementLevel>("requirement");
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [viewMode, setViewMode] = useViewMode("requirements");
@@ -258,7 +256,7 @@ export function RequirementsPage() {
     // Target is mandatory (it can never be left unset) — the select always
     // has a real stage pre-filled, never a blank "—" option, same as the
     // backend's own create-time default (routers/requirements.py).
-    if (!newTargetStageId && stgs[0]) setNewTargetStageId(stgs[0].id);
+    if (!newFields.targetStageId && stgs[0]) setNewFields((f) => (f.targetStageId ? f : { ...f, targetStageId: stgs[0].id }));
     const selectedComponentId = newComponentId || comps[0]?.id || "";
     if (!newComponentId && comps[0]) setNewComponentId(comps[0].id);
     // Must belong to the selected component (the tree) — picking any
@@ -321,6 +319,7 @@ export function RequirementsPage() {
         const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
         setProject(proj);
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
+        setOrgUsers(users);
         setIsOrgAdminOfProject(users.some((u) => u.user_id === user.id && u.roles.includes("org_admin")));
       } catch {
         // No org role at all (rare) — canManageProject still resolves correctly
@@ -373,23 +372,22 @@ export function RequirementsPage() {
    * behaviour, so the extra step is opt-in rather than forced on every create.
    */
   async function createRequirement(andAttach: boolean) {
-    if (!projectId || !newComponentId || !newCategoryId || !newTargetStageId) return;
+    if (!projectId || !newComponentId || !newCategoryId || !newFields.targetStageId) return;
     try {
       const created = await api.post<Requirement>(`/api/v1/projects/${projectId}/requirements`, {
-        name: newName,
-        reasoning: newReasoning,
-        description: newDescription,
+        name: newFields.name,
+        reasoning: newFields.reasoning,
+        clarification: newFields.clarification,
+        description: newFields.description,
         component_id: newComponentId,
         category_id: newCategoryId,
-        target_stage_id: newTargetStageId,
-        level: newLevel,
+        target_stage_id: newFields.targetStageId,
+        level: newFields.level,
+        ...requirementPeopleAndReviewPayload(newFields),
         keywords: [],
         custom_fields: customFieldValues,
       });
-      setNewName("");
-      setNewReasoning("");
-      setNewDescription("");
-      setNewLevel("requirement");
+      setNewFields((f) => ({ ...EMPTY_REQUIREMENT_FIELDS, targetStageId: f.targetStageId }));
       setCustomFieldValues({});
       reload();
       showToast(strings.requirements.created);
@@ -711,69 +709,41 @@ export function RequirementsPage() {
           ) : (
             <>
               <FormGrid minColumn="18rem">
-                {/* Style guide Principle 13: every field has a visible label, not just placeholder text. */}
-                <FormGridFull>
-                  <TextField
-                    label={strings.requirements.name}
-                    value={newName}
-                    onChange={setNewName}
-                    placeholder={strings.requirements.name}
-                  />
-                </FormGridFull>
-                <FormGridFull>
-                  <TextAreaField
-                    label={strings.requirements.reasoning}
-                    value={newReasoning}
-                    onChange={setNewReasoning}
-                    autoGrow
-                    inputProps={{ placeholder: strings.requirements.reasoning }}
-                  />
-                </FormGridFull>
-                <FormGridFull>
-                  <TextAreaField
-                    label={strings.requirements.description}
-                    value={newDescription}
-                    onChange={setNewDescription}
-                    autoGrow
-                    inputProps={{ placeholder: strings.requirements.description }}
-                  />
-                </FormGridFull>
-                <LabeledSelect
-                  label={strings.requirements.component}
-                  value={newComponentId}
-                  onChange={(componentId) => {
-                    setNewComponentId(componentId);
-                    // Category is nested under one component (the tree) — a
-                    // category belonging to the previously-selected component
-                    // is never valid once the component changes.
-                    const firstOwnCategory = categories.find((c) => c.component_id === componentId);
-                    setNewCategoryId(firstOwnCategory?.id ?? "");
-                  }}
-                  options={components.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
-                  placeholder={null}
-                />
-                <LabeledSelect
-                  label={strings.requirements.category}
-                  value={newCategoryId}
-                  onChange={setNewCategoryId}
-                  options={categories
-                    .filter((c) => c.component_id === newComponentId)
-                    .map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
-                  placeholder={categories.some((c) => c.component_id === newComponentId) ? null : strings.requirements.noCategoriesForComponent}
-                />
-                <LabeledSelect
-                  label={strings.requirements.targetVersion}
-                  value={newTargetStageId}
-                  onChange={setNewTargetStageId}
-                  options={stages.map((s) => ({ value: s.id, label: s.name }))}
-                  placeholder={null}
-                />
-                <LabeledSelect
-                  label={strings.requirements.level}
-                  value={newLevel}
-                  onChange={(next) => setNewLevel(next as RequirementLevel)}
-                  options={[{ value: "requirement", label: REQUIREMENT_LEVEL_LABEL.requirement }, { value: "recommended", label: REQUIREMENT_LEVEL_LABEL.recommended }, { value: "optional", label: REQUIREMENT_LEVEL_LABEL.optional }]}
-                  placeholder={null}
+                <RequirementFields
+                  values={newFields}
+                  onChange={setNewFields}
+                  stages={stages}
+                  orgUsers={orgUsers}
+                  organizationId={project?.organization_id}
+                  projectId={projectId}
+                  ownerPlaceholder={strings.requirements.ownerDefaultsToYou}
+                  afterDescription={
+                    <>
+                      <LabeledSelect
+                        label={strings.requirements.component}
+                        value={newComponentId}
+                        onChange={(componentId) => {
+                          setNewComponentId(componentId);
+                          // Category is nested under one component (the tree) — a
+                          // category belonging to the previously-selected component
+                          // is never valid once the component changes.
+                          const firstOwnCategory = categories.find((c) => c.component_id === componentId);
+                          setNewCategoryId(firstOwnCategory?.id ?? "");
+                        }}
+                        options={components.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
+                        placeholder={null}
+                      />
+                      <LabeledSelect
+                        label={strings.requirements.category}
+                        value={newCategoryId}
+                        onChange={setNewCategoryId}
+                        options={categories
+                          .filter((c) => c.component_id === newComponentId)
+                          .map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
+                        placeholder={categories.some((c) => c.component_id === newComponentId) ? null : strings.requirements.noCategoriesForComponent}
+                      />
+                    </>
+                  }
                 />
                 <FormGridFull>
                   <CustomFieldsForm
@@ -793,14 +763,14 @@ export function RequirementsPage() {
                 <button
                   className="btn"
                   onClick={() => createRequirement(true)}
-                  disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
+                  disabled={!newFields.name || !newComponentId || !newCategoryId || !newFields.targetStageId}
                 >
                   {strings.requirements.createAndAttach}
                 </button>
                 <button
                   className="btn btn-primary"
                   onClick={() => createRequirement(false)}
-                  disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
+                  disabled={!newFields.name || !newComponentId || !newCategoryId || !newFields.targetStageId}
                 >
                   {strings.common.create}
                 </button>

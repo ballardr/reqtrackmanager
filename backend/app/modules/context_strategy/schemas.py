@@ -414,6 +414,16 @@ class ProjectPainPointTypeOut(BaseModel):
     is_enabled: bool
 
 
+class PainPointScoreEntryIn(BaseModel):
+    """One requested score row. `target_id` null = all personas; a level id
+    null = not scored on that axis."""
+
+    target_id: UUID | None = None
+    severity_level_id: UUID | None = None
+    frequency_level_id: UUID | None = None
+    confidence_level_id: UUID | None = None
+
+
 class PainPointCreate(BaseModel):
     """`pain_point_type_id` is an `EffectivePainPointTypeOut.id` (see that
     schema's own docstring for what it may resolve to)."""
@@ -427,6 +437,10 @@ class PainPointCreate(BaseModel):
     priority: PainPointPriority = PainPointPriority.MEDIUM
     date_identified: date | None = None
     is_intentional: bool = False
+    # Severity / frequency / confidence at creation, the same rows `PainPointScoresUpdate` takes.
+    # Scoring is a triage-tier action, so a non-empty list needs the manager role even though
+    # creating a Pain Point does not.
+    scores: list[PainPointScoreEntryIn] = Field(default_factory=list, max_length=500)
 
 
 class PainPointUpdate(BaseModel):
@@ -511,16 +525,6 @@ class PainPointCommentOut(BaseModel):
 # --- Pain Point scoring -------------------------------------------
 
 
-class PainPointScoreEntryIn(BaseModel):
-    """One requested score row. `target_id` null = all personas; a level id
-    null = not scored on that axis."""
-
-    target_id: UUID | None = None
-    severity_level_id: UUID | None = None
-    frequency_level_id: UUID | None = None
-    confidence_level_id: UUID | None = None
-
-
 class PainPointScoresUpdate(BaseModel):
     """Replaces a Pain Point's whole score set (empty list clears it). The
     cap is far above any real persona count; it just bounds the request."""
@@ -574,6 +578,15 @@ class ScoringTargetOut(BaseModel):
     label: str
     weight: float | None
     is_active: bool
+
+
+class PainPointScoringTargetsOut(BaseModel):
+    """`GET .../pain-point-scoring-targets`: what a create form needs to offer scoring before a
+    Pain Point exists. `can_score` is false for a member who may create but not score, so the form
+    leaves the section out rather than showing a control that would be refused."""
+
+    can_score: bool
+    available_targets: list[ScoringTargetOut]
 
 
 class PainPointScoringListOut(BaseModel):

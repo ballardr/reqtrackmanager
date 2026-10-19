@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17 and 18 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18 and 19 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-17 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17 and 18 done 2026-10-19; Phases 8, 9, 10, 13, 14, 15, 16, 17 and 18 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 19.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
+18 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19; Phases 8, 9, 10, 13, 14, 15, 16, 17, 18 and 19 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 20.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review after Phase 21.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -26,7 +26,7 @@
 | 16 | One People page (Personas and Stakeholders) and "Save and activate" | N19, N20 | [x] |
 | 17 | Quick-link on create | N21 | [x] |
 | 18 | Tags on every item type | N22 | [x] |
-| 19 | Create forms accept every field the edit form does (pain point first) | N23 | [ ] |
+| 19 | Create forms accept every field the edit form does (pain point first) | N23 | [x] |
 | 20 | Nested-project scope filter on every list | N24 | [ ] |
 | 21 | Field help (?) tooltips | N25 | [ ] |
 | 23 | Global search: plain header search box with live results, search page (scope, filters, field picker), per-user default search fields, per-type search registration | N26 | [ ] |
@@ -472,6 +472,15 @@ Reading the diagram: a module is checked at three levels from the server down. A
 - **Audit first:** for every create/edit pair, diff the writable fields in the create schema, the edit schema and the two forms; table in this phase's notes, ordered by user impact. Fix the pain point immediately (severity, frequency, confidence, and any derived score shown read-only on create).
 - **Rule:** where possible the create and edit forms share one field-group component, so a field added later appears in both; the audit table lists which pairs were unified.
 - **Tests:** per fixed form, a backend test that the create endpoint accepts and persists the fields, and a Playwright create with all fields set.
+
+- **Done 2026-10-19 (uncommitted at hand-back).** The full audit table and decisions are in `docs/decisions.md`.
+  - **Audit:** a script diffed every `*Create`/`*Update` schema pair, then each create form against the create schema, then the detail pages for separate-endpoint controls. Most module records already share one `*FormModal` for both modes. Two real gaps: **Pain Point** (severity/frequency/confidence only in the scoring panel) and **Requirement** (the create dialog had no clarification, review date, reminder lead time, reviewer or owner; the create endpoint already took them).
+  - **Pain Point:** `PainPointCreate.scores` applies the rows with the existing `set_pain_point_scores` in the create transaction; scoring stays manager-tier (403 for a member, nothing created). `GET .../pain-point-scoring-targets` returns `can_score` and the personas so the form hides the section from a member. `PainPointScoreFields` is the one score grid for the create form and the detail panel.
+  - **Requirement:** `RequirementFields` is the shared group for `RequirementsPage`'s create dialog and `RequirementDetailPage`'s edit form.
+  - **Unified pairs:** Pain Point (grid), Requirement (field group). The other pairs were already one form.
+  - **Not changed, raised for the user:** Pain Point and Open Question owner, and the engagement audience, are assigned after creation by an earlier design decision recorded on those forms; the edit forms omit them too.
+  - **Agent rule:** `CLAUDE.md` and the style guide's "Pattern: create and edit share one field group".
+  - **Tests:** backend `test_context_strategy_pain_point_create_scores.py` (6) and `test_requirement_create_fields.py`; Storybook `RequirementFields` (3), Pain Point form (4 new), Requirements page (1 new); Playwright `pain-point-create-scores.spec.ts`, `requirement-create-all-fields.spec.ts`.
 
 ### Phase 20 — Nested-project scope filter on every list (N24)
 

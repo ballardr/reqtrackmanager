@@ -914,6 +914,15 @@ Rules:
 - **An inherited list is read-only** with a notice that the parent manages it.
 - Tag filters and chips use the shared components above; a list that builds its own tag control repeats the debt this section exists to stop.
 
+## Pattern: create and edit share one field group
+
+A create form accepts every field the edit form edits, and both render the **same field-group component**, so a field added later appears in both. Reason: a create form that is narrower than its edit form leaves records that look complete but are not (a Pain Point created unscored, a requirement with no reviewer), and two hand-built copies drift.
+
+- A record with one `*FormModal` for both modes (`initial` passed when editing) already satisfies this. A record whose create dialog and edit form are different pieces of page code shares a component instead (`RequirementFields`: `RequirementsPage` and `RequirementDetailPage`); what differs stays with the page and is passed in (`afterDescription`).
+- A field set by a separate control after creation (the Pain Point scoring grid) uses one component in both places (`PainPointScoreFields`); the create form submits it with the record, the detail page keeps its own Save.
+- Fields that cannot exist before the record does (comments, attachments, change note) and permission-gated fields the caller may not use are left out of create: **hide** the control, never show one the server will refuse (the create form asks the server whether the caller may, as Pain Point scoring does).
+- A field deliberately absent from create or edit is recorded in `docs/decisions.md` with the reason.
+
 ## Tokens
 
 `frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and spacing/radii used consistently even though not yet named as tokens. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.
