@@ -331,11 +331,17 @@ class ModuleNavEntry:
             Defaults to `"puzzle"` (a generic module icon) so every entry
             declared before this field existed keeps rendering something
             sensible rather than failing validation.
+        sub_component: Key of the `ModuleDefinition.sub_components` entry this
+            entry leads to, or `None` when the entry belongs to the module as
+            a whole. The nav rail hides an entry whose sub-component is
+            disabled for the project (the same state that makes its API
+            routes 404), so a link never leads to a page that cannot load.
     """
 
     nav_label: str
     nav_path: str
     nav_icon: str = "puzzle"
+    sub_component: str | None = None
 
 
 @dataclass(frozen=True)
@@ -440,6 +446,8 @@ class ModuleFrontendManifest:
             dataclass's docstring); this manifest doesn't reuse `ModuleNavEntry`
             for its primary pair, so it needs its own copy of the field.
             Defaults to `"puzzle"` for the same backward-compatibility reason.
+        nav_sub_component: `ModuleNavEntry.sub_component` for this manifest's
+            own primary entry.
     """
 
     tier: Literal["installed", "remote", "federated"]
@@ -450,6 +458,7 @@ class ModuleFrontendManifest:
     exposed_module: str | None = None
     additional_nav_entries: tuple[ModuleNavEntry, ...] = ()
     nav_icon: str = "puzzle"
+    nav_sub_component: str | None = None
 
     def __post_init__(self) -> None:
         if self.tier == "remote":
@@ -495,7 +504,10 @@ class ModuleFrontendManifest:
         from different fields than the rest."
         """
         return (
-            ModuleNavEntry(nav_label=self.nav_label, nav_path=self.nav_path, nav_icon=self.nav_icon),
+            ModuleNavEntry(
+                nav_label=self.nav_label, nav_path=self.nav_path, nav_icon=self.nav_icon,
+                sub_component=self.nav_sub_component,
+            ),
             *self.additional_nav_entries,
         )
 

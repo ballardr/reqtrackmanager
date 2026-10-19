@@ -543,20 +543,54 @@ def test_frontend_manifest_registers_the_strategy_nav_entry():
             nav_label="Future State",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/future-states",
             nav_icon="telescope",
+            sub_component="future_state",
         ),
         ModuleNavEntry(
             nav_label="Pain Point",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/pain-points",
             nav_icon="alert-triangle",
+            sub_component="pain_point",
         ),
         ModuleNavEntry(
             nav_label="Guiding Principle",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/guiding-principles",
             nav_icon="anchor",
+            sub_component="guiding_principle",
         ),
         ModuleNavEntry(
             nav_label="Open Question",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/open-questions",
             nav_icon="circle-help",
+            sub_component="open_question",
         ),
     )
+
+
+def test_enabled_modules_reports_each_nav_entrys_sub_component_and_the_disabled_ones(client, admin_token):
+    """The nav rail hides an entry whose sub-component is off for the project: `enabled-modules` names each
+    entry's `sub_component` and lists the module's disabled ones, flipping as the project admin toggles."""
+    _, project, org_admin_token = _setup(client, admin_token, "CtxStrategy Nav Sub Co")
+    url = f"/api/v1/projects/{project['id']}/enabled-modules"
+
+    def entry():
+        resp = client.get(url, headers=auth_headers(org_admin_token))
+        assert resp.status_code == 200, resp.text
+        return next(m for m in resp.json() if m["module_key"] == MODULE_KEY)
+
+    before = entry()
+    manifest = before["frontend_manifest"]
+    assert manifest["nav_sub_component"] == "strategy"
+    assert [e["sub_component"] for e in manifest["additional_nav_entries"]] == [
+        "future_state", "pain_point", "guiding_principle", "open_question",
+    ]
+    assert before["disabled_sub_components"] == []
+
+    sub_url = f"/api/v1/projects/{project['id']}/modules/{MODULE_KEY}/subcomponents/pain_point"
+    assert client.put(sub_url, json={"enabled": False}, headers=auth_headers(org_admin_token)).status_code == 200
+    assert entry()["disabled_sub_components"] == ["pain_point"]
+    # The page behind the hidden entry is unreachable too: the nav and the routes share one source of truth.
+    resp = client.get(_project_base(project["id"]) + "/pain-points", headers=auth_headers(org_admin_token))
+    assert resp.status_code == 404, resp.text
+
+    assert client.put(sub_url, json={"enabled": True}, headers=auth_headers(org_admin_token)).status_code == 200
+    assert entry()["disabled_sub_components"] == []

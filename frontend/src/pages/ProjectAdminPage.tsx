@@ -69,7 +69,7 @@ import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
+import { refreshProjectEnabledModules, useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import type { ProjectAdminSectionDef } from "../modules/types";
 import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
@@ -592,6 +592,7 @@ export function ProjectAdminPage() {
         `/api/v1/projects/${projectId}/modules/${moduleKey}/enablement`, { enabled },
       );
       setProjectModules((prev) => prev.map((m) => (m.module_key === moduleKey ? updated : m)));
+      if (projectId) refreshProjectEnabledModules(projectId);
       await refreshProjectModuleSubComponents(moduleKey);
       showToast(enabled ? strings.admin.moduleEnabledToast(updated.name) : strings.admin.moduleDisabledToast(updated.name));
     } catch (err) {
@@ -608,6 +609,7 @@ export function ProjectAdminPage() {
         ...prev,
         [moduleKey]: (prev[moduleKey] ?? []).map((s) => (s.subcomponent_key === subcomponentKey ? updated : s)),
       }));
+      if (projectId) refreshProjectEnabledModules(projectId);
       showToast(
         enabled
           ? strings.admin.moduleSubComponentEnabledToast(updated.name)

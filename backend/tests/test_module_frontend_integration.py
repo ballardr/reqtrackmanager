@@ -729,6 +729,7 @@ def test_org_modules_endpoint_includes_frontend_manifest(client, admin_token, or
     assert manifest == {
         "tier": "installed", "nav_label": "Fake Frontend", "nav_path": "/fake-frontend", "frame_url": None,
         "remote_entry_url": None, "exposed_module": None, "additional_nav_entries": [], "nav_icon": "puzzle",
+        "nav_sub_component": None,
     }
 
 
@@ -843,11 +844,13 @@ def test_org_modules_endpoint_carries_additional_nav_entries_uninterpolated(
             "nav_label": "Fake Secondary",
             "nav_path": "/projects/{project_id}/modules/fake-multi-nav/secondary",
             "nav_icon": "puzzle",
+            "sub_component": None,
         },
         {
             "nav_label": "Fake Tertiary",
             "nav_path": "/projects/{project_id}/modules/fake-multi-nav/tertiary",
             "nav_icon": "puzzle",
+            "sub_component": None,
         },
     ]
 
@@ -872,11 +875,13 @@ def test_project_enabled_modules_endpoint_interpolates_every_additional_nav_entr
             "nav_label": "Fake Secondary",
             "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/secondary",
             "nav_icon": "puzzle",
+            "sub_component": None,
         },
         {
             "nav_label": "Fake Tertiary",
             "nav_path": f"/projects/{project['id']}/modules/fake-multi-nav/tertiary",
             "nav_icon": "puzzle",
+            "sub_component": None,
         },
     ]
 
@@ -899,3 +904,15 @@ def test_project_enabled_modules_endpoint_carries_federated_fields(
     assert manifest["tier"] == "federated"
     assert manifest["remote_entry_url"] == FEDERATED_REMOTE_ENTRY_URL
     assert manifest["exposed_module"] == FEDERATED_EXPOSED_MODULE
+
+
+def test_every_nav_entry_sub_component_is_one_its_module_declares():
+    """A typo'd `sub_component` would never match a disabled key, so its nav entry would stay visible after the
+    sub-component is switched off."""
+    for definition in module_registry.get_module_registry().values():
+        manifest = definition.frontend_manifest
+        if manifest is None:
+            continue
+        declared = {s.key for s in definition.sub_components}
+        for entry in manifest.all_nav_entries():
+            assert entry.sub_component is None or entry.sub_component in declared, (definition.key, entry.nav_label)

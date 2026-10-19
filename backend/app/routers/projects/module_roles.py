@@ -169,13 +169,22 @@ def list_project_enabled_modules(
                         nav_label=entry.nav_label,
                         nav_path=entry.nav_path.replace("{project_id}", str(project_id)),
                         nav_icon=entry.nav_icon,
+                        sub_component=entry.sub_component,
                     )
                     for entry in manifest.additional_nav_entries
                 ],
                 nav_icon=manifest.nav_icon,
+                nav_sub_component=manifest.nav_sub_component,
             )
+        disabled_sub_components = [
+            sub.key for sub in definition.sub_components
+            if not is_module_subcomponent_enabled(db, project_id, definition.key, sub.key)
+        ]
         result.append(
-            ModuleNavEntryOut(module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out)
+            ModuleNavEntryOut(
+                module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out,
+                disabled_sub_components=disabled_sub_components,
+            )
         )
     return result
 

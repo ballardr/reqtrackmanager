@@ -881,16 +881,19 @@ MODULE_DEFINITION = ModuleDefinition(
         nav_label="Personas",
         nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/personas",
         nav_icon="users",
+        nav_sub_component="persona",
         additional_nav_entries=(
             ModuleNavEntry(
                 nav_label="Stakeholders",
                 nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/stakeholders",
                 nav_icon="user-round",
+                sub_component="stakeholder",
             ),
             ModuleNavEntry(
                 nav_label="Needs",
                 nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/needs",
                 nav_icon="target",
+                sub_component="stakeholder_need",
             ),
             ModuleNavEntry(
                 nav_label="Engagements",
@@ -901,6 +904,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 nav_label="Groups",
                 nav_path=f"/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}/groups",
                 nav_icon="network",
+                sub_component="stakeholder",
             ),
         ),
     ),

@@ -1260,6 +1260,15 @@ component), used by the nav rail and route-splicing to know a module has a
 frontend surface and where it lives. `nav_path` must match the path used in
 the Tier A route registration above.
 
+A nav entry that leads to one sub-component sets `sub_component` (the primary
+entry: `ModuleFrontendManifest.nav_sub_component`) to that sub-component's key.
+`GET /projects/{id}/enabled-modules` returns each module's
+`disabled_sub_components`, and the nav rail hides the entries listed there — the
+same state that makes the sub-component's API routes 404, so a link never leads
+to a page that cannot load. `Layout.tsx` filters generically on the field; it
+names no module. A module-admin toggle calls `refreshProjectEnabledModules`
+(`hooks/useProjectEnabledModules.ts`) so the rail follows without a reload.
+
 For a **project-scoped** route, `nav_path` may contain a literal
 `"{project_id}"` placeholder (e.g.
 `"/projects/{project_id}/modules/compliance"`) — `GET /projects/{id}/enabled-

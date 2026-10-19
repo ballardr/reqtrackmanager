@@ -21,6 +21,21 @@ interface State {
   loaded: boolean;
 }
 
+/** Subscribers of `refreshProjectEnabledModules`, one per mounted `useProjectEnabledModules`. */
+const refreshListeners = new Set<(projectId: string) => void>();
+
+/**
+ * Tells every mounted `useProjectEnabledModules` for `projectId` to re-fetch. Call it after anything
+ * that changes which modules or sub-components are on for the project (the Modules tab toggles), so
+ * the nav rail and module routes follow without a reload.
+ *
+ * Args:
+ *   projectId: The project whose module state changed.
+ */
+export function refreshProjectEnabledModules(projectId: string): void {
+  refreshListeners.forEach((listener) => listener(projectId));
+}
+
 /**
  * Fetches the currently-enabled modules for `projectId`'s owning
  * organisation, with enough of each one's frontend manifest to render a nav
@@ -93,6 +108,19 @@ export function useProjectEnabledModules(projectId: string | null, ready: boolea
     setState({ forId: projectId, modules: [], loaded: projectId === null });
   }
 
+  // Bumped by `refreshProjectEnabledModules`; re-runs the fetch below without resetting `loaded`, so a
+  // refresh never flashes the route-splicing spinner.
+  const [refreshTick, setRefreshTick] = useState(0);
+  useEffect(() => {
+    const listener = (changedId: string) => {
+      if (changedId === projectId) setRefreshTick((tick) => tick + 1);
+    };
+    refreshListeners.add(listener);
+    return () => {
+      refreshListeners.delete(listener);
+    };
+  }, [projectId]);
+
   useEffect(() => {
     if (!projectId || !ready) return;
     let cancelled = false;
@@ -112,13 +140,17 @@ export function useProjectEnabledModules(projectId: string | null, ready: boolea
         // safe default this hook already returns while a fetch is in
         // flight — worst case a module's nav entry/route is briefly
         // unavailable, never a hang.
-        if (!cancelled) setState({ forId: projectId, modules: [], loaded: true });
+        // `prev.modules` survives a failed refresh: a transient error must not empty a nav rail that
+        // was already showing the right entries.
+        if (!cancelled) {
+          setState((prev) => ({ forId: projectId, modules: prev.forId === projectId ? prev.modules : [], loaded: true }));
+        }
       }
     );
     return () => {
       cancelled = true;
     };
-  }, [projectId, ready]);
+  }, [projectId, ready, refreshTick]);
 
   // By this point `state.forId === projectId` always holds: calling
   // `setState` during render (above) makes React immediately discard this

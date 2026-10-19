@@ -1842,6 +1842,9 @@ export interface ManifestNavEntry {
    * the field" reason as `additional_nav_entries` below; `resolveNavIcon`
    * falls back to a generic icon when absent. */
   nav_icon?: string;
+  /** Key of the module sub-component this entry leads to; the entry is hidden while that
+   * sub-component is in `ModuleNavEntry.disabled_sub_components`. `null`/absent: the whole module. */
+  sub_component?: string | null;
 }
 
 export interface ModuleFrontendManifest {
@@ -1864,6 +1867,8 @@ export interface ModuleFrontendManifest {
   /** This manifest's own primary nav-rail entry's icon — see `ManifestNavEntry.
    * nav_icon`'s own docstring. */
   nav_icon?: string;
+  /** `ManifestNavEntry.sub_component` for this manifest's own primary entry. */
+  nav_sub_component?: string | null;
 }
 
 /** `enabled` is the hard floor (corrected 2026-09-29):
@@ -2012,6 +2017,9 @@ export interface ModuleNavEntry {
   module_key: string;
   name: string;
   frontend_manifest: ModuleFrontendManifest | null;
+  /** Keys of this module's sub-components that are off for the project. Optional for the same
+   * "old fixtures predate the field" reason as `additional_nav_entries`. */
+  disabled_sub_components?: string[];
 }
 
 /** A freshly-minted Tier B `<ModuleFrame>` token. */

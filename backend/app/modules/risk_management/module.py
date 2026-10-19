@@ -211,6 +211,7 @@ MODULE_DEFINITION = ModuleDefinition(
         nav_label="Risks",
         nav_path=f"/projects/{{project_id}}/modules/{RISK_MODULE_KEY}/risks",
         nav_icon="shield-alert",
+        nav_sub_component=RISK_SUBCOMPONENT_KEY,
     ),
     scoring_schemes=(RISK_SCORING_SCHEME,),
     reports=REPORT_DEFINITIONS,

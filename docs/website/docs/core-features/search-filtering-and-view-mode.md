@@ -26,6 +26,7 @@ The **Project** section of the left navigation (Overview, Requirements, Actions,
 - **Apply to**: *All projects* saves your personal default; *Only this project* saves a layout for that project alone. **Remove this project's own layout** drops the override.
 - The page you are on is always shown, even if its link is under More.
 - A module you enable later appears in its default position rather than being hidden.
+- Out of the box the section runs Overview, the core work items, any module pages, then **Project history** and **Project admin** last. A module page whose part of the module is switched off for the project (for example Pain Points under Context & Strategy) is not listed, and returns as soon as it is switched back on.
 
 The choice is stored with your account, so it follows you across devices.
 

@@ -293,6 +293,7 @@ class ManifestNavEntryOut(BaseModel):
     nav_label: str
     nav_path: str
     nav_icon: str = "puzzle"
+    sub_component: str | None = None
 
 
 class ModuleFrontendManifestOut(BaseModel):
@@ -314,6 +315,7 @@ class ModuleFrontendManifestOut(BaseModel):
     exposed_module: str | None = None
     additional_nav_entries: list[ManifestNavEntryOut] = []
     nav_icon: str = "puzzle"
+    nav_sub_component: str | None = None
 
 
 class OrgModuleOut(BaseModel):
@@ -359,6 +361,9 @@ class ModuleNavEntryOut(BaseModel):
     module_key: str
     name: str
     frontend_manifest: ModuleFrontendManifestOut | None = None
+    # Keys of this module's sub-components that are off for the project; the nav rail hides every entry whose
+    # `sub_component` is listed here.
+    disabled_sub_components: list[str] = []
 
 
 class ModuleFrameTokenOut(BaseModel):

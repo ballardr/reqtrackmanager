@@ -799,26 +799,31 @@ MODULE_DEFINITION = ModuleDefinition(
         nav_label="Strategy",
         nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/strategies",
         nav_icon="compass",
+        nav_sub_component="strategy",
         additional_nav_entries=(
             ModuleNavEntry(
                 nav_label="Future State",
                 nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/future-states",
                 nav_icon="telescope",
+                sub_component="future_state",
             ),
             ModuleNavEntry(
                 nav_label="Pain Point",
                 nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/pain-points",
                 nav_icon="alert-triangle",
+                sub_component="pain_point",
             ),
             ModuleNavEntry(
                 nav_label="Guiding Principle",
                 nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/guiding-principles",
                 nav_icon="anchor",
+                sub_component="guiding_principle",
             ),
             ModuleNavEntry(
                 nav_label="Open Question",
                 nav_path=f"/projects/{{project_id}}/modules/{CONTEXT_STRATEGY_MODULE_KEY}/open-questions",
                 nav_icon="circle-help",
+                sub_component="open_question",
             ),
         ),
     ),
