@@ -44,6 +44,8 @@ export interface ReportRankedPainPoint {
   id: string;
   project_id: string;
   project_name: string;
+  /** The code as the server shows it (`PP-001`, or `ACME-PP-001` outside the reported project). */
+  code: string;
   title: string;
   type_name: string;
   status: PainPointStatus;
@@ -84,6 +86,8 @@ export interface ReportOpenQuestionRow {
   id: string;
   project_id: string;
   project_name: string;
+  /** The code as the server shows it (`OQ-001`, or `ACME-OQ-001` outside the reported project). */
+  code: string;
   question: string;
   priority: OpenQuestionPriority;
   status: OpenQuestionStatus;

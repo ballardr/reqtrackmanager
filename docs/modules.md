@@ -1185,10 +1185,13 @@ flowchart LR
 # reports.py
 def collect_overdue(db: Session, ctx: ReportContext) -> ReportResult:
     projects = ctx.eligible(db, "tasks")          # in-scope projects with the sub-component on
-    rows = [[t.title, t.project_name] for t in load_overdue(db, projects, ctx.params["days"], ctx.today)]
+    tasks = load_overdue(db, projects, ctx.params["days"], ctx.today)
+    tags = ctx.tag_text(db, "task", [t.id for t in tasks])          # one query for the Tags column
+    rows = [[ctx.code(t.unique_code, t.project_id), t.title, t.project_name, tags.get(t.id, "")] for t in tasks]
     return ReportResult(
         key="t1", title="Overdue tasks", scope_label=ctx.scope_label, generated_at=datetime.now(UTC),
-        notes=[ctx.scope_note], sections=[ReportSection("overdue", "Overdue", ["Task", "Project"], rows, gap=True)],
+        notes=[ctx.scope_note],
+        sections=[ReportSection("overdue", "Overdue", ["Code", "Task", "Project", "Tags"], rows, gap=True)],
         eligible_projects=len(projects),
     )
 
@@ -1197,6 +1200,7 @@ REPORT_DEFINITIONS = (
         "t1", "overdue-tasks", "Overdue tasks", "Tasks past their due date.", collect_overdue,
         subcomponent="tasks", org_level=True, org_role_key="tasks_reports_viewer",
         params=(ReportParamDefinition("days", "integer", default=0, minimum=0, maximum=365),),
+        record_types=("task",),
     ),
 )
 REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
@@ -1234,6 +1238,18 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   `org_level` without an `org_role_key`, an unknown sub-component, or an
   `org_role_key` that is not an org-scoped role is excluded and logged: no
   catalogue entry, no MCP tool, 404 on its route.
+- **Records are named by code, with their tags.** A row that names a record leads with
+  its code and ends with its tags, through the context's helpers, never a hand-formatted
+  string: `ctx.code(unique_code, project_id)` for a project-scoped record, `ctx.org_code(unique_code)`
+  for one the organisation owns, `ctx.tag_text(db, artefact_type, ids)` for the Tags column (one query
+  per type). The rule mirrors the screen's (`frontend/src/utils/recordCode.ts`): a record in the
+  reported project is bare (`REQ-001`) unless the organisation shows the project code everywhere; a
+  record from another project, any record of an organisation-wide run, and an organisation-owned
+  record are qualified (`ACME-REQ-001`). The viewer's `show_project_code` preference is **not**
+  applied, so a saved or scheduled run reads the same for everyone. `record_types` lists the
+  registered artefact types the report names (`backend/tests/test_report_record_codes.py` fails for a
+  report that declares none, or an unregistered type). A custom view renders the server's `code`
+  string and does not format it again.
 - **Cells are untrusted.** CSV cells go through `csv_safe`, PDF cells through
   `report_document.safe` and DOCX cells through `report_docx.clean_text`. Do not put Restricted data (secrets, file content) in
   a result: report reads are not audit-logged, on the basis that every field is
@@ -1931,7 +1947,8 @@ approval action even if the tool mechanism changes later.
 **Tags.** Every type you list in `artefact_types` is taggable with no tag code in your module: tags are keyed by the registered type string (`ArtefactTag.artefact_type`, validated against `get_all_registered_artefact_types()`), and the generic endpoint `/projects/{id}/artefacts/{type}/{id}/tags` authorises through the same `ArtefactResolver` and `manage` permission your type already has. What your module does add: take `TagFilter` (`app/services/tags.py`) as a dependency on each project list endpoint and narrow the rows with `tag_filter.keep(db, project_id, YOUR_TYPE, rows)`; pass `<RecordTags>` to `RecordHeader` on the detail page, `TagField` + `useCommitTags` in the create form and `TagFilterField` + `useTagFilter` in the list; and call `forget_record_tags` where a record is erased for good. A bundle export that carries your records adds `"tags": record_tag_names(...)` to each row and `restore_record_tags(...)` on import.
 
 **Reports.** If your module reports on its records, declare `ReportDefinition`s
-(§4g) rather than building routes, PDF/CSV code or a catalogue of your own.
+(§4g) rather than building routes, PDF/CSV code or a catalogue of your own. Name each
+record through the context's code and tag helpers and list its type in `record_types`.
 
 **Test it** the way every other change in this codebase is tested: a
 backend test pinning your endpoints' behaviour (including the disabled/

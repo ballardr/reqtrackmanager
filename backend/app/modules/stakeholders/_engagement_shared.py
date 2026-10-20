@@ -200,7 +200,9 @@ def engagements_to_out(db: Session, engagements: Sequence[Engagement], project: 
 def stakeholder_timeline(db: Session, project: Project, stakeholder: Stakeholder) -> list[StakeholderEngagementOut]:
     """The project's engagements a visible Stakeholder took part in, most recent first."""
     return [
-        StakeholderEngagementOut(id=e.id, title=e.title, channel=e.channel, engagement_date=e.engagement_date)
+        StakeholderEngagementOut(
+            id=e.id, unique_code=e.unique_code, title=e.title, channel=e.channel, engagement_date=e.engagement_date,
+        )
         for e in eng.list_stakeholder_engagements(db, project, stakeholder.id)
     ]
 
@@ -318,7 +320,7 @@ def _visible(project: Project, hidden: set[uuid.UUID], stakeholder: Stakeholder)
 def participant_to_out(db: Session, link, stakeholder: Stakeholder) -> EngagementParticipantOut:
     return EngagementParticipantOut(
         link_id=link.id, stakeholder_id=stakeholder.id, name=holder_name(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder),
-        scope=stakeholder.scope.value,
+        scope=stakeholder.scope.value, unique_code=stakeholder.unique_code, organization_id=stakeholder.organization_id,
     )
 
 
@@ -365,7 +367,7 @@ def remove_participant(
 def persona_to_out(db: Session, link, persona: Persona) -> EngagementPersonaOut:
     return EngagementPersonaOut(
         link_id=link.id, persona_id=persona.id, name=holder_name(db, PERSONA_ARTEFACT_TYPE, persona),
-        scope=persona.scope.value,
+        scope=persona.scope.value, unique_code=persona.unique_code, organization_id=persona.organization_id,
     )
 
 

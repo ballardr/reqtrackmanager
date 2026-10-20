@@ -25,6 +25,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import type { RepresentedLink } from "./types";
 import { FormActions } from "../../components/FormActions";
@@ -128,7 +129,16 @@ export function RepresentationPanel({
         <RemovableItemList
           items={links.map((l) => ({
             id: l.link_id,
-            content: <Link to={linkFor(l)}>{l.name}</Link>,
+            content: (
+              <>
+                {l.unique_code && (
+                  <span className="text-muted" style={{ fontSize: "0.85rem" }}>
+                    <ScopedRecordCode record={{ unique_code: l.unique_code, scope: l.scope, organization_id: l.organization_id }} />{" "}
+                  </span>
+                )}
+                <Link to={linkFor(l)}>{l.name}</Link>
+              </>
+            ),
             removeLabel: `Remove ${l.name}`,
           }))}
           onRemove={edit ? (id) => setRemoving(links.find((l) => l.link_id === id) ?? null) : undefined}

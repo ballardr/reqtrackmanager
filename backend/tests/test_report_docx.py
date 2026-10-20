@@ -95,7 +95,7 @@ def test_requirement_document_groups_chapters_and_tables():
     assert [b.text for b in chaptered.blocks if isinstance(b, Heading) and b.level == 1] == ["Intro", "A", "B", "End"]
     assert sum(isinstance(b, PageBreak) for b in chaptered.blocks) == 2
     table = next(b for b in chaptered.blocks if isinstance(b, Table))
-    assert table.columns == ["ID", "Name", "Reasoning", "Status"] and table.rows == [["R-1", "Boot fast", "UX", "Draft"]]
+    assert table.columns == ["ID", "Name", "Reasoning", "Status", "Tags"] and table.rows == [["R-1", "Boot fast", "UX", "Draft", ""]]
     flowing = build_requirement_document(project_name="P", pre_markdown="", rows=rows, post_markdown="", chapters_per_component=False)
     assert not [b for b in flowing.blocks if isinstance(b, PageBreak)]
 

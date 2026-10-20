@@ -112,7 +112,11 @@ test.describe("Risk Management: reports", () => {
           ]);
           expect(download.suggestedFilename()).toBe(`${report.value}.${kind.toLowerCase()}`);
           if (kind === "CSV" && report.value === "risk-register") {
-            expect(await readFile((await download.path())!, "utf8")).toContain(titles.scored);
+            const csv = await readFile((await download.path())!, "utf8");
+            expect(csv).toContain(titles.scored);
+            // A report names each record by its code, and lists its tags.
+            expect(csv.split("\n")[0]).toMatch(/^Code,Title,.*,Tags/);
+            expect(csv).toContain("RSK-001,");
           }
         }
       });

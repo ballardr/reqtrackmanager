@@ -216,8 +216,9 @@ def test_change_request_list_search_matches_the_code(client, admin_token):
     assert [c["id"] for c in resp.json()] == [second["id"]]
 
 
-def test_change_request_notification_title_leads_with_the_code(client, admin_token):
-    """The title every change request notification is built from carries the request's code."""
+def test_change_request_notification_title_leads_with_the_qualified_code(client, admin_token):
+    """The title every change request notification is built from leads with the request's project-qualified code:
+    a notification is read out of any project's context, so a bare `CR-001` would be ambiguous."""
     from app.models.change_request import ChangeRequest, ChangeRequestVersion
     from app.routers.change_requests.workflow import _display_title
 
@@ -227,7 +228,7 @@ def test_change_request_notification_title_leads_with_the_code(client, admin_tok
     with SessionLocal() as db:
         row = db.get(ChangeRequest, uuid.UUID(cr["id"]))
         version = db.scalars(select(ChangeRequestVersion).where(ChangeRequestVersion.change_request_id == row.id)).one()
-        assert _display_title(db, row, version) == "CR-001 Wider doors"
+        assert _display_title(db, row, version) == f"{project['code']}-CR-001 Wider doors"
 
 
 def test_project_export_and_import_number_change_requests_afresh(client, admin_token):

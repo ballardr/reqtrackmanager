@@ -265,6 +265,8 @@ class StakeholderGroupRefOut(BaseModel):
     name: str
     scope: StakeholderScope
     parent_group_id: UUID | None
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class StakeholderOut(ProjectScopedRow):
@@ -377,6 +379,8 @@ class RepresentedPersonaOut(BaseModel):
     id: UUID
     name: str
     scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class RepresentsCreate(BaseModel):
@@ -474,6 +478,8 @@ class NeedHolderOut(BaseModel):
     id: UUID
     name: str
     scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class NeedHolderCreate(BaseModel):
@@ -702,6 +708,7 @@ class StakeholderEngagementOut(BaseModel):
     """One row of a Stakeholder's engagement timeline (no notes: open the engagement for those)."""
 
     id: UUID
+    unique_code: str = ""
     title: str
     channel: EngagementChannel
     engagement_date: date
@@ -714,6 +721,8 @@ class EngagementParticipantOut(BaseModel):
     stakeholder_id: UUID
     name: str
     scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class EngagementParticipantCreate(BaseModel):
@@ -727,6 +736,8 @@ class EngagementPersonaOut(BaseModel):
     persona_id: UUID
     name: str
     scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class EngagementPersonaCreate(BaseModel):

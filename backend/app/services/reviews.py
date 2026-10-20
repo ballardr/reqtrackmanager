@@ -22,6 +22,7 @@ from app.models.requirement import Requirement, RequirementReview, RequirementVe
 from app.models.user import User
 from app.schemas.principal import PrincipalOut
 from app.services import notifications
+from app.services.codes import qualify
 from app.services.principals import (
     principal_filter_clause,
     principal_labels,
@@ -165,7 +166,7 @@ def send_due_review_reminders(db: Session) -> None:
             notifications.notify(
                 db, recipient, notification_type=NotificationType.REQUIREMENT_REVIEW_DUE,
                 title=f"Review due: {version.name}",
-                body=f"{requirement.unique_code} is due for review by {version.review_date.isoformat()}.",
+                body=f"{qualify(project.code, requirement.unique_code)} is due for review by {version.review_date.isoformat()}.",
                 project_id=project.id, entity_type="requirement", entity_id=str(requirement.id),
             )
         version.review_reminder_sent_at = datetime.now(UTC)

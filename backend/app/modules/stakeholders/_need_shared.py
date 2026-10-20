@@ -205,7 +205,10 @@ def transition_need_endpoint(
 
 def holder_to_out(db: Session, link, kind: str, record: Stakeholder | Persona) -> NeedHolderOut:
     """API shape of a "has need" link seen from the need."""
-    return NeedHolderOut(link_id=link.id, kind=kind, id=record.id, name=holder_name(db, kind, record), scope=record.scope.value)
+    return NeedHolderOut(
+        link_id=link.id, kind=kind, id=record.id, name=holder_name(db, kind, record), scope=record.scope.value,
+        unique_code=record.unique_code, organization_id=record.organization_id,
+    )
 
 
 def held_need_to_out(db: Session, link, need: StakeholderNeed) -> HeldNeedOut:

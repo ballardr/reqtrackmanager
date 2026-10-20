@@ -235,7 +235,7 @@ def test_s2_shows_each_personas_evidence_and_flags_assumptions(client, admin_tok
 
     report = _report(client, token, pid, "persona-validation")
     evidence = _section(report, "evidence")
-    row = {r[0]: dict(zip(evidence["columns"], r, strict=True)) for r in evidence["rows"]}
+    row = {r[1]: dict(zip(evidence["columns"], r, strict=True)) for r in evidence["rows"]}
     assert row["Technician"]["Evidence"] == "Evidenced" and row["Technician"]["Linked stakeholders"] == "Tara"
     assert row["Technician"]["Engagements"] == "1" and row["Technician"]["Findings"] == "1"
     assert row["Technician"]["Weight"] == "3" and row["Technician"]["Last engagement"] == _days_ago(3)
@@ -245,7 +245,7 @@ def test_s2_shows_each_personas_evidence_and_flags_assumptions(client, admin_tok
     assert _metric(report, "Personas") == 3 and _metric(report, "Assumptions") == 1
 
     _subcomponent(client, token, org["id"], "research_extras", False)  # extras off: the tagged persona loses its evidence
-    off = {r[0]: r for r in _section(_report(client, token, pid, "persona-validation"), "evidence")["rows"]}
+    off = {r[1]: r for r in _section(_report(client, token, pid, "persona-validation"), "evidence")["rows"]}
     assert off["Manager"][evidence["columns"].index("Evidence")] == "Assumption"
 
 
@@ -322,7 +322,7 @@ def test_s4_lists_overdue_stakeholders_by_influence_and_skips_one_off_and_ad_hoc
     report = _report(client, token, pid, "engagement-staleness")
     overdue = _section(report, "overdue")
     assert _col(overdue, "Stakeholder") == ["Never", "Planned only", "Stale"]  # High influence first, never-engaged before the rest
-    by_name = {r[0]: dict(zip(overdue["columns"], r, strict=True)) for r in overdue["rows"]}
+    by_name = {r[1]: dict(zip(overdue["columns"], r, strict=True)) for r in overdue["rows"]}
     assert by_name["Never"]["Overdue by"] == "Never engaged" and by_name["Never"]["Target cadence"] == "Weekly"
     assert by_name["Stale"]["Overdue by"] == "40 days" and by_name["Stale"]["Availability"] == "Only Fridays"
     assert by_name["Stale"]["Last engaged"] == _days_ago(70)
@@ -399,7 +399,7 @@ def test_s5_summarises_engagements_by_channel_persona_and_outcome(client, admin_
     assert channels["Interview"][1:] == ["2", "1", "0"] and channels["Survey"][1:] == ["1", "0", "1"]
     assert "Call" not in channels
     persona_row = _section(report, "by_persona")["rows"][0]
-    assert persona_row[0] == "Technician" and persona_row[2:] == ["2", "1", "1"]
+    assert persona_row[1] == "Technician" and persona_row[3:6] == ["2", "1", "1"]
     assert _col(_section(report, "no_outcome"), "Engagement") == ["Fruitless chat"]
     assert _metric(report, "No outcome") == 1 and _metric(report, "Findings") == 1
 
@@ -467,7 +467,7 @@ def test_one_projects_engagements_never_count_in_another(client, admin_token):
     _participate(client, token, sibling["id"], _log(client, token, sibling["id"], 1)["id"], shared["id"])
     report = _report(client, token, project["id"], "engagement-staleness")
     row = _section(report, "overdue")["rows"][0]
-    assert row[0] == "Shared" and row[_section(report, "overdue")["columns"].index("Overdue by")] == "Never engaged"
+    assert row[0] == "IC-STK-001" and row[1] == "Shared" and row[_section(report, "overdue")["columns"].index("Overdue by")] == "Never engaged"
     assert dict(_section(_report(client, token, project["id"], "engagement-yield"), "yield")["rows"])["Engagements"] == "0"
 
 
@@ -506,3 +506,38 @@ def test_each_report_is_declared_as_a_read_only_mcp_tool():
         tool = tools[f"stakeholders_get_{slug.replace('-', '_')}_report"]
         assert tool.method == "GET" and not tool.mutates
     assert {p["name"] for p in tools["stakeholders_get_engagement_staleness_report"].params} >= {"project_id", "persona_months"}
+
+
+def test_report_codes_qualify_organisation_owned_records_and_tags_are_listed(client, admin_token):
+    """An organisation-owned Persona or Stakeholder is always named with the organisation's code (a bare `PER-001`
+    would also match a project's own), a project-scoped one is bare unless the organisation enforces the project code,
+    the viewer's preference never matters, and the Tags column carries the tags."""
+    org, project, token = _setup(client, admin_token, "Codes Report Co")
+    pid = project["id"]
+    h = auth_headers(token)
+    owned = _create_org_persona(client, token, org["id"], name="Shared persona")
+    local = _create_project_persona(client, token, pid, name="Local persona")
+    org_stakeholder = _create_org_stakeholder(client, token, org["id"], name="Shared person", target_cadence="weekly")
+    assert client.put(
+        f"/api/v1/projects/{pid}/artefacts/persona/{local['id']}/tags", json={"tags": ["Fieldwork"]}, headers=h,
+    ).status_code == 200
+
+    def codes(slug, section, column):
+        found = _section(_report(client, token, pid, slug), section)
+        return dict(zip(_col(found, column), _col(found, "Code"), strict=True)), found
+
+    for preference in (False, True):
+        assert client.patch("/api/v1/auth/me/preferences", json={"ui_preferences": {"show_project_code": preference}}, headers=h).status_code == 200
+        personas, evidence = codes("persona-validation", "evidence", "Persona")
+        assert personas == {"Shared persona": f"{org['code']}-PER-001", "Local persona": "PER-001"}
+        assert dict(zip(_col(evidence, "Persona"), _col(evidence, "Tags"), strict=True)) == {"Shared persona": "", "Local persona": "Fieldwork"}
+        assert codes("engagement-staleness", "overdue", "Stakeholder")[0] == {"Shared person": f"{org['code']}-STK-001"}
+    assert org_stakeholder["unique_code"] == "STK-001" and owned["unique_code"] == "PER-001"
+
+    body = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": True}
+    assert client.put(f"/api/v1/orgs/{org['id']}/code-policy", json=body, headers=h).status_code == 200
+    assert codes("persona-validation", "evidence", "Persona")[0] == {
+        "Shared persona": f"{org['code']}-PER-001", "Local persona": f"{project['code']}-PER-001",
+    }
+    for slug in SLUGS:
+        _report(client, token, pid, slug)

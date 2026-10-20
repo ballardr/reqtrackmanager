@@ -31,6 +31,7 @@ from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement
 from app.models.user import User
 from app.schemas.report import ReportRequest
+from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
 from app.services.rbac import require_project_view
@@ -54,7 +55,13 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["report
 
 
 def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list[ReportRequirementRow]:
-    """Collects requirement rows for a report, applying R-G-03 filters."""
+    """Collects requirement rows for a report, applying R-G-03 filters.
+
+    The ID is shown as the project's own report rule says (bare, or qualified by the project code when the
+    organisation enforces it); the viewer's preference is not applied, so a saved report reads the same for everyone.
+    """
+    project = db.get(Project, project_id)
+    enforced = db.get(Organization, project.organization_id).enforce_code_everywhere
     components = {c.id: c for c in db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
     categories = {c.id: c for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
     query = select(Requirement).where(Requirement.project_id == project_id)
@@ -71,14 +78,14 @@ def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list
         version = get_current_version(db, req.id)
         if payload.status is not None and version.status != payload.status:
             continue
-        if payload.keyword is not None:
-            keywords = {k.casefold() for k in get_keywords(db, req.id)}
-            if payload.keyword.casefold() not in keywords:
-                continue
+        keywords = get_keywords(db, req.id)
+        if payload.keyword is not None and payload.keyword.casefold() not in {k.casefold() for k in keywords}:
+            continue
         component = components.get(req.component_id)
         category = categories.get(req.category_id)
         rows.append(ReportRequirementRow(
-            unique_code=req.unique_code, name=version.name, reasoning=version.reasoning,
+            unique_code=display_code(req.unique_code, project.code, own_project_code=project.code, enforced=enforced),
+            tags=", ".join(keywords) if keywords else "", name=version.name, reasoning=version.reasoning,
             clarification=version.clarification, status=version.status.value,
             component_name=component.name if component else "",
             category_name=category.name if category else "",

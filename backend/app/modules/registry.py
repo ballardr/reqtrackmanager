@@ -1663,6 +1663,11 @@ class ReportDefinition:
         params: Typed query parameters (see `ReportParamDefinition`).
         collector: `(db, ReportContext) -> ReportResult`. Must treat
             `ctx.projects` as the whole in-scope set and never widen it.
+        record_types: The registered artefact types whose records the report
+            names in its rows. Every such cell shows the record's code through
+            `ReportContext.code` / `ReportContext.org_code` and the row's tags
+            through `ReportContext.tag_text`, never a hand-formatted code; the
+            declaration lets a test prove each type is registered and coded.
     """
 
     key: str
@@ -1675,6 +1680,7 @@ class ReportDefinition:
     org_role_key: str | None = None
     org_scope: Literal["readable_projects", "all_org_projects"] = "readable_projects"
     params: tuple[ReportParamDefinition, ...] = field(default=())
+    record_types: tuple[str, ...] = field(default=())
 
 
 @dataclass(frozen=True)

@@ -12,6 +12,7 @@
  */
 import { useState } from "react";
 
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { TreeSelect } from "../../components/TreeSelect";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
@@ -56,7 +57,12 @@ export function StakeholderGroupsField({
       ) : (
         <span className="row" style={{ gap: "0.35rem" }}>
           {current.map((g) => (
-            <Badge key={g.id} title={groupPath(groups, g.id)}>{g.name}</Badge>
+            <Badge key={g.id} title={groupPath(groups, g.id)}>
+              {g.name}{" "}
+              <span className="text-muted">
+                <ScopedRecordCode record={g} />
+              </span>
+            </Badge>
           ))}
         </span>
       )}

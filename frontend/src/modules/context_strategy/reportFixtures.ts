@@ -41,7 +41,7 @@ export function registerEntry(overrides: Partial<ReportCatalogueEntry> = {}): Re
 /** One ranked Pain Point; a Major/Constant item by default. */
 export function rankedPainPoint(overrides: Partial<ReportRankedPainPoint> = {}): ReportRankedPainPoint {
   return {
-    id: "pp-1", project_id: "project-1", project_name: "Atlas Platform", title: "Report delays under poor connectivity",
+    id: "pp-1", project_id: "project-1", project_name: "Atlas Platform", code: "PP-001", title: "Report delays under poor connectivity",
     type_name: "Operator", status: "triaged", priority: "high", is_intentional: false, score: 0.8, band: "Critical",
     band_tone: "danger", is_blocker: false, blocker_personas: [], churn_risk: false, personas: [],
     matrix: { severity: "Major", severity_weight: 4, frequency: "Constant", frequency_weight: 4, confidence: "High", confidence_weight: 1 },
@@ -65,11 +65,11 @@ export function prioritisationData(): PainPointPrioritisationData {
       items: [
         rankedPainPoint(),
         rankedPainPoint({
-          id: "pp-2", title: "Checkout times out", rank: 2, score: 0.25, band: "Medium", band_tone: "info", is_blocker: true,
+          id: "pp-2", code: "PP-002", title: "Checkout times out", rank: 2, score: 0.25, band: "Medium", band_tone: "info", is_blocker: true,
           blocker_personas: ["Field Technician"], churn_risk: true, status: "accepted",
           matrix: { severity: "Blocker", severity_weight: 5, frequency: "Rare", frequency_weight: 1, confidence: null, confidence_weight: null },
         }),
-        rankedPainPoint({ id: "pp-3", title: "Premium export limit", is_intentional: true, rank: null }),
+        rankedPainPoint({ id: "pp-3", code: "PP-003", title: "Premium export limit", is_intentional: true, rank: null }),
       ],
     }],
   };
@@ -93,7 +93,7 @@ export function prioritisationResult(overrides: Partial<ReportResult> = {}): Rep
 /** One open Open Question row. */
 export function openQuestionRow(overrides: Partial<ReportOpenQuestionRow> = {}): ReportOpenQuestionRow {
   return {
-    id: "oq-1", project_id: "project-1", project_name: "Atlas Platform", question: "Which regions are in scope?",
+    id: "oq-1", project_id: "project-1", project_name: "Atlas Platform", code: "OQ-001", question: "Which regions are in scope?",
     priority: "high", status: "open", owner: "Alex Owner", due_date: "2026-12-01", days_open: 12, is_overdue: false,
     ...overrides,
   };
@@ -104,8 +104,8 @@ export function registerResult(overrides: Partial<ReportResult> = {}): ReportRes
   const data: OpenQuestionRegisterData = {
     items: [
       openQuestionRow(),
-      openQuestionRow({ id: "oq-2", question: "Is SSO required at launch?", due_date: "2026-09-01", days_open: 40, is_overdue: true, status: "investigating" }),
-      openQuestionRow({ id: "oq-3", question: "Who signs off the budget?", owner: null, priority: "low", due_date: null, status: "ready_for_decision" }),
+      openQuestionRow({ id: "oq-2", code: "OQ-002", question: "Is SSO required at launch?", due_date: "2026-09-01", days_open: 40, is_overdue: true, status: "investigating" }),
+      openQuestionRow({ id: "oq-3", code: "OQ-003", question: "Who signs off the budget?", owner: null, priority: "low", due_date: null, status: "ready_for_decision" }),
     ],
   };
   return buildReportResult({

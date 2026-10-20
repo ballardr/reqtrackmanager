@@ -87,6 +87,7 @@ from app.modules.stakeholders.models import (
     PersonaVersion,
     ResearchFinding,
     Stakeholder,
+    StakeholderNeed,
     StakeholderNeedVersion,
     StakeholderVersion,
 )
@@ -344,6 +345,14 @@ def _load_stakeholder_rows(db: Session, req: ReportContext, projects: list[Proje
     return rows
 
 
+def _record_code(req: ReportContext, record: Persona | Stakeholder | StakeholderNeed) -> str:
+    """A Persona's, Stakeholder's or Need's code as the report shows it: an organisation-owned record is always
+    qualified by the organisation's code, a project-scoped one by the report's rule."""
+    if record.project_id is None:
+        return req.org_code(record.unique_code)
+    return req.code(record.unique_code, record.project_id)
+
+
 def _cadence_text(version: StakeholderVersion) -> str:
     return label(TARGET_CADENCE_LABEL, version.target_cadence.value if version.target_cadence else None)
 
@@ -360,12 +369,16 @@ def collect_power_interest_grid(db: Session, req: ReportContext) -> ReportResult
 
     Returns:
         The report; `data` is `{"group_by": bool, "quadrants": {quadrant: [item]}, "unscored": [item]}` where an
-        item is `{id, project_id, name, influence, interest}`.
+        item is `{id, project_id, code, name, influence, interest}`.
     """
     projects = req.eligible(db, STAKEHOLDER_SUBCOMPONENT)
     rows = _load_stakeholder_rows(db, req, projects)
     by_branch = req.params.get("group_by") is not None
-    columns = ["Stakeholder", "Project", "Type", "Influence", "Interest", "Owner", "Groups", *(["Branch"] if by_branch else []), "Target cadence"]
+    columns = [
+        "Code", "Stakeholder", "Project", "Type", "Influence", "Interest", "Owner", "Groups", *(["Branch"] if by_branch else []),
+        "Target cadence", "Tags",
+    ]
+    tags = req.tag_text(db, STAKEHOLDER_ARTEFACT_TYPE, [r.stakeholder.id for r in rows])
 
     def ordered(subset: list[StakeholderRow]) -> list[StakeholderRow]:
         return sorted(subset, key=lambda r: (
@@ -375,14 +388,14 @@ def collect_power_interest_grid(db: Session, req: ReportContext) -> ReportResult
 
     def table_row(r: StakeholderRow) -> list[str]:
         return [
-            r.version.name, r.project.name, r.type_name, r.influence, r.interest, r.owner, r.groups,
-            *([r.branch] if by_branch else []), _cadence_text(r.version),
+            _record_code(req, r.stakeholder), r.version.name, r.project.name, r.type_name, r.influence, r.interest, r.owner,
+            r.groups, *([r.branch] if by_branch else []), _cadence_text(r.version), tags.get(r.stakeholder.id, ""),
         ]
 
     def item(r: StakeholderRow) -> dict:
         return {
-            "id": r.stakeholder.id, "project_id": r.project.id, "name": r.version.name,
-            "influence": r.influence, "interest": r.interest,
+            "id": r.stakeholder.id, "project_id": r.project.id, "code": _record_code(req, r.stakeholder),
+            "name": r.version.name, "influence": r.influence, "interest": r.interest,
         }
 
     filters = [f for f in (
@@ -544,9 +557,10 @@ def collect_persona_validation(db: Session, req: ReportContext) -> ReportResult:
     rows = _load_persona_rows(db, req, projects)
     assumptions = [r for r in rows if r.is_assumption]
     columns = [
-        "Persona", "Project", "Status", "Weight", "Linked stakeholders", "Engagements", "Anonymous participants", "Findings",
-        "Last engagement", "Evidence",
+        "Code", "Persona", "Project", "Status", "Weight", "Linked stakeholders", "Engagements", "Anonymous participants",
+        "Findings", "Last engagement", "Evidence", "Tags",
     ]
+    tags = req.tag_text(db, PERSONA_ARTEFACT_TYPE, [r.persona.id for r in rows])
     result = _result(req, "s2", "Persona validation", eligible=len(projects), notes=[
         "Covers Personas the project can see that are not archived or Retired. A Persona's engagements are those that cover "
         "it plus those with an anonymous participant tagged with it, dated today or earlier. A Persona with no linked "
@@ -555,16 +569,20 @@ def collect_persona_validation(db: Session, req: ReportContext) -> ReportResult:
     result.sections = [
         ReportSection("evidence", "Evidence by Persona", columns, [
             [
-                r.version.name, r.project.name, label(RECORD_STATUS_LABEL, r.version.status.value),
+                _record_code(req, r.persona), r.version.name, r.project.name, label(RECORD_STATUS_LABEL, r.version.status.value),
                 _weight_text(r.weight, r.weight_source), _clip(", ".join(r.stakeholders)), str(len(r.engagement_ids)),
                 str(r.anonymous), str(r.findings), _fmt_date(r.last_engaged), "Assumption" if r.is_assumption else "Evidenced",
+                tags.get(r.persona.id, ""),
             ]
             for r in rows
         ]),
         ReportSection(
-            "assumptions", "Assumptions", ["Persona", "Project", "Status", "Weight", "Owner"],
+            "assumptions", "Assumptions", ["Code", "Persona", "Project", "Status", "Weight", "Owner", "Tags"],
             [
-                [r.version.name, r.project.name, label(RECORD_STATUS_LABEL, r.version.status.value), _weight_text(r.weight, r.weight_source), r.owner]
+                [
+                    _record_code(req, r.persona), r.version.name, r.project.name, label(RECORD_STATUS_LABEL, r.version.status.value),
+                    _weight_text(r.weight, r.weight_source), r.owner, tags.get(r.persona.id, ""),
+                ]
                 for r in assumptions
             ],
             gap=True, note="No linked real Stakeholder and no engagement or anonymous participant covers these Personas.",
@@ -628,7 +646,7 @@ def collect_need_coverage(db: Session, req: ReportContext) -> ReportResult:
             ))
         } if needs else {}
         requirements = db.execute(
-            select(Requirement.id, Requirement.unique_code, RequirementVersion.name, RequirementVersion.status)
+            select(Requirement.id, Requirement.unique_code, Requirement.project_id, RequirementVersion.name, RequirementVersion.status)
             .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
             .where(Requirement.project_id == project.id, Requirement.is_archived.is_(False), RequirementVersion.valid_to.is_(None))
             .order_by(Requirement.unique_code)
@@ -659,17 +677,23 @@ def collect_need_coverage(db: Session, req: ReportContext) -> ReportResult:
             if sid in names[st]:
                 holders[need_id].append(names[st][sid])
         active = [n for n in needs if n.id in versions and versions[n.id].status != NeedStatus.RETIRED]
+        need_tags = req.tag_text(db, NEED_ARTEFACT_TYPE, [n.id for n in active])
+        requirement_tags = req.tag_text(db, "requirement", [r.id for r in requirements])
         need_total += len(active)
         req_total += len(requirements)
         for need in active:
             if need.id not in covered:
                 v = versions[need.id]
                 need_rows.append([
-                    v.name, project.name, label(RECORD_STATUS_LABEL, v.status.value),
+                    _record_code(req, need), v.name, project.name, label(RECORD_STATUS_LABEL, v.status.value),
                     _clip(", ".join(sorted(holders[need.id], key=str.lower))), _fmt_date(need.created_at),
+                    need_tags.get(need.id, ""),
                 ])
         requirement_rows += [
-            [r.unique_code, r.name, project.name, label(REQUIREMENT_STATUS_LABEL, r.status.value)]
+            [
+                req.code(r.unique_code, r.project_id), r.name, project.name, label(REQUIREMENT_STATUS_LABEL, r.status.value),
+                requirement_tags.get(r.id, ""),
+            ]
             for r in requirements if r.id not in traced
         ]
     result = _result(req, "s3", "Need coverage", eligible=len(projects), notes=[
@@ -680,12 +704,12 @@ def collect_need_coverage(db: Session, req: ReportContext) -> ReportResult:
     result.sections = [
         ReportSection(
             "needs_without_requirement", "Needs with no Requirement",
-            ["Need", "Project", "Status", "Held by", "Created"], need_rows, gap=True,
+            ["Code", "Need", "Project", "Status", "Held by", "Created", "Tags"], need_rows, gap=True,
             note="No Requirement has come from these Needs.",
         ),
         ReportSection(
             "requirements_without_origin", "Requirements tracing to no Need, Stakeholder or Persona",
-            ["Code", "Requirement", "Project", "Status"], requirement_rows, gap=True,
+            ["Code", "Requirement", "Project", "Status", "Tags"], requirement_rows, gap=True,
             note="Nobody is recorded as the reason these Requirements exist.",
         ),
     ]
@@ -744,15 +768,17 @@ def collect_engagement_staleness(db: Session, req: ReportContext) -> ReportResul
         t[0].version.name.lower(),
     ))
     columns = [
-        "Stakeholder", "Project", "Influence", "Interest", "Target cadence", "Last engaged", "Overdue by", "Availability",
-        *(["Branch"] if by_branch else []), "Owner",
+        "Code", "Stakeholder", "Project", "Influence", "Interest", "Target cadence", "Last engaged", "Overdue by", "Availability",
+        *(["Branch"] if by_branch else []), "Owner", "Tags",
     ]
+    stakeholder_tags = req.tag_text(db, STAKEHOLDER_ARTEFACT_TYPE, [r.stakeholder.id for r in rows])
     persona_rows = _load_persona_rows(db, req, req.eligible(db, PERSONA_SUBCOMPONENT))
     cutoff = req.today - timedelta(days=months * _DAYS_PER_MONTH)
     stale_personas = sorted(
         (p for p in persona_rows if p.last_engaged is None or p.last_engaged < cutoff),
         key=lambda p: (-(p.weight or 0.0), p.version.name.lower()),
     )
+    persona_tags = req.tag_text(db, PERSONA_ARTEFACT_TYPE, [p.persona.id for p in stale_personas])
     result = _result(req, "s4", "Engagement staleness", eligible=len(projects), notes=[
         "Covers Stakeholders the project can see that are not archived or Retired, against engagements in this project dated "
         "today or earlier. Weekly, monthly, quarterly and yearly cadences allow 7, 30, 91 and 365 days. One-off and Ad hoc "
@@ -762,29 +788,35 @@ def collect_engagement_staleness(db: Session, req: ReportContext) -> ReportResul
         ReportSection(
             "overdue", "Overdue for engagement", columns, [
                 [
-                    r.version.name, r.project.name, r.influence, r.interest, _cadence_text(r.version), _fmt_date(when),
-                    "Never engaged" if days is None else f"{days} days", _clip(r.version.availability_constraints),
-                    *([r.branch] if by_branch else []), r.owner,
+                    _record_code(req, r.stakeholder), r.version.name, r.project.name, r.influence, r.interest,
+                    _cadence_text(r.version), _fmt_date(when), "Never engaged" if days is None else f"{days} days",
+                    _clip(r.version.availability_constraints), *([r.branch] if by_branch else []), r.owner,
+                    stakeholder_tags.get(r.stakeholder.id, ""),
                 ]
                 for r, when, days in overdue
             ], gap=True,
         ),
         ReportSection(
             "no_cadence", "No target cadence set", [
-                "Stakeholder", "Project", "Influence", "Interest", "Suggested cadence", "Last engaged", *(["Branch"] if by_branch else []), "Owner",
+                "Code", "Stakeholder", "Project", "Influence", "Interest", "Suggested cadence", "Last engaged",
+                *(["Branch"] if by_branch else []), "Owner", "Tags",
             ], [
                 [
-                    r.version.name, r.project.name, r.influence, r.interest,
+                    _record_code(req, r.stakeholder), r.version.name, r.project.name, r.influence, r.interest,
                     label(TARGET_CADENCE_LABEL, c.value) if (c := suggest_cadence(r.quadrant)) else "",
                     _fmt_date(last.get((r.project.id, r.stakeholder.id))), *([r.branch] if by_branch else []), r.owner,
+                    stakeholder_tags.get(r.stakeholder.id, ""),
                 ]
                 for r in no_cadence
             ], gap=True, note="Without a target cadence staleness cannot be judged. The suggestion follows the grid quadrant.",
         ),
         ReportSection(
             "personas_not_engaged", f"Personas with no engagement in {months} months",
-            ["Persona", "Project", "Weight", "Last engagement", "Owner"], [
-                [p.version.name, p.project.name, _weight_text(p.weight, p.weight_source), _fmt_date(p.last_engaged), p.owner]
+            ["Code", "Persona", "Project", "Weight", "Last engagement", "Owner", "Tags"], [
+                [
+                    _record_code(req, p.persona), p.version.name, p.project.name, _weight_text(p.weight, p.weight_source),
+                    _fmt_date(p.last_engaged), p.owner, persona_tags.get(p.persona.id, ""),
+                ]
                 for p in stale_personas
             ], gap=True,
             note="Engagements covering the Persona, or with an anonymous participant tagged with it.",
@@ -871,6 +903,8 @@ def collect_engagement_yield(db: Session, req: ReportContext) -> ReportResult:
         r for r in _load_persona_rows(db, req, req.eligible(db, PERSONA_SUBCOMPONENT), since=since)
         if r.engagement_ids
     ]
+    persona_tags = req.tag_text(db, PERSONA_ARTEFACT_TYPE, [r.persona.id for r in persona_rows])
+    engagement_tags = req.tag_text(db, ENGAGEMENT_ARTEFACT_TYPE, [e.id for e, _ in no_outcome])
     raised_all = set().union(*raised.values()) if raised else set()
     raised_count = Counter(t for t, _ in raised_all)
     show_research = bool(research)
@@ -904,19 +938,24 @@ def collect_engagement_yield(db: Session, req: ReportContext) -> ReportResult:
         ),
         ReportSection(
             "by_persona", "Engagements by Persona",
-            ["Persona", "Project", "Engagements", "Anonymous participants", "Findings"],
+            ["Code", "Persona", "Project", "Engagements", "Anonymous participants", "Findings", "Tags"],
             [
-                [r.version.name, r.project.name, str(len(r.engagement_ids)), str(r.anonymous), str(r.findings)]
+                [
+                    _record_code(req, r.persona), r.version.name, r.project.name, str(len(r.engagement_ids)), str(r.anonymous),
+                    str(r.findings), persona_tags.get(r.persona.id, ""),
+                ]
                 for r in sorted(persona_rows, key=lambda r: (-len(r.engagement_ids), r.version.name.lower()))
             ],
             note="Engagements that cover the Persona or have an anonymous participant tagged with it.",
         ),
         ReportSection(
-            "no_outcome", "Engagements with no outcome", ["Date", "Engagement", "Project", "Channel", "Facilitators"],
+            "no_outcome", "Engagements with no outcome", ["Date", "Code", "Engagement", "Project", "Channel", "Facilitators", "Tags"],
             [
                 [
-                    _fmt_date(e.engagement_date), e.title, p.name, label(ENGAGEMENT_CHANNEL_LABEL, e.channel.value),
+                    _fmt_date(e.engagement_date), req.code(e.unique_code, e.project_id), e.title, p.name,
+                    label(ENGAGEMENT_CHANNEL_LABEL, e.channel.value),
                     ", ".join(principal_text(facilitators[(ref.type.value, ref.id)]) for ref in facilitator_refs.get(e.id, [])),
+                    engagement_tags.get(e.id, ""),
                 ]
                 for e, p in no_outcome
             ], gap=True,
@@ -958,29 +997,34 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         "Stakeholders on Influence × Interest, grouped into Manage closely, Keep satisfied, Keep informed and Monitor, "
         "with unscored Stakeholders listed apart.",
         collect_power_interest_grid, subcomponent=STAKEHOLDER_SUBCOMPONENT, params=(_GROUP_ID, _GROUP_BY),
+        record_types=("stakeholder",),
     ),
     ReportDefinition(
         "s2", "persona-validation", "Persona validation",
         "The evidence behind each Persona (linked Stakeholders, engagements, anonymous participants, findings), flagging "
         "Personas that are assumptions together with their weight.",
         collect_persona_validation, subcomponent=PERSONA_SUBCOMPONENT,
+        record_types=("persona",),
     ),
     ReportDefinition(
         "s3", "need-coverage", "Need coverage",
         "Needs no Requirement came from, and Requirements that trace to no Need, Stakeholder or Persona.",
         collect_need_coverage, subcomponent=NEED_SUBCOMPONENT,
+        record_types=("stakeholder_need", "requirement"),
     ),
     ReportDefinition(
         "s4", "engagement-staleness", "Engagement staleness",
         "Stakeholders overdue for engagement against their own target cadence (or never engaged), sorted by Influence, "
         "Stakeholders with no cadence, and Personas not engaged lately.",
         collect_engagement_staleness, subcomponent=STAKEHOLDER_SUBCOMPONENT, params=(_GROUP_ID, _GROUP_BY, _PERSONA_MONTHS),
+        record_types=("stakeholder", "persona"),
     ),
     ReportDefinition(
         "s5", "engagement-yield", "Engagement & research yield",
         "Engagements by channel and Persona, and what they produced: findings, Pain Points, Needs and Open Questions "
         "raised, against engagements that produced nothing.",
         collect_engagement_yield, params=(_SINCE,),
+        record_types=("persona", "engagement"),
     ),
 )
 

@@ -41,6 +41,7 @@ export function OpenQuestionRegisterReportView({ result, scope, values, figureAc
             <table>
               <thead>
                 <tr>
+                  <th scope="col">Code</th>
                   <th scope="col">Question</th>
                   {showProject && <th scope="col">Project</th>}
                   <th scope="col">Priority</th>
@@ -53,6 +54,7 @@ export function OpenQuestionRegisterReportView({ result, scope, values, figureAc
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} data-overdue={item.is_overdue || undefined}>
+                    <td className="text-muted">{item.code}</td>
                     <td>
                       <Link to={`/projects/${item.project_id}/modules/context_strategy/open-questions/${item.id}`}>{item.question}</Link>
                     </td>

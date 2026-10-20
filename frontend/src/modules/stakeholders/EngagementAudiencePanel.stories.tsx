@@ -57,8 +57,8 @@ export const AddsEveryoneInTheChosenGroups: Story = {
     spyOn(api, "post").mockResolvedValue({
       audience: { link_id: "a2", group_id: "g-acme", name: "Acme", scope: "organization" },
       participants_added: [
-        { link_id: "p1", stakeholder_id: "s1", name: "Pat Regulator", scope: "project" },
-        { link_id: "p2", stakeholder_id: "s2", name: "Sam Client", scope: "organization" },
+        { link_id: "p1", stakeholder_id: "s1", name: "Pat Regulator", scope: "project", unique_code: "STK-001", organization_id: null },
+        { link_id: "p2", stakeholder_id: "s2", name: "Sam Client", scope: "organization", unique_code: "STK-002", organization_id: "org-1" },
       ],
       already_participating: 1,
     } satisfies EngagementAudienceAdded);

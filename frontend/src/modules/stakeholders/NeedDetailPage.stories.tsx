@@ -22,8 +22,8 @@ const ORG_USERS: OrgUser[] = [
 ];
 
 const HOLDERS: NeedHolder[] = [
-  { link_id: "h1", kind: "stakeholder", id: "stakeholder-1", name: "Pat Regulator", scope: "project" },
-  { link_id: "h2", kind: "persona", id: "persona-1", name: "Field Technician", scope: "project" },
+  { link_id: "h1", kind: "stakeholder", id: "stakeholder-1", name: "Pat Regulator", scope: "project", unique_code: "STK-001", organization_id: null },
+  { link_id: "h2", kind: "persona", id: "persona-1", name: "Field Technician", scope: "project", unique_code: "PER-001", organization_id: null },
 ];
 const REQUIREMENTS: NeedRequirement[] = [{ link_id: "r1", id: "req-1", unique_code: "SW-PERF-001", title: "Remote diagnostics in 30 seconds" }];
 
@@ -92,7 +92,9 @@ export const ActiveShowsFieldsAndLinks: Story = {
     await waitFor(() => expect(canvas.getByRole("link", { name: "Pat Regulator" })).toBeInTheDocument());
     await expect(canvas.getByRole("link", { name: "Pat Regulator" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/stakeholders/stakeholder-1`);
     await expect(canvas.getByRole("link", { name: "Field Technician" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/personas/persona-1`);
-    await expect(canvas.getByRole("link", { name: "SW-PERF-001 Remote diagnostics in 30 seconds" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements/req-1`);
+    await expect(canvas.getByRole("link", { name: "Remote diagnostics in 30 seconds" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements/req-1`);
+    // The code is shown through the one display rule, beside the title rather than inside the link's name.
+    await expect(canvas.getByText(/SW-PERF-001$/)).toBeInTheDocument();
   },
 };
 

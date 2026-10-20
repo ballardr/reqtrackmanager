@@ -26,6 +26,7 @@ from app.modules.compliance.reports import (
     collect_org_compliance_report,
     collect_project_compliance_report,
 )
+from app.modules.compliance.tests.test_compliance_evidence_api import _create_evidence, _setup_project_with_assessment
 from app.modules.compliance.tests.test_compliance_standards_api import (
     _base,
     _create_action_type,
@@ -500,3 +501,39 @@ def test_collect_org_compliance_report_sets_filtered_flag_from_any_scoping_kwarg
         assert collect_org_compliance_report(db, org_uuid, requirement_id=uuid.uuid4()).filtered is True
     finally:
         db.close()
+
+
+def test_report_evidence_carries_its_code_and_tags_and_follows_the_project_code_rule(client, admin_token, org_id):
+    """Evidence is named `EVD-001` in its own project's report (and in the requirement table's Evidence cell), always
+    qualified in the organisation-wide report, and qualified everywhere once the organisation enforces the project
+    code. Its tags are listed. (A compliance requirement carries its standard's own reference and has no code.)"""
+    project, _assignment, pcr_id, _assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
+    evidence = _create_evidence(
+        client, admin_token, project["id"], project_compliance_requirement_ids=[pcr_id], expiry_date="2020-01-01",
+    )
+    assert evidence["unique_code"] == "EVD-001"
+    assert client.put(
+        f"/api/v1/projects/{project['id']}/artefacts/compliance_evidence/{evidence['id']}/tags", json={"tags": ["Audit"]},
+        headers=auth_headers(admin_token),
+    ).status_code == 200
+
+    def collect(enforced: bool):
+        policy = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": enforced}
+        assert client.put(f"/api/v1/orgs/{org_id}/code-policy", json=policy, headers=auth_headers(admin_token)).status_code == 200
+        db = SessionLocal()
+        try:
+            own = collect_project_compliance_report(db, db.get(Project, uuid.UUID(project["id"])))
+            whole = collect_org_compliance_report(db, uuid.UUID(org_id))
+            return own, whole
+        finally:
+            db.close()
+
+    own, whole = collect(False)
+    assert [(e.code, e.tags) for e in own.evidence_rows] == [("EVD-001", "Audit")]
+    assert [r.evidence_titles for r in own.requirement_rows if r.evidence_titles] == [f"EVD-001 {evidence['title']}"]
+    assert [e.code for _, e in whole.expiring_evidence_rows] == [f"{project['code']}-EVD-001"]
+
+    own, _ = collect(True)
+    assert [e.code for e in own.evidence_rows] == [f"{project['code']}-EVD-001"]
+    csv_text = client.get(f"{_project_base(project['id'])}/reports", params={"format": "csv"}, headers=auth_headers(admin_token)).text
+    assert f"{project['code']}-EVD-001 {evidence['title']}" in csv_text

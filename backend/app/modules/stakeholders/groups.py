@@ -64,6 +64,8 @@ class GroupRef:
     name: str
     scope: StakeholderScope
     parent_group_id: uuid.UUID | None
+    unique_code: str = ""
+    organization_id: uuid.UUID | None = None
 
 
 # --- Universe and tree walks -----------------------------------------------------------------
@@ -498,7 +500,10 @@ def group_refs(
     )).all()
     for sid, gid in rows:
         g = universe[gid]
-        out[sid].append(GroupRef(id=g.id, name=g.name, scope=g.scope, parent_group_id=g.parent_group_id))
+        out[sid].append(GroupRef(
+            id=g.id, name=g.name, scope=g.scope, parent_group_id=g.parent_group_id, unique_code=g.unique_code,
+            organization_id=g.organization_id,
+        ))
     for refs in out.values():
         refs.sort(key=lambda r: r.name.lower())
     return out

@@ -80,6 +80,7 @@ function GroupView({ group, showProject }: { group: ReportScoredGroup; showProje
             <thead>
               <tr>
                 <th scope="col">Rank</th>
+                <th scope="col">Code</th>
                 <th scope="col">Pain point</th>
                 {showProject && <th scope="col">Project</th>}
                 <th scope="col">Type</th>
@@ -92,6 +93,7 @@ function GroupView({ group, showProject }: { group: ReportScoredGroup; showProje
               {ranked.map((item) => (
                 <tr key={item.id}>
                   <td>{item.rank}</td>
+                  <td className="text-muted">{item.code}</td>
                   <td>
                     <Link to={`/projects/${item.project_id}/modules/context_strategy/pain-points/${item.id}`}>{item.title}</Link>
                   </td>

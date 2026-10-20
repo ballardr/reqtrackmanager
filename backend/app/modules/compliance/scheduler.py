@@ -64,6 +64,7 @@ from app.modules.compliance.service import (
     get_effective_compliance_officers,
 )
 from app.services import notifications
+from app.services.codes import qualify
 from app.services.principals import principal_recipients, principal_ref
 
 #: Days before a required action's `due_date` that it is notified as
@@ -106,16 +107,19 @@ def send_evidence_expiry_notifications(db: Session) -> None:
     ).all()
 
     for evidence in candidates:
-        if db.get(Project, evidence.project_id) is None:
+        project = db.get(Project, evidence.project_id)
+        if project is None:
             continue
         recipients = get_effective_compliance_officers(db, evidence.project_id)
+        # A notification is read out of context, so the record is named by its qualified code.
+        named = f"{qualify(project.code, evidence.unique_code)} {evidence.title}"
 
         if evidence.expiry_date < today:
             if evidence.expiry_notified_at is not None:
                 continue
             _notify_many(
                 db, recipients, notification_type=NotificationType.COMPLIANCE_EVIDENCE_EXPIRED,
-                title=f"Evidence expired: {evidence.title}",
+                title=f"Evidence expired: {named}",
                 body=f'"{evidence.title}" expired on {evidence.expiry_date.isoformat()}.',
                 project_id=evidence.project_id, entity_type="compliance_evidence", entity_id=str(evidence.id),
             )
@@ -125,7 +129,7 @@ def send_evidence_expiry_notifications(db: Session) -> None:
                 continue
             _notify_many(
                 db, recipients, notification_type=NotificationType.COMPLIANCE_EVIDENCE_EXPIRING_SOON,
-                title=f"Evidence expiring soon: {evidence.title}",
+                title=f"Evidence expiring soon: {named}",
                 body=f'"{evidence.title}" expires on {evidence.expiry_date.isoformat()}.',
                 project_id=evidence.project_id, entity_type="compliance_evidence", entity_id=str(evidence.id),
             )

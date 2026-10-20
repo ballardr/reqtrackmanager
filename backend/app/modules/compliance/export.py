@@ -1209,7 +1209,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
                 "content_type": asset.content_type, "linked_by_email": uploader.email,
             })
         evidence_json.append({
-            "ref": evidence_ref_by_id[e.id], "title": e.title, "description": e.description,
+            "ref": evidence_ref_by_id[e.id], "unique_code": e.unique_code,  # informational: an import numbers it afresh
+            "title": e.title, "description": e.description,
             "issuing_organisation": e.issuing_organisation, "issued_date": _j(e.issued_date),
             "expiry_date": _j(e.expiry_date), "_provided_by": e.provided_by, "provided_at": _j(e.provided_at),
             "notes": e.notes, "is_archived": e.is_archived, "archived_at": _j(e.archived_at),

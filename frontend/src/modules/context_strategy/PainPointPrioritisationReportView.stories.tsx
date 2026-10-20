@@ -33,7 +33,9 @@ export const MatrixAndRankedList: Story = {
     await expect(canvas.getByLabelText(/Severity Major, Frequency Constant: Critical, 1 item/)).toBeInTheDocument();
     await expect(canvas.getByLabelText(/Severity Blocker, Frequency Rare: .*, 1 item/)).toBeInTheDocument();
     const rows = within(canvas.getByRole("table", { name: "Ranked Pain Points" })).getAllByRole("row");
+    await expect(rows[1]).toHaveTextContent("PP-001");
     await expect(rows[1]).toHaveTextContent("Report delays under poor connectivity");
+    await expect(rows[2]).toHaveTextContent("PP-002");
     await expect(rows[2]).toHaveTextContent("Checkout times out");
     // Intentional items are not ranked.
     await expect(canvas.queryByText("Premium export limit")).not.toBeInTheDocument();

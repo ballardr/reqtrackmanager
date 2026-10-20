@@ -633,6 +633,11 @@ def test_the_review_reminder_reaches_every_group_member_and_falls_back_to_manage
         rows = client.get("/api/v1/notifications", headers=auth_headers(token)).json()
         return [r["entity_id"] for r in rows if r["type"] == "requirement_review_due"]
 
+    # A reminder is read out of any project's context, so it names the requirement by its qualified code.
+    rows = client.get("/api/v1/notifications", headers=auth_headers(login(client, "req_remind_first@core.example.com", "Password123!"))).json()
+    assert [r["body"].split(" ")[0] for r in rows if r["type"] == "requirement_review_due"] == [
+        f"{project['code']}-{grouped['unique_code']}",
+    ]
     for email in ("req_remind_first@core.example.com", "req_remind_second@core.example.com"):
         assert titles(login(client, email, "Password123!")) == [grouped["id"]]
     # The empty group has nobody to notify, so the project manager hears about it instead.

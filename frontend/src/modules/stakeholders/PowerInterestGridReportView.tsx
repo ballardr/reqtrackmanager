@@ -55,6 +55,9 @@ function Quadrant({ quadrant, items }: { quadrant: GridQuadrant; items: GridItem
             <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
               {shown.map((item) => (
                 <li key={`${item.project_id}-${item.id}`}>
+                  <span className="text-muted" style={{ fontSize: "0.85rem" }}>
+                    {item.code}
+                  </span>{" "}
                   <Link to={`/projects/${item.project_id}/modules/stakeholders/stakeholders/${item.id}`}>{item.name}</Link>{" "}
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>
                     {item.influence} influence, {item.interest} interest

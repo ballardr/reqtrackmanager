@@ -87,6 +87,8 @@ What the contact log produced: Engagements by channel and by Persona, Pain Point
 
 ## Export and AI assistants
 
+Rows that name a record lead with its code and end with its tags; see [Reports and export → How reports name records](../../core-features/reports-and-export.md#how-reports-name-records). A Persona or Stakeholder the organisation owns shows the organisation's code (`ACME-PER-001`), so it is never mistaken for a project's own.
+
 Each report downloads as **PDF**, **Word** or **CSV** from **Export**; the CSV is the report's first table. All five are also available to an [AI assistant](./mcp-integration.md) as read-only tools.
 
 ## Who can see them

@@ -90,7 +90,7 @@ Module tools are named `<module_key>_<tool>`. **Before using any module's tools,
 
 - Org-scoped tools need `organization_id`; project-scoped tools need `project_id`.
 - `list_*` before `get_*`; use IDs from the list.
-- Reports are tools too (named `<module_key>_get_<report>_report`). They return the report's data as JSON, limited to what the caller can read, so absence from a report is not proof an item does not exist. Many take `include_children` to include child projects.
+- Reports are tools too (named `<module_key>_get_<report>_report`). They return the report's data as JSON, limited to what the caller can read, so absence from a report is not proof an item does not exist. Many take `include_children` to include child projects. Each row that names a record carries its `Code` and `Tags` columns: the bare code (`DEC-001`) for a record in the reported project, the qualified one (`ACME-DEC-001`) for a child project's record or one the organisation owns (`ACME-PER-001`), and every code qualified when the organisation shows the project code everywhere. Pass a qualified code to `get_record_by_code`; never match a bare code across projects.
 - Writes need write mode, the module enabled, and the caller's module role.
 - Lifecycle changes are one tool per transition (propose, submit for review, send back, activate, retire, and so on). Re-read the record's `status` first; a conflict error means the status does not allow that step.
 - Tools whose name contains `approve`, `reject`, `resolve`, `activate` or `retire` on a module's decisive step may be approvals gated by AI approval; the module's section says which. Treat any decisive transition as an approval unless told otherwise.

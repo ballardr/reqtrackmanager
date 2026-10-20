@@ -68,7 +68,7 @@ export function EngagementTimelinePanel({
         reloadKey={reloadKey}
         load={async () =>
           (await load()).map((e) => ({
-            link_id: e.id, id: e.id, name: `${e.engagement_date} · ${ENGAGEMENT_CHANNEL_LABEL[e.channel]} · ${e.title}`, scope: "project" as const,
+            link_id: e.id, id: e.id, unique_code: e.unique_code, name: `${e.engagement_date} · ${ENGAGEMENT_CHANNEL_LABEL[e.channel]} · ${e.title}`, scope: "project" as const,
           }))
         }
         linkFor={(engagement) => `/projects/${projectId}/modules/stakeholders/engagements/${engagement.id}`}

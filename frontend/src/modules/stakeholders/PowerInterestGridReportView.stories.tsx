@@ -33,6 +33,9 @@ export const PlacesStakeholdersInQuadrants: Story = {
     await expect(within(manage).getByRole("link", { name: "Sam Sponsor" })).toHaveAttribute(
       "href", "/projects/project-1/modules/stakeholders/stakeholders/sh-1",
     );
+    await expect(within(manage).getByText("STK-001")).toBeInTheDocument();
+    // An organisation-owned record arrives already qualified; the view shows the server's string.
+    await expect(within(canvas.getByRole("region", { name: "Keep satisfied" })).getByText("ACME-STK-001")).toBeInTheDocument();
     await expect(within(canvas.getByRole("region", { name: "Keep satisfied" })).getByText("Pat Regulator")).toBeInTheDocument();
     await expect(within(canvas.getByRole("region", { name: "Keep informed" })).getByText("Uma User")).toBeInTheDocument();
     await expect(within(canvas.getByRole("region", { name: "Monitor" })).getByText("Nobody here.")).toBeInTheDocument();

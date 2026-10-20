@@ -202,7 +202,7 @@ export function EngagementDetailPage() {
             onChanged={linksChanged}
             load={async () =>
               (await projectEngagementApi.listParticipants(projectId, engagement.id)).map((p) => ({
-                link_id: p.link_id, id: p.stakeholder_id, name: p.name, scope: p.scope,
+                link_id: p.link_id, id: p.stakeholder_id, name: p.name, scope: p.scope, unique_code: p.unique_code, organization_id: p.organization_id,
               }))
             }
             linkFor={(participant) => stakeholderPath(participant.id)}
@@ -222,7 +222,7 @@ export function EngagementDetailPage() {
             emptyText="No Persona is recorded as covered."
             load={async () =>
               (await projectEngagementApi.listPersonas(projectId, engagement.id)).map((p) => ({
-                link_id: p.link_id, id: p.persona_id, name: p.name, scope: p.scope,
+                link_id: p.link_id, id: p.persona_id, name: p.name, scope: p.scope, unique_code: p.unique_code, organization_id: p.organization_id,
               }))
             }
             linkFor={(persona) => personaPath(persona.id)}

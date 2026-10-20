@@ -45,6 +45,7 @@ from app.services import notifications, pubsub
 from app.services.actions import generate_unique_code as generate_action_unique_code
 from app.services.audit import log_event
 from app.services.change_request_links import build_preview, decline_all, resolve_links
+from app.services.codes import qualify
 from app.services.principals import revalidated_principal, revalidated_principal_columns
 from app.services.rbac import (
     get_effective_project_roles,
@@ -81,9 +82,12 @@ def _display_title(db: Session, cr: ChangeRequest, version: ChangeRequestVersion
     silently rendering "None" (a pre-existing gap for a MODIFY_REQUIREMENT
     CR that doesn't rename anything, found while adding ADD_ACTION — item
     514's own new kind never sets `proposed_name` at all, so it would hit
-    this on every single notification without a fallback). The request's code leads the
-    title (`CR-003 Wider doors`) so a notification can be matched to the record."""
-    return f"{cr.unique_code} {_title_text(db, cr, version)}"
+    this on every single notification without a fallback). The request's qualified code leads the
+    title (`ACME-CR-003 Wider doors`): a notification is read out of any project's context, so a
+    bare `CR-003` would be ambiguous."""
+    project = db.get(Project, cr.project_id)
+    code = qualify(project.code, cr.unique_code) if project is not None else cr.unique_code
+    return f"{code} {_title_text(db, cr, version)}"
 
 
 def _title_text(db: Session, cr: ChangeRequest, version: ChangeRequestVersion) -> str:

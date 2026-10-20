@@ -17,6 +17,8 @@ A **project's** report covers every requirement's applicability, compliance stat
 
 An **organisation's** report rolls up across every project (one row per project/assigned-standard-version pair), plus appendices for non-compliant requirements, pending approvals, and expiring/expired evidence across every project — restricted to Compliance Managers.
 
+Evidence is named by its code in both reports (`EVD-001 Test certificate`, with the project code in front in the organisation's report), and the evidence register and expiring-evidence appendix list its tags. A compliance requirement keeps the standard's own reference and has no code of its own.
+
 | Report scope | Format | Contents |
 | --- | --- | --- |
 | Project | PDF | Main requirement table, plus evidence/review/mapping appendices |

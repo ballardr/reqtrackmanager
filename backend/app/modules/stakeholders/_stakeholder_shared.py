@@ -157,7 +157,13 @@ def stakeholder_to_out(
         ),
         user_id=version.user_id, version_number=version.version_number, created_at=stakeholder.created_at,
         updated_at=stakeholder.updated_at, **hidden, last_engaged=last_engaged,
-        groups=[StakeholderGroupRefOut(id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id) for r in group_refs],
+        groups=[
+            StakeholderGroupRefOut(
+                id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id, unique_code=r.unique_code,
+                organization_id=r.organization_id,
+            )
+            for r in group_refs
+        ],
     )
 
 
@@ -373,7 +379,7 @@ def represents_to_out(db: Session, link, persona: Persona) -> RepresentedPersona
     """API shape of a link seen from the stakeholder side."""
     return RepresentedPersonaOut(
         link_id=link.id, id=persona.id, name=get_current_persona_version(db, persona.id).name,
-        scope=persona.scope.value,
+        scope=persona.scope.value, unique_code=persona.unique_code, organization_id=persona.organization_id,
     )
 
 
@@ -381,7 +387,7 @@ def stakeholder_link_to_out(db: Session, link, stakeholder: Stakeholder) -> Repr
     """API shape of a link seen from the persona side (the other end is a stakeholder)."""
     return RepresentedPersonaOut(
         link_id=link.id, id=stakeholder.id, name=get_current_stakeholder_version(db, stakeholder.id).name,
-        scope=stakeholder.scope.value,
+        scope=stakeholder.scope.value, unique_code=stakeholder.unique_code, organization_id=stakeholder.organization_id,
     )
 
 

@@ -554,7 +554,7 @@ def test_stakeholder_timeline(client, admin_token):
     url = f"{_project_base(project['id'])}/stakeholders/{person['id']}/engagements"
     rows = client.get(url, headers=h).json()
     assert [(r["id"], r["channel"]) for r in rows] == [(second["id"], "meeting"), (first["id"], "call")]
-    assert set(rows[0]) == {"id", "title", "channel", "engagement_date"}  # no notes in the timeline
+    assert set(rows[0]) == {"id", "unique_code", "title", "channel", "engagement_date"}  # no notes in the timeline
     assert client.get(f"{_project_base(project['id'])}/stakeholders/{uuid.uuid4()}/engagements", headers=h).status_code == 404
 
 

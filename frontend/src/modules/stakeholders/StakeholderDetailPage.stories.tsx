@@ -328,7 +328,7 @@ export const EditOpensThePrefilledForm: Story = {
 
 export const ListsTheNeedsTheStakeholderHas: Story = {
   beforeEach: () =>
-    mockDetailApis(buildStakeholder(), { needs: [{ link_id: "n1", id: "need-1", name: "Diagnose faults quickly", status: "active" }] }),
+    mockDetailApis(buildStakeholder(), { needs: [{ link_id: "n1", id: "need-1", unique_code: "NEED-001", name: "Diagnose faults quickly", status: "active" }] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const link = await canvas.findByRole("link", { name: "Diagnose faults quickly (Active)" });
@@ -341,8 +341,8 @@ export const ShowsTheEngagementTimelineAndLastEngaged: Story = {
   beforeEach: () =>
     mockDetailApis(buildStakeholder({ last_engaged: "2026-04-02" }), {
       engagements: [
-        { id: "e2", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02" },
-        { id: "e1", title: "Quarterly review", channel: "meeting", engagement_date: "2026-03-12" },
+        { id: "e2", unique_code: "ENG-002", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02" },
+        { id: "e1", unique_code: "ENG-001", title: "Quarterly review", channel: "meeting", engagement_date: "2026-03-12" },
       ],
     }),
   play: async ({ canvasElement }) => {
@@ -375,7 +375,7 @@ export const LinksPanelShowsLinks: Story = {
   },
 };
 
-const PILOT_REF = { id: "pilot", name: "Pilot users", scope: "project" as const, parent_group_id: "client" };
+const PILOT_REF = { id: "pilot", name: "Pilot users", scope: "project" as const, parent_group_id: "client", unique_code: "SGP-002", organization_id: null };
 
 export const ShowsTheStakeholdersGroupsWithTheirPath: Story = {
   beforeEach: () => mockDetailApis(buildStakeholder({ groups: [PILOT_REF] })),

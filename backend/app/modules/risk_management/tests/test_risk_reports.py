@@ -347,3 +347,37 @@ def test_each_report_is_declared_as_a_read_only_mcp_tool():
         tool = tools[f"risk_management_get_{slug.replace('-', '_')}_report"]
         assert tool.method == "GET" and not tool.mutates
     assert {p["name"] for p in tools["risk_management_get_review_schedule_report"].params} >= {"project_id", "due_within_days"}
+
+
+def test_report_codes_and_tags_follow_the_shared_rule_in_every_report(client, admin_token):
+    """A Risk reads `RSK-001` in its own project's report and `CODE-RSK-001` for a child project's; enforcing the
+    project code qualifies both; the viewer's preference never changes a report; the Tags column carries the tags."""
+    org, parent, admin = setup(client, admin_token, "RK Codes Co")
+    parent = create_project(client, admin, org["id"], "RK Codes Parent", can_be_parent=True)
+    child = create_project(client, admin, org["id"], "RK Codes Child", parent_project_id=parent["id"])
+    tagged = _scored(client, admin, parent, inherent=("Likely", "Major"), title="Parent risk")
+    _scored(client, admin, child, inherent=("Likely", "Major"), title="Child risk")
+    assert client.put(
+        f"/api/v1/projects/{parent['id']}/artefacts/risk/{tagged['id']}/tags", json={"tags": ["Safety"]},
+        headers=auth_headers(admin),
+    ).status_code == 200
+
+    def register(include_children=True):
+        section = _section(_report(client, admin, parent["id"], "risk-register", include_children=include_children), "register")
+        return dict(zip(_col(section, "Title"), _col(section, "Code"), strict=True)), section
+
+    for preference in (False, True):  # the viewer's preference is not applied to a report
+        assert client.patch(
+            "/api/v1/auth/me/preferences", json={"ui_preferences": {"show_project_code": preference}}, headers=auth_headers(admin),
+        ).status_code == 200
+        codes, section = register()
+        assert codes == {"Parent risk": "RSK-001", "Child risk": f"{child['code']}-RSK-001"}
+    assert dict(zip(_col(section, "Title"), _col(section, "Tags"), strict=True)) == {"Parent risk": "Safety", "Child risk": ""}
+
+    body = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": True}
+    assert client.put(f"/api/v1/orgs/{org['id']}/code-policy", json=body, headers=auth_headers(admin)).status_code == 200
+    assert register()[0] == {"Parent risk": f"{parent['code']}-RSK-001", "Child risk": f"{child['code']}-RSK-001"}
+    for slug in SLUGS:
+        for section in _report(client, admin, parent["id"], slug, include_children=True)["sections"]:
+            if "Code" in section["columns"]:
+                assert all(code.startswith(f"{parent['code']}-") or code.startswith(f"{child['code']}-") for code in _col(section, "Code"))

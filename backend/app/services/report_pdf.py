@@ -21,6 +21,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import ListFlowable, ListItem, Spacer
 from reportlab.platypus import PageBreak as RlPageBreak
 from reportlab.platypus import Paragraph as RlParagraph
@@ -51,14 +52,52 @@ _NOTE = ParagraphStyle("report_note", parent=STYLES["BodyText"], fontSize=8.5, l
 _CELL = ParagraphStyle("report_cell", parent=STYLES["BodyText"], fontSize=7.5, leading=9.5)
 _HEAD = ParagraphStyle("report_head", parent=_CELL, textColor=colors.white, fontName="Helvetica-Bold")
 _PLAIN_CELL = ParagraphStyle("cell", parent=STYLES["BodyText"], fontSize=8, leading=10)
+_CELL_FONT_SIZE = 7.5
+_MAX_CELL_POINTS = 70.0
+_MAX_WORD_POINTS = 100.0  # a pasted unbroken string must not claim the page; ReportLab breaks it
+_CELL_PADDING_POINTS = 14.0
 _PORTRAIT_MARGINS = {"topMargin": 2 * cm, "bottomMargin": 2 * cm}
 _LANDSCAPE_MARGINS = {"leftMargin": 1.5 * cm, "rightMargin": 1.5 * cm, "topMargin": 1.5 * cm, "bottomMargin": 1.5 * cm}
+
+
+def _content_widths(block: Table, usable_width: float) -> list[float]:
+    """Column widths for a table that gave none, sized from what each column holds.
+
+    Equal widths split a record code (`ACME-PER-001`) across two lines in a table of a dozen
+    columns. A column needs the width of its longest unbreakable word (measured in the cell font, so
+    a code always fits on one line, up to a cap so a pasted unbroken string cannot claim the page) or,
+    if more, its longest cell up to a cap, plus the cell padding.
+    The spare width is shared in proportion to those needs; when the needs exceed the page they are
+    scaled down together.
+
+    Args:
+        block: The table.
+        usable_width: The width available between the margins, in points.
+
+    Returns:
+        One width per column, summing to `usable_width`.
+    """
+    needs = []
+    for index, heading in enumerate(block.columns):
+        cells = [str(row[index]) for row in block.rows if index < len(row)]
+        words = max(
+            (stringWidth(word, "Helvetica-Bold", _CELL_FONT_SIZE) for word in heading.split()), default=0.0,
+        )
+        words = max([words, *(stringWidth(word, "Helvetica", _CELL_FONT_SIZE) for cell in cells for word in cell.split())])
+        whole = max((stringWidth(cell, "Helvetica", _CELL_FONT_SIZE) for cell in cells), default=0.0)
+        needs.append(max(min(words, _MAX_WORD_POINTS), min(whole, _MAX_CELL_POINTS)) + _CELL_PADDING_POINTS)
+    if sum(needs) >= usable_width:
+        return [usable_width * need / sum(needs) for need in needs]
+    spare = usable_width - sum(needs)
+    return [need + spare * need / sum(needs) for need in needs]
 
 
 def _table(block: Table, accent, usable_width: float):
     """A block table as a styled ReportLab table (compact or plain grid)."""
     if block.col_widths_cm:
         widths = [w * cm for w in block.col_widths_cm]
+    elif block.compact:
+        widths = _content_widths(block, usable_width)
     else:
         widths = [usable_width / len(block.columns)] * len(block.columns)
     if block.compact:

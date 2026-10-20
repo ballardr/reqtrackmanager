@@ -99,6 +99,8 @@ Options are generated from what each report accepts, so a report only shows the 
 
 ## Exporting
 
+Rows that name a record lead with its code and end with its tags; see [Reports and export → How reports name records](../../core-features/reports-and-export.md#how-reports-name-records).
+
 | Exporting a report |
 | --- |
 | **Export** offers PDF, Word and CSV of exactly what is on screen, with the options currently set |

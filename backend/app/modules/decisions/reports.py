@@ -171,7 +171,13 @@ def _supersession(db: Session, req: ReportContext, decisions: list[Decision]) ->
                 supersedes[link.source_id].append(link.target_id)
                 superseded_by[link.target_id].append(link.source_id)
     mentioned = {i for group in (supersedes, superseded_by) for ids_ in group.values() for i in ids_} | set(ids)
-    codes = dict(db.execute(select(Decision.id, Decision.unique_code).where(Decision.id.in_(mentioned))).all()) if mentioned else {}
+    codes = {
+        row.id: req.code(row.unique_code, row.project_id, row.project_code)
+        for row in db.execute(
+            select(Decision.id, Decision.unique_code, Decision.project_id, Project.code.label("project_code"))
+            .join(Project, Project.id == Decision.project_id).where(Decision.id.in_(mentioned))
+        ).all()
+    } if mentioned else {}
     return supersedes, superseded_by, codes
 
 
@@ -248,14 +254,15 @@ def collect_decision_register(db: Session, req: ReportContext) -> ReportResult:
     ])
     columns = [
         "Code", "Title", "Project", "Type", "Status", "Decision date", "Decision maker", "Owner", "Supersedes",
-        "Superseded by",
+        "Superseded by", "Tags",
     ]
+    tags = req.tag_text(db, DECISION_TYPE, [d.id for d in decisions])
     rows = [
         [
-            d.unique_code, d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
+            req.code(d.unique_code, d.project_id), d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
             decision_status_label(d.status.value), _fmt_date(d.decision_date),
             people(d.decision_maker_type, d.decision_maker_id), people(d.owner_type, d.owner_id),
-            codes_of(supersedes.get(d.id, [])), codes_of(superseded_by.get(d.id, [])),
+            codes_of(supersedes.get(d.id, [])), codes_of(superseded_by.get(d.id, [])), tags.get(d.id, ""),
         ]
         for d in decisions
     ]
@@ -276,7 +283,7 @@ def collect_decision_register(db: Session, req: ReportContext) -> ReportResult:
         ReportMetric("Superseded", by_status[DecisionStatus.SUPERSEDED.value]),
         ReportMetric("Rejected", by_status[DecisionStatus.REJECTED.value]),
     ]
-    result.data = {"items": [RegisterRow(d.id, d.project_id, d.unique_code, d.title) for d in decisions]}
+    result.data = {"items": [RegisterRow(d.id, d.project_id, req.code(d.unique_code, d.project_id), d.title) for d in decisions]}
     return result
 
 
@@ -335,16 +342,18 @@ def collect_approval_ageing(db: Session, req: ReportContext) -> ReportResult:
         e["overdue"] = e["days"] > threshold
     entries.sort(key=lambda e: (-e["days"], e["decision"].unique_code))
 
+    tags = req.tag_text(db, DECISION_TYPE, [d.id for d in decisions])
+
     def row(e: dict[str, Any]) -> list[str]:
         d: Decision = e["decision"]
         return [
-            d.unique_code, d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
+            req.code(d.unique_code, d.project_id), d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
             decision_status_label(d.status.value), str(e["days"]),
             "Overdue" if e["overdue"] else "", people(d.decision_maker_type, d.decision_maker_id, "No decision maker"),
-            people(d.owner_type, d.owner_id),
+            people(d.owner_type, d.owner_id), tags.get(d.id, ""),
         ]
 
-    columns = ["Code", "Title", "Project", "Type", "Status", "Days waiting", "Overdue", "Decision maker", "Owner"]
+    columns = ["Code", "Title", "Project", "Type", "Status", "Days waiting", "Overdue", "Decision maker", "Owner", "Tags"]
     result = _result(req, "d2", "Approval ageing", eligible=len(projects), notes=[
         f"Days waiting counts from when the Decision entered its current status; over {threshold} days is flagged "
         "overdue. A Decision has no due date, so the threshold is the only overdue test.",
@@ -362,7 +371,7 @@ def collect_approval_ageing(db: Session, req: ReportContext) -> ReportResult:
     ]
     result.data = {"items": [
         {
-            "id": e["decision"].id, "project_id": e["decision"].project_id, "code": e["decision"].unique_code,
+            "id": e["decision"].id, "project_id": e["decision"].project_id, "code": req.code(e["decision"].unique_code, e["decision"].project_id),
             "days_waiting": e["days"], "is_overdue": e["overdue"], "unassigned": e["unassigned"],
         }
         for e in entries
@@ -401,13 +410,14 @@ def collect_decision_log(db: Session, req: ReportContext) -> ReportResult:
     ])
     columns = [
         "Decision date", "Code", "Title", "Project", "Type", "Status", "Decision maker", "Context", "Chosen option",
-        "Rationale",
+        "Rationale", "Tags",
     ]
+    tags = req.tag_text(db, DECISION_TYPE, [d.id for d in decisions])
     result.sections = [ReportSection("log", "Decisions made", columns, [
         [
-            _fmt_date(d.decision_date), d.unique_code, d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
+            _fmt_date(d.decision_date), req.code(d.unique_code, d.project_id), d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
             decision_status_label(d.status.value), people(d.decision_maker_type, d.decision_maker_id),
-            _clip(d.context), _clip(d.chosen_option or d.decision_statement), _clip(d.rationale),
+            _clip(d.context), _clip(d.chosen_option or d.decision_statement), _clip(d.rationale), tags.get(d.id, ""),
         ]
         for d in decisions
     ])]
@@ -416,7 +426,7 @@ def collect_decision_log(db: Session, req: ReportContext) -> ReportResult:
         ReportMetric("Without a rationale", sum(not (d.rationale or "").strip() for d in decisions), gap=True),
     ]
     result.data = {"items": [
-        {"id": d.id, "project_id": d.project_id, "code": d.unique_code, "decision_date": d.decision_date} for d in decisions
+        {"id": d.id, "project_id": d.project_id, "code": req.code(d.unique_code, d.project_id), "decision_date": d.decision_date} for d in decisions
     ]}
     return result
 
@@ -467,21 +477,23 @@ def collect_rationale_coverage(db: Session, req: ReportContext) -> ReportResult:
             covered.add(link.target_id)
     uncovered = [(r, v) for r, v in requirements if r.id not in covered]
 
+    decision_tags = req.tag_text(db, DECISION_TYPE, [d.id for d in bare])
+    requirement_tags = req.tag_text(db, ArtefactType.REQUIREMENT.value, [r.id for r, _ in uncovered])
     result.sections = [
         ReportSection(
             "decisions_without_links", "Decisions with no linked artefact",
-            ["Code", "Title", "Project", "Type", "Status"],
+            ["Code", "Title", "Project", "Type", "Status", "Tags"],
             [
-                [d.unique_code, d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
-                 decision_status_label(d.status.value)]
+                [req.code(d.unique_code, d.project_id), d.title, names[d.project_id], type_names.get(d.decision_type_id, ""),
+                 decision_status_label(d.status.value), decision_tags.get(d.id, "")]
                 for d in sorted(bare, key=lambda d: (names[d.project_id].lower(), d.unique_code))
             ],
             gap=True,
         ),
         ReportSection(
             "requirements_without_decisions", "Requirements with no linked Decision",
-            ["Code", "Name", "Project"],
-            [[r.unique_code, v.name, names[r.project_id]] for r, v in uncovered],
+            ["Code", "Name", "Project", "Tags"],
+            [[req.code(r.unique_code, r.project_id), v.name, names[r.project_id], requirement_tags.get(r.id, "")] for r, v in uncovered],
             note="Non-archived Requirements; whether each needs a Decision is for the team to judge.", gap=True,
         ),
     ]
@@ -557,20 +569,24 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         "d1", "decision-register", "Decision register",
         "Every Decision with its type, status, date, decision maker, owner and supersession.",
         collect_decision_register, params=(_STATUS, _DECISION_TYPE, _DATE_FROM, _DATE_TO, _INCLUDE_ARCHIVED),
+        record_types=("decision",),
     ),
     ReportDefinition(
         "d2", "approval-ageing", "Approval ageing",
         "Proposed and Under review Decisions by days waiting, with overdue and decision-maker-less ones flagged.",
         collect_approval_ageing, params=(_OVERDUE_DAYS,),
+        record_types=("decision",),
     ),
     ReportDefinition(
         "d3", "decision-log", "Decision log",
         "Decisions made in a period, with context, chosen option and rationale.",
         collect_decision_log, params=(_LOG_DATE_FROM, _DATE_TO),
+        record_types=("decision",),
     ),
     ReportDefinition(
         "d4", "rationale-coverage", "Rationale coverage",
         "Decisions with no linked artefact, and Requirements with no linked Decision.", collect_rationale_coverage,
+        record_types=("decision", "requirement"),
     ),
 )
 

@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
@@ -141,6 +143,12 @@ test.describe("Stakeholders & Personas: Reports", () => {
           ]);
           expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${kind.toLowerCase()}$`));
           await expect(page.getByText(`Downloaded ${title} (${kind}).`)).toBeVisible();
+          if (kind === "CSV" && title === "Power/interest grid") {
+            // A report names each record by its code, and lists its tags.
+            const csv = await readFile((await download.path())!, "utf8");
+            expect(csv.split("\n")[0]).toMatch(/^Code,Stakeholder,.*,Tags\r?$/);
+            expect(csv).toContain("STK-001,");
+          }
         }
       });
     }

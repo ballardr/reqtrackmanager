@@ -287,6 +287,9 @@ test.describe("Context & Strategy: Reports UI", () => {
       const csv = await readFile((await download.path())!, "utf8");
       expect(csv).toContain(titles.major);
       expect(csv).toContain(titles.blocker);
+      // Each Pain Point is named by its code and the Tags column follows the data.
+      expect(csv).toMatch(/PP-001 /);
+      expect(csv.split("\n")[0]).toMatch(/,Tags\r?$/);
     });
 
     await test.step("the chosen branding template is sent with the PDF download", async () => {

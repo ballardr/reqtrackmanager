@@ -103,7 +103,8 @@ def _level_by_name(db: Session, organization_id: UUID, axis_key: str, name: str 
 
 def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UUID, emails: dict[UUID, str]) -> dict[str, Any]:
     v = get_current_stakeholder_version(db, stakeholder.id)
-    data: dict[str, Any] = {f: getattr(v, f) for f in _TEXT_FIELDS}
+    # `unique_code` is informational: an import numbers the stakeholder afresh and matches by name.
+    data: dict[str, Any] = {"unique_code": stakeholder.unique_code, **{f: getattr(v, f) for f in _TEXT_FIELDS}}
     type_is_local = False
     if v.project_type_id is not None:
         row = db.get(ProjectStakeholderType, v.project_type_id)
@@ -153,7 +154,7 @@ def _export_groups(
                 names[(get_current_stakeholder_version(db, sid).name, member.scope.value)] = None
         entries.append({
             "path": [{"name": n.name, "scope": n.scope.value} for n in chain],
-            "description": g.description, "exclusive_children": g.exclusive_children, "sort_order": g.sort_order,
+            "unique_code": g.unique_code, "description": g.description, "exclusive_children": g.exclusive_children, "sort_order": g.sort_order,
             "members": [{"name": n, "scope": sc} for n, sc in sorted(names)],
         })
     return sorted(entries, key=lambda e: (len(e["path"]), [p["name"].lower() for p in e["path"]]))

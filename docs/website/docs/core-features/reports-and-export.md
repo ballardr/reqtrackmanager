@@ -15,6 +15,22 @@ A project's **Reports** page generates a PDF, Word (DOCX) or CSV export of its r
 
 A project's Reports page can also offer reports from enabled modules (for example [Context & Strategy's](../modules/context-strategy-module/reports.md) and [Decision Management's](../modules/decision-management-module/reports.md)) in the same **Report** picker, with *Requirements report* listed first. When no module report applies, the picker is hidden and the page is the requirements report alone.
 
+## How reports name records
+
+Every report row that names a record leads with its [record code](../reference/glossary.md#record-code) and ends with the record's [tags](./tags.md), in the PDF, Word file, CSV and on screen alike, so a printed page or a spreadsheet can say *which* `PER-001` it means.
+
+```mermaid
+flowchart TD
+    R["A record in a report"] --> Q{"Whose record is it?"}
+    Q -->|"The organisation's<br/>(a shared Persona)"| O["Always qualified:<br/>ACME-PER-001"]
+    Q -->|"Another project's, or the<br/>report covers the organisation"| P["Qualified by that project:<br/>ACME-REQ-001"]
+    Q -->|"The project reported on"| S{"Does the organisation show<br/>the project code everywhere?"}
+    S -->|"Yes"| P
+    S -->|"No"| B["Bare: REQ-001"]
+```
+
+A report never follows your personal *Show the project code* preference, so a report that is saved, scheduled or shared reads the same for everyone. Notifications also carry the qualified code, because the notification list is read outside any project. The requirement CSV used for [import and export](./requirements-management.md#csv-import-and-export) keeps its plain `unique_code` column, which an import ignores.
+
 ## Word (DOCX) export
 
 Every report downloads as an editable Word file with the same content, order and branding as its PDF, so it can be edited after download. Both formats are built from one shared document, so they cannot drift apart.

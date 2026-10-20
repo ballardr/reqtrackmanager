@@ -45,7 +45,7 @@ export function stalenessEntry(overrides: Partial<ReportCatalogueEntry> = {}): R
 
 /** One Stakeholder on the grid. */
 export function gridItem(overrides: Partial<GridItem> = {}): GridItem {
-  return { id: "sh-1", project_id: "project-1", name: "Sam Sponsor", influence: "High", interest: "High", ...overrides };
+  return { id: "sh-1", project_id: "project-1", code: "STK-001", name: "Sam Sponsor", influence: "High", interest: "High", ...overrides };
 }
 
 /** S1's `data`: one Stakeholder in each quadrant but Monitor, and one unscored. */
@@ -54,21 +54,21 @@ export function gridData(overrides: Partial<PowerInterestGridData> = {}): PowerI
     group_by: false,
     quadrants: {
       manage_closely: [gridItem()],
-      keep_satisfied: [gridItem({ id: "sh-2", name: "Pat Regulator", interest: "Low" })],
-      keep_informed: [gridItem({ id: "sh-3", name: "Uma User", influence: "Low" })],
+      keep_satisfied: [gridItem({ id: "sh-2", code: "ACME-STK-001", name: "Pat Regulator", interest: "Low" })],
+      keep_informed: [gridItem({ id: "sh-3", code: "STK-003", name: "Uma User", influence: "Low" })],
       monitor: [],
     },
-    unscored: [gridItem({ id: "sh-4", name: "Newly Added", influence: "", interest: "" })],
+    unscored: [gridItem({ id: "sh-4", code: "STK-004", name: "Newly Added", influence: "", interest: "" })],
     ...overrides,
   };
 }
 
-const GRID_COLUMNS = ["Stakeholder", "Project", "Type", "Influence", "Interest", "Owner", "Groups", "Target cadence"];
+const GRID_COLUMNS = ["Code", "Stakeholder", "Project", "Type", "Influence", "Interest", "Owner", "Groups", "Target cadence", "Tags"];
 
 /** An S1 result built from `gridData()` (the sections mirror the data). */
 export function gridResult(overrides: Partial<ReportResult> = {}): ReportResult {
   const data = (overrides.data as PowerInterestGridData | undefined) ?? gridData();
-  const rows = (items: GridItem[]) => items.map((i) => [i.name, "Atlas Platform", "Customer", i.influence, i.interest, "", "", "Monthly"]);
+  const rows = (items: GridItem[]) => items.map((i) => [i.code, i.name, "Atlas Platform", "Customer", i.influence, i.interest, "", "", "Monthly", ""]);
   return buildReportResult({
     key: "s1", title: "Power/interest grid", notes: ["Covers this project only."],
     sections: [

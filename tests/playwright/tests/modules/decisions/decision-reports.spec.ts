@@ -166,7 +166,11 @@ test.describe("Decision Management: reports", () => {
           ]);
           expect(download.suggestedFilename()).toBe(`${report.value}.${kind.toLowerCase()}`);
           if (kind === "CSV" && report.value === "decision-register") {
-            expect(await readFile((await download.path())!, "utf8")).toContain(titles.approved);
+            const csv = await readFile((await download.path())!, "utf8");
+            expect(csv).toContain(titles.approved);
+            // A report names each record by its code, and lists its tags.
+            expect(csv.split("\n")[0]).toMatch(/^Code,Title,.*,Tags/);
+            expect(csv).toContain("DEC-001,");
           }
         }
       });

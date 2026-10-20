@@ -24,6 +24,8 @@ Design decisions:
   created at once cannot be given the same code.
 - The stored `unique_code` of a record never changes; qualification is applied
   when a code is displayed or looked up.
+- Output with no viewer (a report, an export) uses `display_code`, the server twin of the
+  frontend rule, and never the viewer's preference, so a saved report reads the same for everyone.
 
 Dependencies: `app.code_rules`, the `Organization` and `Project` models.
 """
@@ -221,6 +223,39 @@ def organization_code_for(name: str) -> str:
 def qualify(project_code: str, unique_code: str) -> str:
     """`ACME`, `REQ-001` -> `ACME-REQ-001`."""
     return f"{project_code}-{unique_code}"
+
+
+def display_code(
+    unique_code: str,
+    owner_code: str | None,
+    *,
+    own_project_code: str | None = None,
+    enforced: bool = False,
+    organization_owned: bool = False,
+) -> str:
+    """The code of a record as a report, export or reference shows it.
+
+    The server-side twin of `formatRecordCode` (`frontend/src/utils/recordCode.ts`) for output
+    that has no viewer: the person's `show_project_code` preference is **not** applied, so a
+    saved or scheduled output reads the same for everyone.
+
+    Args:
+        unique_code: The record's own code, e.g. `REQ-001`.
+        owner_code: The code of the project that owns the record, or of the organisation for an
+            organisation-owned record. `None` leaves the bare code.
+        own_project_code: The code of the project the output is about, if it is about one.
+        enforced: Whether the organisation shows the project code everywhere.
+        organization_owned: The record belongs to the organisation, not a project: always qualified.
+
+    Returns:
+        `ACME-REQ-001` for an organisation-owned record, a record from another project than
+        `own_project_code`, or any record when `enforced`; otherwise the bare code.
+    """
+    if not unique_code or not owner_code:
+        return unique_code
+    if organization_owned or enforced or owner_code != own_project_code:
+        return qualify(owner_code, unique_code)
+    return unique_code
 
 
 def split_qualified(qualified: str) -> tuple[str, str] | None:

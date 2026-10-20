@@ -141,6 +141,7 @@ from reportlab.platypus import PageBreak, Paragraph, Spacer, Table
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceApplicability
@@ -181,8 +182,10 @@ from app.modules.compliance.service import (
 )
 from app.services import relationships
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
 from app.services.report_document import STYLES, build_pdf, safe, styled_table, title_flowables
+from app.services.tags import tag_names_for_records
 
 _styles = STYLES
 _ACCENT = colors.HexColor(DEFAULT_ACCENT_COLOR_HEX)
@@ -357,6 +360,33 @@ class ComplianceReportEvidenceRow:
     provided_by_email: str
     is_archived: bool
     linked_requirement_count: int
+    code: str = ""
+    tags: str = ""
+
+
+def _evidence_codes(db: Session, project: Project, evidence: list[ComplianceEvidence], *, own_project: bool) -> tuple[dict, dict]:
+    """The report codes and tag text of `evidence`, which all belongs to `project`.
+
+    A project report is about one project, so its evidence shows bare unless the organisation enforces the
+    project code; an organisation-wide report has no project of its own, so every code is qualified.
+    The person's preference is not applied: a saved report reads the same for everyone.
+
+    Returns:
+        `(codes, tags)`, each keyed by evidence id.
+    """
+    organization = db.get(Organization, project.organization_id)
+    codes = {
+        e.id: display_code(
+            e.unique_code, project.code, own_project_code=project.code if own_project else None,
+            enforced=organization.enforce_code_everywhere,
+        )
+        for e in evidence
+    }
+    tags = {
+        evidence_id: ", ".join(names)
+        for evidence_id, names in tag_names_for_records(db, ARTEFACT_TYPE_EVIDENCE, [e.id for e in evidence]).items()
+    }
+    return codes, tags
 
 
 @dataclass
@@ -519,7 +549,8 @@ def collect_project_compliance_report(
         evidence_rows_for_ids = (
             db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.id.in_(evidence_ids))).all() if evidence_ids else []
         )
-        evidence_title_by_id = {e.id: e.title for e in evidence_rows_for_ids}
+        linked_codes, _ = _evidence_codes(db, project, list(evidence_rows_for_ids), own_project=True)
+        evidence_title_by_id = {e.id: f"{linked_codes[e.id]} {e.title}" for e in evidence_rows_for_ids}
         evidence_ids_by_pcr: dict[uuid.UUID, set[uuid.UUID]] = {}
         for link in req_evidence_links:
             evidence_ids_by_pcr.setdefault(link.target_id, set()).add(link.source_id)
@@ -602,9 +633,11 @@ def collect_project_compliance_report(
     # this report excluded via `include_archived=False`).
     evidence_rows = list(db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == project.id)).all())
     evidence_provider_emails = _emails_by_id(db, {e.provided_by for e in evidence_rows})
+    register_codes, register_tags = _evidence_codes(db, project, evidence_rows, own_project=True)
     for evidence in evidence_rows:
         linked_count = len(build_evidence_out(db, evidence).linked_requirement_ids)
         data.evidence_rows.append(ComplianceReportEvidenceRow(
+            code=register_codes[evidence.id], tags=register_tags.get(evidence.id, ""),
             title=evidence.title, issuing_organisation=evidence.issuing_organisation or "",
             issued_date=_fmt_date(evidence.issued_date), expiry_date=_fmt_date(evidence.expiry_date),
             validity_state=compute_evidence_validity_state(evidence).value, provided_by_email=evidence_provider_emails.get(evidence.provided_by, ""),
@@ -802,13 +835,14 @@ def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceRe
         story.append(PageBreak())
         story.append(Paragraph("Evidence Register", _styles["Heading1"]))
         story.append(Spacer(1, 0.3 * cm))
-        rows = [["Title", "Issuing organisation", "Issued", "Expiry", "Validity", "Provided by", "Linked to", "Archived"]]
+        rows = [["Code", "Title", "Issuing organisation", "Issued", "Expiry", "Validity", "Provided by", "Linked to", "Archived", "Tags"]]
         for e in data.evidence_rows:
             rows.append([
-                _p(e.title), _p(e.issuing_organisation), _p(e.issued_date), _p(e.expiry_date), _p(e.validity_state.replace("_", " ").title()),
-                _p(e.provided_by_email), _p(str(e.linked_requirement_count)), _p("Yes" if e.is_archived else "No"),
+                _p(e.code), _p(e.title), _p(e.issuing_organisation), _p(e.issued_date), _p(e.expiry_date),
+                _p(e.validity_state.replace("_", " ").title()), _p(e.provided_by_email), _p(str(e.linked_requirement_count)),
+                _p("Yes" if e.is_archived else "No"), _p(e.tags),
             ])
-        story.append(_styled_table(rows, [3 * cm, 3 * cm, 1.8 * cm, 1.8 * cm, 1.8 * cm, 3 * cm, 1.5 * cm, 1.6 * cm]))
+        story.append(_styled_table(rows, [1.8 * cm, 2.6 * cm, 2.2 * cm, 1.6 * cm, 1.6 * cm, 1.6 * cm, 2.4 * cm, 1.2 * cm, 1.4 * cm, 1.6 * cm]))
 
     if data.review_rows:
         story.append(PageBreak())
@@ -1022,9 +1056,12 @@ def collect_org_compliance_report(
             if not _matches_requirement_filter(row.requirement_id, requirement_id, requirement_top_level_by_id):
                 continue
             data.pending_approval_rows.append((project.name, _requirement_report_row_from_out(row, is_pending=True)))
-        for evidence in list_expiring_or_expired_evidence(db, project_id=project.id):
+        expiring = list(list_expiring_or_expired_evidence(db, project_id=project.id))
+        expiring_codes, expiring_tags = _evidence_codes(db, project, expiring, own_project=False)
+        for evidence in expiring:
             evidence_out = build_evidence_out(db, evidence)
             data.expiring_evidence_rows.append((project.name, ComplianceReportEvidenceRow(
+                code=expiring_codes[evidence.id], tags=expiring_tags.get(evidence.id, ""),
                 title=evidence.title, issuing_organisation=evidence.issuing_organisation or "",
                 issued_date=_fmt_date(evidence.issued_date), expiry_date=_fmt_date(evidence.expiry_date),
                 validity_state=evidence_out.validity_state.value, provided_by_email="", is_archived=evidence.is_archived,
@@ -1114,9 +1151,12 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
         [3 * cm, 3 * cm, 7 * cm, 4 * cm],
     )
     _appendix(
-        "Expiring/Expired Evidence", data.expiring_evidence_rows, ["Project", "Title", "Expiry", "Validity"],
-        lambda project_name, e: [_p(project_name), _p(e.title), _p(e.expiry_date), _p(e.validity_state.replace("_", " ").title())],
-        [4 * cm, 6 * cm, 3 * cm, 4 * cm],
+        "Expiring/Expired Evidence", data.expiring_evidence_rows, ["Project", "Code", "Title", "Expiry", "Validity", "Tags"],
+        lambda project_name, e: [
+            _p(project_name), _p(e.code), _p(e.title), _p(e.expiry_date), _p(e.validity_state.replace("_", " ").title()),
+            _p(e.tags),
+        ],
+        [3 * cm, 2.4 * cm, 4.6 * cm, 2.2 * cm, 2.2 * cm, 2.6 * cm],
     )
 
     return build_pdf(story, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)

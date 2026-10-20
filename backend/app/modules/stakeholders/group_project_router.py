@@ -62,7 +62,13 @@ def _require_manage(db: Session, user: User, ctx: gsh.GroupContext) -> None:
 
 
 def _refs(refs) -> list[StakeholderGroupRefOut]:
-    return [StakeholderGroupRefOut(id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id) for r in refs]
+    return [
+        StakeholderGroupRefOut(
+            id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id, unique_code=r.unique_code,
+            organization_id=r.organization_id,
+        )
+        for r in refs
+    ]
 
 
 @router.get("/stakeholder-groups", response_model=list[StakeholderGroupOut])

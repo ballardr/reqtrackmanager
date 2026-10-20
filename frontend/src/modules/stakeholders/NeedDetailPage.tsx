@@ -199,7 +199,7 @@ export function NeedDetailPage() {
           emptyText="No Requirement has come from this need yet."
           load={async () =>
             (await projectNeedApi.listRequirements(projectId, need.id)).map((r) => ({
-              link_id: r.link_id, id: r.id, name: `${r.unique_code} ${r.title}`, scope: "project" as const,
+              link_id: r.link_id, id: r.id, unique_code: r.unique_code, name: r.title, scope: "project" as const,
             }))
           }
           linkFor={(requirement) => `/projects/${projectId}/requirements/${requirement.id}`}

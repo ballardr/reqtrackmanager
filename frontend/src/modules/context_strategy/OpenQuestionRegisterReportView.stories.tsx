@@ -32,6 +32,8 @@ export const HighlightsOverdueAndUnowned: Story = {
     await expect(within(healthy).queryByText("Overdue")).not.toBeInTheDocument();
     await expect(within(healthy).getByText("Alex Owner")).toBeInTheDocument();
     await expect(within(healthy).getByText("High")).toBeInTheDocument();
+    // The code is the server's string, shown beside the question and not formatted again here.
+    await expect(within(healthy).getByText("OQ-001")).toBeInTheDocument();
   },
 };
 

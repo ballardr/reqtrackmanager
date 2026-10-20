@@ -32,6 +32,7 @@ import type { OrgUser } from "../../api/types";
 import { toErrorMessage } from "../../context/ToastContext";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { branchNames, descendantIds, groupPath } from "./groupTree";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
@@ -154,7 +155,12 @@ export function StakeholderListView({
                     <span className="row" style={{ gap: "0.25rem" }}>
                       {s.groups.map((g) => (
                         <FilterBadge key={g.id} active={groupFilter === g.id} onClick={() => setGroupFilter(groupFilter === g.id ? "" : g.id)}>
-                          <span title={groupPath(groups, g.id)}>{g.name}</span>
+                          <span title={groupPath(groups, g.id)}>
+                            {g.name}{" "}
+                            <span className="text-muted">
+                              <ScopedRecordCode record={g} />
+                            </span>
+                          </span>
                         </FilterBadge>
                       ))}
                     </span>

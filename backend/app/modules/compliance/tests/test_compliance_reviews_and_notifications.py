@@ -569,7 +569,7 @@ def test_new_assignment_notifies_compliance_officers(client, admin_token, org_id
 def test_evidence_expiry_sweep_notifies_once_per_state(client, admin_token, org_id):
     project, _assignment, pcr_id, _assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
     officer_token = _second_officer(client, admin_token, org_id, project["id"], email="evidence-officer@example.com")
-    _create_evidence(
+    evidence = _create_evidence(
         client, admin_token, project["id"], expiry_date=(TODAY - timedelta(days=1)).isoformat(),
         project_compliance_requirement_ids=[pcr_id],
     )
@@ -579,6 +579,8 @@ def test_evidence_expiry_sweep_notifies_once_per_state(client, admin_token, org_
 
     notifs = [n for n in _notifications_for(client, officer_token) if n["type"] == "compliance_evidence_expired"]
     assert len(notifs) == 1
+    # A notification is read out of any project's context, so the evidence is named by its qualified code.
+    assert notifs[0]["title"] == f"Evidence expired: {project['code']}-{evidence['unique_code']} {evidence['title']}"
 
 
 def test_required_action_due_sweep_notifies_assignee(client, admin_token, org_id):

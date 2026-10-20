@@ -64,6 +64,7 @@ from app.modules.risk_management.service import (
 )
 from app.services import notifications
 from app.services.audit import log_event
+from app.services.codes import qualify
 from app.services.principals import principal_recipients, principal_ref
 from app.services.rbac import get_effective_project_managers
 
@@ -104,12 +105,14 @@ def _notify(
     actor_id: uuid.UUID | None = None,
 ) -> None:
     """Sends one notification about `risk` to each existing user in `user_ids`."""
+    project = db.get(Project, risk.project_id)
+    code = qualify(project.code, risk.unique_code) if project is not None else risk.unique_code  # read out of context
     for user_id in user_ids:
         user = db.get(User, user_id)
         if user is None:
             continue
         notifications.notify(
-            db, user, notification_type=kind, title=f"{risk.unique_code}: {title}", body=body.replace("{title}", version.title),
+            db, user, notification_type=kind, title=f"{code}: {title}", body=body.replace("{title}", version.title),
             project_id=risk.project_id, entity_type=RISK_ARTEFACT_TYPE, entity_id=str(risk.id), actor_id=actor_id,
         )
 

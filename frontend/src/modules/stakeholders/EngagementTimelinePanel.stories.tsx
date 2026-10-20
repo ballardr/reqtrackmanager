@@ -9,8 +9,8 @@ import { EngagementTimelinePanel } from "./EngagementTimelinePanel";
 import type { StakeholderEngagement } from "./types";
 
 const TIMELINE: StakeholderEngagement[] = [
-  { id: "e2", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02" },
-  { id: "e1", title: "Quarterly review", channel: "meeting", engagement_date: "2026-03-12" },
+  { id: "e2", unique_code: "ENG-002", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02" },
+  { id: "e1", unique_code: "ENG-001", title: "Quarterly review", channel: "meeting", engagement_date: "2026-03-12" },
 ];
 
 const meta: Meta<typeof EngagementTimelinePanel> = {

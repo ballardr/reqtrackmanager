@@ -30,14 +30,16 @@ export const EmptyState: Story = {
 };
 
 export const ShowsCurrentGroupsWithTheirPath: Story = {
-  args: { current: [{ id: "acme", name: "Acme", scope: "organization", parent_group_id: "client" }] },
+  args: { current: [{ id: "acme", name: "Acme", scope: "organization", parent_group_id: "client", unique_code: "SGP-001", organization_id: "org-1" }] },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Acme", { selector: ".badge" })).toHaveAttribute("title", "Client › Acme");
+    // Each group chip carries the group's code, so two groups with one name can be told apart.
+    await expect(within(canvasElement).getByText(/SGP-001$/)).toBeInTheDocument();
   },
 };
 
 export const SavesTheChosenSet: Story = {
-  args: { current: [{ id: "acme", name: "Acme", scope: "organization", parent_group_id: "client" }] },
+  args: { current: [{ id: "acme", name: "Acme", scope: "organization", parent_group_id: "client", unique_code: "SGP-001", organization_id: "org-1" }] },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Organisation groups" }));

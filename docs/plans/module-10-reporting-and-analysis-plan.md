@@ -1,350 +1,167 @@
-# Module 10 — Reporting & Analysis — Implementation Plan
+# Module 10 — Reporting & Analysis — Plan
 
-See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
-cross-cutting architecture referenced throughout. This module hard-depends
-on [Module 0](completed/module-00-platform-foundations-plan.md) for relationship
-traversal, and otherwise consumes whatever of Modules 1–9 is enabled at
-generation time (see "Incremental delivery" below).
+See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for cross-cutting architecture. Source requirement: [overview §47](completed/future-modules-2026-09-overview.md) (read-only; `docs/requirements.md` stays authoritative).
 
-**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
-§47 "Module 10 — Reporting & Analysis".
+**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
-**Status:** Proposed. Not started. Last in the overview's recommended
-build order (§46 Phase 9) by design — §47.1's "Authoritative Data
-Principle" means this module has nothing to report on until the modules
-that own real data exist. This plan's phases can start incrementally as
-each source module lands, rather than waiting for all nine others to
-finish — see "Incremental delivery" below.
+## What this module is now
 
-## Incremental delivery, not a single big-bang phase
+The 2026-09 plan built one bespoke phase per report type (BRD, Engineering Spec, Gap Analysis, Change Impact, …). Since then the core already ships the report framework (`ReportDefinition` + `collect_*`, catalogue, `ReportRunner`, branded PDF/DOCX/CSV from one neutral `ReportDocument`, per-report-type intro/chapters/appendices across template/project/organisation tiers, record codes and tags). So this module becomes **a custom-report designer on top of that framework**:
 
-Overview §47.9's own Phase 9 groups four reports (Business Requirements
-Document, Engineering Specification, Executive Gap Analysis, Engineering
-Change Impact) as the *first* increment, then extends the same
-infrastructure to further report types. This plan follows that shape:
-Phase 1 builds the reporting *engine* (template versioning, provenance
-recording, output generation) against whatever data already exists at the
-time (at minimum: Requirements, which predate this whole roadmap); each
-subsequent report type is its own phase, addable independently as its
-source modules mature. A report that references an unbuilt module's data
-(e.g. Executive Gap Analysis referencing Future State before Module 1
-ships) should degrade gracefully (omit that section) rather than block the
-whole report type on every other module finishing.
+- A **layout** is a versioned tree of blocks that a person authors: document structure, tables, nested "for each record" blocks over the link graph, `{{record.field}}` values, and **widgets** (`[[widget.gap-analysis]]`) that embed any existing computed report.
+- One layout renders to a **document family** (PDF, DOCX, ODT, HTML) or a **table family** (CSV, XLSX, ODS).
+- Computed analysis (anti-joins, traversal, scoring) stays in code as collectors; they reach layouts as widgets. Document-shaped reports (BRD, Engineering Spec, review package, design description) become **starter layouts**, not code.
+
+```mermaid
+flowchart LR
+    A["Author<br/>(text view, later WYSIWYG)"] --> T["Layout tree<br/>versioned JSON"]
+    T --> E["Evaluator<br/>runner's permissions, caps"]
+    F["Field registry<br/>per artefact type"] --> E
+    L["Link graph traversal"] --> E
+    W["Widgets<br/>existing ReportDefinitions"] --> E
+    E --> D["Neutral model<br/>ReportDocument / tables"]
+    D --> R["Renderers<br/>HTML · PDF · DOCX · ODT · CSV · XLSX · ODS"]
+    E --> P["Provenance row"]
+    B["Branding template +<br/>content tiers"] --> R
+```
+
+Three orthogonal axes, kept separate: **layout** (what is reported), **branding template** (`ReportTemplate`: how it looks) and **content tiers** (`ReportContent`: boilerplate intro/chapters/appendices). A custom report composes all three; it is keyed `custom.<layout id>` in `ReportContent`, which therefore needs a dynamic key source (today's `valid_report_keys` is registry-only).
+
+## Decisions
+
+| # | Decision | By |
+|---|----------|----|
+| D1 | Reports are built as custom layouts wherever document- or table-shaped; computed analysis stays code and is reached through widgets. | User |
+| D2 | Not limited to documents: table layouts give CSV and multi-sheet XLSX/ODS. | User |
+| D3 | Canonical stored form is a versioned JSON tree (`schema_version`); a human-readable text view (directives) is generated from it and editable back, kept lossless by a round-trip test. Each block type declares both forms in one place. | User (JSON durable, text readable), Agent (design) |
+| D4 | Group 1 = coded templating (text view + live preview). Group 2 = WYSIWYG editing the same tree, library chosen in its own Phase 0. | User |
+| D5 | Widgets sit on their own line, `[[widget.key param=value]]`; parameters validated by the widget's existing `ReportParamDefinition`s; run with the runner's permissions. | User |
+| D6 | Output formats: PDF, DOCX, ODT, HTML, CSV, XLSX, ODS, as pluggable renderers. DOCX and XLSX ship first; ODT/ODS follow once the renderer interface has proved itself (staging is **Agent**; the user listed all seven for release one — confirm). | User / Agent |
+| D7 | PDF engine decided by a Phase 0 bake-off, not up front. User leans HTML→PDF with per-format renderers kept as visually similar as possible. | User (lean), Agent (bake-off) |
+| D8 | Rejected: Jinja/Liquid/Handlebars. They emit text, not the block model, and open template injection and unvalidated field access. The parser is ours: each, if, field, widget; no expressions. | Agent |
+| D9 | Math: delimiters `\( \)` and `$$ $$`, never bare `$`. Recognised in authored text **and in record fields a provider marks math-capable**. Record-sourced math goes through a restricted-TeX sanitiser (no links, no includes, capped macro expansion). | User (scope), Agent (delimiters, sanitiser) |
+| D10 | Every artefact type declares report fields or a stated reason, enforced by a test (same pattern as global search). Fields are opt-in; Restricted and consent-sensitive columns are excluded by omission. | User |
+| D11 | Provenance: a `GeneratedReport` row per run (layout id+version, params, scope, caller, UTC time, engine version, format, widgets used, record counts and, for versioned types, record versions; baseline optional until Module 8). No output at rest for synchronous runs. | User (row only), Agent (fields) |
+| D12 | Layouts live at organisation **and** project level from day one. | User |
+| D13 | New fine-grained permission "manage report layouts", grantable to users and groups; org admins hold it by default; project admins for their own project's layouts. Running needs only access to the report and the data. | User |
+| D14 | Runs are synchronous with node/depth/row caps and a timeout; a run expected to exceed a threshold becomes an async job, the user is notified when the download is ready, and **only async output is stored**, expiring after an organisation-set limit (capped by a platform ceiling). | User, Agent (mechanism) |
+| D15 | Project-level layout visibility is **additive** (platform starters + organisation + nearest ancestors' + own, de-duplicated by name; a project can hide an inherited one). The Action Types "own rows, else ancestor's" rule would hide every inherited layout as soon as a project made one. Needs user sign-off as it departs from the reference implementation. | Agent (proposed) |
+| D16 | A layout is configuration, not an artefact type: no `PREFIX-nnn` code, not linkable, not in global search. Record in `docs/decisions.md` when built. | Agent (proposed) |
 
 ## Status / Resume Here
 
-0 / 8 phases complete. Phase 0 is next.
+0 / 16 phases complete. Phase 0 is next.
 
-| # | Phase | Status |
-|---|-------|--------|
-| 0 | Exploratory: reporting engine shape & provenance model | [ ] Not started |
-| 1 | Reporting engine core: templates, provenance, output generation | [ ] Not started |
-| 2 | Business Requirements Document | [ ] Not started |
-| 3 | Engineering Specification | [ ] Not started |
-| 4 | Executive Gap Analysis | [ ] Not started |
-| 5 | Engineering Change Impact | [ ] Not started |
-| 6 | Remaining report types (matrices, registers, packages, adoption/audit reports) | [ ] Not started |
-| 7 | AI-assisted analysis (exploratory extension) | [ ] Not started |
-| 8 | Docs website coverage | [ ] Not started — incremental, see Phase 8 |
+| # | Phase | Group | Status |
+|---|-------|-------|--------|
+| 0 | Exploratory: PDF-engine bake-off, math, ODF libraries, tree schema | 1 | [ ] |
+| 1 | Report field registry and traversal | 1 | [ ] |
+| 2 | Layout model, tree schema, versioning, evaluator | 1 | [ ] |
+| 3 | Tiers, permission, hide/restore, bundle export/import | 1 | [ ] |
+| 4 | Text view: parser, serialiser, round-trip | 1 | [ ] |
+| 5 | Run pipeline: caps, provenance, catalogue and MCP merge | 1 | [ ] |
+| 6 | Widgets | 1 | [ ] |
+| 7 | Renderers: interface, HTML, CSV/XLSX, DOCX, PDF (7b: migrate existing reports if the engine changes) | 1 | [ ] |
+| 8 | Designer UI (text view, field picker, live preview) | 1 | [ ] |
+| 9 | Math | 1 | [ ] |
+| 10 | Async runs, expiring output, notification | 1 | [ ] |
+| 11 | Starter layouts; Executive Gap Analysis and Change Impact widgets | 1 | [ ] |
+| 12 | ODT and ODS renderers | 1 | [ ] |
+| 13 | WYSIWYG editor (its own Phase 0 first) | 2 | [ ] |
+| 14 | AI-assisted analysis (exploratory, deferred) | 2 | [ ] |
+| 15 | Docs website coverage (incremental) | — | [ ] |
 
-## Phase 0 — Exploratory: Requirements Clarification & Design Validation
+```mermaid
+flowchart LR
+    P0["0 Bake-off"] --> P1["1 Fields"] --> P2["2 Layout + evaluator"]
+    P2 --> P3["3 Tiers + permission"]
+    P2 --> P4["4 Text view"]
+    P2 --> P5["5 Run + provenance"]
+    P5 --> P6["6 Widgets"]
+    P5 --> P7["7 Renderers"]
+    P4 --> P8["8 Designer UI"]
+    P7 --> P8
+    P7 --> P9["9 Math"]
+    P5 --> P10["10 Async"]
+    P6 --> P11["11 Starters + widgets"]
+    P7 --> P12["12 ODF"]
+    P8 --> P13["13 WYSIWYG"]
+```
 
-**Why this phase exists:** §47.1's Authoritative Data Principle and §47.8's
-configurable-template requirement together imply a real templating/
-generation engine, not a set of hard-coded report pages — but the overview
-doesn't specify an output format (HTML? PDF? both?), a templating mechanism,
-or how "configurable" the fields/filters/grouping/ordering in §47.8 need to
-be in practice (a full drag-and-drop report builder is a very different
-scope than a handful of admin-configurable toggles per report type). This
-phase settles that before Phase 1.
+## Phase specs
 
-**Activities:**
+Each phase: **Why** (risk addressed) and **Outcome**. Every phase also carries the standing checklist below.
 
-1. Confirm output format(s) required — check whether existing Compliance
-   reporting already established a PDF/CSV export pattern
-   (`docs/decisions.md`'s "compliance report PDF/CSV output" phases,
-   referenced in memory) and reuse that mechanism rather than inventing a
-   second one, per the "one component per pattern" principle applied to
-   backend export machinery.
-2. Confirm the realistic scope of "configurable" for §47.8 — recommend
-   starting with per-report-type configuration (which sections, which
-   filters, field selection) rather than a generic drag-and-drop builder,
-   and treating a true report-builder UI as a later enhancement only if
-   real usage shows the fixed configuration surface is insufficient.
-3. Confirm the provenance-record shape (§47.2's minimum fields: project,
-   generation timestamp, baseline/version, included artefact versions,
-   template definition, generator/report version, filters/config) — decide
-   whether this is stored as a row per generated report (so a past report
-   can be re-opened and still show what it was generated from) or only
-   stamped into the output document itself. Recommend a stored row (a
-   `GeneratedReport` record) — a document-only stamp can't be queried
-   later ("show me every report generated against Requirement Set v1.1
-   before it was retired"), which §47.2's own emphasis on provenance
-   implies matters.
-4. Confirm report templates are versioned as real rows (§47.8's closing
-   line), not just a version number embedded in code — this determines
-   whether template edits need their own approval/versioning workflow or
-   are just ordinary configuration changes.
+**0 — Exploratory.** Bake-off of three PDF paths: ReportLab with equation images, WeasyPrint on HTML, headless Chromium on HTML. Criteria: fidelity to the HTML view, image weight, lock-down of fetches (no `file://`, no network; images only as pre-resolved bytes), effort to migrate the 30+ existing reports, header/footer/page-number/landscape/repeating-header support. Also: LaTeX→OMML for DOCX (`latex2mathml` + Office's `MML2OMML.XSL`, whose redistribution terms need checking), ODF libraries for ODT/ODS, the draft tree vocabulary, how a Pain Point's affected Stakeholders are stored (assumed `ArtefactLink`; verify), and the sync/async threshold method. *Why:* the engine choice is expensive to reverse and switching engines alone does not solve math without a browser. *Outcome:* signed-off decisions in `docs/decisions.md`.
 
-**Exit criteria:** user sign-off on output format, configuration scope, and
-the provenance-record shape, before Phase 1.
+**1 — Field registry and traversal.** A generic `ModuleDefinition.report_fields[type]` provider (modelled on `search_providers`): opt-in fields with label, kind (text, number, date, enum with label map, math-capable text) and getter; batch loader; codes via `ctx.code`/`org_code`, tags via `ctx.tag_text`. Traversal reuses `link_graph` as the single authorisation point; hidden nodes are counted, never named. Coverage test with `not_reportable` reasons. *Why:* without a registry each layout would hand-query tables, leak columns or break the module boundary. *Outcome:* every registered type is selectable in a layout or has a recorded reason.
 
-### Open questions for Phase 0
+**2 — Layout model and evaluator.** `ReportLayout` and immutable `ReportLayoutVersion` rows (tree + hash; editing creates a version; a run pins one). Tree schema validated on save: depth and node caps, field names against the registry, widget params against declarations, no raw HTML block. Evaluator walks the tree for the caller and emits the neutral model; placeholders are substituted into parsed text blocks, extending the existing rule that a value never becomes markup. *Why:* §47.8 requires versioned templates; injection and unbounded work are the main risks. *Outcome:* the user's example (requirements by component and category → linked Pain Points by title → affected Stakeholders) runs from a layout.
 
-1. **Who can configure report templates?** Not addressed explicitly in
-   §47 — recommend a project-level "Report Manager"-equivalent role, per
-   the common permission model, rather than requiring Project
-   Administrator.
-2. **Does the reporting engine need its own relationship-traversal query
-   layer, or does it call the same generic relationship-query helpers
-   Module 0 built?** Recommend the latter — Reporting is
-   explicitly meant to be "a presentation layer over project data" (§47's
-   closing line), so it should consume existing query infrastructure, not
-   build a parallel one.
+**3 — Tiers, permission, hide/restore, bundle.** Organisation and project scope per D12/D15; the "manage report layouts" permission (users and groups, per the parity rule); hide/restore of inherited layouts via `ProjectDefinitionSuppression`; layouts and their versions travel in the org and project bundles. *Why:* project-level and org-default rules in CLAUDE.md. *Outcome:* a project admin can author, hide an inherited layout and restore it.
 
-**2026-10-04 note:** Module 1's Reporting extension (Phase 13) adds a
-generic `projectReports`/`orgReports` report-registration hook on
-`TierAModuleDefinition`/`ModuleDefinition`, rendered by core `ReportsPage`.
-It is designed as this module's future report-type registration API.
-Phase 0 here should adopt and extend it rather than replace it.
-**Decided by: User.**
+**4 — Text view.** Parser and serialiser for the directive syntax; round-trip property test (tree → text → tree) and error positions in messages. *Why:* D3 only holds if the two forms cannot drift. *Outcome:* every block type is editable as text.
 
-**2026-10-06 update:** the shape changed. Module 1's Phase 12b adds a core
-report framework: `ReportDefinition` on `ModuleDefinition.reports`, typed
-parameters, shared PDF/CSV rendering and a document shell with org branding,
-and `report-catalogue` endpoints. Phase 13 adds the shared Reports UI and an
-optional per-report `reportViews` hook on `TierAModuleDefinition`. That is
-the registration API to adopt here. This module's template versioning and
-provenance sit on top of it; they are not part of 12b/13.
+**5 — Run pipeline.** `…/custom-reports/{id}/run?format=` for project and organisation scope, framework-level `report_template_id` and content tiers applied, `GeneratedReport` provenance, merge into both report catalogues and MCP. *Why:* custom reports must be indistinguishable from module reports to the Reports page. *Outcome:* a layout appears in the catalogue and runs in the shared `ReportRunner`.
 
-## Phase 1 — Reporting engine core: templates, provenance, output generation
+**6 — Widgets.** Adapter exposing any `ReportDefinition` result (sections, metrics, notes) as blocks; per-widget parameter forms; widget keys listed in the designer. *Why:* D1/D5, reuse of existing computed reports. *Outcome:* `[[widget.gap-analysis]]` embeds in a document layout.
 
-**Scope** (per Phase 0's resolution): `ReportTemplate` (versioned, per
-Phase 0 activity 4), `GeneratedReport` (provenance record, per activity 3),
-and the generation pipeline itself (fetch data per template config →
-render → stamp provenance → store/export).
+**7 — Renderers.** Pluggable renderer interface over the neutral model; HTML (also the live preview), CSV (zip when multi-table), XLSX, DOCX, PDF per Phase 0. Spreadsheet cells go through `csv_safe`-equivalent formula guards. If the engine changes, 7b moves existing reports behind golden-file comparison and retires ReportLab only after parity. *Why:* formats must not drift. *Outcome:* one layout, every shipped format, visually consistent documents.
 
-**Why:** §47.1–47.2 — every report type built afterward shares this
-infrastructure; building report-type-specific generation logic before this
-exists would mean re-deriving provenance/templating four separate times
-across Phases 2–5.
+**8 — Designer UI.** Create/edit/version/compare, text editor with parse errors, field picker (`{{…}}` insertion), widget picker, live preview, shared `Tabs`/`Toast`/confirm patterns, `help` text on non-obvious fields. *Outcome:* a non-developer can reproduce the example report.
 
-**MCP tools (2026-09-21 addendum).** This session, the user asked that
-every not-yet-built module plan make explicit that it will get narrow,
-read-only MCP tools once its backend API ships (**Decided by: User**); the
-specifics below are **Decided by: Agent**, following `docs/modules.md` §6
-and the Compliance/Decision-Management precedent (`backend/app/modules/
-compliance/module.py`; `backend/app/modules/decisions/module.py`'s Phase 4
-addendum) rather than re-explaining the mechanism inline. Once this
-phase's endpoints exist, declare `McpToolDefinition` entries for the safe
-list/get surfaces — candidates: `list_report_templates(project_id)`,
-`get_report_template(project_id, template_id)`,
-`list_generated_reports(project_id)` (the provenance-record listing from
-Phase 0 activity 3), and `get_generated_report(project_id, report_id)` (a
-single provenance record and a pointer to its stored output). Exact tool
-names may shift once Phase 0 settles the real API shape (output format,
-template CRUD surface); this is a scope commitment, not a final contract.
+**9 — Math.** `Equation` block; KaTeX for screen and HTML; DOCX native equations; PDF per Phase 0; sanitiser for record-sourced TeX; fallback shows the source. *Why:* annotations; TeX in data is an injection path. *Outcome:* equations render in every document format or degrade to source.
 
-**2026-09-22 update (Decided by: User):** this section originally excluded
-every mutating endpoint outright (the generation action, template
-create/update/delete, and any future report-type-specific generation
-endpoint) with no `McpToolDefinition` at all, reasoning that triggering
-generation is "a mutating, potentially resource-intensive action, not a
-read." Per the same reversal applied to the Compliance module
-(`docs/decisions.md`'s "Compliance MCP write tools + generalized AI
-approval gate" entry), a mutating action is no longer excluded from this
-codebase's MCP surface just for being mutating — that blanket exclusion is
-exactly what's being reversed. This module should instead commit to
-**write-enabled** MCP tools once built: `create_report_template`/
-`update_report_template`/`delete_report_template` and a `generate_report`
-tool (once Phase 0 settles its endpoint shape) declared normally, gated by
-`MCP_WRITES_ENABLED` + the calling account's own RBAC role like any other
-write tool — resource cost alone is not a reason this codebase's MCP
-surface otherwise excludes an endpoint (compare Compliance's own
-`compliance_migrate_project_compliance_version`, also a heavier mutation,
-now declared under the same reversal). This module has no approve/
-decide-type action of its own to consider under options (a)/(b) — report
-generation is a plain create, not an approval — so nothing here needs
-`allow_ai_approvals`/`APPROVAL_ACTION_ROUTE_EXTRA` either way. **Decided
-by: Agent** for the specific tool-name/scope judgment call; **Decided by:
-User** (2026-09-22) for the underlying instruction to move this plan off
-its blanket mutating-endpoint exclusion.
+**10 — Async runs.** Job state on `GeneratedReport` (queued, running, ready, expired, failed), object-storage output, a notification type, an organisation setting for retention (with a platform ceiling), a singleton expiry job started through the lifespan's `start_singletons`, download that re-checks caller and access, deletion with the organisation. Update the data-retention and classification policies and note any encryption gap. *Why:* D14; stored output is Confidential data at rest. *Outcome:* a large run notifies when ready and disappears on schedule.
 
-## Phase 2 — Business Requirements Document
+**11 — Starters and analysis widgets.** Read-only, clonable starter layouts: Business Requirements Document (§47.3), Engineering Specification (§47.4), review package, design description, plus the example as the e2e fixture. Executive Gap Analysis (§47.5) and Engineering Change Impact (§47.6, reusing Change Management and distinguishing direct, transitive and inferred impacts) as collectors exposed as widgets. A section whose source module is off is omitted, never an error. *Outcome:* acceptance criteria 1–4.
 
-**Scope** (§47.3): purpose/scope, Pain Points, Stakeholders/Personas,
-Stakeholder Needs, business objectives/Strategy, Future State, Business
-Requirements, constraints/assumptions, key Decisions, risks/business
-impacts, traceability summary, Open Questions, approval/baseline info.
+**12 — ODT and ODS.** Two renderers on the Phase 7 interface. *Outcome:* all seven formats.
 
-**Why:** §47.3 — makes the business rationale legible to non-engineering
-stakeholders directly from authoritative data, replacing a manually
-maintained parallel document.
+**13 — WYSIWYG.** Phase 0 first: block-outline editor against a rich-text editor with custom nodes; HTML renderer as live preview; must edit the canonical tree and keep the text view in sync. *Outcome:* the same layouts editable without the text syntax.
 
-**Dependency note:** this report's full value depends on Modules 1–4 all
-existing (Pain Points, Stakeholders, Strategy, Decisions) — if built before
-those modules land, it should render a partial document (omitting
-unavailable sections) rather than being blocked entirely, per this plan's
-"incremental delivery" framing.
+**14 — AI-assisted analysis (§47.9).** Deferred as before; findings cite source artefacts and stay distinguishable from approved data. Its own Phase 0 when picked up.
 
-## Phase 3 — Engineering Specification
+**15 — Docs website.** Per slice as each phase ships: engine and provenance page with a Mermaid flow, designer how-to, widget list, format notes, starter layouts. Screenshots at 1440×900 against the seeded demo dataset under `docs/website/static/img/screenshots/`, with alt text and a caption; at least one screenshot or diagram per page. **Decided by: User** (2026-09-21/22, carried over).
 
-**Scope** (§47.4): scope/system context, requirement hierarchy/types,
-stakeholder/system needs, constraints/assumptions, compliance obligations,
-decisions affecting the spec, Engineering Design relationships, interfaces,
-verification/validation relationships (via `RequirementAction`, per the
-index's confirmed finding), traceability coverage, baselines/revisions.
+## Standing checklist per phase
 
-**Why:** §47.4 — the technical counterpart to the Business Requirements
-Document, configurable per engineering discipline (§47.4's closing line).
+- **Module boundary:** nothing per-module in a core file; field providers, widgets and renderers are generic extension points. Check core enums, columns and constants for closed vocabularies a module would need an entry in.
+- **Time:** run time and version times are past instants in UTC; date parameters use the caller's day via `X-Client-Date`/`effective_today()`; test boundary hours (09:00 UTC+10, 23:00 UTC-8). No scheduled future times are introduced.
+- **Security:** identify → verify → remediate recorded in `docs/decisions.md` for each phase; consult the access-control, data-classification, retention and secure-development policies. Output of a run never exceeds what the runner can read; no Restricted columns; the layout text is never logged beyond ids and counts.
+- **Users and groups parity:** any person-valued field, filter or permission accepts a group too.
+- **MCP:** write-enabled tools (`list/get/create/update/delete` layouts, `run_report`) gated by `MCP_WRITES_ENABLED` and the caller's RBAC. Core tools update `mcp-server/skill/reqtrack-mcp/SKILL.md` and run `python scripts/generate_skill_reference.py`; widget-contributed module reports follow the module `mcp_guidance.md` rule. **Decided by: User** (2026-09-21/22, carried over).
+- **Tests:** backend test per behaviour; Playwright spec per UI feature; Storybook stories per component; specs idempotent; seeds (`seed_demo_data.py`, `seed_e2e_dataset.py`) gain a layout; one pytest run at a time.
+- **Docs:** `docs/modules.md` §4g, `docs/solution-architecture.md`, README, website, in-app help; run `python scripts/check_doc_links.py`.
 
-## Phase 4 — Executive Gap Analysis
+## Risks
 
-**Scope** (§47.5): current vs. required capability, current vs. Future
-State, requirement coverage gaps, design maturity gaps, compliance gaps,
-high/residual risks, open Decisions/Questions, major dependencies, areas
-needing investment — each gap must identify its supporting artefacts
-(§47.5's explicit auditability requirement, so a management finding always
-traces back to real engineering evidence, never a bare assertion).
+| Risk | Mitigation |
+|------|------------|
+| Engine switch regresses existing PDFs | Golden-file parity before ReportLab is retired (7b) |
+| Text view and JSON drift | Single declaration per block type; round-trip property test |
+| Unbounded traversal or huge output | Depth, node and row caps; async path; timeout |
+| Layout author reads data they should not | Runs with the runner's permissions; hidden nodes counted not named |
+| TeX or HTML in data used as an attack | Sanitiser, no raw HTML, locked-down fetchers |
+| Async output outlives its purpose | Organisation retention setting, platform ceiling, expiry job |
 
-**Why:** §47.5 — gives executives a digestible view "without requiring
-[them] to navigate the complete engineering model," while keeping every
-finding traceable, unlike a hand-written status summary.
+## Open questions
 
-## Phase 5 — Engineering Change Impact
+1. Final tree vocabulary and the text syntax's exact grammar (Phase 0).
+2. Sync/async threshold: a cheap count pre-pass against a limit is proposed (an in-flight hand-off across workers is not) — **Agent**, tune with data.
+3. D15 (additive project visibility) and D16 (layouts are not artefact types) need sign-off.
+4. D6 staging of ODT/ODS: confirm Phase 12 is acceptable for release one.
+5. Whether the manage permission is separate for org and project tiers (proposed: one permission, scoped by where it is granted).
+6. Restricted-TeX subset and macro-expansion limit (Phase 0).
 
-**Scope** (§47.6): traversal from a changed artefact through upstream/
-downstream requirements, stakeholders, decisions, designs, interfaces/child
-projects, verification, compliance, risks, to generated documents/
-baselines — distinguishing direct vs. transitive vs. inferred-potential
-impacts, artefacts requiring review, baselines potentially invalidated,
-reports requiring regeneration. Explicitly reuses the existing Change
-Management capability (§47.6's own instruction) rather than a new
-change-control system.
+## Acceptance criteria (overview §48, plus this plan)
 
-**Why:** §47.6 — this is the concrete mechanism behind every other module's
-"changes can participate in Change Impact analysis" acceptance criterion
-(Stakeholders §48, Risk §48) — those modules only need to expose
-relationship data; this phase is where the actual traversal/analysis logic
-lives, once, generically.
-
-## Phase 6 — Remaining report types
-
-**Scope** (§47.7): Traceability matrices (reuses Module 7's own matrix
-infrastructure directly — this phase's job is presentation/export, not a
-second matrix engine), requirement coverage reports, compliance
-assessments, risk registers, decision registers, design descriptions,
-review packages, baseline comparison reports, requirement-set adoption
-reports, audit/history reports. Each is a template built on Phase 1's
-engine, addable independently as its source module exists.
-
-## Phase 7 — AI-assisted analysis (exploratory extension)
-
-**Scope** (§47.9): missing/weak traceability, requirement conflicts,
-orphaned artefacts, designs lacking rationale, risks without effective
-mitigation, stale decisions, evidence needing review, potential change
-impacts, potential relationships for confirmation, draft report content,
-current/future-state gaps. §47.9's explicit constraint: AI-generated
-findings must identify source artefacts and stay clearly distinguishable
-from approved project information — never silently alter authoritative
-records.
-
-**Why deferred and marked "exploratory extension" rather than a normal
-phase:** this is explicitly framed as *future* in the overview itself
-("Future AI capabilities should operate...") and depends on essentially
-everything else in this roadmap existing first to have enough real data to
-analyze meaningfully. This phase's own Phase-0-equivalent work (what
-exactly gets automated, what human review gate wraps each finding type)
-should happen close to when it's actually picked up, not speculatively now.
-
-## Phase 8 — Docs website coverage
-
-**Goal:** add Reporting & Analysis's user-facing surface to
-`docs/website/` (the published docs site, `docs/plans/completed/docs-website-plan.md`)
-— what the reporting engine is, the provenance model, and each shipped
-report type — following the site's existing structure, tone, and
-Mermaid-diagram conventions (per this repo's Documentation Requirements:
-prefer diagrams, validate they render before finalising).
-
-This phase is added per this session's instruction that every not-yet-built
-module plan make explicit its docs-website coverage commitment
-(**Decided by: User**, 2026-09-21); its specific incremental shape below is
-**Decided by: Agent**, adapted to this module's own "Incremental delivery"
-framing rather than copied from another module's single-shot version of
-this phase.
-
-**Why this is its own tracked phase, and incremental rather than a single
-pass:** this module's own "Incremental delivery" section above means there
-is no single point at which "the frontend" ships — Phase 1 builds the
-engine, then each report type (Phases 2–6) and the AI-assisted extension
-(Phase 7) lands independently, potentially with real time gaps between
-them. A docs-website phase gated on all of them finishing at once would
-mean the site describes nothing for a long time after several report types
-are already usable, or gets written once and silently drifts as later
-report types ship undocumented. This phase is instead a standing
-commitment revisited at each source phase's own completion, the same
-incremental spirit as the feature it documents.
-
-**Scope, performed incrementally as each source phase ships:**
-
-- On Phase 1 shipping: a docs-site page introducing the reporting engine —
-  what a report template and a generated report are, the provenance model
-  (§47.2: project, generation timestamp, baseline/version, included
-  artefact versions, template definition, generator/report version,
-  filters/config), and the "reports do not silently become a second source
-  of truth" principle — as a short Mermaid diagram of generation →
-  provenance stamping → storage/export.
-- On each of Phases 2–6 shipping: a subsection for that report type — what
-  it contains, which source modules it draws from, and (per §47.5's own
-  auditability requirement, most sharply for the Executive Gap Analysis)
-  how a finding traces back to its supporting artefacts — plus an update to
-  the site's module/feature index wherever other report types are already
-  listed.
-- On Phase 7 shipping: a subsection explaining that AI-assisted analysis
-  findings are always clearly distinguishable from approved project
-  information (§47.9), never presented as authoritative on their own.
-- Cross-link from each source module's own docs-website page (e.g.
-  Decision Management's, Compliance's) to the report type(s) that consume
-  its data, wherever the site already cross-links traceability/consumption
-  relationships elsewhere.
-- **Screenshot requirement (2026-09-22 addendum).** Making this explicit
-  here rather than leaving it implicit is **Decided by: User** (the same
-  instruction as the phase itself, applied specifically to screenshots this
-  time — `docs/plans/completed/docs-website-plan.md`'s "Screenshots" section already
-  bound this page to its standard, but this phase's Scope above never said
-  so in as many words). Each slice above is subject to that standard in
-  full — 1440×900 viewport, captured against the seeded demo dataset,
-  stored under `docs/website/static/img/screenshots/`, real alt text plus a
-  one-line caption — and to its "at least one screenshot or diagram per
-  page, not forced onto every page" bar (**Decided by: Agent** for how it
-  applies here, since this module's own UI isn't concrete yet beyond the
-  engine/report-type split): the Phase 1 engine-introduction slice is
-  well served by the provenance-stamping Mermaid diagram already scoped
-  above and doesn't need a screenshot of its own, but each Phase 2–6
-  report-type subsection should carry at least one screenshot of that
-  report type's own rendered output (e.g. a generated Business Requirements
-  Document, or the Executive Gap Analysis view with a finding traced back
-  to its supporting artefact) once that phase actually ships and there is a
-  real screen to capture — a generic commitment for now, not a named
-  screen, since none of Phases 2–6 have built their actual UI yet.
-
-**Status:** not started. The first slice (Phase 1's own engine
-introduction) depends on Phase 1 shipping; each report-type subsection
-depends only on that specific phase, not on every other phase in this
-plan — consistent with "Incremental delivery" above. Not a blocker for any
-other phase.
-
-## Acceptance criteria (from overview §48, Reporting & Analysis subset)
-
-- Business Requirements Documents can be generated from authoritative
-  project data.
-- Engineering Specifications can be generated from requirements, design
-  and related engineering data.
-- Executive Gap Analyses can compare defined current and future states.
-- Engineering Change Impact reports can identify direct and transitive
-  impacts of an existing change.
-- Generated reports record source baseline/version and report/template
-  provenance.
-- Report templates are versioned.
+- Business Requirements Documents and Engineering Specifications can be generated from authoritative project data (starter layouts).
+- Executive Gap Analyses compare defined current and future states, each finding tracing to artefacts.
+- Engineering Change Impact reports identify direct and transitive impacts of an existing change.
+- Generated reports record source baseline/version and report/layout provenance.
+- Layouts are versioned.
 - Reports do not silently become a second source of truth.
 - AI-assisted analysis is distinguishable from approved project information.
+- A person can author a custom layout (the requirements → Pain Points → Stakeholders example) and export it as PDF, DOCX, ODT, HTML, CSV, XLSX and ODS.
+- A layout never shows data its runner cannot read.

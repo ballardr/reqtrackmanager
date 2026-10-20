@@ -78,7 +78,8 @@ def _emails(db: Session, user_ids: set[UUID | None]) -> dict[UUID, str]:
 
 def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, str]) -> dict[str, Any]:
     v = get_current_persona_version(db, persona.id)
-    data: dict[str, Any] = {"ref": ref, **{f: getattr(v, f) for f in _TEXT_FIELDS}}
+    # `unique_code` is informational: an import numbers the persona afresh and matches by `ref`/name.
+    data: dict[str, Any] = {"ref": ref, "unique_code": persona.unique_code, **{f: getattr(v, f) for f in _TEXT_FIELDS}}
     type_name = PERSONA_TYPES.display_name(db, org_type_id=v.org_type_id, project_type_id=v.project_type_id)
     type_is_local = False
     if v.project_type_id is not None:

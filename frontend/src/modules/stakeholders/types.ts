@@ -344,6 +344,10 @@ export interface RepresentedLink {
   id: string;
   name: string;
   scope: "organization" | "project";
+  /** The record's own code (`PER-001`); the panel shows it through `ScopedRecordCode`. Absent for a link with none. */
+  unique_code?: string;
+  /** The owning organisation of an organisation-scoped record, which qualifies its code. */
+  organization_id?: string | null;
 }
 
 
@@ -426,12 +430,15 @@ export interface NeedHolder {
   id: string;
   name: string;
   scope: "organization" | "project";
+  unique_code: string;
+  organization_id: string | null;
 }
 
 /** One "has need" link seen from a Stakeholder or Persona: the need. */
 export interface HeldNeed {
   link_id: string;
   id: string;
+  unique_code: string;
   name: string;
   status: NeedStatus;
 }
@@ -453,6 +460,9 @@ export interface StakeholderGroupRef {
   name: string;
   scope: StakeholderScope;
   parent_group_id: string | null;
+  /** The group's code (`SGP-001`); qualified by `organization_id`'s code for an organisation group. */
+  unique_code: string;
+  organization_id: string | null;
 }
 
 /** A node of the group tree; `member_count` counts direct members only. */
@@ -539,6 +549,7 @@ export interface EngagementFieldValues {
 /** One row of a Stakeholder's engagement timeline (no notes: open the engagement for those). */
 export interface StakeholderEngagement {
   id: string;
+  unique_code: string;
   title: string;
   channel: EngagementChannel;
   engagement_date: string;
@@ -549,6 +560,8 @@ export interface EngagementParticipant {
   stakeholder_id: string;
   name: string;
   scope: "organization" | "project";
+  unique_code: string;
+  organization_id: string | null;
 }
 
 export interface EngagementPersona {
@@ -556,6 +569,8 @@ export interface EngagementPersona {
   persona_id: string;
   name: string;
   scope: "organization" | "project";
+  unique_code: string;
+  organization_id: string | null;
 }
 
 export interface EngagementAudience {

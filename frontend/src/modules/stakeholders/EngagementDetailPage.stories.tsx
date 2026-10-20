@@ -32,8 +32,8 @@ const ORG_GROUPS: OrgGroup[] = [
 const PROJECT_GROUPS: ProjectGroup[] = [];
 const TEAM: Principal = { type: "org_group", id: "group-1", label: "Platform Architecture", member_count: 3, exists: true };
 
-const PARTICIPANTS: EngagementParticipant[] = [{ link_id: "pa1", stakeholder_id: "stakeholder-1", name: "Pat Regulator", scope: "project" }];
-const PERSONAS: EngagementPersona[] = [{ link_id: "pe1", persona_id: "persona-1", name: "Field Technician", scope: "project" }];
+const PARTICIPANTS: EngagementParticipant[] = [{ link_id: "pa1", stakeholder_id: "stakeholder-1", name: "Pat Regulator", scope: "project", unique_code: "STK-001", organization_id: null }];
+const PERSONAS: EngagementPersona[] = [{ link_id: "pe1", persona_id: "persona-1", name: "Field Technician", scope: "project", unique_code: "PER-001", organization_id: null }];
 const AUDIENCES: EngagementAudience[] = [{ link_id: "au1", group_id: "g-client", name: "Client", scope: "organization" }];
 const OUTCOMES: EngagementOutcome[] = [{ link_id: "o1", kind: "raised", target_type: "pain_point", target_id: "pp-1", label: "Reports arrive late" }];
 const PROMPTS: EngagementPrompt[] = [

@@ -76,6 +76,7 @@ def _need_json(db: Session, need: StakeholderNeed, project: Project, emails: dic
         if requirement is not None:
             codes.append(requirement.unique_code)
     return {
+        "unique_code": need.unique_code,  # informational: an import numbers the need afresh
         **{f: getattr(v, f) for f in _TEXT_FIELDS}, "status": v.status.value,
         **principals_to_bundle(db, v, NEED_PRINCIPAL_FIELDS), "created_by_email": emails.get(need.creator_id), "is_archived": need.is_archived,
         "archived_at": _j(need.archived_at), "created_at": _j(need.created_at), "holders": holders,
