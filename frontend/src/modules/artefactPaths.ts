@@ -35,6 +35,30 @@ export function getArtefactPath(artefactType: string, projectId: string, id: str
 }
 
 /**
+ * Where a global-search result opens: a project's own page, or the page of the record the server
+ * says to open (`open_*`: a research finding opens its engagement) in the project it was found through, or
+ * at its organisation page for an organisation-owned record found without one. `null` when no installed
+ * module can say where that record lives.
+ */
+export function getSearchHitPath(hit: {
+  open_type: string;
+  open_id: string;
+  open_project_id: string | null;
+  organization_id?: string | null;
+}): string | null {
+  if (hit.open_type === "project") return `/projects/${hit.open_id}`;
+  if (hit.open_project_id) return getArtefactPath(hit.open_type, hit.open_project_id, hit.open_id);
+  // An organisation-owned record found without a project opens at its organisation-level page.
+  if (hit.organization_id) {
+    for (const module of installedModules) {
+      const path = module.orgArtefactPaths?.[hit.open_type];
+      if (path) return path(hit.organization_id, hit.open_id);
+    }
+  }
+  return null;
+}
+
+/**
  * Where clicking a notification navigates: a notification about a record a module owns (its
  * `entity_type` is that module's registered artefact type) opens that record's page via the
  * module's `artefactPaths`; anything else keeps the core resolution (`notificationLink`).

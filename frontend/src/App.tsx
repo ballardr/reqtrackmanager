@@ -29,6 +29,7 @@ import { ProjectListPage } from "./pages/ProjectListPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ProjectReviewsDuePage } from "./pages/ProjectReviewsDuePage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { SearchPage } from "./pages/SearchPage";
 import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { ServerManagementPage } from "./pages/ServerManagementPage";
@@ -118,6 +119,7 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
         <Route path="/projects/:projectId/reports" element={<ReportsPage />} />
         <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />
+        <Route path="/search" element={<SearchPage />} />
         <Route path="/preferences/:group?" element={<PreferencesPage />} />
         <Route path="/help" element={<HelpRedirectPage />} />
         {/* Falls through here for any path that matches none of the routes

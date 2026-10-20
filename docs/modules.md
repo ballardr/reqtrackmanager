@@ -366,6 +366,9 @@ class ModuleDefinition:
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
+    search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
+    not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
+    search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -1110,7 +1113,54 @@ ModuleDefinition(
 - A module declaring `artefact_types` also needs `artefact_summary_providers`,
   `artefact_type_labels` (§4f) and, on the frontend, `artefactPaths`, so the type can
   be shown and followed from a link; `tests/test_artefact_type_routes.py` and
-  `frontend/src/modules/registeredArtefactTypes.json` guard the last.
+  `frontend/src/modules/registeredArtefactTypes.json` guard the last. It also needs a
+  `search_providers` entry, or a `not_searchable` reason (§4j).
+
+### 4j. Global search: providers and scopes (Platform review, Phase 23)
+
+Every artefact type is findable by the header search with no search code of your own: you describe the
+SQL, core does scoping, authorisation, matching, ranking and paging.
+
+```mermaid
+flowchart LR
+    S["POST /search"] --> A["Authorise: projects the caller can open,<br/>module on, view permission, per project"]
+    A --> P["Each type's ArtefactSearchProvider<br/>(your columns and fields)"]
+    P --> M["Merge, rank, page<br/>(omit, never redact)"]
+    M --> R["Hits: code, title, status,<br/>snippet, record to open"]
+```
+
+- `search_providers[artefact_type] = ArtefactSearchProvider(from_clause, columns, fields, where, status_labels, organization_owned, open_owner_type)`.
+  `columns` (`SearchColumns`) says which SQL expression is the id, owning project, code, title, status,
+  archived flag and last change; `fields` (`SearchField(key, label, column)`) are the **extra** text columns
+  the search may match. **Fields are opt-in:** a column you do not list is never matched, so a personal-data or
+  consent-sensitive column is excluded by leaving it out. Reuse a `key` and `label` another type uses
+  (`description`, `rationale`) so the field picker lists it once; `id`, `title` and `tags` are built by core
+  (every taggable type is searched on tags with no provider work). A versioned record is read through its
+  current version: `services.search_core.versioned_provider` builds the provider for you.
+- `organization_owned=True` for a type that can belong to the organisation (`project_id` NULL) and is shown
+  through projects: such a record is found only through a project allowed to see it, using the same visibility
+  your `get_many_in_project` applies (per-project hiding), and its count is taken after that check.
+- `organization_subcomponent="<key>"` instead, for a type whose organisation-owned records have an organisation-level
+  surface and no project shows them (a Strategy): they are searched, in the all-projects scope, for every member
+  of an organisation where that sub-component is on (and, in a one-project search, where the module has it on for
+  that project, unless the person left organisation records out), and open at the organisation page you register in
+  `TierAModuleDefinition.orgArtefactPaths`.
+- `comments=SearchComments(model, record_id, body, created_at, where)` makes the opt-in `comments` field available
+  for a type that has a comment table (`services.search_core.comments_of` builds it). Comments are never searched
+  by default and cannot be a stored default: one `EXISTS` per type is much dearer than the record's own columns.
+- `open_owner_type` names the type whose page opens when yours has none of its own (a finding opens its
+  engagement); `columns.owner_id` is that record's id.
+- **Registration is required.** A type with neither a provider nor an entry in `not_searchable` (`{type: reason}`)
+  fails `tests/test_search.py`, and the frontend must resolve a page for it (`artefactPaths`) or its result would
+  be a dead row (`artefactPaths.stories.tsx`).
+- `search_scopes[key] = SearchScope(label, resolve, narrowness)` adds a place to the page's **Scope** filter
+  (Compliance: `standard`). `resolve(db, user_id, ref_id)` returns a `ScopeResolution(project_ids, restrictions)`:
+  the projects the unit spans (core keeps only those the caller can open) and, per type, an extra SQL condition
+  (a standard's clauses only). A type absent from `restrictions` is not searched in the scope. Return `None` for
+  "not found or not allowed" and answer the two identically. On the frontend register the matching
+  `TierAModuleDefinition.searchScopes` (`key`, `label`, `narrowness`, `match(pathname) -> ref id | null`); core
+  names no module's scope.
+- Never log, audit or trace the query text; core already does not.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

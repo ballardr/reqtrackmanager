@@ -17,6 +17,7 @@ import { resolveNavIcon } from "../modules/navIcons";
 import type { ProjectNavItem } from "../navigation/projectNav";
 import { installedModules } from "../modules/registry";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
+import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
 import { NavRailLink } from "./NavRailLink";
 import { ProjectNavSection } from "./ProjectNavSection";
@@ -198,6 +199,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
         </Link>
         {user && (
           <div className="row">
+            <HeaderSearch />
             <NotificationBell />
             {clientConfig?.help_enabled && (
               <Tooltip label={strings.nav.help}>

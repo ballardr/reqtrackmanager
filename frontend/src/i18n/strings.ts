@@ -1725,6 +1725,10 @@ const en = {
   },
   preferences: {
     title: "Preferences",
+    searchGroup: "Search",
+    searchResetDefault: "Use the built-in default",
+    searchIncludeOrgRecords: "Include organisation records when searching a project",
+    searchFieldsHint: "Applies to the header search box and to a new search. You can still choose other fields for any one search.",
     // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
     // — Preferences converted from Tabs to ResourceMenu for cross-page
     // consistency with the other admin-tier pages (docs/decisions.md).
@@ -2111,6 +2115,78 @@ const en = {
   // form field saying what it is, what it affects and typical values. A field that explains itself
   // passes `helpNotNeeded` instead. Terminology tokens ({requirement}, {project}) are filled in per
   // organisation like the rest of this table.
+  search: {
+    // Header box
+    boxLabel: "Search",
+    placeholder: "Search…",
+    submit: "Search",
+    openSearch: "Open search",
+    closeSearch: "Close search",
+    dropdownLabel: "Search results",
+    // The live dropdown never says "scope": the footer names the place, in the scope's own label.
+    seeAll: (query: string, place: string) => `See all results for ‘${query}’ in ${place}`,
+    resultsAnnouncement: (count: number) => (count === 1 ? "1 result" : `${count} results`),
+    noResults: "No results",
+    tooShort: "Type at least 2 characters to search.",
+    timeout: "The search took too long. Narrow the search and try again.",
+    rateLimited: "You are searching too fast. Wait a moment and try again.",
+    failed: "The search failed. Try again.",
+    searching: "Searching…",
+    // Scopes
+    scopeThisProject: "This project",
+    scopeAllProjects: "All projects",
+    scopeThisStandard: "This standard",
+    // Page
+    pageTitle: "Search",
+    pageHeading: (query: string) => `Results for ‘${query}’`,
+    queryLabel: "Search text",
+    filters: "Filters",
+    scope: "Scope",
+    organisation: "Organisation",
+    allOrganisations: "All organisations",
+    recordType: "Record type",
+    allTypes: "All types",
+    project: "Project",
+    allProjects: "All projects",
+    status: "Status",
+    anyStatus: "Any status",
+    includeArchived: "Include archived and retired",
+    includeOrgRecords: "Include organisation records",
+    updatedFrom: "Updated from",
+    updatedTo: "Updated to",
+    searchIn: "Search in",
+    match: "Match",
+    matchContains: "Contains all the words",
+    matchPhrase: "Exact phrase",
+    sort: "Sort by",
+    sortRelevance: "Relevance",
+    sortUpdated: "Most recently updated",
+    clearFilters: "Clear filters",
+    total: (count: number, capped: boolean) => (capped ? `${count}+ results` : count === 1 ? "1 result" : `${count} results`),
+    showing: (from: number, to: number) => `Showing ${from}–${to}`,
+    previousPage: "Previous page",
+    nextPage: "Next page",
+    depthLimit: "Only the first 500 results can be shown. Refine the search to narrow them.",
+    notSearched: (labels: string) => `Not searched: ${labels} (no selected field)`,
+    projectsTruncated: "You can open more projects than one search covers; narrow the search to a project to reach the rest.",
+    emptyTitle: "Nothing found",
+    emptyHint: "Try other words, widen the scope, clear filters, or search more fields.",
+    startHint: "Type at least 2 characters to search records across your projects.",
+    updated: (when: string) => `Updated ${when}`,
+    archivedBadge: "Archived",
+    inProject: (name: string) => `in ${name}`,
+    inOrganisation: "Organisation record",
+    matchedIn: (field: string) => `Matched in ${field}`,
+    typeCount: (label: string, count: number, capped: boolean) => `${label} (${capped ? `${count}+` : count})`,
+    // Field picker
+    fieldsLabel: "Fields searched",
+    fieldsFilterLabel: "Search fields",
+    fieldsUnavailable: (labels: string) => `No longer available: ${labels}.`,
+    fieldsEmpty: "ID and Title",
+    fieldCarriedBy: (types: string) => `(${types})`,
+    slowFieldHint: "(slower: reads every discussion)",
+    fieldPickerSummaryLimit: 3,
+  },
   help: {
     // Requirements and change requests
     requirementLevel: "How binding the {requirement} is: a Requirement must be met, a Recommended one should be met unless there is a reason not to, and an Optional one is nice to have.",
@@ -2124,6 +2200,9 @@ const en = {
     reportBrandingTemplate: "The branding applied to the export: logo, colours, cover page and footer. Leave it unset to use the default.",
     reportChapterLayout: "Whether the report starts a new chapter for each {component} or runs on continuously. Automatic follows the chosen template.",
     reportChapterDefault: "New reports start a chapter for each {component} unless the person exporting chooses a continuous layout.",
+    // Search
+    searchIncludeOrgRecords: "When you search one project, also look in the records your organisation owns and shares with every project (a shared Strategy, say). A project that has the feature switched off never shows them. You can change this for any one search from the search page.",
+    searchDefaultFields: "Which fields the header search and a new search look in. ID and Title are always included. You can still change the fields for any one search from the search page.",
     // Project and organisation codes
     orgCode: "A short code for this organisation, used to qualify the codes of organisation-level records (for example ACME-PER-001). Letters and digits only, and different from every project code.",
     projectCode: "The short code that qualifies this {project}'s record codes outside it (for example ACME-REQ-001). It must be unique in the organisation and follow the organisation's code rules.",
@@ -2192,6 +2271,10 @@ const en = {
     resetToPlatformDefault: "Reset to platform default",
     chooseFile: "Choose file",
     fieldHelp: (label: string) => `Help: ${label}`,
+    nSelected: (count: number) => `${count} selected`,
+    filterOptions: (label: string) => `Filter ${label}`,
+    filterPlaceholder: "Filter…",
+    noMatchingOptions: "Nothing matches.",
     selectOption: "Select…",
     typeToConfirmLabel: (name: string) => `Type "${name}" to confirm`,
     // `SplitButtonTrigger`'s chevron affordance (style guide "Pattern:

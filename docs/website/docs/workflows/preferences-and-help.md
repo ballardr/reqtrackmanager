@@ -9,6 +9,7 @@ sidebar_position: 2
 Click your name in the top bar to open **Preferences**, a tabbed page:
 
 - **Profile** — avatar, display name (an organisation admin can lock this so members can't rename themselves), pronouns, theme (light/dark/system), and which page you land on after login (a specific project, the project list, or automatic).
+- **Search** — which fields the top-bar search and a new search look in (ID and Title are always included; Tags is on by default). See [Global search](../core-features/global-search.md).
 - **Security** — change your password, and enable/disable [two-factor authentication](./two-factor-authentication.md).
 - **Your access** — every organisation you belong to, your role(s) there, a **Manage organisation** link wherever you hold `org_admin`, and the projects within it you can see with your role(s) on each. The quickest way to check "what can I actually do here."
 - **Personal Access Tokens** — create and revoke tokens for API or MCP access. See [Core Features → Personal access tokens](../core-features/personal-access-tokens.md).

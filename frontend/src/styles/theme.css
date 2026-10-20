@@ -484,6 +484,114 @@ select.input {
   background: var(--color-surface-alt);
 }
 
+/* The global search box in the top bar (components/HeaderSearch.tsx). It sits on the dark header
+   bar, so its field takes the header's translucent-white treatment like `.app-header .btn`; the
+   dropdown under it is a normal light card, so it resets the header's white text like
+   `.notification-dropdown` above. Below the nav-rail breakpoint the box collapses to an icon button
+   and, when opened, covers the header (`--overlay`). */
+.header-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.header-search__input {
+  width: 17rem;
+  max-width: 28vw;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-header-text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.header-search__input::placeholder {
+  color: var(--color-header-text-muted);
+}
+
+.header-search__input:focus-visible {
+  outline: 2px solid var(--color-header-text);
+  outline-offset: 1px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.header-search--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  padding: 0 1rem;
+  background: var(--color-header-bg);
+}
+
+.header-search--overlay .header-search__input {
+  flex: 1;
+  width: auto;
+  max-width: none;
+}
+
+.header-search__spinner {
+  position: absolute;
+  right: 3.4rem;
+  color: var(--color-header-text-muted);
+  animation: search-spin 0.8s linear infinite;
+}
+
+@keyframes search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app-header .search-dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  width: min(34rem, 92vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 30;
+  gap: 0.5rem;
+  color: var(--color-text);
+}
+
+.header-search--overlay .search-dropdown {
+  left: 1rem;
+  right: 1rem;
+  width: auto;
+}
+
+.app-header .search-dropdown .text-muted {
+  color: var(--color-text-muted);
+}
+
+.search-option {
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.search-option[aria-selected="true"],
+.search-option:hover {
+  background: var(--color-surface-alt);
+}
+
+.search-option--footer {
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  padding-top: 0.55rem;
+  font-weight: 600;
+}
+
+.search-mark {
+  background: color-mix(in srgb, var(--color-warning) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 /* See components/Tooltip.tsx — appears immediately on hover/focus rather
    than relying on the native `title` attribute's slow, OS-dependent delay.
    Rendered through a portal into `document.body` with `top`/`left` set

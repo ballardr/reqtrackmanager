@@ -71,7 +71,7 @@ async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: n
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
   let response: Response;
   try {
-    response = await fetch(`${BASE_URL}${path}`, { ...options, headers, signal: controller?.signal });
+    response = await fetch(`${BASE_URL}${path}`, { ...options, headers, signal: controller?.signal ?? options.signal });
   } catch (err) {
     if (controller?.signal.aborted) {
       throw new ApiError(0, "The server is taking longer than expected to respond. Please try again.");
@@ -149,8 +149,9 @@ async function requestPage<T>(path: string): Promise<Page<T>> {
 export const api = {
   get: <T>(path: string) => request<T>(path),
   getPage: <T>(path: string) => requestPage<T>(path),
-  post: <T>(path: string, body?: unknown, timeoutMs?: number) =>
-    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }, timeoutMs),
+  /** `signal` lets the caller cancel the request (a superseded search); `timeoutMs` takes precedence when both are given. */
+  post: <T>(path: string, body?: unknown, timeoutMs?: number, signal?: AbortSignal) =>
+    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined, signal }, timeoutMs),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>

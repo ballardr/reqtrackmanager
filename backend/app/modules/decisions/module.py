@@ -94,6 +94,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.modules.decisions.models import Decision
 from app.modules.decisions.reports import REPORT_DEFINITIONS
+from app.modules.decisions.search import SEARCH_PROVIDERS
 from app.modules.decisions.service import (
     DECISION_APPROVE_PERMISSION,
     DECISION_ARTEFACT_TYPE,
@@ -304,6 +305,7 @@ MODULE_DEFINITION = ModuleDefinition(
             browse_levels=(BrowseLevel("decision_type", "Decision type"),),
         ),
     },
+    search_providers=SEARCH_PROVIDERS,
     artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},
     link_type_seeds=LINK_TYPE_SEEDS,
     roles=(

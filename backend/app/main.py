@@ -46,6 +46,7 @@ from app.routers import (
     requirements,
     reviews,
     scim,
+    search,
     system,
     tags,
     ws,
@@ -271,6 +272,7 @@ app.include_router(requirements.router)
 app.include_router(change_requests.router)
 app.include_router(reports.router)
 app.include_router(report_catalogue.router)
+app.include_router(search.router)
 app.include_router(files.router)
 app.include_router(custom_fields.router)
 app.include_router(action_types.router)

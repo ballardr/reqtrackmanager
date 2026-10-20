@@ -52,6 +52,7 @@ from app.services.files import upload_file
 from app.services.geoip import resolve_and_store_login_location
 from app.services.invites import consume_pending_invites
 from app.services.rbac import get_effective_org_roles, get_effective_project_roles, get_user_org_group_ids
+from app.services.search import SEARCH_DEFAULT_FIELDS_KEY, SEARCH_INCLUDE_ORG_RECORDS_KEY, validate_default_fields
 from app.services.ui_preferences import merge_ui_preferences
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -352,8 +353,13 @@ def update_preferences(
     if payload.email_digest_mode is not None:
         current_user.email_digest_mode = payload.email_digest_mode
     if payload.ui_preferences is not None:
+        patch = dict(payload.ui_preferences)
+        if patch.get(SEARCH_DEFAULT_FIELDS_KEY) is not None:
+            patch[SEARCH_DEFAULT_FIELDS_KEY] = validate_default_fields(db, current_user, patch[SEARCH_DEFAULT_FIELDS_KEY])
+        if patch.get(SEARCH_INCLUDE_ORG_RECORDS_KEY) is not None and not isinstance(patch[SEARCH_INCLUDE_ORG_RECORDS_KEY], bool):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "search_include_org_records must be true or false.")
         try:
-            current_user.ui_preferences = merge_ui_preferences(current_user.ui_preferences, payload.ui_preferences)
+            current_user.ui_preferences = merge_ui_preferences(current_user.ui_preferences, patch)
         except ValueError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     if payload.display_name is not None:

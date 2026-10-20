@@ -141,6 +141,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.modules.compliance.models import ComplianceRequiredActionAssessment, ComplianceReview, ComplianceStandard
+from app.modules.compliance.search import SEARCH_PROVIDERS, SEARCH_SCOPES
 from app.modules.compliance.service import (
     COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
     COMPLIANCE_ACTION_ASSESSMENT_VIEW_PERMISSION,
@@ -487,6 +488,8 @@ MODULE_DEFINITION = ModuleDefinition(
     validate_org_group_deletion=_validate_org_group_deletion,
     artefact_types=_ARTEFACT_TYPES,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    search_providers=SEARCH_PROVIDERS,
+    search_scopes=SEARCH_SCOPES,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     principal_references=_PRINCIPAL_REFERENCES,

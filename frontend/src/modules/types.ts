@@ -133,6 +133,22 @@ export interface ProjectOverviewTileDef {
 }
 
 /**
+ * A search scope a module offers beyond the built-in "This project" and "All projects" (see
+ * `TierAModuleDefinition.searchScopes`). Requests carry it as `<module key>:<key>:<ref id>`.
+ */
+export interface SearchScopeDefinition {
+  /** Identifies the scope within its module (`"standard"`); matches the backend `search_scopes` key. */
+  key: string;
+  /** What the Scope filter calls it ("This standard"). */
+  label: string;
+  /** Which scope is the default where several match the current page: the highest wins. The built-ins are
+   * All projects 0 and This project 100; a unit inside a project or organisation is usually narrower. Default 200. */
+  narrowness?: number;
+  /** The id of the unit the page at `pathname` is inside (a standard's id), or `null` when it is not inside one. */
+  match: (pathname: string) => string | null;
+}
+
+/**
  * One headline stat tile a Tier A module contributes to
  * `pages/OrgOverviewPage.tsx`'s own always-visible stats header
  * ("the org's headline compliance
@@ -343,6 +359,11 @@ export interface TierAModuleDefinition {
    * the frontend counterpart of the backend's `artefact_summary_providers`).
    * Omitted for a module whose records nothing else links to. */
   artefactPaths?: Record<string, (projectId: string, id: string) => string>;
+  /** Where each of this module's organisation-owned artefact types that has an organisation-level page opens,
+   * keyed by artefact type (a shared Strategy opens at its organisation page, not through a project). The
+   * global search uses it for a result that belongs to the organisation and was not found through a project
+   * (`modules/artefactPaths.ts`'s `getSearchHitPath`). Omitted for a module with no such type. */
+  orgArtefactPaths?: Record<string, (organizationId: string, id: string) => string>;
   /** Display labels for the lifecycle status of each of this module's own artefact
    * types, keyed by artefact type then by the backend's status string — so the
    * shared Links panel can show a linked record's status without a raw enum
@@ -356,6 +377,11 @@ export interface TierAModuleDefinition {
    * record is inactive whatever its status, so `archived` need not be listed. Resolved by
    * `modules/artefactPaths.ts`'s `isArtefactInactive`; core never names a module's statuses. */
   artefactInactiveStatuses?: Record<string, string[]>;
+  /** Extra scopes this module adds to the global search's Scope filter (Compliance: one standard), the
+   * frontend half of the backend's `ModuleDefinition.search_scopes`. Core never names a module's scope:
+   * it asks every registered `match` which scopes apply to the page the viewer is on and offers those
+   * (`modules/searchScopes.ts`). Omitted for a module with no such unit. */
+  searchScopes?: SearchScopeDefinition[];
   /** Custom on-screen views for this module's reports, keyed by the backend
    * `ReportDefinition.key`. The Reports pages list every
    * report from the backend catalogue and render `ReportViewer` (a generic

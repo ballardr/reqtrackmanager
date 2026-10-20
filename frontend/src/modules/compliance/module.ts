@@ -180,6 +180,15 @@ export const moduleDefinition: TierAModuleDefinition = {
       render: ({ entityId, railCollapsed }) => createElement(StandardNavSection, { entityId, railCollapsed }),
     },
   ],
+  // The search page's Scope filter offers "This standard" while the viewer is on one of its pages; the id
+  // is the one the backend's `search_scopes["standard"]` resolves. Excludes the org settings route, as above.
+  searchScopes: [
+    {
+      key: "standard",
+      label: t().search.scopeThisStandard,
+      match: (pathname) => /^\/standards\/(?!settings\/)([^/]+)/.exec(pathname)?.[1] ?? null,
+    },
+  ],
   projectOverviewTiles: [
     {
       key: "status",

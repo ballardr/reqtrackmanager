@@ -945,6 +945,18 @@ flowchart LR
 
 Server rule: omit, never redact. A project the viewer cannot open, a module disabled in it, a record type they cannot view there, or a token scoped to a different project each leave its rows out without a trace. See `docs/decisions.md`'s "Nested-project scope filter" entry.
 
+## Pattern: global search
+
+The top bar carries one search box (`components/HeaderSearch.tsx`), left of the notification bell, and `/search` is its results page (`pages/SearchPage.tsx`). Reason: finding a record used to mean knowing which project and module page it lives on; one box, one results page and the same behaviour for every current and future record type removes a per-module search UI.
+
+- **No scope control in the box.** It searches the narrowest scope that matches the page (`modules/searchScopes.ts`: All projects 0, This project 100, a module's own 200). The dropdown's footer names the place in the scope's own label ("See all results for ‘valve’ in This project"), and **the live dropdown never uses the word "scope"**. The page has a **Scope** filter listing every scope that matched where the search started plus All projects; a module adds one through `TierAModuleDefinition.searchScopes`, never a case in a core file.
+- **Default fields are ID, Title and Tags**, changed per person in Preferences → Search and per search from the page's **Search in** field picker (`components/SearchFieldPicker.tsx`, a `MultiSelectDropdown` with `filterable`). ID and Title are locked on; a stored key that is no longer offered is named so it can be removed.
+- **No flicker (`hooks/useLiveSearch.ts`).** 300ms debounce and no request under 2 characters; a new request aborts the one in flight; the previous results stay (dimmed) until the new ones arrive in one render; a spinner only after ~250ms; a fetched result is reused for a few minutes; "No results" only after a completed request for the current text.
+- **Combobox semantics.** `<form role="search">` with a visible Search button; the input is an ARIA combobox over a listbox grouped by record type; arrows, Enter on a highlighted result, Esc (close, then clear), `/` to focus; the count is announced once per settled query. Below the nav-rail breakpoint the box collapses to an icon button.
+- **A result is `SearchHitSummary`:** code (qualified by its project or organisation, since a search spans projects), title with the matched words marked, type pill, status pill (the server's label, never a raw enum), where it lives, and on the page the snippet of the first matching field. Rows are real links to `getSearchHitPath(hit)`.
+- **State is the URL** on the page (`q`, `scope`, `project`, `org`, `types`, `projects`, `statuses`, `fields`, `archived`, `match`, `sort`, `from`, `to`) so a search can be shared and reached with Back; the request itself is a POST so the text never reaches an access log.
+- **Omit, never redact** (server rule, as the scope filter): a project the viewer cannot open, a module off in it, or a record type they cannot view there leaves rows and counts out without a trace.
+
 ## Pattern: field help
 
 Every form field that is not self-explanatory carries a `(?)` help button after its caption. Reason: some fields have no context on their own (a persona's importance weight, a scoring model, a review reminder lead time), and a guessed value leaves inconsistent data that nobody can later explain.

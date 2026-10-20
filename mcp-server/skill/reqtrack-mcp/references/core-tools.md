@@ -220,6 +220,12 @@ Finds the record to link an artefact to: use it to get the `other_id` that `crea
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `other_type` (string), `other_project_id` (string), `selected` (string), `q` (string)
 
+## `search_records` (read)
+
+Finds records of every type by text, without listing each type: "what mentions the brake pedal?".
+
+Parameters: `query*` (string), `scope` (string), `project_id` (string), `organization_ids` (list[string]), `types` (list[string]), `fields` (list[string]), `match` (string), `include_archived` (boolean), `include_organization_records` (boolean), `limit` (integer)
+
 ## `set_artefact_tags` (write)
 
 Makes a record carry exactly these tags, adding and removing as needed.

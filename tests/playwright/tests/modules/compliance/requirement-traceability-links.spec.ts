@@ -68,7 +68,13 @@ test.describe("Compliance: core requirement <-> standard clause links through th
     await test.step("narrowing Standard -> Version -> Requirement lists the clause, then link it", async () => {
       await panel.getByRole("button", { name: "Add link" }).click();
       await dialog.getByLabel("Link to").selectOption({ label: "Compliance standard clause" });
-      await dialog.getByLabel("Standard", { exact: true }).selectOption({ label: `${reference} ${standardName}` });
+      // The picker lists only the first options of a long list and offers a filter box above it; a shared
+      // database holds many standards, so narrow to this run's own before choosing it.
+      const standardSelect = dialog.getByLabel("Standard", { exact: true });
+      await expect(standardSelect.locator("option").nth(1)).toBeAttached();
+      const standardFilter = dialog.getByPlaceholder("Filter standard options");
+      if ((await standardFilter.count()) > 0) await standardFilter.fill(reference);
+      await standardSelect.selectOption({ label: `${reference} ${standardName}` });
       await dialog.getByLabel("Version", { exact: true }).selectOption({ label: "v1.0" });
       // The last level narrows to exactly one clause.
       await dialog.getByLabel("Requirement", { exact: true }).selectOption({ label: `${clauseReference} ${clauseName}` });

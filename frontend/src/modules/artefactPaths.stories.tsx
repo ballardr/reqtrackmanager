@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
 import { buildNotification } from "../testing/storybook-helpers";
-import { getArtefactPath, getArtefactStatusLabel, getNotificationLink, isArtefactInactive } from "./artefactPaths";
+import { getArtefactPath, getArtefactStatusLabel, getNotificationLink, getSearchHitPath, isArtefactInactive } from "./artefactPaths";
 import { installedModules } from "./registry";
 import registeredArtefactTypes from "./registeredArtefactTypes.json";
 
@@ -76,5 +76,26 @@ export const ResolvesNotificationLinks: Story = {
     await expect(link("change_request")).toBe("/projects/p-1/change-requests/x-1");
     await expect(link("not_a_type")).toBe("/projects/p-1");
     await expect(link("risk", null)).toBeNull();
+  },
+};
+
+/** A search result is never a dead row: every registered type opens a page, a finding opens its engagement and a project opens itself. */
+export const EverySearchResultOpensAPage: Story = {
+  render: () => <div>Search results</div>,
+  play: async () => {
+    const dead = registeredArtefactTypes.filter(
+      (type) => getSearchHitPath({ open_type: type, open_id: "id-1", open_project_id: "p-1" }) === null,
+    );
+    await expect(dead).toEqual([]);
+    await expect(getSearchHitPath({ open_type: "project", open_id: "p-9", open_project_id: "p-9" })).toBe("/projects/p-9");
+    await expect(getSearchHitPath({ open_type: "engagement", open_id: "e-1", open_project_id: "p-1" })).toBe(
+      getArtefactPath("engagement", "p-1", "e-1"),
+    );
+    // A record with no project to open it in has no page...
+    await expect(getSearchHitPath({ open_type: "requirement", open_id: "r-1", open_project_id: null })).toBeNull();
+    // ...unless it belongs to the organisation and its module gives it an organisation page.
+    await expect(getSearchHitPath({ open_type: "strategy", open_id: "s-1", open_project_id: null, organization_id: "o-1" })).toBe(
+      "/orgs/o-1/modules/context_strategy/strategies/s-1",
+    );
   },
 };

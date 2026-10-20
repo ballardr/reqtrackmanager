@@ -70,3 +70,20 @@ def test_source_files_may_not_cite_plan_phases(tmp_path, monkeypatch):
     assert any("cites a plan phase" in p for p in checker.check_file("a.py"))
     assert any("cites a plan phase" in p for p in checker.check_file("b.py"))
     assert not any("cites a plan phase" in p for p in checker.check_file("c.py"))
+
+
+def test_soc2_documents_may_not_name_plans_or_cite_phases(tmp_path, monkeypatch):
+    """Audit evidence states the control and its rationale, never the plan or phase it was built in;
+    other documentation under docs/ may still cite plans."""
+    (tmp_path / "docs" / "plans").mkdir(parents=True)
+    (tmp_path / "docs" / "plans" / "example-plan.md").write_text("# Example\n")
+    (tmp_path / "docs" / "soc2" / "policies").mkdir(parents=True)
+    (tmp_path / "docs" / "soc2" / "policies" / "p.md").write_text(
+        "Added by example-plan and in Phase 4; see docs/" + "plans/example-plan.md.\n"
+    )
+    (tmp_path / "docs" / "guide.md").write_text("Built under example-plan, Phase 4.\n")
+    monkeypatch.setattr(checker, "ROOT", tmp_path)
+    problems = checker.check_file("docs/" + "soc2/policies/p.md")
+    assert any("names a plan document" in p for p in problems)
+    assert any("cites a plan phase" in p for p in problems)
+    assert not any("plan" in p for p in checker.check_file("docs/" + "guide.md"))

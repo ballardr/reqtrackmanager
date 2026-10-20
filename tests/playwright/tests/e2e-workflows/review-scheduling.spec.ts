@@ -80,7 +80,7 @@ test.describe("requirement review scheduling", () => {
       await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements due for review", exact: true }).click();
       await expect(page.getByRole("link", { name: reqName })).toBeVisible();
-      await page.getByRole("combobox").nth(1).selectOption({ label: PERSONAS.stakeholderAlpha.name });
+      await page.getByRole("main").getByRole("combobox").nth(1).selectOption({ label: PERSONAS.stakeholderAlpha.name });
       await expect(page.getByRole("link", { name: reqName })).toBeVisible();
     });
 

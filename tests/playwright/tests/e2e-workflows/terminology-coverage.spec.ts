@@ -54,7 +54,7 @@ test.describe("terminology overrides reach their own surfaces", () => {
     await test.step("Project Admin's custom-fields entity-kind dropdown — the audit's single most visible example", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Fields & actions");
-      const entityKindSelect = page.getByRole("combobox").first();
+      const entityKindSelect = page.getByRole("main").getByRole("combobox").first();
       // Default selection is "requirement" -> now renders as the override.
       await expect(entityKindSelect).toContainText("Spec");
       await entityKindSelect.selectOption("change_request");

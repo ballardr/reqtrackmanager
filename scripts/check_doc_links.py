@@ -13,9 +13,9 @@ Checks, over every git-tracked text file:
 - Mentions of the form `docs/<path>.md` (Markdown, code comments, docstrings)
   must name an existing file, resolved from the repository root.
 
-- Source files (everything outside docs/ that is not Markdown) must not name a
-  plan document or cite a plan phase ("Phase 7"): plans are working papers that get archived, so code and its
-  comments state their own rationale instead (CLAUDE.md "Plan Lifecycle").
+- Source files (everything outside docs/ that is not Markdown) and the SOC 2 package (docs/soc2/) must not
+  name a plan document or cite a plan phase ("Phase 7"): plans are working papers that get archived, so code,
+  its comments and audit evidence state their own rationale instead (CLAUDE.md "Plan Lifecycle").
 
 Design notes:
 - Inline code spans and fenced blocks are ignored for Markdown links (a link
@@ -113,6 +113,25 @@ def plan_name_pattern() -> re.Pattern[str]:
     return re.compile(rf"docs/plans/|(?<![\w-])(?:{alternatives})(?![\w-])")
 
 
+def is_plan_free(rel: str) -> bool:
+    """
+    Says whether a file must not mention plans or their phases.
+
+    Args:
+        rel: Repo-relative POSIX path.
+
+    Returns:
+        True for source files (everything outside docs/ that is not Markdown) and for the SOC 2
+        package (docs/soc2/): audit evidence states the control and its rationale, not the
+        working paper it was built from.
+    """
+    if rel in PLAN_MENTION_EXEMPT:
+        return False
+    if rel.startswith("docs/soc2/"):
+        return True
+    return not rel.startswith("docs/") and not rel.endswith(".md")
+
+
 def check_file(rel: str) -> list[str]:
     """
     Finds unresolved doc references in one file.
@@ -149,23 +168,15 @@ def check_file(rel: str) -> list[str]:
                 problems.append(
                     f"{rel}:{line_of(m.start(1))}: link target missing: {target}"
                 )
-    if (
-        not rel.startswith("docs/")
-        and not rel.endswith(".md")
-        and rel not in PLAN_MENTION_EXEMPT
-    ):
+    if is_plan_free(rel):
         for m in plan_name_pattern().finditer(text):
             problems.append(
-                f"{rel}:{line_of(m.start())}: source names a plan document: {m.group(0)}"
+                f"{rel}:{line_of(m.start())}: names a plan document: {m.group(0)}"
             )
-    if (
-        not rel.startswith("docs/")
-        and not rel.endswith(".md")
-        and rel not in PLAN_MENTION_EXEMPT
-    ):
+    if is_plan_free(rel):
         for m in PHASE_TAG.finditer(text):
             problems.append(
-                f"{rel}:{line_of(m.start())}: source cites a plan phase: {m.group(0).strip()}"
+                f"{rel}:{line_of(m.start())}: cites a plan phase: {m.group(0).strip()}"
             )
     for m in DOCS_MENTION.finditer("" if rel in HISTORY_FILES else text):
         mention = m.group(0)

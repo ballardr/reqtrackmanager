@@ -87,6 +87,7 @@ from app.modules.stakeholders.models import (
 from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
 from app.modules.stakeholders.reports import REPORT_DEFINITIONS, REPORT_ROUTERS
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
+from app.modules.stakeholders.search import SEARCH_PROVIDERS
 from app.modules.stakeholders.service import (
     NEED_ARTEFACT_TYPE,
     PERSONA_ARTEFACT_TYPE,
@@ -898,6 +899,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE,
     ),
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    search_providers=SEARCH_PROVIDERS,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,
     artefact_ids_in_organization=_artefact_ids_in_organization,

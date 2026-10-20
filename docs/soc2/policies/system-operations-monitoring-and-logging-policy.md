@@ -23,6 +23,7 @@ Covers logging, monitoring, alerting, and backup operations for the ReqTrackMana
 1. Every action that mutates organizational or project structure is written to a structured audit trail (`audit_events`) recording who did it, when, and what changed — not reconstructed after the fact from application logs. This extends to account-level security state changes (password changes, 2FA enable/disable) — a hardening review found these had been missed, since the user-facing notification a password change also sends isn't itself an admin-visible audit record.
 2. Every authentication attempt (success and failure) is recorded as a `login_events` row, including the source IP.
 3. Sensitive field values (passwords, TOTP secrets, verification codes) are explicitly redacted from error responses and must never appear in application logs.
+   The text of a global search is treated the same way: a person may paste anything into the search box, so the query is sent in a POST body, is never written to application logs, audit events or traces (the search log line carries the scope, field keys, match mode, result count and duration only), and the frontend web server's access log records the request path and the referrer's path but never a query string, since the search page keeps its text in its address.
 4. Logs are aggregated centrally when the observability stack is enabled (see Implementation below), rather than relying on reading individual container logs.
 
 ### Monitoring
@@ -41,6 +42,7 @@ Covers logging, monitoring, alerting, and backup operations for the ReqTrackMana
 ## Implementation in ReqTrackManager
 
 - **Audit/login logging**: `backend/app/services/audit.py` (`log_event`), `backend/app/models/audit.py` (`AuditEvent`, `LoginEvent`).
+- **Search query text**: `backend/app/services/search.py` logs scope, field keys, match mode, counts and duration only (pinned by `backend/tests/test_search.py`); `frontend/nginx.conf`'s `path_only` log format uses `$uri` and the referrer's path, never `$request` or `$args` (also pinned by a test). A reverse proxy in front of the product logs its own request lines and is outside this control.
 - **Sensitive-field redaction**: `backend/app/main.py`'s `redact_sensitive_validation_errors` exception handler strips password/secret values out of validation error responses before they can be logged or returned.
 - **Health checks**: every container in `docker-compose.yml` defines a health check; `backend`/`frontend` startup ordering depends on upstream health.
 - **Metrics**: `GET /metrics` (Prometheus format), including request counts (`http_requests_total`) and database statement counts by operation (`db_statements_total`). Metric labels are bounded and carry no ids, table names or SQL, so the unauthenticated endpoint exposes no Restricted data.

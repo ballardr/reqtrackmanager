@@ -35,6 +35,7 @@ import { collapseProjectRoles, ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api
 import { Badge } from "../components/Badge";
 import { CheckboxField, DateField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
+import { SearchPreferencesPanel } from "../components/SearchPreferencesPanel";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { FormActions } from "../components/FormActions";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -48,7 +49,7 @@ function landingModeFor(preference: string | undefined): LandingMode {
 }
 
 /**
- * The 5 resource-menu groups Preferences' previous 5-tab bar was converted
+ * The resource-menu groups Preferences' previous tab bar was converted
  * into. Each key is also the route segment under `/preferences/:group?`
  * (App.tsx), so a group selection is a real navigation, not client-only
  * state. An unrecognised or absent `:group` (including the bare
@@ -61,9 +62,9 @@ function landingModeFor(preference: string | undefined): LandingMode {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type PreferencesGroupKey = "profile" | "security" | "access" | "pats" | "notifications";
+type PreferencesGroupKey = "profile" | "search" | "security" | "access" | "pats" | "notifications";
 
-const PREFERENCES_GROUP_KEYS: PreferencesGroupKey[] = ["profile", "security", "access", "pats", "notifications"];
+const PREFERENCES_GROUP_KEYS: PreferencesGroupKey[] = ["profile", "search", "security", "access", "pats", "notifications"];
 
 /**
  * User preferences: theme (U-U-01), post-login landing page (U-U-03),
@@ -427,6 +428,7 @@ export function PreferencesPage() {
 
   const groups: ResourceMenuGroupDef<PreferencesGroupKey>[] = [
     { key: "profile", label: strings.preferences.profile, href: "/preferences/profile" },
+    { key: "search", label: strings.preferences.searchGroup, href: "/preferences/search" },
     { key: "security", label: strings.preferences.security, href: "/preferences/security" },
     { key: "access", label: strings.preferences.access, href: "/preferences/access" },
     { key: "pats", label: strings.preferences.pats, href: "/preferences/pats" },
@@ -541,6 +543,8 @@ export function PreferencesPage() {
         {saved && <div style={{ color: "var(--color-accent)" }}>{strings.preferences.saved}</div>}
       </div>
       )}
+
+      {activeGroup === "search" && <SearchPreferencesPanel />}
 
       {activeGroup === "security" && (
       <div className="card stack">

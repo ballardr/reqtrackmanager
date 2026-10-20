@@ -178,6 +178,7 @@ from app.modules.registry import (
     is_module_enabled_for_project,
     is_module_subcomponent_enabled,
     is_org_module_subcomponent_enabled,
+    scoped_memo,
 )
 from app.services.permissions import ADMINISTRATIVE_PERMISSIONS, ALL_ARTEFACT_TYPES, encode_permission
 
@@ -403,7 +404,7 @@ def get_user_org_group_ids(db: Session, user_id: UUID, organization_id: UUID) ->
     """Returns `(direct_group_ids, inherited_group_ids)` — org groups the
     user is a direct member of in `organization_id`, and every additional
     group they're an effective member of transitively via nesting (see
-    `_ancestor_org_group_ids`). Used by the self-service "my groups" view
+    `_ancestor_org_group_ids`; memoized inside `memoize_user_lookups`). Used by the self-service "my groups" view
     (`routers/auth.py::read_my_memberships`) and the server-admin
     access-review directory.
 
@@ -422,22 +423,27 @@ def get_user_org_group_ids(db: Session, user_id: UUID, organization_id: UUID) ->
     cross-org edge through should never surface another organisation's
     group name under this one.
     """
-    direct = set(
-        db.scalars(
-            select(OrgGroupMember.org_group_id)
-            .join(OrgGroup, OrgGroup.id == OrgGroupMember.org_group_id)
-            .where(OrgGroupMember.user_id == user_id, OrgGroup.organization_id == organization_id)
-        ).all()
-    )
-    ancestors = _ancestor_org_group_ids(db, direct)
-    if ancestors:
-        ancestors = set(
+    def compute() -> tuple[frozenset[UUID], frozenset[UUID]]:
+        direct = set(
             db.scalars(
-                select(OrgGroup.id).where(OrgGroup.id.in_(ancestors), OrgGroup.organization_id == organization_id)
+                select(OrgGroupMember.org_group_id)
+                .join(OrgGroup, OrgGroup.id == OrgGroupMember.org_group_id)
+                .where(OrgGroupMember.user_id == user_id, OrgGroup.organization_id == organization_id)
             ).all()
         )
-    inherited = ancestors - direct
-    return direct, inherited
+        ancestors = _ancestor_org_group_ids(db, direct)
+        if ancestors:
+            ancestors = set(
+                db.scalars(
+                    select(OrgGroup.id).where(OrgGroup.id.in_(ancestors), OrgGroup.organization_id == organization_id)
+                ).all()
+            )
+        return frozenset(direct), frozenset(ancestors - direct)
+
+    # Memoized inside `memoize_user_lookups` (a search resolves permissions for every project of one
+    # organisation); copies are returned so a caller may modify what it gets.
+    direct_ids, inherited_ids = _memoized(("org_group_ids_in_org", user_id, organization_id), compute)
+    return set(direct_ids), set(inherited_ids)
 
 
 def can_manage_project_settings(db: Session, user: User, project: Project) -> bool:
@@ -2136,6 +2142,7 @@ def require_org_admin_or_server_admin(
     return current_user
 
 
+@scoped_memo
 def _project_organization_id(db: Session, project_id: UUID) -> UUID | None:
     """Resolves a project's owning organisation id, or None if the project
     doesn't exist — used to gate project-scoped dependencies on the org's

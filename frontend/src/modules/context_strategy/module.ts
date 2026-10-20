@@ -102,6 +102,11 @@ export const moduleDefinition: TierAModuleDefinition = {
     guiding_principle: (projectId, id) => `/projects/${projectId}/modules/context_strategy/guiding-principles/${id}`,
     open_question: (projectId, id) => `/projects/${projectId}/modules/context_strategy/open-questions/${id}`,
   },
+  orgArtefactPaths: {
+    strategy: (orgId, id) => `/orgs/${orgId}/modules/context_strategy/strategies/${id}`,
+    future_state: (orgId, id) => `/orgs/${orgId}/modules/context_strategy/future-states/${id}`,
+    guiding_principle: (orgId, id) => `/orgs/${orgId}/modules/context_strategy/guiding-principles/${id}`,
+  },
   artefactStatusLabels: {
     strategy: STRATEGY_STATUS_LABEL,
     future_state: FUTURE_STATE_STATUS_LABEL,

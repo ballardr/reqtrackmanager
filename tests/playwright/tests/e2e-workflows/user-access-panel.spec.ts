@@ -36,8 +36,12 @@ test.describe("view a user's access", () => {
       // bottom edge is at or above the table's top edge.
       expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(tableBox!.y + 1);
       // Full width, not squeezed into a 240px `.side-grid` sidebar — the
-      // panel spans at least as wide as the table it sits above.
-      expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
+      // panel spans the width the table is laid out in. That is the table's
+      // scroll wrapper, not the table itself: a table with long emails (the
+      // shared database grows them) is wider than its wrapper and scrolls.
+      const wrapperBox = await table.locator("xpath=..").boundingBox();
+      expect(wrapperBox).not.toBeNull();
+      expect(panelBox!.width).toBeGreaterThanOrEqual(wrapperBox!.width - 1);
     });
 
     // the members/groups directory rework (docs/decisions.md)

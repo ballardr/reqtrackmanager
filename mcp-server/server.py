@@ -227,6 +227,17 @@ def _require_artefact_type(value: str, field_name: str = "artefact_type") -> str
         raise ValueError(f"'{field_name}' must be a lowercase artefact type such as 'requirement', got {value!r}.")
     return value
 
+# A record's own code (`REQ-001`, `SYS-PERF-014`); a clause reference such as `A.5.15` is not one.
+_RECORD_CODE = re.compile(r"[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+")
+
+
+def _require_field_key(value: str) -> str:
+    """Validates a search field key (lowercase, underscores)."""
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", value):
+        raise ValueError(f"search field keys look like 'description', got {value!r}.")
+    return value
+
+
 def _require_tag_mode(value: str) -> str:
     """Validates a tag match mode."""
     if value not in ("any", "all"):
@@ -332,7 +343,8 @@ async def _call_backend(
             caller's own account lacks access to the requested resource (403).
         LookupError: the backend returned 404 for the requested resource.
         ValueError: the backend rejected the request as invalid or
-            conflicting with the resource's current state (400/409/422) —
+            conflicting with the resource's current state (400/409/422), or a
+            search that ran too long (408) or sent too fast (429) —
             e.g. an unknown component_id, or editing a locked requirement.
         RuntimeError: any other non-2xx backend response, or a network-level
             failure reaching the backend at all.
@@ -375,7 +387,7 @@ async def _call_backend(
         )
     if response.status_code == 404:
         raise LookupError("The requested resource does not exist, or you don't have access to it.")
-    if response.status_code in (400, 409, 422):
+    if response.status_code in (400, 408, 409, 422, 429):
         raise ValueError(f"ReqTrackManager rejected this request ({response.status_code}): {_detail(response)}")
     if response.is_error:
         raise RuntimeError(f"ReqTrackManager returned an unexpected error ({response.status_code}): {_detail(response)}")
@@ -947,6 +959,79 @@ async def find_artefacts_by_tag(
         params={"tag": tags, "tag_mode": tag_mode, "artefact_type": artefact_type},
     )
     return response.json()
+
+
+@mcp.tool
+async def search_records(
+    query: str,
+    scope: str = "all",
+    project_id: str | None = None,
+    organization_ids: list[str] | None = None,
+    types: list[str] | None = None,
+    fields: list[str] | None = None,
+    match: str = "contains",
+    include_archived: bool = False,
+    include_organization_records: bool | None = None,
+    limit: int = 25,
+) -> dict:
+    """Finds records of every type by text, without listing each type: "what mentions the brake pedal?".
+
+    Searches the code (`ID`), `Title` and `Tags` of every record you may open, plus any other fields you
+    name. Records and projects you cannot open are left out, so a missing record is not proof it does not exist.
+
+    Args:
+        query: The text, at least 2 characters. With `match` "contains" (default) every word must match,
+            in any order; "phrase" needs the exact phrase.
+        scope: "all" (every project you can open, default), "project" (one project: pass `project_id` or
+            use the connection's default project), or a unit a module offers, written
+            `<module key>:<scope key>:<id>` (a Compliance standard is `compliance:standard:<standard id>`).
+        project_id: The project for scope "project" (from `list_projects`).
+        organization_ids: Only these organisations' projects (from `list_organizations`).
+        types: Only these record types, e.g. ["requirement", "risk"]; "project" finds projects by name or code.
+        fields: Field keys to match, e.g. ["id", "title", "tags", "description"]. Omit to use the user's
+            own default (ID, Title and Tags unless they changed it). Unknown keys are ignored; the response
+            echoes the keys it used in `fields_used`. "comments" searches discussion on every record: it is
+            slower, never a default, so add it only when the text is likely in a comment.
+        match: "contains" or "phrase".
+        include_archived: Include archived and retired records (default false).
+        include_organization_records: For scope "project": also search the organisation's own records (a shared
+            Strategy). Omit to use the person's preference (on by default).
+        limit: At most this many hits (1 to 50, default 25). Only the first 500 matches can be reached.
+
+    Returns:
+        `hits` (each `type`, `type_label`, `id`, `code`, `qualified_code`, `title`, `status_label`,
+        `is_archived`, `project_id`, `project_name`, `open_type`/`open_id`/`open_project_id` for the record
+        whose page opens, and a `snippet` of the first matching non-title field), `total` (capped at 500, with
+        `total_capped`), `type_counts` and `not_searched` (types that declare none of the fields asked for).
+        Use `qualified_code` to quote a record and the matching `get_*` tool with `id` to read it.
+    """
+    text = " ".join(query.split())
+    if len(text) < 2 or len(text) > 200:
+        raise ValueError("'query' must be between 2 and 200 characters.")
+    if match not in ("contains", "phrase"):
+        raise ValueError(f"'match' must be 'contains' or 'phrase', got {match!r}.")
+    if not 1 <= limit <= 50:
+        raise ValueError("'limit' must be between 1 and 50.")
+    if scope not in ("all", "project") and not re.fullmatch(r"[a-z][a-z0-9_]*:[a-z][a-z0-9_]*:[0-9a-fA-F-]{36}", scope):
+        raise ValueError("'scope' must be 'all', 'project' or '<module key>:<scope key>:<id>'.")
+    body: dict = {"q": text, "scope": scope, "match": match, "include_archived": include_archived, "limit": limit}
+    if include_organization_records is not None:
+        body["include_organization_records"] = include_organization_records
+    if scope == "project":
+        body["project_id"] = _require_project_id(project_id)
+    if organization_ids:
+        body["organization_ids"] = [_require_uuid(o, "organization_ids") for o in organization_ids]
+    if types:
+        body["types"] = [_require_artefact_type(t, "types") for t in types]
+    if fields:
+        body["fields"] = [_require_field_key(f) for f in fields]
+    response = await _call_backend("POST", "/api/v1/search", json=body)
+    result = response.json()
+    for hit in result.get("hits", []):
+        owner = hit.get("project_code") or hit.get("organization_code")
+        code = hit.get("code", "")
+        hit["qualified_code"] = f"{owner}-{code}" if owner and _RECORD_CODE.fullmatch(code) else code
+    return result
 
 
 @mcp.tool

@@ -150,6 +150,10 @@ class Settings(BaseSettings):
         help_url: Where the header Help link opens (a new tab). Defaults to
             the public documentation site; point it at an internally hosted
             copy (the `docs` image) so help matches the deployed version.
+        search_rate_limit_burst: Most searches one person may send in a burst (the global search's
+            rate limiter, a token bucket per user and per worker process). 0 disables the limiter.
+        search_rate_limit_per_minute: The sustained searches per minute one person may send, per
+            worker process; each pause in typing in the live dropdown is one request, so a query is several.
         allow_external_modules: Deployment-level opt-in for the modular
             feature system's third-party discovery sources
             (`app.modules.registry`'s Python entry-point scan and
@@ -262,6 +266,8 @@ class Settings(BaseSettings):
     access_review_show_org_names: bool = True
     help_enabled: bool = True
     help_url: str = "https://ballardr.github.io/reqtrackmanager/"
+    search_rate_limit_burst: int = 60
+    search_rate_limit_per_minute: int = 120
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""

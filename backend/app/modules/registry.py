@@ -45,13 +45,16 @@ modules.
 
 from __future__ import annotations
 
+import contextvars
+import functools
 import importlib.metadata
 import importlib.util
 import logging
 import os
 import re
 import uuid
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -85,6 +88,78 @@ logger = logging.getLogger(__name__)
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
 ENTRY_POINT_GROUP = "reqtrackmanager.modules"
+
+# Module availability is resolved in tiers (entitlement, organisation, project), each a small query. A
+# read-only caller that resolves it for many projects (the global search asks about every module of every
+# project it may search) opts in to `memoize_module_state()`, so each tier is read once per organisation or
+# project instead of once per question. Outside that block nothing is cached, so a request that changes a
+# setting and re-reads it sees the change.
+_module_state_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar("module_state_memo", default=None)
+
+
+def scoped_memo(fn: Callable) -> Callable:
+    """Memoises `fn(db, *args)` while `memoize_module_state()` is active (keyed by its arguments after `db`).
+
+    Use only on a pure read of module or project state. Without an active block it calls straight through.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(db, *args, **kwargs):
+        memo = _module_state_memo.get()
+        if memo is None:
+            return fn(db, *args, **kwargs)
+        key = (fn.__name__, args, tuple(sorted(kwargs.items())))
+        if key not in memo:
+            memo[key] = fn(db, *args, **kwargs)
+        return memo[key]
+
+    return wrapper
+
+
+@contextmanager
+def memoize_module_state() -> Iterator[None]:
+    """Caches module-availability lookups for the duration of the block. Use only around read-only code:
+    nothing inside may change module, entitlement or project settings and then rely on re-reading them."""
+    token = _module_state_memo.set({})
+    try:
+        yield
+    finally:
+        _module_state_memo.reset(token)
+
+
+def prefetch_project_module_state(db: Session, project_ids: Collection[uuid.UUID]) -> None:
+    """Loads, in three queries, the per-project lookups `is_module_enabled_for_project` and
+    `is_module_subcomponent_enabled` make for each of `project_ids` (the owning organisation and the project's
+    own module and sub-component overrides). A no-op outside `memoize_module_state()`.
+
+    Args:
+        db: Active session (read only).
+        project_ids: The projects about to be resolved.
+    """
+    memo = _module_state_memo.get()
+    ids = set(project_ids)
+    if memo is None or not ids:
+        return
+    from app.models.module import ProjectModuleEnablement, ProjectModuleSubComponentEnablement
+    from app.models.project import Project
+
+    for project_id, organization_id in db.execute(select(Project.id, Project.organization_id).where(Project.id.in_(ids))).all():
+        memo[("_project_organization_id", (project_id,), ())] = organization_id
+    module_rows = {
+        (row.project_id, row.module_key): row
+        for row in db.scalars(select(ProjectModuleEnablement).where(ProjectModuleEnablement.project_id.in_(ids)))
+    }
+    sub_rows = {
+        (row.project_id, row.module_key, row.subcomponent_key): row
+        for row in db.scalars(select(ProjectModuleSubComponentEnablement).where(ProjectModuleSubComponentEnablement.project_id.in_(ids)))
+    }
+    for definition in get_module_registry().values():
+        for project_id in ids:
+            memo[("_project_module_override", (project_id, definition.key), ())] = module_rows.get((project_id, definition.key))
+            for sub in definition.sub_components:
+                memo[("_project_subcomponent_override", (project_id, definition.key, sub.key), ())] = sub_rows.get(
+                    (project_id, definition.key, sub.key)
+                )
 
 
 @dataclass(frozen=True)
@@ -1275,6 +1350,149 @@ Every registered type declares at least one; a backend
 
 
 @dataclass(frozen=True)
+class SearchField:
+    """One column of a record type that the global search may match.
+
+    Searchable fields are opt-in: a column not declared here is never matched, so a
+    Restricted-classified or consent-sensitive column is excluded by omission.
+
+    Attributes:
+        key: Stable identifier shared by types that carry the same field (`"description"`),
+            so the field picker lists it once. `"id"`, `"title"` and `"tags"` are reserved
+            for the record's code, title and tags, which the search builds itself.
+        label: User-facing name (`"Description"`, `"Mitigation"`).
+        column: A SQL text expression over `ArtefactSearchProvider.from_clause`.
+    """
+
+    key: str
+    label: str
+    column: Any
+
+
+@dataclass(frozen=True)
+class SearchColumns:
+    """The SQL expressions a provider exposes for every record, read by the search service.
+
+    Attributes:
+        id / project_id / code / title / status / is_archived / updated_at: The record's
+            identity, owning project (`NULL` for an organisation-owned record), human-readable
+            code, display title, status value, archived flag and last-change time (UTC).
+        organization_id: The owning organisation, for a type that can be organisation-owned.
+        owner_id: The id of the record to open instead, for a type without a page of its own
+            (see `ArtefactSearchProvider.open_owner_type`).
+    """
+
+    id: Any
+    project_id: Any
+    code: Any
+    title: Any
+    status: Any
+    is_archived: Any
+    updated_at: Any
+    organization_id: Any | None = None
+    owner_id: Any | None = None
+
+
+@dataclass(frozen=True)
+class SearchComments:
+    """Where a record type keeps its comments, so the global search can match them.
+
+    Comments are matched only when a person asks for them (the reserved field key `comments`), never by
+    default and never as a stored default: one `EXISTS` over a table per record type is much dearer than
+    matching the record's own columns. A comment carries the same read gate as its record.
+
+    Attributes:
+        model: The comment table's ORM model (or table).
+        record_id: The comment column that holds the commented record's id.
+        body: The comment's text column.
+        where: Extra conditions picking this type's comments from a shared table (`target_type`).
+        created_at: Column that orders the comments, so the first match is the earliest.
+    """
+
+    model: Any
+    record_id: Any
+    body: Any
+    created_at: Any
+    where: tuple[Any, ...] = ()
+
+
+@dataclass(frozen=True)
+class ArtefactSearchProvider:
+    """How a module makes one of its `artefact_types` findable by the global search.
+
+    The provider describes the SQL (what to select from, which columns mean what, which
+    are searchable); the search service owns scoping, authorisation, matching, ranking and
+    paging, so a new type needs no search logic of its own.
+
+    Attributes:
+        from_clause: The table or join the records are read from (a version table joined
+            in for a versioned type, restricted to the current version by `where`).
+        columns: The expressions for each record's identity and display data.
+        fields: The extra searchable fields beyond the code, title and tags.
+        where: Conditions that always apply (`valid_to IS NULL` for a versioned type).
+        status_labels: `{status value: display label}`, so a result is never labelled with
+            a raw enum string.
+        organization_owned: Whether records may be owned by the organisation (`project_id`
+            `NULL`); such a record is found only through a project that is allowed to see it
+            (the owning module's `get_many_in_project` rule, e.g. per-project hiding).
+        open_owner_type: For a type with no page of its own (an engagement finding), the
+            artefact type whose page opens instead; `columns.owner_id` then names that record.
+        organization_subcomponent: For a type whose organisation-owned records have their own
+            organisation-level surface rather than a project's (an organisation Strategy, listed and
+            opened from the organisation overview): the sub-component of the owning module whose
+            organisation-level state gates it. Such a record is searched in the "all projects" scope
+            for every member of an organisation where that sub-component is on, exactly as the
+            organisation's own list is read, and opens at its organisation page.
+        comments: Where the type's comments live (`SearchComments`), making the opt-in `comments`
+            field available; `None` for a type with no comments.
+    """
+
+    from_clause: Any
+    columns: SearchColumns
+    fields: tuple[SearchField, ...] = ()
+    where: tuple[Any, ...] = ()
+    status_labels: Mapping[str, str] = field(default_factory=dict)
+    organization_owned: bool = False
+    open_owner_type: str | None = None
+    organization_subcomponent: str | None = None
+    comments: SearchComments | None = None
+
+
+@dataclass(frozen=True)
+class ScopeResolution:
+    """What a module-defined search scope covers.
+
+    Attributes:
+        project_ids: The projects the unit spans; the search still keeps only those the
+            caller can read.
+        restrictions: Per artefact type, an extra SQL condition on that type's query. A type
+            absent from this mapping is not searched in the scope.
+    """
+
+    project_ids: tuple[uuid.UUID, ...]
+    restrictions: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class SearchScope:
+    """A search scope a module offers beyond the built-in "This project" and "All projects"
+    (Compliance's "This standard").
+
+    Attributes:
+        label: The scope's display name.
+        narrowness: Which scope is the default where several match the current page: the
+            highest wins. Built-ins are All projects 0 and This project 100.
+        resolve: `(db, user_id, ref_id) -> ScopeResolution | None`. `None` means "not found
+            or not allowed", answered identically either way so a ref in another organisation
+            or one the caller cannot read reveals nothing.
+    """
+
+    label: str
+    resolve: Callable[[Session, uuid.UUID, uuid.UUID], ScopeResolution | None]
+    narrowness: int = 200
+
+
+@dataclass(frozen=True)
 class LinkTypeSeed:
     """A link type a module wants to exist in every organisation, so its
     artefact types can be linked meaningfully without a core edit
@@ -1914,6 +2132,17 @@ class ModuleDefinition:
             read via `get_artefact_type_label`. Lets core UI and API responses
             name a record's kind without a closed per-module map in a core
             file; a type left out gets a title-cased fallback.
+        search_providers: Maps one of this module's own `artefact_types` to an
+            `ArtefactSearchProvider`, making its records findable by the global search
+            (code, title, tags and the fields the provider declares). Read via
+            `get_search_providers`. Registration is required of every artefact type: one
+            that is not searchable says why in `not_searchable`.
+        not_searchable: `{artefact type: reason}` for a type deliberately left out of the
+            global search. A backend test fails for a type that has neither.
+        search_scopes: `{scope key: SearchScope}` the module adds to the search page's
+            Scope filter (Compliance: one standard). Addressed in a request as
+            `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
+            caller's project is neither offered nor accepted.
         reports: The reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -1999,6 +2228,9 @@ class ModuleDefinition:
     notification_types: tuple[NotificationTypeDefinition, ...] = field(default=())
     on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None
     principal_references: tuple[PrincipalReference, ...] = field(default=())
+    search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
+    not_searchable: dict[str, str] = field(default_factory=dict)
+    search_scopes: dict[str, SearchScope] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -2206,6 +2438,7 @@ def get_module(module_key: str) -> ModuleDefinition | None:
     return get_module_registry().get(module_key)
 
 
+@scoped_memo
 def is_module_entitled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
     """Resolves whether `organization_id` is entitled to use `module_key`
     (the server-tier licensing/plan lever).
@@ -2251,6 +2484,7 @@ def is_module_entitled(db: Session, organization_id: uuid.UUID, module_key: str)
     return server_settings.default_module_entitlement_policy == ModuleEntitlementPolicy.OPEN
 
 
+@scoped_memo
 def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
     """Resolves the *effective* enabled state of `module_key` for
     `organization_id` — entitlement AND enablement
@@ -2297,6 +2531,7 @@ def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) 
     return definition.default_enabled
 
 
+@scoped_memo
 def _server_module_default(db: Session, module_key: str):
     """Returns the `ServerModuleDefault` row for `module_key`, or `None` when
     the server has no explicit default for it (the registry's own
@@ -2306,6 +2541,7 @@ def _server_module_default(db: Session, module_key: str):
     return db.scalar(select(ServerModuleDefault).where(ServerModuleDefault.module_key == module_key))
 
 
+@scoped_memo
 def resolve_default_project_enabled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
     """Resolves the organisation-tier "default for a project absent its
     own override" value for `module_key` (Platform Foundations,
@@ -2354,6 +2590,34 @@ def resolve_default_project_enabled(db: Session, organization_id: uuid.UUID, mod
     return definition.default_enabled
 
 
+@scoped_memo
+def _project_module_override(db: Session, project_id: uuid.UUID, module_key: str):
+    """The project's own `ProjectModuleEnablement` row for `module_key`, or `None`."""
+    from app.models.module import ProjectModuleEnablement
+
+    return db.scalar(
+        select(ProjectModuleEnablement).where(
+            ProjectModuleEnablement.project_id == project_id,
+            ProjectModuleEnablement.module_key == module_key,
+        )
+    )
+
+
+@scoped_memo
+def _project_subcomponent_override(db: Session, project_id: uuid.UUID, module_key: str, subcomponent_key: str):
+    """The project's own `ProjectModuleSubComponentEnablement` row for one sub-component, or `None`."""
+    from app.models.module import ProjectModuleSubComponentEnablement
+
+    return db.scalar(
+        select(ProjectModuleSubComponentEnablement).where(
+            ProjectModuleSubComponentEnablement.project_id == project_id,
+            ProjectModuleSubComponentEnablement.module_key == module_key,
+            ProjectModuleSubComponentEnablement.subcomponent_key == subcomponent_key,
+        )
+    )
+
+
+@scoped_memo
 def is_module_enabled_for_project(db: Session, project_id: uuid.UUID, module_key: str) -> bool:
     """Resolves the *effective* enabled state of `module_key` for one
     specific project (Platform Foundations; corrected
@@ -2439,14 +2703,7 @@ def is_module_enabled_for_project(db: Session, project_id: uuid.UUID, module_key
     if not is_module_enabled(db, organization_id, module_key):
         return False
 
-    from app.models.module import ProjectModuleEnablement
-
-    project_override = db.scalar(
-        select(ProjectModuleEnablement).where(
-            ProjectModuleEnablement.project_id == project_id,
-            ProjectModuleEnablement.module_key == module_key,
-        )
-    )
+    project_override = _project_module_override(db, project_id, module_key)
     if project_override is not None:
         # Floor already confirmed True above — a project's own choice is
         # symmetric from here: it may widen past the organisation's own
@@ -2468,6 +2725,7 @@ def _find_subcomponent_definition(module_key: str, subcomponent_key: str) -> Mod
     return next((s for s in definition.sub_components if s.key == subcomponent_key), None)
 
 
+@scoped_memo
 def resolve_org_subcomponent_state(
     db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
 ) -> tuple[bool, bool] | None:
@@ -2505,6 +2763,7 @@ def resolve_org_subcomponent_state(
     return subcomponent.default_enabled, subcomponent.default_enabled
 
 
+@scoped_memo
 def is_module_subcomponent_enabled(
     db: Session, project_id: uuid.UUID, module_key: str, subcomponent_key: str,
 ) -> bool:
@@ -2561,15 +2820,7 @@ def is_module_subcomponent_enabled(
     if not org_enabled:
         return False
 
-    from app.models.module import ProjectModuleSubComponentEnablement
-
-    project_override = db.scalar(
-        select(ProjectModuleSubComponentEnablement).where(
-            ProjectModuleSubComponentEnablement.project_id == project_id,
-            ProjectModuleSubComponentEnablement.module_key == module_key,
-            ProjectModuleSubComponentEnablement.subcomponent_key == subcomponent_key,
-        )
-    )
+    project_override = _project_subcomponent_override(db, project_id, module_key, subcomponent_key)
     if project_override is not None:
         return project_override.enabled
     return org_default_project_enabled
@@ -3588,6 +3839,51 @@ def list_organization_artefact_summaries(
     ):
         return []
     return provider.list_for_organization(db, organization_id)
+
+
+def get_search_providers() -> dict[str, ArtefactSearchProvider]:
+    """Every registered artefact type's `ArtefactSearchProvider`: the core types' (requirements,
+    actions, change requests) plus each module's `search_providers`. A type claimed twice keeps
+    the first registration."""
+    from app.services.search_core import CORE_SEARCH_PROVIDERS
+
+    merged: dict[str, ArtefactSearchProvider] = dict(CORE_SEARCH_PROVIDERS)
+    for definition in get_module_registry().values():
+        for artefact_type, provider in definition.search_providers.items():
+            merged.setdefault(artefact_type, provider)
+    return merged
+
+
+def get_not_searchable_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared not searchable."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_searchable)
+    return reasons
+
+
+def get_search_scopes() -> dict[str, tuple[ModuleDefinition, SearchScope]]:
+    """Every module-contributed search scope, keyed `<module_key>:<scope_key>`."""
+    return {
+        f"{definition.key}:{scope_key}": (definition, scope)
+        for definition in get_module_registry().values()
+        for scope_key, scope in definition.search_scopes.items()
+    }
+
+
+def artefact_type_module(artefact_type: str) -> ModuleDefinition | None:
+    """The module that declares `artefact_type` in its `artefact_types`; `None` for a core type."""
+    for definition in get_module_registry().values():
+        if artefact_type in definition.artefact_types:
+            return definition
+    return None
+
+
+def artefact_type_enabled_for_project(db: Session, artefact_type: str, project_id: uuid.UUID) -> bool:
+    """Whether `artefact_type`'s owning module (and the sub-component keyed by the type itself,
+    where the module declares one) is enabled for the project. A core type is always enabled."""
+    definition = artefact_type_module(artefact_type)
+    return definition is None or _artefact_type_enabled_for_project(db, definition, artefact_type, project_id)
 
 
 _CORE_ARTEFACT_TYPE_LABELS = {
