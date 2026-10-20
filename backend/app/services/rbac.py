@@ -1781,13 +1781,17 @@ def lock_row_for_update(db: Session, model: type, row_id: UUID) -> None:
     """Acquires a Postgres row lock on one row of `model` (anything with an `id`
     primary key) for the rest of the current transaction.
 
-    Used by versioned records (Persona, Stakeholder, Stakeholder Need, Risk) to
-    serialise concurrent edits: each edit closes the current version and inserts
-    the next, so two unserialised edits both read version N and the loser dies on
-    the `(record, version_number)` unique constraint with a 500. Taking this lock
+    Used by every versioned record (Requirement, Strategy, Future State, Guiding
+    Principle, Persona, Stakeholder, Stakeholder Need, Risk) to serialise
+    concurrent edits: each edit closes the current version and inserts the next,
+    so two unserialised edits both read version N and the loser dies on the
+    `(record, version_number)` unique constraint with a 500. Taking this lock
     on the identity row *before* reading the current version makes the second
     edit wait, then apply on top of the first. Reads of the version must happen
     after the lock is taken.
+
+    `tests/test_versioned_update_locks.py` fails when a path that writes a next
+    version does not take it first, so a new versioned type cannot skip it.
     """
     db.execute(select(model.id).where(model.id == row_id).with_for_update())
 

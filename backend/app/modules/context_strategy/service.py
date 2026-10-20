@@ -230,6 +230,7 @@ from app.schemas.principal import PrincipalRef
 from app.services import definition_suppression
 from app.services.audit import log_event
 from app.services.link_types import ensure_org_link_type
+from app.services.rbac import lock_row_for_update
 from app.services.relationships import create_link, get_link_between
 from app.services.sequences import code_owner, generate_unique_code
 
@@ -255,6 +256,20 @@ def get_current_version(db: Session, strategy_id: uuid.UUID) -> StrategyVersion:
     if version is None:
         raise ValueError(f"Strategy {strategy_id} has no current version.")
     return version
+
+
+def get_current_version_for_update(db: Session, strategy_id: uuid.UUID) -> StrategyVersion:
+    """`get_current_version` after locking the Strategy row, for every path that
+    writes a next version: a second concurrent edit waits for the first, then
+    reads the version the first created instead of dying on the
+    `(strategy_id, version_number)` unique constraint (see `lock_row_for_update`).
+    The lock must precede the read, which is why the two are one call.
+
+    Raises:
+        ValueError: as `get_current_version`.
+    """
+    lock_row_for_update(db, Strategy, strategy_id)
+    return get_current_version(db, strategy_id)
 
 
 def create_strategy(
@@ -562,6 +577,17 @@ def get_current_future_state_version(db: Session, future_state_id: uuid.UUID) ->
     if version is None:
         raise ValueError(f"Future State {future_state_id} has no current version.")
     return version
+
+
+def get_current_future_state_version_for_update(db: Session, future_state_id: uuid.UUID) -> FutureStateVersion:
+    """Locking variant of `get_current_future_state_version`; see
+    `get_current_version_for_update`.
+
+    Raises:
+        ValueError: as `get_current_future_state_version`.
+    """
+    lock_row_for_update(db, FutureState, future_state_id)
+    return get_current_future_state_version(db, future_state_id)
 
 
 def create_future_state(
@@ -1512,6 +1538,19 @@ def get_current_guiding_principle_version(db: Session, guiding_principle_id: uui
     return version
 
 
+def get_current_guiding_principle_version_for_update(
+    db: Session, guiding_principle_id: uuid.UUID
+) -> GuidingPrincipleVersion:
+    """Locking variant of `get_current_guiding_principle_version`; see
+    `get_current_version_for_update`.
+
+    Raises:
+        ValueError: as `get_current_guiding_principle_version`.
+    """
+    lock_row_for_update(db, GuidingPrinciple, guiding_principle_id)
+    return get_current_guiding_principle_version(db, guiding_principle_id)
+
+
 def create_guiding_principle(
     db: Session,
     *,
@@ -2255,7 +2294,7 @@ def create_strategy_supersession(
         target_type=STRATEGY_ARTEFACT_TYPE, target_id=old_strategy.id,
         link_type_id=link_type.id, created_by=actor.id, enforce_rules=False,  # fixed-semantic lifecycle step
     )
-    old_current_version = get_current_version(db, old_strategy.id)
+    old_current_version = get_current_version_for_update(db, old_strategy.id)
     new_version = supersede_strategy(db, old_strategy, old_current_version, actor, comment=comment)
     return link, new_version
 
@@ -2379,7 +2418,7 @@ def create_guiding_principle_supersession(
         target_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, target_id=old_guiding_principle.id,
         link_type_id=link_type.id, created_by=actor.id, enforce_rules=False,  # fixed-semantic lifecycle step
     )
-    old_current_version = get_current_guiding_principle_version(db, old_guiding_principle.id)
+    old_current_version = get_current_guiding_principle_version_for_update(db, old_guiding_principle.id)
     new_version = supersede_guiding_principle(db, old_guiding_principle, old_current_version, actor, comment=comment)
     return link, new_version
 
@@ -2457,7 +2496,7 @@ def create_future_state_supersession(
         target_type=FUTURE_STATE_ARTEFACT_TYPE, target_id=old_future_state.id,
         link_type_id=link_type.id, created_by=actor.id, enforce_rules=False,  # fixed-semantic lifecycle step
     )
-    old_current_version = get_current_future_state_version(db, old_future_state.id)
+    old_current_version = get_current_future_state_version_for_update(db, old_future_state.id)
     new_version = supersede_future_state(db, old_future_state, old_current_version, actor, comment=comment)
     return link, new_version
 

@@ -56,7 +56,12 @@ from app.services.rbac import (
 )
 from app.services.relationships import create_link as create_artefact_link
 from app.services.relationships import get_link_between as get_artefact_link_between
-from app.services.requirements import apply_new_version, create_requirement, get_current_version
+from app.services.requirements import (
+    apply_new_version,
+    create_requirement,
+    get_current_version,
+    get_current_version_for_update,
+)
 
 router = APIRouter(tags=["change-requests-workflow"])
 
@@ -267,7 +272,7 @@ def decide_change_request(
         cr.status = ChangeRequestStatus.APPROVED
         if cr.kind == ChangeRequestKind.MODIFY_REQUIREMENT:
             requirement = db.get(Requirement, cr.requirement_id)
-            current_version = get_current_version(db, requirement.id)
+            current_version = get_current_version_for_update(db, requirement.id)
             # Only fields actually listed in changed_fields are applied —
             # everything else is left completely untouched (apply_new_version's
             # own "None/not-explicitly-set carries the current value forward"

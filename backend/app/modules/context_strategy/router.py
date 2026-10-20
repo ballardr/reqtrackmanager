@@ -164,8 +164,11 @@ from app.modules.context_strategy.service import (
     create_strategy_supersession,
     delete_org_pain_point_type,
     get_current_future_state_version,
+    get_current_future_state_version_for_update,
     get_current_guiding_principle_version,
+    get_current_guiding_principle_version_for_update,
     get_current_version,
+    get_current_version_for_update,
     is_future_state_locked,
     is_guiding_principle_locked,
     is_locked,
@@ -278,7 +281,7 @@ def update_org_strategy(
     — see `service.LOCKED_STATUSES`)."""
     strategy = _get_strategy(db, organization_id, strategy_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_version(db, strategy.id)
+    current_version = get_current_version_for_update(db, strategy.id)
     if is_locked(current_version):
         raise HTTPException(
             status.HTTP_409_CONFLICT, "This Strategy is past review; its content can no longer be edited in place.",
@@ -348,7 +351,7 @@ def propose_org_strategy(
 ):
     strategy = _get_strategy(db, organization_id, strategy_id)
     _require_creator_or_manage(db, current_user, organization_id, strategy)
-    current_version = get_current_version(db, strategy.id)
+    current_version = get_current_version_for_update(db, strategy.id)
     apply_value_error_as_conflict(propose_strategy, db, strategy, current_version, current_user)
     db.commit()
     return strategy_to_out(strategy, get_current_version(db, strategy.id))
@@ -361,7 +364,7 @@ def submit_org_strategy_for_review(
 ):
     strategy = _get_strategy(db, organization_id, strategy_id)
     _require_creator_or_manage(db, current_user, organization_id, strategy)
-    current_version = get_current_version(db, strategy.id)
+    current_version = get_current_version_for_update(db, strategy.id)
     apply_value_error_as_conflict(submit_strategy_for_review, db, strategy, current_version, current_user)
     db.commit()
     return strategy_to_out(strategy, get_current_version(db, strategy.id))
@@ -380,7 +383,7 @@ def send_org_strategy_back(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to send a Strategy back to draft.")
     strategy = _get_strategy(db, organization_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_version(db, strategy.id)
+    current_version = get_current_version_for_update(db, strategy.id)
     apply_value_error_as_conflict(
         send_strategy_back_to_draft, db, strategy, current_version, current_user, comment=payload.comment,
     )
@@ -395,7 +398,7 @@ def approve_org_strategy(
 ):
     strategy = _get_strategy(db, organization_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_version(db, strategy.id)
+    current_version = get_current_version_for_update(db, strategy.id)
     apply_value_error_as_conflict(
         approve_strategy, db, strategy, current_version, current_user, comment=payload.comment,
     )
@@ -410,7 +413,7 @@ def activate_org_strategy(
 ):
     strategy = _get_strategy(db, organization_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_version(db, strategy.id)
+    current_version = get_current_version_for_update(db, strategy.id)
     apply_value_error_as_conflict(
         activate_strategy, db, strategy, current_version, current_user, comment=payload.comment,
     )
@@ -425,7 +428,7 @@ def supersede_org_strategy(
 ):
     strategy = _get_strategy(db, organization_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_version(db, strategy.id)
+    current_version = get_current_version_for_update(db, strategy.id)
     apply_value_error_as_conflict(
         supersede_strategy, db, strategy, current_version, current_user, comment=payload.comment,
     )
@@ -440,7 +443,7 @@ def retire_org_strategy(
 ):
     strategy = _get_strategy(db, organization_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_version(db, strategy.id)
+    current_version = get_current_version_for_update(db, strategy.id)
     apply_value_error_as_conflict(
         retire_strategy, db, strategy, current_version, current_user, comment=payload.comment,
     )
@@ -712,7 +715,7 @@ def update_org_future_state(
     same status). 409s once the current version is locked."""
     future_state = _get_future_state(db, organization_id, future_state_id)
     require_future_state_manage_role(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_future_state_version(db, future_state.id)
+    current_version = get_current_future_state_version_for_update(db, future_state.id)
     if is_future_state_locked(current_version):
         raise HTTPException(
             status.HTTP_409_CONFLICT, "This Future State is past review; its content can no longer be edited in place.",
@@ -781,7 +784,7 @@ def propose_org_future_state(
 ):
     future_state = _get_future_state(db, organization_id, future_state_id)
     _require_fs_creator_or_manage(db, current_user, organization_id, future_state)
-    current_version = get_current_future_state_version(db, future_state.id)
+    current_version = get_current_future_state_version_for_update(db, future_state.id)
     apply_value_error_as_conflict(propose_future_state, db, future_state, current_version, current_user)
     db.commit()
     return future_state_to_out(future_state, get_current_future_state_version(db, future_state.id))
@@ -794,7 +797,7 @@ def submit_org_future_state_for_review(
 ):
     future_state = _get_future_state(db, organization_id, future_state_id)
     _require_fs_creator_or_manage(db, current_user, organization_id, future_state)
-    current_version = get_current_future_state_version(db, future_state.id)
+    current_version = get_current_future_state_version_for_update(db, future_state.id)
     apply_value_error_as_conflict(submit_future_state_for_review, db, future_state, current_version, current_user)
     db.commit()
     return future_state_to_out(future_state, get_current_future_state_version(db, future_state.id))
@@ -811,7 +814,7 @@ def send_org_future_state_back(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to send a Future State back to draft.")
     future_state = _get_future_state(db, organization_id, future_state_id)
     require_future_state_approve_permission(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_future_state_version(db, future_state.id)
+    current_version = get_current_future_state_version_for_update(db, future_state.id)
     apply_value_error_as_conflict(
         send_future_state_back_to_draft, db, future_state, current_version, current_user, comment=payload.comment,
     )
@@ -826,7 +829,7 @@ def approve_org_future_state(
 ):
     future_state = _get_future_state(db, organization_id, future_state_id)
     require_future_state_approve_permission(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_future_state_version(db, future_state.id)
+    current_version = get_current_future_state_version_for_update(db, future_state.id)
     apply_value_error_as_conflict(
         approve_future_state, db, future_state, current_version, current_user, comment=payload.comment,
     )
@@ -841,7 +844,7 @@ def activate_org_future_state(
 ):
     future_state = _get_future_state(db, organization_id, future_state_id)
     require_future_state_approve_permission(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_future_state_version(db, future_state.id)
+    current_version = get_current_future_state_version_for_update(db, future_state.id)
     apply_value_error_as_conflict(
         activate_future_state, db, future_state, current_version, current_user, comment=payload.comment,
     )
@@ -856,7 +859,7 @@ def supersede_org_future_state(
 ):
     future_state = _get_future_state(db, organization_id, future_state_id)
     require_future_state_approve_permission(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_future_state_version(db, future_state.id)
+    current_version = get_current_future_state_version_for_update(db, future_state.id)
     apply_value_error_as_conflict(
         supersede_future_state, db, future_state, current_version, current_user, comment=payload.comment,
     )
@@ -871,7 +874,7 @@ def retire_org_future_state(
 ):
     future_state = _get_future_state(db, organization_id, future_state_id)
     require_future_state_approve_permission(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_future_state_version(db, future_state.id)
+    current_version = get_current_future_state_version_for_update(db, future_state.id)
     apply_value_error_as_conflict(
         retire_future_state, db, future_state, current_version, current_user, comment=payload.comment,
     )
@@ -1285,7 +1288,7 @@ def update_org_guiding_principle(
     `PROPOSED` — see `service.GUIDING_PRINCIPLE_LOCKED_STATUSES`)."""
     guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
     require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
     if is_guiding_principle_locked(current_version):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -1361,7 +1364,7 @@ def propose_org_guiding_principle(
 ):
     guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
     _require_gp_creator_or_manage(db, current_user, organization_id, guiding_principle)
-    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
     apply_value_error_as_conflict(propose_guiding_principle, db, guiding_principle, current_version, current_user)
     db.commit()
     return guiding_principle_to_out(
@@ -1386,7 +1389,7 @@ def send_org_guiding_principle_back(
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
     )
-    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
     apply_value_error_as_conflict(
         send_guiding_principle_back_to_draft, db, guiding_principle, current_version, current_user,
         comment=payload.comment,
@@ -1406,7 +1409,7 @@ def approve_org_guiding_principle(
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
     )
-    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
     apply_value_error_as_conflict(
         approve_guiding_principle, db, guiding_principle, current_version, current_user, comment=payload.comment,
     )
@@ -1425,7 +1428,7 @@ def activate_org_guiding_principle(
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
     )
-    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
     apply_value_error_as_conflict(
         activate_guiding_principle, db, guiding_principle, current_version, current_user, comment=payload.comment,
     )
@@ -1444,7 +1447,7 @@ def supersede_org_guiding_principle(
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
     )
-    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
     apply_value_error_as_conflict(
         supersede_guiding_principle, db, guiding_principle, current_version, current_user, comment=payload.comment,
     )
@@ -1463,7 +1466,7 @@ def retire_org_guiding_principle(
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
     )
-    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
     apply_value_error_as_conflict(
         retire_guiding_principle, db, guiding_principle, current_version, current_user, comment=payload.comment,
     )

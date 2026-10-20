@@ -28,7 +28,7 @@ from app.services import pubsub
 from app.services.audit import log_event
 from app.services.principals import is_principal_member, principal_ref
 from app.services.rbac import get_effective_project_roles, require_ai_approvals_enabled, require_project_manage, require_project_view
-from app.services.requirements import apply_new_version, get_current_version
+from app.services.requirements import apply_new_version, get_current_version, get_current_version_for_update
 from app.services.reviews import get_due_reviews_for_project, reviewer_labels
 
 router = APIRouter(tags=["requirements-workflow"])
@@ -179,7 +179,7 @@ def approve_requirement(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     if channel == "mcp":
         require_ai_approvals_enabled(db, db.get(Project, project_id))
-    current_version = get_current_version(db, requirement.id)
+    current_version = get_current_version_for_update(db, requirement.id)
     if current_version.status not in REQUIRES_APPROVAL_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")
     new_version = apply_new_version(
